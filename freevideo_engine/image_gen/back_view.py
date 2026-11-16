@@ -104,7 +104,7 @@ def generate_back(generate, seed, detector, *, cancel=None):
 
     started = time.monotonic()
     check_cancel()
-    initial = seed if seed is not None or detector is None else secrets.randbits(64)
+    initial = seed if seed is not None or detector is None else secrets.randbits(53)
     best = generate(initial)
     diagnostics = dict(retries=0, selected_seed=initial, checks=[], extra_generation_seconds=0.,
                        check_seconds=0., skipped='detector_unavailable' if detector is None else '')
@@ -136,7 +136,7 @@ def generate_back(generate, seed, detector, *, cancel=None):
             diagnostics['selected_seed'] = current_seed
         if assessment.body != 'front' or attempt == MAX_RETRIES:
             break
-        current_seed = (initial + (attempt + 1) * 104729) % 2**64
+        current_seed = (initial + (attempt + 1) * 104729) % 2**53
         check_cancel()
         retry_started = time.monotonic()
         image = generate(current_seed)

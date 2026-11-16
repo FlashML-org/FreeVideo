@@ -1,43 +1,35 @@
-.fv-studio .fv-guide-layer{position:fixed;inset:0;z-index:40;pointer-events:none;overflow:hidden;font-family:var(--fv-font);color:var(--fv-ink)}
-.fv-studio .fv-guide-ring{position:absolute;border:2px solid var(--fv-accent);box-shadow:0 0 0 9999px rgb(0 0 0 / 42%);pointer-events:none}
-.fv-studio .fv-guide-bubble{position:absolute;pointer-events:auto;width:340px;max-width:calc(100vw - 48px);padding:20px;border-radius:14px;background:var(--fv-raised);border:1px solid var(--fv-border);box-shadow:0 16px 48px #0005}
-.fv-studio .fv-guide-layer[data-group=editor] .fv-guide-bubble{max-width:calc(100vw - 24px)}
-.fv-studio .fv-guide-message{font-size:14px;font-weight:400;line-height:1.6;text-wrap:balance;margin:0;white-space:normal;overflow-wrap:normal;color:var(--fv-ink)}
-.fv-studio .fv-guide-footer{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:18px}
-.fv-studio .fv-guide-dots{display:flex;align-items:center;gap:6px;flex-shrink:0}
-.fv-studio .fv-guide-dot{width:5px;height:5px;border-radius:50%;background:color-mix(in srgb,var(--fv-muted) 40%,transparent)}
-.fv-studio .fv-guide-dot.is-current{background:var(--fv-accent)}
-.fv-studio .fv-guide-actions{display:flex;align-items:center;gap:8px}
-.fv-studio button.fv-guide-skip,.fv-studio button.fv-guide-next{min-height:36px;height:36px;padding:6px 13px;border-radius:var(--fv-r-sm,8px);font-size:13px;line-height:1.5;white-space:nowrap}
-.fv-studio button.fv-guide-skip{background:transparent;border-color:transparent;color:var(--fv-muted);font-weight:var(--fv-medium,500)}
-.fv-studio button.fv-guide-skip:hover{background:color-mix(in srgb,var(--fv-ink) 5%,transparent);color:var(--fv-ink)}
-.fv-studio button.fv-guide-next{background:var(--fv-accent);border-color:var(--fv-accent);color:var(--fv-bg);font-weight:var(--fv-semibold,600)}
-.fv-studio button.fv-guide-next:hover{background:var(--fv-accent-hover,var(--fv-accent));border-color:var(--fv-accent-hover,var(--fv-accent))}
-.fv-studio .fv-guide-arrow{position:absolute;width:12px;height:12px;background:var(--fv-raised);transform:rotate(45deg)}
-.fv-studio .fv-guide-bubble[data-side=right] .fv-guide-arrow{left:-7px;border-left:1px solid var(--fv-border);border-bottom:1px solid var(--fv-border)}
-.fv-studio .fv-guide-bubble[data-side=left] .fv-guide-arrow{right:-7px;border-top:1px solid var(--fv-border);border-right:1px solid var(--fv-border)}
-.fv-studio .fv-guide-bubble[data-side=above] .fv-guide-arrow{bottom:-7px;border-right:1px solid var(--fv-border);border-bottom:1px solid var(--fv-border)}
-.fv-studio .fv-guide-bubble[data-side=below] .fv-guide-arrow{top:-7px;border-left:1px solid var(--fv-border);border-top:1px solid var(--fv-border)}
-.fv-studio .fv-guide-wait{position:absolute;top:76px;right:24px;z-index:40;display:flex;align-items:center;gap:16px;max-width:calc(100% - 48px);padding:14px 18px;background:var(--fv-raised);border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);box-shadow:0 8px 24px #0005}
-.fv-studio .fv-guide-wait p{margin:0;font-size:14px;line-height:1.6}
-.fv-studio .fv-guide-bubble[data-side=center] .fv-guide-arrow{display:none}
-.fv-studio .fv-guide-picture{display:block;width:100%;height:auto;margin:0 0 14px;border-radius:8px;border:1px solid var(--fv-border)}
-@media(prefers-reduced-motion:reduce){.fv-studio .fv-guide-layer *{transition:none!important;animation:none!important}}
+/* The guide's steps, the first-start hint, the next step and the entry showcase are cards of the shared anchored layer
+   (feature_tour.css, .fv-tour-layer). What is left here: the line that waits for the view, and Settings › Getting started. */
+.fv-tour-layer .fv-showcase-media{aspect-ratio:960/272;background:#dfe3ea}
+.fv-tour-layer .fv-showcase-media>img{object-fit:contain}
+.fv-tour-layer .fv-guide-figure{aspect-ratio:auto;background:none}
+.fv-tour-layer .fv-guide-figure>img{position:static;height:auto}
 
-.fv-studio .fv-entry-showcase{display:grid;place-items:center;pointer-events:auto;padding:24px;background:#0008;overflow:auto}
-.fv-studio .fv-showcase-card{position:relative;width:min(760px,100%);max-height:100%;overflow:auto;padding:32px 24px 24px;border:1px solid var(--fv-border);border-radius:var(--fv-r-lg,16px);background:var(--fv-raised);box-shadow:0 24px 80px #0006;text-align:center}
-.fv-studio .fv-showcase-card h2{margin:0 24px 24px;font-size:clamp(19px,3vw,26px);line-height:1.4;font-weight:600;text-wrap:balance}
-.fv-studio .fv-showcase-card:focus{outline:none}
-.fv-studio .fv-showcase-card img{display:block;width:100%;height:auto;aspect-ratio:960/272;object-fit:contain;border-radius:var(--fv-r-sm,8px);background:#ddd}
-.fv-studio .fv-showcase-card .fv-guide-next{margin-top:24px;min-width:112px;min-height:40px;height:auto;font-size:14px}
-.fv-studio button.fv-showcase-close{position:absolute;top:8px;right:8px;width:36px;height:36px;min-height:36px;padding:0;border:0;background:transparent;color:var(--fv-muted);font-size:25px;line-height:1}
-.fv-studio button.fv-showcase-close:hover{color:var(--fv-ink);background:var(--fv-hover)}
-@media(max-width:480px){.fv-studio .fv-entry-showcase{padding:12px}.fv-studio .fv-showcase-card{padding:40px 12px 20px}.fv-studio .fv-showcase-card h2{margin:0 12px 20px;font-size:20px}}
-/* One local hint leaves every workspace control available. */
-.fv-first-start{box-sizing:border-box;position:fixed;z-index:12;width:250px;max-width:calc(100vw - 24px);padding:14px 16px;background:var(--fv-raised);color:var(--fv-ink);border:1px solid var(--fv-border);border-radius:var(--fv-r-md);box-shadow:0 8px 28px #0004}
-.fv-first-start p{margin:0;font-size:14px}
-.fv-first-start-arrow{position:absolute;left:26px;top:-6px;width:10px;height:10px;transform:rotate(45deg);background:var(--fv-raised);border-left:1px solid var(--fv-border);border-top:1px solid var(--fv-border)}
-.fv-first-start-dock .fv-first-start-arrow{display:none}
-.fv-first-start-above .fv-first-start-arrow{top:auto;bottom:-6px;left:calc(50% - 5px);transform:rotate(225deg)}
-.fv-next-step{box-sizing:border-box;position:fixed;z-index:12;width:260px;max-width:calc(100vw - 24px);padding:14px 16px;background:var(--fv-raised);color:var(--fv-ink);border:1px solid var(--fv-border);border-radius:var(--fv-r-md);box-shadow:0 8px 28px #0004;font:14px/1.6 var(--fv-font)}
-.fv-next-close{position:absolute;right:6px;top:4px;background:none;border:0;color:inherit;cursor:pointer;padding:4px 8px}.fv-next-actions{display:flex;gap:8px;margin-top:6px}.fv-next-actions button{flex:1}
+/* Waiting for the view before a replay: a small glass line under the top bar, with Cancel. */
+.fv-studio .fv-guide-wait{position:absolute;top:calc(var(--fv-header-h,56px) + var(--fv-sp-12,12px));right:var(--fv-sp-16,16px);z-index:40;display:flex;align-items:center;gap:var(--fv-sp-12,12px);
+  max-width:calc(100% - 32px);padding:var(--fv-sp-8,8px) var(--fv-sp-8,8px) var(--fv-sp-8,8px) var(--fv-sp-16,16px);border:1px solid var(--fv-edge);border-radius:var(--fv-rad-ctl,12px);
+  background:rgb(var(--fv-tint) / var(--fv-a3));-webkit-backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%);backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%);
+  box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh2);color:var(--fv-fg);font:var(--fv-fs-2,13px)/var(--fv-lh-2,20px) var(--fv-font,system-ui,sans-serif)}
+.fv-studio .fv-guide-wait p{margin:0}
+.fv-studio .fv-guide-wait button{height:var(--fv-ctl,32px);min-height:0;padding:0 var(--fv-sp-12,12px);border:0;border-radius:var(--fv-rad-sm,8px);background:var(--fv-ctl-bg);color:var(--fv-fg);font-weight:var(--fv-fw-2,500)}
+.fv-studio .fv-guide-wait button:hover{background:var(--fv-ctl-hover)}
+:is(:root[data-glass=solid],:root.lite) .fv-studio .fv-guide-wait{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--fv-solid3))}
+@media(prefers-reduced-transparency:reduce){.fv-studio .fv-guide-wait{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--fv-solid3))}}
+
+/* Settings › Getting started: one row per way back in (icon, name and one line, its button). */
+.fv-guide-replay{display:flex;flex-direction:column;gap:var(--fv-sp-8,8px)}
+.fv-guide-replay .fv-guide-replay-row{display:flex;flex-direction:column;gap:var(--fv-sp-8,8px)}
+.fv-guide-replay h3{margin:0}
+.fv-guide-replay .fv-guide-sub{margin:var(--fv-sp-8,8px) 0 0;font-size:var(--fv-fs-1,12px);line-height:var(--fv-lh-1,16px);font-weight:var(--fv-fw-3,600);color:var(--fv-fg3)}
+.fv-guide-replay .fv-guide-rows{display:flex;flex-direction:column;border-radius:var(--fv-rad-ctl,12px);background:var(--fv-ctl-bg);overflow:hidden}
+.fv-guide-replay .fv-guide-row{display:grid;grid-template-columns:28px minmax(0,1fr) auto;align-items:center;gap:var(--fv-sp-12,12px);min-height:56px;padding:var(--fv-sp-8,8px) var(--fv-sp-12,12px)}
+.fv-guide-replay .fv-guide-row+.fv-guide-row{border-top:1px solid var(--fv-line)}
+.fv-guide-replay .fv-guide-row>svg{width:16px;height:16px;justify-self:center;fill:none;stroke:var(--fv-fg2);stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.fv-guide-replay .fv-guide-row b{display:block;font-weight:var(--fv-fw-2,500);color:var(--fv-fg);font-size:var(--fv-fs-2,13px);line-height:var(--fv-lh-2,20px)}
+.fv-guide-replay .fv-guide-row small{display:block;color:var(--fv-fg3);font-size:var(--fv-fs-1,12px);line-height:var(--fv-lh-1,16px)}
+.fv-guide-replay .fv-guide-row button{min-width:72px}
+.fv-guide-replay .fv-guide-howtos{display:flex;flex-direction:column;gap:2px;padding:var(--fv-sp-4,4px);border:1px solid var(--fv-edge);border-radius:var(--fv-rad-ctl,12px);background:rgb(var(--fv-solid3));box-shadow:var(--fv-sh2)}
+.fv-guide-replay .fv-guide-howtos[hidden]{display:none}
+.fv-guide-replay .fv-guide-howtos button{justify-content:flex-start;text-align:left;border:0;background:transparent;min-height:32px}
+.fv-guide-replay .fv-guide-howtos button:hover{background:var(--fv-ctl-hover)}
+.fv-guide-replay .fv-guide-howtos hr{width:100%;height:1px;margin:var(--fv-sp-4,4px) 0;border:0;background:var(--fv-line)}

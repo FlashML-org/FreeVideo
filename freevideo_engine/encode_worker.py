@@ -729,7 +729,10 @@ def _encode(args, request, resident, trace):
     temporary = output.with_suffix('.partial')
     torch.save(value, temporary)
     temporary.replace(output)
+    from .input_cache import used as cache_receipts
     metrics = {'scope': 'Native H3 encoder library in an isolated worker; no UI/server',
+               # The cached latents this request read or wrote, so deleting the work removes what only it used.
+               'cache_receipts': cache_receipts(),
                **loading,
                'resident_encoder_cache_hit': encoder_cache_hit,
                'resident_encoder_gpu_ready_at_start': gpu_ready_at_start,

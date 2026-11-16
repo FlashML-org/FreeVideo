@@ -1,0 +1,188 @@
+/* The floating window (task_float.js): stu's design (work-stu NOTES "悬浮窗约定"), on the glass tokens of the image view.
+   Glass only on the window itself; solid when glass is off (data-glass=solid, .lite, reduced transparency, no backdrop-filter).
+   Only transform and opacity animate; everything eases out, nothing overshoots. */
+.sgf, .sgf-slot, .sgf-fly {
+  --f-bg: 20 23 30; --f-a: .72; --f-fg: #f3f5f8; --f-fg2: #c3c9d3; --f-fg3: #99a1ae; --f-edge: rgb(255 255 255 / .09); --f-hi: rgb(255 255 255 / .14);
+  --f-ctl: rgb(255 255 255 / .07); --f-ctl-h: rgb(255 255 255 / .13); --f-warn: #ff8f80; --f-fill: #0d6dcc; --f-solid: 29 32 40; --f-ring: #fff;
+  --f-sh: 0 1px 2px rgb(0 0 0 / .3), 0 22px 54px -10px rgb(0 0 0 / .6); --f-sh-up: 0 2px 6px rgb(0 0 0 / .32), 0 32px 80px -12px rgb(0 0 0 / .66);
+  --f-ease: cubic-bezier(.2, .8, .2, 1);
+  color-scheme: dark;
+}
+:root[data-theme=light] :is(.sgf, .sgf-slot) {
+  --f-bg: 250 251 253; --f-a: .84; --f-fg: #14161b; --f-fg2: #343a46; --f-fg3: #565d6b; --f-edge: rgb(20 24 32 / .08); --f-hi: rgb(255 255 255 / .9);
+  --f-ctl: rgb(20 24 32 / .05); --f-ctl-h: rgb(20 24 32 / .09); --f-warn: #b02f28; --f-solid: 255 255 255;
+  --f-sh: 0 1px 2px rgb(30 40 60 / .08), 0 22px 50px -12px rgb(30 40 60 / .28); --f-sh-up: 0 2px 6px rgb(30 40 60 / .1), 0 30px 70px -14px rgb(30 40 60 / .34);
+  color-scheme: light;
+}
+
+/* A manual popover sits in the top layer; take back everything the browser gives a popover by default. */
+.sgf[popover], .sgf-slot[popover], .sgf-fly[popover] { position: fixed; inset: auto; left: 0; top: 0; margin: 0; padding: 0; border: 0; background: transparent; overflow: visible; width: auto; height: auto; max-width: none; max-height: none; color: var(--f-fg); }
+.sgf[popover]:not(:popover-open), .sgf-slot[popover]:not(:popover-open), .sgf-fly[popover]:not(:popover-open) { display: none; }
+.sgf {
+  z-index: var(--fv-z-float, 2000); will-change: transform; font: 400 13px/1.45 "Inter", "Noto Sans SC", "Segoe UI", "PingFang SC", "Microsoft YaHei UI", system-ui, sans-serif; font-feature-settings: "tnum" 1;
+  -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
+}
+.sgf .fv-selectable { -webkit-user-select: text; user-select: text; cursor: text; }
+.sgf :is(.sgf-card, .sgf-sheet) {
+  background: rgb(var(--f-bg) / var(--f-a)); box-shadow: inset 0 0 0 1px var(--f-edge), inset 0 1px 0 var(--f-hi), var(--f-sh);
+  -webkit-backdrop-filter: blur(30px) saturate(165%); backdrop-filter: blur(30px) saturate(165%);
+}
+:root:is([data-glass=solid], .lite) .sgf :is(.sgf-card, .sgf-sheet), .lite .sgf :is(.sgf-card, .sgf-sheet) { background: rgb(var(--f-solid)); -webkit-backdrop-filter: none; backdrop-filter: none; }
+@media (prefers-reduced-transparency: reduce) { .sgf :is(.sgf-card, .sgf-sheet) { background: rgb(var(--f-solid)) !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; } }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .sgf :is(.sgf-card, .sgf-sheet) { background: rgb(var(--f-solid)); } }
+
+/* the card: picture with ring, two lines, the count, stop */
+.sgf-card {
+  position: relative; width: var(--sgf-card-w, 288px); height: 68px; box-sizing: border-box; display: grid; grid-template-columns: 96px minmax(0, 1fr) auto auto; align-items: center; column-gap: 8px;
+  padding: 8px; border-radius: var(--fv-r-lg); cursor: pointer; touch-action: none; outline: 0;
+  transition: box-shadow 200ms var(--f-ease), scale 200ms var(--f-ease);
+}
+.sgf-card:hover { box-shadow: inset 0 0 0 1px var(--f-edge), inset 0 1px 0 var(--f-hi), var(--f-sh-up); }
+.sgf-card:focus-visible { box-shadow: inset 0 0 0 1px var(--f-edge), 0 0 0 2px color-mix(in srgb, #1B94FC 70%, transparent), var(--f-sh); }
+.sgf-card:active { scale: .985; }
+.sgf.drag .sgf-card { cursor: grabbing; scale: 1.02; box-shadow: inset 0 0 0 1px var(--f-edge), inset 0 1px 0 var(--f-hi), var(--f-sh-up); transition: none; }
+.sgf-pv { position: relative; width: 96px; height: 52px; border-radius: var(--fv-r-md); overflow: hidden; background: #0b0d12; isolation: isolate; }
+.sgf-img { position: absolute; inset: -4px; background: center / cover no-repeat; transition: filter 400ms linear; }
+.sgf-img[data-empty=true] { background: radial-gradient(120% 90% at 30% 20%, #2a3a52 0%, #141a24 60%, #0b0d12 100%); }
+.sgf-glyph { position: absolute; inset: 0; display: none; place-items: center; color: rgb(255 255 255 / .5); }
+.sgf-glyph svg { width: 16px; height: 16px; }
+.sgf-rth:has(.sgf-img[data-empty=true]) .sgf-glyph { display: grid; }
+.sgf-scrim { position: absolute; inset: 0; background: rgb(0 0 0 / .26); transition: opacity 200ms; }
+.sgf-ring { position: absolute; left: 50%; top: 50%; width: 32px; height: 32px; margin: -16px 0 0 -16px; rotate: -90deg; transition: opacity 200ms; }
+.sgf-ring circle { fill: none; stroke-width: 2.6; }
+.sgf-ring .bg { stroke: rgb(255 255 255 / .32); }
+.sgf-ring .fg { stroke: var(--f-ring); stroke-linecap: round; transition: stroke-dashoffset 450ms var(--f-ease); }
+.sgf[data-st=queue] .sgf-ring .bg { stroke-dasharray: 2.4 3.2; }
+.sgf[data-st=queue] .sgf-img { filter: saturate(.6) brightness(.8); }
+.sgf-mark { position: absolute; left: 50%; top: 50%; width: 28px; height: 28px; margin: -14px 0 0 -14px; border-radius: var(--fv-r-pill); display: none; place-items: center; color: #fff; }
+.sgf-mark svg { width: 16px; height: 16px; stroke-width: 2.2; }
+.sgf:is([data-st=done], [data-st=fail]) :is(.sgf-ring, .sgf-scrim) { opacity: 0; }
+.sgf[data-st=done] .sgf-mark { display: grid; background: var(--f-fill); box-shadow: 0 0 0 2px rgb(255 255 255 / .9), 0 4px 12px rgb(0 0 0 / .3); animation: sgfPop 260ms var(--f-ease) both; }
+.sgf[data-st=fail] .sgf-mark { display: grid; background: #c8353a; box-shadow: 0 0 0 2px rgb(255 255 255 / .85); }
+.sgf[data-st=fail] .sgf-img { filter: grayscale(1) brightness(.55); }
+@keyframes sgfPop { from { opacity: 0; transform: scale(.6); } }
+/* finished: one sweep of light across the card, the light notice */
+.sgf[data-st=done] .sgf-card::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(100deg, transparent 30%, rgb(255 255 255 / .16) 50%, transparent 70%) 0 0 / 300% 100% no-repeat; animation: sgfSheen 1.1s var(--f-ease) .15s 1 both; }
+@keyframes sgfSheen { from { background-position: 120% 0; } to { background-position: -20% 0; } }
+.sgf-tx { display: grid; min-width: 0; gap: 1px; }
+.sgf-l1 { display: flex; align-items: baseline; gap: 4px; min-width: 0; font-size: 13px; font-weight: 600; line-height: 20px; color: var(--f-fg); white-space: nowrap; letter-spacing: -.005em; }
+.sgf-k { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.sgf-p { flex: none; font-variant-numeric: tabular-nums; }
+.sgf-l2 { font-size: 12px; line-height: 16px; color: var(--f-fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.sgf[data-st=fail] .sgf-l2 { color: var(--f-warn); }
+/* The window sits inside a view dialog whose own button rules (.fv-studio button) would reach it: this reset outranks them
+   (0,2,0) and the window's own rules below, all prefixed with .sgf, come later at the same weight. */
+.sgf.sgf :where(button, a) { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0; min-height: 0; min-width: 0; border-radius: 0;
+  display: inline-flex; align-items: center; justify-content: center; gap: 0; box-shadow: none; filter: none; transition: none; text-decoration: none; cursor: pointer; font-weight: inherit; }
+.sgf.sgf.sgf :where(button, a):is(:hover, :active) { filter: none; border-color: transparent; }
+.sgf.sgf :where(button, a):focus-visible { outline: 2px solid color-mix(in srgb, #1B94FC 70%, transparent); outline-offset: 2px; }
+.sgf .sgf-n { height: 28px; padding: 0 4px 0 8px; border-radius: var(--fv-r-lg); display: inline-flex; align-items: center; gap: 0; font-size: 12px; font-weight: 600; color: var(--f-fg); background: var(--f-ctl); transition: background-color 160ms; }
+.sgf .sgf-n:hover, .sgf .sgf-n[aria-expanded=true] { background: var(--f-ctl-h); }
+.sgf .sgf-n svg { width: 14px; height: 14px; color: var(--f-fg2); }
+.sgf .sgf-n[hidden], .sgf .sgf-x[hidden] { display: none; }
+.sgf .sgf-n:not([hidden]) + .sgf-x { margin-left: -4px; }
+.sgf .sgf-x { width: 28px; height: 28px; border-radius: var(--fv-r-sm); display: grid; place-items: center; color: var(--f-fg2); opacity: 0; transition: opacity 160ms, background-color 160ms, color 160ms; }
+.sgf .sgf-x svg { width: 14px; height: 14px; }
+.sgf:is(:hover, :focus-within) .sgf-x, .sgf.sheet-on .sgf-x { opacity: 1; }
+@media (hover: none) { .sgf .sgf-x { opacity: 1; } }
+.sgf .sgf-x:hover { background: var(--f-ctl-h); color: var(--f-fg); }
+.sgf:is([data-st=run], [data-st=queue]) .sgf-x:hover { color: var(--f-warn); }
+/* two or three jobs: one more card peeks out behind */
+.sgf[data-n] .sgf-card::before { content: ""; position: absolute; left: 12px; right: 12px; z-index: -1; height: 12px; background: rgb(var(--f-bg) / calc(var(--f-a) - .12)); box-shadow: inset 0 0 0 1px var(--f-edge); }
+.sgf:not([data-corner^=t])[data-n] .sgf-card::before { top: -8px; border-radius: var(--fv-r-lg) var(--fv-r-lg) 0 0; }
+.sgf[data-corner^=t][data-n] .sgf-card::before { bottom: -8px; border-radius: 0 0 var(--fv-r-lg) var(--fv-r-lg); }
+
+/* the second layer: the list, the stop question, what happened */
+.sgf-sheet { position: absolute; left: 0; width: var(--sgf-card-w, 288px); box-sizing: border-box; padding: 8px; border-radius: var(--fv-r-lg); display: grid; gap: 4px; animation: sgfIn 200ms var(--f-ease) both; }
+.sgf-sheet[hidden] { display: none; }
+/* when the room beside the picture is smaller than the list, the list takes that height and scrolls inside */
+.sgf-sheet { overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.sgf:not([data-corner^=t]) .sgf-sheet { bottom: calc(100% + 12px); transform-origin: 50% 100%; }
+.sgf[data-corner^=t] .sgf-sheet { top: calc(100% + 12px); transform-origin: 50% 0; animation-name: sgfInT; }
+.sgf[data-corner$=r] .sgf-sheet { left: auto; right: 0; }
+@keyframes sgfIn { from { opacity: 0; transform: translateY(6px) scale(.98); } }
+@keyframes sgfInT { from { opacity: 0; transform: translateY(-6px) scale(.98); } }
+.sgf-sheet header { height: 28px; display: flex; align-items: center; padding-inline: 8px; font-size: 12px; color: var(--f-fg3); }
+.sgf-sheet header b { font-weight: 600; }
+.sgf .sgf-row { position: relative; display: grid; grid-template-columns: 56px minmax(0, 1fr); align-items: center; column-gap: 8px; width: 100%; min-height: 52px; padding: 8px 8px 12px; box-sizing: border-box; border-radius: var(--fv-r-md); text-align: left; transition: background-color 160ms; }
+.sgf .sgf-row:hover, .sgf .sgf-row:focus-visible { background: var(--f-ctl-h); outline: 0; }
+.sgf-rth { position: relative; width: 56px; height: 32px; border-radius: var(--fv-r-sm); overflow: hidden; background: #0b0d12; }
+.sgf-rth .sgf-img { inset: 0; }
+.sgf .sgf-row[data-st=queue] .sgf-rth .sgf-img { filter: saturate(.6) brightness(.8); }
+.sgf .sgf-row[data-st=fail] .sgf-rth .sgf-img { filter: grayscale(1) brightness(.55); }
+.sgf-rtx { display: grid; min-width: 0; }
+.sgf-rtx b { font-size: 13px; font-weight: 500; line-height: 20px; color: var(--f-fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sgf-rtx span { font-size: 12px; line-height: 16px; color: var(--f-fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sgf-rbar { position: absolute; left: 72px; right: 8px; bottom: 4px; height: 2px; border-radius: var(--fv-r-xs); background: var(--f-ctl-h); overflow: hidden; }
+.sgf-rbar b { display: block; height: 100%; border-radius: inherit; background: #1B94FC; transition: width 450ms var(--f-ease); }
+.sgf-ask, .sgf-fail { display: grid; gap: 4px; padding: 8px 8px 4px; }
+.sgf-ask b, .sgf-fail b { font-size: 13px; font-weight: 600; line-height: 20px; color: var(--f-fg); }
+.sgf-ask p, .sgf-fail p { margin: 0; font-size: 12px; line-height: 16px; color: var(--f-fg2); text-wrap: pretty; }
+.sgf-acts { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 12px; }
+.sgf .pill { height: 32px; padding-inline: 12px; border-radius: var(--fv-r-md); display: inline-flex; align-items: center; font-size: 13px; font-weight: 500; white-space: nowrap; color: var(--f-fg); transition: background-color 160ms; }
+.sgf .pill:hover { background: var(--f-ctl); }
+.sgf .pill.line { background: var(--f-ctl); }
+.sgf .pill.line:hover { background: var(--f-ctl-h); }
+.sgf .pill.danger { color: #fff; background: #c8353a; box-shadow: inset 0 1px 0 rgb(255 255 255 / .18); }
+.sgf .pill.danger:hover { background: #d63c42; }
+.sgf .pill:active, .sgf .sgf-row:active, .sgf .sgf-n:active, .sgf .sgf-x:active { scale: .97; }
+.sgf-report { margin-right: auto; display: inline-flex; }
+.sgf .sgf-report :is(button, a) { height: 32px; padding-inline: 12px; border-radius: var(--fv-r-md); background: var(--f-ctl); color: var(--f-fg); font-size: 13px; }
+
+/* the stop question anchored to a view's own Stop button: the same second layer */
+.sgf.sgf-confirm { z-index: calc(var(--fv-z-float, 2000) + 1); }
+.sgf.sgf-confirm .sgf-sheet { position: static; width: 300px; }
+
+/* the corner it will land in while dragging */
+.sgf-slot { z-index: calc(var(--fv-z-float, 2000) - 1); box-sizing: border-box; border-radius: var(--fv-r-lg); pointer-events: none;
+  border: 1.5px dashed color-mix(in srgb, var(--f-fg) 34%, transparent) !important; background: color-mix(in srgb, var(--f-fg) 6%, transparent) !important;
+  transition: transform 160ms var(--f-ease); }
+/* the flying picture (generation screen <-> window), outside a View Transition: one copy of the picture, carrying the
+   screen's own blur and zoom, translated and scaled evenly and clipped to the target's shape */
+.sgf-fly[popover] { z-index: calc(var(--fv-z-float, 2000) + 2); pointer-events: none; transform-origin: 0 0; background: transparent; will-change: transform, clip-path; overflow: hidden; }
+.sgf-fly-im { position: absolute; inset: 0; background: #0b0d12 center / cover no-repeat; }
+
+/* Inside the shell's View Transition the browser carries the same picture by name, with the same rules: the pair is
+   cover-fitted and clipped (no stretching), one side shows at a time, and the copy hands over in 90 ms at landing. */
+::view-transition-group(fv-task-pic) { animation-duration: 260ms; animation-timing-function: cubic-bezier(.2, .8, .2, 1); }
+::view-transition-image-pair(fv-task-pic) { overflow: hidden; border-radius: var(--fv-r-md); }
+::view-transition-old(fv-task-pic), ::view-transition-new(fv-task-pic) { width: 100%; height: 100%; object-fit: cover; mix-blend-mode: normal; }
+/* into the window: the screen's picture flies, the window's own appears on landing */
+html[data-fv-task-flight=collapse]::view-transition-old(fv-task-pic) { animation: fvtKeep 350ms linear both; }
+html[data-fv-task-flight=collapse]::view-transition-new(fv-task-pic) { animation: fvtLand 350ms linear both; }
+/* back to the screen: the screen's own sharp picture flies out of the window; the small one is gone at lift-off */
+html[data-fv-task-flight=expand]::view-transition-old(fv-task-pic) { animation: none; opacity: 0; }
+html[data-fv-task-flight=expand]::view-transition-new(fv-task-pic) { animation: none; opacity: 1; }
+@keyframes fvtKeep { 0%, 74% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes fvtLand { 0%, 74% { opacity: 0; } 100% { opacity: 1; } }
+/* the window's glass: arrives 60 ms after the picture lifts off, over 200 ms; leaves quickly when going back */
+::view-transition-new(fv-task-card) { animation: fvtCardIn 200ms cubic-bezier(.2, .8, .2, 1) 60ms both; }
+::view-transition-old(fv-task-card) { animation: fvtCardOut 160ms cubic-bezier(.2, .8, .2, 1) both; }
+@keyframes fvtCardIn { from { opacity: 0; transform: scale(.96); } }
+@keyframes fvtCardOut { to { opacity: 0; transform: scale(.96); } }
+
+/* phone: one capsule along the bottom, above the view's own bottom bar */
+.sgf.cap .sgf-card { width: calc(100vw - 24px); height: 56px; border-radius: var(--fv-r-lg); grid-template-columns: 40px minmax(0, 1fr) auto auto; column-gap: 8px; padding: 8px; }
+.sgf.cap .sgf-pv { width: 40px; height: 40px; border-radius: var(--fv-r-pill); }
+.sgf.cap .sgf-ring { width: 32px; height: 32px; margin: -16px 0 0 -16px; }
+.sgf.cap .sgf-sheet { width: calc(100vw - 24px); bottom: calc(100% + 12px); }
+/* touch: 44 px targets at phone width */
+.sgf.cap .sgf-x { opacity: 1; width: 44px; height: 44px; margin-block: -2px; }
+.sgf.cap .sgf-n { height: 44px; padding-inline: 12px 8px; margin-block: -2px; border-radius: var(--fv-r-lg); }
+.sgf.cap[data-n] .sgf-card::before { left: 22px; right: 22px; }
+@media (prefers-reduced-motion: reduce) { .sgf, .sgf *, .sgf-slot { transition: none !important; animation: none !important; } }
+
+/* compact (232 wide), used only when the full window has no free place: a smaller picture, Stop closer in */
+.sgf[data-compact]:not(.cap) .sgf-card { grid-template-columns: 64px minmax(0, 1fr) auto auto; }
+.sgf[data-compact]:not(.cap) .sgf-pv { width: 64px; }
+.sgf[data-compact]:not(.cap) .sgf-n { padding-inline: 4px 0; }
+.sgf[data-compact]:not(.cap) .sgf-x { width: 24px; }
+/* no room around for the list: it opens inside the card's own box and scrolls, leaving the count button (to fold it)
+   and Stop uncovered */
+.sgf[data-inline-sheet] .sgf-sheet { z-index: 1; top: 0 !important; bottom: auto !important; left: 0 !important; right: auto !important; width: calc(var(--sgf-card-w, 288px) - 80px);
+  padding: 4px; gap: 0; border-radius: var(--fv-r-lg) var(--fv-r-md) var(--fv-r-md) var(--fv-r-lg); animation: none; }
+.sgf[data-inline-sheet] .sgf-sheet header { display: none; }
+.sgf[data-inline-sheet] .sgf-sheet .sgf-row { min-height: 60px; padding: 6px 8px 10px; }
+/* a list taller than three rows scrolls inside; the fade at the bottom says there is more */
+.sgf-sheet[data-scrolls] { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent); }

@@ -22,6 +22,5 @@ def to_cache(conditioning, prompt=None, task='t2va'):
         raise ValueError('Keyframe tasks require vision conditioning')
     result = {'prompt_embeds': embeds[0].detach().to('cpu', torch.bfloat16),
               'text_token_tags': tags.detach().to('cpu', torch.long)}
-    if prompt is not None:
-        result['prompt'] = prompt
+    # The prompt is not kept with its encoding: a cached file must not carry it as text.
     return result

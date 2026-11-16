@@ -1,0 +1,225 @@
+/* Frame & size picker (frame_picker.js): everything in sight, nothing folds. The tiles and blocks lay themselves
+   out by the room they are given: one row each when wide, four tiles a row when narrow (a phone, a side panel).
+   The rules carry !important where a view's own button face would otherwise repaint them. */
+.fvp{container-type:inline-size;display:grid;gap:var(--fv-sp-16);min-width:0;color:var(--fv-fg)}
+.fvp-group{display:grid;gap:var(--fv-sp-8);min-width:0}
+.fvp-title{font-size:var(--fv-fs-1);line-height:16px;font-weight:var(--fv-fw-1,400);color:var(--fv-fg3)}
+.fvp-shapes{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:var(--fv-sp-8)}
+/* The size row sits on the frame row's grid: each size block under two tiles, width × height and the lock under four. */
+.fvp-sizes{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));align-items:center;gap:var(--fv-sp-8)}
+.fvp-sizes>.fvp-size{grid-column:span 2}
+.fvp-sizes>.fvp-custom{grid-column:span 4}
+.fvp-custom .fvp-field{flex:1 1 0}
+.fvp .fvp-custom .fvp-field input.fvp-dim{flex:1;width:0}
+/* An option: a quiet block. The chosen one is lit whole: a solid fill and a 1 px line. */
+.fvp button:is(.fvp-shape,.fvp-size){box-sizing:border-box!important;box-shadow:none!important;margin:0!important;border:1px solid transparent!important;border-radius:var(--fv-r-sm)!important;background:var(--fv-ctl-bg)!important;color:var(--fv-fg2)!important;
+  font:inherit;font-weight:var(--fv-fw-1,400)!important;cursor:pointer;transition:background-color var(--fv-dur-1,.16s) var(--fv-ease-out,ease-out),border-color var(--fv-dur-1,.16s) var(--fv-ease-out,ease-out),color var(--fv-dur-1,.16s) var(--fv-ease-out,ease-out)}
+.fvp button:is(.fvp-shape,.fvp-size):hover:not(:disabled,[aria-checked=true]){background:var(--fv-ctl-hover)!important;color:var(--fv-fg)!important}
+.fvp button:is(.fvp-shape,.fvp-size)[aria-checked=true]{border-color:var(--fv-accent-line)!important;background:var(--fv-accent-soft)!important;color:var(--fv-fg)!important}
+.fvp button:is(.fvp-shape,.fvp-size):focus-visible{outline:2px solid var(--fv-focus,var(--fv-accent-line));outline-offset:2px}
+.fvp button:is(.fvp-shape,.fvp-size):disabled{opacity:.4;cursor:default}
+.fvp button.fvp-shape{display:grid!important;grid-template-rows:28px 16px;justify-items:center;align-content:center;gap:var(--fv-sp-4);height:64px!important;min-height:64px!important;padding:0 var(--fv-sp-4)!important;min-width:0}
+.fvp-art{position:relative;display:grid;place-items:center;width:28px;height:28px}
+.fvp .fvp-art .fvp-icon{width:28px;height:28px}
+.fvp [aria-checked=true] .fvp-icon .fvp-frame{stroke:var(--fv-accent-ink)}
+.fvp-thumb{position:absolute;inset:0;margin:auto;max-width:20px;max-height:20px;width:auto;height:auto;object-fit:cover;border-radius:var(--fv-r-xs);opacity:.9}
+.fvp-name{max-width:100%;font-size:var(--fv-fs-1);line-height:16px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* A size block: its final pixels, then its name; as wide as what it says. */
+.fvp button.fvp-size{display:grid!important;justify-items:start;justify-content:stretch!important;align-content:center;gap:0;height:48px!important;min-height:48px!important;padding:0 var(--fv-sp-16)!important;text-align:left}
+.fvp-px{font-size:var(--fv-fs-2);line-height:20px;font-weight:var(--fv-fw-2,500);font-variant-numeric:tabular-nums;white-space:nowrap}
+.fvp-sub{font-size:var(--fv-fs-1);line-height:16px;color:var(--fv-fg3);white-space:nowrap}
+/* Width × height and the lock, at the end of the size row. Lit the same way while a typed size is in force. */
+.fvp-custom{display:flex;align-items:center;gap:var(--fv-sp-8);min-width:0}
+.fvp-field{box-sizing:border-box;display:flex;align-items:center;gap:var(--fv-sp-8);height:48px;padding:0 var(--fv-sp-12);border:1px solid transparent;border-radius:var(--fv-r-sm);background:var(--fv-ctl-bg);min-width:0}
+.fvp-custom[data-on=true] .fvp-field{border-color:var(--fv-accent-line);background:var(--fv-accent-soft)}
+.fvp-field:focus-within{border-color:var(--fv-accent-line)}
+.fvp-field-name{flex:none;font-size:var(--fv-fs-1);line-height:16px;color:var(--fv-fg3)}
+.fvp .fvp-field input.fvp-dim{appearance:textfield;-moz-appearance:textfield;box-sizing:border-box;width:56px;min-width:0;height:32px!important;min-height:0!important;margin:0;padding:0!important;border:0!important;outline:0!important;background:none!important;box-shadow:none!important;
+  color:var(--fv-fg);font:inherit;font-size:var(--fv-fs-2);font-weight:var(--fv-fw-2,500);font-variant-numeric:tabular-nums}
+.fvp .fvp-dim::-webkit-outer-spin-button,.fvp .fvp-dim::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.fvp-times{flex:none;color:var(--fv-fg3);font-size:var(--fv-fs-2)}
+/* The lock: a quiet key; locked is a line and the ink, not a fill. */
+.fvp button.fvp-lock{box-sizing:border-box!important;box-shadow:none!important;flex:none;display:grid!important;place-items:center;width:32px!important;height:32px!important;min-height:32px!important;margin:0!important;padding:0!important;border:1px solid transparent!important;border-radius:var(--fv-r-sm)!important;background:none!important;color:var(--fv-fg3)!important;cursor:pointer}
+.fvp button.fvp-lock[aria-pressed=true]{border-color:var(--fv-line2)!important;color:var(--fv-fg)!important}
+.fvp button.fvp-lock:hover:not(:disabled){background:var(--fv-ctl-hover)!important}
+.fvp button.fvp-lock:focus-visible{outline:2px solid var(--fv-focus,var(--fv-accent-line));outline-offset:2px}
+.fvp-lock svg{display:block;width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.fvp-lock[hidden]{display:none!important}
+.fvp-status{margin:calc(var(--fv-sp-8) * -1) 0 0;font-size:var(--fv-fs-1);line-height:16px;color:var(--fv-fg2);text-align:right}
+.fvp-status[hidden]{display:none}
+.fvp[data-disabled] :is(.fvp-field,.fvp-lock){opacity:.4}
+/* Narrow room: four tiles a row; the two sizes share a row; width, height and the lock share the next. */
+@container (max-width:520px){
+  .fvp{gap:var(--fv-sp-12)}
+  .fvp-group{gap:var(--fv-sp-4)}
+  .fvp button.fvp-shape{grid-template-rows:24px 16px;gap:0;height:48px!important;min-height:48px!important;padding:0!important}
+  .fvp-art,.fvp .fvp-art .fvp-icon{width:24px;height:24px}
+  .fvp button.fvp-size,.fvp-field{height:40px!important;min-height:40px!important}
+  .fvp-shapes{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .fvp-sizes{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .fvp-sizes>.fvp-size{grid-column:span 1}
+  .fvp-sizes>.fvp-custom{grid-column:span 2}
+}
+.fvp-icon{display:block;flex:none;overflow:visible}
+.fvp-icon .fvp-frame{fill:none;stroke:currentColor;stroke-width:1.5}
+.fvp-icon .fvp-follow{stroke-dasharray:3 2}
+.fvp-ghost{position:absolute;left:0;top:0;z-index:3;box-sizing:border-box;border:2px solid var(--fv-accent-ink);border-radius:var(--fv-r-xs,4px);pointer-events:none;opacity:0;transition:opacity .2s ease}
+.fvp-ghost[data-shown=true]{opacity:1}
+.fvp-ghost-label{position:absolute;left:var(--fv-sp-8);top:var(--fv-sp-8);padding:var(--fv-sp-2) var(--fv-sp-8);border-radius:var(--fv-r-xs,4px);background:rgb(var(--fv-solid1,23 25 30));color:var(--fv-fg);font-size:var(--fv-fs-1);line-height:16px}
+/* The chip that opens the tray says what the tray says: the ratio, then the final pixels (where there is room). */
+@media (min-width:641px){.fv-studio.fv-create .fvs-chip[data-chip=size] .fvs-chip-extra:not([hidden]){display:inline}}
+.fvp~[hidden]{display:none!important}
+/* Inside a tray the picker ends where the tray's own padding begins. */
+.fvs-tray .fvp{margin-bottom:0!important}
+/* An upright next frame is too slim for the hint sentence: it shows its size only. */
+.fv-studio.fv-create .fv-stage[data-next=true][data-next-slim=true]::after{content:none!important}
+
+/* ── The button and its panel (createFrameChip) ───────────────────────────────────────────────────────────── */
+.fvp-chip{box-sizing:border-box;display:inline-flex;align-items:center;gap:var(--fv-sp-8);height:32px;min-height:32px;margin:0;padding:0 var(--fv-sp-12);border:0;border-radius:var(--fv-r-sm);background:var(--fv-ctl-bg);color:var(--fv-fg);font:inherit;font-size:var(--fv-fs-2);white-space:nowrap;cursor:pointer}
+.fvp-chip:hover:not(:disabled),.fvp-chip[aria-expanded=true]{background:var(--fv-ctl-hover)}
+.fvp-chip:disabled{opacity:.4;cursor:default}
+.fvp-chip .fvp-icon{width:14px;height:14px;color:var(--fv-fg2)}
+.fvp-chip .fvp-chip-label{font-variant-numeric:tabular-nums}
+.fvp-chip .fvp-chip-dot{color:var(--fv-fg3)}
+.fvp-chip [hidden]{display:none}
+.fvp-icon .fvp-frame{transition:x .16s ease-out,y .16s ease-out,width .16s ease-out,height .16s ease-out}
+/* The panel: beside its button, as wide as what it holds. A solid ground, one line, one shadow. */
+.fvp.fvp-pop{position:fixed;z-index:var(--fv-z-pop,60);box-sizing:border-box;display:block;width:480px;max-width:calc(100vw - 32px);padding:var(--fv-sp-16);border:1px solid var(--fv-edge);border-radius:var(--fv-r-md);
+  background:rgb(var(--fv-solid3));box-shadow:0 16px 40px -16px rgb(0 0 0 / .5);color:var(--fv-fg);opacity:0;transform:translateY(4px) scale(.98);transform-origin:left bottom;
+  transition:opacity .12s ease-out,transform .12s ease-out;pointer-events:none}
+.fvp.fvp-pop[data-side=below]{transform:translateY(-4px) scale(.98);transform-origin:left top}
+.fvp.fvp-pop[data-open=true]{opacity:1;transform:none;transition-duration:.16s;pointer-events:auto}
+.fvp.fvp-pop[hidden]{display:none}
+.fvp-pop>.fvp-title{display:block;margin:0 0 var(--fv-sp-8);font-size:var(--fv-fs-2);line-height:20px;color:var(--fv-fg3)}
+.fvp-pop>.fvp-sizes{margin-bottom:0}
+.fvp-pop>.fvp-shapes{margin-bottom:var(--fv-sp-16)}
+/* A strip: one container, its options side by side; the chosen one is a lighter block that slides. */
+.fvp-pop :is(.fvp-shapes,.fvp-sizes){position:relative;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);grid-template-columns:none;gap:0;padding:var(--fv-sp-4);border-radius:var(--fv-r-sm);background:var(--fv-ctl-bg)}
+.fvp-pop .fvp-glide{position:absolute;left:0;top:0;box-sizing:border-box;border-radius:var(--fv-r-xs);background:var(--fv-ctl-press);pointer-events:none;opacity:0;transition:transform .16s ease-out,width .16s ease-out,height .16s ease-out,opacity .16s ease-out}
+.fvp-pop .fvp-glide[data-on=true]{opacity:1}
+.fvp-pop button:is(.fvp-shape,.fvp-size){position:relative;border:0!important;border-radius:var(--fv-r-xs)!important;background:none!important;color:var(--fv-fg2)!important}
+.fvp-pop button:is(.fvp-shape,.fvp-size)[aria-checked=true]{background:none!important;color:var(--fv-fg)!important}
+.fvp-pop button:is(.fvp-shape,.fvp-size):hover:not(:disabled,[aria-checked=true]){background:var(--fv-ctl-bg)!important;color:var(--fv-fg)!important}
+.fvp-pop [aria-checked=true] .fvp-icon .fvp-frame{stroke:currentColor}
+.fvp-pop button:is(.fvp-shape,.fvp-size):focus-visible{outline-offset:-2px}
+.fvp-pop button.fvp-shape{grid-template-rows:20px 16px!important;gap:var(--fv-sp-4)!important;height:56px!important;min-height:56px!important;padding:0!important}
+.fvp-pop .fvp-art,.fvp-pop .fvp-art .fvp-icon{width:20px!important;height:20px!important}
+.fvp-pop .fvp-thumb{max-width:14px;max-height:14px}
+.fvp-pop .fvp-name{font-size:var(--fv-fs-1);line-height:16px}
+.fvp-pop button.fvp-size{display:flex!important;flex-direction:row-reverse;align-items:center;justify-content:center!important;gap:var(--fv-sp-8);height:40px!important;min-height:40px!important;padding:0 var(--fv-sp-8)!important}
+.fvp-pop .fvp-sub{font-size:var(--fv-fs-2);line-height:20px;color:inherit}
+.fvp-pop .fvp-px{font-size:var(--fv-fs-1);font-weight:var(--fv-fw-1,400);color:var(--fv-fg3)}
+.fvp-pop button.fvp-size[data-above]{opacity:.4}
+/* A typed size: one quiet row under the strips. */
+.fvp-pop>.fvp-custom{margin:var(--fv-sp-12) 0 0;gap:var(--fv-sp-8);justify-content:flex-start}
+.fvp-pop>.fvp-custom .fvp-field{flex:none;height:32px!important;min-height:32px!important;padding:0 var(--fv-sp-8);background:none;border-color:var(--fv-line)}
+.fvp-pop>.fvp-custom[data-on=true] .fvp-field{background:none;border-color:var(--fv-line2)}
+.fvp-pop>.fvp-custom .fvp-field:focus-within{border-color:var(--fv-accent-line)}
+.fvp .fvp-pop>.fvp-custom .fvp-field input.fvp-dim,.fvp-pop>.fvp-custom .fvp-field input.fvp-dim{flex:none!important;width:48px!important;height:24px!important}
+.fvp-pop>.fvp-custom button.fvp-lock{width:32px!important;height:32px!important;min-height:32px!important}
+.fvp-pop .fvp-status{margin:var(--fv-sp-8) 0 0;text-align:left;color:var(--fv-fg2)}
+.fvp-pop .fvp-status[data-capped]{color:var(--fv-caution)}
+/* Narrow room: the frames take two rows of four. */
+@media (max-width:520px){
+  .fvp-pop{padding:var(--fv-sp-12)!important}
+  .fvp-pop .fvp-shapes{grid-auto-flow:row;grid-template-columns:repeat(4,minmax(0,1fr))}
+  .fvp-pop button.fvp-size{flex-direction:column-reverse;gap:0;height:48px!important;min-height:48px!important}
+}
+@media (prefers-reduced-motion:reduce){.fvp.fvp-pop,.fvp-pop .fvp-glide,.fvp-icon .fvp-frame{transition:none}}
+/* In the image view's panel the button takes the row. */
+.fv-iv .fv-iv-size{display:block}
+.fv-iv .fv-iv-size button.fvp-chip{display:inline-flex!important;align-items:center;justify-content:flex-start;gap:var(--fv-sp-8)!important;min-width:0;width:100%;height:32px!important;min-height:32px!important;padding:0 var(--fv-sp-12)!important;border:0!important;border-radius:var(--fv-r-sm)!important;background:var(--fv-ctl-bg)!important;box-shadow:none!important;color:var(--fv-fg)!important;font-size:var(--fv-fs-2);font-weight:var(--fv-fw-1,400)}
+.fv-iv .fv-iv-size button.fvp-chip:is(:hover:not(:disabled),[aria-expanded=true]){background:var(--fv-ctl-hover)!important}
+.fv-studio.fv-create .fvs-chip.fvp-chip{padding:0 var(--fv-sp-12)}
+.fvp-pop button:is(.fvp-shape,.fvp-size)[aria-checked=true]:focus-visible{outline:none}
+:root[data-theme=light] .fvp-pop .fvp-glide{background:rgb(var(--fv-solid2));box-shadow:0 1px 2px rgb(20 30 50 / .12)}
+.fvp-pop button:is(.fvp-shape,.fvp-size)[aria-checked=true]:focus-visible{outline:none!important}
+/* A long name (Match image) widens its own option instead of being cut. */
+@media (min-width:521px){.fvp-pop .fvp-shapes{grid-auto-columns:minmax(min-content,1fr)}.fvp-pop button.fvp-shape{padding:0 var(--fv-sp-4)!important}.fvp-pop .fvp-name{overflow:visible}}
+
+/* ── Quality: the same button and panel (createPopChip) ───────────────────────────────────────────────────── */
+.fvp-chip .fvp-chip-glyph{flex:none;width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;color:var(--fv-fg2)}
+.fvp.fvp-pop.fvp-pop-plain{width:360px}
+.fvp.fvp-pop.fvp-pop-plain[data-kind=quality]{width:320px}
+.fvp-pop-body{display:grid;gap:var(--fv-sp-12);min-width:0}
+.fvp-pop-body>*{margin:0;min-width:0}
+/* Whatever else the view keeps with the setting: quiet lines under the control. */
+.fvp-pop-body :is(.fv-label,.fvs-size-fields,.fv-shapes){display:none!important}
+.fvp-pop-body :is(section,.fv-section,.fv-sampling-settings){display:grid;gap:var(--fv-sp-8);margin:0;padding:0;border:0;background:none}
+.fvp-pop-body :is(section,.fv-section,.fv-sampling-settings):not(:has(>:not([hidden],.fv-label,.fvs-size-fields,.fv-shapes,:empty))){display:none}
+.fvp-pop-body :is(.fv-muted,.fv-canvas-note,p){margin:0;font-size:var(--fv-fs-1);line-height:16px;color:var(--fv-fg3)}
+.fvp-pop-body [hidden]{display:none!important}
+.fvp-pop-body .fv-length-link{all:unset;color:var(--fv-accent-ink);cursor:pointer}
+.fvp-pop-body .fv-canvas-note>span:first-child{display:none}
+.fvp-pop-body .fv-two-pass{display:flex;align-items:center;gap:var(--fv-sp-8);font-size:var(--fv-fs-1);color:var(--fv-fg2)}
+/* Few frames keep their own width, from the left; a phone's panel is as wide as the console under it. */
+@media (min-width:521px){.fvp-pop .fvp-shapes:not(:has(>button:nth-of-type(6))){grid-auto-columns:56px;justify-content:start}}
+@media (max-width:520px){.fvp.fvp-pop{max-width:calc(100vw - 24px);width:calc(100vw - 24px)!important}}
+/* Size: one row across the panel: the sizes, then the typed width × height and the lock; no empty corner. */
+.fvp-pop .fvp-size-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:stretch;gap:var(--fv-sp-8)}
+.fvp-pop .fvp-size-row>.fvp-custom{margin:0;padding:var(--fv-sp-4);border-radius:var(--fv-r-sm);background:var(--fv-ctl-bg);gap:var(--fv-sp-4)}
+.fvp-pop .fvp-size-row>.fvp-custom .fvp-field{height:40px!important;min-height:40px!important;border-color:transparent}
+.fvp-pop .fvp-size-row>.fvp-custom button.fvp-lock{width:40px!important;height:40px!important;min-height:40px!important}
+.fvp-pop button.fvp-size{flex-direction:column-reverse;gap:0;height:48px!important;min-height:48px!important}
+.fvp-pop .fvp-size-row>.fvp-custom .fvp-field,.fvp-pop .fvp-size-row>.fvp-custom button.fvp-lock{height:48px!important;min-height:48px!important}
+@media (max-width:520px){.fvp-pop .fvp-size-row{grid-template-columns:minmax(0,1fr)}.fvp-pop .fvp-size-row>.fvp-custom .fvp-field{flex:1 1 0!important}.fvp-pop .fvp-size-row>.fvp-custom .fvp-field input.fvp-dim{flex:1!important;width:0!important}}
+/* While a panel is open, no hover tip is drawn over it. */
+:root:has(.fvp-pop[data-open=true]) .fv-tip{display:none!important}
+@media (min-width:521px){.fvp-pop .fvp-size-row>.fvp-custom .fvp-field{flex:none!important;padding:0 var(--fv-sp-8)}.fvp-pop .fvp-size-row>.fvp-custom .fvp-field input.fvp-dim{flex:none!important;width:48px!important;height:24px!important}}
+
+/* Quality: the slider (sampling_effort.js) in the panel. The panel's own title names it, so the slider's heading (its
+   name and the time) is not drawn; the names under the track show the level (as in the editor), and one line under
+   them says what the level gives. The knob eases to rest without overshoot. */
+.fvp-pop .fv-sampling-settings{gap:var(--fv-sp-12)!important}
+.fvp-pop .fv-effort{--fv-move:cubic-bezier(.2,.8,.2,1)}
+.fvp-pop .fv-effort-heading{display:none}
+.fvp-pop .fv-effort-warning{margin:0 0 var(--fv-sp-8)}
+.fvp-pop .fv-effort-knob.fv-effort-pop{animation:none}
+.fvp-pop .fvp-level-use{margin:0;font-size:var(--fv-fs-1);line-height:16px;color:var(--fv-fg2);text-align:center}
+.fvp-pop .fv-sampling-settings .fv-two-pass{margin:0!important;padding:var(--fv-sp-12) 0 0!important;border-top:1px solid var(--fv-line)!important}
+/* One focus ring, for the keyboard: the track's (the rail itself draws none). */
+:root body .fvp-pop .fv-effort-rail.fv-effort-rail:is(:focus,:focus-visible){outline:none!important}
+.fvp-pop .fv-effort-rail[data-keyboard]:focus-visible .fv-effort-track{outline:2px solid var(--fv-focus,var(--fv-accent-line));outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.fvp-pop .fv-effort *{transition:none!important;animation:none!important}}
+
+/* What the view keeps with the frame (the creation panel: notes on a long length, the first-frame switch), under the
+   size row; only what is shown takes room. */
+.fvp-extra{margin-top:var(--fv-sp-12)}
+.fvp-extra:not(:has(:is(.fv-first-frame,.fv-length-plan,.fv-length-model):not([hidden]))){display:none}
+.fvp-extra .fv-section{display:grid;gap:var(--fv-sp-8);margin:0;padding:var(--fv-sp-12) 0 0;border:0;border-top:1px solid var(--fv-line);border-radius:0;background:none}
+.fvp-extra :is(.fv-label,.fv-shapes,.fvs-size-fields,.fv-canvas-note,.fv-range,.fv-length-hint,.fv-sampling-settings){display:none!important}
+.fvp-extra :is(.fv-muted,p){margin:0!important;font-size:var(--fv-fs-1);line-height:16px;color:var(--fv-fg2)}
+.fvp-extra [hidden]{display:none!important}
+.fvp-extra .fv-length-link{all:unset;color:var(--fv-accent-ink);cursor:pointer}
+.fvp-extra .fv-length-link:focus-visible{outline:2px solid var(--fv-focus);outline-offset:2px;border-radius:var(--fv-r-xs)}
+/* The first-frame switch: its track uses the line token at a weight that shows on light as on dark; the knob has a
+   soft shadow, so it reads on either ground; on, the accent fill. */
+.fvp-extra .fv-first-frame{display:flex!important;align-items:center;justify-content:space-between;gap:var(--fv-sp-8);margin:0!important;font-size:var(--fv-fs-2);line-height:20px;color:var(--fv-fg)}
+.fvp-extra .fv-first-frame[hidden]{display:none!important}
+.fvp-extra .fv-first-frame input{appearance:none;position:relative;flex:none;box-sizing:content-box;width:32px;height:20px;min-height:20px;margin:-4px;padding:0;border:4px solid transparent;border-radius:var(--fv-r-pill);
+  background:color-mix(in srgb,var(--fv-fg) 22%,transparent);background-clip:padding-box;cursor:pointer;transition:background-color .16s ease-out}
+.fvp-extra .fv-first-frame input::before{content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:var(--fv-r-pill);background:#fff;box-shadow:0 1px 2px rgb(0 0 0 / .3);transition:transform .16s ease-out}
+.fvp-extra .fv-first-frame input:checked{background-color:var(--fv-accent-fill)}
+.fvp-extra .fv-first-frame input:checked::before{transform:translateX(12px)}
+.fvp-extra .fv-first-frame:has(input:disabled){opacity:.4}
+@media (prefers-reduced-motion:reduce){.fvp-extra .fv-first-frame input,.fvp-extra .fv-first-frame input::before{transition:none}}
+
+/* Text fields: one frame, the field's own; it lights for the keyboard only (a press marks the panel, frame_picker.js). */
+:root body .fvp-pop .fvp-field input.fvp-dim.fvp-dim:is(:focus,:focus-visible){outline:none!important;box-shadow:none!important}
+.fvp-pop:not([data-pointer=true]) .fvp-size-row>.fvp-custom .fvp-field:focus-within{border-color:var(--fv-focus,var(--fv-accent-line))!important}
+
+/* Narrow room (a phone): the frames in two rows of four; the sizes say their names only (the width × height fields say
+   the pixels) and share one row with the fields and the lock, so the whole panel fits over the console. */
+@media (max-width:520px){
+  .fvp-pop>.fvp-shapes{margin-bottom:var(--fv-sp-12)}
+  .fvp-pop button.fvp-shape{height:48px!important;min-height:48px!important}
+  .fvp-pop .fvp-size-row{grid-template-columns:auto minmax(0,1fr)}
+  .fvp-pop .fvp-size-row>.fvp-sizes{grid-auto-columns:48px}
+  .fvp-pop .fvp-size-row .fvp-px{display:none}
+  .fvp-pop button.fvp-size{height:40px!important;min-height:40px!important;padding:0!important}
+  .fvp-pop .fvp-size-row>.fvp-custom .fvp-field,.fvp-pop .fvp-size-row>.fvp-custom button.fvp-lock{height:40px!important;min-height:40px!important}
+  .fvp-pop .fvp-size-row>.fvp-custom .fvp-field{gap:var(--fv-sp-4);padding:0 var(--fv-sp-8)}
+  .fvp-pop .fvp-size-row>.fvp-custom button.fvp-lock{width:40px!important}
+}
+/* A panel short of room scrolls inside (placePop sets its height). */
+.fvp.fvp-pop{overflow-y:auto;overscroll-behavior:contain}

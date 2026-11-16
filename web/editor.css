@@ -1,7 +1,6 @@
 /* Share the studio shell and header geometry; only the editor rows differ. */
-.fv-studio.fv-editor{--fv-ed-generation-row:max-content;overflow:hidden auto;display:grid;grid-template-columns:264px minmax(0,1fr);grid-template-rows:auto minmax(max(96px,calc(clamp(160px,calc(100dvh - 248px - var(--fv-ed-tracks-min,174px)),272px) - var(--fv-ed-description-growth,0px))),1fr) 40px var(--fv-ed-generation-row,56px) 40px minmax(var(--fv-ed-tracks-min,174px),clamp(174px,calc(100dvh - 704px),236px));animation:none;scrollbar-width:thin;scrollbar-color:var(--fv-border) transparent}
-.fv-studio.fv-editor[data-generation-ready=false]{--fv-ed-generation-row:0px}
-@media(min-width:1280px){.fv-studio.fv-editor[data-adjust-available=true]{grid-template-columns:264px minmax(0,1fr) 264px}}
+.fv-studio.fv-editor{--fv-ed-project-h:44px;--fv-ed-generation-row:calc(60px + var(--fv-ed-description-growth,0px));--fv-ed-timeline-h:clamp(220px,calc(100dvh - 640px),320px);overflow:hidden auto;display:grid;grid-template-columns:264px minmax(0,1fr);grid-template-rows:auto var(--fv-ed-project-h) minmax(96px,1fr) 40px var(--fv-ed-generation-row) 40px var(--fv-ed-timeline-h);animation:none;scrollbar-width:thin;scrollbar-color:var(--fv-border) transparent}
+@media(min-width:1280px){.fv-studio.fv-editor{grid-template-columns:264px minmax(0,1fr) 264px}}
 .fv-editor *{box-sizing:border-box}
 .fv-editor [hidden]{display:none!important}
 /* Starting style also covers regions inserted while the stylesheet is loading.
@@ -10,6 +9,16 @@
 @starting-style{.fv-editor .fv-ed-pending{opacity:1}}
 /* Override the studio-wide motion reset only to retain the delay, with no fade. */
 @media (prefers-reduced-motion:reduce){.fv-editor .fv-ed-pending{transition:opacity 0s linear .6s!important}}
+/* The generation bar keeps its card but not its contents until the edit is read: what is chosen once it opens decides
+   which fields stand beside the description, so the contents appear once, already in their final places. */
+.fv-editor .fv-ed-genbar.fv-ed-pending{opacity:1;transition:none}
+.fv-editor .fv-ed-genbar.fv-ed-pending>*{visibility:hidden}
+/* While the edit to open is still being decided, the blank stand-in shows no name and no empty-edit hint (editor.js). */
+.fv-editor[data-opening=true] :is(.fv-ed-name,.fv-ed-empty-preview){visibility:hidden}
+.fv-editor[data-opening=true] .fv-ed-picture[data-empty=true]{border-color:transparent}
+/* A field beside the description stays drawn while it shrinks away (editor_genbar.js slideBeside). */
+.fv-editor .fv-ed-genbar>.fv-ed-refs.fv-ed-beside-leaving[hidden]{display:flex!important;pointer-events:none}
+.fv-editor .fv-ed-genbar>.fv-ed-duration.fv-ed-beside-leaving[hidden]{display:block!important;pointer-events:none}
 .fv-editor button:where(:not(.fv-header button)){height:36px;min-height:0;border-radius:var(--fv-r-sm);font:500 13px/1.4 var(--fv-font);white-space:nowrap}
 .fv-editor .fv-header{grid-column:1/-1;position:sticky;top:0;z-index:6;background:var(--fv-bg)}
 .fv-editor>:not(.fv-header){font-size:13px;line-height:1.4}
@@ -19,27 +28,27 @@
 .fv-editor .fv-ed-icon{height:32px;width:32px;min-height:32px;flex:none;padding:0;font-size:22px;background:transparent;border-color:transparent}
 .fv-ed-glyph{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}.fv-ed-name>span{overflow:hidden;text-overflow:ellipsis}
 .fv-ed-export-box{height:100%;display:flex;gap:12px;align-items:center;min-width:0}
-.fv-editor .fv-ed-export-box>.fv-ed-export-main{height:32px;min-height:32px;padding:0 16px;border:0;border-radius:8px;background:var(--fv-accent,#6db8fa);color:#0f1722;font-weight:600}
+.fv-editor .fv-ed-export-box>.fv-ed-export-main{height:32px;min-height:32px;padding:0 16px;border:0;border-radius:var(--fv-r-sm);background:var(--fv-accent,#6db8fa);color:#0f1722;font-weight:600}
 .fv-editor .fv-ed-export-box>.fv-ed-export-main:hover{background:var(--fv-accent-hover,#91cbff);color:#0f1722}
 .fv-ed-export-hint{max-height:100%;overflow:auto;font-size:12px;color:var(--fv-muted)}
 .fv-ed-save-warning{max-height:100%;overflow:auto;font-size:12px;color:var(--fv-danger);min-width:0}.fv-ed-save-warning:not([hidden])+.fv-ed-export-hint{display:none}
-.fv-editor .fv-ed-library{grid-column:1;grid-row:2/4;border-right:1px solid var(--fv-border);padding:12px;overflow:auto;min-height:0;scrollbar-width:thin;scrollbar-color:var(--fv-border) transparent}
+.fv-editor .fv-ed-library{grid-column:1;grid-row:2/5;border-right:1px solid var(--fv-border);padding:12px;overflow:auto;min-height:0;scrollbar-width:thin;scrollbar-color:var(--fv-border) transparent}
 .fv-editor .fv-ed-tabs{height:32px;width:100%;display:flex;margin-bottom:12px}
-.fv-editor .fv-ed-tabs button{flex:1;height:26px;min-height:26px;padding:0 8px;border-color:transparent;border-radius:6px;background:transparent;color:var(--fv-muted);font-size:12px}
+.fv-editor .fv-ed-tabs button{flex:1;height:26px;min-height:26px;padding:0 8px;border-color:transparent;border-radius:var(--fv-r-sm);background:transparent;color:var(--fv-muted);font-size:12px}
 .fv-editor .fv-ed-tabs button[aria-selected=true]{background:var(--fv-raised);color:var(--fv-ink)}
-.fv-ed-search,.fv-ed-description,.fv-ed-rename{font:13px var(--fv-font);color:var(--fv-ink);background:var(--fv-bg);border:1px solid var(--fv-border);border-radius:8px;height:36px;min-width:0;padding:0 10px}
+.fv-ed-search,.fv-ed-description,.fv-ed-rename{font:13px var(--fv-font);color:var(--fv-ink);background:var(--fv-bg);border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);height:36px;min-width:0;padding:0 10px}
 .fv-ed-library-tools{display:flex;align-items:center;gap:8px;margin-bottom:12px}
 .fv-ed-search{width:0;flex:1}
 .fv-editor .fv-ed-library-import{flex:none;padding:0 10px}
 .fv-ed-library-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .fv-ed-source-card{position:relative;min-width:0}
-.fv-editor .fv-ed-source{display:block;height:auto;padding:0;border:0;border-radius:6px;overflow:hidden;background:var(--fv-card);width:100%;cursor:grab}
+.fv-editor .fv-ed-source{display:block;height:auto;padding:0;border:0;border-radius:var(--fv-r-sm);overflow:hidden;background:var(--fv-card);width:100%;cursor:grab}
 .fv-ed-source-picture{aspect-ratio:16/9;position:relative;display:grid;place-items:center;overflow:hidden}
 .fv-ed-source-picture img{width:100%;height:100%;object-fit:cover}
-.fv-ed-source-time,.fv-ed-source-used{position:absolute;right:4px;bottom:4px;border-radius:3px;background:#0009;padding:1px 4px;color:#fff;font-size:11px;font-variant-numeric:tabular-nums}
+.fv-ed-source-time,.fv-ed-source-used{position:absolute;right:4px;bottom:4px;border-radius:var(--fv-r-xs);background:#0009;padding:1px 4px;color:#fff;font-size:11px;font-variant-numeric:tabular-nums}
 .fv-ed-source-used{right:auto;left:4px}
-.fv-editor .fv-ed-source-add{position:absolute;top:4px;right:4px;width:24px;height:24px;min-height:24px;padding:0;border:0;border-radius:3px;background:#0009;color:#fff;font-size:18px;line-height:24px;opacity:0;pointer-events:none;cursor:pointer}
-.fv-editor .fv-ed-source-remove{position:absolute;top:4px;left:4px;display:flex;align-items:center;justify-content:center;width:24px;height:24px;min-height:24px;padding:0;border:0;border-radius:3px;background:#0009;color:#fff;opacity:0;pointer-events:none;cursor:pointer}
+.fv-editor .fv-ed-source-add{position:absolute;top:4px;right:4px;width:24px;height:24px;min-height:24px;padding:0;border:0;border-radius:var(--fv-r-xs);background:#0009;color:#fff;font-size:18px;line-height:24px;opacity:0;pointer-events:none;cursor:pointer}
+.fv-editor .fv-ed-source-remove{position:absolute;top:4px;left:4px;display:flex;align-items:center;justify-content:center;width:24px;height:24px;min-height:24px;padding:0;border:0;border-radius:var(--fv-r-xs);background:#0009;color:#fff;opacity:0;pointer-events:none;cursor:pointer}
 .fv-ed-source-card:hover .fv-ed-source-remove,.fv-ed-source-card:focus-within .fv-ed-source-remove{opacity:1;pointer-events:auto}
 .fv-ed-source-card[data-asking] .fv-ed-source-add,.fv-ed-source-card[data-asking] .fv-ed-source-remove,.fv-ed-source-card[data-asking] .fv-ed-source-time,.fv-ed-source-card[data-asking] .fv-ed-source-used{visibility:hidden}
 .fv-editor .fv-ed-source-confirm{position:absolute;inset:0;display:grid;grid-template-rows:auto auto 22px;align-content:center;gap:3px;padding:4px;border-radius:inherit;background:var(--fv-raised,#212a37);color:var(--fv-ink,#eee);text-align:left;z-index:2}
@@ -47,37 +56,40 @@
 .fv-editor .fv-ed-source-confirm small{font-size:11px;line-height:1.3;color:var(--fv-muted,#a5b3c6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .fv-editor .fv-ed-source-confirm .fv-ed-source-confirm-problem{color:var(--fv-danger,#f09aa2)}
 .fv-editor .fv-ed-source-confirm-actions{display:flex;gap:4px}
-.fv-editor .fv-ed-source-confirm-actions button{flex:1 1 0;min-width:0;height:22px;min-height:22px;padding:0;border:1px solid color-mix(in srgb,var(--fv-ink,#eee) 10%,transparent);border-radius:5px;background:color-mix(in srgb,var(--fv-ink,#eee) 6%,transparent);color:var(--fv-ink,#eee);font-size:12px;line-height:1;cursor:pointer}
+.fv-editor .fv-ed-source-confirm-actions button{flex:1 1 0;min-width:0;height:22px;min-height:22px;padding:0;border:1px solid color-mix(in srgb,var(--fv-ink,#eee) 10%,transparent);border-radius:var(--fv-r-xs);background:color-mix(in srgb,var(--fv-ink,#eee) 6%,transparent);color:var(--fv-ink,#eee);font-size:12px;line-height:1;cursor:pointer}
 .fv-editor .fv-ed-source-confirm-actions button:focus-visible{outline:2px solid color-mix(in srgb,var(--fv-accent,#6db8fa) 70%,transparent);outline-offset:1px}
 .fv-editor .fv-ed-source-confirm-actions .fv-ed-source-confirm-yes{border-color:transparent;background:var(--fv-danger-subtle,#30212a);color:var(--fv-danger,#f09aa2)}
 .fv-editor .fv-ed-source-confirm-actions button:disabled{opacity:.65;cursor:default}
 .fv-ed-source-card:hover .fv-ed-source-add:not(:disabled),.fv-ed-source-card:focus-within .fv-ed-source-add:not(:disabled){opacity:1;pointer-events:auto}
 .fv-ed-source-preparing{font-size:12px;color:var(--fv-muted);padding:6px;white-space:normal}
 .fv-ed-audio-icon{font-size:26px;color:var(--fv-muted)}
-.fv-editor .fv-ed-import{width:100%;height:auto;aspect-ratio:16/9;border:1px dashed var(--fv-border);border-radius:6px;background:transparent;color:var(--fv-muted);padding:0}
+.fv-editor .fv-ed-import{width:100%;height:auto;aspect-ratio:16/9;border:1px dashed var(--fv-border);border-radius:var(--fv-r-sm);background:transparent;color:var(--fv-muted);padding:0}
 .fv-ed-library-message{font-size:12px;color:var(--fv-muted);line-height:1.6}
 .fv-ed-unreadable{margin:6px 10px;font-size:12px;color:var(--fv-muted);line-height:1.5;text-align:center;white-space:normal}.fv-ed-unreadable:empty{display:none}
 .fv-ed-source-card .fv-issue-button{font-size:11px;min-height:28px;max-width:100%}
-.fv-editor .fv-ed-preview{grid-column:2;grid-row:2;min-width:0;min-height:0;display:grid;place-items:center;padding:16px;overflow:hidden;background:var(--fv-bg);container-type:size}
-.fv-ed-picture{position:relative;width:min(100cqw,calc(100cqh * var(--fv-ed-width,16) / var(--fv-ed-height,9)));aspect-ratio:var(--fv-ed-width,16)/var(--fv-ed-height,9);background:#000;border-radius:8px;overflow:hidden}
+.fv-editor .fv-ed-preview{grid-column:2;grid-row:3;min-width:0;min-height:0;display:grid;place-items:center;padding:16px;overflow:hidden;background:var(--fv-bg);container-type:size}
+.fv-ed-picture{position:relative;width:min(100cqw,calc(100cqh * var(--fv-ed-width,16) / var(--fv-ed-height,9)));aspect-ratio:var(--fv-ed-width,16)/var(--fv-ed-height,9);background:#000;border-radius:var(--fv-r-sm);overflow:hidden}
 .fv-ed-picture[data-empty=true]{background:var(--fv-card);border:1px dashed color-mix(in srgb,var(--fv-ink) 28%,transparent)}
 .fv-ed-empty-preview{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--fv-muted);font-size:13px;text-align:center;padding:16px}
 .fv-ed-empty-preview svg{width:24px;height:24px;flex:none;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
 .fv-editor .fv-ed-preview-close{position:absolute;top:8px;right:8px;width:28px;height:28px;padding:0;z-index:2;background:var(--fv-card);border:1px solid var(--fv-border);color:var(--fv-muted)}
 .fv-ed-preview-close svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round}
 .fv-editor .fv-ed-play:disabled{opacity:.4}
-.fv-editor:has(.fv-ed-track-row[data-track=a2]){--fv-ed-tracks-min:220px}
-.fv-editor:has(.fv-ed-track-row[data-track=a4]){--fv-ed-tracks-min:330px}
 .fv-editor .fv-ed-track-view{height:100%}
 .fv-ed-picture>video{position:absolute;width:100%;height:100%;inset:0;object-fit:contain;opacity:0;pointer-events:none}
 .fv-ed-picture>video.fv-ed-visible{opacity:1}
 .fv-ed-picture>video.fv-ed-source-preview{opacity:1;pointer-events:auto;object-fit:contain}
 .fv-ed-picture>audio{display:none}
+/* The cover until the first video frame: same box and fit as the video, it only fades (editor_poster.js). */
+.fv-ed-picture>img.fv-ed-poster{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none;transition:opacity 160ms cubic-bezier(.2,.8,.2,1)}
+.fv-ed-picture>img.fv-ed-poster[data-gone=true]{opacity:0}
+.fv-ed-picture>img.fv-ed-poster[hidden]{display:none}
+@media(prefers-reduced-motion:reduce){.fv-ed-picture>img.fv-ed-poster{transition:none}}
 .fv-ed-picture>audio.fv-ed-source-preview{display:block;position:absolute;bottom:0;left:0;width:100%}
-.fv-ed-transport{grid-column:2;grid-row:3;display:flex;align-items:center;justify-content:center;gap:12px}
-.fv-editor .fv-ed-play{width:36px;height:36px;border-radius:50%;padding:0;background:transparent}
+.fv-ed-transport{grid-column:2;grid-row:4;display:flex;align-items:center;justify-content:center;gap:12px}
+.fv-editor .fv-ed-play{width:36px;height:36px;border-radius:var(--fv-r-pill);padding:0;background:transparent}
 .fv-ed-time{font-size:13px;font-variant-numeric:tabular-nums;font-family:ui-monospace,monospace;min-width:100px}
-.fv-ed-genbar{grid-column:1/-1;grid-row:4;display:flex;align-items:center;gap:12px;min-height:56px;padding:9px 16px;border-top:1px solid var(--fv-border);border-bottom:1px solid var(--fv-border);background:var(--fv-card);min-width:0}
+.fv-ed-genbar{grid-column:1/-1;grid-row:5;display:flex;flex-wrap:nowrap;align-items:center;gap:12px;height:100%;min-height:0;padding:9px 16px;border-top:1px solid var(--fv-border);border-bottom:1px solid var(--fv-border);background:var(--fv-card);min-width:0}
 .fv-ed-genbar .fv-ed-description{width:auto}
 .fv-ed-clip[data-state=running] .fv-block-progress.fv-ed-block-progress{display:grid}
 .fv-ed-gen-hint{display:flex;font-size:13px;color:var(--fv-muted);flex:1;min-width:0;overflow:hidden;white-space:pre}
@@ -111,7 +123,6 @@
 .fv-ed-genbar .fv-request-assets{order:-2;flex:1 1 100%;min-width:0;font-size:12px;line-height:1.5}
 .fv-ed-genbar .fv-request-assets[hidden]{display:none}
 /* A stretch of the music track: a style row and a mood row above the description. */
-.fv-ed-genbar.fv-ed-genbar-music{flex-wrap:wrap}
 .fv-ed-music-presets{order:-1;flex:1 1 100%;display:flex;flex-direction:column;gap:6px;min-width:0}
 .fv-ed-music-presets[hidden]{display:none}
 .fv-ed-music-row{display:flex;align-items:center;gap:8px;min-width:0}
@@ -119,7 +130,6 @@
 .fv-editor .fv-ed-music-presets .fv-ed-adjust-segmented{width:auto;flex:0 1 auto;min-width:0;flex-wrap:wrap}
 .fv-editor .fv-ed-music-presets .fv-ed-adjust-segmented button{flex:none}
 /* An empty stretch of the recording track: the voice above the words, on one line at any width. */
-.fv-ed-genbar.fv-ed-genbar-say{flex-wrap:wrap}
 .fv-ed-say-voice{order:-1;flex:1 1 100%;display:flex;align-items:center;gap:8px;min-width:0}
 .fv-ed-say-voice[hidden],.fv-ed-say-voice [hidden]{display:none}
 .fv-ed-say-label{flex:none;min-width:2.5em;font-size:13px;color:var(--fv-muted)}
@@ -129,8 +139,6 @@
 .fv-ed-genbar .fv-ed-say-listen:disabled{opacity:.5;cursor:default}
 .fv-ed-genbar .fv-ed-say-listen svg{flex:none;width:12px;height:12px;fill:currentColor}
 .fv-ed-say-none{font-size:16px;color:var(--fv-muted);min-width:0}
-.fv-editor:has(.fv-ed-gen-failure:not([hidden])){--fv-ed-generation-row:max-content}
-.fv-ed-genbar:has(.fv-ed-gen-failure:not([hidden])){flex-wrap:wrap;padding-top:10px;padding-bottom:10px}
 .fv-editor .fv-ed-gen-failure{display:block;flex:1 0 100%;min-width:0}
 .fv-ed-failure-actions{justify-content:flex-start;width:100%}
 .fv-ed-failure-reason{flex:1 1 220px;min-width:0;color:var(--fv-warning);overflow-wrap:anywhere}
@@ -141,8 +149,8 @@
 .fv-ed-description{flex:1;width:0}
 .fv-ed-first-frame{display:flex;align-items:center;gap:8px;flex:none;font-size:13px;white-space:nowrap}
 .fv-ed-first-frame[hidden]{display:none}
-.fv-ed-first-frame input{appearance:none;position:relative;flex:none;width:26px;height:16px;min-height:16px;padding:0;border:0;border-radius:12px;margin:0;background:#ffffff24;cursor:pointer;transition:background .2s}
-.fv-ed-first-frame input::before{content:'';position:absolute;top:3px;left:3px;width:10px;height:10px;border-radius:50%;background:white;transition:transform .2s}
+.fv-ed-first-frame input{appearance:none;position:relative;flex:none;width:26px;height:16px;min-height:16px;padding:0;border:0;border-radius:var(--fv-r-md);margin:0;background:#ffffff24;cursor:pointer;transition:background .2s}
+.fv-ed-first-frame input::before{content:'';position:absolute;top:3px;left:3px;width:10px;height:10px;border-radius:var(--fv-r-pill);background:white;transition:transform .2s}
 .fv-ed-first-frame input:checked{background:var(--fv-accent,#6db8fa)}
 .fv-ed-first-frame input:checked::before{transform:translateX(10px)}
 .fv-ed-first-frame:has(input:disabled){opacity:.4}
@@ -157,11 +165,9 @@
 .fv-ed-genbar-break{display:none}
 .fv-ed-description:disabled{opacity:.4}
 .fv-ed-genbar{position:relative}
-.fv-ed-genbar:has(.fv-empty-prompt){flex-wrap:wrap}
-.fv-ed-genbar .fv-empty-prompt{margin:0 0 0 auto;flex:0 1 auto}
 .fv-ed-refs{display:flex;align-items:center;gap:6px;flex:none}
 .fv-ed-refs[hidden],.fv-ed-ref-menu[hidden]{display:none}
-.fv-ed-ref-notice{position:absolute;bottom:calc(100% + 8px);max-width:min(560px,calc(100% - 24px));border:1px solid var(--fv-border);background:var(--fv-card);padding:10px 14px;border-radius:8px;z-index:9;color:var(--fv-ink);pointer-events:none}
+.fv-ed-ref-notice{position:absolute;bottom:calc(100% + 8px);max-width:min(560px,calc(100% - 24px));border:1px solid var(--fv-border);background:var(--fv-card);padding:10px 14px;border-radius:var(--fv-r-sm);z-index:9;color:var(--fv-ink);pointer-events:none}
 .fv-ed-ref-notice[hidden]{display:none}
 .fv-ed-ref-notice .fv-issue-button{pointer-events:auto;margin-left:8px}
 .fv-ed-ref-chips{display:flex;align-items:center;gap:6px;max-width:min(240px,32vw);overflow-x:auto;scrollbar-width:thin;scrollbar-color:var(--fv-border) transparent;padding:1px}
@@ -171,18 +177,18 @@
 @property --fv-ref-fade-end{syntax:'<length>';inherits:false;initial-value:0px}
 @keyframes fv-ref-fade{from{--fv-ref-fade-start:0px;--fv-ref-fade-end:16px}1%,99%{--fv-ref-fade-start:16px;--fv-ref-fade-end:16px}to{--fv-ref-fade-start:16px;--fv-ref-fade-end:0px}}
 @supports (animation-timeline:scroll()){.fv-ed-ref-chips{animation:fv-ref-fade linear both;animation-timeline:scroll(self inline);mask-image:linear-gradient(90deg,transparent,#000 var(--fv-ref-fade-start),#000 calc(100% - var(--fv-ref-fade-end)),transparent)}}
-.fv-ed-ref-add,.fv-ed-ref-chip{flex:none;width:30px;height:30px;padding:0;border:1px solid var(--fv-border);border-radius:8px;background:transparent;color:var(--fv-muted);font:16px/1 var(--fv-font);cursor:pointer;overflow:hidden;position:relative}
+.fv-ed-ref-add,.fv-ed-ref-chip{flex:none;width:30px;height:30px;padding:0;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);background:transparent;color:var(--fv-muted);font:16px/1 var(--fv-font);cursor:pointer;overflow:hidden;position:relative}
 .fv-ed-ref-chip{border-color:transparent;background:var(--fv-bg)}
 .fv-ed-ref-add:not(:disabled):not([aria-disabled=true]):hover,.fv-ed-ref-add[aria-expanded=true],.fv-ed-ref-chip:not(:disabled):not([aria-disabled=true]):hover{border-color:var(--fv-accent);color:var(--fv-ink)}
 .fv-ed-ref-add:disabled,.fv-ed-ref-chip:disabled,.fv-ed-ref-add[aria-disabled=true],.fv-ed-ref-chip[aria-disabled=true]{opacity:.4;cursor:default}
 .fv-ed-ref-add[data-uploading=true]{opacity:1;color:transparent}
-.fv-ed-ref-add[data-uploading=true]::after{content:'';position:absolute;inset:0;margin:auto;width:12px;height:12px;border:2px solid var(--fv-accent);border-right-color:transparent;border-radius:50%;animation:fv-ref-spin .9s linear infinite}
+.fv-ed-ref-add[data-uploading=true]::after{content:'';position:absolute;inset:0;margin:auto;width:12px;height:12px;border:2px solid var(--fv-accent);border-right-color:transparent;border-radius:var(--fv-r-pill);animation:fv-ref-spin .9s linear infinite}
 @keyframes fv-ref-spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.fv-ed-ref-add[data-uploading=true]::after{animation:none}}
 .fv-ed-ref-thumb{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--fv-muted)}
 .fv-ed-ref-thumb img{display:block;width:100%;height:100%;object-fit:cover}
-.fv-ed-ref-menu{position:absolute;bottom:calc(100% - 4px);min-width:180px;max-width:260px;padding:6px;background:var(--fv-card);border:1px solid var(--fv-border);border-radius:8px;z-index:12;display:flex;flex-direction:column;font:13px var(--fv-font)}
-.fv-ed-ref-menu>button{display:block;width:100%;height:32px;padding:0 10px;border:0;border-radius:4px;background:transparent;color:var(--fv-ink);font:inherit;text-align:left;cursor:pointer}
+.fv-ed-ref-menu{position:absolute;bottom:calc(100% - 4px);min-width:180px;max-width:260px;padding:6px;background:var(--fv-card);border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);z-index:12;display:flex;flex-direction:column;font:13px var(--fv-font)}
+.fv-ed-ref-menu>button{display:block;width:100%;height:32px;padding:0 10px;border:0;border-radius:var(--fv-r-xs);background:transparent;color:var(--fv-ink);font:inherit;text-align:left;cursor:pointer}
 .fv-ed-ref-menu>button:hover,.fv-ed-ref-menu button:focus-visible{background:color-mix(in srgb,var(--fv-accent) 12%,transparent);outline:1px solid var(--fv-accent);outline-offset:-1px}
 .fv-ed-ref-menu>button[aria-checked=true]::after{content:'✓';float:right;color:var(--fv-accent)}
 .fv-ed-ref-menu>button:disabled{opacity:.45;cursor:default}
@@ -190,17 +196,17 @@
 .fv-ed-ref-chip[data-role=middle] .fv-ed-ref-thumb{inset:0 0 14px}
 .fv-ed-ref-time{position:absolute;left:0;right:0;bottom:0;font-size:11px;line-height:14px;text-align:center;color:var(--fv-muted);white-space:nowrap}
 .fv-ed-ref-time-row{padding:6px 10px 2px}.fv-ed-ref-time-line{display:flex;align-items:center;gap:8px;color:var(--fv-ink)}.fv-ed-ref-time-line>span{flex:none;white-space:nowrap}
-.fv-ed-ref-time-line input{box-sizing:border-box;width:88px;height:32px;padding:0 8px;border:1px solid var(--fv-border,#3a4658);border-radius:6px;background:var(--fv-bg,#111720);color:var(--fv-ink,#e8edf3);font:16px var(--fv-font,inherit)}
+.fv-ed-ref-time-line input{box-sizing:border-box;width:88px;height:32px;padding:0 8px;border:1px solid var(--fv-border,#3a4658);border-radius:var(--fv-r-sm);background:var(--fv-bg,#111720);color:var(--fv-ink,#e8edf3);font:16px var(--fv-font,inherit)}
 .fv-ed-ref-time-line input[aria-invalid=true]{border-color:var(--fv-danger)}
 .fv-ed-ref-time-error{margin-top:4px;color:var(--fv-danger);font-size:12px;line-height:1.4}
 .fv-ed-ref-menu [role=separator]{flex:none;height:1px;margin:5px 4px;background:var(--fv-border)}
 .fv-ed-ref-spare{display:flex;flex-wrap:wrap;gap:6px;padding:2px 4px}
-.fv-ed-ref-spare button{position:relative;width:44px;height:44px;padding:0;border:1px solid var(--fv-border);border-radius:6px;background:var(--fv-bg);overflow:hidden;cursor:pointer}
+.fv-ed-ref-spare button{position:relative;width:44px;height:44px;padding:0;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);background:var(--fv-bg);overflow:hidden;cursor:pointer}
 .fv-editor .fv-ed-gen-target{height:36px;align-items:center}
 .fv-editor .fv-ed-gen-target button{height:30px;box-shadow:none}
 .fv-editor .fv-ed-genbar>button{flex:none}
-.fv-ed-tracks{grid-column:1/-1;grid-row:6;min-width:0;overflow:hidden}
-.fv-editor .fv-ed-clip{height:100%;padding:0;border-radius:8px;display:block}
+.fv-ed-tracks{grid-column:1/-1;grid-row:7;min-width:0;overflow:hidden}
+.fv-editor .fv-ed-clip{height:100%;padding:0;border-radius:var(--fv-r-sm);display:block}
 .fv-editor .fv-ed-playhead-handle{height:12px;min-height:0;width:11px;padding:0;border:0;background:var(--fv-ink);border-radius:0}
 .fv-editor .fv-ed-toolbar .fv-ed-track-zoom button{height:32px;width:32px;padding:0;background:transparent;border:0;color:var(--fv-muted)}
 .fv-editor .fv-ed-toolbar .fv-ed-track-zoom .fv-ed-fit{width:auto;padding:0 8px;font-size:13px}
@@ -210,7 +216,7 @@
 .fv-ed-basic-progress{position:absolute;inset:0}.fv-ed-basic-water{position:absolute;bottom:0;left:0;right:0;background:linear-gradient(color-mix(in srgb,var(--fv-accent) 26%,transparent),color-mix(in srgb,var(--fv-accent) 46%,transparent));border-top:1.5px solid var(--fv-accent)}
 .fv-ed-basic-progress[data-state=waiting]{border:1px dashed color-mix(in srgb,var(--fv-ink) 28%,transparent);border-radius:inherit;background:color-mix(in srgb,var(--fv-ink) 3%,transparent)}
 .fv-ed-basic-percent{position:absolute;inset:0;display:grid;place-items:center;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}.fv-ed-clip[data-track^=a] .fv-ed-basic-percent{display:none}
-.fv-ed-toolbar{grid-column:1/-1;grid-row:5;display:flex;align-items:center;gap:12px;height:40px;padding:0 16px;border-top:1px solid var(--fv-border);min-width:0;position:relative;z-index:7}
+.fv-ed-toolbar{grid-column:1/-1;grid-row:6;display:flex;align-items:center;gap:12px;height:40px;padding:0 16px;border-top:1px solid var(--fv-border);min-width:0;position:relative;z-index:7}
 .fv-ed-tool-group{display:flex;align-items:center;gap:4px;position:relative;flex:none}
 .fv-ed-tool-group+.fv-ed-tool-group:before{content:"";width:1px;height:16px;background:var(--fv-border);margin-right:8px}
 .fv-editor .fv-ed-toolbar button{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 8px;background:transparent;border-color:transparent;font-size:13px}
@@ -221,7 +227,7 @@
 .fv-ed-toolbar .fv-ed-zoom-slider{width:64px}
 .fv-editor .fv-ed-toolbar .fv-ed-more{flex:none;margin-left:auto}
 .fv-ed-more svg{width:16px;height:16px;fill:currentColor}
-.fv-ed-more-panel{position:absolute;top:calc(100% - 2px);right:8px;min-width:180px;max-height:min(320px,60dvh);overflow-y:auto;padding:6px;background:var(--fv-card);border:1px solid var(--fv-border);border-radius:8px;display:flex;flex-direction:column;z-index:9}
+.fv-ed-more-panel{position:absolute;top:calc(100% - 2px);right:8px;min-width:180px;max-height:min(320px,60dvh);overflow-y:auto;padding:6px;background:var(--fv-card);border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);display:flex;flex-direction:column;z-index:9}
 .fv-ed-more-panel[hidden]{display:none}
 .fv-ed-more-panel .fv-ed-text-buttons{display:contents}
 .fv-editor .fv-ed-toolbar .fv-ed-more-panel button{flex:none;width:100%;height:32px;justify-content:flex-start;gap:10px;padding:0 10px;margin:0;color:var(--fv-ink);text-align:left;white-space:nowrap}
@@ -235,9 +241,9 @@
 /* The tracks' basic fallback rises from the bottom; Blake supplies the waves. */
 .fv-editor .fv-ed-progress-fill{width:100%;height:calc(var(--fv-ed-progress)*100%);inset:auto 0 0;box-shadow:inset 0 2px 0 var(--fv-accent)}
 .fv-ed-drawer-toggle{display:none!important}
-.fv-ed-name-menu{position:absolute;top:100%;left:0;width:300px;max-width:calc(100vw - 32px);padding:6px;background:var(--fv-card);border:1px solid var(--fv-border);border-radius:8px;z-index:8;display:flex;flex-direction:column;gap:0;font:13px var(--fv-font)}
+.fv-ed-name-menu{position:absolute;top:100%;left:0;width:300px;max-width:calc(100vw - 32px);padding:6px;background:var(--fv-card);border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);z-index:8;display:flex;flex-direction:column;gap:0;font:13px var(--fv-font)}
 /* Rows look like the right-click menu (editor_menu.css). */
-.fv-editor .fv-ed-name-menu button{display:block;flex-shrink:0;width:100%;height:32px;padding:0 10px;border:0;border-radius:4px;background:transparent;color:var(--fv-ink);font:inherit;line-height:32px;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fv-editor .fv-ed-name-menu button{display:block;flex-shrink:0;width:100%;height:32px;padding:0 10px;border:0;border-radius:var(--fv-r-xs);background:transparent;color:var(--fv-ink);font:inherit;line-height:32px;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fv-editor .fv-ed-name-menu button:not(:disabled):hover,.fv-editor .fv-ed-name-menu button:focus-visible{background:color-mix(in srgb,var(--fv-accent) 12%,transparent);outline:1px solid var(--fv-accent);outline-offset:-1px}
 .fv-editor .fv-ed-name-menu button:disabled{opacity:.4;cursor:not-allowed}
 .fv-ed-name-menu [role=separator]{flex:none;height:1px;margin:5px 4px;background:var(--fv-border)}
@@ -245,11 +251,11 @@
 .fv-editor .fv-ed-name-menu .fv-ed-delete-confirm{color:var(--fv-danger)}
 .fv-editor .fv-ed-name-menu .fv-ed-delete-confirm:not(:disabled):is(:hover,:focus-visible){background:var(--fv-danger-subtle)}
 .fv-ed-delete-question{margin:6px 10px 10px;line-height:1.5;overflow-wrap:anywhere;white-space:normal}
-.fv-ed-notice{position:absolute;bottom:362px;right:300px;max-width:min(560px,calc(100vw - 32px));border:1px solid var(--fv-border);background:var(--fv-card);padding:10px 14px;border-radius:8px;z-index:9;color:var(--fv-ink)}
+.fv-ed-notice{position:absolute;bottom:362px;right:300px;max-width:min(560px,calc(100vw - 32px));border:1px solid var(--fv-border);background:var(--fv-card);padding:10px 14px;border-radius:var(--fv-r-sm);z-index:9;color:var(--fv-ink)}
 @media(min-width:681px) and (max-width:1279px){.fv-ed-notice{right:32px;max-width:min(560px,calc(100vw - 330px))}}
 .fv-ed-notice .fv-issue-button{margin-left:12px;vertical-align:middle;pointer-events:auto}
 @media(max-width:680px){
- .fv-studio.fv-editor{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(max(0px,calc(180px - var(--fv-ed-description-growth,0px))),1fr) 40px var(--fv-ed-generation-row,auto) 40px 236px;overflow:hidden}
+ .fv-studio.fv-editor{--fv-ed-generation-row:calc(96px + var(--fv-ed-description-growth,0px));grid-template-columns:minmax(0,1fr);grid-template-rows:auto var(--fv-ed-project-h) minmax(0,1fr) 40px var(--fv-ed-generation-row) 40px 236px;overflow:hidden}
  .fv-editor .fv-header{overflow-x:auto}
  .fv-editor .fv-ed-name{font-size:13px;max-width:112px;flex:1;padding:0 2px}
  .fv-editor .fv-ed-icon{width:28px;flex:none;font-size:20px}
@@ -259,25 +265,23 @@
  .fv-editor .fv-ed-drawer-toggle{display:inline-flex!important}
  .fv-editor .fv-ed-library{display:none;position:absolute;top:52px;bottom:0;left:0;width:264px;max-width:90vw;z-index:7;background:var(--fv-bg)}
  .fv-editor .fv-ed-library[data-open=true]{display:block}
- .fv-editor .fv-ed-preview{grid-column:1;grid-row:2;padding:16px}
- .fv-ed-transport{grid-column:1;grid-row:3}
- .fv-ed-tracks{grid-column:1;grid-row:6}
- .fv-ed-toolbar{grid-column:1;grid-row:5;padding:0 12px;gap:8px;overflow-x:auto}
- .fv-ed-genbar{grid-column:1;grid-row:4;min-height:56px;gap:8px;padding:10px 12px;flex-wrap:wrap}
+ .fv-editor .fv-ed-preview{grid-column:1;grid-row:3;padding:16px}
+ .fv-ed-transport{grid-column:1;grid-row:4}
+ .fv-ed-tracks{grid-column:1;grid-row:7}
+ .fv-ed-toolbar{grid-column:1;grid-row:6;padding:0 12px;gap:8px;overflow-x:auto}
+ .fv-ed-genbar{grid-column:1;grid-row:5;gap:8px;padding:10px 12px;flex-wrap:wrap;align-content:flex-start}
  .fv-ed-description{width:100%;flex:1 1 100%}
  .fv-ed-genbar .fv-ed-description{order:-1}
  .fv-ed-refs{margin-right:auto;max-width:100%}
  .fv-ed-ref-chips{max-width:calc(100vw - 96px)}
  .fv-ed-gen-hint{flex:1 0 auto;white-space:nowrap}
- .fv-ed-gen-note{order:-1;flex:1 1 100%;white-space:normal}
  .fv-studio .fv-ed-duration input[type=number]{font-size:16px}
  .fv-editor .fv-ed-genbar>button{margin-left:auto;max-width:100%;height:36px;min-height:36px;font-size:12px}
  .fv-editor .fv-ed-genbar>button:not([hidden]) ~ button:not([hidden]){margin-left:0}
- .fv-ed-genbar .fv-empty-prompt{flex:0 0 100%;justify-content:flex-end;margin:0}
  .fv-ed-name-menu{position:fixed;top:120px;left:8px}
  /* Beside the view switch it covered "Editor"; here it sits at the foot of the picture area, in the grid. */
- .fv-ed-notice{position:relative;grid-column:1;grid-row:2;align-self:end;justify-self:end;margin:0 16px 8px;bottom:auto;right:auto;pointer-events:none}
- .fv-ed-save-warning{position:absolute;top:60px;left:8px;right:8px;border:1px solid var(--fv-border);background:var(--fv-card);padding:8px 12px;border-radius:8px;z-index:9}
+ .fv-ed-notice-stack{grid-column:1;grid-row:3;align-self:end;justify-self:end;margin:0 16px 8px;bottom:auto;right:auto;pointer-events:none}
+ .fv-ed-save-warning{position:absolute;top:60px;left:8px;right:8px;border:1px solid var(--fv-border);background:var(--fv-card);padding:8px 12px;border-radius:var(--fv-r-sm);z-index:9}
 }
 
 .fv-ed-name-menu{max-height:calc(100dvh - 72px);overflow-y:auto}
@@ -288,13 +292,12 @@
 .fv-studio.fv-editor .fv-header[data-fit~=wrap] .fv-ed-name{max-width:320px}
 .fv-studio.fv-editor .fv-header[data-fit~=lean] .fv-lan,.fv-studio.fv-editor .fv-header[data-fit~=lean] .fv-feedback-entry:not(.fv-guide-entry){display:none}
 .fv-studio.fv-editor .fv-header[data-fit~=least] .fv-guide-entry{display:none}
-.fv-ed-volume-popover{position:absolute;top:calc(100% + 8px);left:0;display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid var(--fv-border);border-radius:8px;background:var(--fv-card);white-space:nowrap;z-index:8}
+.fv-ed-volume-popover{position:absolute;top:calc(100% + 8px);left:0;display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);background:var(--fv-card);white-space:nowrap;z-index:8}
 .fv-ed-volume{width:90px}.fv-ed-volume-value{font-variant-numeric:tabular-nums;font-size:12px;min-width:34px}
 
 /* Keep the editor's controls visible instead of clipping them at phone widths. */
 @media(max-width:480px){
- .fv-studio.fv-editor{grid-template-rows:auto minmax(max(0px,calc(96px - var(--fv-ed-description-growth,0px))),1fr) 40px var(--fv-ed-generation-row,max-content) auto minmax(160px,236px)}
- .fv-studio.fv-editor:has(.fv-ed-gen-failure:not([hidden])){grid-template-rows:auto minmax(0,1fr) 40px var(--fv-ed-generation-row,max-content) auto minmax(160px,236px)}
+ .fv-studio.fv-editor{grid-template-rows:auto var(--fv-ed-project-h) minmax(0,1fr) 40px var(--fv-ed-generation-row) 40px minmax(160px,236px)}
  .fv-studio.fv-editor .fv-header:has(.fv-view-switch){grid-template-columns:minmax(0,1fr) auto}
  /* One row: undo, split, delete and zoom; editor_toolbar_more.js moves the rest behind ⋯. */
  .fv-ed-duration-word{display:none}
@@ -305,7 +308,7 @@
  .fv-editor .fv-ed-toolbar .fv-ed-track-zoom>button:not(.fv-ed-fit){display:none}
  .fv-ed-toolbar .fv-ed-zoom-slider{flex:1 1 auto;width:auto;min-width:48px}
  .fv-studio.fv-editor .fv-ed-add-audio{padding:0;font-size:0}
- .fv-studio.fv-editor .fv-ed-add-audio::before{content:attr(data-sign);font-size:16px;line-height:18px;display:inline-block;width:20px;height:20px;border:1px solid var(--fv-border);border-radius:6px}
+ .fv-studio.fv-editor .fv-ed-add-audio::before{content:attr(data-sign);font-size:16px;line-height:18px;display:inline-block;width:20px;height:20px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm)}
  .fv-studio.fv-editor .fv-ed-add-audio:disabled{display:none}
  .fv-editor .fv-ed-playhead-handle{left:0}
  .fv-editor .fv-ed-library{grid-area:auto;top:116px;bottom:0;z-index:8}
@@ -316,19 +319,265 @@
 @media(max-width:520px){
  .fv-studio.fv-editor .fv-ed-track-head{justify-content:center;padding:0;cursor:pointer}
  .fv-studio.fv-editor .fv-ed-track-head>[class$=-track-controls]{display:none}
- .fv-studio.fv-editor .fv-ed-track-head[data-open=true]>[class$=-track-controls]{display:flex;position:absolute;left:calc(100% + 4px);top:50%;transform:translateY(-50%);gap:2px;padding:2px 4px;background:var(--fv-card);border:1px solid var(--fv-border);border-radius:8px}
+ .fv-studio.fv-editor .fv-ed-track-head[data-open=true]>[class$=-track-controls]{display:flex;position:absolute;left:calc(100% + 4px);top:50%;transform:translateY(-50%);gap:2px;padding:2px 4px;background:var(--fv-card);border:1px solid var(--fv-border);border-radius:var(--fv-r-sm)}
  .fv-studio.fv-editor .fv-ed-track-heads:has(>[data-open=true]){z-index:9}
 }
-/* "Generate · about 4 minutes" in English does not fit beside the seconds field below 550 px: it keeps a line of its own,
-   and the line above it stays whether the field shows or not, so choosing a clip or a draft does not move the timeline. */
-@media(max-width:549px){
- .fv-ed-genbar:lang(en)[data-mode=selected]:not(:has(>.fv-ed-gen-failure:not([hidden]))){row-gap:0;padding-top:2px;align-content:space-between}
- .fv-ed-genbar:lang(en)[data-mode=selected]:not(:has(>.fv-ed-gen-failure:not([hidden])))>*{margin-top:8px}
- .fv-ed-genbar:lang(en)[data-mode=selected]:not(:has(>.fv-ed-gen-failure:not([hidden])))>.fv-ed-genbar-break{display:block;flex:0 0 100%;height:0;margin:0}
-}
+/* The press shows its verb over its estimate, so it no longer needs a line of its own in a narrow English bar. */
 /* Narrow window: the picture sits right under the header, the row takes the project's own shape (a
    16:9 project is about 200 px tall at 400 px wide), and whatever height is left goes to the timeline. */
 @media(max-width:680px){
- .fv-studio.fv-editor,.fv-studio.fv-editor:has(.fv-ed-gen-failure:not([hidden])){grid-template-rows:auto minmax(0,auto) 40px var(--fv-ed-generation-row,max-content) auto minmax(160px,1fr)}
+ .fv-studio.fv-editor{grid-template-rows:auto var(--fv-ed-project-h) minmax(0,auto) 40px var(--fv-ed-generation-row) 40px minmax(160px,1fr)}
  .fv-editor .fv-ed-preview{box-sizing:border-box;align-self:start;aspect-ratio:var(--fv-ed-project-width,16)/var(--fv-ed-project-height,9);max-height:max(116px,calc(100dvh - 470px));padding-top:12px;padding-bottom:8px}
 }
+
+/* ── Layout that never moves (Iris E1, E8; CEO 11-14 "生成前会先下载……把下面的轨挤下去") ──
+   Every row below the header has one height: the project row, the bar (56 px plus what a long description adds,
+   which only the picture gives up), the tool row and the timeline. What the bar says for a while floats in the tray
+   above it; nothing is inserted into the flow. */
+.fv-ed-genbar>*{flex-shrink:0}
+.fv-ed-genbar>.fv-ed-description-box{flex:1 1 auto;min-width:120px}
+/* Over the picture's foot, above the play row (4 px bar margin + 40 px play row + 4 px), so the play controls stay free. */
+.fv-ed-gen-tray{position:absolute;left:12px;right:12px;bottom:calc(100% + 48px);z-index:11;display:flex;flex-direction:column;align-items:flex-start;gap:8px;pointer-events:none;max-height:min(60dvh,calc(100dvh - 360px));overflow:visible}
+.fv-ed-gen-tray:empty{display:none}
+.fv-ed-gen-tray>*{pointer-events:auto;max-width:min(720px,100%);box-sizing:border-box;flex:none;order:1}
+.fv-ed-gen-tray>:is(.fv-ed-music-presets,.fv-ed-say-voice,.fv-ed-voice,.fv-ed-voice-install){order:2}
+.fv-ed-gen-tray>:not([hidden]){padding:8px 12px;border:1px solid var(--fv-border);border-radius:var(--fv-r-md);background:var(--fv-card);box-shadow:0 12px 32px -12px #000a;animation:fv-ed-tray-in .16s cubic-bezier(.2,.8,.2,1)}
+.fv-ed-gen-tray>.fv-ed-voice{width:min(720px,100%);max-height:min(320px,calc(100dvh - 420px));overflow:auto}
+.fv-ed-gen-tray>.fv-ed-music-presets,.fv-ed-gen-tray>.fv-ed-voice-install{width:min(720px,100%)}
+.fv-ed-gen-tray>.fv-ed-gen-note{white-space:normal;overflow:visible;color:var(--fv-ink)}
+.fv-ed-gen-tray>.fv-request-assets{font-size:12px;line-height:1.5;color:var(--fv-muted)}
+.fv-ed-gen-tray>.fv-ed-gen-failure{width:min(720px,100%)}
+.fv-ed-gen-tray>.fv-ed-ref-notice{position:static;max-width:min(560px,100%);pointer-events:auto}
+@keyframes fv-ed-tray-in{from{opacity:0;transform:translateY(4px)}}
+@media(prefers-reduced-motion:reduce){.fv-ed-gen-tray>*{animation:none!important}}
+/* The empty-prompt question floats over the press instead of opening a line under it. */
+.fv-ed-genbar .fv-empty-prompt{position:absolute;right:12px;bottom:calc(100% + 48px);z-index:12;margin:0;flex:none;flex-wrap:nowrap;padding:8px 8px 8px 16px;border:1px solid var(--fv-border);border-radius:var(--fv-r-md);background:var(--fv-card);box-shadow:0 12px 32px -12px #000a}
+/* The press: verb over its estimate, one width while the estimate arrives. */
+.fv-editor .fv-ed-genbar .fv-ed-generate{display:inline-grid;grid-auto-rows:auto;place-items:center;align-content:center;gap:0;min-width:104px;height:40px;padding:0 16px;line-height:1.15}
+.fv-ed-generate-verb{font-weight:600;font-size:13px;white-space:nowrap}
+.fv-ed-generate-time{font-size:12px;font-weight:500;opacity:.85;white-space:nowrap;font-variant-numeric:tabular-nums}
+.fv-ed-generate-time[hidden]{display:none}
+.fv-ed-generate-sep{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+/* The progress words share the bar's line and give up width first. */
+.fv-ed-genbar[data-mode=running] .fv-ed-gen-hint{flex:0 1 auto;min-width:0}
+/* The record bar takes the bar's place at the bar's height. */
+.fv-editor .fv-ed-record{grid-row:5;height:100%;min-height:0}
+/* Dubbing lines no longer change the rows. */
+@media(min-width:681px){.fv-studio.fv-editor:has(.fv-ed-genbar[data-voice=true]){grid-template-rows:auto var(--fv-ed-project-h) minmax(96px,1fr) 40px var(--fv-ed-generation-row) 40px var(--fv-ed-timeline-h)}}
+.fv-ed-genbar[data-voice=true],.fv-ed-genbar[data-voice=note]{flex-wrap:nowrap}
+@media(max-width:680px){.fv-ed-genbar[data-voice=true],.fv-ed-genbar[data-voice=note]{flex-wrap:wrap}}
+
+/* ── The project row: the edit's name, whether it is saved, and Export, over the picture (no longer in the header) ── */
+.fv-ed-project-row{grid-column:2;grid-row:2;position:relative;z-index:7;display:flex;align-items:center;gap:8px;min-width:0;padding:0 12px 0 8px}
+.fv-editor .fv-ed-project-row .fv-ed-name{flex:0 1 auto;height:32px;padding:0 8px;gap:8px}
+.fv-ed-save-state{flex:none;display:inline-flex;align-items:center;gap:8px;height:24px;padding:0 8px;border-radius:var(--fv-r-pill);font-size:12px;color:var(--fv-muted);white-space:nowrap}
+.fv-ed-save-state::before{content:"";width:7px;height:7px;border-radius:var(--fv-r-pill);background:var(--fv-success)}
+.fv-ed-save-state[data-state=saving]::before{background:var(--fv-accent)}
+.fv-ed-save-state[data-state=unsaved]{color:var(--fv-danger);background:var(--fv-danger-subtle)}
+.fv-ed-save-state[data-state=unsaved]::before{background:var(--fv-danger)}
+.fv-editor .fv-ed-save-state:is(button){height:24px;min-height:24px;border:0;cursor:pointer}
+.fv-ed-save-state[data-shown=false]{visibility:hidden}
+.fv-ed-project-row .fv-ed-export-box{margin-left:auto;height:100%}
+.fv-ed-project-row .fv-ed-name-menu{top:calc(100% - 4px);left:8px}
+/* Unsaved changes are said where the eyes are, with the way out, not as a line of small red words. */
+.fv-ed-save-warning-card{position:absolute;top:calc(100% + 4px);left:8px;z-index:9;display:flex;align-items:center;gap:12px;max-width:min(560px,calc(100% - 16px));padding:8px 8px 8px 16px;border:1px solid color-mix(in srgb,var(--fv-danger) 40%,var(--fv-border));border-radius:var(--fv-r-md);background:var(--fv-card);color:var(--fv-ink);font-size:13px;line-height:1.45;box-shadow:0 12px 32px -12px #000a}
+.fv-ed-save-warning-card[hidden]{display:none}
+.fv-editor .fv-ed-save-warning-card button{flex:none;height:30px;min-height:30px;padding:0 12px}
+@media(max-width:1279px){.fv-ed-project-row{grid-column:1/-1}}
+
+/* ── Notices: a short stack over the inspector's foot (the picture's foot below 1280), newest last; never over the timeline ── */
+.fv-ed-notice-stack{position:absolute;right:68px;bottom:calc(var(--fv-ed-timeline-h) + 40px + var(--fv-ed-generation-row) + 48px);z-index:10;display:flex;flex-direction:column;align-items:flex-end;gap:8px;width:min(320px,calc(100% - 136px));pointer-events:none}
+@media(min-width:1280px){.fv-ed-notice-stack{right:12px;width:240px;bottom:calc(var(--fv-ed-timeline-h) + 40px + var(--fv-ed-generation-row) + 12px)}}
+.fv-ed-notice-stack:empty{display:none}
+.fv-ed-notice-stack .fv-ed-notice{position:relative;inset:auto;max-width:100%;pointer-events:auto;display:flex;align-items:flex-start;gap:8px;padding:8px 4px 8px 12px;line-height:1.45;box-shadow:0 12px 32px -12px #000a;animation:fv-ed-tray-in .16s cubic-bezier(.2,.8,.2,1)}
+.fv-ed-notice-text{flex:1;min-width:0;overflow-wrap:anywhere}
+.fv-editor .fv-ed-notice-close{flex:none;width:24px;height:24px;min-height:24px;padding:0;border:0;background:transparent;color:var(--fv-muted);border-radius:var(--fv-r-sm)}
+.fv-ed-notice-close svg{width:12px;height:12px}
+@media(max-width:680px){.fv-ed-notice-stack{position:relative;inset:auto;align-self:start;justify-self:stretch;width:auto;margin:8px 12px 0}}
+@media(max-width:680px){.fv-ed-project-row .fv-ed-name{max-width:calc(100% - 200px)}}
+
+/* ── Library cards: the add and remove buttons are reachable without hover and big enough to hit (E20) ── */
+.fv-editor .fv-ed-source-add,.fv-editor .fv-ed-source-remove{width:28px;height:28px;min-height:28px;border-radius:var(--fv-r-sm)}
+@media(hover:none){.fv-ed-source-card .fv-ed-source-add:not(:disabled),.fv-ed-source-card .fv-ed-source-remove{opacity:1;pointer-events:auto}}
+.fv-editor .fv-ed-source-confirm{grid-template-rows:auto auto 28px}
+.fv-editor .fv-ed-source-confirm-actions button{height:28px;min-height:28px}
+.fv-ed-source-skeleton{aspect-ratio:16/9;border-radius:var(--fv-r-sm);background:linear-gradient(90deg,color-mix(in srgb,var(--fv-ink) 5%,transparent),color-mix(in srgb,var(--fv-ink) 9%,transparent),color-mix(in srgb,var(--fv-ink) 5%,transparent));background-size:200% 100%;animation:fv-ed-skeleton 1.4s linear infinite}
+@keyframes fv-ed-skeleton{to{background-position:-200% 0}}
+@media(prefers-reduced-motion:reduce){.fv-ed-source-skeleton{animation:none}}
+/* Until the timeline module has drawn, its rows hold their final places (ruler 24 px, picture 64 px, two sounds 40 px). */
+.fv-ed-tracks-skeleton{position:relative;height:100%;overflow:hidden}
+.fv-ed-tracks-skeleton>i{position:absolute;left:0;right:0;border-bottom:1px solid var(--fv-border);opacity:.6}
+.fv-ed-tracks-skeleton>b{position:absolute;left:0;width:132px;border-right:1px solid var(--fv-border)}
+
+/* ── 681–1279 px: two equal rails keep the picture centred; the library and the inspector open over the picture ── */
+.fv-ed-rail{display:none}
+@media(min-width:681px) and (max-width:1279px){
+ .fv-studio.fv-editor{grid-template-columns:56px minmax(0,1fr) 56px}
+ .fv-ed-rail{display:flex;flex-direction:column;align-items:center;gap:8px;padding-top:8px;grid-row:2/5;min-width:0}
+ .fv-ed-rail-left{grid-column:1;border-right:1px solid var(--fv-line,var(--fv-border))}
+ .fv-ed-rail-right{grid-column:3;border-left:1px solid var(--fv-line,var(--fv-border))}
+ .fv-editor .fv-ed-rail-button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;width:44px;height:52px;min-height:44px;padding:0;border:0;border-radius:var(--fv-r-md);background:transparent;color:var(--fv-muted);font-size:12px}
+ .fv-editor .fv-ed-rail-button:hover,.fv-editor .fv-ed-rail-button[aria-expanded=true]{background:var(--fv-hover);color:var(--fv-ink)}
+ .fv-ed-rail-glyph{width:18px;height:18px}
+ .fv-ed-rail-label{line-height:1.3;white-space:nowrap}
+ .fv-ed-project-row{grid-column:2}
+ .fv-editor .fv-ed-library{grid-column:2;grid-row:2/5;justify-self:start;align-self:stretch;width:288px;max-width:calc(100% - 16px);margin:8px 0 8px 8px;display:none;z-index:9;border:1px solid var(--fv-border);border-radius:var(--fv-r-lg);box-shadow:0 24px 60px -16px #000a}
+ .fv-editor .fv-ed-library[data-open=true]{display:block}
+ .fv-editor .fv-ed-adjust-host{margin:8px 8px 8px 0;border:1px solid var(--fv-border);border-radius:var(--fv-r-lg);box-shadow:0 24px 60px -16px #000a}
+ .fv-editor .fv-ed-toolbar .fv-ed-adjust-toggle{display:none}
+}
+.fv-editor .fv-ed-notice-action{flex:none;height:24px;min-height:24px;padding:0 8px;border:0;border-radius:var(--fv-r-sm);background:var(--fv-accent-soft,rgb(27 148 252 / .16));color:var(--fv-accent-ink,var(--fv-accent));font-size:12px;font-weight:600}
+/* The first-download question (dubbing model), in the bar's tray. */
+.fv-ed-gen-ask{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.fv-ed-gen-ask[hidden]{display:none}
+.fv-ed-gen-ask-text{flex:1 1 240px;min-width:0;line-height:1.45}
+.fv-editor .fv-ed-gen-ask button{height:32px;min-height:32px;padding:0 12px}
+/* The zoom bar moves here once the timeline has drawn; its place is kept from the first frame so the tool row never shifts. */
+@media(min-width:481px){.fv-ed-toolbar>.fv-ed-zoom{min-width:176px;display:flex;justify-content:flex-end}}
+/* The tray sits over the picture's column, never over the library or the inspector. */
+@media(min-width:1280px){.fv-ed-gen-tray{left:252px;right:252px}.fv-ed-genbar .fv-empty-prompt{right:252px}}
+@media(min-width:681px) and (max-width:1279px){
+ .fv-ed-gen-tray{left:44px;right:44px}.fv-ed-genbar .fv-empty-prompt{right:44px}
+ /* The floating library and inspector open under the project row, so the name and Export stay in reach. */
+ .fv-editor .fv-ed-library,.fv-editor .fv-ed-adjust-host{grid-row:3/5}
+}
+/* Earlier descriptions: a small clock in the description box, its list in the bar's tray. */
+.fv-editor .fv-ed-history-button{position:absolute;right:32px;bottom:4px;width:26px;height:26px;min-height:26px;padding:0;border:0;border-radius:var(--fv-r-sm);background:transparent;color:var(--fv-muted);display:grid;place-items:center}
+.fv-editor .fv-ed-history-button:not(:disabled):hover,.fv-editor .fv-ed-history-button[aria-expanded=true]{background:var(--fv-hover);color:var(--fv-ink)}
+.fv-editor .fv-ed-history-button:disabled{opacity:.35}
+.fv-ed-history{width:min(560px,100%);max-height:min(320px,calc(100dvh - 420px));overflow:auto;display:flex;flex-direction:column;gap:2px}
+.fv-ed-history[hidden]{display:none}
+.fv-ed-history-title{padding:4px 8px 4px;font-size:12px;font-weight:600;color:var(--fv-muted)}
+.fv-ed-history-empty{margin:4px 8px 8px;font-size:12px;color:var(--fv-muted)}
+.fv-editor .fv-ed-history-item{display:block;width:100%;height:auto;min-height:36px;padding:8px;border:0;border-radius:var(--fv-r-md);background:transparent;color:var(--fv-ink);text-align:left;white-space:normal;line-height:1.45;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2}
+.fv-editor .fv-ed-history-item:hover,.fv-editor .fv-ed-history-item:focus-visible{background:var(--fv-hover);outline:none}
+.fv-ed-genbar .fv-ed-description-box .fv-ed-description{padding-right:64px}
+
+/* ── IM-1 (iris, 8198): nothing the bar says covers the picture ──
+   From 681 px the tray is the head of the inspector (beside the picture); the bar's own line is part of the bar;
+   what downloads first is said under the press; notices take the free middle of the project row. */
+.fv-ed-adjust-host>.fv-ed-gen-tray{position:static;inset:auto;max-height:none;margin:0 0 12px;display:flex;flex-direction:column;align-items:stretch;gap:8px;pointer-events:auto}
+.fv-ed-adjust-host>.fv-ed-gen-tray:not(:has(>:not([hidden]):not(.fv-ed-gen-anchor))){display:none}
+.fv-ed-adjust-host>.fv-ed-gen-tray>*{max-width:none;width:auto;order:1;box-shadow:none;animation:none}
+.fv-ed-adjust-host>.fv-ed-gen-tray>:not([hidden]){padding:8px 12px;border:1px solid var(--fv-border);border-radius:var(--fv-r-md);background:color-mix(in srgb,var(--fv-ink) 4%,transparent)}
+.fv-ed-adjust-host>.fv-ed-gen-tray>.fv-ed-voice{max-height:none;overflow:visible;width:auto}
+.fv-ed-adjust-host>.fv-ed-gen-tray>.fv-ed-gen-failure{border-color:color-mix(in srgb,var(--fv-danger) 40%,var(--fv-border));background:color-mix(in srgb,var(--fv-danger) 8%,transparent)}
+.fv-ed-adjust-host>.fv-ed-gen-tray .fv-ed-music-row{flex-wrap:wrap}
+.fv-ed-adjust-host>.fv-ed-gen-tray .fv-ed-voice-extra{padding-left:0}
+.fv-ed-adjust-host>.fv-ed-gen-tray .fv-empty-prompt{position:static;flex-wrap:wrap;padding:8px 12px;margin:0;box-shadow:none}
+.fv-ed-gen-anchor{display:none!important}
+/* The empty-prompt question is created after its anchor, in the tray. */
+.fv-ed-gen-tray>.fv-empty-prompt{position:static;order:2}
+/* The bar's own line: one row, cut with an ellipsis, said whole on hover; it narrows the description only. */
+.fv-ed-genbar>.fv-ed-gen-note{flex:0 1 auto;max-width:40%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--fv-ink)}
+.fv-ed-genbar>.fv-ed-gen-note:has(.fv-issue-button){white-space:nowrap;overflow:hidden;display:flex;align-items:center;gap:8px}
+.fv-ed-genbar>.fv-ed-gen-note .fv-issue-button{flex:none;margin-left:0}
+@media(max-width:680px){.fv-ed-genbar>.fv-ed-gen-note{order:-1;flex:1 1 100%;max-width:none}}
+/* Under the press: what downloads first (its hover names it and its size). */
+.fv-ed-generate-time.fv-ed-generate-download::before{content:"↓ "}
+.fv-ed-generate-time{opacity:1}
+/* Notices in the project row: the newest one, one line; older ones wait behind it. */
+.fv-ed-project-row>.fv-ed-notice-stack{position:static;inset:auto;flex:1 1 auto;min-width:0;width:auto;display:flex;flex-direction:row;justify-content:flex-end;align-items:center;margin:0;pointer-events:auto}
+.fv-ed-project-row>.fv-ed-notice-stack .fv-ed-notice{max-width:100%;min-width:0;height:32px;padding:0 4px 0 12px;align-items:center;box-shadow:none;border-radius:var(--fv-r-md)}
+.fv-ed-project-row>.fv-ed-notice-stack .fv-ed-notice:not(:last-child){display:none}
+.fv-ed-project-row>.fv-ed-notice-stack .fv-ed-notice-text{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:8px}
+.fv-ed-project-row>.fv-ed-notice-stack .fv-issue-button{flex:none}
+.fv-ed-genbar-gone{grid-column:1/-1;grid-row:5;display:flex;align-items:center;justify-content:center;margin:4px 12px;border:1px dashed var(--fv-border);border-radius:var(--fv-r-lg);color:var(--fv-muted);font-size:13px}
+.fv-ed-genbar-gone[hidden]{display:none}
+@media(max-width:680px){.fv-ed-genbar-gone{grid-column:1;margin:4px 8px;padding:0 12px;text-align:center}}
+
+/* ── Phone (≤680 px): this view's own controls are finger-sized (44 px) ── */
+@media(max-width:680px){
+ .fv-studio.fv-editor{--fv-ed-generation-row:calc(108px + var(--fv-ed-description-growth,0px));grid-template-rows:auto var(--fv-ed-project-h) minmax(0,auto) 44px var(--fv-ed-generation-row) 48px minmax(160px,1fr)}
+ .fv-editor .fv-ed-genbar{padding-top:4px;padding-bottom:4px;row-gap:8px}
+ .fv-editor .fv-ed-project-row :is(.fv-ed-name,.fv-ed-export-main,.fv-ed-save-state){height:44px;min-height:44px}
+ .fv-editor .fv-ed-project-row .fv-ed-export-main{min-width:56px}
+ .fv-editor .fv-ed-project-row .fv-ed-save-state{background:transparent}
+ .fv-editor .fv-ed-drawer-toggle{height:44px;min-height:44px}
+ .fv-ed-toolbar{height:48px}
+ .fv-editor .fv-ed-toolbar>.fv-ed-tool-group button,.fv-editor .fv-ed-toolbar>.fv-ed-more{width:44px;min-width:44px;height:44px;min-height:44px}
+ .fv-editor .fv-ed-genbar .fv-ed-generate{height:44px;min-height:44px}
+ .fv-ed-genbar .fv-ed-description-box .fv-ed-description{min-height:44px}
+ .fv-studio .fv-ed-genbar .fv-ed-duration input[type=number]{height:44px;min-height:44px}
+ .fv-editor .fv-ed-genbar :is(.fv-ed-ref-add,.fv-ed-pass-options>summary){width:44px;height:44px;min-height:44px}
+}
+/* The reference plus is a square glyph button; the shared button padding no longer cuts its sign. */
+.fv-editor .fv-ed-genbar .fv-ed-ref-add{padding:0}
+
+/* The description field: the frame is the box, the words and its two small buttons sit side by side inside it,
+   so no control lies under another (QA: description ∩ expand). */
+.fv-ed-genbar .fv-ed-description-box{align-items:flex-end;border:1px solid var(--fv-border);border-radius:var(--fv-r-md);background:var(--fv-bg);padding-right:60px}
+.fv-ed-genbar .fv-ed-description-box:focus-within{border-color:var(--fv-accent)}
+.fv-ed-genbar .fv-ed-description-box .fv-ed-description{border:0;background:transparent;padding-right:8px;min-width:0}
+.fv-ed-genbar .fv-ed-description-box .fv-ed-description:focus{outline:none}
+.fv-ed-genbar .fv-ed-description-box:has(.fv-ed-description:disabled){opacity:.5}
+.fv-ed-genbar .fv-ed-description-box .fv-ed-description:disabled{opacity:1}
+/* Nothing chosen yet: the box is not greyed; its placeholder says what it is for. */
+.fv-ed-genbar[data-mode=idle] .fv-ed-description-box:has(.fv-ed-description:disabled){opacity:1}
+.fv-ed-genbar[data-mode=idle] .fv-ed-description:disabled{cursor:default}
+.fv-editor .fv-ed-save-warning-card .fv-ed-save-leave{background:transparent;border-color:color-mix(in srgb,var(--fv-danger) 40%,var(--fv-border));color:var(--fv-danger)}
+.fv-editor .fv-ed-save-warning-card .fv-ed-save-leave:hover{background:var(--fv-danger-subtle)}
+.fv-ed-save-warning-card{flex-wrap:wrap}
+/* Pointer targets in this view are at least 28 px (QA): the saved state, the two small buttons in the description. */
+.fv-editor .fv-ed-save-state:is(button){height:28px;min-height:28px}
+.fv-editor .fv-ed-genbar .fv-ed-history-button,.fv-editor .fv-ed-genbar .fv-ed-expand{width:28px;height:28px;min-height:28px}
+.fv-editor .fv-ed-genbar .fv-ed-history-button{right:34px;bottom:4px}
+.fv-ed-genbar .fv-ed-duration label{gap:8px}
+.fv-ed-genbar>.fv-ed-gen-note{display:flex;align-items:center;gap:8px}
+.fv-ed-gen-note-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:680px){
+ .fv-editor .fv-ed-toolbar>.fv-ed-adjust-toggle{width:44px;min-width:44px;height:44px;min-height:44px}
+ .fv-ed-genbar .fv-ed-description-box{padding-right:92px}
+ .fv-editor .fv-ed-genbar :is(.fv-ed-history-button,.fv-ed-expand){width:44px;height:44px;min-height:44px;bottom:0}
+ .fv-editor .fv-ed-genbar .fv-ed-expand{right:0}
+ .fv-editor .fv-ed-genbar .fv-ed-history-button{right:44px}
+}
+
+/* ── Visual alignment (Iris 11-15, C1–C3 and C8) ──
+   One outer line 12 px from each window edge: the library's cards, the bar's frame, the tool row's first and last keys and
+   the inspector's content all start at x = 12 and end 12 px from the right. */
+.fv-ed-toolbar{padding-left:12px;padding-right:12px}
+/* C1: every control in the bar is 40 px high; Generate and its sampling menu are one block. */
+.fv-ed-genbar .fv-ed-description-box .fv-ed-description{min-height:38px}
+.fv-studio .fv-ed-genbar .fv-ed-duration input[type=number]{height:40px;min-height:40px}
+.fv-editor .fv-ed-genbar :is(.fv-ed-ref-add,.fv-ed-ref-chip){width:40px;height:40px;border-radius:var(--fv-r-md)}
+.fv-ed-genbar .fv-ed-pass-options{margin-left:-12px}
+.fv-editor .fv-ed-genbar .fv-ed-generate:has(+ .fv-ed-pass-options:not([hidden])){border-top-right-radius:0;border-bottom-right-radius:0}
+.fv-ed-genbar .fv-ed-pass-options>summary{width:36px;height:40px;border-radius:0 var(--fv-r-lg) var(--fv-r-lg) 0;border-color:transparent;border-left:1px solid rgb(255 255 255 / .28)}
+.fv-ed-genbar .fv-ed-generate.fv-primary+.fv-ed-pass-options>summary{background:var(--fv-accent-fill);color:#fff}
+.fv-ed-genbar .fv-ed-generate:not(.fv-primary)+.fv-ed-pass-options>summary{background:var(--fv-accent-soft);color:var(--fv-accent-ink);border-left-color:var(--fv-accent-line)}
+/* C8: a row without its own label (rotate, flip, crop) starts on the labels' line, not 8 px in. */
+.fv-ed-adjust-row>.fv-ed-adjust-label:empty{display:none}
+@media(max-width:680px){.fv-ed-genbar .fv-ed-description-box .fv-ed-description{min-height:44px}.fv-ed-genbar .fv-ed-pass-options>summary{height:44px}}
+
+/* ── Fidelity E3 (70 % version) and W9: the generate bar is a card in the picture's column; the library, the picture's
+   column and the inspector start and end on the same lines (the project row's top, the bar's foot), the timeline below. ── */
+@media(min-width:681px){
+ .fv-editor .fv-ed-genbar,.fv-editor .fv-ed-record,.fv-editor .fv-ed-genbar-gone{grid-column:2}
+ .fv-studio.fv-editor .fv-ed-genbar{margin:4px 12px 8px;height:auto;align-self:stretch}
+ .fv-ed-rail{grid-row:2/6}
+ .fv-editor .fv-ed-genbar .fv-ed-generate{min-width:136px}
+}
+@media(min-width:1280px){
+ .fv-studio.fv-editor .fv-ed-library,.fv-studio.fv-editor .fv-ed-adjust-host{grid-row:2/6}
+ /* The tray's empty-prompt question sits over the picture's column's right edge, as the bar now does. */
+ .fv-ed-gen-tray{left:12px;right:12px}.fv-ed-genbar .fv-empty-prompt{right:12px}
+}
+@media(min-width:681px) and (max-width:1279px){.fv-ed-gen-tray{left:12px;right:12px}.fv-ed-genbar .fv-empty-prompt{right:12px}}
+/* A card's name (the prompt's start) and, under it, when it was made, its length and size. */
+.fv-ed-source-caption{display:grid;gap:0;padding:4px 2px 0;text-align:left;min-width:0}
+.fv-ed-source-title{font-size:12px;line-height:16px;color:var(--fv-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fv-ed-source-sub{font-size:12px;line-height:16px;color:var(--fv-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fv-ed-source-sub[hidden]{display:none}
+.fv-editor .fv-ed-source{background:transparent}
+/* QA round 9: the sampling menu's corners follow the small radius and sit concentric in the bar; on a phone the seconds
+   field is finger-sized and Generate and its menu touch without overlapping (the bar's gap is 8 px there). */
+.fv-ed-genbar .fv-ed-pass-options>summary{border-radius:0 var(--fv-r-sm,8px) var(--fv-r-sm,8px) 0}
+@media(max-width:680px){
+ .fv-studio .fv-ed-genbar .fv-ed-duration input[type=number]{min-height:44px;height:44px}
+ .fv-ed-genbar .fv-ed-pass-options{margin-left:-8px}
+}
+/* QA round 11: the library pane's last, partly hidden row fades over 24 px instead of being cut; no fade at the end. */
+.fv-editor .fv-ed-library:not([data-at-end=true]){-webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 24px),transparent);mask-image:linear-gradient(to bottom,#000 calc(100% - 24px),transparent)}
+/* On a phone the sound clips are finger-sized (44 px; the row's 6 px gap holds the extra 4 px). */
+@media(max-width:680px){.fv-editor .fv-ed-track-row[data-track^=a] .fv-ed-clip{min-height:44px}}

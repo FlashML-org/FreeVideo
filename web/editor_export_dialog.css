@@ -5,8 +5,8 @@
 .fv-ed-export-row{display:grid;grid-template-columns:68px minmax(0,1fr);align-items:center;gap:12px;min-width:0}
 .fv-ed-export-label{color:var(--fv-muted)}
 .fv-ed-export-format{display:block;grid-column:2}
-.fv-ed-export-segments{display:flex;min-width:0;padding:3px;gap:2px;border:1px solid var(--fv-border);border-radius:10px;background:var(--fv-bg)}
-.fv-ed-export-dialog .fv-ed-export-segments button{flex:1;min-width:0;height:auto;min-height:28px;padding:4px 5px;border:0;border-radius:7px;background:transparent;color:var(--fv-muted);font-size:12px;line-height:1.4;white-space:normal;overflow-wrap:normal}
+.fv-ed-export-segments{display:flex;min-width:0;padding:3px;gap:2px;border:1px solid var(--fv-border);border-radius:var(--fv-r-md);background:var(--fv-bg)}
+.fv-ed-export-dialog .fv-ed-export-segments button{flex:1;min-width:0;height:auto;min-height:28px;padding:4px 5px;border:0;border-radius:var(--fv-r-sm);background:transparent;color:var(--fv-muted);font-size:12px;line-height:1.4;white-space:normal;overflow-wrap:normal}
 .fv-ed-export-dialog .fv-ed-export-segments button[aria-pressed=true]{background:var(--fv-raised);color:var(--fv-ink);font-weight:600}
 .fv-ed-export-dialog .fv-ed-export-segments button:hover:not(:disabled){background:var(--fv-hover)}
 /* Choices share a row equally; a row whose words do not fit that way gives each choice its text width and shares the rest.

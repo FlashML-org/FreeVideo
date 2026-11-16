@@ -1025,7 +1025,18 @@ export class Renderer {
     // A layer as composited: edits, adjustments, mask; text and shapes drawn.
     layerImage(doc, layer, scale, exact = false) {
         if (layer.kind === 'text') return this.text(layer, scale);
-        if (layer.kind === 'shape') return this.shape(layer, scale);
+        if (layer.kind === 'shape') {
+            // A shape with a mask (the eraser went over it) is drawn, then masked, at the same size.
+            const drawn = this.shape(layer, scale);
+            if (!layer.mask) return drawn;
+            const key = `${layer.id}@${scale}#shapelook`, look = JSON.stringify([layer.shape, layer.nw, layer.nh, layer.mask.ops.map(o => o.id)]);
+            const cached = this.layers.get(key);
+            if (cached?.look === look) return cached.canvas;
+            const out = canvas(drawn.width, drawn.height); out.getContext('2d').drawImage(drawn, 0, 0);
+            maskWith(out, this.maskRaster(doc, layer, scale));
+            this.layers.set(key, {look, canvas: out});
+            return out;
+        }
         const raster = this.raster(doc, layer, scale, layer.ops.length, exact);
         const key = `${layer.id}@${exact && scale < 1 ? `${scale}!` : scale}#look`;
         const look = JSON.stringify([layer.ops.map(o => o.id), layer.adjust, layer.mask?.ops.map(o => o.id), layer.src, layer.copyOf]);
@@ -1178,8 +1189,19 @@ export class Renderer {
         ctx.lineWidth = lw; ctx.strokeStyle = s.stroke || 'transparent'; ctx.fillStyle = s.fill || 'transparent';
         ctx.lineCap = 'round';
         ctx.beginPath();
+        ctx.lineJoin = 'round';
         if (s.type === 'ellipse') ctx.ellipse(layer.nw / 2, layer.nh / 2, Math.max(1, layer.nw / 2 - inset), Math.max(1, layer.nh / 2 - inset), 0, 0, Math.PI * 2);
         else if (s.type === 'line') { ctx.moveTo(inset, layer.nh / 2); ctx.lineTo(layer.nw - inset, layer.nh / 2); }
+        else if (s.type === 'arrow') {
+            // The shaft stops where the head begins; the head is a filled triangle as wide as the box allows.
+            const head = Math.min(layer.nw * .45, Math.max(lw * 3, 12)), half = Math.min(layer.nh / 2, head * .6), y = layer.nh / 2;
+            ctx.moveTo(inset, y); ctx.lineTo(layer.nw - head * .8, y); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(layer.nw, y); ctx.lineTo(layer.nw - head, y - half); ctx.lineTo(layer.nw - head, y + half); ctx.closePath();
+            ctx.fillStyle = s.stroke || s.fill || '#000'; ctx.fill();
+            this.layers.set(key, {look, canvas: c});
+            return c;
+        }
+        else if (s.type === 'triangle') { ctx.moveTo(layer.nw / 2, inset); ctx.lineTo(layer.nw - inset, layer.nh - inset); ctx.lineTo(inset, layer.nh - inset); ctx.closePath(); }
         else ctx.roundRect ? ctx.roundRect(inset, inset, layer.nw - lw, layer.nh - lw, s.radius || 0) : ctx.rect(inset, inset, layer.nw - lw, layer.nh - lw);
         if (s.fill && s.type !== 'line') ctx.fill();
         if (s.stroke) ctx.stroke();

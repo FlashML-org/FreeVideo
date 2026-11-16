@@ -39,6 +39,20 @@ class Installer(SharedInstaller):
                 raise
             raise RuntimeError(native.git_unavailable(error)) from error
 
+    def check_portable_git(self, git, prefix):
+        try:
+            return super().check_portable_git(git, prefix)
+        except RuntimeError as error:
+            # Exit code 137 is a Git that macOS killed at launch, which is what an invalid
+            # code signature does. Re-sign the environment's executables once and run it again.
+            if self.cancel.is_set() or 'exit code 137' not in str(error):
+                raise
+            summary = native.resign_environment(prefix)
+            try:
+                super().check_portable_git(git, prefix)
+            except RuntimeError as again:
+                raise RuntimeError(summary + ' ' + str(again)) from again
+
     def component_tasks(self, uv):
         tasks = {}
         def task(name, run, after=(), writes=()):

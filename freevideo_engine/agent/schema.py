@@ -281,7 +281,7 @@ def image(*, local=False):
         model=enum(('minimax-h3-image', 'qwen-image-2.1-turbo'), description='The picture model; leave it out to use the installed one, '
             'or the one chosen on the picture page when both are installed.'),
         tier=enum(('standard', 'high'), description='With aspect on H3 Image: standard is about 4 MP, high about 16 MP. Not used by Qwen.'),
-        seed=nullable(number(-2**63, 2**64 - 1, integer=True)),
+        seed=nullable(number(-(2**53 - 1), 2**53 - 1, integer=True)),
         loras=image_loras(),
         images=array({'oneOf': [FILE, obj(dict(file=FILE), ('file',))]}, high=4, description='Pictures to change '
             'or combine: input files, such as result.file of an earlier picture job. The prompt calls them image 1, image 2.'),
@@ -307,7 +307,7 @@ def image(*, local=False):
 
 def image_result():
     return obj(dict(file=FILE, url=string(), width=number(256, 4096, integer=True),
-        height=number(256, 4096, integer=True), seed=number(-2**63, 2**64 - 1, integer=True),
+        height=number(256, 4096, integer=True), seed=number(-(2**53 - 1), 2**53 - 1, integer=True),
         thumbnail=string()), ('file', 'url', 'width', 'height', 'thumbnail'))
 
 
@@ -644,6 +644,10 @@ def contracts(*, local=False):
     routes['GET', '/freevideo/agent/chat/attachment'] = route(
         'Read a saved chat image using the page cookie.', query=obj({'name': CHAT_ATTACHMENT_NAME}, ('name',)),
         auth=False, local=True, page_cookie=True)
+    routes['POST', '/freevideo/agent/chat/attachment/release'] = route(
+        'Remove a chat image the page uploaded and then took out before sending, when no conversation, job, card or '
+        'open page names it; requires a page cookie and CSRF.', body=obj({'name': CHAT_ATTACHMENT_NAME}, ('name',)),
+        auth=False, local=True)
     routes['GET', '/freevideo/agent/chat']['query'] = obj({'after': number(0, integer=True), 'session': SESSION})
     routes['GET', '/freevideo/agent/chat/video']['query'] = obj({'id': string(43, pattern=r'^[0-9]{4}-[0-9]{2}-[0-9]{2}/[0-9a-f]{32}$')}, ('id',))
     for method, suffix, summary, extra in (
@@ -910,8 +914,8 @@ IMAGE_TOOLS = dict(create='freevideo_image_create', get='freevideo_image_read', 
 
 
 WHITEBOX_OPERATIONS = {
-    'submit': ('POST', '/whitebox', 'Send the white-model scene code you wrote (build(THREE), see GET /guide). The user\'s open FreeVideo page renders it to a short video that joins the library.'),
-    'get': ('GET', '/whitebox/{id}', 'Read a white-model scene: waiting, rendering, ready (work = library ID for media.references with early_steps) or failed (error).'),
+    'submit': ('POST', '/whitebox', 'Send the white-model scene code you wrote (build(THREE), see GET /guide). The user\'s open FreeVideo page renders it by itself to a short reference clip in the library; no user action is needed to start the rendering. The clip is not the requested video: it only fixes layout and motion, so the video itself is still to be generated from it (media.references with early_steps) once the scene is ready.'),
+    'get': ('GET', '/whitebox/{id}', 'Read a white-model scene: waiting or rendering (the page is working on it, usually under a minute: read again), ready (work = library ID for media.references with early_steps; generate the requested video from it) or failed (error).'),
 }
 WHITEBOX_TOOLS = dict(submit='freevideo_whitebox_submit', get='freevideo_whitebox_read')
 
@@ -1759,6 +1763,40 @@ SHAPE_MIN_BYTES = 60
 RECIPE_TOOL = 'freevideo_edit_image'
 
 
+def pattern_length(pattern):
+    """(fewest, most) characters of a string the pattern can match whole, or None unless the pattern is
+    anchored at both ends as a whole (no top-level alternative, no multiline flag)."""
+    if not isinstance(pattern, str):
+        return None
+    try:
+        from re import _parser as parser, _constants as constants
+    except ImportError:  # Python before 3.11
+        import sre_parse as parser, sre_constants as constants
+    try:
+        parsed = parser.parse(pattern)
+    except (re.error, OverflowError, RecursionError):
+        return None
+    data = list(parsed)
+    if parsed.state.flags & re.MULTILINE or len(data) < 2 \
+            or data[0] != (constants.AT, constants.AT_BEGINNING) or data[-1] != (constants.AT, constants.AT_END):
+        return None
+    return parsed.getwidth()
+
+
+def drop_implied_lengths(node):
+    """Leave out minLength/maxLength where the anchored pattern beside it already allows no other length."""
+    node = dict(node)
+    for keyword, index, child in list(schema_children(node)):
+        _replace(node, keyword, index, drop_implied_lengths(child))
+    if 'minLength' in node or 'maxLength' in node:
+        width = pattern_length(node.get('pattern'))
+        if width and width[0] >= node.get('minLength', 0):
+            node.pop('minLength', None)
+        if width and width[1] <= node.get('maxLength', math.inf):
+            node.pop('maxLength', None)
+    return node
+
+
 def schema_children(node):
     """(keyword, key or index, subschema) for each child in a schema position."""
     for keyword, value in node.items():
@@ -1786,9 +1824,10 @@ def shape_label(path):
 def mcp_tool_schema(name):
     """The schema an MCP client shows its model. Each client sends every tool schema
     with every request, so a repeated shape is written out once and later named; the
-    edit recipe is spelled out on the edit tool only. Calls still validate against
-    tool_schema(name) here and on the server."""
-    value = tool_schema(name)
+    edit recipe is spelled out on the edit tool only, and a length its pattern already
+    fixes is not repeated. Calls still validate against tool_schema(name) here and on
+    the server."""
+    value = drop_implied_lengths(tool_schema(name))
     if name != RECIPE_TOOL:
         def brief(node):
             if node.get('x-editor-recipe'):

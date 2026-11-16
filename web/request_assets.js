@@ -44,7 +44,7 @@ export function createRequestAssets({t, api, request, onError = () => {}}) {
     function lines(items, rate) {
         const rows = [];
         // One line names what Generate will fetch first: the two-pass model, then the sampling data.
-        const names = {upscaler: t('two-pass model', '二次采样模型'), sampling: t('sampling data', '采样数据')};
+        const names = {upscaler: t('two-pass model', '二采模型'), sampling: t('sampling data', '采样数据')};
         const bytes = {};
         for (const item of items) {
             if (item.action !== 'auto') continue;

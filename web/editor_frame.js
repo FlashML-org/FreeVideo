@@ -3,6 +3,7 @@ import * as model from './editor_model.js';
 import {frameShapes, frameSize} from './frame_sizes.js';
 import {plan} from './editor_geometry.js';
 import {pictureSession} from './editor_picture_session.js';
+import {applyTip} from './editor_tracks_tips.js';
 const key = source => source && `${source.kind}:${source.id}`;
 const info = (sources, source) => typeof sources === 'function' ? sources(key(source)) : sources.get?.(key(source)) || sources[key(source)];
 export const validPictureSize = size => Number.isSafeInteger(size?.width) && Number.isSafeInteger(size?.height) && size.width >= 2 && size.height >= 2;
@@ -52,6 +53,7 @@ export function createPictureGuide(host, frame, {state, t}) {
     const session = pictureSession(state, t);
     const fill = button(t('Fill', '铺满'), () => changePictureFit(state, current, 'cover', t), 'fv-ed-picture-fill');
     const fit = button(t('Fit', '完整显示'), () => changePictureFit(state, current, 'contain', t), 'fv-ed-picture-fit');
+    applyTip(fill, 'fill', t); applyTip(fit, 'fitPicture', t);
     tools.append(fill, fit); frame.append(shade); host.append(tools);
     function updateTools() {
         if (!view) { tools.hidden = true; return; }

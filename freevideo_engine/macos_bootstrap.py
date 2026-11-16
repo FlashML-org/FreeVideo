@@ -88,6 +88,43 @@ def git_unavailable(error):
     return GIT_UNAVAILABLE + '\nCause: ' + text
 
 
+CODESIGN, XATTR = '/usr/bin/codesign', '/usr/bin/xattr'
+MACHO_MAGIC = {bytes.fromhex(value) for value in ('cffaedfe', 'cefaedfe', 'feedfacf', 'feedface', 'cafebabe')}
+
+
+def resign_environment(prefix, run=subprocess.run):
+    """Re-sign every executable and library of a conda environment with an ad-hoc signature.
+
+    Returns one short line saying what was found and done, for the failure message.
+    """
+    prefix = Path(prefix)
+    files = []
+    for path in sorted(prefix.rglob('*')):
+        try:
+            if path.is_symlink() or not path.is_file():
+                continue
+            with path.open('rb') as stream:
+                if stream.read(4) in MACHO_MAGIC:
+                    files.append(str(path))
+        except OSError:
+            continue
+
+    def call(command):
+        try:
+            return run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=120)
+        except (OSError, subprocess.SubprocessError) as error:
+            return subprocess.CompletedProcess(command, 127, type(error).__name__, None)
+    git = prefix / 'bin' / 'git'
+    before = call([CODESIGN, '--verify', '--strict', str(git)]).returncode if git.is_file() else None
+    call([XATTR, '-dr', 'com.apple.quarantine', str(prefix)])
+    failed = 0
+    for start in range(0, len(files), 50):
+        if call([CODESIGN, '--force', '--sign', '-', *files[start:start + 50]]).returncode:
+            failed += 1
+    return 'Git was stopped at launch; signature check before re-signing: exit %s; re-signed %d files, %d batches failed.' % (
+        before, len(files), failed)
+
+
 def available_git():
     executable = shutil.which('git')
     if not executable:
@@ -139,15 +176,25 @@ def preflight(args, snapshot=None, *, ram_gib=None, vram_gib=None):
     total, available = hardware['ram_total'], hardware['ram_available']
     if any(type(n) is not int or n < 0 for n in (total, available)) or not 0 < total or available > total:
         raise ValueError('Invalid unified-memory observation')
+    if ram_gib is None:
+        ram_gib = getattr(args, 'ram_gib', None)
     if ram_gib is not None and (not math.isfinite(ram_gib) or ram_gib <= 0):
         raise ValueError('RAM limit must be positive and finite')
     reserve = 2 * 2**30
     capacity = min(total, int(ram_gib * 2**30)) if ram_gib is not None else total
     resources = dict(memory_model='unified', ram_system_reserve_bytes=reserve,
         ram_budget_bytes=max(0, min(capacity, available) - reserve))
-    # This is installation supervision, not a video-capacity admission decision.
-    if resources['ram_budget_bytes'] < 2**30:
-        errors.append('Setup needs at least 3 GiB available unified memory, including its 2 GiB system reserve. Close memory-heavy applications and retry.')
+    record = dict(total_bytes=total, available_bytes=available, reserve_bytes=reserve)
+    if ram_gib is not None:
+        record['launcher_limit_bytes'] = int(ram_gib * 2**30)
+    resources['preflight_memory'] = record
+    resources['memory_record'] = record
+    # Explicit user limit must leave room for the system reserve plus the 1 GiB floor.
+    if ram_gib is not None and int(ram_gib * 2**30) < reserve + 2**30:
+        errors.append(
+            'Setup requires at least 3.00 GiB unified memory, including its 2.00 GiB system reserve, '
+            'but --ram-gib is set to %.2f GiB (%.2f GiB total, %.2f GiB available).'
+            % (ram_gib, total / 2**30, available / 2**30))
     return snapshot, resources, errors
 
 

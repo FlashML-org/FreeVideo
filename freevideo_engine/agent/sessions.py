@@ -8,6 +8,7 @@ import json
 import logging
 import os
 from pathlib import Path
+import re
 import secrets
 import threading
 import time
@@ -236,10 +237,17 @@ class Sessions:
         with self.lock:
             self._closing.discard(sid)
 
-    def delete(self, sid) -> None:
-        """Forget a conversation and remove its file. A wait in it ends empty; anything later says not_found."""
+    def delete(self, sid) -> list:
+        """Forget a conversation and remove its file. A wait in it ends empty; anything later says not_found.
+
+        Returns the chat pictures it named, for the caller to remove when nothing else names them."""
         with self.lock:
             self._get(sid)
+            try:
+                named = sorted(set(re.findall(r'(?<![0-9a-f])[0-9a-f]{64}\.(?:png|jpg|jpeg|webp)',
+                                              self._path(sid).read_text(encoding='utf-8', errors='replace'))))
+            except OSError:
+                named = []
             self._path(sid).unlink(missing_ok=True)
             self._closing.discard(sid)
             waiters = self._waiters.pop(sid, ())
@@ -254,6 +262,7 @@ class Sessions:
                 loop.call_soon_threadsafe(signal.set)
             except RuntimeError:
                 pass  # A closed client loop no longer needs notification.
+        return named
 
     def list(self, *, limit=50, before=None) -> dict:
         _check(schema.session_schema('list'), dict(limit=limit, **({'before': before} if before is not None else {})))
@@ -323,6 +332,14 @@ class Sessions:
                 except RuntimeError:
                     pass  # A closed client loop no longer needs notification.
             return deepcopy(result)
+
+    def finished_step(self, sid, event: dict, *, by) -> dict:
+        """Write work that is already over as one step: it opens and finishes, like every other step."""
+        if not isinstance(event, dict) or event.get('type') != 'step':
+            raise _invalid('/', 'a step event')
+        started = self.append(sid, {k: v for k, v in event.items() if k not in ('id', 'state')} | dict(state='started'),
+                              by=by)
+        return self.append(sid, dict(type='step', id=started['id'], state=event.get('state', 'done')), by=by)
 
     def _events(self, sid, after, limit):
         rows = []

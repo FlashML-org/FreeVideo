@@ -1,0 +1,61 @@
+/* The shortcut sheet (shortcuts.js): a glass layer with a filter, one tab per view and the shortcuts in columns. */
+dialog.fv-keys-sheet { width: min(880px, calc(100vw - 2 * var(--fv-sp-16, 16px))); height: min(600px, calc(100vh - max(var(--fv-sp-64, 64px), 12vh) - var(--fv-sp-24, 24px))); }
+.fv-ks-head {
+  flex: none; display: flex; align-items: center; gap: var(--fv-sp-12, 12px); height: var(--fv-sp-56, 56px);
+  padding: 0 var(--fv-sp-12, 12px) 0 var(--fv-sp-20, 20px); border-bottom: 1px solid var(--fv-line, rgb(255 255 255 / .08));
+}
+.fv-ks-mark { display: grid; place-items: center; color: var(--fv-fg3, #99a1ae); }
+.fv-ks-title { margin: 0; flex: 1; min-width: 0; font-size: var(--fv-fs-3, 16px); font-weight: 600; line-height: var(--fv-lh-tight, 1.3); color: var(--fv-fg, #f3f5f8); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fv-ks-find {
+  display: flex; align-items: center; gap: var(--fv-sp-8, 8px); width: 240px; height: var(--fv-ctl, 32px); padding: 0 var(--fv-sp-12, 12px); box-sizing: border-box;
+  border-radius: var(--fv-r-sm); background: var(--fv-ctl-bg, rgb(255 255 255 / .06)); color: var(--fv-fg3, #99a1ae);
+  transition: box-shadow var(--fv-dur-1, 160ms) var(--fv-ease-out, ease-out);
+}
+.fv-ks-find:focus-within { box-shadow: 0 0 0 2px var(--fv-accent-line, rgb(102 182 255 / .5)); }
+.fv-ks-find input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent; color: var(--fv-fg, #f3f5f8); font: inherit; font-size: var(--fv-fs-2, 13px); }
+.fv-ks-find input::placeholder { color: var(--fv-fg3, #99a1ae); }
+.fv-ks-find input::-webkit-search-cancel-button { display: none; }
+.fv-ks-close, .fv-ks-tabs [role=tab] { cursor: pointer; font: inherit; }
+.fv-ks-close {
+  display: grid; place-items: center; flex: none; width: var(--fv-ctl, 32px); height: var(--fv-ctl, 32px); padding: 0; border: 0; border-radius: var(--fv-r-sm);
+  background: transparent; color: var(--fv-fg3, #99a1ae); transition: background-color var(--fv-dur-1, 160ms) var(--fv-ease-out, ease-out), color var(--fv-dur-1, 160ms) var(--fv-ease-out, ease-out);
+}
+.fv-ks-close:hover { background: var(--fv-ctl-hover, rgb(255 255 255 / .11)); color: var(--fv-fg, #f3f5f8); }
+.fv-ks-close:active { background: var(--fv-accent-soft, rgb(27 148 252 / .16)); transition-duration: 0s; }
+.fv-ks-tabs {
+  flex: none; display: flex; gap: var(--fv-sp-4, 4px); padding: var(--fv-sp-8, 8px) var(--fv-sp-16, 16px); overflow-x: auto; scrollbar-width: none;
+  border-bottom: 1px solid var(--fv-line, rgb(255 255 255 / .08));
+}
+.fv-ks-tabs::-webkit-scrollbar { display: none; }
+.fv-ks-tabs [role=tab] {
+  flex: none; height: var(--fv-ctl-s, 28px); padding: 0 var(--fv-sp-12, 12px); border: 0; border-radius: var(--fv-rad-pill, 999px);
+  background: transparent; color: var(--fv-fg2, #c3c9d3); font-size: var(--fv-fs-2, 13px); white-space: nowrap;
+  transition: background-color var(--fv-dur-1, 160ms) var(--fv-ease-out, ease-out), color var(--fv-dur-1, 160ms) var(--fv-ease-out, ease-out);
+}
+.fv-ks-tabs [role=tab]:hover { background: var(--fv-ctl-bg, rgb(255 255 255 / .06)); color: var(--fv-fg, #f3f5f8); }
+.fv-ks-tabs [role=tab][aria-selected=true] { background: var(--fv-ctl-hover, rgb(255 255 255 / .11)); color: var(--fv-fg, #f3f5f8); font-weight: 600; }
+.fv-ks-body {
+  flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; outline: none;
+  padding: var(--fv-sp-16, 16px) var(--fv-sp-24, 24px) var(--fv-sp-24, 24px);
+  display: grid; grid-template-columns: repeat(var(--fv-ks-cols, 3), minmax(0, 1fr)); column-gap: var(--fv-sp-32, 32px); align-items: start;
+}
+.fv-ks-col { min-width: 0; }
+.fv-ks-section { margin: 0 0 var(--fv-sp-20, 20px); }
+.fv-ks-section h3 { margin: 0 0 var(--fv-sp-4, 4px); font-size: var(--fv-fs-1, 12px); font-weight: 600; line-height: var(--fv-lh, 1.5); color: var(--fv-fg3, #99a1ae); }
+.fv-ks-row { display: flex; align-items: center; justify-content: space-between; gap: var(--fv-sp-12, 12px); min-height: var(--fv-ctl, 32px); border-bottom: 1px solid var(--fv-line, rgb(255 255 255 / .08)); }
+.fv-ks-row:last-child { border-bottom: 0; }
+.fv-ks-row .fv-keys { flex: none; }
+.fv-ks-name { min-width: 0; color: var(--fv-fg2, #c3c9d3); line-height: var(--fv-lh-tight, 1.3); padding: var(--fv-sp-4, 4px) 0; }
+.fv-ks-empty { margin: 0; padding: var(--fv-sp-48, 48px) var(--fv-sp-16, 16px); text-align: center; color: var(--fv-fg3, #99a1ae); grid-column: 1 / -1; }
+@media (max-width: 520px) {
+  dialog.fv-keys-sheet { height: calc(100vh - var(--fv-sp-16, 16px)); }
+  .fv-ks-head { padding-left: var(--fv-sp-16, 16px); gap: var(--fv-sp-8, 8px); }
+  .fv-ks-find { width: auto; flex: 1; }
+  .fv-ks-title { flex: none; }
+  .fv-ks-mark { display: none; }
+  .fv-ks-body { padding: var(--fv-sp-12, 12px) var(--fv-sp-16, 16px) var(--fv-sp-16, 16px); }
+}
+@media (prefers-reduced-motion: reduce) { .fv-ks-tabs [role=tab], .fv-ks-close, .fv-ks-find { transition: none; } }
+
+/* The filter shows focus on its own rounded box (above), not with the shared ring on the bare input. */
+dialog.fv-keys-sheet .fv-ks-find input:focus-visible, dialog.fv-keys-sheet .fv-ks-find input:focus { outline: none !important; }

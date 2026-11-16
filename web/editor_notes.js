@@ -1,6 +1,7 @@
 import * as model from './editor_model.js';
 import {button, segmented} from './editor_adjust.js';
 import {isText} from './editor_text_model.js';
+import {tip as setTip} from './editor_tips.js';
 // A block's description (Iris 10-11): what the block shows and what 重新生成 uses.
 // The timeline shows its first line under the pictures; the Picture page edits it.
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
@@ -31,6 +32,7 @@ export function createBlockNotes({state, t, actions}) {
     const element = el('div', 'fv-ed-notes'), head = el('div', 'fv-ed-notes-head');
     const label = el('label', 'fv-ed-adjust-label', t('Description', '说明'));
     const again = button(t('Regenerate', '重新生成'), {onClick: () => regenerate()}); again.classList.add('fv-ed-notes-again'); again.prepend(glyph(AGAIN));
+    setTip(again, {name: t('Regenerate', '重新生成'), use: t('Make this block again from its description', '按这一段的说明重新生成')});
     const box = el('textarea', 'fv-ed-notes-text'); box.id = `fv-ed-notes-${++serial}`; box.rows = 1; label.htmlFor = box.id;
     const versions = el('div', 'fv-ed-notes-versions'), versionsLabel = el('span', 'fv-ed-adjust-label', t('Version', '版本'));
     head.append(label, again); element.append(head, box, versions);

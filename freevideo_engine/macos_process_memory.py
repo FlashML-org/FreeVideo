@@ -74,7 +74,7 @@ class ProcessMemory:
             memory_read_errors=errors, system_available_bytes=available,
             system_physical_available_bytes=available, system_commit_available_bytes=None,
             effective_available_bytes=available, inference_available_bytes=available,
-            macos_memory=system)
+            system_total_bytes=system.get('total_bytes'), macos_memory=system)
 
     def result(self):
         return dict(process_tree_peak_rss_bytes=self.peak_rss,

@@ -1,5 +1,5 @@
 // What the LoRA check found, as words for the row; the check itself is /freevideo/lora/check.
-const FAMILIES = {wan: 'Wan 2.x', hunyuan: 'HunyuanVideo', ltx: 'LTX-Video', sd: 'Stable Diffusion'};
+const FAMILIES = {wan: true, hunyuan: true, ltx: true, sd: true};
 const size = shape => Array.isArray(shape) ? shape.join('×') : '';
 
 /** Row notice: partial application has no details; unusable files keep their explanation. */
@@ -15,7 +15,8 @@ export function describeVerdict(verdict, t) {
     else if (verdict.reason === 'shape') reason = t('does not match the current model', '和当前模型的结构不匹配');
     else if (verdict.reason === 'acceleration') reason = t('an acceleration LoRA made for the original model. The FreeVideo model is already accelerated and does not need one',
         '这是为原版模型制作的加速 LoRA。FreeVideo 的模型已经加速，无需此类 LoRA');
-    else reason = family ? t(`made for ${family}`, `这是给 ${family} 训练的 LoRA`) : t('not made for the FreeVideo model', '不适用于 FreeVideo 的模型');
+    // The model family it was made for stays out of the interface (it is in the report draft below).
+    else reason = family ? t('made for another model', '这是为其他模型制作的 LoRA') : t('not made for the FreeVideo model', '不适用于 FreeVideo 的模型');
     const summary = verdict.summary || {};
     const lines = [];
     if (verdict.reason === 'shape') {

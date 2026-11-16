@@ -132,6 +132,65 @@ def _copy_stream(container, template):
         return container.add_stream(template=template)
 
 
+# The two keys that carry the user's prompt, the graph and the names of the files it read.
+PRIVATE_KEYS = ('prompt', 'workflow')
+
+
+def carries_graph(path):
+    """Whether the MP4 at `path` carries the prompt or the workflow. A file PyAV cannot open is searched for
+    the QuickTime key names themselves, so an unreadable file is never taken for one without them."""
+    try:
+        import av
+        with av.open(str(path)) as reader:
+            return any(reader.metadata.get(key) for key in PRIVATE_KEYS)
+    except ImportError:
+        pass
+    except Exception:
+        logging.info('FreeVideo searched an unreadable video for its workflow keys.')
+    markers = [b'mdta' + key.encode() for key in PRIVATE_KEYS]
+    tail = b''
+    with open(path, 'rb') as stream:
+        for block in iter(lambda: stream.read(4 * 1024 * 1024), b''):
+            if any(marker in tail + block for marker in markers):
+                return True
+            tail = block[-16:]
+    return False
+
+
+def stripped_copy(path, target):
+    """Write the MP4 at `path` to `target` without its prompt and workflow, every packet copied unchanged.
+
+    For a video that leaves this machine: the library's own file keeps both, so dropping it on the canvas
+    still restores the graph. Raises when the copy does not match the original packet for packet and in
+    timing, and then nothing is left at `target`."""
+    import av
+    path, target = Path(path), Path(target)
+    if disk_space.free_bytes(path.parent) < path.stat().st_size + 256 * 1024 * 1024:
+        raise OSError(28, 'Not enough free disk space for the download copy')
+    try:
+        with av.open(str(path)) as source:
+            video = next(iter(source.streams.video), None)
+            timescale = video.time_base.denominator if video is not None and video.time_base is not None else None
+            options = {'movflags': 'faststart', **({'video_track_timescale': str(timescale)} if timescale else {})}
+            with av.open(str(target), 'w', format='mp4', options=options) as writer:
+                if not source.streams or any(stream.type not in ('video', 'audio') or stream.codec_context is None
+                                             for stream in source.streams):
+                    raise ValueError('Only videos with nothing but audio and video streams are copied')
+                streams = {stream: _copy_stream(writer, stream) for stream in source.streams}
+                for packet in source.demux(*streams):
+                    if packet.dts is not None:
+                        packet.stream = streams[packet.stream]
+                        writer.mux(packet)
+        if _media(target) != _media(path) or _timing(target) != _timing(path):
+            raise ValueError('The download copy does not match the original')
+        if carries_graph(target):
+            raise ValueError('The download copy still carries the workflow')
+    except BaseException:
+        target.unlink(missing_ok=True)
+        raise
+    return target
+
+
 def saved_workflow(path):
     """The canvas workflow in a run's workflow.json, or None. Requests queued
     without the canvas (the API, scripts) leave an empty one."""

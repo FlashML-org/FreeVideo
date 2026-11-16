@@ -148,7 +148,8 @@ export function createPreviewPicture(host, frame, {state, t}) {
         const m = view.matrix.map((v,i) => v * (i % 2 ? sy : sx));
         Object.assign(value.video.style, cssTransform(view, bw, bh));
         if (traditional) value.video.style.objectFit = 'contain';
-        value.video.style.borderRadius = traditional ? `${8/sx}px / ${8/sy}px` : '0';
+        // The picture frame already clips the corners (radius token); the video itself is never rounded by a scaled value.
+        value.video.style.borderRadius = '0';
         if (view.crop.x === 0 && view.crop.y === 0 && view.crop.width === view.source.width && view.crop.height === view.source.height) value.video.style.clipPath = 'none';
         if (policy.mode === 'output') {
             const polygon = cropping ? picturePolygon(p) : visibleRect(p).polygon;

@@ -1,14 +1,35 @@
 .fv-ed-description-box{position:relative;display:flex;flex:1;min-width:0}
 .fv-ed-description-box .fv-ed-description{width:100%;min-height:36px;max-height:108px;line-height:18px;padding:8px 36px 8px 10px;border-radius:var(--fv-r-sm);resize:none;overflow-y:hidden}
-.fv-ed-expand,.fv-editor .fv-ed-expand,.fv-studio .fv-ed-expand{position:absolute;right:4px;bottom:4px;width:26px;height:26px;padding:4px;min-height:0;border:0;background:var(--fv-bg);color:var(--fv-muted)}
+.fv-ed-expand,.fv-editor .fv-ed-expand,.fv-studio .fv-ed-expand{position:absolute;right:4px;bottom:4px;display:inline-grid;place-items:center;box-sizing:border-box;width:28px;height:28px;padding:0;min-height:0;border:0;background:var(--fv-bg);color:var(--fv-muted)}
 .fv-ed-expand svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
-.fv-ed-expand-dialog{box-sizing:border-box;position:fixed;inset:0;margin:auto;width:60vw;height:70dvh;max-width:calc(100vw - 32px);max-height:calc(100dvh - 32px);padding:20px;border:1px solid var(--fv-border);border-radius:var(--fv-r-lg);background:var(--fv-card);color:var(--fv-ink)}
-.fv-ed-expand-dialog[open]{display:flex;flex-direction:column;gap:16px}
-.fv-ed-expand-dialog::backdrop{background:color-mix(in srgb,var(--fv-bg) 75%,transparent)}
-.fv-ed-expand-dialog .fv-ed-expand-text{box-sizing:border-box;flex:1;min-height:0;height:auto;max-height:none;width:100%;resize:none;padding:12px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);background:var(--fv-bg);color:var(--fv-ink);font:14px/1.6 var(--fv-font)}
-.fv-ed-expand-buttons{display:flex;justify-content:flex-end;gap:8px;flex:none}
-.fv-ed-expand-buttons button{height:36px;padding:0 16px;border-radius:var(--fv-r-sm);font:500 13px/1.4 var(--fv-font)}
+/* The description panel: a solid sheet (16 px corners, no glow or gradient) with the title and Close on top, the text
+   large in the middle (16/26, at most 760 px wide, centred), the length and Done below. */
+.fv-ed-expand-dialog{box-sizing:border-box;position:fixed;inset:0;margin:auto;width:min(880px,calc(100vw - 64px));height:min(640px,calc(100dvh - 64px));max-width:none;max-height:none;padding:0;
+  border:1px solid var(--fv-line2,var(--fv-border));border-radius:16px;background:rgb(var(--fv-solid2,28 31 38));color:var(--fv-fg,var(--fv-ink));box-shadow:0 24px 64px rgb(0 0 0 / .35)}
+:root[data-theme=light] .fv-ed-expand-dialog{background:rgb(var(--fv-solid2,255 255 255));box-shadow:0 24px 64px rgb(20 24 32 / .18)}
+.fv-ed-expand-dialog[open]{display:grid;grid-template-rows:auto minmax(0,1fr) auto}
+.fv-ed-expand-dialog::backdrop{background:rgb(0 0 0 / .45)}
+:root[data-theme=light] .fv-ed-expand-dialog::backdrop{background:rgb(20 24 32 / .28)}
+.fv-ed-expand-head{display:flex;align-items:center;justify-content:space-between;gap:12px;height:56px;padding:0 12px 0 24px;box-sizing:border-box}
+.fv-ed-expand-title{font:500 13px/20px var(--fv-font);color:var(--fv-fg2,var(--fv-muted))}
+.fv-ed-expand-close,.fv-studio .fv-ed-expand-close,.fv-editor .fv-ed-expand-close{display:inline-grid;place-items:center;width:32px;height:32px;min-height:32px;padding:0;border:0;border-radius:8px;background:transparent;color:var(--fv-fg3,var(--fv-muted))}
+.fv-ed-expand-close:hover{background:var(--fv-ctl-hover,rgb(127 127 127 / .12));color:var(--fv-fg,var(--fv-ink))}
+.fv-ed-expand-close svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round}
+.fv-ed-expand-body{display:flex;justify-content:center;min-height:0;padding:0 24px}
+.fv-ed-expand-dialog .fv-ed-expand-text{box-sizing:border-box;display:block;width:100%;max-width:760px;height:100%;min-height:0;max-height:none;margin:0;padding:8px 0;resize:none;
+  border:0;border-radius:0;background:transparent;box-shadow:none;outline:none;color:var(--fv-fg,var(--fv-ink));font:400 16px/26px var(--fv-font);overflow:auto;scrollbar-width:thin}
+.fv-ed-expand-dialog .fv-ed-expand-text::placeholder{color:var(--fv-fg3,var(--fv-muted))}
+.fv-ed-expand-foot{display:flex;align-items:center;gap:16px;height:52px;padding:0 12px 0 24px;box-sizing:border-box;border-top:1px solid var(--fv-line,var(--fv-border))}
+.fv-ed-expand-count{flex:none;font:400 12px/16px var(--fv-font);color:var(--fv-fg3,var(--fv-muted));font-variant-numeric:tabular-nums}
+.fv-ed-expand-done,.fv-studio .fv-ed-expand-done,.fv-editor .fv-ed-expand-done{margin-left:auto;height:32px;min-height:32px;padding:0 12px;border:0;border-radius:8px;background:transparent;color:var(--fv-fg2,var(--fv-ink));font:500 13px/20px var(--fv-font)}
+.fv-ed-expand-done:hover{background:var(--fv-ctl-hover,rgb(127 127 127 / .12));color:var(--fv-fg,var(--fv-ink))}
 @media(max-width:680px){.fv-ed-description-box{width:100%;flex:1 1 100%;order:-1}}
-@media(max-width:400px){.fv-ed-expand-dialog{width:100vw;height:100dvh;max-width:100vw;max-height:100dvh;border-radius:0;padding:16px}}
-.fv-ed-expand-note{flex:none;min-height:0;font:13px/1.4 var(--fv-font);color:var(--fv-muted)}
+@media(max-width:480px){.fv-ed-expand-dialog{width:100vw;height:100dvh;border-radius:0}.fv-ed-expand-head,.fv-ed-expand-foot{padding-left:16px}.fv-ed-expand-body{padding:0 16px}}
+.fv-ed-expand-note{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:400 12px/16px var(--fv-font);color:var(--fv-warn,var(--fv-muted))}
 .fv-ed-expand-note:empty{display:none}
+/* The views' own field and button rules stay out of the panel: the text has no frame or ring (its caret shows where
+   it is), Done and Close are quiet until hovered. */
+html dialog.fv-ed-expand-dialog.fv-ed-expand-dialog textarea.fv-ed-expand-text,html dialog.fv-ed-expand-dialog.fv-ed-expand-dialog textarea.fv-ed-expand-text:is(:hover,:focus,:focus-visible){border:0!important;outline:none!important;box-shadow:none!important;background:transparent!important}
+.fv-ed-expand-dialog .fv-ed-expand-foot button.fv-ed-expand-done,.fv-ed-expand-dialog .fv-ed-expand-head button.fv-ed-expand-close{border:0;background:transparent;box-shadow:none}
+.fv-ed-expand-dialog .fv-ed-expand-foot button.fv-ed-expand-done:hover,.fv-ed-expand-dialog .fv-ed-expand-head button.fv-ed-expand-close:hover{background:var(--fv-ctl-hover,rgb(127 127 127 / .12))}
+.fv-ed-expand-dialog button:focus-visible{outline:2px solid var(--fv-accent-line,var(--fv-accent));outline-offset:2px}

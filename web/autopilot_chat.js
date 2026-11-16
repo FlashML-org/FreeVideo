@@ -2,7 +2,7 @@
 // cards at the place they happened. Reads and sends use the page session; the agent's token never enters the page.
 import {agentGet, agentPost, retryAgentPost} from './agent_session.js';
 import {emptyFrameIcon} from './empty_frame.js';
-import {ATTACH, attachmentURL, pickPictures, thumbnail, uploadPicture} from './chat_attachments.js';
+import {ATTACH, attachmentURL, pickPictures, pictureGone, picturesOf, releasePicture, releasePictures, thumbnail, uploadPicture} from './chat_attachments.js';
 import {SCENE_TEXT, pickScene, sceneList, startScene, watchScene} from './whitebox_scenes.js';
 import {chatData, chatDelay, chatReadRequest, emptyChat, chatMerge, chatEntries, canSend, newId, SEND_ATTEMPTS, WAIT_FOR_AGENT, sendRefused, sendError} from './chat_data.js';
 export {emptyChat, chatMerge, chatEntries, canSend} from './chat_data.js';
@@ -15,8 +15,14 @@ import {renderImageFailure} from './image_generation.js';
 import {issueButton} from './issue_button.js';
 import {about} from './request_assets.js';
 import {showEmptyPrompt} from './empty_prompt_notice.js';
+import {createSideRail, ICON, localTime, markText, matches, promptOf, statusKey, statusText} from './autopilot_panels.js';
+import {tip, WHY} from './autopilot_tips.js';
+import {createHistoryMenu, forgetStoredSaid, saidIn} from './autopilot_history.js';
 
-const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('./autopilot_chat.css', import.meta.url).href; document.head.append(css);
+// The conversation's own sheet, then the glass layout over it (rails, the floating box to type in, the cards).
+for (const name of ['./autopilot_chat.css', './autopilot_glass.css']) {
+    const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = new URL(name, import.meta.url).href; document.head.append(css);
+}
 
 const CHAT_ISSUE = ['Chat', '对话'];
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
@@ -85,6 +91,7 @@ function failureCardReason(value, t) {
 export {about};
 export function clock(seconds) { const s = Math.max(0, Math.round(seconds)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
 export const jobName = (job, t) => job.label || (job.kind === 'image' ? t('Picture', '图片') : t('Video', '视频'));
+export {promptOf};
 export const jobFraction = job => Math.max(0, Math.min(1, Number(job.progress?.fraction) || 0));
 // What a job's last progress stands for `age` seconds after it was made, by the creation panel's rule.
 export function jobEstimate(job, age) {
@@ -200,8 +207,8 @@ function imageViewer(t, src, name, opener, failed) {
     const dialog = el('dialog', 'fv-studio fv-chat-image-viewer'), actions = el('div', 'fv-chat-actions');
     dialog.setAttribute('aria-label', name);
     const close = press('fv-close', '×', () => closeDialog(dialog));
-    close.setAttribute('aria-label', t('Close', '关闭')); close.title = t('Close', '关闭');
-    actions.append(press('fv-chat-save', t('Download', '下载'), () => saveImage(src)), close);
+    close.setAttribute('aria-label', t('Close', '关闭')); close.title = t('Close', '关闭'); tip(close, 'close', t);
+    actions.append(tip(press('fv-chat-save', t('Download', '下载'), () => saveImage(src)), 'download', t), close);
     const stage = el('div', 'fv-chat-image-stage'), image = el('img');
     image.alt = name; image.draggable = false; stage.append(image); dialog.append(actions, stage);
     let scale = 1, fit = 1, x = 0, y = 0, disposed = false;
@@ -272,14 +279,25 @@ function imageViewer(t, src, name, opener, failed) {
 // open(job) shows a finished video in Creations, edit(job) takes it to the editing view. shown() says whether the
 // user can see the conversation; the page calls sync() whenever that may have changed. changed(view) follows every
 // answer: {known, agent, current, active, any}.
-export function agentChat(t, api, {open, edit, shown = () => true, changed = () => {}, interval = 1500, productVersion = () => null, initialPrompt = '', initialWhiteboxPreview = false, initialScene = '', hint = null} = {}) {
+// An earlier version kept the last reading of the chats (with its messages) in this browser for a quick first visit.
+// Nothing of a conversation is kept in the browser now: the view is kept while the page is open instead, and the
+// shell holds the previous frame until the first reading is drawn. The old record is removed.
+const CACHE_PREFIX = 'freevideo.autopilot.cache:';
+export function readChatCache() {
+    try {
+        for (let i = localStorage.length - 1; i >= 0; i--) { const key = localStorage.key(i); if (key?.startsWith(CACHE_PREFIX)) localStorage.removeItem(key); }
+    } catch { /* Nothing to remove. */ }
+    return null;
+}
+
+export function agentChat(t, api, {open, edit, shown = () => true, changed = () => {}, interval = 1500, productVersion = () => null, initialPrompt = '', initialWhiteboxPreview = false, initialScene = '', hint = null, undoMs = 0} = {}) {
     const dataLayer = chatData(api);
     const element = el('section', 'fv-chat'), main = el('div', 'fv-chat-main'), scroller = el('div', 'fv-chat-scroll'), log = el('ol', 'fv-chat-log');
     log.setAttribute('role', 'log'); log.setAttribute('aria-label', t('Conversation', '对话'));
     const down = press('fv-chat-down', null, () => { scroller.scrollTo({top: scroller.scrollHeight, behavior: 'smooth'}); });
     down.append(glyph('M12 5v14M5 12l7 7 7-7')); down.setAttribute('aria-label', t('Latest', '最新')); down.hidden = true;
     const form = el('form', 'fv-chat-input'), input = el('textarea'), sendButton = el('button', 'fv-chat-send');
-    input.rows = 1; input.maxLength = 8000; input.setAttribute('aria-label', t('Ask Autopilot', '对 AI 全自动说'));
+    input.rows = 1; input.maxLength = 8000; input.setAttribute('aria-label', t('Tell the assistant', '对助手说'));
     sendButton.type = 'submit'; sendButton.setAttribute('aria-label', t('Send', '发送')); sendButton.append(glyph('M12 19V5M5 12l7-7 7 7'));
     // While the agent is thinking and has started nothing, the send key is the stop key: same place, a solid square.
     let stopMode = false;
@@ -290,6 +308,9 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         sendButton.setAttribute('aria-label', label); sendButton.title = stopMode ? label : '';
         sendButton.querySelector('path').setAttribute('d', stopMode ? STOP_GLYPH : SEND_GLYPH);
         sendButton.disabled = stopMode ? false : !composeAllowed() || draftSending() || !readyPictures().length && !input.value.trim() || stagedList().some(item => !item.attachment);
+        const why = stopMode || !sendButton.disabled ? null : !composeAllowed() ? (creating || !inSelectedChat() ? WHY.loading : WHY.notConnected)
+            : draftSending() ? WHY.sending : stagedList().some(item => !item.attachment) ? WHY.uploading : WHY.empty;
+        tip(sendButton, stopMode ? 'halt' : 'send', t, {why: why ? t(...why) : ''});
     }
     async function abandon() {
         const session = state.session;
@@ -330,7 +351,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             if (rows.length === 1 && !sceneMenu.hidden) { toggleScenes(false); void runScene(rows[0].id); return; }
             sceneMenu.replaceChildren(...rows.map(row => {
                 const item = press('fv-chat-scene-item', row.name, () => { toggleScenes(false); void runScene(row.id); });
-                item.setAttribute('role', 'menuitem'); return item;
+                item.setAttribute('role', 'menuitem'); tip(item, 'scene', t); return item;
             }));
         }).catch(() => { sceneRows = null; toggleScenes(false); say(t(...SCENE_TEXT.failed) + t('Connection lost. Try again.', '连接中断，请重试。')); });
     }
@@ -367,11 +388,11 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         strip.replaceChildren(...list.map(item => {
             const li = el('li'), drop = press('fv-chat-attached-x', '×', () => removePicture(item));
             li.dataset.state = item.failed ? 'failed' : item.attachment ? 'ready' : 'uploading';
-            drop.title = t(...ATTACH.remove); drop.setAttribute('aria-label', drop.title);
+            drop.title = t(...ATTACH.remove); drop.setAttribute('aria-label', drop.title); tip(drop, 'dropPicture', t);
             li.append(thumbnail(item.url), drop);
             // A picture that did not upload is tried again by clicking it.
             if (item.failed === 'failed') {
-                li.tabIndex = 0; li.setAttribute('role', 'button'); li.title = t(...ATTACH.retry); li.setAttribute('aria-label', li.title);
+                li.tabIndex = 0; li.setAttribute('role', 'button'); li.title = t(...ATTACH.retry); li.setAttribute('aria-label', li.title); tip(li, 'uploadAgain', t);
                 li.addEventListener('click', event => { if (event.target === drop) return; void upload(item, list); });
                 listenDialogKey(li, 'keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); void upload(item, list); } });
             }
@@ -379,17 +400,41 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         }));
         grow();
     }
-    function removePicture(item) {
+    // Removing a staged picture also tells the engine to free it, unless another draft still holds the same picture.
+    function removePicture(item, release = true) {
         item.controller?.abort();
         for (const list of staged.values()) { const at = list.indexOf(item); if (at >= 0) list.splice(at, 1); }
+        const name = item.attachment?.name;
+        if (release && name && ![...staged.values()].some(list => list.some(other => other.attachment?.name === name))) void releasePicture(api, name);
         URL.revokeObjectURL?.(item.url); renderStrip(); input.focus();
+    }
+    // A send refused because its pictures were freed meanwhile uploads them once more from the staged files.
+    // The stored pictures of a chat: the one being read from memory, another by one read; staged ones of its draft too.
+    async function chatPictures(session) {
+        const staged_ = (staged.get(session) || []).map(item => item.attachment?.name).filter(Boolean);
+        let items = session === state.session ? [...state.items.values()] : [];
+        if (session !== state.session) {
+            try { const response = await dataLayer.read({session}); if (response.ok) items = (await response.json()).items || []; } catch { /* Released by the engine's own cleanup, if any. */ }
+        }
+        return [...new Set([...picturesOf(items), ...staged_])];
+    }
+    async function reupload(entry) {
+        const pictures = [];
+        for (const picture of entry.attachments || []) {
+            const item = [...staged.values()].flat().find(other => other.attachment?.name === picture.name && other.file);
+            if (!item) return false;
+            try { item.attachment = await uploadPicture(api, item.file); } catch { return false; }
+            pictures.push({...item.attachment, preview: picture.preview || item.url});
+        }
+        entry.attachments = pictures;
+        return pictures.length > 0;
     }
     async function upload(item, list, session = draftSession) {
         item.controller = new AbortController(); item.failed = null; uploads.add(item); renderStrip();
         try {
             item.attachment = await uploadPicture(api, item.file, item.controller.signal);
             // The same picture twice is one stored picture; the copy is dropped.
-            if (list.some(other => other !== item && other.attachment?.name === item.attachment.name)) removePicture(item);
+            if (list.some(other => other !== item && other.attachment?.name === item.attachment.name)) removePicture(item, false);
         } catch (failure) {
             if (!failure?.problem) return;
             // Unreadable pictures are taken out; an upload that failed stays, marked, to be tried again.
@@ -404,7 +449,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         const session = draftSession, list = stagedList(session), {accepted, problem} = pickPictures(files, ATTACH.count - list.length);
         say(problem ? t(...ATTACH[problem]) : '');
         for (const file of accepted) {
-            const item = {name: file.name, file, url: URL.createObjectURL(file), attachment: null, failed: null, controller: null};
+            const item = {file, url: URL.createObjectURL(file), attachment: null, failed: null, controller: null};
             list.push(item); void upload(item, list, session);
         }
         renderStrip();
@@ -418,11 +463,30 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         if (![...event.dataTransfer?.types || []].includes('Files')) return;
         event.preventDefault(); if (type === 'drop') addPictures(event.dataTransfer.files);
     });
-    form.append(strip, input, attachButton, scenesButton, whiteboxButton, sendButton, fileInput); scroller.append(log); main.append(scroller, down, sceneMenu, form); element.append(main);
+    // The box to type in floats on its own layer under the conversation: the words on top, the tools on one row
+    // below, Send at the end of that row. Notices, the next download and the scene list are anchored above it, so
+    // they come and go without moving the conversation.
+    const composeTools = el('div', 'fv-chat-compose-tools'), spacer = el('span', 'fv-chat-grow');
+    const historyButton = press('fv-chat-history-button', null, () => history.open());
+    historyButton.append(glyph('M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2', 2), el('span', null, t('History and templates', '历史与模板')));
+    historyButton.setAttribute('aria-label', t('History and templates', '历史与模板')); tip(historyButton, 'history', t);
+    composeTools.append(attachButton, whiteboxButton, scenesButton, historyButton, spacer, sendButton);
+    form.append(strip, input, composeTools, fileInput);
+    // The slot: one line of fixed height right above the box, kept even when empty, for receipts, the next download
+    // and failures; one shows at a time (a notice before the download line), so nothing ever moves the conversation.
+    const dock = el('div', 'fv-chat-dock sgf-avoid'), above = el('div', 'fv-chat-above'), slot = el('div', 'fv-chat-slot');
+    slot.setAttribute('aria-live', 'polite');
+    scroller.append(log); dock.append(above, slot, form); main.append(scroller, dock); element.append(main);
     const notice = el('p', 'fv-chat-notice'); notice.hidden = true; notice.setAttribute('role', 'status');
-    const noticeRow = el('div', 'fv-chat-notice-row'); noticeRow.append(notice); main.insertBefore(noticeRow, form);
+    const noticeRow = el('div', 'fv-chat-notice-row'); noticeRow.append(notice);
+    above.append(down, sceneMenu); slot.append(noticeRow);
+    // Sentences said before (any chat, this browser) and templates; picking one fills the box and never sends.
+    forgetStoredSaid();
+    const history = createHistoryMenu(t, {button: historyButton, input, host: above, time: at => at ? localTime(at, t) : '', said: () => saidIn([...state.items.values()]),
+        fill: text => { input.value = text; input.dispatchEvent(new Event('input')); }});
     // What the next video would download first, the studio's line, above the box the request is typed in.
-    if (hint) main.insertBefore(hint.element, form);
+    if (hint) slot.append(hint.element);
+    tip(attachButton, 'attach', t); tip(whiteboxButton, 'whitebox', t); tip(scenesButton, 'scenes', t); tip(down, 'latest', t);
     // A quoted button name stays on one line, so “新对话” never wraps in the middle.
     function quoted(node, text) {
         if (node.textContent === text) return;
@@ -432,8 +496,13 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
     }
     // `failure`: the line reports a fault, so the button sits beside it.
     const noticeIssue = issueButton(t, () => ({where: CHAT_ISSUE, message: notice.textContent})); noticeIssue.hidden = true;
-    noticeRow.append(noticeIssue);
-    function say(text, failure = false) { quoted(notice, text); notice.hidden = !text; noticeIssue.hidden = !text || !failure; }
+    // A receipt's one action (Undo) sits beside it on the same line.
+    const noticeAction = press('fv-chat-notice-action', null, () => noticeAction.run?.()); noticeAction.hidden = true;
+    noticeRow.append(noticeAction, noticeIssue);
+    function say(text, failure = false) { quoted(notice, text); notice.title = text || ''; notice.hidden = !text; noticeIssue.hidden = !text || !failure; noticeAction.hidden = true; noticeAction.run = null; }
+    function receipt(text, label, key, run) {
+        say(text); noticeAction.textContent = label; noticeAction.run = run; noticeAction.hidden = false; tip(noticeAction, key, t);
+    }
 
     let dismissImage = null;
     let state = emptyChat(), pending = [], known = false, stopped = false, timer = null, busy = false, failures = 0;
@@ -486,7 +555,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
     const deleteError = el('div', 'fv-chat-error fv-chat-delete-error'); deleteError.hidden = true; deleteError.setAttribute('role', 'alert');
     function deleteFailed(session, error, stop = false, report = true) {
         const text = el('p', null, error), actions = el('div', 'fv-chat-delete-actions');
-        if (stop) actions.append(press('fv-chat-menu-item', t('Stop and delete', '停止并删除'), () => { deleteError.hidden = true; void deleteChat(session, true, true); }));
+        if (stop) actions.append(tip(press('fv-chat-menu-item', t('Stop and delete', '停止并删除'), () => { deleteError.hidden = true; void deleteChat(session, true, true); }), 'stopDelete', t));
         if (report) actions.append(issueButton(t, () => ({where: CHAT_ISSUE, message: text.textContent})));
         deleteError.replaceChildren(text, actions); deleteError.hidden = false;
     }
@@ -495,8 +564,105 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
     chats.append(glyph('M4 5h16v12H9l-5 4V5M8 9h8M8 13h5'), chatsDot);
     chats.title = t('Chats', '对话'); chats.setAttribute('aria-label', chats.title);
     chats.setAttribute('aria-controls', sidebar.id); chats.setAttribute('aria-expanded', 'false');
-    tools.hidden = true; tools.append(chats); main.prepend(tools); sidebar.append(newChat, newError, newIssue, deleteError, list, skippedConversations); element.prepend(sidebar);
-    const listNodes = new Map(), narrow = () => window.matchMedia('(max-width: 720px)').matches;
+    tip(newChat, 'newChat', t); tip(chats, 'chats', t);
+    // The left panel: the chats (with a search over their names) and, at its foot, whether an assistant is connected.
+    // It stays in place with no chats yet, so the conversation keeps the middle of the window.
+    const rail = el('aside', 'fv-chat-rail sgf-avoid'), railHead = el('header', 'fv-chat-panel-head');
+    rail.setAttribute('aria-label', t('Chats', '对话'));
+    // On a narrow window the panel is a drawer, and its toggle closes it.
+    // From 900 to 1279 px the panel is a strip whose toggle floats the whole panel out over the conversation.
+    const railToggle = press('fv-chat-panel-toggle', null, () => narrow() ? drawer(false, true) : compact() ? drawer(chats.getAttribute('aria-expanded') !== 'true', true) : setPanel('left', panels.left === 'closed'));
+    railToggle.append(glyph(ICON.panelLeft, 2));
+    railHead.append(el('h2', null, t('Chats', '对话')), newChat, railToggle);
+    const searchRow = el('label', 'fv-chat-search'), searchBox = el('input');
+    searchBox.type = 'search'; searchBox.placeholder = t('Search chats and shots', '搜索对话和镜头'); searchBox.setAttribute('aria-label', t('Search chats', '搜索对话'));
+    searchBox.autocomplete = 'off'; searchBox.spellcheck = false; tip(searchBox, 'search', t, {title: false});
+    const slashKey = el('kbd', 'fv-chat-key', '/'); slashKey.setAttribute('aria-hidden', 'true');
+    searchRow.append(glyph(ICON.search, 2), searchBox, slashKey);
+    const noMatch = el('p', 'fv-chat-rail-empty fv-chat-no-match', t('No chat matches.', '没有匹配的对话。')); noMatch.hidden = true;
+    const railEmpty = el('p', 'fv-chat-rail-empty', t('No chats yet. Say what you want to make; the chat is kept here.', '还没有对话。说一句想做什么，对话会留在这里。'));
+    const railFoot = el('footer', 'fv-chat-rail-foot');
+    searchBox.addEventListener('input', () => renderConversations());
+    listenDialogKey(searchBox, 'keydown', event => { if (event.key === 'Escape' && searchBox.value) { event.preventDefault(); event.stopPropagation(); searchBox.value = ''; renderConversations(); } });
+    // The right panel's toggle on narrow windows sits opposite the chats toggle, so the head stays symmetric.
+    const head = el('div', 'fv-chat-head'), headWords = el('div', 'fv-chat-head-words'), headTitle = el('b', 'fv-chat-head-title'), headSub = el('small', 'fv-chat-head-sub');
+    headWords.append(headTitle, headSub);
+    const tasksToggle = press('fv-chat-tasks-toggle', null, () => sideDrawer(tasksToggle.getAttribute('aria-expanded') !== 'true'));
+    const tasksDot = el('i', 'fv-chat-running'); tasksDot.setAttribute('aria-hidden', 'true'); tasksDot.hidden = true;
+    tasksToggle.append(glyph(ICON.tasks, 2), tasksDot); tasksToggle.setAttribute('aria-label', t('Tasks', '任务')); tasksToggle.setAttribute('aria-expanded', 'false');
+    tip(tasksToggle, 'tasks', t);
+    const headEnd = el('div', 'fv-chat-head-end'); headEnd.append(tasksToggle);
+    tools.hidden = true; tools.append(chats); head.append(tools, headWords, headEnd); main.prepend(head);
+    // Why a new chat, a rename or a deletion did not happen floats at the panel's lower edge, so the list never moves.
+    const railNotices = el('div', 'fv-chat-rail-notices'); railNotices.append(newError, newIssue, deleteError);
+    sidebar.append(searchRow, list, skippedConversations, noMatch);
+    rail.append(railHead, sidebar, railEmpty, railFoot, railNotices); element.prepend(rail);
+    // Both panels can fold away; the middle column keeps its place while either is open, so the conversation never jumps.
+    let side_ = null;
+    const PANELS_KEY = 'freevideo.autopilot.panels';
+    let panels = {left: 'open', right: 'open'};
+    try { panels = {...panels, ...JSON.parse(localStorage.getItem(PANELS_KEY) || '{}')}; } catch {}
+    function setPanel(side, open) {
+        panels = {...panels, [side]: open ? 'open' : 'closed'};
+        try { localStorage.setItem(PANELS_KEY, JSON.stringify(panels)); } catch {}
+        drawPanels();
+        (side === 'left' ? railToggle : side_.element.querySelector('.fv-chat-panel-toggle'))?.focus({preventScroll: true});
+    }
+    function drawPanels() {
+        element.dataset.left = panels.left === 'closed' ? 'closed' : 'open'; element.dataset.right = panels.right === 'closed' ? 'closed' : 'open';
+        const leftOpen = element.dataset.left === 'open', rightOpen = element.dataset.right === 'open';
+        railToggle.setAttribute('aria-label', leftOpen ? t('Hide chats', '收起对话栏') : t('Show chats', '展开对话栏'));
+        railToggle.setAttribute('aria-expanded', String(leftOpen)); tip(railToggle, leftOpen ? 'collapseLeft' : 'expandLeft', t);
+        const sideToggle = side_?.element.querySelector('.fv-chat-panel-toggle');
+        if (sideToggle) { sideToggle.setAttribute('aria-label', rightOpen ? t('Hide tasks', '收起任务栏') : t('Show tasks', '展开任务栏')); sideToggle.setAttribute('aria-expanded', String(rightOpen)); tip(sideToggle, rightOpen ? 'collapseRight' : 'expandRight', t); }
+    }
+    // The right panel: this chat's tasks and the details of the one picked. Its buttons act as the cards' own do.
+    const findCard = id => [...log.children].find(item => item.dataset?.job === id) || null;
+    function showCard(id, focus = null) {
+        drawStage();
+        const item = findCard(id);
+        if (!item) return;
+        if (narrow()) sideDrawer(false);
+        item.scrollIntoView?.({block: 'center', behavior: globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ? 'auto' : 'smooth'});
+        item.dataset.flash = 'true'; setTimeout(() => { delete item.dataset.flash; }, 900);
+        const target = focus && item.querySelector(focus);
+        (target || item).focus?.({preventScroll: true});
+    }
+    side_ = createSideRail(t, {
+        pick: id => showCard(id),
+        stop: id => void cancelJobs([id]),
+        why: id => showCard(id, '.fv-chat-retry:not([hidden]), .fv-report-button, button'),
+        collapse: () => narrow() ? sideDrawer(false, true) : compact() ? sideDrawer(tasksToggle.getAttribute('aria-expanded') !== 'true', true) : setPanel('right', element.dataset.right === 'closed'),
+        open: row => {
+            const job = row.job;
+            if (job.kind === 'image' && job.thumbnail) {
+                const opener = document.activeElement;
+                dismissImage?.(); dismissImage = imageViewer(t, api.apiURL(job.thumbnail), row.title, opener || element, () => {});
+            } else if (job.work) open(job);
+        },
+        edit: row => { if (row.job.work) edit(row.job); },
+    });
+    element.append(side_.element);
+    drawPanels();
+    function sideDrawer(on, restore = false) {
+        if (on) drawer(false);
+        element.dataset.tasksOpen = String(on); tasksToggle.setAttribute('aria-expanded', String(on));
+        main.inert = on && narrow();
+        if (on) (side_.element.querySelector('[aria-current=true]') || side_.element.querySelector('button'))?.focus({preventScroll: true});
+        else if (restore) (narrow() ? tasksToggle : side_.element.querySelector('.fv-chat-panel-toggle')).focus();
+    }
+    const listNodes = new Map(), narrow = () => window.matchMedia('(max-width: 899px)').matches;
+    const compact = () => !narrow() && window.matchMedia('(max-width: 1279px)').matches;
+    const GROUP_WORDS = {running: ['In progress', '进行中'], today: ['Today', '今天'], yesterday: ['Yesterday', '昨天'], earlier: ['Earlier', '更早']};
+    // The words of the chat being read that a search also looks in: its tasks' names and prompts.
+    let shotWords = [];
+    const dayGroup = value => {
+        const at = typeof value === 'number' ? new Date(value * (value < 1e12 ? 1000 : 1)) : new Date(value || 0), now = new Date();
+        const day = d => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(), days = Math.round((day(now) - day(at)) / 86400000);
+        return Number.isNaN(days) ? 'earlier' : days <= 0 ? 'today' : days === 1 ? 'yesterday' : 'earlier';
+    };
+    // The chat being read, in one line for its row and the column's head: {text, state}.
+    let chatSummary = null;
     let menuState = null, changingMenu = false;
     const deleting = new Set(), deleted = new Set();
     // One overlay outside the scrolling list, positioned in the sidebar's own coordinates.
@@ -507,9 +673,40 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         menuState = conversationMenu(conversations, menuState, 'confirm');
         updateMenu(true);
     });
-    const yes = press('fv-chat-menu-item fv-chat-menu-delete', t('Delete', '删除'), () => void deleteChat(menuState?.session));
+    const yes = press('fv-chat-menu-item fv-chat-menu-delete', t('Delete', '删除'), () => undoMs > 0 ? deleteLater(menuState?.session) : void deleteChat(menuState?.session));
+    // With an undo window (the page's option), Delete hides the chat at once and says so with Undo; the chat is deleted
+    // when the window ends, or at once when the view closes. Undo brings the row back where it was.
+    const undoing = new Map();
+    let receiptFor = null;
+    function deleteLater(session) {
+        if (!session || !menuState || menuState.session !== session || menuState.stage !== 'confirm' || deleting.has(session) || undoing.has(session)) return;
+        const row = conversations.conversations.find(item => item.id === session), ids = conversations.conversations.map(item => item.id).filter(id => !undoing.has(id));
+        const neighbor = ids[ids.indexOf(session) + 1] || ids[ids.indexOf(session) - 1];
+        closeMenu();
+        const timer = setTimeout(() => finishDelete(session), undoMs);
+        undoing.set(session, timer);
+        if (conversations.current === session && neighbor) chooseChat(neighbor); else renderConversations();
+        (listNodes.get(neighbor)?.button || newChat).focus({preventScroll: true});
+        receiptFor = session;
+        receipt(t(`Deleted “${row?.title || 'chat'}”`, `已删除“${row?.title || '对话'}”`), t('Undo', '撤销'), 'undoDelete', () => {
+            clearTimeout(undoing.get(session)); undoing.delete(session); receiptFor = null; say(''); renderConversations();
+            listNodes.get(session)?.button.focus({preventScroll: true});
+        });
+    }
+    function finishDelete(session) {
+        if (!undoing.delete(session)) return;
+        if (receiptFor === session) { receiptFor = null; if (!stopped) say(''); }
+        // A closed or hidden view still deletes what it said it deleted; the reply only matters to an open one.
+        if (stopped || !active()) {
+            deleted.add(session);
+            void chatPictures(session).then(pictures => dataLayer.remove(session).then(response => { if (response?.ok) void releasePictures(api, pictures); })).catch(() => {});
+            if (!stopped) renderConversations(); return;
+        }
+        void deleteChat(session, false, true);
+    }
     const cancel = press('fv-chat-menu-item', t('Cancel', '取消'), () => closeMenu(true));
     for (const button of [rename, remove, yes, cancel]) button.setAttribute('role', 'menuitem');
+    tip(rename, 'rename', t); tip(remove, 'remove', t); tip(yes, 'removeYes', t); tip(cancel, 'removeNo', t);
     first.append(rename, remove); confirmation.append(yes, cancel); menu.append(first, confirmation); sidebar.append(menu);
     const menuOrigin = () => listNodes.get(menuState?.session)?.more;
     const inMenu = target => menu.contains(target) || menuOrigin()?.contains(target);
@@ -518,10 +715,11 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
     function drawer(on, restore = false) {
         if (!on) closeMenu();
         element.dataset.chatsOpen = String(on); chats.setAttribute('aria-expanded', String(on));
+        if (on) sideDrawer(false);
         // Only the overlay needs to keep keyboard focus in its list.
         main.inert = on && narrow();
         if (on) (list.querySelector('[aria-current]') || newChat).focus();
-        else if (restore) chats.focus();
+        else if (restore) (narrow() ? chats : railToggle).focus();
     }
     function positionMenu() {
         const node = listNodes.get(menuState?.session);
@@ -587,25 +785,33 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         skippedConversations.textContent = unreadable > 0 ? t(`${unreadable} ${unreadable === 1 ? 'conversation' : 'conversations'} could not be read`, `另有 ${unreadable} 个对话无法读取`) : '';
         skippedConversations.hidden = !unreadable;
         const visible = hasConversations(conversations) || conversations.supported === true && (deleted.size > 0 || unreadable > 0);
-        element.dataset.conversations = String(visible); sidebar.hidden = tools.hidden = !visible;
+        element.dataset.conversations = String(visible); sidebar.hidden = tools.hidden = !visible; railEmpty.hidden = visible;
         if (!visible) drawer(false);
-        newChat.disabled = creating; chatsDot.hidden = !conversations.conversations.some(row => row.running > 0);
+        const query = searchBox.value.trim();
+        searchRow.hidden = conversations.conversations.length < 2 && !query;
+        newChat.disabled = creating; newChat.hidden = conversations.supported !== true; tip(newChat, 'newChat', t, {why: creating ? t(...WHY.creating) : ''}); chatsDot.hidden = !conversations.conversations.some(row => row.running > 0);
         const keep = new Set(conversations.conversations.map(row => row.id));
         for (const [id, node] of listNodes) if (!keep.has(id)) { if (naming?.session === id) naming.finish(false); node.row.remove(); listNodes.delete(id); }
-        conversations.conversations.forEach((row, index) => {
+        // Chats making something come first, under In progress; the rest keep the server's order by day.
+        const shown = [...conversations.conversations.filter(row => row.running > 0), ...conversations.conversations.filter(row => !(row.running > 0))];
+        shown.forEach((row, index) => {
             let node = listNodes.get(row.id);
             if (!node) {
                 const container = el('div', 'fv-chat-conversation-row');
                 const button = press('fv-chat-conversation', null, () => chooseChat(row.id)), dot = el('i', 'fv-chat-running'), title = el('span');
+                const words = el('span', 'fv-chat-conversation-words'), line = el('span', 'fv-chat-conversation-line'), when = el('small', 'fv-chat-conversation-when');
+                const where = el('small', 'fv-chat-conversation-meta');
+                line.append(title, when); words.append(line, where); tip(button, 'chat', t, {title: false});
                 // Every row keeps the cover frame so titles line up whether or not a picture loads.
                 const frame = el('i', 'fv-chat-cover');
                 button.dataset.session = row.id; dot.setAttribute('aria-hidden', 'true'); frame.setAttribute('aria-hidden', 'true');
-                button.append(dot, frame, title);
+                button.append(dot, frame, words);
                 const more = press('fv-chat-more', null, () => openMenu(row.id));
                 more.title = t('More', '更多'); more.setAttribute('aria-haspopup', 'menu'); more.setAttribute('aria-controls', menu.id);
                 more.append(glyph('M5 12h.01M12 12h.01M19 12h.01', 3.5));
                 more.addEventListener('focusout', leaveMenu); container.append(button, more);
-                listNodes.set(row.id, node = {row: container, button, dot, frame, title, more, cover: null, image: null});
+                listNodes.set(row.id, node = {row: container, button, dot, frame, title, when, where, more, cover: null, image: null});
+                tip(more, 'more', t);
             }
             if (node.cover !== row.cover) {
                 node.image?.remove(); node.image = null; node.cover = row.cover;
@@ -622,12 +828,34 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                 }
             }
             node.row.dataset.temporary = String(!!row.temporary);
-            node.title.textContent = row.title; node.button.title = row.title; node.dot.hidden = row.running <= 0;
+            markText(node.title, row.title, query); node.button.title = row.title; node.dot.hidden = row.running <= 0;
+            // When it last moved, and whether something is being made in it.
+            put(node.when, localTime(row.updated_at, t, new Date(), {short: true})); node.when.hidden = !node.when.textContent;
+            // Where it stands: the chat being read says it from its own tasks; another says whether it is making something.
+            const summary = row.id === state.session ? chatSummary : null;
+            put(node.where, summary?.text || (row.running > 0 ? t('Making', '生成中') : ''));
+            node.where.dataset.state = summary?.state || (row.running > 0 ? 'running' : ''); node.where.hidden = !node.where.textContent;
+            // A search also finds the chat being read by its tasks' words; the line under the name then shows the one it found.
+            const shot = query && row.id === state.session && !matches(query, row.title) ? shotWords.find(words => matches(query, words)) : null;
+            if (shot) { markText(node.where, shot, query); node.where.dataset.state = 'found'; node.where.hidden = false; }
+            node.row.hidden = !matches(query, row.title) && !shot || undoing.has(row.id);
+            const group = row.running > 0 ? 'running' : dayGroup(row.updated_at);
+            node.row.dataset.group = group;
+            node.row.dataset.groupLabel = t(...GROUP_WORDS[group]);
             node.more.setAttribute('aria-label', t(`More: ${row.title}`, `更多：${row.title}`));
             node.more.hidden = !canDeleteConversation(row) && !canRenameConversation(row) || naming?.session === row.id;
             if (row.id === conversations.current) node.button.setAttribute('aria-current', 'true'); else node.button.removeAttribute('aria-current');
             if (list.children[index] !== node.row) list.insertBefore(node.row, list.children[index] || null);
         });
+        noMatch.hidden = !query || conversations.conversations.some(row => matches(query, row.title)) || shotWords.some(words => matches(query, words));
+        // The first shown row of each day group carries the group's name above it.
+        let lastGroup = null;
+        for (const node of list.children) {
+            if (node.hidden) continue;
+            if (node.dataset.group !== lastGroup) node.dataset.groupStart = 'true'; else delete node.dataset.groupStart;
+            lastGroup = node.dataset.group;
+        }
+
         updateMenu();
         if (lostFocus && !menuState) (listNodes.get(previous.session)?.button || (visible ? newChat : input)).focus({preventScroll: true});
     }
@@ -677,11 +905,14 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         // A disabled focused button can lose native focus. Keep it on the origin while awaiting the request.
         menuOrigin()?.focus({preventScroll: true}); updateMenu();
         try {
+            // The pictures the chat names, read before it goes, are released with it (see releasePictures).
+            const pictures = await chatPictures(session);
             const response = await dataLayer.remove(session, stop);
             if (stopped) return;
             const data = await response.json().catch(() => ({}));
             if (stopped) return;
             if (response.ok || response.status === 404 && data.error?.code === 'not_found') {
+                void releasePictures(api, pictures);
                 const current = conversations.current === session;
                 unsaidSessions.delete(session); drafts.delete(session); pending = pending.filter(entry => entry.session !== session);
                 if (current) { rememberSelection(null); draftSession = null; }
@@ -764,7 +995,8 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
     }
     const outside = event => {
         if (menuState && !inMenu(event.target)) closeMenu();
-        if (chats.getAttribute('aria-expanded') === 'true' && !sidebar.contains(event.target) && !chats.contains(event.target)) drawer(false, true);
+        if (chats.getAttribute('aria-expanded') === 'true' && !rail.contains(event.target) && !chats.contains(event.target)) drawer(false, true);
+        if (tasksToggle.getAttribute('aria-expanded') === 'true' && !side_.element.contains(event.target) && !tasksToggle.contains(event.target)) sideDrawer(false, true);
     };
     const keys = event => {
         // The name box owns its own Enter and Escape, so Escape here does not also close the drawer.
@@ -780,16 +1012,23 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             const at = buttons.indexOf(document.activeElement), back = event.shiftKey || event.key === 'ArrowLeft';
             buttons[(at + (back ? -1 : 1) + buttons.length) % buttons.length]?.focus({preventScroll: true}); return;
         }
+        if (tasksToggle.getAttribute('aria-expanded') === 'true' && event.key === 'Escape' && narrow()) { event.preventDefault(); event.stopPropagation(); sideDrawer(false, true); return; }
         if (chats.getAttribute('aria-expanded') !== 'true') return;
         if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); drawer(false, true); }
         else if (event.key === 'Tab' && narrow()) {
-            const buttons = [...sidebar.querySelectorAll('button')].filter(button => !button.disabled && !button.hidden && !menu.contains(button) && !button.closest('[hidden]'));
+            const buttons = [...rail.querySelectorAll('button,input')].filter(button => !button.disabled && !button.hidden && !menu.contains(button) && !button.closest('[hidden]'));
             if (!buttons.length) return;
             if (event.shiftKey && document.activeElement === buttons[0]) { event.preventDefault(); buttons.at(-1).focus(); }
             else if (!event.shiftKey && document.activeElement === buttons.at(-1)) { event.preventDefault(); buttons[0].focus(); }
         }
     };
-    const resize = () => { closeMenu(); if (!narrow()) drawer(false); };
+    const resize = () => { closeMenu(); if (!narrow()) { drawer(false); sideDrawer(false); } };
+    const slash = event => {
+        if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return;
+        if (event.target?.closest?.('input,textarea,[contenteditable]') || sidebar.hidden) return;
+        event.preventDefault(); if (narrow()) drawer(true); searchBox.focus();
+    };
+    const stopSlash = listenDialogKey(element, 'keydown', slash);
     const listScroll = () => closeMenu();
     list.addEventListener('scroll', listScroll);
     document.addEventListener('pointerdown', outside, true);
@@ -880,8 +1119,8 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             if (editor || !current) return;
             const box = el('textarea', 'fv-chat-edit-box'), note = el('span', 'fv-chat-error');
             const actions = el('div', 'fv-chat-actions fv-chat-edit-actions');
-            const cancel = press('fv-chat-edit-cancel', t('Cancel', '取消'), () => closeEditor());
-            const go = press('fv-chat-edit-send', t('Send', '发送'), () => void submit());
+            const cancel = tip(press('fv-chat-edit-cancel', t('Cancel', '取消'), () => closeEditor()), 'editCancel', t);
+            const go = tip(press('fv-chat-edit-send', t('Send', '发送'), () => void submit()), 'editSend', t);
             note.setAttribute('role', 'alert'); note.hidden = true;
             box.value = current.text; box.rows = 1; box.setAttribute('aria-label', t('Edit message', '编辑消息'));
             actions.append(note, cancel, go);
@@ -932,7 +1171,10 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                 editRow.append(editButton); item.append(editRow);
             } else if (!editable && !editor && editRow) { editRow.remove(); editRow = editButton = null; }
             // A rewrite the server has not shown yet has no number to rewrite.
-            if (editButton) editButton.disabled = !composeAllowed() || !Number.isFinite(entry.seq);
+            if (editButton) {
+                editButton.disabled = !composeAllowed() || !Number.isFinite(entry.seq);
+                tip(editButton, 'editMessage', t, {why: !editButton.disabled ? '' : t(...(!composeAllowed() ? WHY.notConnected : WHY.sending))});
+            }
             item.dataset.taken = String(entry.taken !== false);
             item.dataset.failed = String(!!entry.error);
             if (entry.error || entry.sending && entry.retried) {
@@ -958,6 +1200,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                 const full = entry.errorCode === 'session_full';
                 retry.textContent = full ? t('New chat', '新对话') : t('Retry', '重试');
                 retry.disabled = entry.sending || (full ? creating : !sendingAllowed());
+                tip(retry, full ? 'newChatError' : 'retry', t, {why: !retry.disabled ? '' : t(...(entry.sending ? WHY.sending : full ? WHY.creating : state.agent.connected === true ? WHY.notListening : WHY.notConnected))});
             } else if (status) { status.remove(); status = null; }
         }};
     }
@@ -971,13 +1214,26 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         shape(job.width, job.height);
         return {box, shape};
     }
-    function working(item, job) {
+    // A card's heading: its name with where it is, the prompt it was made from, then its size, length and time.
+    function cardHead(job, words) {
+        const head = el('div', 'fv-chat-card-head'), top = el('div', 'fv-chat-title-row'), name = el('h3'), chip = el('span', 'fv-chat-chip');
+        const prompt = el('div', 'fv-chat-prompt fv-copyable'), facts = el('div', 'fv-chat-facts-row'), meta = el('p', 'fv-chat-meta'), when = el('span', 'fv-chat-when');
+        top.append(name, chip); facts.append(meta, when); head.append(top, prompt, facts);
+        const draw = (next, fraction = null) => {
+            put(chip, statusText(next, t, fraction)); chip.dataset.state = statusKey(next);
+            const said = words(); put(prompt, said); prompt.hidden = !said;
+            prompt.title = said ? t('Prompt', '提示词') : '';
+            put(when, localTime(statusKey(next) === 'done' && next.finished_at ? next.finished_at : next.created_at, t)); when.hidden = !when.textContent;
+        };
+        return {head, name, meta, chip, draw};
+    }
+    function working(item, job, words = () => '') {
         const {box} = preview(job); box.append(emptyFrameIcon());
-        const info = el('div', 'fv-chat-info'), head = el('div'), name = el('h3'), meta = el('p', 'fv-chat-meta'); head.append(name, meta);
+        const info = el('div', 'fv-chat-info'), card = cardHead(job, words), head = card.head, name = card.name, meta = card.meta;
         const middle = el('div', 'fv-chat-where'), parts = el('div', 'fv-chat-parts'), line = el('p', 'fv-chat-line'), part = el('span'), step = el('span'); line.append(part, step);
         middle.append(parts, line);
         const foot = el('div', 'fv-chat-actions'), left = el('span', 'fv-chat-left');
-        const stop = press('fv-chat-stop', null, () => void cancelJobs([job.id]));
+        const stop = press('fv-chat-stop', null, () => void cancelJobs([job.id])); tip(stop, 'stop', t);
         foot.append(left, stop); info.append(head, middle, foot); item.replaceChildren(box, info);
         const said = {};
         // Three minutes without a new step or stage: the card says so, once, in the line that names the stage.
@@ -993,11 +1249,12 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             left.textContent = seconds === null ? '' : about(seconds, t);
         };
         let current = job, draw = null;
-        item.tick = () => { current = state.jobs[job.id] || job; level(current); if (stalled(current) !== quiet) draw?.(current); };
+        item.tick = () => { current = state.jobs[job.id] || job; level(current); card.draw(current, current.status === 'running' ? fractionOf(current) : null); if (stalled(current) !== quiet) draw?.(current); };
         return draw = next => {
             const cells = jobParts(next);
             level(next);
             put(name, jobName(next, t)); put(meta, jobMeta(next, t)); meta.hidden = !meta.textContent;
+            card.draw(next, next.status === 'running' ? fractionOf(next) : null);
             while (parts.children.length > cells.length) parts.lastChild.remove();
             while (parts.children.length < cells.length) parts.append(el('i'));
             cells.forEach((value, index) => parts.children[index].style.setProperty('--w', `${value * 100}%`));
@@ -1013,11 +1270,11 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             const going = stopping.has(next.id) || next.status === 'cancelling';
             stop.disabled = going; stop.textContent = going ? t('Stopping…', '正在停止…') : t('Stop', '停止');
             stop.setAttribute('aria-busy', String(going));
-            stop.setAttribute('aria-label', t('Stop ', '停止 ') + jobName(next, t));
+            stop.setAttribute('aria-label', t('Stop ', '停止 ') + jobName(next, t)); tip(stop, 'stop', t, {why: going ? t(...WHY.stopping) : ''});
         };
     }
-    function done(item, job) {
-        const info = el('div', 'fv-chat-info'), head = el('div'), name = el('h3'), meta = el('p', 'fv-chat-meta'); head.append(name, meta);
+    function done(item, job, words = () => '') {
+        const info = el('div', 'fv-chat-info'), card = cardHead(job, words), head = card.head, name = card.name, meta = card.meta;
         const foot = el('div', 'fv-chat-actions');
         const picture = job.kind === 'image';
         const show = press('fv-chat-open', t('Open', '打开'), () => {
@@ -1027,6 +1284,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         });
         const cut = press('fv-chat-edit', t('Edit', '剪辑'), () => edit(job));
         const save = press('fv-chat-save', t('Download', '下载'), () => saveImage(api.apiURL(job.thumbnail)));
+        tip(show, picture ? 'openPicture' : 'open', t); tip(cut, 'edit', t); tip(save, 'download', t);
         if (picture && job.thumbnail) { show.disabled = save.disabled = true; foot.append(show, save); }
         else if (!picture && job.work) foot.append(show, cut);
         info.append(head); if (foot.childElementCount) info.append(foot);
@@ -1064,7 +1322,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                 const toggle = press('fv-chat-play', null, () => {
                     if (!video) {
                         video = el('video'); video.playsInline = true; video.src = api.apiURL(job.play);
-                        const seek = el('input', 'fv-chat-seek'); seek.type = 'range'; seek.min = '0'; seek.max = '1000'; seek.value = '0';
+                        const seek = el('input', 'fv-chat-seek'); seek.type = 'range'; seek.min = '0'; seek.max = '1000'; seek.value = '0'; tip(seek, 'seek', t);
                         seek.setAttribute('aria-label', t('Position', '播放位置'));
                         video.onloadedmetadata = () => shape(video.videoWidth, video.videoHeight);
                         video.ontimeupdate = () => { if (video.duration) seek.value = String(Math.round(video.currentTime / video.duration * 1000)); };
@@ -1079,6 +1337,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                     }
                     if (video.paused || video.ended) { loadRetried = false; void play(); } else video.pause();
                 });
+                tip(toggle, 'play', t);
                 const label = () => toggle.setAttribute('aria-label', (box.dataset.playing === 'true' ? t('Pause ', '暂停 ') : t('Play ', '播放 ')) + jobName(job, t));
                 label(); box.append(toggle);
             }
@@ -1087,18 +1346,22 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         }
         item.replaceChildren(...children);
         return (next, latest) => {
-            put(name, jobName(next, t)); put(meta, jobMeta(next, t)); meta.hidden = !meta.textContent;
+            put(name, jobName(next, t)); put(meta, jobMeta(next, t)); meta.hidden = !meta.textContent; card.draw(next);
             if (picture) { show.setAttribute('aria-label', t('Open ', '打开 ') + jobName(next, t)); save.setAttribute('aria-label', t('Download ', '下载 ') + jobName(next, t)); }
             show.classList.toggle('fv-primary', latest);
         };
     }
     function jobCard() {
         const item = el('li', 'fv-chat-job');
-        let mode = null, apply = null, retry = null;
+        let mode = null, apply = null, retry = null, said = '';
+        const words = () => said;
+        // A card picks its task in the right panel; its own buttons and the player keep their clicks.
+        item.addEventListener('click', event => { if (!event.target?.closest?.('button,input,a,video') && item.dataset.job) { side_?.select(item.dataset.job); drawStage(); } });
         // The card's one button and, on its row, why the last press did not go on.
         const again = () => [el('span', 'fv-chat-error fv-chat-again-note'), press('fv-chat-retry', null, () => retry?.())];
         return {element: item, update(job, {latest, retry: action, key, text}) {
-            retry = action;
+            // The sentence that asked for it is the message just above; a card repeats only the engine's own prompt.
+            retry = action; said = promptOf(job, text).source === 'job' ? promptOf(job, text).text : '';
             // Jobs without a picture (a check, a prompt) are one quiet line while they run, and nothing after.
             // A picture takes seconds: the same quiet line while it is made, then the picture.
             const card = VIDEOS.includes(job.kind || 'generate') || (['image', 'production', 'cast'].includes(job.kind) && !WORKING.includes(job.status));
@@ -1112,8 +1375,8 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                 mode = next; item.dataset.job = job.id; item.dataset.mode = next.split(':')[0]; item.hidden = next === 'none';
                 if (job.kind === 'image') item.dataset.kind = 'image'; else delete item.dataset.kind;
                 if (!WORKING.includes(job.status)) stopping.delete(job.id);
-                if (next === 'working') apply = working(item, job);
-                else if (next.startsWith('done')) apply = done(item, job);
+                if (next === 'working') apply = working(item, job, words);
+                else if (next.startsWith('done')) apply = done(item, job, words);
                 else if (next === 'quiet') {
                     const label = el('span'); item.replaceChildren(el('span', 'fv-chat-dots'), label);
                     apply = next => { label.textContent = stopping.has(next.id) || next.status === 'cancelling'
@@ -1149,6 +1412,10 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                 }
                 else if (next === 'failed' || next === 'stopped') {
                     const reason = el('p'), actions = el('div', 'fv-chat-actions fv-actions'), links = el('div', 'fv-result-links');
+                    // The failure card's head: what did not finish, and when. The reason follows in its own line.
+                    const failHead = el('div', 'fv-chat-fail-head'), failName = el('strong'), failChip = el('span', 'fv-chat-chip'), failWhen = el('span', 'fv-chat-when');
+                    const mark = el('span', 'fv-chat-fail-mark'); mark.append(glyph(ICON.warn, 2));
+                    failHead.append(mark, failName, failChip, failWhen);
                     let current = job;
                     const diagnostic = createDiagnosticReportControl(t, {api, tip: true, version: productVersion,
                         label: () => t('Download report', '下载报告'),
@@ -1158,8 +1425,11 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                     const fold = failureFold(t);
                     if (retry) actions.append(...again());
                     actions.append(diagnostic.report);
-                    links.append(actions); item.replaceChildren(reason, fold, links);
+                    links.append(actions); item.replaceChildren(failHead, reason, fold, links);
+                    tip(diagnostic.report, 'report', t);
                     apply = next => { current = next; put(reason, failureCardReason(next, t));
+                        put(failName, jobName(next, t)); put(failChip, statusText(next, t)); failChip.dataset.state = statusKey(next);
+                        put(failWhen, localTime(next.finished_at || next.created_at, t)); failWhen.hidden = !failWhen.textContent;
                         const raw = [next.error?.code, next.error?.message, next.error?.request_id].filter(Boolean).join('\n');
                         fold.querySelector('p').textContent = raw; fold.hidden = !raw;
                         diagnostic.updateReport({report_id: next.report_id}); };
@@ -1170,7 +1440,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             const button = item.querySelector('.fv-chat-retry');
             if (button) {
                 const way = againWay(job, key), note = item.querySelector('.fv-chat-again-note');
-                button.textContent = t(...AGAIN[way]);
+                button.textContent = t(...AGAIN[way]); tip(button, way, t);
                 button.hidden = way === 'resend' && !text;
                 // Going on needs no agent; saying the words again does.
                 button.disabled = retrying.has(key) || !inSelectedChat() || way === 'resend' && !sendingAllowed();
@@ -1234,7 +1504,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             finally { confirming.delete(requestKey); }
             if (!stopped) { render(); void poll(); }
         };
-        buttons.append(press('fv-chat-yes fv-primary', t(...WHITEBOX.generate), answer(true)),
+        buttons.append(tip(press('fv-chat-yes fv-primary', t(...WHITEBOX.generate), answer(true)), 'whiteboxGo', t),
             press('fv-whitebox-edit', t(...WHITEBOX.edit), () => {
                 if (disabled || whiteboxState(entry) !== 'asked') return;
                 // The summary goes into an empty box with the cursor after it; what the user has already typed stays.
@@ -1243,7 +1513,8 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                 input.focus();
                 input.setSelectionRange(input.value.length, input.value.length);
                 input.scrollTop = input.scrollHeight;
-            }), press('fv-chat-no fv-quiet', t(...WHITEBOX.decline), answer(false)));
+            }), tip(press('fv-chat-no fv-quiet', t(...WHITEBOX.decline), answer(false)), 'whiteboxSkip', t));
+        tip(buttons.querySelector('.fv-whitebox-edit'), 'whiteboxEdit', t);
         item.replaceChildren(preview, summary, seconds, buttons, status, error);
         return {update(next) {
             entry = next; session = state.session; key = cardKey(session, entry.id);
@@ -1300,8 +1571,9 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                 if (!stopped) { render(); void poll(); }
             };
             const buttons = el('div', 'fv-chat-actions');
-            buttons.append(press('fv-chat-yes fv-primary', t('Start', '开始'), answer(true)), press('fv-chat-no', t('Not now', '先不'), answer(false)));
-            buttons.querySelectorAll('button').forEach(button => { button.disabled = disabled; });
+            buttons.append(tip(press('fv-chat-yes fv-primary', t('Start', '开始'), answer(true)), 'start', t), tip(press('fv-chat-no', t('Not now', '先不'), answer(false)), 'notNow', t));
+            const why = !disabled ? '' : t(...(confirming.has(key) ? WHY.sending : !inSelectedChat() ? WHY.loading : WHY.notConnected));
+            buttons.querySelectorAll('button').forEach(button => { button.disabled = disabled; if (why) button.dataset.fvTipWhy = why; });
             const question = el('p', null, entry.question);
             const estimate = el('p', 'fv-chat-meta', entry.estimate_seconds > 0 ? about(entry.estimate_seconds, t) : ''); estimate.hidden = !estimate.textContent;
             // What is about to be made, written as on the job card; a question that carries no size or length shows only the time.
@@ -1313,7 +1585,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             if (folded) {
                 const rest = beats.length - BEATS_SHOWN + 1;
                 const more = el('li', 'fv-chat-beats-more');
-                more.append(press('fv-chat-link', t(`${rest} more`, `另外 ${rest} 拍`), () => { allBeats = true; shownState = null; render(); }));
+                more.append(tip(press('fv-chat-link', t(`${rest} more`, `另外 ${rest} 拍`), () => { allBeats = true; shownState = null; render(); }), 'more8', t));
                 outline.append(more);
             }
             outline.hidden = !beats.length;
@@ -1324,19 +1596,23 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             }
         }};
     }
-    // Before anything is said: what the agent can do, and sentences that send themselves when clicked.
+    // Before anything is said: what the agent can do, and example sentences. A click puts one in the box to change and
+    // send; it is never sent by itself.
     function hello() {
-        const item = el('li', 'fv-chat-hello');
-        item.append(el('p', null, t('I can make videos for you,', '我可以为您生成视频，')), el('p', null, t('or turn a story into a short film.', '也可以把一个故事拍成短片。')));
+        const item = el('li', 'fv-chat-hello'), mark = el('span', 'fv-chat-hello-mark');
+        mark.setAttribute('aria-hidden', 'true'); mark.append(glyph('M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8zM19 15l.8 2.2 2.2.8-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z', 1.7));
+        item.append(mark, el('p', null, t('I can make videos for you,', '我可以为您生成视频，')), el('p', null, t('or turn a story into a short film.', '也可以把一个故事拍成短片。')));
         return {element: item, update() {}};
     }
     function examples() {
         const item = el('li', 'fv-chat-examples'), list = el('div');
         const lines = [t('Make a 10-second video: a rainy night, a girl squeezes onto the last bus', '生成一段 10 秒的视频：雨夜，女孩挤上末班车'),
             t('Make a 1-minute vertical short film: a day in a coffee shop', '做一条 1 分钟的竖屏短片：咖啡店的一天')];
-        list.append(...lines.map(line => press(null, line, () => send(line))));
+        const fill = line => { input.value = line; input.dispatchEvent(new Event('input')); input.focus(); input.setSelectionRange?.(line.length, line.length); };
+        list.append(...lines.map(line => { const b = tip(press(null, line, () => fill(line)), 'example', t); b.prepend(glyph('M4 5h16v11H9l-5 4z', 1.8)); return b; }));
         item.append(el('p', 'fv-chat-meta', t('Try saying:', '可以这样说：')), list);
-        return {element: item, update() { list.querySelectorAll('button').forEach(button => { button.disabled = !sendingAllowed(); }); }};
+        return {element: item, update() { list.querySelectorAll('button').forEach(button => { button.disabled = !composeAllowed();
+            tip(button, 'example', t, {why: button.disabled ? t(...WHY.notConnected) : ''}); }); }};
     }
     function dots() {
         const item = el('li', 'fv-chat-thinking'), mark = el('span', 'fv-chat-dots'); mark.append(el('i'), el('i'), el('i'));
@@ -1408,6 +1684,16 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         const wanted = [];
         if (!entries.length && !localPending.length) wanted.push(['hello', 'hello', null]);
         let lastUser = null;
+        // This chat's tasks for the right panel, each with the words it was made from.
+        const tasks = [], task = (job, text) => {
+            if (!job?.id || !(VIDEOS.includes(job.kind || 'generate') || ['image', 'production', 'cast'].includes(job.kind))) return;
+            const words = promptOf(job, text);
+            tasks.push({job, title: jobName(job, t), prompt: words.text, promptSource: words.source, meta: jobMeta(job, t), order: tasks.length,
+                shape: job.width > 0 && job.height > 0 ? `${job.width} / ${job.height}` : null,
+                thumbnailURL: job.thumbnail ? api.apiURL(job.thumbnail) : null,
+                fraction: () => { const live = state.jobs[job.id] || job; return live.status === 'running' ? fractionOf(live) : null; },
+                left: () => { const live = state.jobs[job.id] || job; return live.status === 'running' ? leftOf(live) : null; }});
+        };
         const shownEntries = rewritten(entries);
         // Only the newest sentence the agent already has can be rewritten, and not while another waits to go.
         const editable = localPending.length ? null : shownEntries.findLast(entry => entry.type === 'message' && entry.role === 'user');
@@ -1421,12 +1707,13 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                 const text = lastUser?.text;
                 const key = cardKey(state.session, job.id);
                 wanted.push([`s:${entry.seq}`, 'job', job, {latest: entry === finished, key, text, retry: () => againJob(key, job, text)}]);
+                task(job, text);
                 const failure = state.failures[entry.entity];
                 if (failure) wanted.push([`e:${entry.seq}`, 'job', failure]);
             } else if (entry.type === 'production' || entry.type === 'cast') {
                 // A finished film is the same card as any finished video: open it, or edit it with its shots already cut.
                 const card = state.failures[entry.entity] || (entry.type === 'production' && state.finished?.[entry.entity]);
-                if (card) wanted.push([`s:${entry.seq}`, 'job', card, {latest: entry === finished}]);
+                if (card) { wanted.push([`s:${entry.seq}`, 'job', card, {latest: entry === finished, text: lastUser?.text}]); task(card, lastUser?.text); }
             } else wanted.push([`s:${entry.seq}`, 'confirm', entry]);
         }
         for (const entry of localPending) wanted.push([`m:${entry.id}`, 'user', {...entry, taken: false}]);
@@ -1452,15 +1739,49 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             node.update(value, extra || {});
             if (log.children[index] !== node.element) log.insertBefore(node.element, log.children[index] || null);
         });
+        side_.update(tasks, {current: state.current});
+        drawStage(); drawSummary(tasks);
+        tasksDot.hidden = !tasks.some(row => WORKING.includes(row.job.status));
         const sendable = sendingAllowed();
-        attachButton.disabled = builtinScene();
+        attachButton.disabled = builtinScene(); tip(attachButton, 'attach', t, {why: attachButton.disabled ? t(...WHY.sceneOnly) : ''});
         input.disabled = !(state.agent.connected === true || builtinScene() && !!state.session) || creating || !!selectedSession && selectedSession !== state.session;
         input.placeholder = builtinScene() ? t(...SCENE_TEXT.describe)
-            : state.agent.connected === true && !sendable ? t('Ask your agent to continue', '请在 Agent 里让它继续') : t('Ask Autopilot…', '对 AI 全自动说…');
+            : state.agent.connected === true && !sendable ? t('Ask the assistant to continue in its own window', '请在助手的窗口里让它继续') : t('Tell the assistant…', '对助手说…');
         refreshSend();
         if (focusSession === state.session && focusSession && !input.disabled && active()) { focusSession = null; input.focus(); }
         if (stick) { pinned = true; scroller.scrollTop = scroller.scrollHeight; down.hidden = true; }
         else if (log.children.length > before) down.hidden = false;
+    }
+    // One line for the chat being read: what is being made and how far, else what waits, what did not finish, what is done.
+    function drawSummary(tasks) {
+        const of = key => tasks.filter(row => statusKey(row.job) === key);
+        const running = of('running')[0], queued = of('queued').length, failed = of('failed').length, done = of('done').length;
+        chatSummary = !state.session || !tasks.length ? null
+            : running ? {text: running.title + ((running.fraction?.() ?? 0) >= .01 ? ` · ${Math.floor(running.fraction() * 100)}%` : ''), state: 'running'}
+            : queued ? {text: t(`${queued} queued`, `${queued} 项排队中`), state: 'queued'}
+            : failed ? {text: t(`${failed} did not finish`, `${failed} 项没有完成`), state: 'failed'}
+            : {text: t(`${done} done`, `${done} 项已完成`), state: 'done'};
+        shotWords = tasks.flatMap(row => [row.title, row.prompt].filter(Boolean));
+        const node = listNodes.get(state.session);
+        if (node && !searchBox.value.trim()) { put(node.where, chatSummary?.text || ''); node.where.dataset.state = chatSummary?.state || ''; node.where.hidden = !chatSummary; }
+        const row = conversations.conversations.find(item => item.id === state.session);
+        put(headTitle, row?.title || (state.session && entries().length ? t('New chat', '新对话') : ''));
+        put(headSub, [tasks.length ? t(`${tasks.length} tasks`, `${tasks.length} 个任务`) : '', chatSummary && chatSummary.state !== 'done' ? chatSummary.text : '', row ? localTime(row.updated_at, t) : ''].filter(Boolean).join(' · '));
+        head.dataset.empty = String(!headTitle.textContent);
+    }
+    const entries = () => chatEntries(state);
+    // The card of the task being made carries the generation mark, so the floating task window grows from it and
+    // returns to it; only one element has it at a time. The picked task's card is marked too.
+    function drawStage() {
+        const picked = side_.selected();
+        for (const item of log.children) {
+            if (!item.dataset?.job) continue;
+            if (item.dataset.job === picked) item.dataset.selected = 'true'; else delete item.dataset.selected;
+            const box = item.querySelector('.fv-chat-preview');
+            if (!box) continue;
+            if (item.dataset.job && item.dataset.job === state.current && item.dataset.mode === 'working') box.dataset.fvTaskStage = 'autopilot';
+            else delete box.dataset.fvTaskStage;
+        }
     }
     scroller.addEventListener('scroll', () => {
         if (!scroller.clientHeight) return;
@@ -1503,8 +1824,8 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         }
     }
     const waitingNotice = code => (code ? code === 'not_listening' : state.agent.connected === true)
-        ? t('Will send when Agent is back', '等 Agent 回来后自动发送')
-        : t('Will send when Agent connects', '等 Agent 连上后自动发送');
+        ? t('Will send when the assistant is back', '等助手回来后自动发送')
+        : t('Will send when the assistant connects', '等助手连上后自动发送');
     async function send(text, original = null, draft = null, automatic = false, attachments = null) {
         text = String(text).trim();
         original ||= pending.find(entry => entry.session === (state.session ?? null) && entry.text === text && (entry.error || entry.sending || entry.automatic));
@@ -1546,6 +1867,13 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                 return true;
             }
             const error = await sendError(response), refused = sendRefused(error, response);
+            // Its pictures were freed meanwhile (the same picture removed from another draft): upload them again and
+            // send once more, after this attempt has finished.
+            if (!entry.reuploaded && entry.attachments?.length && pictureGone(error) && await reupload(entry)) {
+                entry.reuploaded = true;
+                setTimeout(() => { if (!stopped) void send(entry.text, entry, entry.draft); }, 0);
+                return false;
+            }
             entry.errorCode = error?.code;
             // What a feedback report carries for this failure: how the answer failed, never text or paths.
             entry.failureKind = error?.code || (response ? 'http_' + response.status : 'no_response');
@@ -1609,7 +1937,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
     // Both a server-side session change and a list selection reset the same reader. Job clocks stay keyed by job id.
     function resetChat() {
         dismissImage?.(); dismissImage = null;
-        state = emptyChat(); nodes.clear();
+        state = emptyChat(); nodes.clear(); side_?.reset();
         log.querySelectorAll('video').forEach(video => video.pause()); log.replaceChildren(); pinned = true;
     }
     async function poll() {
@@ -1622,6 +1950,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         const readSelection = selection, requested = selectedSession;
         let again = false;
         try {
+            // The first read after a cached start reads the whole chat once, so every card is brought up to date.
             const {after} = chatReadRequest(state, requested);
             const response = await dataLayer.read({session: requested, after, signal: closed.signal});
             if (stopped) return;
@@ -1678,7 +2007,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
     const moving = setInterval(() => {
         if (!active() || ![...Object.values(state.jobs), ...(away ? [away.job] : [])].some(job => job.status === 'running')) return;
         for (const item of log.children) item.tick?.();
-        report();
+        side_.tick(); report();
     }, 250);
     // The title of a hidden tab carries one fixed prefix: no flashing, no counts. It is the page's own title again when the user returns.
     let titleBase = null, titleShown = null, seen = null;
@@ -1708,7 +2037,9 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         if (active() && !timer && !busy) poll();
     }
     render();
-    return {element, input, sync, refresh: poll,
+    // connection: the left panel's foot; running: the right panel's head; head: the middle column's top row on narrow windows.
+    // column: the conversation's centred column, the view's main block for the shell's centring and task window.
+    return {element, input, sync, refresh: poll, column: log, slots: {connection: railFoot, running: side_.running, head: headEnd},
         scrollToJob(id) {
             // A job of another conversation: go to that conversation, which opens at its end where the job is.
             if (away?.job.id === id && !state.jobs[id]) chooseChat(away.session);
@@ -1721,8 +2052,8 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             try { await cancelJobs(ids); }
             finally { bulkStopping = false; if (!stopped) { report(); void poll(); } }
         },
-        stop() { closeMenu(); stopped = true; tab(); dismissImage?.(); closed.abort(); clearInterval(moving); clearTimeout(timer); timer = null;
+        stop() { closeMenu(); stopped = true; for (const [session, timer] of undoing) { clearTimeout(timer); finishDelete(session); } tab(); dismissImage?.(); closed.abort(); clearInterval(moving); clearTimeout(timer); timer = null;
             document.removeEventListener('visibilitychange', visible); document.removeEventListener('pointerdown', outside, true);
-            stopMenuKeys(); window.removeEventListener('resize', resize); list.removeEventListener('scroll', listScroll);
+            stopMenuKeys(); stopSlash?.(); history.dispose(); window.removeEventListener('resize', resize); list.removeEventListener('scroll', listScroll);
             log.querySelectorAll('video').forEach(video => video.pause()); }};
 }

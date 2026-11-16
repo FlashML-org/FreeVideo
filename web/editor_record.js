@@ -2,7 +2,8 @@
 // and the start/stop button; the take is saved as a WAV and placed like any imported sound, never over what is already there.
 import {registerMenuItem} from './editor_menu.js';
 import {skinSelect} from './fv_select.js';
-import {COUNTDOWN_SECONDS, elapsedText, deviceName, recordable, recordRange, landingTrack, replacesTake, secondsOf, takeName, level, mixdown, encodeWav} from './editor_record_model.js';
+import {COUNTDOWN_SECONDS, elapsedText, deviceName, recordable, recordRange, landingTrack, replacesTake, secondsOf, takeName, level, mixdown, encodeWav, takeLedger} from './editor_record_model.js';
+import {tip} from './editor_tips.js';
 const el = (tag, cls, text) => { const node = document.createElement(tag); if (cls) node.className = cls; if (text != null) node.textContent = text; return node; };
 let styled = false;
 function styles() {
@@ -21,8 +22,12 @@ export function createEditorRecord({state, player, library, t, error = () => {},
     const close = el('button', 'fv-ed-record-close', '×'); close.type = 'button'; close.setAttribute('aria-label', t('Close', '关闭'));
     const side = el('div', 'fv-ed-record-side'), center = el('div', 'fv-ed-record-center');
     side.append(skinSelect(devices)); center.append(main, meter, note); bar.append(side, center, close);
+    tip(close, {name: t('Close recorder', '关闭录音条'), use: t('Fold the record bar away', '收起录音条'), key: 'Esc'});
+    tip(devices, {name: t('Microphone', '麦克风'), use: t('Choose which microphone records', '选择用哪个麦克风录音')});
 
     let phase = 'idle', denied = false, stream = null, recorder = null, chunks = [], context = null, frame = null, timers = [], disposed = false, session = 0, ticker = null, listening = null, startedAt = 0;
+    // Takes this view has made or replaced; the editor deletes the ones no part uses once the edit's history is gone.
+    const takes = takeLedger();
     const clear = () => { timers.forEach(clearTimeout); timers = []; clearInterval(ticker); ticker = null; };
     // The level moves only while the bar is open: the microphone is listened to from opening until closing, and the take reuses that stream.
     const release = () => {
@@ -82,9 +87,14 @@ export function createEditorRecord({state, player, library, t, error = () => {},
     }
     function open() {
         if (disposed || !bar.hidden) return;
-        bar.hidden = false; denied = false; say(''); paint(); probe();
+        bar.hidden = false; denied = false; leaving = false; say(''); paint(); probe();
     }
+    // Closing the bar mid-take keeps what was recorded: it lands on the track as a stop would, and one undo takes it back.
+    // A take that ends up empty still closes the bar it was asked to close, so the microphone goes in every case.
+    let leaving = false;
     function hide() {
+        if (phase === 'recording') { leaving = true; stop(); return; }
+        if (phase === 'saving') { leaving = true; return; }
         if (phase !== 'idle') abort();
         session++; bar.hidden = true; release(); paint();
     }
@@ -140,11 +150,14 @@ export function createEditorRecord({state, player, library, t, error = () => {},
         } catch (value) { error(value); }
         if (disposed || mine !== session) return;
         phase = 'idle'; say(''); paint();
-        if (!file) { notify(t('Nothing was recorded.', '没有录到声音。')); return; }
+        const asked = leaving; leaving = false;
+        if (!file) { notify(t('Nothing was recorded.', '没有录到声音。')); if (asked) { bar.hidden = true; release(); paint(); } return; }
         bar.hidden = true; release(); paint();
         const before = new Set(state.record.tracks.flatMap(item => item.clips.map(clip => clip.id)));
         const track = landingTrack(state.record, selection, range.start, frames) ?? undefined, replace = track === 'a3' && replacesTake(state.record, range.start, frames);
+        if (replace) takes.covering(state.record, range.start, frames);
         await library.importFiles([file], {at: range.start, track, replace: track === 'a3'});
+        takes.landed(state.record, before);
         land(before);
         if (replace) notify(t('Replaced the earlier recording in this range.', '已替换这一段原有的录音。'));
     }
@@ -162,14 +175,14 @@ export function createEditorRecord({state, player, library, t, error = () => {},
         };
         requestAnimationFrame(mark);
     }
-    // R starts and stops while the bar is open; Esc cancels a take in progress, then closes the bar.
+    // R starts and stops while the bar is open; Esc keeps a take in progress (or cancels the countdown), then closes the bar.
     const typing = target => target?.closest?.('input, textarea, [contenteditable=true]');
     // Called by the editor's key router; true when the key was taken.
     function keys(event) {
         if (event.type !== 'keydown' || bar.hidden || event.isComposing || event.ctrlKey || event.metaKey || event.altKey || typing(event.target)) return false;
         const key = event.key.toLowerCase();
         if (key === 'escape') {
-            event.preventDefault(); if (phase !== 'idle') abort(); else hide(); return true;
+            event.preventDefault(); if (phase === 'counting') abort(); else hide(); return true;
         }
         if (key === 'r' && !event.target?.closest?.('select') && !event.repeat) { event.preventDefault(); main.onclick(); return true; }
         return false;
@@ -185,6 +198,6 @@ export function createEditorRecord({state, player, library, t, error = () => {},
     const unsubscribe = state.subscribe(event => { if (event.type === 'selection' && toolbarButton) toolbarButton.disabled = !recordable(state.selection); });
     if (toolbarButton) toolbarButton.disabled = !recordable(state.selection);
     paint();
-    return {element: bar, open, hide, keyboard: keys, get phase() { return phase; }, dispose() { disposed = true; unregister(); unsubscribe(); abort(); release(); bar.remove(); }};
+    return {element: bar, open, hide, keyboard: keys, unusedTakes: record => takes.unused(record), forgetTakes: ids => takes.forget(ids), get phase() { return phase; }, dispose() { disposed = true; unregister(); unsubscribe(); abort(); release(); bar.remove(); }};
 }
 export const RECORD_ICON = MIC_PATH;

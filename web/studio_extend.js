@@ -1,4 +1,5 @@
 import {continuationUpscale} from './sampling_effort.js';
+import {fileState} from './output_download.js';
 export const EXTEND_PROPERTY = 'freevideo_extend';
 export const EXTEND_TEXT = Object.freeze({
     action: ['Extend', '接着生成'],
@@ -25,23 +26,10 @@ export function extendVideoURL(record) {
         subfolder: split < 0 ? '' : record.video.slice(0, split), type: 'output'});
 }
 
-// 'ok'; 'missing' only when the server answered 404 or 410; 'unknown' when offline, timed out or any other answer.
+// 'ok', 'missing' or 'unknown', as fileState reports them.
 export async function extendSourceState(api, record) {
     if (!canExtend(record)) return 'missing';
-    const url = extendVideoURL(record), gone = status => status === 404 || status === 410;
-    let missing = false;
-    try {
-        const head = await api.fetchApi(url, {method: 'HEAD', signal: AbortSignal.timeout(10000)});
-        if (head.ok) return 'ok';
-        missing = gone(head.status);
-    } catch { /* HEAD can fail even when the browser can still read the video. */ }
-    try {
-        const response = await api.fetchApi(url, {method: 'GET', headers: {Range: 'bytes=0-0'},
-            signal: AbortSignal.timeout(10000)});
-        // A server may ignore Range. Release its stream without downloading the video.
-        await response.body?.cancel().catch(() => {});
-        return response.ok ? 'ok' : gone(response.status) ? 'missing' : 'unknown';
-    } catch { return missing ? 'missing' : 'unknown'; }
+    return fileState(api, extendVideoURL(record));
 }
 
 export async function extendSourceExists(api, record) {

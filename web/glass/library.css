@@ -1,0 +1,127 @@
+/* Glass for the dialogs, cards and popovers of settings, versions, what's new, feedback, failures, the tutorial,
+   feature cards, the character editor and phone access. Loaded after each module's own sheet (glass/library.js), it
+   points the old dark tokens (--fv-bg, --fv-ink, …) at the shell's glass tokens inside these surfaces, so their own
+   rules follow light and dark, and gives every one the same material: a level-3 glass sheet over a veil that covers
+   the whole window. Solid when transparency is reduced, unsupported or switched off. */
+:root:root :is(.fv-setup,.fv-release-notes,.fv-whatsnew,.fv-feature-tour,.fv-cast-dialog,.fv-failure-dialog,.fv-tutorial-book,.fv-book-zoom,
+  .fv-lan-panel,.fv-lan-tip,.fv-guide-bubble,.fv-health,.fv-report-tip,.phone-confirm){
+  --fv-bg:rgb(var(--fv-solid3));--fv-canvas:rgb(var(--fv-solid2));--fv-card:var(--fv-ctl-bg);--fv-raised:var(--fv-ctl-hover);--fv-hover:var(--fv-ctl-hover);
+  --fv-border:var(--fv-line2);--fv-sheen:var(--fv-line2);--fv-ink:var(--fv-fg);--fv-muted:var(--fv-fg3);--fv-disabled:color-mix(in srgb,var(--fv-fg3) 70%,transparent);
+  --fv-accent:var(--fv-accent-ink);--fv-accent-hover:var(--fv-accent-ink);--fv-accent-dim:var(--fv-accent-line);--fv-selected:var(--fv-accent-soft);
+  --fv-danger:var(--fv-warn);--fv-danger-subtle:var(--fv-warn-soft);
+  --g-ok:#76d9b3;--g-ok-soft:rgb(118 217 179 / .14);--g-caution:#e0b062;
+  --fv-success:var(--g-ok);--fv-success-subtle:var(--g-ok-soft);--fv-warning:var(--g-caution);
+  color:var(--fv-fg);
+}
+:root[data-theme=light] :is(.fv-setup,.fv-release-notes,.fv-whatsnew,.fv-feature-tour,.fv-cast-dialog,.fv-failure-dialog,.fv-tutorial-book,.fv-book-zoom,
+  .fv-lan-panel,.fv-lan-tip,.fv-guide-bubble,.fv-health,.fv-report-tip,.phone-confirm){--g-ok:#17744f;--g-ok-soft:rgb(23 116 79 / .1);--g-caution:#8a5a00;color-scheme:light}
+
+/* The sheets: one material, one radius, one shadow. Radii follow the shell's ladder from the outside in: sheets
+   var(--fv-r-lg), popovers and cards on them var(--fv-r-md), buttons, fields and pictures var(--fv-r-sm). */
+:root:root :is(dialog.fv-setup,dialog.fv-release-notes,dialog.fv-whatsnew,dialog.fv-feature-tour,dialog.fv-cast-dialog,dialog.fv-failure-dialog,dialog.fv-tutorial-book,dialog.phone-confirm){
+  border:1px solid var(--fv-edge);border-radius:var(--fv-r-lg);background:rgb(var(--fv-tint) / var(--fv-a3));
+  -webkit-backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%);backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%);
+  box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh3);color:var(--fv-fg)}
+/* Popovers and cards that float over a view. */
+:root:root :is(.fv-lan-panel,.fv-guide-bubble,.fv-health,.fv-report-tip){
+  border:1px solid var(--fv-edge);border-radius:var(--fv-rad-pop);background:rgb(var(--fv-tint) / var(--fv-a3));
+  -webkit-backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%);backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%);
+  box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh3);color:var(--fv-fg)}
+:root:root .fv-lan-tip{border:1px solid var(--fv-edge);border-radius:var(--fv-r-md);background:rgb(var(--fv-solid3));color:var(--fv-fg);box-shadow:var(--fv-sh2)}
+/* The veil under a sheet covers the whole window (no grey ring, no ComfyUI showing through). */
+:root:root :is(dialog.fv-setup,dialog.fv-release-notes,dialog.fv-whatsnew,dialog.fv-feature-tour,dialog.fv-cast-dialog,dialog.fv-failure-dialog,dialog.fv-tutorial-book,dialog.fv-book-zoom,dialog.phone-confirm)::backdrop{
+  position:fixed;inset:0;background:rgb(3 5 8 / .52);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+:root[data-theme=light] :is(dialog.fv-setup,dialog.fv-release-notes,dialog.fv-whatsnew,dialog.fv-feature-tour,dialog.fv-cast-dialog,dialog.fv-failure-dialog,dialog.fv-tutorial-book,dialog.fv-book-zoom,dialog.phone-confirm)::backdrop{
+  background:rgb(214 219 228 / .5)}
+/* Sticky heads inside a sheet keep the sheet's own colour, not a darker band. */
+:root:root .fv-setup .fv-setup-head{background:transparent;-webkit-backdrop-filter:blur(var(--fv-glass-blur2,30px));backdrop-filter:blur(var(--fv-glass-blur2,30px));border-bottom-color:var(--fv-line)}
+:root:root .fv-tutorial-book{--book-bg:transparent;--book-panel:var(--fv-ctl-bg);--book-backdrop:rgb(3 5 8 / .52);--book-button-ink:#fff;--book-button:var(--fv-accent-fill);--book-radius:var(--fv-r-lg)}
+:root[data-theme=light] .fv-tutorial-book{--book-backdrop:rgb(214 219 228 / .5)}
+/* Opening and closing: the veil and the sheet fade together, the sheet rises 1 % into place; nothing bounces. */
+:root:root :is(dialog.fv-setup,dialog.fv-release-notes,dialog.fv-whatsnew,dialog.fv-feature-tour,dialog.fv-cast-dialog,dialog.fv-failure-dialog,dialog.fv-tutorial-book,dialog.phone-confirm)[open]{
+  animation:fv-glass-sheet var(--fv-dur-2,200ms) var(--fv-ease-out,cubic-bezier(.2,.8,.2,1))}
+:root:root :is(dialog.fv-setup,dialog.fv-release-notes,dialog.fv-whatsnew,dialog.fv-feature-tour,dialog.fv-cast-dialog,dialog.fv-failure-dialog,dialog.fv-tutorial-book,dialog.phone-confirm)[open]::backdrop{
+  animation:fv-glass-veil var(--fv-dur-2,200ms) var(--fv-ease-out,cubic-bezier(.2,.8,.2,1))}
+@keyframes fv-glass-sheet{from{opacity:0;transform:translateY(1%)}}
+@keyframes fv-glass-veil{from{opacity:0}}
+
+/* Buttons inside the sheets: quiet controls on the glass, the main action filled. */
+:root:root :is(.fv-setup,.fv-release-notes,.fv-whatsnew,.fv-feature-tour,.fv-cast-dialog,.fv-failure-dialog) button:not(.fv-close):not([role=switch]):not([role=tab]):not(.fv-tour-dot):not(.fv-tour-segment){
+  border-color:var(--fv-line2);border-radius:var(--fv-r-sm)}
+:root:root :is(.fv-setup,.fv-release-notes,.fv-whatsnew,.fv-feature-tour,.fv-cast-dialog,.fv-failure-dialog) :is(.fv-primary,.fv-failure-primary,.fv-cast-save,.fv-tour-use,.fv-update-apply){
+  background:var(--fv-accent-fill);border-color:transparent;color:#fff;font-weight:600}
+:root:root :is(.fv-setup,.fv-release-notes,.fv-whatsnew,.fv-feature-tour,.fv-cast-dialog,.fv-failure-dialog) :is(.fv-primary,.fv-failure-primary,.fv-cast-save,.fv-tour-use,.fv-update-apply):hover:not(:disabled){background:#1679dd}
+:root:root :is(.fv-setup,.fv-release-notes,.fv-whatsnew,.fv-feature-tour,.fv-cast-dialog,.fv-failure-dialog) :is(input:not([type=checkbox]):not([type=radio]):not([type=range]),textarea,select){
+  border-color:var(--fv-line2);background:var(--fv-ctl-bg);color:var(--fv-fg)}
+:root:root :is(.fv-setup,.fv-release-notes,.fv-whatsnew,.fv-feature-tour,.fv-cast-dialog,.fv-failure-dialog) :is(input,textarea,select):focus-visible{outline:2px solid var(--fv-accent-line);outline-offset:1px}
+:root:root :is(.fv-setup,.fv-release-notes,.fv-whatsnew,.fv-feature-tour,.fv-cast-dialog,.fv-failure-dialog,.fv-tutorial-book) :is(button,a,summary):focus-visible{outline:2px solid var(--fv-accent-line);outline-offset:2px}
+:root:root :is(.fv-setup,.fv-release-notes,.fv-whatsnew,.fv-feature-tour,.fv-cast-dialog,.fv-failure-dialog,.fv-tutorial-book) button:active:not(:disabled){transform:scale(.98)}
+
+/* ── Failure cards (error_panel.js): a glass card with a soft red mark, the reason, the next step, then the details ── */
+:root:root section.fv-failure{position:relative;border:1px solid color-mix(in srgb,var(--fv-warn) 28%,var(--fv-edge));border-radius:var(--fv-r-md);
+  padding:var(--fv-sp-16,16px) var(--fv-sp-16,16px) var(--fv-sp-12,12px) 56px;margin:var(--fv-sp-8,8px) 0;
+  background:rgb(var(--fv-tint) / var(--fv-a3));-webkit-backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%);backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%);
+  box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh2);color:var(--fv-fg)}
+:root:root section.fv-failure::before{content:'!';position:absolute;left:var(--fv-sp-16,16px);top:var(--fv-sp-16,16px);display:grid;place-items:center;width:28px;height:28px;border-radius:var(--fv-r-pill);
+  background:var(--fv-warn-soft);color:var(--fv-warn);font-weight:700;font-size:var(--fv-fs-2,13px)}
+:root:root section.fv-failure .fv-failure-head>strong{font-size:var(--fv-fs-3,16px);font-weight:600;line-height:1.4;color:var(--fv-fg)}
+:root:root section.fv-failure p{font-size:var(--fv-fs-2,13px);line-height:1.6;margin:var(--fv-sp-4,4px) 0;color:var(--fv-fg2)}
+:root:root section.fv-failure .fv-failure-next{color:var(--fv-fg);font-weight:500}
+:root:root section.fv-failure .fv-failure-privacy,:root:root section.fv-failure .fv-failure-location{font-size:var(--fv-fs-1,12px);color:var(--fv-fg3)}
+:root:root section.fv-failure :is(.fv-failure-cause,textarea,.fv-failure-location){-webkit-user-select:text;user-select:text}
+:root:root section.fv-failure textarea{border-color:var(--fv-line2);background:var(--fv-ctl-bg);color:var(--fv-fg);font-size:var(--fv-fs-1,12px);border-radius:var(--fv-r-sm)}
+:root:root section.fv-failure button,:root:root .fv-failure-footer button,:root:root .fv-failure-buttons>button{border-color:var(--fv-line2);border-radius:var(--fv-r-sm);background:var(--fv-ctl-bg);color:var(--fv-fg);font-size:var(--fv-fs-2,13px)}
+:root:root section.fv-failure button:hover:not(:disabled),:root:root .fv-failure-footer button:hover:not(:disabled){background:var(--fv-ctl-hover)}
+:root:root section.fv-failure .fv-failure-github{background:var(--fv-accent-soft);border-color:transparent;color:var(--fv-accent-ink);font-weight:600}
+:root:root .fv-failure-fold{border-top-color:var(--fv-line)}
+:root:root .fv-failure-fold>summary{color:var(--fv-fg3);font-size:var(--fv-fs-2,13px)}
+:root:root dialog.fv-failure-dialog{font-size:var(--fv-fs-2,13px);padding:var(--fv-sp-24,24px)}
+:root:root dialog.fv-failure-dialog>section.fv-failure{border:0;margin:0 0 var(--fv-sp-16,16px);padding:0 0 0 44px;background:none;-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:none}
+:root:root dialog.fv-failure-dialog>section.fv-failure::before{left:0;top:0}
+:root:root dialog.fv-failure-dialog .fv-failure-head>strong{font-size:var(--fv-fs-3,16px)}
+:root:root .fv-failure-dialog .fv-failure-primary,:root:root .fv-failure-footer .fv-failure-primary{background:var(--fv-accent-fill);border-color:transparent;color:#fff;font-weight:600}
+
+/* ── Phone access popover ── */
+:root:root .fv-lan-panel{padding:var(--fv-sp-16,16px);width:280px}
+:root:root .fv-lan-panel .fv-lan-qr{border-radius:var(--fv-r-sm)}
+
+/* Solid fallback for every surface above. */
+:is(:root[data-glass=solid],:root.lite) :is(dialog.fv-setup,dialog.fv-release-notes,dialog.fv-whatsnew,dialog.fv-feature-tour,dialog.fv-cast-dialog,dialog.fv-failure-dialog,dialog.fv-tutorial-book,dialog.phone-confirm,.fv-lan-panel,.fv-guide-bubble,.fv-health,.fv-report-tip,section.fv-failure){
+  -webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:rgb(var(--fv-solid3))}
+:is(:root[data-glass=solid],:root.lite) dialog.fv-failure-dialog>section.fv-failure{background:none}
+:is(:root[data-glass=solid],:root.lite) :is(dialog.fv-setup,dialog.fv-release-notes,dialog.fv-whatsnew,dialog.fv-feature-tour,dialog.fv-cast-dialog,dialog.fv-failure-dialog,dialog.fv-tutorial-book,dialog.fv-book-zoom,dialog.phone-confirm)::backdrop{
+  -webkit-backdrop-filter:none;backdrop-filter:none}
+@media(prefers-reduced-transparency:reduce){
+  :is(dialog.fv-setup,dialog.fv-release-notes,dialog.fv-whatsnew,dialog.fv-feature-tour,dialog.fv-cast-dialog,dialog.fv-failure-dialog,dialog.fv-tutorial-book,dialog.phone-confirm,.fv-lan-panel,.fv-guide-bubble,.fv-health,.fv-report-tip,section.fv-failure){
+    -webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:rgb(var(--fv-solid3))!important}
+  dialog.fv-failure-dialog>section.fv-failure{background:none!important}
+}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  :is(dialog.fv-setup,dialog.fv-release-notes,dialog.fv-whatsnew,dialog.fv-feature-tour,dialog.fv-cast-dialog,dialog.fv-failure-dialog,dialog.fv-tutorial-book,dialog.phone-confirm,.fv-lan-panel,.fv-guide-bubble,.fv-health,.fv-report-tip,section.fv-failure){background:rgb(var(--fv-solid3))}
+}
+@media(prefers-reduced-motion:reduce){
+  :is(dialog.fv-setup,dialog.fv-release-notes,dialog.fv-whatsnew,dialog.fv-feature-tour,dialog.fv-cast-dialog,dialog.fv-failure-dialog,dialog.fv-tutorial-book,dialog.phone-confirm)[open],
+  :is(dialog.fv-setup,dialog.fv-release-notes,dialog.fv-whatsnew,dialog.fv-feature-tour,dialog.fv-cast-dialog,dialog.fv-failure-dialog,dialog.fv-tutorial-book,dialog.phone-confirm)[open]::backdrop{animation:none}
+}
+/* Phones: the header entries of these modules are finger-sized. */
+@media(max-width:680px){:root:root :is(.fv-lan-trigger,.fv-feedback-entry){min-width:var(--fv-touch,44px);min-height:var(--fv-touch,44px)}}
+/* ── Settings: on-off settings are switches (text left, switch right); agreeing to a plan stays a check box ── */
+:root:root .fv-setup label.fv-check:not(.fv-consent):has(>input[role=switch]){display:flex;align-items:center;justify-content:space-between;gap:var(--fv-sp-16,16px);min-height:40px;margin:var(--fv-sp-4,4px) 0}
+:root:root .fv-setup input[type=checkbox][role=switch]{appearance:none;-webkit-appearance:none;position:relative;flex:none;box-sizing:border-box;width:40px;height:24px;min-height:24px;margin:0;padding:0;border:0;border-radius:var(--fv-r-pill);
+  background:var(--fv-line2);cursor:pointer;transition:background-color var(--fv-dur-1,160ms) var(--fv-ease-out,cubic-bezier(.2,.8,.2,1))}
+:root:root .fv-setup input[type=checkbox][role=switch]::before{content:'';position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:var(--fv-r-pill);background:#fff;
+  box-shadow:0 1px 3px rgb(0 0 0 / .3);transition:transform var(--fv-dur-1,160ms) var(--fv-ease-out,cubic-bezier(.2,.8,.2,1))}
+:root:root .fv-setup input[type=checkbox][role=switch]:checked{background:var(--fv-accent-fill)}
+:root:root .fv-setup input[type=checkbox][role=switch]:checked::before{transform:translateX(16px)}
+:root:root .fv-setup input[type=checkbox][role=switch]:disabled{opacity:.45;cursor:default}
+:root:root .fv-setup input[type=checkbox][role=switch]:focus-visible{outline:2px solid var(--fv-accent-line);outline-offset:2px}
+:root[data-theme=light] .fv-setup input[type=checkbox][role=switch]:not(:checked){background:rgb(20 24 32 / .18)}
+@media(prefers-reduced-motion:reduce){:root:root .fv-setup input[type=checkbox][role=switch],:root:root .fv-setup input[type=checkbox][role=switch]::before{transition:none}}
+/* Rows that fold technical parts away: folders, speed details. */
+:root:root .fv-setup :is(details.fv-folders,details.fv-speeds,details.fv-logs){margin:var(--fv-sp-8,8px) 0;padding:0;border:0;border-top:1px solid var(--fv-line);border-radius:0;background:transparent}
+:root:root .fv-setup :is(details.fv-folders,details.fv-speeds,details.fv-logs)>summary{padding:var(--fv-sp-12,12px) 0;font-weight:500;color:var(--fv-fg2)}
+:root:root .fv-setup>:is(details,section){border-color:var(--fv-line);background:var(--fv-ctl-bg);border-radius:var(--fv-r-md)}
+:root:root .fv-setup h3{font-size:var(--fv-fs-2,13px);font-weight:600;color:var(--fv-fg)}
+:root:root .fv-setup{font-size:var(--fv-fs-2,13px)}
+:root:root .fv-setup .fv-muted{color:var(--fv-fg3)}
+:root:root .fv-feedback .fv-feedback-shot{margin-left:0}

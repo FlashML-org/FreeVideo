@@ -59,7 +59,7 @@ export function referenceItems(node) {
             const kind = referenceKind(row.file);
             if (!kind) throw new Error('invalid_media');
             const item = {key: row.slot ? `swap:${media.id}:${row.slot}` : `file:${media.id}:${row.file}:${occurrence}`, kind, file: row.file,
-                name: row.cast?.name || row.file.split('/').pop(), assetIndex: rows.indexOf(row),
+                name: row.cast?.name || row.name || row.file.split('/').pop(), assetIndex: rows.indexOf(row),
                 ...(row.sound === false && kind === 'video' ? {sound: false} : {})};
             if (row.role === 'reference') refs.push(item);
             else if (kind === 'image' && ['first','last'].includes(row.role) && !anchors[row.role]) anchors[row.role] = item;
@@ -137,13 +137,12 @@ export function syncReferencePrompt(node, t = en => en, reset = false) {
 
 // `handles` are the names of characters that can be mentioned: once the caret is past a whole "@name" the mention is
 // finished (a character was chosen), so the list does not open again for what is written after it.
+// An "@" opens the list after anything: a Chinese character, a letter, a digit, a space, another mention, the start.
+// (An address such as name@example.com opens it too; Escape closes it.)
 export function mentionAt(text, start, end = start, handles = []) {
     if (start < 1 || start !== end) return null;
     const at = text.lastIndexOf('@', start - 1);
     if (at < 0) return null;
-    // An @ straight after a finished "@name" opens the list again.
-    const joined = handles.some(name => name && text.slice(0, at).endsWith('@' + name));
-    if (at > 0 && !joined && /[\w.%+\-]/.test(text[at - 1])) return null;
     const query = text.slice(at + 1, start);
     const rest = text.slice(at + 1);
     // A longer name that still begins like what is typed ("苏" and "苏晚") keeps the list open.
@@ -174,7 +173,7 @@ export function attachReferencePicker(input, {items, t = en => en, view, host, a
         .map(name => [name, input.getAttribute(name)]));
     input.setAttribute('role', 'combobox'); input.setAttribute('aria-autocomplete', 'list');
     input.setAttribute('aria-controls', list.id); input.setAttribute('aria-expanded', 'false');
-    let matches = [], active = 0, range = null, composing = false, disposed = false;
+    let matches = [], active = 0, range = null, composing = false, disposed = false, dismissed = -1;
     const listeners = [];
     const listen = (target, name, fn, options) => {
         if (name.startsWith('key')) { listeners.push(listenDialogKey(target, name, fn, options)); return; }
@@ -237,7 +236,9 @@ export function attachReferencePicker(input, {items, t = en => en, view, host, a
         let everyone = [];
         try { everyone = characters(); } catch {}
         range = mentionAt(input.value, input.selectionStart, input.selectionEnd, handleNames(everyone));
-        if (!range) { close(); return; }
+        // Closed with Escape, the list stays closed for that "@" while typing goes on after it.
+        if (range?.start !== dismissed) dismissed = -1;
+        if (!range || range.start === dismissed) { close(); return; }
         let available = [], invalid = false;
         try { available = items(); } catch { invalid = true; }
         const media = available.filter(item => `${item.name} ${item.token} ${t(item.kind, {image:'图片',video:'视频',audio:'音频'}[item.kind])} ${item.number}`.toLowerCase().includes(range.query));
@@ -301,7 +302,7 @@ export function attachReferencePicker(input, {items, t = en => en, view, host, a
             e.preventDefault(); e.stopPropagation(); select(step(active < 0 ? 0 : active, e.key === 'ArrowDown' ? 1 : -1));
         } else if ((e.key === 'Enter' || e.key === 'Tab') && !e.shiftKey && matches.length) {
             e.preventDefault(); e.stopPropagation(); if (usable(active)) choose(active);
-        } else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
+        } else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); dismissed = range?.start ?? -1; close(); }
     });
     listen(input, 'keyup', e => { if (['ArrowLeft','ArrowRight','Home','End'].includes(e.key)) refresh(); });
     listen(input, 'blur', () => { if (!popup.contains(document.activeElement)) close(); });
@@ -314,11 +315,9 @@ export function attachReferencePicker(input, {items, t = en => en, view, host, a
             if (input.disabled || input.readOnly) return;
             let everyone = [];
             try { everyone = characters(); } catch {}
-            if (!mentionAt(input.value, input.selectionStart, input.selectionEnd, handleNames(everyone))) {
-                const prefix = input.value[input.selectionStart - 1] || '';
-                insert((/[\w.%+\-]/.test(prefix) ? ' ' : '') + '@', input.selectionStart, input.selectionEnd);
-            }
-            input.focus(); refresh();
+            // The "@" goes in where the caret is, as typed: no space is added before it.
+            if (!mentionAt(input.value, input.selectionStart, input.selectionEnd, handleNames(everyone))) insert('@', input.selectionStart, input.selectionEnd);
+            dismissed = -1; input.focus(); refresh();
         },
         dispose() { disposed = true; close(); listeners.forEach(stop => stop()); popup.remove(); for (const [name, value] of saved) { if (value === null) input.removeAttribute(name); else input.setAttribute(name, value); } },
     };

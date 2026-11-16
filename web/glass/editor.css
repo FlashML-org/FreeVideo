@@ -1,0 +1,183 @@
+/* Edit view in the glass material (design-jia-glass, ed's work-ed). Loaded last by editor.js, so it only restyles.
+   Glass only on layers that float over the stage: the library and the inspector panes, the generate console, its tray,
+   menus, popovers and notices. The picture and the timeline stay solid and sharp. Solid fallback for
+   :root[data-glass=solid], .lite, prefers-reduced-transparency and browsers without backdrop-filter.
+   Tokens come from theme.css (:root, shell); the editor maps its older names onto them, for both themes. */
+
+/* ── Tokens: dark (default) and light, mapped onto the editor's existing names ── */
+.fv-studio.fv-editor,.fv-ed-layer{
+  --fv-ed-ground:#0a0d12;--fv-ed-timeline:#15181e;--fv-ed-row:rgb(255 255 255 / .045);
+  --fv-bg:var(--fv-ed-ground);--fv-card:rgb(var(--fv-solid3));--fv-raised:rgb(255 255 255 / .07);--fv-hover:rgb(255 255 255 / .11);
+  --fv-border:rgb(255 255 255 / .1);--fv-sheen:rgb(255 255 255 / .16);
+  --fv-ink:var(--fv-fg);--fv-muted:var(--fv-fg3);
+  --fv-accent:#3d9dff;--fv-accent-hover:#66b6ff;
+  --fv-ed-glass1:rgb(var(--fv-tint) / var(--fv-a1));--fv-ed-glass2:rgb(var(--fv-tint) / var(--fv-a2));--fv-ed-glass3:rgb(var(--fv-tint) / var(--fv-a3));
+  --fv-ed-blur1:blur(var(--fv-glass-blur1)) saturate(150%);--fv-ed-blur2:blur(var(--fv-glass-blur2)) saturate(165%);--fv-ed-blur3:blur(var(--fv-glass-blur3)) saturate(175%);
+  --fv-ed-pic-sh:0 2px 6px rgb(0 0 0 / .35),0 30px 70px -24px rgb(0 0 0 / .7);
+}
+:root[data-theme=light] :is(.fv-studio.fv-editor,.fv-ed-layer){
+  --fv-ed-ground:#e7eaef;--fv-ed-timeline:#f7f8fa;--fv-ed-row:rgb(20 24 32 / .06);
+  --fv-canvas:#eef0f4;--fv-raised:rgb(20 24 32 / .05);--fv-hover:rgb(20 24 32 / .09);
+  --fv-border:rgb(20 24 32 / .13);--fv-sheen:rgb(20 24 32 / .2);
+  --fv-disabled:#8a93a1;--fv-accent:#0d6dcc;--fv-accent-hover:#0759ab;--fv-accent-ramp:#2a8fd6;--fv-selected:#dbe9f8;
+  --fv-success:#1f8f63;--fv-success-subtle:#dff3ea;--fv-warning:#8a5a07;--fv-danger:#a82b25;--fv-danger-subtle:#f7e3e2;
+  --fv-ed-pic-sh:0 2px 6px rgb(30 40 60 / .12),0 24px 50px -24px rgb(30 40 60 / .36);
+  color-scheme:light;
+}
+
+/* A kept editor is closed, not removed: a closed dialog never shows, whatever display its own rules give it
+   (the node view has no dialog of its own to cover it). */
+dialog.fv-studio.fv-editor:not([open]){display:none!important}
+
+/* ── The stage: one ground, interface words not selectable (what may be copied stays selectable) ── */
+.fv-studio.fv-editor{background:var(--fv-ed-ground);color:var(--fv-ink);-webkit-user-select:none;user-select:none}
+.fv-studio.fv-editor :is(input,textarea,select,[contenteditable]:not([contenteditable=false]),.fv-copyable){-webkit-user-select:text;user-select:text}
+.fv-studio.fv-editor .fv-ed-preview,.fv-studio.fv-editor .fv-ed-transport,.fv-studio.fv-editor .fv-ed-project-row{background:transparent}
+
+/* ── Glass panes: the library on the left, the inspector on the right (g2) ── */
+.fv-editor :is(.fv-ed-library,.fv-ed-adjust-host){background:var(--fv-ed-glass2);-webkit-backdrop-filter:var(--fv-ed-blur2);backdrop-filter:var(--fv-ed-blur2)}
+.fv-editor .fv-ed-library{border-right:1px solid var(--fv-line);box-shadow:inset -1px 0 0 var(--fv-edge-hi)}
+.fv-editor .fv-ed-adjust-host{border-left:1px solid var(--fv-line);box-shadow:inset 1px 0 0 var(--fv-edge-hi)}
+:root[data-theme=light] .fv-editor :is(.fv-ed-library,.fv-ed-adjust-host){box-shadow:none}
+/* An inspector with nothing selected says what it is for, instead of an empty strip. */
+.fv-editor .fv-ed-adjust-host[data-empty=true] .fv-ed-adjust-controls:disabled{opacity:.9}
+.fv-editor .fv-ed-tabs{gap:2px;padding:2px;border-radius:var(--fv-r-md);background:var(--fv-ctl-bg);height:auto}
+.fv-studio.fv-editor .fv-ed-tabs button{height:28px;min-height:28px;border-radius:var(--fv-r-md);color:var(--fv-fg2);font-weight:500}
+.fv-editor .fv-ed-tabs button:hover{background:var(--fv-ctl-hover);color:var(--fv-fg)}
+.fv-editor .fv-ed-tabs button[aria-selected=true],.fv-editor .fv-ed-tabs button[aria-pressed=true]{background:rgb(var(--fv-tint) / .92);color:var(--fv-fg);font-weight:600;box-shadow:0 1px 2px rgb(0 0 0 / .22),inset 0 1px 0 var(--fv-edge-hi)}
+:root[data-theme=light] .fv-editor .fv-ed-tabs button:is([aria-selected=true],[aria-pressed=true]){background:#fff;box-shadow:0 1px 2px rgb(30 40 60 / .16),0 0 0 .5px rgb(30 40 60 / .06)}
+.fv-editor :is(.fv-ed-search,.fv-ed-rename){background:var(--fv-ctl-bg);border-color:var(--fv-line);border-radius:var(--fv-r-md)}
+.fv-editor :is(.fv-ed-search,.fv-ed-rename):focus{outline:none;box-shadow:inset 0 0 0 1px var(--fv-accent-line),0 0 0 3px var(--fv-accent-soft)}
+.fv-editor .fv-ed-source{border-radius:var(--fv-r-sm);box-shadow:inset 0 0 0 1px var(--fv-line);transition:transform var(--fv-dur-1) var(--fv-ease-out)}
+.fv-editor .fv-ed-source:hover{transform:scale(1.02)}
+.fv-editor :is(.fv-ed-source-time,.fv-ed-source-used){border-radius:var(--fv-r-xs);background:rgb(10 12 16 / .72);color:#f3f5f8;font-size:12px}
+.fv-editor :is(.fv-ed-source-add,.fv-ed-source-remove){background:rgb(var(--fv-tint) / .86);color:var(--fv-fg);box-shadow:inset 0 0 0 1px var(--fv-edge),0 2px 8px rgb(0 0 0 / .25)}
+.fv-editor .fv-ed-import{border-radius:var(--fv-r-sm);border-color:var(--fv-line2)}
+
+/* ── The picture: solid, rounded, with depth; never under glass ── */
+.fv-editor .fv-ed-picture{border-radius:var(--fv-rad-pic);box-shadow:0 0 0 1px rgb(255 255 255 / .06),var(--fv-ed-pic-sh)}
+:root[data-theme=light] .fv-editor .fv-ed-picture{box-shadow:0 0 0 1px rgb(0 0 0 / .06),var(--fv-ed-pic-sh)}
+.fv-editor .fv-ed-picture[data-empty=true]{background:rgb(var(--fv-tint) / .6);border-color:var(--fv-line2);box-shadow:none}
+
+/* ── Project row: name, saved state, Export (the one solid accent key) ── */
+.fv-editor .fv-ed-project-row .fv-ed-name{border-radius:var(--fv-r-md);color:var(--fv-fg)}
+.fv-editor .fv-ed-project-row .fv-ed-name:hover{background:var(--fv-ctl-bg)}
+.fv-editor .fv-ed-save-state{background:var(--fv-ctl-bg);color:var(--fv-fg3)}
+.fv-editor .fv-ed-save-state[data-state=unsaved]{background:var(--fv-warn-soft);color:var(--fv-warn)}
+.fv-studio.fv-editor .fv-ed-export-box>.fv-ed-export-main,.fv-studio.fv-editor .fv-primary{background:var(--fv-accent-fill);border-color:transparent;color:#fff;
+  box-shadow:inset 0 1px 0 rgb(255 255 255 / .22),inset 0 -1px 0 rgb(0 0 0 / .12),0 8px 20px -10px rgb(15 116 214 / .75)}
+.fv-studio.fv-editor .fv-ed-export-box>.fv-ed-export-main:hover,.fv-studio.fv-editor .fv-primary:hover{background:var(--fv-accent-fill-hover,var(--fv-accent-fill));color:#fff}
+.fv-editor .fv-ed-export-box>.fv-ed-export-main{border-radius:var(--fv-r-md)}
+.fv-studio.fv-editor .fv-ed-export-box>.fv-ed-export-main:not(.fv-primary){background:var(--fv-ctl-hover);color:var(--fv-fg);box-shadow:inset 0 0 0 1px var(--fv-line2)}
+
+/* ── The generate console (g1): a floating bar with rounded ends over the stage ── */
+.fv-editor .fv-ed-genbar{margin:4px 12px;padding:0 12px;border:1px solid var(--fv-edge);border-radius:var(--fv-r-lg);background:var(--fv-ed-glass1);
+  box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh1);-webkit-backdrop-filter:var(--fv-ed-blur1);backdrop-filter:var(--fv-ed-blur1)}
+.fv-editor .fv-ed-genbar .fv-ed-description-box{background:var(--fv-ctl-bg);border-color:var(--fv-line);border-radius:var(--fv-r-md)}
+.fv-editor .fv-ed-genbar .fv-ed-description-box:focus-within{border-color:var(--fv-line);box-shadow:inset 0 0 0 1px var(--fv-accent-line),0 0 0 3px var(--fv-accent-soft)}
+.fv-editor .fv-ed-genbar .fv-ed-description{background:transparent}
+.fv-editor .fv-ed-genbar .fv-ed-expand{background:transparent}
+/* Expand looks and answers like the history key beside it: same ink and corners, same hover; pressed, it eases in. */
+.fv-editor .fv-ed-genbar .fv-ed-expand{border-radius:var(--fv-r-sm);color:var(--fv-muted);cursor:pointer}
+.fv-editor .fv-ed-genbar .fv-ed-expand:hover{background:var(--fv-hover);color:var(--fv-ink)}
+/* Inside the 12 px bar with a 4 px inset, the press takes 8 (concentric). */
+.fv-editor .fv-ed-genbar .fv-ed-generate{border-radius:var(--fv-r-sm)}
+/* Not yet the next step (nothing chosen, or no description yet): a secondary key, a clear accent tint with accent words,
+   plainly pressable (the key draws no outline or shadow, see polish.css); only a key that cannot be pressed is greyed. */
+.fv-editor .fv-ed-genbar .fv-ed-generate:not(.fv-primary){background:color-mix(in srgb,var(--fv-accent-ink) 20%,transparent);color:var(--fv-accent-ink);border-color:transparent}
+.fv-editor .fv-ed-genbar .fv-ed-generate:not(.fv-primary):not(:disabled):hover{background:color-mix(in srgb,var(--fv-accent-ink) 28%,transparent)}
+.fv-editor .fv-ed-genbar .fv-ed-generate:not(.fv-primary)+.fv-ed-pass-options>summary{background:color-mix(in srgb,var(--fv-accent-ink) 20%,transparent);color:var(--fv-accent-ink);border-color:transparent;border-left-color:var(--fv-accent-line)}
+.fv-editor .fv-ed-genbar .fv-ed-generate:disabled{opacity:.5}
+@media(max-width:680px){.fv-editor .fv-ed-genbar{margin:2px 8px;padding:4px 8px 4px 12px;border-radius:var(--fv-r-lg)}}
+
+/* ── Floating layers (g3): the bar's tray, notices, menus, popovers, the unsaved card ── */
+.fv-editor :is(.fv-ed-gen-tray>:not([hidden]),.fv-ed-notice,.fv-ed-name-menu,.fv-ed-more-panel,.fv-ed-pass-menu,.fv-ed-ref-menu,.fv-ed-volume-popover,.fv-empty-prompt,.fv-ed-save-warning-card,.fv-ed-ref-notice){
+  background:var(--fv-ed-glass3);border:1px solid var(--fv-edge);box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh3);color:var(--fv-fg);
+  -webkit-backdrop-filter:var(--fv-ed-blur3);backdrop-filter:var(--fv-ed-blur3)}
+.fv-editor :is(.fv-ed-gen-tray>:not([hidden]),.fv-ed-notice,.fv-empty-prompt,.fv-ed-save-warning-card,.fv-ed-ref-notice){border-radius:var(--fv-r-lg)}
+.fv-editor :is(.fv-ed-name-menu,.fv-ed-more-panel,.fv-ed-pass-menu,.fv-ed-ref-menu,.fv-ed-volume-popover){border-radius:var(--fv-r-lg);padding:4px}
+.fv-editor :is(.fv-ed-name-menu,.fv-ed-more-panel,.fv-ed-ref-menu) button{border-radius:var(--fv-r-md)}
+.fv-editor :is(.fv-ed-name-menu,.fv-ed-more-panel,.fv-ed-ref-menu) button:not(:disabled):is(:hover,:focus-visible){background:var(--fv-ctl-hover);outline:none}
+.fv-editor .fv-ed-gen-tray>.fv-ed-gen-failure,.fv-editor .fv-ed-save-warning-card{border-color:color-mix(in srgb,var(--fv-warn) 34%,transparent);background:color-mix(in srgb,var(--fv-warn) 9%,var(--fv-ed-glass3))}
+.fv-editor .fv-ed-failure-reason{color:var(--fv-warn)}
+
+/* ── The timeline: one solid surface (tool row, heads, rows), crisp ── */
+.fv-editor :is(.fv-ed-toolbar,.fv-ed-tracks){background:var(--fv-ed-timeline)}
+.fv-editor .fv-ed-toolbar{border-top:1px solid var(--fv-line);box-shadow:0 -14px 34px -22px rgb(0 0 0 / .55)}
+:root[data-theme=light] .fv-editor .fv-ed-toolbar{box-shadow:0 -12px 30px -22px rgb(30 40 60 / .3)}
+.fv-editor .fv-ed-toolbar>.fv-ed-tool-group button{border-radius:var(--fv-r-md);color:var(--fv-fg2)}
+.fv-editor .fv-ed-toolbar>.fv-ed-tool-group button:not(:disabled):hover{background:var(--fv-ctl-bg);color:var(--fv-fg)}
+.fv-editor .fv-ed-toolbar>.fv-ed-tool-group button[aria-pressed=true]{color:var(--fv-accent-ink);background:var(--fv-accent-soft)}
+.fv-editor .fv-ed-tracks-skeleton>i{border-bottom-color:var(--fv-line)}
+.fv-editor .fv-ed-tracks-skeleton>b{border-right-color:var(--fv-line)}
+
+/* ── Solid fallback: same layout, opaque surfaces of the same tone ── */
+:is(:root[data-glass=solid],:root.lite) .fv-editor :is(.fv-ed-library,.fv-ed-adjust-host,.fv-ed-genbar,.fv-ed-gen-tray>*,.fv-ed-notice,.fv-ed-name-menu,.fv-ed-more-panel,.fv-ed-pass-menu,.fv-ed-ref-menu,.fv-ed-volume-popover,.fv-empty-prompt,.fv-ed-save-warning-card,.fv-ed-ref-notice){-webkit-backdrop-filter:none;backdrop-filter:none}
+:is(:root[data-glass=solid],:root.lite) .fv-editor .fv-ed-genbar{background:rgb(var(--fv-solid1))}
+:is(:root[data-glass=solid],:root.lite) .fv-editor :is(.fv-ed-library,.fv-ed-adjust-host){background:rgb(var(--fv-solid2))}
+:is(:root[data-glass=solid],:root.lite) .fv-editor :is(.fv-ed-gen-tray>:not([hidden]),.fv-ed-notice,.fv-ed-name-menu,.fv-ed-more-panel,.fv-ed-pass-menu,.fv-ed-ref-menu,.fv-ed-volume-popover,.fv-empty-prompt,.fv-ed-ref-notice){background:rgb(var(--fv-solid3))}
+:is(:root[data-glass=solid],:root.lite) .fv-editor :is(.fv-ed-gen-tray>.fv-ed-gen-failure,.fv-ed-save-warning-card){background:color-mix(in srgb,var(--fv-warn) 9%,rgb(var(--fv-solid3)))}
+@media(prefers-reduced-transparency:reduce){
+  .fv-editor :is(.fv-ed-library,.fv-ed-adjust-host,.fv-ed-genbar,.fv-ed-gen-tray>*,.fv-ed-notice,.fv-ed-name-menu,.fv-ed-more-panel,.fv-ed-pass-menu,.fv-ed-ref-menu,.fv-ed-volume-popover,.fv-empty-prompt,.fv-ed-save-warning-card,.fv-ed-ref-notice){-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+  .fv-editor .fv-ed-genbar{background:rgb(var(--fv-solid1))!important}
+  .fv-editor :is(.fv-ed-library,.fv-ed-adjust-host){background:rgb(var(--fv-solid2))!important}
+  .fv-editor :is(.fv-ed-gen-tray>:not([hidden]),.fv-ed-notice,.fv-ed-name-menu,.fv-ed-more-panel,.fv-ed-pass-menu,.fv-ed-ref-menu,.fv-ed-volume-popover,.fv-empty-prompt,.fv-ed-ref-notice){background:rgb(var(--fv-solid3))!important}
+}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  .fv-editor .fv-ed-genbar{background:rgb(var(--fv-solid1))}
+  .fv-editor :is(.fv-ed-library,.fv-ed-adjust-host){background:rgb(var(--fv-solid2))}
+  .fv-editor :is(.fv-ed-gen-tray>:not([hidden]),.fv-ed-notice,.fv-ed-name-menu,.fv-ed-more-panel,.fv-ed-pass-menu,.fv-ed-ref-menu,.fv-ed-volume-popover,.fv-empty-prompt,.fv-ed-ref-notice){background:rgb(var(--fv-solid3))}
+}
+
+/* ── Motion: ease out, no overshoot; nothing moves under reduced motion ── */
+@media(prefers-reduced-motion:reduce){.fv-editor .fv-ed-source{transition:none}.fv-editor .fv-ed-source:hover{transform:none}}
+
+/* ── 681–1279 px: the rails sit on the stage; the library and inspector float over the picture as g3 sheets ── */
+@media(min-width:681px) and (max-width:1279px){
+  .fv-editor .fv-ed-rail{background:var(--fv-ed-glass1);-webkit-backdrop-filter:var(--fv-ed-blur1);backdrop-filter:var(--fv-ed-blur1)}
+  .fv-editor :is(.fv-ed-library,.fv-ed-adjust-host){background:var(--fv-ed-glass3);border-color:var(--fv-edge);box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh3);-webkit-backdrop-filter:var(--fv-ed-blur3);backdrop-filter:var(--fv-ed-blur3)}
+  .fv-editor .fv-ed-library[data-open=true]{animation:fv-ed-pane-in var(--fv-dur-2) var(--fv-ease-out)}
+  :is(:root[data-glass=solid],:root.lite) .fv-editor :is(.fv-ed-library,.fv-ed-adjust-host,.fv-ed-rail){-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--fv-solid3))}
+}
+@keyframes fv-ed-pane-in{from{opacity:.3;transform:translateX(-8px)}}
+@media(prefers-reduced-motion:reduce){.fv-editor .fv-ed-library[data-open=true]{animation:none}}
+
+/* ── Menus and popovers open and close with the same short fade (160 ms, eased out), interruptible; instant under reduced motion ── */
+.fv-editor :is(.fv-ed-name-menu,.fv-ed-more-panel,.fv-ed-ref-menu,.fv-ed-volume-popover,.fv-ed-pass-menu,.fv-ed-gen-tray>*,.fv-ed-notice,.fv-ed-save-warning-card),.fv-ed-context-menu{
+  opacity:1;translate:0 0;transition:opacity var(--fv-dur-1) var(--fv-ease-out),translate var(--fv-dur-1) var(--fv-ease-out),display var(--fv-dur-1) allow-discrete,overlay var(--fv-dur-1) allow-discrete}
+@starting-style{.fv-editor :is(.fv-ed-name-menu,.fv-ed-more-panel,.fv-ed-ref-menu,.fv-ed-volume-popover,.fv-ed-pass-menu,.fv-ed-gen-tray>*,.fv-ed-notice,.fv-ed-save-warning-card),.fv-ed-context-menu{opacity:0;translate:0 4px}}
+.fv-editor :is(.fv-ed-name-menu,.fv-ed-more-panel,.fv-ed-ref-menu,.fv-ed-volume-popover,.fv-ed-gen-tray>*,.fv-ed-save-warning-card)[hidden],.fv-ed-context-menu[hidden]{opacity:0;translate:0 4px}
+@media(prefers-reduced-motion:reduce){.fv-editor :is(.fv-ed-name-menu,.fv-ed-more-panel,.fv-ed-ref-menu,.fv-ed-volume-popover,.fv-ed-pass-menu,.fv-ed-gen-tray>*,.fv-ed-notice,.fv-ed-save-warning-card),.fv-ed-context-menu{transition:none}}
+/* The timeline's right-click menu is a g3 layer like the others. */
+.fv-editor .fv-ed-context-menu{background:var(--fv-ed-glass3);border-color:var(--fv-edge);border-radius:var(--fv-r-lg);padding:4px;box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh3);-webkit-backdrop-filter:var(--fv-ed-blur3);backdrop-filter:var(--fv-ed-blur3)}
+.fv-editor .fv-ed-context-menu button{border-radius:var(--fv-r-md)}
+:is(:root[data-glass=solid],:root.lite) .fv-editor .fv-ed-context-menu{background:rgb(var(--fv-solid3));-webkit-backdrop-filter:none;backdrop-filter:none}
+@media(prefers-reduced-transparency:reduce){.fv-editor .fv-ed-context-menu{background:rgb(var(--fv-solid3))!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}}
+@media(max-width:1279px){.fv-editor .fv-ed-adjust>.fv-ed-tabs{width:auto;margin-right:32px;padding-right:2px}}
+
+/* ── Dialogs opened from the editor (export, missing characters): g3 sheets over a light veil ── */
+.fv-editor .fv-ed-export-dialog,.fv-ed-text-export-dialog.fv-ed-layer{background:var(--fv-ed-glass3);border:1px solid var(--fv-edge);border-radius:var(--fv-rad-dock,22px);color:var(--fv-fg);
+  box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh3);-webkit-backdrop-filter:var(--fv-ed-blur3);backdrop-filter:var(--fv-ed-blur3)}
+.fv-editor .fv-ed-export-dialog::backdrop,.fv-ed-text-export-dialog.fv-ed-layer::backdrop{background:rgb(4 6 10 / .5)}
+:root[data-theme=light] :is(.fv-editor .fv-ed-export-dialog,.fv-ed-text-export-dialog.fv-ed-layer)::backdrop{background:rgb(214 219 228 / .5)}
+:is(:root[data-glass=solid],:root.lite) :is(.fv-editor .fv-ed-export-dialog,.fv-ed-text-export-dialog.fv-ed-layer){background:rgb(var(--fv-solid3));-webkit-backdrop-filter:none;backdrop-filter:none}
+@media(prefers-reduced-transparency:reduce){:is(.fv-editor .fv-ed-export-dialog,.fv-ed-text-export-dialog.fv-ed-layer){background:rgb(var(--fv-solid3))!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}}
+.fv-ed-text-export-dialog.fv-ed-layer p{color:var(--fv-warn)}
+
+/* The bar's tray at the head of the inspector: quiet cards inside the pane (never glass on glass). */
+.fv-editor .fv-ed-adjust-host>.fv-ed-gen-tray>:not([hidden]){background:var(--fv-ctl-bg);border:1px solid var(--fv-line);border-radius:var(--fv-r-md);box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none}
+.fv-editor .fv-ed-adjust-host>.fv-ed-gen-tray>.fv-ed-gen-failure:not([hidden]){background:var(--fv-warn-soft);border-color:color-mix(in srgb,var(--fv-warn) 34%,transparent)}
+/* A notice in the project row sits on the stage: a quiet chip, not a floating sheet. */
+.fv-editor .fv-ed-project-row .fv-ed-notice{background:var(--fv-ctl-bg);border:1px solid var(--fv-line);box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none}
+.fv-editor .fv-ed-project-row .fv-ed-notice:has(.fv-issue-button){background:var(--fv-warn-soft);border-color:color-mix(in srgb,var(--fv-warn) 30%,transparent)}
+
+/* ── The stage light: a soft trace of the picture's colours behind the stage (a 64×40 canvas scaled up, never blurred live) ── */
+.fv-ed-ambient{position:absolute;inset:0;z-index:-1;pointer-events:none;overflow:hidden}
+.fv-ed-ambient canvas{position:absolute;inset:0;width:100%;height:100%;opacity:0;transition:opacity var(--fv-dur-3) var(--fv-ease-out)}
+.fv-ed-ambient canvas.fv-on{opacity:.55}
+.fv-ed-ambient::after{content:"";position:absolute;inset:0;background:radial-gradient(120% 90% at 50% 30%,rgb(6 8 12 / .3) 0%,rgb(6 8 12 / .74) 70%,rgb(6 8 12 / .9) 100%)}
+:root[data-theme=light] .fv-ed-ambient::after{background:radial-gradient(120% 90% at 50% 30%,rgb(244 246 249 / .42) 0%,rgb(240 242 246 / .74) 62%,rgb(236 239 244 / .9) 100%)}
+:root[data-theme=light] .fv-ed-ambient canvas.fv-on{opacity:.6}
+:is(:root[data-glass=solid],:root.lite) .fv-ed-ambient{display:none}
+@media(prefers-reduced-transparency:reduce){.fv-ed-ambient{display:none}}
+@media(prefers-reduced-motion:reduce){.fv-ed-ambient canvas{transition:none}}

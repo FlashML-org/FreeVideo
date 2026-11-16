@@ -939,8 +939,9 @@ class Productions:
         try:
             self.note(session, dict(type='step', tool='freevideo_drama_' + step['action'], summary=step['reason'],
                                     state='done', refs=refs))
-        except Exception:  # noqa: BLE001 - a conversation that is gone or full never stops the film
-            logging.getLogger(__name__).warning('A step of the built-in director was not written to the conversation')
+        except Exception as error:  # noqa: BLE001 - a conversation that is gone or full never stops the film
+            logging.getLogger(__name__).warning('A step of the built-in director was not written to the conversation: %s',
+                                                getattr(error, 'code', None) or type(error).__name__, exc_info=True)
 
     def _director(self, identity):
         from . import builtin_director

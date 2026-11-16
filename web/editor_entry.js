@@ -7,6 +7,7 @@ import {cleanOptionalPrompt, clonePrompt} from './optional_inputs.js';
 import {openAutopilot, openImage, viewChanged} from './view_navigation.js';
 import {mediaReferences} from './editor_media_references.js';
 import {turnNodeOn} from './studio_queue.js';
+import {CN} from './topbar_state.js';
 function editorPanel(node) {
     const read = () => Object.fromEntries((node.widgets || []).filter(widget => widget.name).map(widget => [widget.name, widget.value]));
     const values = read();
@@ -71,9 +72,8 @@ export function openEditorView(node, {studio, work = null, extend = false, onPro
     viewChanged('editor', node);
     // Every route into Edit (including the first video's next step) offers the same contextual card.
     Promise.resolve(handle.ready).then(() => import('./feature_tour.js')).then(({triggerFeatureTour}) => {
-        const choice = new URLSearchParams(location.search).get('freevideo_lang');
-        const cn = choice === 'zh' || (choice !== 'en' && String(navigator.language || '').toLowerCase().startsWith('zh'));
-        return triggerFeatureTour('editor', {api, cn, owner: handle.element});
+        // The page's language as the top bar has it (the address's query is gone by now).
+        return triggerFeatureTour('editor', {api, cn: CN, owner: handle.element});
     }).catch(() => {});
     return handle;
 }

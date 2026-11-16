@@ -8,7 +8,7 @@
 .fv-editor .fv-ed-transport-tools button:disabled{opacity:.4}
 .fv-ed-toolbar>.fv-ed-snapping{margin-left:auto;flex:none}
 .fv-ed-toolbar>.fv-ed-zoom{margin-left:0}
-.fv-ed-shortcut-sheet{position:absolute;right:16px;bottom:280px;z-index:12;max-height:min(560px,65dvh);width:360px;max-width:calc(100% - 32px);overflow:auto;background:var(--fv-card);border:1px solid var(--fv-border);border-radius:8px;padding:12px;box-shadow:0 8px 24px #0003}
+.fv-ed-shortcut-sheet{position:absolute;right:16px;bottom:280px;z-index:12;max-height:min(560px,65dvh);width:360px;max-width:calc(100% - 32px);overflow:auto;background:var(--fv-card);border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);padding:12px;box-shadow:0 8px 24px #0003}
 .fv-ed-shortcut-sheet table{width:100%;font-size:12px;border-collapse:collapse}
 .fv-ed-shortcut-sheet caption{text-align:left;font-size:14px;margin-bottom:8px}
 .fv-ed-shortcut-sheet td{padding:5px 3px;text-align:left;border-bottom:1px solid var(--fv-border)}
@@ -24,3 +24,69 @@
 .fv-ed-reverse-note{font-size:12px;color:var(--fv-muted);white-space:nowrap}
 .fv-ed-transport:not([data-rate="-1"]) .fv-ed-reverse-note{display:none}
 .fv-ed-timeline-marker[data-blocked=true]{opacity:.45;cursor:not-allowed}
+
+/* ── Glass version: the transport sits on the stage without a surface. Time on the left, the play group in the middle
+   (centred on the picture), playback tools on the right; icon keys of one size, a press shows at once. ── */
+.fv-studio.fv-editor .fv-ed-transport{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);grid-template-areas:"time center tools";align-items:center;gap:8px;padding:0 16px}
+.fv-studio.fv-editor .fv-ed-transport>.fv-ed-drawer-toggle{grid-area:drawer}
+.fv-studio.fv-editor .fv-ed-transport>.fv-ed-time{grid-area:time;justify-self:start;min-width:10.5ch;font:500 var(--fv-fs-2,13px)/1 var(--fv-font,system-ui);font-variant-numeric:tabular-nums;color:var(--fv-fg2);white-space:nowrap}
+.fv-studio.fv-editor .fv-ed-transport>.fv-ed-reverse-note{grid-area:time;justify-self:end;font-size:var(--fv-fs-1,12px);color:var(--fv-fg3)}
+.fv-studio.fv-editor .fv-ed-transport-center{grid-area:center;display:flex;align-items:center;gap:4px;translate:var(--fv-ed-center-shift,0px) 0}
+.fv-studio.fv-editor .fv-ed-transport>.fv-ed-transport-tools{grid-area:tools;justify-self:end;margin-left:0}
+.fv-studio.fv-editor :is(.fv-ed-transport-center,.fv-ed-transport-tools) button{display:grid;place-items:center;width:32px;height:32px;min-height:32px;padding:0;border:0;border-radius:var(--fv-r-md);background:transparent;color:var(--fv-fg2);
+  transition:background-color var(--fv-dur-1,160ms) var(--fv-ease-out,ease-out),color var(--fv-dur-1,160ms) var(--fv-ease-out,ease-out),transform 80ms var(--fv-ease-out,ease-out)}
+.fv-studio.fv-editor :is(.fv-ed-transport-center,.fv-ed-transport-tools) button svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.fv-studio.fv-editor :is(.fv-ed-transport-center,.fv-ed-transport-tools) button:not(:disabled):hover{background:var(--fv-ctl-bg);color:var(--fv-fg)}
+.fv-studio.fv-editor :is(.fv-ed-transport-center,.fv-ed-transport-tools,.fv-ed-toolbar,.fv-ed-track-zoom) button:not(:disabled):active{transform:scale(.94);background:var(--fv-ctl-hover);transition-duration:0s}
+.fv-studio.fv-editor :is(.fv-ed-transport-center,.fv-ed-transport-tools) button:disabled{opacity:.38}
+.fv-studio.fv-editor .fv-ed-transport-tools button[aria-pressed=true]{color:var(--fv-accent-ink,var(--fv-accent));background:var(--fv-accent-soft)}
+/* Play: the one filled key of the group. */
+.fv-studio.fv-editor .fv-ed-transport-center .fv-ed-play{width:44px;height:32px;border-radius:var(--fv-r-lg);background:var(--fv-ctl-hover);color:var(--fv-fg);box-shadow:inset 0 1px 0 var(--fv-edge-hi)}
+.fv-studio.fv-editor .fv-ed-transport-center .fv-ed-play:not(:disabled):hover{background:var(--fv-ctl-hover);filter:brightness(1.15)}
+.fv-studio.fv-editor .fv-ed-transport-center .fv-ed-play svg{width:16px;height:16px;fill:currentColor;stroke:none}
+.fv-studio.fv-editor .fv-ed-transport-center .fv-ed-start svg,.fv-studio.fv-editor .fv-ed-transport-center .fv-ed-end svg{fill:currentColor;stroke-width:1.4}
+@media(max-width:680px){
+  .fv-studio.fv-editor .fv-ed-transport{grid-template-columns:auto auto minmax(0,1fr) auto;grid-template-areas:"drawer time center tools";padding:0 8px;gap:4px}
+  .fv-studio.fv-editor .fv-ed-transport-center{justify-self:center;gap:0}
+  .fv-studio.fv-editor .fv-ed-transport-center :is(.fv-ed-start,.fv-ed-end){display:none}
+  .fv-studio.fv-editor .fv-ed-transport>.fv-ed-time{font-size:var(--fv-fs-1,12px)}
+  .fv-studio.fv-editor .fv-ed-transport-tools{gap:0}
+  .fv-studio.fv-editor .fv-ed-transport-tools :is(.fv-ed-loop,.fv-ed-play-range){display:none}
+  /* Finger-sized on a phone: 44 px targets. */
+  .fv-studio.fv-editor :is(.fv-ed-transport-center,.fv-ed-transport-tools) button{width:44px;height:44px;min-height:44px;border-radius:var(--fv-r-md)}
+  .fv-studio.fv-editor .fv-ed-transport-center .fv-ed-play{width:52px;height:44px;border-radius:var(--fv-r-lg)}
+}
+/* Markers on the ruler: an amber pin drawn inside a 28 × 28 target (the shape no longer clips where it can be taken);
+   a selected one carries a ring. */
+.fv-studio.fv-editor .fv-ed-timeline-marker{top:0;width:28px;height:28px;background:transparent;clip-path:none;border-radius:var(--fv-r-sm)}
+.fv-studio.fv-editor .fv-ed-timeline-marker::after{content:"";position:absolute;left:8px;top:11px;width:12px;height:12px;background:#f5b83d;clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%)}
+.fv-studio.fv-editor .fv-ed-timeline-marker:hover::after{filter:brightness(1.1)}
+.fv-studio.fv-editor .fv-ed-timeline-marker[aria-pressed=true]{filter:none;outline:none}
+.fv-studio.fv-editor .fv-ed-timeline-marker[aria-pressed=true]::after{box-shadow:0 0 0 2px var(--fv-fg);clip-path:none;border-radius:var(--fv-r-xs);transform:rotate(45deg) scale(.78)}
+.fv-studio.fv-editor .fv-ed-timeline-marker[data-blocked=true]::after{opacity:.45}
+/* Shortcut sheet: a glass card over the stage. */
+.fv-studio.fv-editor .fv-ed-shortcut-sheet{border:1px solid var(--fv-edge,var(--fv-line));border-radius:var(--fv-rad-pop,16px);padding:16px;color:var(--fv-fg);
+  background:rgb(var(--fv-tint) / var(--fv-a3,.8));box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh3);-webkit-backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%);backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%)}
+.fv-studio.fv-editor .fv-ed-shortcut-sheet caption{font-size:var(--fv-fs-3,16px);font-weight:600}
+.fv-studio.fv-editor .fv-ed-shortcut-sheet td{border-bottom-color:var(--fv-line);font-size:var(--fv-fs-1,12px)}
+.fv-studio.fv-editor .fv-ed-shortcut-sheet td:first-child{color:var(--fv-fg3);font-variant-numeric:tabular-nums}
+:is(:root[data-glass=solid],:root.lite) .fv-studio.fv-editor .fv-ed-shortcut-sheet{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--fv-solid3))}
+@media(prefers-reduced-transparency:reduce){.fv-studio.fv-editor .fv-ed-shortcut-sheet{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--fv-solid3))}}
+@media(prefers-reduced-motion:reduce){.fv-studio.fv-editor :is(.fv-ed-transport-center,.fv-ed-transport-tools,.fv-ed-toolbar,.fv-ed-track-zoom) button:active{transform:none}}
+/* Preview volume: a slim glass slider above its key; it never changes the export. */
+.fv-studio.fv-editor .fv-ed-volume-box{position:relative;display:inline-grid}
+.fv-studio.fv-editor .fv-ed-volume-pop{position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);z-index:12;padding:12px 8px;border:1px solid var(--fv-edge,var(--fv-line));border-radius:var(--fv-r-lg);
+  background:rgb(var(--fv-tint) / var(--fv-a3,.8));box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh3);-webkit-backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%);backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%)}
+.fv-studio.fv-editor .fv-ed-volume-slider{display:block;width:112px;height:24px;margin:0;accent-color:var(--fv-accent);cursor:pointer}
+.fv-studio.fv-editor .fv-ed-volume-pop[hidden]{display:none}
+:is(:root[data-glass=solid],:root.lite) .fv-studio.fv-editor .fv-ed-volume-pop{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--fv-solid3))}
+@media(prefers-reduced-transparency:reduce){.fv-studio.fv-editor .fv-ed-volume-pop{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--fv-solid3))}}
+@media(max-width:680px){.fv-studio.fv-editor .fv-ed-volume-box{display:none}}
+
+/* Edges in line (visual alignment review C7): above phone width the transport spans the edit's frame, so the time
+   starts under the picture's left edge and the last tool ends under its right edge (editor_player.js measures it);
+   the play group is then centred by the grid itself. */
+@media(min-width:681px){
+  .fv-studio.fv-editor .fv-ed-transport{padding-left:var(--fv-ed-transport-left,16px);padding-right:var(--fv-ed-transport-right,16px)}
+  .fv-studio.fv-editor .fv-ed-transport-center{translate:none}
+}

@@ -364,15 +364,24 @@ def thumbnail(output_directory, identity):
     return data
 
 
-def video_download(output_directory, identity):
-    """Name a saved download without renaming the engine's retained artifacts."""
+def video_download(output_directory, identity, *, workflow=False):
+    """The file to send for a download and its name, without renaming the engine's retained artifacts.
+
+    A download leaves this machine, so by default it is a copy without the prompt and the workflow (which
+    names the files the video read); the third value is that copy, for the caller to delete once sent.
+    ``workflow`` sends the saved video itself, which restores its graph when dropped on the canvas."""
     path = _video(output_directory, identity)
     _report(path)
     info = path.stat()
     if not info.st_size:
         raise ValueError('Video is empty')
     stamp = datetime.fromtimestamp(info.st_mtime, timezone.utc).strftime('%Y%m%d_%H%M%S')
-    return path, 'FreeVideo_%s_%s.mp4' % (stamp, identity.split('/')[-1][:12])
+    name = 'FreeVideo_%s_%s.mp4' % (stamp, identity.split('/')[-1][:12])
+    from .comfy_metadata import carries_graph, stripped_copy
+    if workflow or not carries_graph(path):
+        return path, name, None
+    copy = stripped_copy(path, path.with_name('.download-' + os.urandom(16).hex() + '.mp4'))
+    return copy, name, copy
 
 
 # What a FreeVideo request writes into its own run folder, including the
@@ -383,7 +392,7 @@ _OWNED_FILE = re.compile(r'(?:video\.[A-Za-z0-9._-]+|prompt\.txt|workflow\.json|
                          r'|continuation-source\.safetensors'
                          r'|frame-preview\.jpg|media\.json|prompt-rewrite\.json|input-conditioning\.pt|(?:first|last)\.png'
                          r'|reference-\d{2}\.(?:png|mp4|wav)'
-                         r'|\.(?:share|editor-export)-[0-9a-f]{32}\.mp4)(?:\.[a-z0-9_]{8}\.tmp)?')
+                         r'|\.(?:share|editor-export|download)-[0-9a-f]{32}\.mp4)(?:\.[a-z0-9_]{8}\.tmp)?')
 _OWNED_FOLDER = 'video.artifacts'
 _REPARSE_POINT = 0x400
 
@@ -593,7 +602,7 @@ def clear_working_files(output_directory, *, apply=False):
 
 # What an interrupted share or editor export leaves beside a creation: its working copy,
 # written under a random name and renamed only when finished.
-_INTERRUPTED = re.compile(r'\.(?:share|editor-export)-[0-9a-f]{32}\.mp4')
+_INTERRUPTED = re.compile(r'\.(?:share|editor-export|download)-[0-9a-f]{32}\.mp4')
 
 
 def clean_interrupted(output_directory, *, older=3600., now=None):
@@ -627,6 +636,56 @@ def clean_interrupted(output_directory, *, older=3600., now=None):
                 pass
         except OSError:
             continue
+    return freed
+
+
+# A request that failed or was stopped keeps its folder (prompt, workflow, input copies) for its failure report; after
+# this long nothing offers that report any more, and the folder is listed for cleanup.
+FAILED_KEEP = 7 * 24 * 3600.
+
+
+def failed_runs(output_directory, *, now=None, older=FAILED_KEEP):
+    """Run folders of requests that ended without a video, untouched for ``older`` seconds and holding only what
+    FreeVideo writes, as [(id, bytes)]. A folder of a request that is still running, or of a saved video, is never one."""
+    try:
+        output_directory = checked_real_path(output_directory)
+    except AliasUnavailable:
+        return []
+    root = Path(output_directory).resolve() / 'FreeVideo'
+    now = time.time() if now is None else now
+    rows = []
+    for folder in sorted(root.glob('*/*')):
+        try:
+            identity = folder.relative_to(root).as_posix()
+            if not _ID.fullmatch(identity) or not _plain(folder.parent) or not _plain(folder):
+                continue
+            state = json.loads((folder / 'comfy-request.json').read_text(encoding='utf-8'))
+            if not isinstance(state, dict) or state.get('status') not in ('failed', 'cancelled'):
+                continue
+            try:
+                _report(folder / 'video.mp4')
+                continue  # a saved video, whatever its request record says
+            except (_Unfinished, OSError, ValueError):
+                pass
+            newest = max(entry.stat().st_mtime for entry in [folder, *folder.iterdir()])
+            if now - newest < older or _foreign(folder):
+                continue
+            size = sum(path.stat().st_size for path in folder.rglob('*') if path.is_file() and not path.is_symlink())
+            rows.append((identity, size))
+        except (OSError, ValueError, AttributeError, AliasUnavailable):
+            continue
+    return rows
+
+
+def remove_failed_run(output_directory, identity, *, now=None, older=FAILED_KEEP):
+    """Remove one folder ``failed_runs`` lists, checked again first. Returns the bytes freed (0 when it stayed)."""
+    if identity not in {row[0] for row in failed_runs(output_directory, now=now, older=older)}:
+        return 0
+    folder = Path(checked_real_path(output_directory)).resolve() / 'FreeVideo' / identity
+    with _PENDING, _RELEASING:
+        facts = _work_facts(folder)
+        freed, left = _remove(folder)
+    _forget_works(folder.parent.parent, [facts])
     return freed
 
 
@@ -841,6 +900,97 @@ def _forget(identifiers, root):
             logging.warning('[FreeVideo] Continuation cleanup failed (%s).', type(error).__name__)
 
 
+def _work_facts(folder):
+    """What a work's run folder says about records kept elsewhere: ComfyUI's request id, the input-cache receipts it
+    used, its run id, and a keyed hash of its prompt. Read before the folder goes."""
+    facts = dict(run=Path(folder).name.split('-')[-2] if _TRASH_NAME.fullmatch(Path(folder).name) else Path(folder).name,
+                 prompt_id=None, receipts=[], prompt=None)
+    try:
+        state = json.loads((Path(folder) / 'comfy-request.json').read_text(encoding='utf-8'))
+        if isinstance(state.get('comfy_prompt_id'), str):
+            facts['prompt_id'] = state['comfy_prompt_id']
+    except (OSError, ValueError, AttributeError):
+        pass
+    try:
+        report = json.loads((Path(folder) / 'video.request.json').read_text(encoding='utf-8'))
+        rows = (report.get('input_cache') or {}).get('receipts') or []
+        facts['receipts'] = [row for row in rows if isinstance(row, str)][:256]
+    except (OSError, ValueError, AttributeError):
+        pass
+    try:
+        from .private_store import name
+        text = (Path(folder) / 'prompt.txt').read_text(encoding='utf-8')
+        if text.strip():
+            facts['prompt'] = name('prompt', text.strip())
+    except (OSError, ValueError):
+        pass
+    return facts
+
+
+def _kept_facts(root):
+    """The receipts and prompt hashes the works still in the library (or still undoable) use."""
+    from .private_store import name
+    receipts, prompts = set(), set()
+    for folder in [*root.glob('*/*'), *(root / '.deleted').glob('*')]:
+        try:
+            if not folder.is_dir() or folder.is_symlink():
+                continue
+            report = folder / 'video.request.json'
+            if report.is_file():
+                rows = (json.loads(report.read_text(encoding='utf-8')).get('input_cache') or {}).get('receipts') or []
+                receipts.update(row for row in rows if isinstance(row, str))
+            prompt = folder / 'prompt.txt'
+            if prompt.is_file():
+                text = prompt.read_text(encoding='utf-8').strip()
+                if text:
+                    prompts.add(name('prompt', text))
+        except (OSError, ValueError, AttributeError):
+            continue
+    return receipts, prompts
+
+
+def _forget_works(root, facts):
+    """After works are removed for good: ComfyUI's record of each request, the cached encodings only they used, and
+    a note of their prompts so the page forgets them too unless a kept work uses the same prompt."""
+    if not facts:
+        return
+    try:
+        kept_receipts, kept_prompts = _kept_facts(root)
+    except OSError:
+        return
+    from . import private_store
+    from .paths import data_root
+    cache_root = data_root() / 'input-cache'
+    for receipt in {row for fact in facts for row in fact['receipts']} - kept_receipts:
+        try:
+            private_store.evict(cache_root, receipt)
+        except OSError:
+            pass
+    private_store.forget_prompts({fact['prompt'] for fact in facts if fact['prompt']} - kept_prompts)
+    ids = {fact['prompt_id'] for fact in facts if fact['prompt_id']}
+    runs = {fact['run'] for fact in facts if re.fullmatch('[0-9a-f]{32}', fact['run'] or '')}
+    try:
+        from server import PromptServer
+        server = PromptServer.instance
+        queue = server.prompt_queue
+    except (ImportError, AttributeError):
+        return
+    jobs = getattr(server, '_freevideo_agent', None)
+    if jobs is not None and runs:
+        try:
+            jobs.forget_works(sorted(runs))  # an Agent job that made the work keeps no prompt or pictures of it
+        except Exception:
+            logging.warning('[FreeVideo] Could not update the Agent jobs of a deleted creation.', exc_info=True)
+    try:
+        with queue.mutex:
+            history = dict(queue.history)
+        for prompt_id, entry in history.items():
+            if prompt_id in ids or (runs and any(run in json.dumps(entry, default=str) for run in runs)):
+                queue.delete_history_item(prompt_id)
+    except Exception:
+        logging.warning('[FreeVideo] Could not remove ComfyUI\'s record of a deleted creation.', exc_info=True)
+
+
 def _forget_results(identities, root):
     """A result-cache row naming a deleted creation can no longer be reused."""
     for index in (root / '.result-cache').glob('*.json'):
@@ -865,8 +1015,10 @@ def delete_video(output_directory, identity, *, queue=None):
     target, identifier = _trash_creation(output_directory, identity, queue, {})
     try:
         _forget([identifier], root)
+        facts = _work_facts(target)
         freed, left = _remove(target)
         _forget_results({identity}, root)
+        _forget_works(root, [facts])
     finally:
         with _PENDING:
             _INFLIGHT.discard(target.name)
@@ -988,12 +1140,15 @@ def _purge_trash(trash, keep=()):
             for _, value in _pending_manifests(trash):
                 held.update(str(item.get('name')) for item in value['items'] if isinstance(item, dict))
             leftovers = [earlier for earlier in trash.iterdir() if earlier.name not in held]
+        facts = []
         for earlier in leftovers:
             try:
                 if _plain(earlier) and earlier.is_dir():
+                    facts.append(_work_facts(earlier))
                     freed += _remove(earlier)[0]
             except OSError:
                 continue
+        _forget_works(trash.parent, facts)
     except OSError:
         pass
     return freed
@@ -1165,11 +1320,14 @@ def finish_deleted(output_directory, *, everything=False):
         rows = [item for item in items if isinstance(item, dict) and isinstance(item.get('name'), str)
                 and _TRASH_NAME.fullmatch(item['name'])]
         _forget([item.get('continuation') for item in rows], root)
+        facts = []
         for item in rows:
             folder = trash / item['name']
             if folder.name == item['name'] and _plain(folder) and folder.is_dir():
+                facts.append(_work_facts(folder))
                 freed += _remove(folder)[0]
         _forget_results({item.get('id') for item in rows}, root)
+        _forget_works(root, facts)
     return freed + _purge_trash(trash)
 
 
@@ -1475,8 +1633,12 @@ def register():
             except Exception:
                 # The full video remains playable if its thumbnail is missing.
                 raise web.HTTPNotFound(text='Thumbnail unavailable') from None
-        return web.Response(body=data, content_type='image/jpeg',
-                            headers={'Cache-Control': 'private, max-age=86400'})
+        # Checked again on every use, so a deleted creation's picture is not kept by the browser.
+        tag = '"%s"' % hashlib.sha256(data).hexdigest()[:32]
+        headers = {'Cache-Control': 'private, no-cache', 'ETag': tag}
+        if request.headers.get('If-None-Match') == tag:
+            return web.Response(status=304, headers=headers)
+        return web.Response(body=data, content_type='image/jpeg', headers=headers)
 
     @server.routes.post('/freevideo/library/delete')
     async def delete(request):
@@ -1549,10 +1711,36 @@ def register():
 
     @server.routes.get('/freevideo/library/download')
     async def download(request):
+        headers = {'Content-Type': 'video/mp4', 'Cache-Control': 'private, no-store'}
+        if request.method == 'HEAD':
+            # Whether the video can be read; nothing is copied for the check.
+            try:
+                path = await asyncio.to_thread(_video, folder_paths.get_output_directory(), request.query.get('id'))
+                await asyncio.to_thread(_report, path)
+                if not path.stat().st_size:
+                    raise ValueError('Video is empty')
+            except (OSError, ValueError, TypeError):
+                raise web.HTTPNotFound(text='Saved video unavailable') from None
+            return web.Response(headers=headers)
         try:
-            path, name = await asyncio.to_thread(video_download, folder_paths.get_output_directory(), request.query.get('id'))
+            path, name, copy = await asyncio.to_thread(video_download, folder_paths.get_output_directory(),
+                                                       request.query.get('id'), workflow=request.query.get('workflow') == '1')
         except (OSError, ValueError, TypeError):
             raise web.HTTPNotFound(text='Saved video unavailable') from None
-        return web.FileResponse(path, headers={'Content-Type': 'video/mp4',
-            'Content-Disposition': 'attachment; filename="%s"' % name,
-            'Cache-Control': 'private, no-store'})
+        headers['Content-Disposition'] = 'attachment; filename="%s"' % name
+        if copy is None:
+            return web.FileResponse(path, headers=headers)
+        # The copy without the prompt and workflow is sent once and deleted, whether or not the download finished.
+        response = web.StreamResponse(headers=dict(headers, **{'Content-Length': str(copy.stat().st_size)}))
+        try:
+            await response.prepare(request)
+            with open(copy, 'rb') as stream:
+                while True:
+                    chunk = await asyncio.to_thread(stream.read, 1024 * 1024)
+                    if not chunk:
+                        break
+                    await response.write(chunk)
+            await response.write_eof()
+        finally:
+            await asyncio.to_thread(copy.unlink, missing_ok=True)
+        return response

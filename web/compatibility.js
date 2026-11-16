@@ -1,4 +1,5 @@
 import { api } from '../../scripts/api.js';
+import './glass/library.js';
 
 const languageOverride = typeof location !== 'undefined'
     ? new URLSearchParams(location.search).get('freevideo_lang') : null;
@@ -8,12 +9,12 @@ const t = (en, zh) => cn ? zh : en;
 const unavailable = () => t('Device information is unavailable; compatibility settings are off.', '无法获取设备信息，兼容性设置已关闭。');
 let current;
 const element = (tag, text) => { const node = document.createElement(tag); if (text) node.textContent = text; return node; };
-async function client() {
-    const response = await api.fetchApi('/freevideo/setup');
+async function client(source = api) {
+    const response = await source.fetchApi('/freevideo/setup');
     const info = await response.json();
     if (!response.ok) throw new Error(info.error || response.statusText);
     return async (action, value = {}) => {
-        const response = await api.fetchApi('/freevideo/setup/compatibility-' + action, {
+        const response = await source.fetchApi('/freevideo/setup/compatibility-' + action, {
             method: 'POST', headers: {'Content-Type':'application/json','X-FreeVideo-Setup':info.discovery.token},
             body: JSON.stringify({root:info.discovery.root, ...value}),
         });
@@ -44,7 +45,94 @@ function button(panel, label, action, primary = false) {
 function show(panel, focus) {
     document.body.append(panel); panel.showModal(); focus?.focus();
 }
+// Compatibility now lives in Settings › Advanced (compatibilityCard below); this opens that page.
 export async function openCompatibility() {
+    try { const {openSetup} = await import('./setup.js'); await openSetup({section: 'advanced'}); return; }
+    catch { /* Settings could not open: the stand-alone sheet below still works. */ }
+    return openCompatibilitySheet();
+}
+
+// The card in Settings › Advanced: the level as four segments (off, 1, 2, 3) with one line saying what it does, the
+// automatic raise as a switch, the note, Revert and Save, and a status line that is always there (nothing moves).
+// States: loading, unavailable device, read failure, edited (unsaved), saving, save failure, saved. On a Mac (unified
+// memory) the card says no level is needed. Returns {element, setUnified, dispose}.
+export function compatibilityCard({t: tt = t, api: client0 = api} = {}) {
+    const node = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+    let kit = null;
+    const element = node('div', 'st-card st-compat');
+    const head = node('div', 'st-row has-ic');
+    const tile = node('span', 'st-ic'); const text = node('div', 'st-rt'); const title = node('b', '', tt('Compatibility level', '兼容档位')); const line = node('span', '', tt('Loading settings…', '正在读取设置…'));
+    text.append(title, line); const end = node('div', 'st-re'); head.append(tile, text, end);
+    const autoRow = node('div', 'st-row'); const autoText = node('div', 'st-rt');
+    autoText.append(node('b', '', tt('Raise the level automatically after an unexpected interruption', '意外中断后自动提高档位')),
+        node('span', '', tt('After raising it, a few smooth generations bring it back down', '提高后，连续顺利完成几次会再降回来')));
+    const autoEnd = node('div', 'st-re'); autoRow.append(autoText, autoEnd);
+    const note = node('p', 'st-note', tt('Applies from the next generation. Higher levels have the GPU handle less at a time, so generation is slower and the picture differs slightly; resolution, duration and steps stay the same.', '从下一次生成起生效。档位越高，显卡每次处理的数据越少，生成越慢，画面也会有细微差别；分辨率、时长和步数不变。'));
+    const foot = node('div', 'st-foot'); const status = node('p', 'st-slot'); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
+    const revert = node('button', 'st-btn', tt('Revert', '还原')); revert.type = 'button';
+    const save = node('button', 'st-btn is-fill', tt('Save', '保存')); save.type = 'button';
+    foot.append(status, revert, save);
+    const mac = node('div', 'st-row'); const macText = node('div', 'st-rt'); macText.append(node('b', '', tt('This computer needs no compatibility level', '这台电脑不需要兼容档位')), node('span', '', tt('Generation on this computer shares its memory, so the level does not apply.', '这台电脑生成时共用内存，兼容档位不适用。')));
+    mac.append(macText, node('div', 'st-re')); mac.hidden = true;
+    element.append(head, autoRow, note, foot, mac);
+    const level = document.createElement('select'); level.setAttribute('aria-label', tt('Compatibility level', '兼容档位'));
+    [tt('Off', '关闭'), tt('Level 1', '1 级'), tt('Level 2', '2 级'), tt('Level 3', '3 级')].forEach((name, i) => { const o = node('option', '', name); o.value = String(i); level.append(o); });
+    const automatic = document.createElement('input'); automatic.type = 'checkbox';
+    automatic.setAttribute('aria-label', tt('Raise the level automatically after an unexpected interruption', '意外中断后自动提高档位'));
+    let value = null, request = null, saving = false, disposed = false;
+    const tip = (el, name, use, why = '') => { el.dataset.fvTipName = name; el.dataset.fvTipUse = use; if (why) el.dataset.fvTipWhy = why; else delete el.dataset.fvTipWhy; };
+    tip(revert, tt('Revert', '还原'), tt('Back to the saved setting', '回到已保存的设置'));
+    tip(automatic, tt('Raise automatically', '自动提高'), tt('Raise the level after an unexpected interruption', '意外中断后自动提高档位'));
+    const dirty = () => value && (Number(level.value) !== value.level || automatic.checked !== value.automatic);
+    const paint = () => {
+        const levelName = value?.levels?.[Number(level.value)]?.[cn ? 'zh' : 'en'];
+        title.textContent = Number(level.value) ? `${tt('Compatibility level', '兼容档位')} · ${level.selectedOptions[0]?.textContent || ''}` : tt('Compatibility level', '兼容档位');
+        if (value?.available) line.textContent = levelName || '';
+        const changed = dirty();
+        save.disabled = saving || !changed || !value?.available; revert.disabled = saving || !changed;
+        level.disabled = automatic.disabled = saving || !value?.available;
+        if (!saving && changed && !status.dataset.kind) status.textContent = tt('Not saved yet', '尚未保存');
+        if (!saving && !changed && !status.dataset.kind) status.textContent = '';
+        tip(save, tt('Save', '保存'), tt('Use this level from the next generation', '下次生成起使用这个档位'), save.disabled && !saving ? tt('Change the level or the switch first', '先修改档位或开关') : '');
+    };
+    const say = (text, kind = '') => { status.textContent = text; status.className = 'st-slot' + (kind ? ' is-' + kind : ''); if (kind) status.dataset.kind = kind; else delete status.dataset.kind; };
+    import('./settings_kit.js').then(module => {
+        kit = module;
+        tile.append(kit.icon('shield', 'fv-i s'));
+        end.append(kit.segmented(level, {label: tt('Compatibility level', '兼容档位'), tips: {'0': tt('Normal speed', '正常速度'), '1': tt('A little slower, steadier', '稍慢，更稳'), '2': tt('Slower, steadier', '更慢，更稳'), '3': tt('Slowest, steadiest', '最慢，最稳')}}));
+        autoEnd.append(kit.switchify(automatic));
+    });
+    level.onchange = () => { if (Number(level.value) === 0) automatic.checked = false; say(''); paint(); };
+    automatic.onchange = () => { say(''); paint(); };
+    revert.onclick = () => { if (!value) return; level.value = String(value.level); automatic.checked = value.automatic; say(''); paint(); };
+    save.onclick = async () => {
+        if (saving || !request) return;
+        saving = true; say(tt('Saving…', '正在保存…')); paint();
+        try {
+            const saved = await request('save', {level: Number(level.value), automatic: automatic.checked});
+            if (!saved.available) { say(unavailable(), 'warn'); return; }
+            value = {...value, ...saved, level: Number(level.value), automatic: automatic.checked};
+            say(tt('Saved · applies to the next generation', '已保存 · 下次生成生效'), 'ok');
+            setTimeout(() => { if (status.dataset.kind === 'ok') say(''); paint(); }, 2400);
+        } catch (error) { say(tt('Save failed: ', '保存失败：') + error.message, 'warn'); }
+        finally { saving = false; paint(); }
+    };
+    (async () => {
+        try {
+            request = await client(client0); value = await request('check');
+            if (disposed) return;
+            if (!value.available) { line.textContent = unavailable(); say(''); paint(); return; }
+            level.value = String(value.level); automatic.checked = Boolean(value.automatic); paint();
+        } catch (error) { line.textContent = tt('The setting could not be read: ', '无法读取设置：') + error.message; line.className = 'is-warn'; paint(); }
+    })();
+    return {
+        element,
+        setUnified(unified) { for (const part of [head, autoRow, note, foot]) part.hidden = unified; mac.hidden = !unified; },
+        dispose() { disposed = true; },
+    };
+}
+
+async function openCompatibilitySheet() {
     if (current?.open) { current.focus(); return; }
     const panel = dialog(t('Compatibility', '兼容性')); current = panel;
     const status = element('p', t('Loading settings…', '正在读取设置…')); status.className = 'fv-muted';

@@ -20,8 +20,17 @@ export const LINES = [
     [['The rain seems to be letting up.', '雨好像小了。']],
 ];
 
+// A page is shown from the version in its `since` on, and `seen` is the record it leaves once seen: [key, value] in local
+// storage. The two 0.5 pages keep the records they had in 0.5, so nobody who saw them sees them again.
 export const PAGES = [
-    {id: 'overview', title: ['0.5.0: A fully upgraded sound system', '0.5.0 声音系统全面升级'], length: 11000, height: 400, list: [
+    // The 0.6.0 page: the creation panel, a work playing on the stage and earlier works open from Media; one picture per language.
+    {id: 'interface', kind: 'still', since: '0.6.0', seen: ['freevideo.whatsnew-seen-interface', '1'], title: ['0.6.0: A new interface', '0.6.0 全新界面'],
+        poster: {src: ['assets/whatsnew/interface-en.webp', 'assets/whatsnew/interface-zh.webp']},
+        list: [['See and manage every running and queued video and picture from any page', '在任何页面都能看到和管理所有生成中、排队的视频和图片'],
+            ['Switching pages keeps generation running, along with your prompt and references', '切换页面不会中断生成，描述和参考图都还在'],
+            ['Use earlier videos directly as references', '以前生成的视频也能直接用作参考'],
+            ['Hand-drawn sketches give finer control over image generation', '可以通过手绘草图更精细地控制生成']]},
+    {id: 'overview', since: '0.5.0', seen: ['freevideo.whatsnew-seen', '0.5'], title: ['0.5.0: A fully upgraded sound system', '0.5.0 声音系统全面升级'], length: 11000, height: 400, list: [
         ['Separate tracks: dialogue, music, ambience', '分离音轨：人声、音乐、环境声'], ['Replace music: from a text description', '替换配乐：根据文字描述重新生成'],
         ['Add music: generated to fit the selected length', '添加配乐：按选中的长度生成'], ['Edit lines: only changed lines are redubbed', '修改台词：只为改过的台词重新配音'],
         ["Dub: in the original speaker's voice", '配音：沿用原说话人的声音'], ['Record: onto an audio track', '录音：录制到声音轨'],
@@ -43,17 +52,30 @@ export const PAGES = [
         [12600, {lit: [5], select: 'take', rowShow: 'a4', lines: {shown: false}, bar: {mode: 'record', phase: 'idle'}}],
         [13400, {bar: {phase: 'recording'}, rec: {id: 'take', from: .3, to: .52, ms: 3000}, play: [.3, .52, 3000]}],
         [16500, {bar: {mode: 'idle', phase: null, text: null, button: ['Generate', '生成'], ph: ['Describe this part', '描述这一段']}, select: null, lit: []}]]},
-    // The picture page comes from 0.5.1: seven real H3 Image outputs, each shown with the prompt that made it.
-    {id: 'image', kind: 'still', patch: 1, title: ['MiniMax H3 Image', 'MiniMax H3 Image'],
-        pictures: [
-        {src: 'assets/image/h3-1.webp', ratio: '892 / 1200', prompt: ["A realistic documentary portrait of an elderly fisherman standing on a wooden pier at dawn, deep wrinkles and a short grey beard, wearing a faded navy knitted cap and a yellow oilskin jacket with water droplets, coiled ropes and nets behind him, soft cool morning light with a warm glow on the horizon, sharp detail on the skin and fabric, shallow depth of field, one person, no text."]},
-        {src: 'assets/image/h3-2.webp', ratio: '1200 / 678', prompt: ["An anime-style illustration of a high-school girl with short brown hair and a white summer uniform sitting on a rooftop at sunset, wind lifting her hair, a city of small houses and power lines below, towering pink and orange cumulus clouds, a flock of birds in the distance, vivid cinematic colours, clean line art and soft cel shading, detailed background painting, an original character, no text."]},
-        {src: 'assets/image/h3-3.webp', ratio: '1200 / 674', prompt: ["An ultra-detailed aerial photograph of an old hill town at sunset: hundreds of stone houses with weathered orange tile roofs packed along narrow winding lanes, a bell tower and a small domed church at the centre, olive groves and cypress trees on the terraced slopes around it, distant layered blue hills, warm low sunlight casting long shadows, every roof tile, window and stone wall rendered in crisp fine detail, no people, no text."]},
-        {src: 'assets/image/h3-4.webp', ratio: '1200 / 678', prompt: ["A wide night landscape photograph of red sandstone desert rock formations under a clear sky full of stars, the Milky Way arching across the frame, a faint blue glow on the horizon, the rocks softly lit by starlight with subtle texture, a single small tent glowing warm orange in the foreground, long-exposure astrophotography look, sharp stars, no people, no text."]},
-        {src: 'assets/image/h3-5.webp', ratio: '892 / 1200', prompt: ["A realistic portrait photograph of a woman in her late twenties sitting by a tall window in a quiet old apartment, soft overcast daylight on one side of her face, loose dark hair tucked behind one ear, wearing a rust-coloured linen shirt, holding a white ceramic cup with both hands, calm thoughtful expression looking slightly away from the camera, natural skin texture with fine detail, muted warm colours, shallow depth of field, 85mm lens, one person, no text."]},
-        {src: 'assets/image/h3-6.webp', ratio: '1200 / 678', prompt: ["A wide landscape photograph of a deep fjord at golden hour, steep green cliffs dropping into still dark-blue water, a thin waterfall falling from the left cliff, low clouds catching orange light, a small red wooden cabin on a grassy ledge near the shore, mirror-like reflections on the water, crisp detail from the foreground rocks to the distant peaks, rich natural colours, no people, no text."]},
-        {src: 'assets/image/h3-7.webp', ratio: '892 / 1200', prompt: ["一张清雅的中式海报：晨雾中的层层茶山，近处一只青瓷茶盏冒着热气，画面留白充足，淡青与米白色调，宣纸质感。海报右侧竖排一行毛笔书法大字“山间茶事”，左下角一行小字“一叶一世界”。所有文字逐字准确，不添加其他文字、印章或标志。"]},
-        ],
+    // The picture page comes from 0.5.1: one real H3 Image output (the tea poster), with its prompt typed over it.
+    {id: 'image', kind: 'still', since: '0.5.1', seen: ['freevideo.whatsnew-seen-image', '1'], open: 'image', title: ['H3 Image', 'H3 Image'],
+        poster: {src: 'assets/image/h3-7.webp', prompt: ['A quiet Chinese poster: tea hills in morning mist, with the brushed title “Tea in the Hills” down the right side',
+            '一张清雅的中式海报：晨雾中的层层茶山，右侧竖排毛笔大字“山间茶事”']},
         list: [['Images view: a picture from one sentence', '图像视图：一句话生成图片'], ['Text in pictures, such as poster titles', '图中可写文字，如海报标题'],
             ['The image model can be installed on its own', '可只安装图像模型']]},
 ];
+
+// Versions compare as major.minor.patch; anything after the patch number (a build or a pre-release tag) is ignored.
+const parts = version => {
+    const match = /^v?(\d+)\.(\d+)(?:\.(\d+))?/.exec(String(version ?? '').trim());
+    return match ? [Number(match[1]), Number(match[2]), Number(match[3] || 0)] : null;
+};
+export const atLeast = (version, since) => {
+    const [a, b] = [parts(version), parts(since)];
+    if (!a || !b) return false;
+    for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] > b[i];
+    return true;
+};
+// Every record starts with this, so a page that holds only these has not been used before.
+export const SEEN_PREFIX = 'freevideo.whatsnew-seen';
+export const seenRecord = page => page.seen || [`${SEEN_PREFIX}-${page.id}`, '1'];
+// The pages a version has, in their order; an unknown version has none.
+export const pagesFor = (version, pages = PAGES) => pages.filter(page => atLeast(version, page.since));
+// Those of them not yet seen; read(key) returns the stored value or null.
+export const unseenPages = (version, read, pages = PAGES) => pagesFor(version, pages).filter(page => { const [key, value] = seenRecord(page); return read(key) !== value; });
+export const hasWhatsNew = version => pagesFor(version).length > 0;

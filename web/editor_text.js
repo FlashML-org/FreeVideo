@@ -10,6 +10,8 @@ import {plan} from './editor_geometry.js';
 import {isolateDialogKeys} from './dialog_keys.js';
 import {issueButton} from './issue_button.js';
 import {skinSelect} from './fv_select.js';
+import {tip} from './editor_tips.js';
+import {registerMenuItem} from './editor_menu.js';
 const SPEECH_ISSUE = ['Auto subtitles', '自动字幕'], FONT_ISSUE = ['Editor text fonts', '剪辑器文字字体'];
 const el=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e;};
 const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
@@ -35,7 +37,8 @@ export function createEditorText({element,state,t,actions,adjust,player,toolbar,
     textButton.classList.add('fv-ed-icon'); subtitleButton.classList.add('fv-ed-icon');
     textButton.append(glyph('M3 5V3.5h10V5M8 3.5v9M6 12.5h4')); subtitleButton.append(glyph('M4 3.5h8a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2zM4.5 7.5h3M9.5 7.5h2M4.5 10h2M8.5 10h3'));
     textButton.setAttribute('aria-label',t('Text','文字')); subtitleButton.setAttribute('aria-label',t('Subtitles','字幕'));
-    textButton.title=t('Text T','文字 T'); subtitleButton.title=t('Subtitles','字幕');
+    tip(textButton,{name:t('Text','文字'),use:t('Add a title or words on the picture','在画面上加标题或文字'),key:'T'});
+    tip(subtitleButton,{name:t('Subtitles','字幕'),use:t('Add a subtitle; Auto subtitles is in the timeline menu','添加一条字幕；自动字幕在时间线右键菜单里')});
     buttons.append(textButton,subtitleButton);
     const marker=toolbar.querySelector('.fv-ed-marker, .fv-ed-add-marker');
     if(marker) marker.after(buttons); else toolbar.insertBefore(buttons,toolbar.querySelector('.fv-ed-zoom'));
@@ -82,7 +85,10 @@ export function createEditorText({element,state,t,actions,adjust,player,toolbar,
         const cues=(Array.isArray(job.result?.lines)?job.result.lines:[]).filter(l=>typeof l?.text==='string'&&l.text.trim()&&l.end>l.start).map(l=>({start:l.start,frames:l.end-l.start,text:l.text.trim()}));
         speechEnd();if(!cues.length){actions.notify?.(speechSilent());return false;}
         finishInline();commitDraft();
+        // Lines already on the subtitle track are replaced in one step; the notice undoes it in one press (E15).
+        const had=state.record.tracks.some(track=>track.kind==='subtitle'&&track.clips.length);
         if(!apply(t('Auto subtitles','自动字幕'),r=>addSubtitles(r,cues,{replace:true})))actions.notify?.(speechFailed(),SPEECH_ISSUE);
+        else if(had){const step=state.step;actions.notify?.(t('The subtitles heard replaced the ones there.','识别出的字幕已替换原有字幕。'),null,null,{label:t('Undo','撤销'),use:t('Bring back the subtitles you had','恢复原来的字幕'),run:()=>{if(state.step===step)actions.undo?.();}});}
         else{const missing=projectMissing(state.record);if(missing.length)actions.notify?.(missingHint([...new Set(missing.flatMap(r=>r.chars))],t));}
         return false;
     }
@@ -210,8 +216,12 @@ export function createEditorText({element,state,t,actions,adjust,player,toolbar,
             const light=parseInt(full.color.slice(1,3),16)*.3+parseInt(full.color.slice(3,5),16)*.59+parseInt(full.color.slice(5,7),16)*.11>140;
             apply_.style.backgroundColor=full.backing==='box'?'#000000':light?'#2a2f38':'#e5e7eb';
             if(full.backing==='outline')apply_.style.textShadow=light?'0 0 2px #000, 0 0 2px #000':'0 0 2px #fff, 0 0 2px #fff';
-            const remove=button('×',{onClick:()=>{const next=readPresets();next.splice(index,1);writePresets(next);renderPresets(host,current);}});
-            remove.classList.add('fv-ed-preset-remove');remove.setAttribute('aria-label',t(`Delete style ${index+1}`,`删除样式 ${index+1}`));remove.title=t('Delete','删除');
+            // A deleted look comes back from the notice it leaves (E24: the × deleted at once, with no way back).
+            const remove=button('×',{onClick:()=>{const next=readPresets(),[gone]=next.splice(index,1);writePresets(next);renderPresets(host,current);
+                actions.notify?.(t('Style deleted.','已删除样式。'),null,null,{label:t('Undo','撤销'),use:t('Put the style back','把这套样式放回去'),run:()=>{const list=readPresets();list.splice(Math.min(index,list.length),0,gone);writePresets(list);renderPresets(host,current);}});}});
+            remove.classList.add('fv-ed-preset-remove');remove.setAttribute('aria-label',t(`Delete style ${index+1}`,`删除样式 ${index+1}`));
+            tip(remove,{name:t('Delete style','删除样式'),use:t('Remove this saved look (can be undone)','删掉这套保存的样式（可撤销）')});
+            tip(apply_,{name:t(`Style ${index+1}`,`样式 ${index+1}`),use:t('Use this look on every subtitle','把这套样式用到所有字幕')});
             chip.append(apply_,remove);host.append(chip);
         });
         const save=button(t('Save style','保存样式'),{onClick:()=>{
@@ -391,14 +401,16 @@ export function createEditorText({element,state,t,actions,adjust,player,toolbar,
     async function beforeExport(){
         if(!state.record.tracks.some(isTextTrack))return true;finishInline();commitDraft();await ensureFonts();
         const chars=[...new Set(projectMissing(state.record).flatMap(r=>r.chars))];if(!chars.length&&!loadError)return true;
-        const dialog=el('dialog','fv-studio fv-ed-text-export-dialog'),title=el('h3','',t('Export','导出')),message=el('p','',loadError?fontFailure():missingHint(chars,t));
+        const dialog=el('dialog','fv-studio fv-ed-text-export-dialog fv-ed-layer'),title=el('h3','',t('Export','导出')),message=el('p','',loadError?fontFailure():missingHint(chars,t));
         const close=button(t('Back to edit','返回修改'),{onClick:()=>dialog.close()});dialog.append(title,message);if(loadError)dialog.append(issueButton(t,()=>({where:FONT_ISSUE,message:fontFailure()})));dialog.append(close);document.body.append(dialog);
         const stop=isolateDialogKeys(dialog,(e)=>{if(e.type==='keydown'&&e.key==='Escape'){e.preventDefault();dialog.close();}else if(e.type==='keydown'&&e.key==='Enter'&&!e.target.closest?.('.fv-issue-button')){e.preventDefault();dialog.close();}});
         dialog.onclose=()=>{stop();dialog.remove();jumpMissing();};dialog.showModal();close.focus();return false;
     }
+    const menuEntries=['empty','part'].map(where=>registerMenuItem({where,group:'text',label:context=>speech.busy?context.t('Stop auto subtitles','停止自动字幕'):speech.need?context.t(`Auto subtitles (downloads ${Math.max(1,Math.round(speech.need/1e6))} MB first)`,`自动字幕（先下载 ${Math.max(1,Math.round(speech.need/1e6))} MB）`):context.t('Auto subtitles','自动字幕'),
+        visible:()=>!disposed&&(speech.available||speech.need>0),enabled:()=>!disposed,run:()=>toggleSpeech()}));
     return {get ready(){return ensureFonts();},beforeExport,speech(value){speech.available=value?.available===true;speech.need=Number(value?.need)||0;if(!speech.busy)speechLabel(null);},flush(){finishInline();commitDraft();},keyboard(e){
         if(isTyping(e.target)||e.ctrlKey||e.metaKey||e.altKey||e.isComposing)return false;
         if(e.key.toLowerCase()==='t'){e.preventDefault();e.stopPropagation();add('text');return true;}
         if(e.key==='Escape'&&(drag||!menu.hidden)){e.preventDefault();if(drag)endDrag(e,true);menu.hidden=true;return true;}return false;
-    },dispose(){disposed=true;if(speech.busy){const id=speech.job;speech.run++;speechEnd();if(id)Promise.resolve(actions.speech.cancel(id)).catch(()=>{});}speech.buttons.clear();player.setTextRenderer?.(null);unsubscribe();resize?.disconnect();cancelAnimationFrame(raf);tracksHost.removeEventListener('contextmenu',contextMenu);element.removeEventListener('pointerdown',outside);frame.removeEventListener('seeked',seeked,true);frame.removeEventListener('loadeddata',seeked,true);canvas.remove();boundsLayer.remove();buttons.remove();notice.remove();fontIssue?.remove();menu.remove();}};
+    },dispose(){disposed=true;menuEntries.forEach(off=>off());if(speech.busy){const id=speech.job;speech.run++;speechEnd();if(id)Promise.resolve(actions.speech.cancel(id)).catch(()=>{});}speech.buttons.clear();player.setTextRenderer?.(null);unsubscribe();resize?.disconnect();cancelAnimationFrame(raf);tracksHost.removeEventListener('contextmenu',contextMenu);element.removeEventListener('pointerdown',outside);frame.removeEventListener('seeked',seeked,true);frame.removeEventListener('loadeddata',seeked,true);canvas.remove();boundsLayer.remove();buttons.remove();notice.remove();fontIssue?.remove();menu.remove();}};
 }

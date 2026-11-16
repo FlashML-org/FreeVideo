@@ -224,7 +224,9 @@ def save_state(state):
 
 
 def prompt_key(prompt):
-    return hashlib.sha256(prompt.encode('utf-8')).hexdigest()
+    """A keyed hash with this installation's salt: the saved state names no prompt and no plain hash of one."""
+    from .private_store import name
+    return name('tuning-prompt', prompt, root=state_path().parents[1] / 'private-store')
 
 
 def remember_conditioning(state, prompt, condition, encoding):

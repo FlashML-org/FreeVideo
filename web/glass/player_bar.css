@@ -1,0 +1,13 @@
+/* The shared thin play bar (glass/player_bar.js): play or pause, the position, the time, sound. Light on dark by default;
+   a light ground can set --fv-player-fg / --fv-player-rail. */
+.fv-player-bar{--fv-player-fg:var(--fv-fg,#f3f5f8);--fv-player-rail:rgb(255 255 255 / .2);display:flex;align-items:center;gap:var(--fv-sp-4,4px);box-sizing:border-box;width:100%;height:32px;min-width:0;color:var(--fv-player-fg)}
+:root[data-theme=light] .fv-player-bar:not(.fv-player-on-dark){--fv-player-rail:rgb(20 24 32 / .18)}
+.fv-player-bar .fv-player-button{display:grid;place-items:center;flex:none;width:32px;height:32px;min-height:32px;padding:0;border:0;border-radius:var(--fv-r-sm);background:transparent;color:inherit;box-shadow:none;cursor:pointer}
+.fv-player-bar .fv-player-button:hover{background:var(--fv-ctl-hover,rgb(255 255 255 / .1))}
+.fv-player-bar .fv-player-button:focus-visible,.fv-player-bar .fv-player-track:focus-visible{outline:2px solid var(--fv-accent-line,#6db8fa);outline-offset:2px}
+.fv-player-bar .fv-player-icon,.fv-player-bar .fv-player-icon svg{display:block;width:16px;height:16px}
+.fv-player-bar .fv-player-track{flex:1;display:flex;align-items:center;min-width:0;height:28px;cursor:pointer;touch-action:none}
+.fv-player-bar .fv-player-rail{position:relative;flex:1;height:2px;border-radius:var(--fv-r-pill);background:var(--fv-player-rail);overflow:hidden}
+.fv-player-bar .fv-player-fill{position:absolute;inset:0;background:var(--fv-player-fg);transform:scaleX(0);transform-origin:0 50%}
+.fv-player-bar .fv-player-time{flex:none;padding:0 var(--fv-sp-4,4px);font-size:var(--fv-fs-1,12px);color:var(--fv-fg3,rgb(243 245 248 / .56));font-variant-numeric:tabular-nums;white-space:nowrap}
+.fv-player-bar .fv-player-time[hidden]{display:none}

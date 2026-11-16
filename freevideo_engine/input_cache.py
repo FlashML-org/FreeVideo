@@ -2,6 +2,12 @@
 
 Entries are content checked before reuse. Old namespaces and damaged files stay
 on disk; a miss never deletes user artifacts or substitutes a finished video.
+
+A receipt's name is a keyed hash with this installation's salt, so neither a
+prompt nor its plain hash can be read from the folder; an entry holding a
+prompt as text is removed when it is next read. All kinds together stay under
+one size (Settings), least recently used first; the receipts a run used are
+listed in its report, so deleting the work removes what only it used.
 """
 import copy
 import hashlib
@@ -25,16 +31,67 @@ def digest(path):
     return value.hexdigest()
 
 
+# The receipts this process used or wrote, as <kind>/<identity>/<receipt>.json, for the run's report.
+USED = []
+# All kinds together, unless Settings says otherwise.
+DEFAULT_LIMIT = 2 * 10 ** 9
+MAX_ENTRIES = 16384
+# A pickled dict key "prompt" (protocol 2 and 4 spellings): the encoder used to keep the prompt as text in its result.
+PLAIN_PROMPT = (b'X\x06\x00\x00\x00prompt', b'\x8c\x06prompt')
+
+
+def used():
+    return list(dict.fromkeys(USED))
+
+
+def _note(path):
+    try:
+        relative = Path(path).relative_to(Path(path).parents[2]).as_posix()
+    except (ValueError, IndexError):
+        return
+    if relative not in USED:
+        USED.append(relative)
+
+
+def holds_prompt_text(path):
+    """Whether a saved tensor file keeps a prompt as text (a torch archive with the key in its pickle)."""
+    import zipfile
+    try:
+        with zipfile.ZipFile(path) as archive:
+            for name in archive.namelist():
+                if name.endswith('data.pkl'):
+                    data = archive.read(name)
+                    return any(marker in data for marker in PLAIN_PROMPT)
+    except (OSError, zipfile.BadZipFile, KeyError):
+        return False
+    return False
+
+
+def limit_bytes(base):
+    """The size all kinds together stay under: Settings' value, or DEFAULT_LIMIT."""
+    try:
+        value = json.loads((Path(base).parent / 'private-store' / 'settings.json').read_text(encoding='utf-8'))
+        chosen = value.get('cache_bytes')
+        if type(chosen) is int and 256 * 2**20 <= chosen <= 2**40:
+            return chosen
+    except (OSError, ValueError, AttributeError):
+        pass
+    return DEFAULT_LIMIT
+
+
 class InputCache:
     """One receipt per input; a hit refreshes its receipt and `prune` evicts the least recently used ones."""
     def __init__(self, identity, *, root=None, kind='conditioning'):
         encoded = json.dumps(identity, sort_keys=True, separators=(',', ':')).encode()
         self.identity = hashlib.sha256(encoded).hexdigest()
-        self.root = Path(root or data_root() / 'input-cache') / kind / self.identity
+        self.base = Path(root or data_root() / 'input-cache')
+        self.kind = kind
+        self.root = self.base / kind / self.identity
         self.note = None
 
     def receipt(self, key):
-        return self.root / (hashlib.sha256(key.encode()).hexdigest() + '.json')
+        from .private_store import name
+        return self.root / (name('input-cache\0' + self.kind, key, root=self.base.parent / 'private-store') + '.json')
 
     def lookup(self, key):
         try:
@@ -48,6 +105,11 @@ class InputCache:
             if source.stat().st_size != entry['bytes'] or digest(source) != entry['sha256']:
                 self.note = 'Cache content changed; retained and recomputed'
                 return None
+            if holds_prompt_text(source):
+                # Saved by an earlier version with the prompt as text: it goes, and is computed again.
+                self.evict(self.receipt(key))
+                return None
+            _note(self.receipt(key))
             return source, entry
         except FileNotFoundError:
             return None
@@ -138,17 +200,29 @@ class InputCache:
         save(receipt, {'identity': self.identity, 'file': target.name, 'bytes': size,
                        'sha256': checksum, 'metrics': metrics, 'created_epoch': time.time()},
              staging='receipt.')
+        _note(receipt)
         self.prune()
         return True
 
-    def prune(self, max_bytes=1 << 30, max_entries=4096):
-        """Drop the least recently used receipts of this kind, across identities, until under both limits.
+    def evict(self, receipt):
+        """Remove one receipt, its earlier copies and its file when no other receipt names it."""
+        from .private_store import evict
+        try:
+            evict(self.base, Path(receipt).relative_to(self.base).as_posix())
+        except ValueError:
+            pass
+
+    def prune(self, max_bytes=None, max_entries=MAX_ENTRIES):
+        """Drop the least recently used receipts of every kind, across identities, until under both limits.
 
         Only files this cache wrote are removed; unreadable receipts are left in place."""
-        kind = self.root.parent
+        if max_bytes is None:
+            max_bytes = limit_bytes(self.base)
         rows, owners = [], {}
         try:
-            for receipt in kind.glob('*/*.json'):
+            for receipt in self.base.glob('*/*/*.json'):
+                if receipt.name.endswith('.previous.json'):
+                    continue
                 try:
                     entry = json.loads(receipt.read_text(encoding='utf-8'))
                     if not isinstance(entry['file'], str) or Path(entry['file']).name != entry['file']:

@@ -1,0 +1,197 @@
+/* The finishing layer. Loaded last; changes no layout, size, position or DOM: only radii, type detail, edges,
+   states and motion, through tokens and selectors. Notes and the radius table: web/glass/POLISH-NOTES.md.
+   Off:    html[data-fv-polish="off"]   (every rule below is behind that gate)
+   Looks:  html[data-fv-look="calm"]    solid and plain
+           html[data-fv-look="stage"]   (default) the same, plus one faint light behind the work
+   One rule of restraint throughout: an element is marked by one means only: a fill, an edge, or a shadow. */
+
+/* ── 1. Radius: the ladder itself is the shell's (theme.css: --fv-r-xs 4 · sm 8 · md 12 · lg 16 · pill). ───────
+   This file sets no radius values of its own. It only places parts on the ladder where the step depends on what
+   the part is inside of: a segmented control's shell is a control (sm) and its blocks are concentric (xs); the
+   frame around the work is a card (md); joined blocks round their outer corners only. */
+html:root:not([data-fv-polish="off"]){--fv-hover-scale:1}
+/* Segmented controls: shell sm, blocks xs (concentric). Pills are left to the view switch, switches and the
+   status capsule. */
+/* Image view */
+html:not([data-fv-polish="off"]) .fv-image :is(.fv-iv-seg,.fv-iv-ratios,.fv-iv-quick,.fv-iv-prompt,.fv-iv-field,.fv-iv-search,.fv-iv-mpick,.fv-iv-slot,.fv-iv-btn,.fv-iv-sec-toggle){border-radius:var(--fv-r-sm)!important}
+html:not([data-fv-polish="off"]) .fv-image :is(.fv-iv-seg,.fv-iv-ratios,.fv-iv-quick)>:is(button,.fv-iv-btn,.fv-iv-ratio,.fv-iv-chip){border-radius:var(--fv-r-xs)!important}
+html:not([data-fv-polish="off"]) .fv-image :is(.fv-iv-field,.fv-iv-search) input{border-radius:var(--fv-r-xs)}
+html:not([data-fv-polish="off"]) .fv-image :is(.fv-iv-frame,.fv-iv-pic){border-radius:var(--fv-r-md)!important}
+/* Tiles of a result grid are thumbnails (sm); a single picture fills the frame (md). */
+html:not([data-fv-polish="off"]) .fv-image .fv-iv-pic>button{border-radius:var(--fv-r-sm)!important;overflow:hidden}
+/* Edit view */
+html:not([data-fv-polish="off"]) .fv-editor :is(.fv-ed-name,.fv-ed-export-main,.fv-ed-tabs,.fv-pass-mode,.fv-ed-search,.fv-ed-library-import,.fv-ed-ref-add,.fv-ed-description-box,.fv-ed-play,.fv-ed-icon,.fv-ed-marker,.fv-ed-fit,.fv-ed-start,.fv-ed-end,.fv-ed-previous-frame,.fv-ed-next-frame,.fv-ed-loop,.fv-ed-play-range,.fv-ed-preview-volume,.fv-ed-save-frame,.fv-ed-fullscreen,.fv-ed-adjust-button,.fv-ed-save-state,.fv-ed-source,.fv-ed-source-add,.fv-ed-track-row){border-radius:var(--fv-r-sm)!important}
+html:not([data-fv-polish="off"]) .fv-editor :is(.fv-ed-tabs,.fv-pass-mode)>button{border-radius:var(--fv-r-xs)!important}
+html:not([data-fv-polish="off"]) .fv-editor :is(.fv-ed-selection,.fv-effort-name,.fv-ed-description){border-radius:var(--fv-r-xs)!important}
+html:not([data-fv-polish="off"]) .fv-editor :is(.fv-ed-genbar,.fv-ed-picture){border-radius:var(--fv-r-md)!important}
+html:not([data-fv-polish="off"]) .fv-editor .fv-ed-pass-menu{border-radius:var(--fv-r-md)!important}
+/* The joined generate block keeps its joined inner edges; only the outer corners follow the ladder. */
+html:not([data-fv-polish="off"]) .fv-editor .fv-ed-generate.fv-primary{border-top-left-radius:var(--fv-r-sm)!important;border-bottom-left-radius:var(--fv-r-sm)!important}
+html:not([data-fv-polish="off"]) .fv-editor .fv-ed-generate.fv-primary+*{border-top-right-radius:var(--fv-r-sm)!important;border-bottom-right-radius:var(--fv-r-sm)!important}
+/* Studio */
+html:not([data-fv-polish="off"]) .fv-create :is(.fvs-icon-button,.fvs-library-button,.fv-prompt-help,.fv-ed-expand,.fv-action,.fv-report-download){border-radius:var(--fv-r-sm)!important}
+html:not([data-fv-polish="off"]) .fv-create :is(.fv-stage,.fv-stage-media,.fv-stage video,.fv-stage canvas){border-radius:var(--fv-r-md)}
+html:not([data-fv-polish="off"]) .fv-create :is(.fvs-step,.fvs-step-value){border-radius:var(--fv-r-xs)}
+html:not([data-fv-polish="off"]) .fv-create .fvs-shape-glyph{border-radius:var(--fv-r-xs)}
+
+/* ── 2. Type: three weights, even tracking, numbers that do not jump ───────────────────────────────────────── */
+html:not([data-fv-polish="off"]) :is(.fv-studio,.fv-topbar,.fv-library,.fv-select-menu,.fv-tip){
+  font-variant-numeric:tabular-nums;font-kerning:normal;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility;
+  font-synthesis-weight:none;
+}
+/* Section labels are quiet: medium, third ink. The value beside them carries the weight. */
+html:not([data-fv-polish="off"]) .fv-image .fv-iv-sec-toggle h3{font-weight:var(--fv-fw-2);color:var(--fv-fg3);letter-spacing:0}
+html:not([data-fv-polish="off"]) .fv-image .fv-iv-ratio-label{font-weight:var(--fv-fw-2)}
+html:not([data-fv-polish="off"]) .fv-image .fv-iv-ratio:not([aria-pressed=true],[aria-checked=true],[aria-selected=true]) .fv-iv-ratio-label{color:var(--fv-fg2)}
+html:not([data-fv-polish="off"]) .fv-editor :is(.fv-ed-adjust-button,.fv-ed-tabs>button,.fv-pass-mode>button){font-weight:var(--fv-fw-2)}
+/* Latin and CJK share the line: no stretched tracking on the primary label. */
+html:not([data-fv-polish="off"]) :is(.fv-primary,.fv-primary *){letter-spacing:0}
+html:not([data-fv-polish="off"]) :is(.fv-iv-panel-title,.fv-ed-name){letter-spacing:0}
+
+/* ── 3. One emphasis per element ───────────────────────────────────────────────────────────────────────────── */
+/* The primary action: a flat accent fill. No gradient, gloss, glow or edge. */
+html:not([data-fv-polish="off"]) :is(.fv-primary,.fv-iv-go,.fv-ed-generate){background-image:none!important;box-shadow:none!important;border-color:transparent!important;text-shadow:none}
+/* Filled controls carry no shadow or inner highlight; a control with an edge has no fill behind the edge's back. */
+html:not([data-fv-polish="off"]) .fv-editor :is(.fv-ed-export-main,.fv-ed-source,.fv-ed-source-add,.fv-ed-adjust-button,.fv-ed-play):not(:focus-visible){box-shadow:none}
+/* While generating, the stage is the plain surface under the numbers, in the theme's own ink: no drawn plane, no
+   glow behind the text. */
+html:not([data-fv-polish="off"]) .fv-create .fv-stage .fv-preview-scene{opacity:0!important}
+html:not([data-fv-polish="off"]) .fv-create .fv-stage:has(.fv-generation-progress:not([hidden])){background:rgb(var(--fv-solid1))!important}
+html:not([data-fv-polish="off"]) .fv-create .fv-stage .fv-generation-progress{--fv-ink:var(--fv-fg);--fv-muted:var(--fv-fg2);color:var(--fv-fg)}
+html:not([data-fv-polish="off"]) .fv-create .fv-stage .fv-generation-progress :is(.fv-generation-heading,.fv-generation-count,.fv-generation-label){text-shadow:none!important;color:var(--fv-fg)!important}
+html:not([data-fv-polish="off"]) .fv-create .fv-stage .fv-generation-progress .fv-generation-times{text-shadow:none!important;color:var(--fv-fg2)!important}
+/* Progress: one flat colour. */
+html:not([data-fv-polish="off"]) :where(.fv-studio,.fv-setup,.fv-panel) progress::-webkit-progress-value{background:var(--fv-accent)}
+html:not([data-fv-polish="off"]) :where(.fv-studio,.fv-setup,.fv-panel) progress::-moz-progress-bar{background:var(--fv-accent)}
+
+/* ── 4. States: one rule everywhere ────────────────────────────────────────────────────────────────────────── */
+/* Colour-only transitions, 140 ms, ease-out; nothing bounces. */
+html:not([data-fv-polish="off"]) :is(.fv-studio,.fv-topbar,.fv-library,.fv-select-menu) :is(button,a,summary,input,textarea,select,[role=button],[role=tab],[role=option],[role=menuitem]){
+  transition-property:background-color,border-color,color,fill,stroke,opacity,box-shadow,outline-color;transition-duration:.14s;transition-timing-function:cubic-bezier(.2,.8,.2,1);
+}
+/* Keyboard focus: one thin ring, no glow. Text fields take the ring on their own edge. */
+html:not([data-fv-polish="off"]) :is(.fv-studio,.fv-topbar,.fv-library,.fv-select-menu) :is(button,a,summary,[role=button],[role=tab],[role=slider],[role=separator]):focus-visible{outline:2px solid var(--fv-focus);outline-offset:2px}
+html:not([data-fv-polish="off"]) :is(.fv-studio,.fv-library) :is(textarea,input:not([type=checkbox],[type=radio],[type=range])):focus-visible{outline:1px solid var(--fv-focus)!important;outline-offset:-1px!important;box-shadow:none}
+html:not([data-fv-polish="off"]) .fv-editor :is(.fv-ed-description-box,.fv-ed-search):focus-within{box-shadow:none;border-color:var(--fv-accent-line)}
+/* Disabled: dimmed once, no pointer. */
+html:not([data-fv-polish="off"]) :is(.fv-studio,.fv-library) :is(button,input,textarea,select):disabled{cursor:default}
+
+/* ── 5. Small parts ────────────────────────────────────────────────────────────────────────────────────────── */
+/* Scrollbars: thin, quiet, no track. */
+html:not([data-fv-polish="off"]) :is(.fv-studio,.fv-library,.fv-select-menu,.fv-tb-pop){scrollbar-width:thin;scrollbar-color:var(--fv-scroll) transparent}
+html:not([data-fv-polish="off"]) :is(.fv-studio,.fv-library,.fv-select-menu,.fv-tb-pop) *{scrollbar-width:thin;scrollbar-color:var(--fv-scroll) transparent}
+/* Selection and placeholder. */
+html:not([data-fv-polish="off"]) :is(.fv-studio,.fv-library) ::selection{background:var(--fv-selection);color:inherit}
+html:not([data-fv-polish="off"]) :is(.fv-studio,.fv-library) :is(textarea,input)::placeholder{color:var(--fv-fg3);opacity:1;font-weight:var(--fv-fw-1)}
+/* Range: a hairline track and a plain round thumb. */
+html:not([data-fv-polish="off"]) :is(.fv-studio,.fv-library) input[type=range]::-webkit-slider-thumb{box-shadow:0 0 0 1px rgb(0 0 0 / .12)}
+/* Pictures never smear while they scale. */
+html:not([data-fv-polish="off"]) :is(.fv-studio,.fv-library) :is(img,video){image-rendering:auto}
+
+/* ── 6. The work is the subject ────────────────────────────────────────────────────────────────────────────── */
+/* Both looks: the picture sits in the page with one hairline; no shadow, reflection or light spot under it.
+   The hairline is an outline so that it is drawn over the picture, not hidden under it. */
+html:not([data-fv-polish="off"]) :is(.fv-create .fv-stage,.fv-image .fv-iv-frame,.fv-image .fv-iv-pic,.fv-image .fv-iv-pic>button,.fv-library .fv-library-media){box-shadow:none!important}
+html:not([data-fv-polish="off"]) :is(.fv-image .fv-iv-pic:not(:has(>button)),.fv-image .fv-iv-pic>button:not(:focus-visible),.fv-library .fv-library-media){outline:1px solid var(--fv-edge);outline-offset:-1px}
+/* The two video frames: one line at 8 % (white on dark, black on light), so a dark scene keeps its edge against
+   the ground. The corners stay the frame's own. An empty edit preview keeps its dashed line instead. */
+html:not([data-fv-polish="off"]) :is(.fv-create .fv-stage,.fv-editor .fv-ed-picture:not([data-empty=true])){outline:1px solid var(--fv-line);outline-offset:-1px}
+html:not([data-fv-polish="off"]) .fv-editor .fv-ed-picture:not([data-empty=true]){box-shadow:none!important}
+html:not([data-fv-polish="off"]) :is(.fv-iv-ambient,.fv-iv-veil,.fv-ed-ambient){display:none!important}
+/* Thumbnails: no stacked offset, no halo; the chosen one has a 2 px line and nothing else. */
+html:not([data-fv-polish="off"]) :is(.fv-recent-card,.fv-library-card) .fv-library-picture{box-shadow:none!important}
+html:not([data-fv-polish="off"]) :is(.fv-recent-card,.fv-library-card):is([aria-pressed=true],.fv-picked) .fv-library-picture{box-shadow:0 0 0 2px var(--fv-accent-line)!important}
+/* Status dot: a dot. Segmented controls: the chosen block is a fill only. */
+html:not([data-fv-polish="off"]) .fv-topbar .fv-tb-dot{box-shadow:none!important}
+html:not([data-fv-polish="off"]) :is(.fv-view-switch,.fv-iv-seg,.fv-iv-ratios,.fv-iv-quick,.fv-ed-tabs,.fv-pass-mode)>:is(button,.fv-tb-tab):not(:focus-visible){box-shadow:none!important}
+html:not([data-fv-polish="off"]) .fv-topbar .fv-view-switch{box-shadow:none}
+/* A floating sheet: one edge and one shadow. */
+html:not([data-fv-polish="off"]) .fv-create .fvs-info-panel{box-shadow:0 16px 40px -16px rgb(0 0 0 / .5)}
+/* A text field: one edge at rest; the accent line only for the keyboard. */
+html:not([data-fv-polish="off"]) .fv-image :is(.fv-iv-prompt,.fv-iv-field,.fv-iv-mpick,.fv-iv-search):not(:focus-visible){box-shadow:none!important}
+/* The timeline placeholder: a faint dashed line, no fill. */
+html:not([data-fv-polish="off"]) .fv-editor .fv-ed-selection.fv-ed-range{background:none;border-color:var(--fv-line2)}
+/* One blue: the older accent names follow the two shell tokens. */
+html:not([data-fv-polish="off"]) :where(.fv-phone,.fv-lan,.fv-studio,.fv-setup,.fv-panel,.fv-generation-progress,.fv-view-navigation,.fv-prompt-guide,.fv-failure-dialog,.fv-reference-picker,.fv-release-notes,.fv-whatsnew,.fv-image-editor,.fv-cast-dialog,.fv-tutorial-book,.fv-feature-tour){--fv-accent:var(--fv-accent-ink);--fv-accent-ramp:var(--fv-accent-ink)}
+html:not([data-fv-polish="off"]) .fv-editor .fv-effort-name{color:var(--fv-accent-ink)}
+html:not([data-fv-polish="off"]) .fv-editor .fv-ed-export-main{border-color:transparent}
+
+/* ── 7. stage: its warm fills are the shell's (theme.css); this layer adds one faint light behind the work ──────────────────────────────────────────────────── */
+/* The light takes the work's main colour (polish.js writes --fv-look-tint: "r g b" on the view's dialog;
+   600 ms when it changes, at once under reduced motion); otherwise a neutral warm grey. A plain gradient at 8 % or less, behind the stage only:
+   never a picture, never a recognisable shape, nothing behind panels, buttons or text. Carries no information. */
+@property --fv-look-tint-c{syntax:'<color>';inherits:true;initial-value:rgb(120 112 104)}
+html:not([data-fv-polish="off"]):not([data-fv-look="calm"]) dialog:is(.fv-create,.fv-image){
+  --fv-look-tint-c:rgb(var(--fv-look-tint,120 112 104));transition:--fv-look-tint-c .6s cubic-bezier(.2,.8,.2,1);
+  background-image:radial-gradient(ellipse 46% 44% at 50% 42%,color-mix(in srgb,var(--fv-look-tint-c) 8%,transparent),transparent 100%);
+}
+html:not([data-fv-polish="off"]):not([data-fv-look="calm"])[data-theme=light] dialog:is(.fv-create,.fv-image){
+  background-image:radial-gradient(ellipse 46% 44% at 50% 42%,color-mix(in srgb,var(--fv-look-tint-c) 6%,transparent),transparent 100%);
+}
+
+/* ── 8. The status capsule, its panel and the notices ──────────────────────────────────────────────────────── */
+/* Capsule: one size and weight, steady figures. */
+html:not([data-fv-polish="off"]) .fv-topbar .fv-tb-cap{padding-inline:var(--fv-sp-12)!important;gap:var(--fv-sp-8)!important;font-variant-numeric:tabular-nums}
+html:not([data-fv-polish="off"]) .fv-topbar .fv-tb-cap :is(.fv-tb-cap-txt,.fv-tb-cap-txt *,.fv-tb-n){font-size:var(--fv-fs-2)!important;line-height:18px!important;font-weight:var(--fv-fw-2)!important;letter-spacing:0!important}
+/* Panel: 360 wide, card corners; a floating sheet has one edge and one shadow. */
+html:not([data-fv-polish="off"]) :is(.fv-tb-pop.fv-tb-act,.fv-notes){width:360px;max-width:calc(100vw - var(--fv-sp-16));border-radius:var(--fv-r-md)}
+/* A solid ground: nothing behind the panel shows through it. Dark takes the raised fill, light takes white. */
+html:not([data-fv-polish="off"]) :is(.fv-tb-pop.fv-tb-act,.fv-notes){-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:rgb(var(--fv-solid3))!important}
+html:not([data-fv-polish="off"])[data-theme=light] :is(.fv-tb-pop.fv-tb-act,.fv-notes){background:rgb(var(--fv-solid2))!important}
+/* Head: the name in the body size, semibold; what it is about beside it in the quiet grey, on one baseline. */
+html:not([data-fv-polish="off"]) :is(.fv-tb-pop .fv-tb-act-h h2,.fv-notes .fv-notes-head h2){font-size:var(--fv-fs-2);line-height:18px;font-weight:var(--fv-fw-3);letter-spacing:0}
+html:not([data-fv-polish="off"]) .fv-tb-pop .fv-tb-act-titles{align-items:baseline;padding-top:var(--fv-sp-8)}
+html:not([data-fv-polish="off"]) .fv-tb-pop .fv-tb-act-card{font-size:var(--fv-fs-1);line-height:16px;color:var(--fv-fg3)}
+/* Group titles: 12/16, quiet, not bold. */
+html:not([data-fv-polish="off"]) :is(.fv-tb-pop .fv-tb-act-title>span,.fv-notes-group){font-size:var(--fv-fs-1);line-height:16px;font-weight:var(--fv-fw-1);color:var(--fv-fg3);letter-spacing:0;text-transform:none}
+/* A row, for a task and for a notice alike: 40 px picture, title 13/18 medium, second line 12/16 quiet. */
+html:not([data-fv-polish="off"]) .fv-tb-pop .fv-tb-job-go{gap:var(--fv-sp-12);padding:var(--fv-sp-8);justify-content:flex-start}
+html:not([data-fv-polish="off"]) .fv-tb-pop .fv-tb-job-tx{flex:1}
+/* A notice keeps its own row shape wherever it is listed (the views' general button face does not apply to it). */
+html:not([data-fv-polish="off"]) :is(.fv-tb-act-notes,.fv-notes-list) .fv-note{position:relative;display:grid;grid-template-columns:40px minmax(0,1fr) auto;align-items:center;column-gap:var(--fv-sp-12);width:100%;min-height:var(--fv-sp-56);margin:0;padding:var(--fv-sp-8);border:0;border-radius:var(--fv-r-sm);background:transparent;box-shadow:none;color:inherit;font-weight:var(--fv-fw-1);text-align:left}
+html:not([data-fv-polish="off"]) :is(.fv-tb-act-notes,.fv-notes-list) .fv-note:is(:hover,:focus-visible){background:var(--fv-ctl-hover)}
+html:not([data-fv-polish="off"]) :is(.fv-tb-pop .fv-tb-job-th,.fv-note .fv-note-icon){width:40px;height:40px;border-radius:var(--fv-r-sm);border:0;box-shadow:none}
+html:not([data-fv-polish="off"]) :is(.fv-tb-pop .fv-tb-job-tx,.fv-note .fv-note-text){gap:var(--fv-sp-2)}
+html:not([data-fv-polish="off"]) :is(.fv-tb-pop .fv-tb-job-t1,.fv-note .fv-note-title){font-size:var(--fv-fs-2);line-height:18px;font-weight:var(--fv-fw-2);color:var(--fv-fg);letter-spacing:0}
+html:not([data-fv-polish="off"]) :is(.fv-tb-pop .fv-tb-job-t2,.fv-note .fv-note-sub){font-size:var(--fv-fs-1);line-height:16px;font-weight:var(--fv-fw-1);color:var(--fv-fg3);font-variant-numeric:tabular-nums}
+html:not([data-fv-polish="off"]) :is(.fv-tb-pop .fv-tb-job+.fv-tb-job,.fv-notes-list .fv-note+.fv-note){margin-top:var(--fv-sp-4)}
+html:not([data-fv-polish="off"]) :is(.fv-tb-act-notes,.fv-notes-list) .fv-note[data-unread=true] .fv-note-title{font-weight:var(--fv-fw-3)}
+html:not([data-fv-polish="off"]) .fv-tb-pop .fv-tb-act-notes{gap:var(--fv-sp-4)}
+/* A notice's mark: a neutral tile; the glyph alone carries the state. */
+html:not([data-fv-polish="off"]) .fv-note .fv-note-icon{background:var(--fv-ctl-bg)!important}
+/* A task's figures on the right of its second line: the same quiet grey as the line. */
+html:not([data-fv-polish="off"]) .fv-tb-pop .fv-tb-job-n:not(.is-warn){color:var(--fv-fg3);font-weight:var(--fv-fw-1)}
+/* Time and percentage: right, steady figures, on the title's line. */
+html:not([data-fv-polish="off"]) .fv-note :is(.fv-note-when,.fv-note-pct){align-self:start;padding-top:1px;font-size:var(--fv-fs-1);line-height:16px;font-weight:var(--fv-fw-1);color:var(--fv-fg3);text-align:right;font-variant-numeric:tabular-nums}
+/* Progress: a 2 px line on the row's bottom edge. */
+html:not([data-fv-polish="off"]) .fv-tb-pop .fv-tb-job-bar{bottom:0;height:2px}
+html:not([data-fv-polish="off"]) .fv-note .fv-note-bar{height:2px}
+/* Stop, mark-read and clear: quiet until pointed at. */
+html:not([data-fv-polish="off"]) .fv-tb-pop .fv-tb-job-stop{color:var(--fv-fg3)}
+html:not([data-fv-polish="off"]) .fv-tb-pop .fv-tb-job-stop:hover{color:var(--fv-fg);background:var(--fv-ctl-hover)}
+html:not([data-fv-polish="off"]) :is(.fv-notes-clear,.fv-notes-read){border:0;box-shadow:none;border-radius:var(--fv-r-sm);font-size:var(--fv-fs-1);line-height:16px;font-weight:var(--fv-fw-1)}
+html:not([data-fv-polish="off"]) :is(.fv-notes-clear,.fv-notes-read):not(:hover,:focus-visible){background:none;color:var(--fv-fg3)}
+/* In the status panel the notices share the tasks' left and right lines: no extra inset for the list, and the close
+   key takes the time's place while the row is pointed at or focused, instead of reserving a column. */
+html:not([data-fv-polish="off"]) .fv-tb-pop .fv-tb-act-notes{padding:0}
+html:not([data-fv-polish="off"]) .fv-notes-list .fv-note-row>.fv-note-x{position:absolute;right:var(--fv-sp-8);top:50%;translate:0 -50%}
+html:not([data-fv-polish="off"]) .fv-notes-list .fv-note-row:is(:hover,:focus-within) .fv-note-when{opacity:0}
+/* A notice's own close key: 24 px, shown when the row is pointed at or holds the focus. */
+html:not([data-fv-polish="off"]) .fv-note-x{display:grid;place-items:center;flex:none;width:24px;height:24px;min-height:0;margin:0;padding:0;border:0;border-radius:var(--fv-r-sm);background:none;box-shadow:none;color:var(--fv-fg3);opacity:0;cursor:pointer}
+html:not([data-fv-polish="off"]) :is(:is(.fv-note,.fv-note-row):is(:hover,:focus-within) .fv-note-x,.fv-note-x:focus-visible){opacity:1}
+html:not([data-fv-polish="off"]) .fv-note-x:hover{background:var(--fv-ctl-hover);color:var(--fv-fg)}
+/* The computer's figures: one size; the number is the heavier part. */
+html:not([data-fv-polish="off"]) .fv-tb-pop .fv-tb-mem-v{font-size:var(--fv-fs-2);line-height:18px}
+html:not([data-fv-polish="off"]) .fv-tb-pop .fv-tb-mem-u{line-height:16px}
+html:not([data-fv-polish="off"]) .fv-tb-pop .fv-tb-meter>span{line-height:16px;color:var(--fv-fg3)}
+html:not([data-fv-polish="off"]) .fv-tb-pop .fv-tb-meter>b{line-height:16px;font-weight:var(--fv-fw-2)}
+/* Nothing to show: one quiet line. */
+html:not([data-fv-polish="off"]) .fv-tb-pop .fv-tb-act-empty{line-height:16px;color:var(--fv-fg3)}
+html:not([data-fv-polish="off"]) .fv-notes-empty{padding:var(--fv-sp-24);gap:var(--fv-sp-4)}
+html:not([data-fv-polish="off"]) .fv-notes-empty .fv-notes-empty-mark{display:none}
+html:not([data-fv-polish="off"]) .fv-notes-empty b{font-weight:var(--fv-fw-1);color:var(--fv-fg3)}
+
+@media (prefers-reduced-motion:reduce){
+  html:not([data-fv-polish="off"]):not([data-fv-look="calm"]) dialog:is(.fv-create,.fv-image){transition:none}
+  html:not([data-fv-polish="off"]) :is(.fv-studio,.fv-topbar,.fv-library,.fv-select-menu) :is(button,a,summary,input,textarea,select,[role=button],[role=tab],[role=option],[role=menuitem]){transition-duration:1ms}
+}

@@ -95,19 +95,34 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     const bar = el('div', null, 'fv-enhance-bar'), label = el('label', null, 'fv-enhance-toggle');
     const toggle = el('input'); toggle.type = 'checkbox'; toggle.setAttribute('role', 'switch'); toggle.disabled = input.disabled;
     toggle.setAttribute('aria-label', t('Prompt enhancement', '提示词增强'));
-    label.append(toggle, el('span', t('FreeToken enhancement', 'FreeToken 提示词增强')));
-    label.title = t('Based on FreeToken. Rewrite locally with reference images, following MiniMax H3 guidelines.', '基于 FreeToken，结合参考图，在本机按 MiniMax H3 规则改写。');
+    label.append(toggle, el('span', t('Prompt enhancement', '提示词增强')));
+    // Product words on screen: what it does, not what it is built on.
+    label.dataset.fvTipName = t('Prompt enhancement', '提示词增强');
+    label.dataset.fvTipUse = t('Rewrite the prompt in more detail first, on this computer', '生成前在本机把描述改写得更具体');
+    label.title = t('Rewrites the prompt in more detail before generating, on this computer, using your reference pictures.', '生成前在本机结合参考图，把描述改写得更具体。');
     const enhancementHint = label.title;
+    // The compact form for a tool row: one key, lit while enhancement is on. A view that places it hides the switch;
+    // the rest of the bar (versions, rewrite, cancel) can go beside it (`bar`), and shows only while enhancement is on.
+    const chip = el('button', null, 'fv-enhance-chip'); chip.type = 'button';
+    chip.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l1.8 5.2 5.2 1.8-5.2 1.8L12 17.5l-1.8-5.2-5.2-1.8 5.2-1.8z"/><path d="M18.5 15.5l.6 1.6 1.6.6-1.6.6-.6 1.6-.6-1.6-1.6-.6 1.6-.6z"/></svg>';
+    chip.append(el('span', t('Enhance', '增强')));
+    chip.setAttribute('aria-label', t('Prompt enhancement', '提示词增强'));
+    chip.dataset.fvTipName = label.dataset.fvTipName; chip.dataset.fvTipUse = label.dataset.fvTipUse;
+    chip.onclick = () => { if (!toggle.disabled) toggle.click(); };
     const tabs = el('div', null, 'fv-enhance-tabs'); tabs.setAttribute('role', 'group'); tabs.setAttribute('aria-label', t('Prompt version', '提示词版本'));
     const buttons = {};
     for (const [name, text] of [['original', t('Original', '原文')], ['rewritten', t('Enhanced', '改写')]]) {
         const b = el('button', text); b.type = 'button'; buttons[name] = b; tabs.append(b);
+        b.dataset.fvTipName = text;
+        b.dataset.fvTipUse = name === 'original' ? t('Show the prompt as written', '显示原始描述') : t('Show the rewritten prompt', '显示改写后的描述');
         b.onclick = () => { if (running) cancelJob().catch(() => {}); versions.select(name); apply(); };
     }
     const redo = el('button', t('Rewrite', '改写'), 'fv-quiet'); redo.type = 'button';
     redo.classList.add('fv-enhance-redo');
+    redo.dataset.fvTipName = t('Rewrite', '改写'); redo.dataset.fvTipUse = t('Rewrite the prompt again', '重新改写一次描述');
     redo.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 6M20 4v7h-7"/></svg>';
     const cancel = el('button', t('Cancel', '取消'), 'fv-quiet'); cancel.type = 'button';
+    cancel.dataset.fvTipName = t('Cancel', '取消'); cancel.dataset.fvTipUse = t('Stop rewriting; keep the prompt as written', '停止改写，保留原来的描述');
     const status = el('div', null, 'fv-enhance-status'); status.setAttribute('role', 'status');
     const statusText = el('span', null, 'fv-enhance-status-text');
     const meter = el('div', null, 'fv-enhance-meter'), fill = el('i');
@@ -130,7 +145,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         if (fraction === null) { meter.removeAttribute('aria-valuenow'); fill.style.width = ''; }
         else { const percent = Math.round(100 * Math.max(0, Math.min(1, fraction))); meter.setAttribute('aria-valuenow', String(percent)); fill.style.width = percent + '%'; }
     }
-    const install = el('div', null, 'fv-enhance-install'); install.hidden = true;
+    const install = el('div', null, 'fv-enhance-install'); install.hidden = true; install.tabIndex = -1;
     const detail = el('p');
     const agree = el('button', t('Download and enable', '下载并启用'), 'fv-primary'); agree.type = 'button';
     const decline = el('button', t('Not now', '暂不启用'), 'fv-quiet'); decline.type = 'button';
@@ -170,7 +185,10 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     let memoryFacts = null;
     const MEMORY_FACTS = ['gpu_total_bytes', 'gpu_free_before_load_bytes', 'gpu_allocator_budget_bytes', 'gpu_free_needed_text_only_bytes', 'gpu_free_needed_with_images_bytes',
         'placement_refused', 'gpu_free_bytes', 'gpu_allocator_ooms', 'idle_release', 'idle_release_seconds',
-        'idle_release_gpu_free_before_bytes', 'idle_release_gpu_free_after_bytes'];
+        'idle_release_gpu_free_before_bytes', 'idle_release_gpu_free_after_bytes',
+        'gpu_peak_allocated_bytes', 'gpu_peak_reserved_bytes', 'image_count', 'input_tokens', 'weights', 'vision_device', 'kv_reserve', 'stage', 'platform',
+        'gpu_non_allocator_reserve_bytes', 'extra_vram_reserve_bytes',
+        'streamed_layers', 'available_memory_at_start_bytes', 'available_memory_before_load_bytes'];
     const factsOf = diagnostics => Object.fromEntries(MEMORY_FACTS.filter(key => ['number', 'string'].includes(typeof diagnostics?.[key]))
         .map(key => [key, diagnostics[key]]));
     const gib = value => String(Math.round(value / 2 ** 30));
@@ -254,7 +272,8 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
             b.setAttribute('aria-pressed', String(versions.value.selected === name));
             b.disabled = input.disabled || (name === 'rewritten' && !versions.value.enabled);
         }
-        redo.hidden = !versions.value.enabled || Boolean(running); redo.disabled = input.disabled;
+        // Nothing to rewrite in an empty box: no key and no line for it (the rewrite runs once there is text).
+        redo.hidden = !versions.value.enabled || Boolean(running) || !versions.value.original.trim(); redo.disabled = input.disabled;
         const rewriteLabel = versions.value.rewritten ? t('Rewrite again', '重新改写') : t('Rewrite', '改写');
         redo.title = input.disabled ? '' : rewriteLabel;
         redo.setAttribute('aria-label', rewriteLabel);
@@ -262,6 +281,8 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         cancel.title = cancelling ? t('Cancelling…', '正在取消…') : '';
         element.dataset.busy = String(Boolean(running));
         element.dataset.enabled = String(Boolean(versions.value.enabled));
+        chip.setAttribute('aria-pressed', String(toggle.checked)); chip.disabled = toggle.disabled;
+        bar.dataset.enabled = String(Boolean(versions.value.enabled)); bar.dataset.busy = String(Boolean(running));
     }
     function apply() { input.value = versions.text(); setText(input.value); save(); render(); }
     function changed() {
@@ -285,26 +306,18 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         catch (error) { if (running === request) { cancelling = false; render(); } throw error; }
     }
     cancel.onclick = () => cancelJob().catch(error => { show(errorText(error), 'error'); });
-    // The rewrite's waiting line: shown as soon as it is pressed, its seconds counted here every second,
-    // not only when a status reply comes back. `pause` hands the line to the download or memory wait.
+    // Preparing and rewriting are background work, so the line says nothing while they run (Cancel shows meanwhile);
+    // the clock only clears what an earlier step said. `pause` hands the line to the download or memory wait.
     function waitClock() {
-        let since = performance.now(), phase = 'preparing', timer = null;
-        const paint = () => {
-            if (!phase || disposed || cancelling) return;
-            const [en, zh] = phase === 'rewriting' ? ['Enhancing the prompt', '正在改写提示词'] : ['Preparing enhancement', '正在准备提示词增强'];
-            const s = Math.floor((performance.now() - since) / 1000), m = Math.floor(s / 60), r = s % 60;
-            show(s < 1 ? t(en + '…', zh + '…') : s < 60 ? t(`${en} · ${s} s`, `${zh} · ${s} 秒`)
-                : t(`${en} · ${m} min${r ? ` ${r} s` : ''}`, `${zh} · ${m} 分${r ? ` ${r} 秒` : ''}`), 'progress');
-        };
+        let phase = 'preparing';
+        const quiet = () => { if (phase && !disposed && !cancelling) show(''); };
         const clock = {
-            set(next) { const changed = next !== phase; phase = next; if (changed) paint(); },
+            set(next) { const changed = next !== phase; phase = next; if (changed) quiet(); },
             pause() { phase = ''; },
-            restart() { since = performance.now(); phase = 'preparing'; paint(); },
-            stop() { phase = ''; clearTimeout(timer); timer = null; },
+            restart() { phase = 'preparing'; quiet(); },
+            stop() { phase = ''; },
         };
-        // Twice a second so the count never skips a number; stops itself once the page is gone.
-        const tick = () => { paint(); timer = disposed ? null : setTimeout(tick, 500); };
-        tick();
+        quiet();
         return clock;
     }
     async function poll(action, body, clock = null) {
@@ -372,7 +385,12 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         detail.textContent = t(`Local model ${model} · ${(info.bytes / 2 ** 30).toFixed(1)} GiB download · needs ${gib(ramBytes)} GiB free RAM. Your prompt and images stay on this computer.`,
             `本地模型 ${model} · 下载 ${(info.bytes / 2 ** 30).toFixed(1)} GiB · 需 ${gib(ramBytes)} GiB 可用内存。提示词和图片只在本机处理。`);
         agree.textContent = downloadOnly ? t('Download', '下载') : t('Download and enable', '下载并启用');
+        // The open panels of the toolbars close for the question (glass/frame_picker.js ASKING), so none covers it; one
+        // that held the keyboard (its Download prompt model) hands it to the question.
+        const held = globalThis.document?.activeElement?.closest?.('.fvp-pop,[data-fv-pop]');
         install.hidden = false; render();
+        if (typeof CustomEvent === 'function') element.dispatchEvent?.(new CustomEvent('freevideo-asking', {bubbles: true}));
+        if (held) install.focus?.({preventScroll: true});
         if (downloadOnly) install.scrollIntoView({block: 'nearest'});
         const accepted = await new Promise(resolve => { consent = resolve; agree.onclick = () => resolve(true); decline.onclick = () => resolve(false); });
         consent = null; install.hidden = true; render();
@@ -412,7 +430,8 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     async function enhance() {
         if (running) return running;
         if (!versions.value.original.trim()) {
-            waiting = true; show(errorText({message: 'prompt_required'}), 'note'); input.focus();
+            // An empty prompt is not a problem to report: the rewrite runs once there is text, before generating.
+            waiting = true; show(''); input.focus();
             throw new Error('prompt_required');
         }
         cancelling = false; memoryFacts = null;
@@ -444,7 +463,8 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
             apply(); show('');
         };
         running = Promise.resolve().then(execute).catch(error => {
-            if (!disposed) show(errorText(error), error?.message === 'cancelled' ? '' : error?.message === 'stale' ? 'note' : 'error', null,
+            // Only a failure the user can act on is said; a cancel or a rewrite outdated by an edit says nothing.
+            if (!disposed) show(['cancelled', 'stale'].includes(error?.message) ? '' : errorText(error), 'error', null,
                 errorText({name: error?.name, message: error?.message, ramBytes: error?.ramBytes, characters: error?.characters, expanded: error?.expanded}));
             throw error;
         }).finally(() => { running = null; cancelling = false; install.hidden = true; render(); });
@@ -465,7 +485,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         versions.value.selected = 'original'; apply();
         show(t(`Generated with the original prompt. ${stale ? errorText(error) : fallbackText(error)}`, `已用原文生成。${stale ? errorText(error) : fallbackText(error)}`), 'note');
     }
-    return {element, model: {read: readModel, download: downloadModel, subscribe(listener) {
+    return {element, chip, bar, model: {read: readModel, download: downloadModel, subscribe(listener) {
         modelListeners.add(listener); listener(modelState);
         return () => modelListeners.delete(listener);
     }}, async beforeGenerate() {

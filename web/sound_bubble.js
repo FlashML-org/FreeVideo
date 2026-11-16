@@ -5,7 +5,7 @@ if (typeof document !== 'undefined' && !document.head.querySelector('link[href$=
     const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = new URL('./sound_bubble.css', import.meta.url).href;
     document.head.append(link);
 }
-const KEY = 'freevideo-sound-bubble', FADE_MS = 8000, OTHER_CARD = '.fv-guide-layer,.fv-first-start,.fv-next-step,body[data-fv-how-to],dialog.fv-feature-tour[open],.fv-tour-ring,dialog.fv-tutorial-book[open]';
+const KEY = 'freevideo-sound-bubble', FADE_MS = 8000, OTHER_CARD = '.fv-guide-layer,.fv-first-start,.fv-next-step,body[data-fv-how-to],dialog.fv-feature-tour[open],.fv-tour-ring,dialog.fv-tutorial-book[open],.fv-tour-layer,dialog.fv-book[open],.fv-follow';
 const read = () => { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch { return {}; } };
 const write = value => { try { localStorage.setItem(KEY, JSON.stringify(value)); } catch { /* The bubble then shows again next time. */ } };
 export const soundBubbleSeen = () => read().seen === true;

@@ -1,6 +1,7 @@
 import {editorIcon} from './editor_icons.js';
 import {isText} from './editor_text_model.js';
 import {listenDialogKey} from './dialog_keys.js';
+import {tip} from './editor_tips.js';
 // Shared adjustment shell. Tab owners keep their controls and editing policy here.
 const el = (tag, cls, text) => {
     const node = document.createElement(tag);
@@ -53,13 +54,22 @@ export function createAdjustPanel(host, {state, t, actions}) {
     const tabs = el('div', 'fv-ed-tabs fv-pass-mode'); tabs.setAttribute('role', 'tablist');
     tabs.setAttribute('aria-label', t('Adjust', '调整'));
     const status = el('p', 'fv-ed-adjust-status'); status.setAttribute('role', 'status');
+    // Why the page is greyed, and how to clear it, in words under the tabs (the reason was computed and then thrown away).
+    const reasonLine = el('p', 'fv-ed-adjust-reason'); reasonLine.setAttribute('role', 'status'); reasonLine.hidden = true;
+    // Below 1280 px the panel is a drawer over the picture; it closes from here, the toggle, or Escape, never from a click on the timeline.
+    const closeButton = button('', {onClick: () => close({restoreFocus: true})}); closeButton.classList.add('fv-ed-adjust-close'); closeButton.append(editorIcon('close'));
+    closeButton.setAttribute('aria-label', t('Close', '关闭'));
+    tip(closeButton, {name: t('Close', '关闭'), use: t('Fold the adjust panel away', '收起调整面板'), key: 'Esc'});
     const buttons = new Map(), panes = new Map(), entries = new Map();
     const toggleButton = button('', {onClick: () => overlay ? close({restoreFocus: true}) : open()});
-    toggleButton.append(editorIcon('adjust')); toggleButton.setAttribute('aria-label', t('Adjust', '调整')); toggleButton.title = t('Adjust', '调整');
+    toggleButton.append(editorIcon('adjust')); toggleButton.setAttribute('aria-label', t('Adjust', '调整'));
+    tip(toggleButton, {name: t('Adjust', '调整'), use: t('Volume, speed, picture and text of the selection', '调整选中片段的声音、速度、画面和文字')});
     toggleButton.classList.add('fv-ed-adjust-toggle'); toggleButton.dataset.tourToggle = 'editor-inspector'; toggleButton.setAttribute('aria-controls', uid);
     const labels = {video: t('Video', '画面'), audio: t('Audio', '声音'), speed: t('Speed', '速度'), text: t('Text', '文字'), subtitle: t('Subtitles', '字幕')};
     for (const kind of kinds) {
         const tab = button(labels[kind], {onClick: () => activate(kind)});
+        tip(tab, {name: labels[kind], use: {video: t('Position, size and crop of the picture', '画面的位置、大小和裁切'), audio: t('Volume, fades and the sound of the part', '音量、淡入淡出和这一段的声音'),
+            speed: t('Play faster, slower or backward', '加速、减速或倒放'), text: t('Words, font and place of the text', '文字内容、字体和位置'), subtitle: t('Subtitle lines and their style', '字幕内容和样式')}[kind]});
         tab.id = `${uid}-${kind}-tab`; tab.dataset.adjustTab = kind;
         tab.setAttribute('role', 'tab'); tab.setAttribute('aria-controls', `${uid}-${kind}`);
         const pane = el('div', 'fv-ed-adjust-pane'); pane.id = `${uid}-${kind}`;
@@ -68,7 +78,7 @@ export function createAdjustPanel(host, {state, t, actions}) {
         pane.append(controls); panes.set(kind, {pane, controls});
         buttons.set(kind, tab); tabs.append(tab);
     }
-    element.append(tabs, status, ...[...panes.values()].map(value => value.pane)); host.append(element);
+    element.append(closeButton, tabs, status, reasonLine, ...[...panes.values()].map(value => value.pane)); host.append(element);
     const media = window.matchMedia?.('(min-width: 1280px)');
     let narrow = media ? !media.matches : false, overlay = false, active = 'video', disposed = false;
     let context = selectedContext(state, t, actions);
@@ -89,18 +99,24 @@ export function createAdjustPanel(host, {state, t, actions}) {
         if (!available.includes(active)) active = available[0];
         if (!available.length) overlay = false;
         host.hidden = !available.length || (narrow && !overlay); toggleButton.hidden = !available.length || !narrow;
-        toggleButton.setAttribute('aria-expanded', String(narrow && overlay));
+        toggleButton.setAttribute('aria-expanded', String(narrow && overlay)); closeButton.hidden = !narrow;
         if (shell) { shell.dataset.adjustOpen = String(narrow && overlay); shell.dataset.adjustAvailable = String(!!available.length); }
         status.textContent = context.multiple ? t(`${context.count} parts selected`, `已选 ${context.count} 段`) : '';
         status.hidden = !context.multiple;
+        let shownReason = '';
+        // Nothing chosen: one quiet line instead of a column of greyed controls; every control is back once a part is chosen.
+        const empty = !context.single && !context.multiple;
         for (const kind of kinds) {
             const tab = buttons.get(kind), {pane, controls} = panes.get(kind);
-            tab.hidden = !available.includes(kind);
+            tab.hidden = empty || !available.includes(kind);
             tab.setAttribute('aria-selected', String(kind === active)); tab.tabIndex = kind === active ? 0 : -1;
-            pane.hidden = kind !== active;
+            pane.hidden = empty || kind !== active;
             const reason = textKind ? (context.clips.some(c => c.track.locked) ? 'locked' : '') : disabledReason(context, {needs: kind === 'speed' ? undefined : kind});
-            controls.disabled = !!reason; controls.title = '';
+            controls.disabled = !!reason; controls.title = reason === 'locked' ? '' : reason;
+            if (kind === active) shownReason = reason === 'locked' ? t('This track is locked. Unlock it to change this part.', '这条轨道已锁定，解锁后才能修改。') : reason;
         }
+        reasonLine.textContent = shownReason; reasonLine.hidden = !shownReason;
+        host.dataset.empty = String(empty); element.dataset.empty = String(empty); tabs.hidden = empty;
         renderActive();
     }
     function activate(kind) { if (!disposed && entries.has(kind)) { if (active !== kind) entries.get(active)?.component.deactivate?.(); active = kind; paint(); } }
@@ -137,11 +153,13 @@ export function createAdjustPanel(host, {state, t, actions}) {
             if (focused && active && !host.hidden) buttons.get(active).focus();
         };
     }
-    function open() {
+    // focus: false opens the drawer for what the generate bar shows there (music, voices, a failure) without taking the
+    // keyboard away from the description being typed.
+    function open({focus = true} = {}) {
         if (disposed || !entries.size) return;
         if (narrow) overlay = true;
         // Text and subtitle pages are always registered but only shown for their own parts.
-        paint(); if (active) buttons.get(active).focus();
+        paint(); if (active && focus) buttons.get(active).focus();
     }
     function close({restoreFocus = false} = {}) {
         if (disposed || !narrow || !overlay) return;
@@ -151,14 +169,19 @@ export function createAdjustPanel(host, {state, t, actions}) {
         if (!narrow || !overlay || disposed) return false;
         event.preventDefault(); event.stopPropagation(); close({restoreFocus: true}); return true;
     }
+    // The drawer follows the selection: choosing another part on the timeline changes its page, it does not close it.
+    // Only a press outside the editor's working areas (the header, the library) folds it away.
     const outside = event => {
-        if (overlay && event.target.closest('.fv-ed-preview')) return;
-        if (overlay && !host.contains(event.target) && !toggleButton.contains(event.target)) close();
+        if (!overlay || host.contains(event.target) || toggleButton.contains(event.target)) return;
+        if (event.target.closest('.fv-ed-preview, .fv-ed-transport, .fv-ed-tracks, .fv-ed-toolbar, .fv-ed-genbar, .fv-ed-project-row, .fv-ed-notice-stack, .fv-ed-record, [role=menu], .fv-select-menu, .fv-ed-clip-popover')) return;
+        if (!event.target.closest('.fv-editor')) return;
+        close();
     };
     const escape = event => { if (event.key === 'Escape') dismiss(event); };
     const resize = () => {
         const focused = host.contains(document.activeElement);
-        narrow = !media.matches; overlay = false; paint();
+        // A window resized within the narrow range keeps the drawer as it was.
+        const wasNarrow = narrow; narrow = !media.matches; if (narrow !== wasNarrow) overlay = false; paint();
         if (narrow && focused && entries.size) toggleButton.focus();
         else if (!narrow && document.activeElement === toggleButton) buttons.get(active)?.focus();
     };
@@ -177,7 +200,7 @@ export function createAdjustPanel(host, {state, t, actions}) {
         if (shell) { delete shell.dataset.adjustOpen; delete shell.dataset.adjustAvailable; }
         element.remove(); toggleButton.remove(); host.hidden = true;
     }
-    return {element, register, update, dispose, open, close, disabledReason, toggleButton, dismiss};
+    return {element, register, update, dispose, open, close, disabledReason, toggleButton, dismiss, get narrow() { return narrow; }, get overlay() { return overlay; }};
 }
 
 // Builders return DOM nodes; owners set .value/.disabled/.title during update.

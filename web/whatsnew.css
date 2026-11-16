@@ -5,7 +5,7 @@
 .fv-whatsnew[open]{display:flex;flex-direction:column;animation:fv-dialog-enter .28s cubic-bezier(.2,.7,.2,1)}
 .fv-whatsnew>*{flex:none}
 .fv-whatsnew h2{margin:0 0 16px;font-size:20px;font-weight:600}
-.fv-whatsnew-host{border:1px solid var(--fv-border);border-radius:12px;overflow:hidden;background:var(--fv-bg);}
+.fv-whatsnew-host{border:1px solid var(--fv-border);border-radius:var(--fv-r-md);overflow:hidden;background:var(--fv-bg);}
 .fv-whatsnew-stage{display:flex;flex-direction:column;position:relative}
 .fv-whatsnew-stage .fv-ed-track-view{flex:1 1 0;height:auto;min-height:0}
 .fv-whatsnew-measure,.fv-whatsnew-measure *{transition:none!important}
@@ -48,7 +48,7 @@
 .fv-whatsnew-list{display:grid;grid-template-columns:1fr 1fr;gap:8px 24px;margin:16px 0 16px;padding:0 0 0 17px;list-style:decimal inside;font-size:13px;line-height:20px}
 .fv-whatsnew-foot{margin-top:auto}
 @media(max-width:520px){.fv-whatsnew-list{grid-template-columns:1fr;padding-left:13px}}
-.fv-whatsnew-close,.fv-whatsnew-next,.fv-whatsnew-open{height:36px;min-height:36px;padding:0 16px;border:1px solid var(--fv-border);border-radius:8px;background:var(--fv-raised);color:var(--fv-ink);font:inherit;cursor:pointer}
+.fv-whatsnew-close,.fv-whatsnew-next,.fv-whatsnew-open{height:36px;min-height:36px;padding:0 16px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);background:var(--fv-raised);color:var(--fv-ink);font:inherit;cursor:pointer}
 .fv-whatsnew-foot{display:flex;justify-content:flex-end;position:sticky;bottom:0;margin-top:auto;padding-top:8px;background:var(--fv-canvas)}
 
 /* The editor's own bars and menu set into the dialog: the studio and editor classes bring their styles, not the window. */
@@ -59,7 +59,7 @@
 .fv-whatsnew-top .fv-ed-record-end{justify-content:flex-end;align-items:center}
 .fv-whatsnew-top .fv-ed-record-side{align-items:center;color:var(--fv-muted)}
 .fv-whatsnew-top .fv-ed-description-box{flex:1}
-.fv-whatsnew-top .fv-ed-voice-text{flex:1;min-width:0;box-sizing:border-box;min-height:36px;padding:8px;border:1px solid var(--fv-border);border-radius:6px;color:var(--fv-ink);font-size:13px;line-height:18px}
+.fv-whatsnew-top .fv-ed-voice-text{flex:1;min-width:0;box-sizing:border-box;min-height:36px;padding:8px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);color:var(--fv-ink);font-size:13px;line-height:18px}
 .fv-whatsnew-top .fv-ed-voice-text s{text-decoration-thickness:2px;color:var(--fv-muted)}
 .fv-whatsnew-top .fv-whatsnew-new{font-weight:400;color:var(--fv-accent)}
 .fv-whatsnew-top .fv-ed-genbar[data-voice=true] .fv-ed-generate{margin-left:auto}
@@ -79,7 +79,7 @@
 /* The dubbing bar is one row, name left and button right; the lines lie over the lower tracks at the foot of the frame. */
 .fv-whatsnew-top .fv-ed-genbar[data-voice=true]{flex-wrap:nowrap}
 .fv-whatsnew-top .fv-ed-genbar[data-voice=true] .fv-ed-voice{flex:1 1 0}
-.fv-whatsnew-lines.fv-whatsnew-top.fv-whatsnew-ed.fv-studio.fv-editor{position:absolute;z-index:3;inset:auto 8px 8px;height:auto;padding:8px;border:1px solid var(--fv-border);border-radius:12px;box-shadow:0 4px 16px #0006}
+.fv-whatsnew-lines.fv-whatsnew-top.fv-whatsnew-ed.fv-studio.fv-editor{position:absolute;z-index:3;inset:auto 8px 8px;height:auto;padding:8px;border:1px solid var(--fv-border);border-radius:var(--fv-r-md);box-shadow:0 4px 16px #0006}
 .fv-whatsnew-lines[hidden]{display:none!important}
 .fv-whatsnew-foot{gap:8px}
 .fv-whatsnew-foot [hidden]{display:none}
@@ -91,8 +91,62 @@
 .fv-whatsnew-still img{min-width:0;max-width:100%;height:100%;width:auto;border-radius:var(--fv-r-md);object-fit:contain;transition:opacity .5s}
 .fv-whatsnew-pictures{display:flex;justify-content:center;align-items:center;width:100%;height:min(clamp(170px,32dvh,270px),75cqw)}
 .fv-whatsnew-prompt{align-self:stretch;box-sizing:border-box;height:62px;padding:0 10px;border:1px solid var(--fv-border);border-radius:var(--fv-r-md);background:var(--fv-card);font-size:13px;line-height:20px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
-.fv-whatsnew-bar{position:absolute;left:0;right:0;bottom:2px;height:3px;border-radius:2px;background:var(--fv-border);overflow:hidden;transition:opacity .3s}
+.fv-whatsnew-bar{position:absolute;left:0;right:0;bottom:2px;height:3px;border-radius:var(--fv-r-xs);background:var(--fv-border);overflow:hidden;transition:opacity .3s}
 .fv-whatsnew-bar[data-on=false]{opacity:0}
 .fv-whatsnew-bar[hidden]{display:none}
 .fv-whatsnew-bar i{display:block;height:100%;width:0;background:var(--fv-accent)}
 .fv-whatsnew-host:has(.fv-whatsnew-still){border-color:transparent;background:transparent}
+/* Glass sheet footer: the same buttons as Settings (quiet Close, filled next step); no band of another colour. */
+:root:root .fv-whatsnew .fv-whatsnew-foot{background:transparent;padding-top:var(--fv-sp-12,12px)}
+:root:root .fv-whatsnew .fv-whatsnew-foot::before{display:none}
+:root:root .fv-whatsnew .fv-whatsnew-foot button{height:var(--fv-ctl-l,40px);min-height:0;padding:0 var(--fv-sp-16,16px);border:0;border-radius:var(--fv-rad-ctl,12px);
+  background:var(--fv-ctl-bg);color:var(--fv-fg);font:inherit;font-size:var(--fv-fs-2,13px);font-weight:500;cursor:pointer;transition:background-color var(--fv-dur-1,160ms) var(--fv-ease-out,ease-out),scale var(--fv-dur-press,100ms)}
+:root:root .fv-whatsnew .fv-whatsnew-foot button:hover{background:var(--fv-ctl-hover)}
+:root:root .fv-whatsnew .fv-whatsnew-foot button:active{scale:.98}
+:root:root .fv-whatsnew .fv-whatsnew-foot :is(.fv-whatsnew-next,.fv-whatsnew-open){background:var(--fv-accent-fill);color:var(--fv-on-fill,#fff);font-weight:600}
+:root:root .fv-whatsnew .fv-whatsnew-foot :is(.fv-whatsnew-next,.fv-whatsnew-open):hover{background:var(--fv-accent-fill-hover,var(--fv-accent-fill))}
+:root:root .fv-whatsnew .fv-whatsnew-close{background:transparent}
+
+/* After the set design (work-set, “What's new”): a g3 sheet with radius 16, a title row with ×, a 300 px stage (picture
+   radius 12), ticked points in two columns, page dots left and Close + the next step right. No glow, no gradient. */
+:root:root .fv-whatsnew{width:min(720px,calc(100vw - 32px));padding:0;border:0;border-radius:var(--fv-rad-pop,16px);color:var(--fv-fg,var(--fv-ink));
+  background:rgb(var(--fv-solid3,22 25 31) / var(--fv-ga,.92));box-shadow:inset 0 1px 0 var(--fv-edge-hi,transparent),var(--fv-sh3,0 16px 48px #0008)}
+:root:root .fv-whatsnew::backdrop{background:var(--fv-scrim,#0009)}
+.fv-whatsnew-head{display:flex;align-items:center;justify-content:space-between;gap:var(--fv-sp-16,16px);padding:var(--fv-sp-20,20px) var(--fv-sp-16,16px) var(--fv-sp-12,12px) var(--fv-sp-24,24px)}
+:root:root .fv-whatsnew h2{margin:0;font-size:var(--fv-fs-4,20px);line-height:var(--fv-lh-4,28px);font-weight:var(--fv-fw-3,600);letter-spacing:-.01em}
+.fv-whatsnew-x{display:grid;place-items:center;width:var(--fv-ctl-m,32px);height:var(--fv-ctl-m,32px);padding:0;border:0;border-radius:var(--fv-rad-ctl,12px);background:transparent;color:var(--fv-fg2,var(--fv-muted));cursor:pointer}
+.fv-whatsnew-x:hover{background:var(--fv-ctl-hover);color:var(--fv-fg)}
+.fv-whatsnew-x svg,.fv-whatsnew-open svg{width:16px;height:16px;flex:none}
+:root:root .fv-whatsnew .fv-whatsnew-host{margin:0 var(--fv-sp-24,24px);border:0;border-radius:var(--fv-rad-pic,12px);overflow:hidden}
+:root:root .fv-whatsnew .fv-whatsnew-host:has(.fv-whatsnew-stage){box-shadow:inset 0 0 0 1px var(--fv-line,var(--fv-border))}
+.fv-whatsnew-shot{position:relative;height:300px;background:#0b0e14}
+.fv-whatsnew-shot img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.fv-whatsnew-shot img.bg{filter:blur(28px) saturate(1.1);transform:scale(1.15);opacity:.7}
+.fv-whatsnew-shot img.fit{object-fit:contain}
+.fv-whatsnew-typed{position:absolute;left:16px;right:16px;bottom:16px;min-height:20px;padding:var(--fv-sp-12,12px) var(--fv-sp-16,16px);border-radius:var(--fv-rad-ctl,12px);background:rgb(10 12 16 / .72);color:#fff;font-size:var(--fv-fs-2,13px);line-height:20px}
+.fv-whatsnew-typed i{display:inline-block;width:2px;height:16px;margin-left:2px;vertical-align:-3px;background:#fff}
+@media (prefers-reduced-motion:no-preference){.fv-whatsnew-typed i{animation:fv-whatsnew-caret 1s steps(1) infinite}}
+@keyframes fv-whatsnew-caret{50%{opacity:0}}
+:root:root .fv-whatsnew .fv-whatsnew-list{display:grid;grid-template-columns:1fr 1fr;gap:var(--fv-sp-8,8px) var(--fv-sp-24,24px);margin:var(--fv-sp-16,16px) var(--fv-sp-24,24px) 0;padding:0;list-style:none;font-size:var(--fv-fs-2,13px);line-height:20px}
+:root:root .fv-whatsnew .fv-whatsnew-list li{display:flex;gap:var(--fv-sp-8,8px);color:var(--fv-fg2,var(--fv-ink))}
+:root:root .fv-whatsnew .fv-whatsnew-list li::before{content:'';flex:none;width:16px;height:16px;margin-top:2px;background:var(--fv-accent-ink,var(--fv-accent));
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 8.5l3 3 6-7'/%3E%3C/svg%3E") center/contain no-repeat;
+  mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 8.5l3 3 6-7'/%3E%3C/svg%3E") center/contain no-repeat}
+:root:root .fv-whatsnew .fv-whatsnew-list li[data-lit]{color:var(--fv-accent-ink,var(--fv-accent))}
+:root:root .fv-whatsnew .fv-whatsnew-foot{display:flex;align-items:center;gap:var(--fv-sp-8,8px);position:static;margin:0;padding:var(--fv-sp-20,20px) var(--fv-sp-24,24px) var(--fv-sp-24,24px);background:transparent}
+:root:root .fv-whatsnew .fv-whatsnew-foot .fv-whatsnew-close{margin-right:0}
+.fv-whatsnew-grow{flex:1}
+.fv-whatsnew-dots{display:flex;gap:var(--fv-sp-4,4px)}
+.fv-whatsnew-dots i{width:6px;height:6px;border-radius:50%;background:var(--fv-line2,var(--fv-border))}
+.fv-whatsnew-dots i.on{width:16px;border-radius:3px;background:var(--fv-accent-ink,var(--fv-accent))}
+:root:root .fv-whatsnew .fv-whatsnew-foot .fv-whatsnew-open{display:inline-flex;align-items:center;gap:var(--fv-sp-8,8px)}
+:root:root .fv-whatsnew .fv-whatsnew-foot [hidden]{display:none}
+@media (max-width:520px){
+  .fv-whatsnew-shot{height:200px}
+  :root:root .fv-whatsnew .fv-whatsnew-list{grid-template-columns:1fr;margin:var(--fv-sp-12,12px) var(--fv-sp-16,16px) 0}
+  :root:root .fv-whatsnew .fv-whatsnew-host{margin:0 var(--fv-sp-16,16px)}
+  .fv-whatsnew-head{padding:var(--fv-sp-16,16px) var(--fv-sp-12,12px) var(--fv-sp-12,12px) var(--fv-sp-16,16px)}
+  :root:root .fv-whatsnew .fv-whatsnew-foot{padding:var(--fv-sp-16,16px)}
+}
+:root:root .fv-whatsnew .fv-whatsnew-foot .fv-whatsnew-close{background:transparent}
+:root:root .fv-whatsnew .fv-whatsnew-foot .fv-whatsnew-close:hover{background:var(--fv-ctl-hover)}

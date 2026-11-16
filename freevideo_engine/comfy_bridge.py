@@ -1439,6 +1439,14 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
         command.append('--hide-tail')
     state = {'status': 'starting', 'geometry': canvas, 'seed': seed, 'installation': str(root),
              'command': command, 'output': str(output), 'source': str(source), 'resources': resources}
+    # ComfyUI's id of the request that made this work, so deleting the work also removes ComfyUI's record of it.
+    try:
+        from server import PromptServer
+        prompt_id = getattr(PromptServer.instance, 'last_prompt_id', None)
+        if isinstance(prompt_id, str) and 0 < len(prompt_id) <= 128:
+            state['comfy_prompt_id'] = prompt_id
+    except (ImportError, AttributeError):
+        pass
     if preview:
         state['preview'] = True
     if upscale:

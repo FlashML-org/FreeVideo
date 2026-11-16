@@ -5,8 +5,8 @@ import * as modules from 'node:module';
 import {resolve} from './editor_test_hooks.mjs';
 if (modules.registerHooks) modules.registerHooks({resolve});
 else modules.register('./editor_test_hooks.mjs', import.meta.url);
-import {uploadMedia} from '../web/media_upload.js';
-import {outputDownloadURL} from '../web/output_download.js';
+import {mediaName, uploadMedia} from '../web/media_upload.js';
+import {outputDownloadURL, checkedDownload, anchoredNotice, unreadableVideoText} from '../web/output_download.js';
 import {regenerateResult, upscaleResult, createSecondPassQueue, enableNode} from '../web/studio_queue.js';
 import {referenceInputs, mediaRows} from '../web/prompt_references.js';
 import {expandCast} from '../web/cast_mention.js';
@@ -64,7 +64,7 @@ test('main browser entry registers both views and preserves node hooks', async t
         createElementNS: (namespaceURI, tag) => Object.assign(new Element(tag), {namespaceURI}),
         createRange: () => ({createContextualFragment: () => new Element('span')})};
     const dependencies = {
-        app, api, uploadMedia, outputDownloadURL, regenerateResult, upscaleResult, createSecondPassQueue, enableNode, referenceInputs, mediaRows, expandCast, cleanAudioUse, cleanOptionalPrompt, cleanOptionalWidgets, optionalInputValue,
+        app, api, mediaName, uploadMedia, outputDownloadURL, checkedDownload, anchoredNotice, unreadableVideoText, regenerateResult, upscaleResult, createSecondPassQueue, enableNode, referenceInputs, mediaRows, expandCast, cleanAudioUse, cleanOptionalPrompt, cleanOptionalWidgets, optionalInputValue,
         createCastLibrary: options => {
             // notice: the could-not-read line the real library returns for the page to place.
             const cast = {element: new Element('cast'), notice: new Element('notice'), options, destroyed: false, destroy() { this.destroyed = true; }};
@@ -75,7 +75,7 @@ test('main browser entry registers both views and preserves node hooks', async t
         createErrorReport: () => ({}), adviceFor: () => ({advice: {}}),
         errorText: value => String(value),
         openStudio: node => { opened.push(node); return studioView; },
-        loraPanel: () => () => {}, loraWarning: () => 'LoRA warning', promptGuide: () => new Element('guide'),
+        loraPanel: () => () => {}, loraWarning: () => 'LoRA warning',
         createGenerationProgress: (_t, _now, options) => {
             if (realProgressFactory) {
                 progressView = realProgressFactory(_t, _now, options);
@@ -130,7 +130,7 @@ test('main browser entry registers both views and preserves node hooks', async t
             .replace("import { createErrorPanel, errorText, createErrorReport, adviceFor } from './error_panel.js';", 'const {createErrorPanel,errorText,createErrorReport,adviceFor} = globalThis.__freevideoEntryTest;')
             .replace('import { app } from "../../scripts/app.js";', 'const {app} = globalThis.__freevideoEntryTest;')
             .replace('import { api } from "../../scripts/api.js";', 'const {api} = globalThis.__freevideoEntryTest;')
-            .replace("import { openStudio, loraPanel, loraWarning, promptGuide } from \"./studio.js\";", 'const {openStudio,loraPanel,loraWarning,promptGuide} = globalThis.__freevideoEntryTest;')
+            .replace("import { openStudio, loraPanel, loraWarning } from \"./studio.js\";", 'const {openStudio,loraPanel,loraWarning} = globalThis.__freevideoEntryTest;')
             .replace("import { createGenerationProgress, referenceTrimText, thermalText, sharedGpuText, keepSoundText, encoderFileText, encoderFilePath } from './generation_progress.js';", 'const {createGenerationProgress,referenceTrimText,thermalText,sharedGpuText,encoderFileText,encoderFilePath} = globalThis.__freevideoEntryTest; const keepSoundText = () => "";')
             .replace("import { createProgressConnection } from './progress_connection.js';", 'const {createProgressConnection} = globalThis.__freevideoEntryTest;')
             .replace("import { notifyCompatibility } from './compatibility.js';", 'const {notifyCompatibility} = globalThis.__freevideoEntryTest;')
@@ -141,8 +141,9 @@ test('main browser entry registers both views and preserves node hooks', async t
             .replace("import { attachReferencePicker, referenceItems, syncReferencePrompt, referenceInputs, mediaRows, mediaNodeOf } from './prompt_references.js';", 'const {attachReferencePicker,referenceItems,syncReferencePrompt,referenceInputs,mediaRows} = globalThis.__freevideoEntryTest; const mediaNodeOf = () => null;')
             .replace("import { timedText } from './timed_prompt.js';", 'const timedText = text => text;')
             .replace("import { openReferenceMenu } from './image_library.js';", 'const openReferenceMenu = () => {};')
+            .replace("import { pinSoon } from './private_pin.js';", 'const pinSoon = () => {};')
             .replace("import { expandCast } from './cast_mention.js';", 'const {expandCast} = globalThis.__freevideoEntryTest;')
-            .replace("import { outputDownloadURL } from './output_download.js';", 'const {outputDownloadURL} = globalThis.__freevideoEntryTest;')
+            .replace("import { outputDownloadURL, checkedDownload, anchoredNotice, unreadableVideoText } from './output_download.js';", 'const {outputDownloadURL, checkedDownload, anchoredNotice, unreadableVideoText} = globalThis.__freevideoEntryTest;')
             .replace("import { shareButton } from './share.js';", 'const {shareButton} = globalThis.__freevideoEntryTest;')
             .replace("import { reportFileName } from './report_issue.js';", 'const {reportFileName} = globalThis.__freevideoEntryTest;')
             .replace("import { rememberPromptDraft, savePromptDraft, trackPromptDraft, watchPromptHistory, promptHistoryRestoring } from './prompt_draft.js';", 'const {rememberPromptDraft,savePromptDraft} = globalThis.__freevideoEntryTest; const trackPromptDraft = () => {}; const watchPromptHistory = () => {}; const promptHistoryRestoring = () => false;')
@@ -157,7 +158,8 @@ test('main browser entry registers both views and preserves node hooks', async t
             .replace("import { isLaunchVisit } from './launch_visit.js';", 'const isLaunchVisit = () => false;')
             .replace("import { openFreeVideoWorkflow } from './launcher.js';", 'const openFreeVideoWorkflow = (...args) => globalThis.__freevideoEntryTest.openFreeVideoWorkflow?.(...args);')
             .replace("import { imageGenerationSupported } from './image_generation.js';", 'const imageGenerationSupported = () => true;')
-            .replace("import { uploadMedia } from './media_upload.js';", 'const {uploadMedia} = globalThis.__freevideoEntryTest;')
+            .replace("import { mediaName, uploadMedia } from './media_upload.js';", 'const {mediaName, uploadMedia} = globalThis.__freevideoEntryTest;')
+            .replace("import { pinSoon } from './private_pin.js';", 'const pinSoon = () => {};')
             .replace("import { createCastLibrary } from './cast_library.js';", 'const {createCastLibrary} = globalThis.__freevideoEntryTest;')
             .replace("import { swapState, requestRows, swapMissing, withPrefix, peopleOf } from './replace_state.js';", 'const swapState = () => null, requestRows = () => [], swapMissing = () => [], withPrefix = body => body, peopleOf = () => [];')
             .replace("import { swapMissingText } from './replace_person.js';", 'const swapMissingText = () => "";')
@@ -229,8 +231,8 @@ test('main browser entry registers both views and preserves node hooks', async t
             computeSize() { return [this.size[0], this.dom.reduce((height, row) => height + (row.options?.getMinHeight?.() || 0), 0)]; }
         }
         for (const [language, tooltip] of [
-            ['en', 'Changing sampling steps may lower generation quality. Default: 8 first-pass and 3 second-pass steps. Two-pass acceleration runs only with 8 first-pass steps. Other step counts use a single pass. Other second-pass counts must be fewer than first-pass steps.'],
-            ['zh', '修改采样步数可能降低生成质量。默认一采 8 步、二采 3 步；只有一采为 8 步时才会使用二次采样加速，其他步数只采样一遍；其他二采步数需小于一采步数。'],
+            ['en', 'Changing steps may lower quality. Default: 8 first-pass and 3 second-pass steps. With other first-pass steps the video is made in one pass. Second-pass steps other than 3 must be fewer than first-pass steps.'],
+            ['zh', '改步数可能降低质量。默认一采 8 步、二采 3 步；一采不是 8 步时只生成一遍；二采步数不是 3 时需少于一采步数。'],
         ]) {
             await t.test(`${language} node step tooltips include the three-step exception for valid plans`, async () => {
                 navigator.language = language;
@@ -271,7 +273,7 @@ test('main browser entry registers both views and preserves node hooks', async t
                         ['first_frame_reference', 'First-frame reference', '首帧参考', true, '减小漂移'],
                         ['step_cache', 'Step cache', '步间缓存', 'none',
                             '复用相近采样步之间的计算，更快完成，结果会有细微变化。'],
-                        ['upscale_factor', 'Upscale factor', '放大倍数', '2', '二次采样时成片相对首遍的放大倍数。'],
+                        ['upscale_factor', 'Upscale factor', '放大倍数', '2', '二采时成片相对一采的放大倍数。'],
                         ['voice_reference', 'Voice reference', '声音参考', true,
                             '接着生成对白时，沿用原视频开头的声音，让前后声音一致。'],
                         ['hide_tail', 'Hide dialogue tail', '隐藏对白尾段', true, '多生成 17 帧后丢弃，让对白在前后两段之间连贯。'],
@@ -297,7 +299,7 @@ test('main browser entry registers both views and preserves node hooks', async t
         assert.equal(node.onNodeCreated(), 'created');
         assert.equal(node.created, 1);
         assert.deepEqual(node.dom.map(row => row.name),
-            ['freevideo_prompt_guide', 'freevideo_result']);
+            ['freevideo_result']);
         assert.deepEqual(node.dom.find(row => row.name === 'freevideo_result').element.children.slice(0, 3).map(child => child.tag),
             ['progress', 'stall', 'report'], 'The separate stall belongs between the progress card and report');
         assert.equal(node.buttons[0].name, 'Open creative workspace');
@@ -558,11 +560,12 @@ test('main browser entry registers both views and preserves node hooks', async t
         api.fetchApi = async (url, options) => {
             assert.equal(url, '/freevideo/media/upload');
             assert.equal(options.body.get('file').name, 'voice.wav');
-            return {ok: true, json: async () => ({file: 'voice.wav'})};
+            return {ok: true, json: async () => ({file: 'freevideo/' + 'a'.repeat(32) + '/media.wav', name: 'voice.wav'})};
         };
         audioPicker.files = [new File(['wave'], 'voice.wav', {type: 'audio/wav'})];
         await audioPicker.onchange();
-        assert.deepEqual(JSON.parse(media.widgets[0].value), [{file: 'voice.wav', role: 'reference', enabled: true}]);
+        // The stored file may have a plain name; the item keeps the name the user's file had, for the label.
+        assert.deepEqual(JSON.parse(media.widgets[0].value), [{file: 'freevideo/' + 'a'.repeat(32) + '/media.wav', name: 'voice.wav', role: 'reference', enabled: true}]);
         assert.equal(media.isUploading, false);
         media.inputs = [{name: 'first', link: 1}]; media.onConnectionsChange(); await Promise.resolve();
         assert.match(note.textContent, /Choose keyframes or references/);
@@ -607,7 +610,7 @@ test('main browser entry registers both views and preserves node hooks', async t
                     const nodePanel = owner.dom.find(row => row.name === 'freevideo_media').element;
                     const warning = nodePanel.children.find(child => child.className === 'fv-note');
                     const expected = language === 'zh'
-                        ? '请连接“Reference audio”，或把“Audio use”改为“reference”后再生成。'
+                        ? '请连接“参考音频”，或把“音频用途”改为“参考”后再生成。'
                         : 'Connect audio to "Reference audio", or set "Audio use" to "reference", before generating.';
                     const assertWarning = enabled => {
                         assert.equal(warning.textContent === expected, enabled);

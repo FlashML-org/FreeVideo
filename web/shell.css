@@ -1,0 +1,195 @@
+/* The FreeVideo shell (shell.js): every view fills the window edge to edge, one top bar, and nothing of
+   ComfyUI's frame shows while FreeVideo is in front. html[data-fv-shell] is "view" (a view dialog is open),
+   "nodes" (the node view of a FreeVideo workflow) or "cover" (opening). Tokens live in theme.css. */
+
+/* The ground under everything: no grey ring, no ComfyUI background while resizing, scrolling or typing. */
+html[data-fv-shell],html[data-fv-shell] body{background:var(--fv-shell-bg)!important;overscroll-behavior:none}
+html[data-fv-shell=view] body{overflow:hidden}
+
+/* Full bleed: a view is the window, not a card on top of it. */
+dialog.fv-studio:is([data-fv-surface=view],.fv-image,.fv-editor,.fv-autopilot,.fv-library,:has(>.fv-header .fv-view-switch)){
+  position:fixed;inset:0;width:100vw;width:100dvw;height:100vh;height:100dvh;max-width:none;max-height:none;margin:0;
+  border:0;border-radius:0;box-shadow:none;background:var(--fv-bg,var(--fv-shell-bg))}
+/* What is behind a view is the view before it or the node view; the shell ground covers the rest. */
+dialog.fv-studio:is([data-fv-surface=view],.fv-image,.fv-editor,.fv-autopilot,.fv-library,:has(>.fv-header .fv-view-switch))::backdrop{background:transparent;-webkit-backdrop-filter:none;backdrop-filter:none}
+/* Small dialogs over a view keep a veil that covers the whole window. */
+html[data-fv-shell] dialog:not(.fv-studio,.fv-workspace-opening)::backdrop{inset:0}
+
+/* ── One top bar for every view ──────────────────────────────────────────────────────────────
+   Same height, same three columns (logo · centred tabs · the same entries), same padding. */
+dialog.fv-studio .fv-header:has(>.fv-view-switch){box-sizing:border-box;height:var(--fv-header-h);min-height:var(--fv-header-h);
+  grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);padding:0 var(--fv-gutter);
+  padding-top:env(safe-area-inset-top,0px);column-gap:var(--fv-sp-16);border-bottom:1px solid var(--fv-line)}
+dialog.fv-studio .fv-header:has(>.fv-view-switch)>.fv-brand{justify-self:start;min-width:0}
+dialog.fv-studio .fv-header:has(>.fv-view-switch)>.fv-view-switch{justify-self:center;grid-column:2}
+dialog.fv-studio .fv-header:has(>.fv-view-switch)>.fv-header-actions{justify-self:end;grid-column:3;min-width:0}
+:is(dialog.fv-studio .fv-header,.fv-view-navigation) .fv-wordmark{width:auto;height:21px;max-width:none}
+
+/* The node view: the same bar across the top of the window instead of a floating card. */
+html[data-fv-shell=nodes] .fv-view-navigation{box-sizing:border-box;top:0!important;left:0!important;right:0!important;transform:none!important;width:auto!important;max-width:none;min-height:var(--fv-header-h);
+  padding:env(safe-area-inset-top,0px) var(--fv-gutter) 0;border:0;border-bottom:1px solid var(--fv-line);border-radius:0;
+  box-shadow:none;cursor:default;touch-action:auto;animation:none;background:var(--fv-bg,var(--fv-shell-bg));z-index:var(--fv-z-view)}
+html[data-fv-shell=nodes] .fv-view-navigation .fv-view-row{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);height:calc(var(--fv-header-h) - 1px);column-gap:var(--fv-sp-16)}
+html[data-fv-shell=nodes] .fv-view-navigation .fv-view-row>.fv-wordmark{justify-self:start}
+html[data-fv-shell=nodes] .fv-view-navigation .fv-view-row>.fv-view-switch{justify-self:center}
+html[data-fv-shell=nodes] .fv-view-navigation .fv-view-actions{justify-self:end;min-width:0}
+html[data-fv-shell=nodes] .fv-view-grip{display:none}
+
+/* ComfyUI's own frame stays out of sight whenever FreeVideo is in front (a view, the node view, the opening cover), so
+   no veil, tour or transition ever shows it (frontend 1.51, measured): workflow tabs, side tool bar, breadcrumb and
+   run bar row, minimap and canvas menus, right-hand and bottom panels, a floating run bar. The canvas itself and the
+   layer inside the canvas panel (nodes drawn as HTML) stay. Running a workflow from the node view keeps ComfyUI's
+   shortcut (Ctrl+Enter); FreeVideo's own generation lives in Create. */
+html[data-fv-shell] :is(.comfyui-body-top,.comfyui-body-left,.comfyui-body-right,.comfyui-body-bottom,.actionbar,.actionbar-container,.comfyui-menu,.comfy-menu-hamburger),
+html[data-fv-shell] #graph-canvas-container :is(.minimap-main-container,.litegraph-minimap,.bottom-panel,.selection-toolbox),
+html[data-fv-shell] #graph-canvas-container .graph-canvas-panel>:not(.absolute.inset-0),
+html[data-fv-shell] #graph-canvas-container .p-splitter-horizontal>:is(.p-splitter-gutter,.p-splitterpanel.pointer-events-auto),
+html[data-fv-shell] #graph-canvas-container .splitter-overlay-bottom>:not(.graph-canvas-panel){display:none!important}
+/* These keep their space, so the layer of HTML-drawn nodes and widgets stays exactly over the canvas. */
+html[data-fv-shell] #graph-canvas-container :is(.workflow-tabs-container,.side-toolbar-container,.side-tool-bar-container),
+html[data-fv-shell] #graph-canvas-container .p-splitterpanel-nested>:first-child:not(.p-splitter){visibility:hidden!important;pointer-events:none!important}
+/* ComfyUI's toasts and its own dialogs keep working but take FreeVideo's ground behind them. */
+html[data-fv-shell] .p-dialog-mask{background:rgb(6 8 12 / .72)!important}
+
+/* While FreeVideo opens: one plain ground with the logo, never ComfyUI's screens. */
+.fv-shell-cover{position:fixed;inset:0;width:100vw;height:100vh;max-width:none;max-height:none;margin:0;padding:0;border:0;display:grid;place-items:center;
+  background:var(--fv-shell-bg);z-index:var(--fv-z-tip)}
+.fv-shell-cover:popover-open{display:grid}
+.fv-shell-cover img{width:168px;height:auto;opacity:.9;-webkit-user-drag:none;user-select:none;-webkit-user-select:none}
+@media(prefers-reduced-motion:no-preference){.fv-shell-cover img{animation:fv-cover-breathe 1.6s var(--fv-ease-move) infinite alternate}}
+@keyframes fv-cover-breathe{from{opacity:.55}to{opacity:.95}}
+
+/* ── Moving between views (shell.js switchView; the rule in NOTES-switch-and-select.md) ─────────
+   The old view stays fully opaque underneath; the new one comes in over it, 0→1 and up 4 px, 200 ms, eased out with
+   no overshoot, so every frame is fully covered (no empty frame). Opacity and transform only. The top bar is its own
+   layer (view-transition-name fv-topbar on the bar in front) and does not move.
+   Two phases: while the new view fills in for real (its observers and frames run), its picture is held at opacity 0
+   over the old one (the hold below keeps the transition alive, at most 2 s); shell.js then starts the rise on
+   ::view-transition-new(root) and ends the hold when it is done (the new view waits at most 250 ms for its first
+   screen). During the switch a press on a tab changes where it goes (shell.js pressDuringSwitch); other presses wait. */
+::view-transition{pointer-events:none}
+/* At a press the pressed tab is lit in the picture taken next frame: no slide or colour fade to catch half way.
+   (A pseudo-element cannot sit inside :is(), so the capsule has its own selector.) */
+:root[data-fv-switching] .fv-view-switch[data-fv-tb-ink]::before,:root[data-fv-switching] .fv-view-switch button{transition:none!important}
+::view-transition-group(root){animation:fv-vt-hold 2s linear both}
+@keyframes fv-vt-hold{from{opacity:1}to{opacity:1}}
+::view-transition-image-pair(root){isolation:auto}
+::view-transition-old(root){animation:none;opacity:1;mix-blend-mode:normal}
+::view-transition-new(root){animation:none;opacity:0;mix-blend-mode:normal}
+@keyframes fv-view-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+::view-transition-group(fv-topbar){animation:none;z-index:1}
+::view-transition-old(fv-topbar){animation:none;opacity:1}
+::view-transition-new(fv-topbar){animation:none;opacity:0}
+/* A view opened on its own (not by a tab) fades in, opacity only so its top bar stays put; inside a switch it does not
+   come in a second time. */
+dialog.fv-studio:is([data-fv-surface=view],.fv-image,.fv-editor,.fv-autopilot,:has(>.fv-header .fv-view-switch))[open]{animation:fv-view-enter var(--fv-dur-2) var(--fv-ease-out)}
+dialog.fv-studio[data-fv-quiet][open]{animation:none!important}
+@keyframes fv-view-enter{from{opacity:0}to{opacity:1}}
+@media(prefers-reduced-motion:reduce){dialog.fv-studio[open]{animation:none!important}}
+
+/* The tabs: one glass pill, centred on the window, the same in every view (left and right columns are equal, so the
+   tabs never move when a side holds more or less). The pressed tab is a lighter capsule. */
+:is(dialog.fv-studio .fv-header,.fv-view-navigation) .fv-view-switch{position:relative;gap:0;height:var(--fv-ctl-l);padding:var(--fv-sp-4);align-items:center;
+  border:1px solid var(--fv-edge);border-radius:var(--fv-rad-pill);background:rgb(var(--fv-tint) / var(--fv-a1));box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh1);
+  -webkit-backdrop-filter:blur(var(--fv-glass-blur1)) saturate(150%);backdrop-filter:blur(var(--fv-glass-blur1)) saturate(150%)}
+:is(dialog.fv-studio .fv-header,.fv-view-navigation) .fv-view-switch button{min-height:var(--fv-ctl);height:var(--fv-ctl);padding:0 var(--fv-sp-16);border:0;border-radius:var(--fv-rad-pill);
+  background:transparent;color:var(--fv-fg2);font-size:var(--fv-fs-2);font-weight:500;box-shadow:none;line-height:var(--fv-ctl);transition:background-color var(--fv-dur-1) var(--fv-ease-out),color var(--fv-dur-1) var(--fv-ease-out)}
+:is(dialog.fv-studio .fv-header,.fv-view-navigation) .fv-view-switch button:hover{color:var(--fv-fg);background:transparent}
+:is(dialog.fv-studio .fv-header,.fv-view-navigation) .fv-view-switch button[aria-pressed=true]{color:var(--fv-fg);font-weight:600;background:var(--fv-ctl-hover);box-shadow:inset 0 1px 0 var(--fv-edge-hi)}
+:is(dialog.fv-studio .fv-header,.fv-view-navigation) .fv-view-switch button:active{background:var(--fv-ctl-hover)}
+:is(:root[data-glass=solid],:root.lite) :is(dialog.fv-studio .fv-header,.fv-view-navigation) .fv-view-switch{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--fv-solid1))}
+@media(prefers-reduced-transparency:reduce){:is(dialog.fv-studio .fv-header,.fv-view-navigation) .fv-view-switch{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--fv-solid1))}}
+/* The entries on the right: text, 13 px, 32 px high, the same in every view. */
+:is(dialog.fv-studio .fv-header>.fv-header-actions,.fv-view-navigation .fv-view-actions){gap:var(--fv-sp-4)}
+:is(dialog.fv-studio .fv-header>.fv-header-actions,.fv-view-navigation .fv-view-actions)>:is(button,.fv-lan>button,.fv-version-info>button),
+:is(dialog.fv-studio .fv-header>.fv-header-actions,.fv-view-navigation .fv-view-actions) :is(.fv-lan-trigger,.fv-version-info>button){min-height:var(--fv-ctl);height:var(--fv-ctl);padding:0 var(--fv-sp-8);
+  border:0;border-radius:var(--fv-rad-ctl);background:transparent;color:var(--fv-fg2);font-size:var(--fv-fs-2);font-weight:400}
+:is(dialog.fv-studio .fv-header>.fv-header-actions,.fv-view-navigation .fv-view-actions) :is(button,.fv-lan-trigger):hover{background:var(--fv-ctl-hover);color:var(--fv-fg)}
+@media(pointer:coarse){:is(dialog.fv-studio .fv-header,.fv-view-navigation) .fv-view-switch button,
+  :is(dialog.fv-studio .fv-header>.fv-header-actions,.fv-view-navigation .fv-view-actions) :is(button,.fv-lan-trigger){min-height:var(--fv-touch);height:var(--fv-touch)}
+  :is(dialog.fv-studio .fv-header,.fv-view-navigation) .fv-view-switch{height:calc(var(--fv-touch) + var(--fv-sp-8))}}
+
+/* ── Centred layout (supplement 9) ────────────────────────────────────────────────────────────
+   Three columns whose outer two are always equal, so the middle (the view's main block, [data-fv-main]) is centred
+   on the window whatever the side panels hold. Give both sides the wider panel's width with --fv-side, or let a
+   panel float over the edge (.fv-side-float) so it takes no column at all. */
+.fv-center-grid{display:grid;grid-template-columns:minmax(var(--fv-side,0px),1fr) minmax(0,var(--fv-content-max)) minmax(var(--fv-side,0px),1fr);column-gap:var(--fv-sp-24)}
+.fv-center-grid>.fv-side-start{grid-column:1;min-width:0}
+.fv-center-grid>:is([data-fv-main],.fv-center){grid-column:2;min-width:0}
+.fv-center-grid>.fv-side-end{grid-column:3;min-width:0}
+.fv-side-float{position:absolute;top:var(--fv-sp-16);bottom:var(--fv-sp-16);z-index:1}
+.fv-side-float.fv-side-start{left:var(--fv-sp-16)}.fv-side-float.fv-side-end{right:var(--fv-sp-16)}
+
+/* Text selection (interface not selectable, copyable text selectable) lives in selection.css (tips), loaded by shell.js. */
+
+/* ── Narrow windows (view_switch_place.js) ────────────────────────────────────────────────────
+   Entries that do not fit their half go into one "More" button with a menu; the logo and the tabs never overlap.
+   When the logo no longer fits beside the tabs (or at 480 px and below) the tabs take a second row of their own. */
+.fv-header-more{width:var(--fv-ctl);min-width:var(--fv-ctl);padding:0!important;justify-content:center}
+.fv-header-more-glyph{display:block;width:16px;height:4px;background:radial-gradient(circle,currentColor 1.5px,transparent 2px) 0 50%/6px 4px repeat-x}
+.fv-header-menu{position:fixed;inset:auto;margin:0;box-sizing:border-box;min-width:200px;max-width:calc(100vw - 16px);padding:var(--fv-sp-8);
+  flex-direction:column;align-items:stretch;gap:var(--fv-sp-2);border:1px solid var(--fv-edge);border-radius:var(--fv-rad-pop);color:var(--fv-fg);
+  background:rgb(var(--fv-tint) / var(--fv-a3));box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh2);
+  -webkit-backdrop-filter:blur(var(--fv-glass-blur2)) saturate(165%);backdrop-filter:blur(var(--fv-glass-blur2)) saturate(165%);font:var(--fv-fs-2)/var(--fv-lh) var(--fv-font,system-ui,sans-serif)}
+.fv-header-menu:popover-open,.fv-header-menu:not([popover]):not([hidden]){display:flex}
+.fv-header-menu>*,.fv-header-menu>*>button{width:100%}
+.fv-header-menu :is(button,.fv-lan-trigger){display:flex;align-items:center;justify-content:flex-start;width:100%;height:var(--fv-ctl-l);min-height:var(--fv-ctl-l);padding:0 var(--fv-sp-12);
+  border:0;border-radius:var(--fv-rad-ctl);background:transparent;color:var(--fv-fg2);font:inherit;text-align:left;cursor:pointer}
+.fv-header-menu :is(button,.fv-lan-trigger):hover{background:var(--fv-ctl-hover);color:var(--fv-fg)}
+:is(:root[data-glass=solid],:root.lite) .fv-header-menu{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--fv-solid3))}
+@media(prefers-reduced-transparency:reduce){.fv-header-menu{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--fv-solid3))}}
+:is(dialog.fv-studio .fv-header,html[data-fv-shell=nodes] .fv-view-navigation .fv-view-row)[data-place=wrap]{height:auto!important;min-height:0!important;
+  grid-template-columns:minmax(0,1fr) auto!important;grid-template-rows:var(--fv-header-h) auto!important;row-gap:0;padding-bottom:var(--fv-sp-8)}
+html[data-fv-shell=nodes] .fv-view-navigation .fv-view-row[data-place=wrap]{height:auto}
+:is(dialog.fv-studio .fv-header,html[data-fv-shell=nodes] .fv-view-navigation .fv-view-row)[data-place=wrap]>.fv-view-switch{grid-column:1/-1!important;grid-row:2!important;justify-self:center}
+:is(dialog.fv-studio .fv-header,html[data-fv-shell=nodes] .fv-view-navigation .fv-view-row)[data-place=wrap]>:is(.fv-header-actions,.fv-view-actions){grid-column:2!important;grid-row:1!important;justify-self:end}
+:is(dialog.fv-studio .fv-header,html[data-fv-shell=nodes] .fv-view-navigation .fv-view-row)[data-place=wrap]>:is(.fv-brand,.fv-wordmark){grid-column:1!important;grid-row:1!important;justify-self:start}
+@media(max-width:480px){
+  :is(dialog.fv-studio .fv-header,.fv-view-navigation)>.fv-view-switch,html[data-fv-shell=nodes] .fv-view-navigation .fv-view-row>.fv-view-switch{display:flex;width:100%;box-sizing:border-box}
+  :is(dialog.fv-studio .fv-header,.fv-view-navigation) .fv-view-switch button{flex:1 1 0;min-width:0;padding:0 var(--fv-sp-4);font-size:var(--fv-fs-1);justify-content:center;text-align:center}
+}
+
+/* ── The node view's own menus in FreeVideo's material ─────────────────────────────────────────
+   The canvas right-click menu (and its sub-menus) and the canvas search box are ComfyUI's; in FreeVideo's node view
+   they take the same glass, type, radii and hover as FreeVideo's menus. Function is unchanged. */
+html[data-fv-shell=nodes] .litegraph.litecontextmenu,html[data-fv-shell=nodes] .litecontextmenu{padding:var(--fv-sp-4)!important;border:1px solid var(--fv-edge);border-radius:var(--fv-rad-pop);
+  background:rgb(var(--fv-tint) / var(--fv-a3))!important;color:var(--fv-fg)!important;box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh2)!important;
+  -webkit-backdrop-filter:blur(var(--fv-glass-blur2)) saturate(165%);backdrop-filter:blur(var(--fv-glass-blur2)) saturate(165%);
+  font:var(--fv-fs-2)/var(--fv-lh-2,20px) var(--fv-font)!important;scrollbar-width:thin}
+html[data-fv-shell=nodes] .litecontextmenu .litemenu-entry,html[data-fv-shell=nodes] .litecontextmenu .litemenu-title{margin:0!important;padding:var(--fv-sp-4) var(--fv-sp-12)!important;
+  border-radius:var(--fv-rad-sm,8px);background:transparent!important;color:var(--fv-fg2)!important;font:inherit!important}
+html[data-fv-shell=nodes] .litecontextmenu .litemenu-entry.submenu:hover:not(.disabled),html[data-fv-shell=nodes] .litecontextmenu .litemenu-entry:hover:not(.disabled){background:var(--fv-ctl-hover)!important;color:var(--fv-fg)!important}
+html[data-fv-shell=nodes] .litecontextmenu .litemenu-entry.disabled{color:var(--fv-fg3)!important;opacity:.7}
+html[data-fv-shell=nodes] .litecontextmenu .litemenu-entry.separator{height:1px!important;margin:var(--fv-sp-4) var(--fv-sp-8)!important;padding:0!important;background:var(--fv-line)!important}
+html[data-fv-shell=nodes] .litecontextmenu .litemenu-title{color:var(--fv-fg3)!important;font-size:var(--fv-fs-1)!important}
+html[data-fv-shell=nodes] .litecontextmenu input{border:1px solid var(--fv-line2);border-radius:var(--fv-rad-sm,8px);background:var(--fv-ctl-bg)!important;color:var(--fv-fg)!important}
+:is(:root[data-glass=solid],:root.lite)[data-fv-shell=nodes] .litecontextmenu{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--fv-solid3))!important}
+@media(prefers-reduced-transparency:reduce){html[data-fv-shell=nodes] .litecontextmenu{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--fv-solid3))!important}}
+/* ComfyUI's scrollbars in the node view's panels follow FreeVideo's. */
+html[data-fv-shell]{scrollbar-color:var(--fv-scroll,rgb(243 245 248 / .22)) transparent}
+
+/* Solid means solid: with glass switched off (.lite / data-glass=solid) or transparency reduced, nothing of FreeVideo's
+   blurs what is behind it (each surface brings its own opaque fallback colour). */
+:is(:root[data-glass=solid],:root.lite) :is(.fv-app,[class*="fv-"],[class*="fv-"] *){-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+@media(prefers-reduced-transparency:reduce){:is(.fv-app,[class*="fv-"],[class*="fv-"] *){-webkit-backdrop-filter:none!important;backdrop-filter:none!important}}
+:is(:root[data-glass=solid],:root.lite) .fv-view-navigation,html[data-fv-shell=nodes] .fv-view-navigation{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+
+/* ── Mount points (shell.js toastHost / statusAnchor) ─────────────────────────────────────────
+   Reminders and undo bars: one at a time, in the top bar's right column (width --fv-right-col, written by the top
+   bar), just under the bar; below 720 px a floating strip at the bottom. The host is a top-layer popover, raised
+   above each view as it opens; what goes inside brings its own card style. */
+.fv-toasts{position:fixed;inset:auto;margin:0;padding:0;border:0;background:transparent;overflow:visible;
+  top:calc(var(--fv-header-h) + env(safe-area-inset-top,0px) + var(--fv-sp-8));right:var(--fv-gutter);width:min(var(--fv-right-col,360px),calc(100vw - 2 * var(--fv-gutter)));
+  display:flex;flex-direction:column;align-items:stretch;gap:var(--fv-sp-8);z-index:var(--fv-z-toast,2800);pointer-events:none}
+.fv-toasts:not(:popover-open)[popover]{display:none}
+.fv-toasts>*{pointer-events:auto}
+@media(max-width:719px){.fv-toasts{top:auto;right:var(--fv-sp-12);left:var(--fv-sp-12);bottom:calc(var(--fv-sp-12) + env(safe-area-inset-bottom,0px));width:auto}}
+
+/* ComfyUI's floating menus (canvas right-click menu, run menu, pop-up lists) belong to the node view: they never stay
+   over another view. shell.js also closes the canvas menu when the node view is left. */
+html[data-fv-shell=view] :is(.litecontextmenu,.p-tieredmenu-overlay,.p-menu-overlay,.p-contextmenu,.p-select-overlay,.p-splitbutton-menu){display:none!important}
+
+/* A view is opaque, and views left open underneath are not painted while another is in front (shell.js marks them):
+   nothing of one view can show through another while it fills in. */
+dialog.fv-studio[data-fv-surface=view]{background-color:var(--fv-bg,var(--fv-shell-bg))!important}
+dialog.fv-studio[data-fv-surface=view][data-fv-behind]{visibility:hidden}

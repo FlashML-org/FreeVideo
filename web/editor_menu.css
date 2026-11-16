@@ -1,8 +1,8 @@
-.fv-ed-context-menu{position:fixed;z-index:30;min-width:220px;max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px);overflow:auto;padding:6px;background:var(--fv-card);color:var(--fv-ink);border:1px solid var(--fv-border);border-radius:8px;font:13px var(--fv-font)}
+.fv-ed-context-menu{position:fixed;z-index:30;min-width:220px;max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px);overflow:auto;padding:6px;background:var(--fv-card);color:var(--fv-ink);border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);font:13px var(--fv-font)}
 .fv-ed-context-menu[hidden]{display:none}
 .fv-ed-context-menu .fv-ed-menu-count{padding:6px 10px;color:var(--fv-muted);font-size:12px}
 .fv-ed-context-menu [role=separator]{height:1px;margin:5px 4px;background:var(--fv-border)}
-.fv-editor .fv-ed-context-menu button{display:flex;align-items:center;justify-content:space-between;gap:32px;width:100%;height:32px;padding:0 10px;border:0;border-radius:4px;background:transparent;color:var(--fv-ink);font:inherit;text-align:left;white-space:nowrap}
+.fv-editor .fv-ed-context-menu button{display:flex;align-items:center;justify-content:space-between;gap:32px;width:100%;height:32px;padding:0 10px;border:0;border-radius:var(--fv-r-xs);background:transparent;color:var(--fv-ink);font:inherit;text-align:left;white-space:nowrap}
 .fv-ed-menu-shortcut{color:var(--fv-muted);font-size:12px}
 .fv-editor .fv-ed-context-menu button:hover,.fv-editor .fv-ed-context-menu button:focus-visible{background:color-mix(in srgb,var(--fv-accent) 12%,transparent);outline:1px solid var(--fv-accent);outline-offset:-1px}
 .fv-editor .fv-ed-context-menu button[aria-disabled=true]{opacity:.4;cursor:not-allowed}

@@ -8,6 +8,7 @@ import {createPlaybackClock} from './editor_transport_model.js';
 import {createAudioPreview, isOriginalSound} from './editor_audio.js';
 import {previewSpeed, speedAudioFrame, separateSpeedAudio} from './editor_speed.js';
 import {sourceFrame, percent} from './editor_speed_model.js';
+import {applyTip} from './editor_tracks_tips.js';
 const el = (tag, cls) => { const e = document.createElement(tag); if (cls) e.className = cls; return e; };
 export function audioSeconds(clip, sourceFrame) {
     // The chain receipt counts samples at 32 kHz, even if the media is 48 kHz.
@@ -29,13 +30,18 @@ export function selectAudioChain(chains, track, clip, position, volumePreview = 
 }
 export function createEditorPlayer(host, transport, {state, sources, api, t, error = () => {}, readAudioSamples = null, preservePreview = () => false, prepareAudio = () => true, speech = null}) {
     const frame = el('div', 'fv-ed-picture'); frame.setAttribute('aria-label', t('Video preview', '视频预览'));
+    // The view's main content for the shell's centring check (data-fv-main).
+    frame.dataset.fvMain = '';
     const empty = el('div', 'fv-ed-empty-preview'), pictureIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     pictureIcon.setAttribute('viewBox', '0 0 24 24'); pictureIcon.setAttribute('aria-hidden', 'true');
     const picturePath = document.createElementNS(pictureIcon.namespaceURI, 'path');
     picturePath.setAttribute('d', 'M3 4h18v16H3zM3 16l5-6 5 6 3-4 5 6M15 8h.01'); pictureIcon.append(picturePath);
-    empty.append(pictureIcon); frame.append(empty);
+    // An empty edit says what to do next instead of showing a bare frame.
+    const emptyText = el('p', 'fv-ed-empty-preview-text');
+    emptyText.textContent = t('Drag media onto the timeline, or describe a shot below and generate it.', '把素材拖到时间线上，或在下方描述后生成。');
+    empty.append(pictureIcon, emptyText); frame.append(empty);
     const closePreview = el('button', 'fv-ed-preview-close'); closePreview.type = 'button'; closePreview.hidden = true;
-    closePreview.setAttribute('aria-label', t('Close preview', '关闭预览'));
+    closePreview.setAttribute('aria-label', t('Close preview', '关闭预览')); applyTip(closePreview, 'closePreview', t);
     const closeIcon = document.createElementNS(pictureIcon.namespaceURI, 'svg'), closePath = document.createElementNS(pictureIcon.namespaceURI, 'path');
     closeIcon.setAttribute('viewBox', '0 0 16 16'); closeIcon.setAttribute('aria-hidden', 'true'); closePath.setAttribute('d', 'm4 4 8 8M12 4l-8 8'); closeIcon.append(closePath); closePreview.append(closeIcon); frame.append(closePreview);
     const videos = [el('video'), el('video')]; videos.forEach(video => { video.playsInline = true; video.preload = 'auto'; video.controls = false; video.setAttribute('aria-hidden', 'true'); frame.append(video); });
@@ -46,7 +52,7 @@ export function createEditorPlayer(host, transport, {state, sources, api, t, err
     const pictureGuide = createPictureGuide(host, frame, {state, t});
     const pictureEdit = pictureSession(state, t);
     const picturePreview = createPreviewPicture(host, frame, {state, t});
-    const playButton = el('button', 'fv-ed-play'); playButton.type = 'button'; playButton.title = t('Space', '空格');
+    const playButton = el('button', 'fv-ed-play'); playButton.type = 'button';
     const time = el('span', 'fv-ed-time'); time.setAttribute('aria-live', 'off'); transport.append(playButton, time);
     let active = 0, clipId = null, silenced = false, playing = false, disposed = false, raf = null, clockStart = 0, frameStart = 0, ticking = false, preview = null, previewSize = null, previewProject = null;
     let audioContext = null, textRenderer = null, chains = [], chainSignature = null, chainRequest = null, chainEpoch = 0;
@@ -57,7 +63,11 @@ export function createEditorPlayer(host, transport, {state, sources, api, t, err
     const gains = new WeakMap(), volumePreview = new Map(), sourcePreview = new Map();
     const audioPreview = createAudioPreview({state, sources, api, volumePreview, sourcePreview, readSamples: readAudioSamples, error, speech});
     const clipVolume = clip => volumePreview.get(clip?.id) ?? clip?.volume ?? 1;
+    // The preview volume (transport): scales what is heard here only, never the export. Kept per browser.
+    let listening = 1;
+    try { const kept = Number(localStorage.getItem('fv-editor-preview-volume')); if (localStorage.getItem('fv-editor-preview-volume') !== null && kept >= 0 && kept <= 1) listening = kept; } catch {}
     function volume(media, value) {
+        value *= listening;
         // HTMLMediaElement stops at 1. A GainNode implements the record's 0–2 range.
         if (value > 1 || gains.has(media)) {
             try {
@@ -284,6 +294,7 @@ export function createEditorPlayer(host, transport, {state, sources, api, t, err
             const path = document.createElementNS(glyph.namespaceURI, 'path'); path.setAttribute('d', playing ? 'M4 3h3v10H4zM9 3h3v10H9z' : 'm5 3 8 5-8 5z'); path.setAttribute('fill', 'currentColor'); glyph.append(path); playButton.replaceChildren(glyph);
         }
         playButton.setAttribute('aria-label', playing ? t('Pause', '暂停') : t('Play', '播放'));
+        applyTip(playButton, playing ? 'pause' : 'play', t, {why: playButton.disabled ? t('Put a clip on the timeline first', '先在时间线上放一段素材') : ''});
         const shown = Math.min(position, Math.max(0, model.duration(record) - 1));
         const map = located(record, shown), videoRow = pictureEdit.previewRow(map.get('v1'), shown), clip = videoRow?.clip;
         const source = clip?.source && sources.get(sourceKey(clip.source));
@@ -449,11 +460,53 @@ export function createEditorPlayer(host, transport, {state, sources, api, t, err
         else if ((row?.clip.id || null) !== clipId) render();
     });
     render();
+    // Centre the picture on the window, not on its column: with panes of different widths beside the stage the
+    // column's middle is off the window's middle. The shift stays within the stage so the picture is never clipped.
+    function centre() {
+        if (disposed || typeof getComputedStyle !== 'function' || !frame.isConnected || !host.getBoundingClientRect) return;
+        try { centreNow(); } catch { /* a page without layout (tests) keeps the picture where the grid puts it */ }
+    }
+    function centreNow() {
+        const stage = host.getBoundingClientRect(), style = getComputedStyle(host);
+        const inner = stage.width - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0);
+        const view = (frame.closest('dialog, :fullscreen') || document.documentElement).getBoundingClientRect();
+        const room = Math.max(0, (inner - frame.offsetWidth) / 2);
+        const middle = stage.left + (parseFloat(style.paddingLeft) || 0) + inner / 2;
+        const shift = Math.round(Math.max(-room, Math.min(room, view.left + view.width / 2 - middle)));
+        // Set on the view so the transport's play group lines up with the picture too.
+        const root = frame.closest('.fv-editor') || frame;
+        root.style.setProperty('--fv-ed-center-shift', `${shift}px`);
+        // The transport row spans the edit's frame (the project's shape in this stage), so its time starts under the
+        // picture's left edge and its tools end under the right edge. It follows the project's shape, not the part under
+        // the playhead, so it never moves while playing; it keeps room for its controls (at least 560 px).
+        const top = parseFloat(style.paddingTop) || 0, bottom = parseFloat(style.paddingBottom) || 0;
+        // The edit's own size, known from the first frame (not the frame tools' later copy of it).
+        const width = state.record.width, height = state.record.height;
+        const box = Math.max(Math.min(560, stage.width), Math.min(inner, (stage.height - top - bottom) * width / height));
+        const left = middle + shift - box / 2 - stage.left, right = stage.right - (middle + shift + box / 2);
+        root.style.setProperty('--fv-ed-transport-left', `${Math.max(0, Math.round(left))}px`);
+        root.style.setProperty('--fv-ed-transport-right', `${Math.max(0, Math.round(right))}px`);
+    }
+    const centring = typeof ResizeObserver === 'function' ? new ResizeObserver(() => centre()) : null;
+    centring?.observe(host); centring?.observe(frame);
+    // The resize observer first reports a frame late; when the view opens (or becomes ready), place the picture and the
+    // transport at once, before that first frame is painted, so nothing slides into place afterwards.
+    const opening = typeof MutationObserver === 'function' && frame.closest?.('dialog') ? new MutationObserver(() => centre()) : null;
+    opening?.observe(frame.closest('dialog'), {attributes: true, attributeFilter: ['open', 'data-fv-ready', 'data-fv-leaving']});
+    if (typeof queueMicrotask === 'function') queueMicrotask(centre);
+    if (typeof window !== 'undefined') window.addEventListener?.('resize', centre);
     return {element: frame, playback, picturePreview, play, pause,
         // While a take is recorded the picture's own sound stays off, so the microphone does not pick it up.
         silenceOriginal(on) { if (silenced === !!on) return; silenced = !!on; resetEntries(); forcePosition = true; render(); }, toggle: () => playing ? pause() : play(), refresh: render,
         clearPreview() { clearPreview(); render(); },
         get playing() { return playing; },
+        get previewVolume() { return listening; },
+        setPreviewVolume(value) {
+            const next = Math.max(0, Math.min(1, Number(value)));
+            if (!Number.isFinite(next) || next === listening) return listening;
+            listening = next; try { localStorage.setItem('fv-editor-preview-volume', String(next)); } catch {}
+            render(); return listening;
+        },
         setTextRenderer(callback) { textRenderer = callback; },
         previewVolume(id, value) { volumePreview.set(id, value); render(); },
         clearVolumePreview() { volumePreview.clear(); render(); },
@@ -470,7 +523,7 @@ export function createEditorPlayer(host, transport, {state, sources, api, t, err
             preview.onended = () => { clearPreview(); render(); };
             preview.src = mediaURL(api, metadata.video || metadata.audio); frame.append(preview); closePreview.hidden = false; render(); preview.play().catch(() => {});
         },
-        dispose() { disposed = true; playing = false; chainRequest?.abort(); removeChains(); cancelAnimationFrame(raf); unsubscribe(); stopPictureEdit(); clearPreview(); audioPreview.dispose();
+        dispose() { disposed = true; playing = false; centring?.disconnect(); opening?.disconnect(); if (typeof window !== 'undefined') window.removeEventListener?.('resize', centre); chainRequest?.abort(); removeChains(); cancelAnimationFrame(raf); unsubscribe(); stopPictureEdit(); clearPreview(); audioPreview.dispose();
             allMedia().forEach(media => { media.pause(); media.onloadedmetadata = media.onerror = null; media.removeAttribute('src'); delete media.dataset.source; media.load(); media.remove(); }); playButton.onclick = closePreview.onclick = null; picturePreview.dispose(); pictureGuide.dispose(); audioContext?.close().catch(() => {}); },
     };
 }

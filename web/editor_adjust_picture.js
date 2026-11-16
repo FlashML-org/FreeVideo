@@ -1,10 +1,11 @@
 import {row, slider, number, button, disabledReason} from './editor_adjust.js';
 import {PICTURE_DEFAULTS, pictureFields} from './editor_picture_fields.js';
 import {pictureSession} from './editor_picture_session.js';
+import {applyTip} from './editor_tracks_tips.js';
 export const scaleFromSlider = value => Math.abs(value) < .025 ? 1 : 10 ** value;
 export const quarterTurn = (angle, delta) => ((angle + delta + 540) % 360) - 180;
 export function createAdjustPicture({state, sources, t, player, notes = null}) {
-    const session = pictureSession(state, t), widgets = [], numbers = {};
+    const session = pictureSession(state, t), widgets = [], numbers = {}, tipped = [];
     let visibilityObserver, inputError, invalidClip;
     let context, container, clip, scale, reset, crop, cropActions, flips, scaleDrag = null;
     const keep = node => { if (node.tagName === 'BUTTON') node.setAttribute('aria-label', node.textContent); widgets.push(node); return node; };
@@ -55,6 +56,8 @@ export function createAdjustPicture({state, sources, t, player, notes = null}) {
         for (const item of ctx.clips) { if (!seen.has(item.id)) count++; seen.add(item.id); if (item.link) seen.add(item.link); }
         const reason = disabledReason({...ctx, multiple: ctx.multiple || count > 1}, {needs: 'video', single: true}) || session.editReason(clip);
         if (container.disabled !== !!reason) container.disabled = !!reason; container.title = '';
+        // Each control's hover help names it, says what it does, and while greyed says why (editor_tracks_tips.js).
+        for (const [node, id] of tipped) applyTip(node, id, t, {why: reason || ''});
         if (inputError && invalidClip !== clip?.id) { inputError.hidden = true; invalidClip = null; }
         const current = {...PICTURE_DEFAULTS, ...session.clip(clip)};
         for (const [key, {control, factor}] of Object.entries(numbers)) {
@@ -102,7 +105,7 @@ export function createAdjustPicture({state, sources, t, player, notes = null}) {
             };
             const scaleNumber = numeric('scale', t('Scale', '缩放'), 10, 1000, 100, ' %');
             const position = row(t('Position', '位置'), numeric('offset_x', 'X', -200, 200, 100, ' %'), numeric('offset_y', 'Y', -200, 200, 100, ' %'));
-            for (const [key, label] of [['offset_x', 'X %'], ['offset_y', 'Y %']]) numbers[key].control.input.title = label;
+            // (Their hover help comes from editor_tracks_tips.js below.)
             const turns = row('', ...[-90, 90].map(delta => keep(button(delta < 0 ? t('Rotate left 90°', '左转 90°') : t('Rotate right 90°', '右转 90°'),
                 {onClick: () => change({rotate: quarterTurn(clip?.rotate || 0, delta)})}))));
             flips = [['flip_h', t('Flip horizontally', '水平翻转')], ['flip_v', t('Flip vertically', '垂直翻转')]].map(([key, label]) => {
@@ -113,9 +116,15 @@ export function createAdjustPicture({state, sources, t, player, notes = null}) {
             cropActions.classList.add('fv-ed-picture-crop-actions');
             reset = keep(button(t('Reset', '恢复原样'), {onClick: () => change({...PICTURE_DEFAULTS, fit: clip?.fit || 'cover'})})); reset.classList.add('fv-ed-picture-reset');
             inputError = document.createElement('p'); inputError.className = 'fv-ed-picture-input-error'; inputError.setAttribute('role', 'status'); inputError.hidden = true;
+            const [left, right] = turns.querySelectorAll('button'), [done, cancel] = cropActions.querySelectorAll('button');
+            tipped.splice(0, tipped.length, [scale.input, 'scale'], [scaleNumber.input, 'scaleNumber'], [numbers.offset_x.control.input, 'offsetX'],
+                [numbers.offset_y.control.input, 'offsetY'], [left, 'rotateLeft'], [right, 'rotateRight'], [flips[0][1], 'flipH'], [flips[1][1], 'flipV'],
+                [crop, 'crop'], [done, 'cropDone'], [cancel, 'cropCancel'], [reset, 'pictureReset']);
             host.append(row(t('Scale', '缩放'), scale, scaleNumber), position,
                 row(t('Rotation', '旋转'), numeric('rotate', t('Rotation', '旋转'), -180, 180, 1, ' °')), turns,
                 row('', ...flips.map(([, b]) => b)), crop, cropActions, inputError, reset);
+            tipped.push([numbers.rotate.control.input, 'rotate']);
+            for (const [node, id] of tipped) applyTip(node, id, t);
             visibility();
         }, update, deactivate: () => session.setPanelOpen(false),
         dispose() { visibilityObserver?.disconnect(); session.setPanelOpen(false); unsubscribe(); window.removeEventListener('pointermove', dragScale, true); window.removeEventListener('pointerup', endScale, true); window.removeEventListener('pointercancel', endScale, true); if (scale) scale.input.onpointerdown = null; for (const w of widgets) { if(w.input) {w.input.onkeydown = null; w.input.onblur = null;} w.dispose(); } },

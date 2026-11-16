@@ -55,7 +55,8 @@ def main(argv=None):
         from .image_policy import ImageShape, plan_image
         height, width = h3_dit.canvas_size(args.height, args.width)
         shape = ImageShape.measure(list(model.blocks), None)
-        shape = ImageShape(**{**shape.__dict__, 'steps': 6})
+        shape = ImageShape(**{**shape.__dict__, 'steps': 6,
+                              'dit_block_bytes': max(shape.dit_block_bytes, int(stack.layer_bytes))})
         plan = plan_image(gpu_budget_bytes=int(args.vram_gib * 2**30), width=width, height=height, shape=shape)
         args.resident = plan.dit_resident_layers
     stack.set_resident(args.resident)

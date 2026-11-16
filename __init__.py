@@ -41,6 +41,13 @@ async def comfy_entrypoint():
     except Exception as error:
         import logging
         logging.warning('[FreeVideo] Dubbing routes not registered: %s', error)
+    try:
+        # FreeVideo's opening screen from the page's first frame (no ComfyUI loading screen first).
+        from .freevideo_engine.comfy_boot import register as boot_screen
+        boot_screen()
+    except Exception as error:
+        import logging
+        logging.warning('[FreeVideo] Opening screen not registered: %s', error)
     from .freevideo_engine.comfy_launcher_api import register as launcher_routes
     launcher_routes()
     from .freevideo_engine.comfy_updates import register as update_routes

@@ -1,4 +1,4 @@
-.fv-editor .fv-ed-adjust-host{grid-column:2;grid-row:2/4;justify-self:end;width:264px;min-height:0;overflow:auto;padding:12px;border-left:1px solid var(--fv-border);background:var(--fv-bg);z-index:8;scrollbar-width:thin;scrollbar-color:var(--fv-border) transparent}
+.fv-editor .fv-ed-adjust-host{grid-column:2;grid-row:2/5;justify-self:end;width:264px;min-height:0;overflow:auto;padding:12px;border-left:1px solid var(--fv-border);background:var(--fv-bg);z-index:8;scrollbar-width:thin;scrollbar-color:var(--fv-border) transparent}
 .fv-editor .fv-ed-library{background:var(--fv-bg)}
 .fv-ed-adjust{min-width:0}
 .fv-ed-adjust-status{margin:0 0 12px;color:var(--fv-muted);font-size:13px;line-height:1.6}
@@ -33,3 +33,17 @@
  .fv-editor[data-adjust-available=true] .fv-ed-toolbar .fv-ed-zoom-slider{width:40px}
  .fv-editor[data-adjust-available=true] .fv-ed-toolbar .fv-ed-previous span{display:none}
 }
+/* The reason a page is greyed (E10), said under the tabs; the drawer's own close button below 1280 px (E7). */
+.fv-ed-adjust-reason{margin:0 0 12px;padding:8px 12px;border-radius:var(--fv-r-sm);background:color-mix(in srgb,var(--fv-ink) 5%,transparent);color:var(--fv-muted);font-size:12px;line-height:1.5}
+.fv-ed-adjust-reason[hidden]{display:none}
+.fv-ed-adjust{position:relative}
+.fv-editor .fv-ed-adjust-close{position:absolute;top:0;right:0;width:28px;height:28px;min-height:28px;padding:0;border:0;background:transparent;color:var(--fv-muted);z-index:1}
+.fv-editor .fv-ed-adjust-close[hidden]{display:none}
+@media(max-width:1279px){.fv-ed-adjust>.fv-ed-tabs{padding-right:32px}}
+/* Nothing chosen: the inspector shows one quiet line, left-aligned at the top of the column, on the same baseline as the
+   header line beside it (the edit's name, the library's tabs); the controls appear again, with a short fade, once a part
+   is chosen (no greyed column). */
+.fv-ed-adjust[data-empty=true] .fv-ed-adjust-reason{margin:0;padding:0;background:transparent;text-align:left;font-size:13px;line-height:24px;color:var(--fv-muted)}
+.fv-ed-adjust[data-empty=false] .fv-ed-adjust-pane:not([hidden]){animation:fv-ed-adjust-in 160ms cubic-bezier(.2,.8,.2,1)}
+@keyframes fv-ed-adjust-in{from{opacity:0;transform:translateY(4px)}}
+@media(prefers-reduced-motion:reduce){.fv-ed-adjust[data-empty=false] .fv-ed-adjust-pane:not([hidden]){animation:none}}

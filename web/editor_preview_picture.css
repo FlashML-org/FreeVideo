@@ -1,12 +1,12 @@
 .fv-editor .fv-ed-preview{position:relative}
-.fv-ed-picture.fv-ed-picture-adjusted{overflow:visible;background:var(--fv-bg);border-radius:8px}
+.fv-ed-picture.fv-ed-picture-adjusted{overflow:visible;background:var(--fv-bg);border-radius:var(--fv-r-sm)}
 .fv-ed-picture.fv-ed-picture-adjusted[data-picture-mode=output]{transition:none}
 .fv-ed-picture-bed{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .fv-ed-picture-outside{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;opacity:.35}
 .fv-ed-picture-shade{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2;fill:rgba(0,0,0,.65)}
 .fv-ed-picture-handles{position:absolute;inset:0;pointer-events:none;z-index:5}
-.fv-editor .fv-ed-picture-handle{position:absolute;width:22px;height:22px;min-height:0;padding:0;transform:translate(-50%,-50%);background:transparent;border:0;border-radius:2px;pointer-events:auto;touch-action:none;cursor:nwse-resize}
-.fv-ed-picture-handle:after{content:'';display:block;position:absolute;inset:7px;background:var(--fv-accent);border:1px solid var(--fv-ink);border-radius:2px}
+.fv-editor .fv-ed-picture-handle{position:absolute;width:22px;height:22px;min-height:0;padding:0;transform:translate(-50%,-50%);background:transparent;border:0;border-radius:var(--fv-r-xs);pointer-events:auto;touch-action:none;cursor:nwse-resize}
+.fv-ed-picture-handle:after{content:'';display:block;position:absolute;inset:7px;background:var(--fv-accent);border:1px solid var(--fv-ink);border-radius:var(--fv-r-xs)}
 .fv-ed-picture-handle[data-corner=ne],.fv-ed-picture-handle[data-corner=sw]{cursor:nesw-resize}
 .fv-ed-picture-crop-box{position:absolute;inset:0;z-index:4;pointer-events:none}
 .fv-ed-picture-crop-guide{position:absolute;inset:0;width:100%;height:100%;overflow:visible;fill:transparent;stroke:var(--fv-ink);stroke-width:1;pointer-events:none}
@@ -16,3 +16,6 @@
 .fv-ed-picture-snap-x,.fv-ed-picture-snap-y{position:absolute;background:var(--fv-accent);pointer-events:none;z-index:6}
 .fv-ed-picture-snap-x{top:0;height:100%;width:1px}.fv-ed-picture-snap-y{left:0;width:100%;height:1px}
 .fv-ed-picture [hidden],.fv-ed-preview>.fv-ed-picture-outside[hidden]{display:none}
+
+/* Glass version: the picture adjustment keys use the caption size of the type scale (12 px, not 11). */
+.fv-studio.fv-editor .fv-ed-adjust-picture button{font-size:var(--fv-fs-1,12px)}

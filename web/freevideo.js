@@ -6,7 +6,7 @@ import { api } from "../../scripts/api.js";
 import { openEditorView } from './editor_loader.js';
 import { beginWorkspaceRestore, finishWorkspaceRestore, waitForLauncherRestore } from './workspace_restore.js';
 import { skinSelect } from './fv_select.js';
-import { openStudio, loraPanel, loraWarning, promptGuide } from "./studio.js";
+import { openStudio, loraPanel, loraWarning } from "./studio.js";
 import { createGenerationProgress, referenceTrimText, thermalText, sharedGpuText, keepSoundText, encoderFileText, encoderFilePath } from './generation_progress.js';
 import { createProgressConnection } from './progress_connection.js';
 import { notifyCompatibility } from './compatibility.js';
@@ -21,10 +21,11 @@ import { openFreeVideoWorkflow } from './launcher.js';
 import { agentInterfaceState } from './agent_connect.js';
 import { attachReferencePicker, referenceItems, syncReferencePrompt, referenceInputs, mediaRows, mediaNodeOf } from './prompt_references.js';
 import { expandCast } from './cast_mention.js';
+import { pinSoon } from './private_pin.js';
 import { openReferenceMenu } from './image_library.js';
 import { requestText } from './prompt_sections.js';
 import { timedText } from './timed_prompt.js';
-import { outputDownloadURL } from './output_download.js';
+import { outputDownloadURL, checkedDownload, anchoredNotice, unreadableVideoText } from './output_download.js';
 import { shareButton } from './share.js';
 import { reportFileName } from './report_issue.js';
 import { rememberPromptDraft, savePromptDraft, trackPromptDraft, watchPromptHistory, promptHistoryRestoring } from './prompt_draft.js';
@@ -34,7 +35,7 @@ import { secondPassAction } from './result_actions.js';
 import { openImageEditor, icon } from './image_editor.js';
 import { imageGenerationSupported } from './image_generation.js';
 import { createCastLibrary } from './cast_library.js';
-import { uploadMedia } from './media_upload.js';
+import { mediaName, uploadMedia } from './media_upload.js';
 import { MAX_MIDDLE, secondsOf, defaultTime, timeProblems, timeRange, problemText, middleNotice, middleInfo, labels as middleLabels, shown as shownTime } from './middle_frames.js';
 import { swapState, requestRows, swapMissing, withPrefix, peopleOf } from './replace_state.js';
 import { swapMissingText } from './replace_person.js';
@@ -67,8 +68,51 @@ style.textContent = `
 .fv-preview{display:block;width:100%;max-height:160px;object-fit:contain;margin:8px 0;border-radius:var(--fv-r-sm,8px);background:var(--fv-bg)}
 .fv-card audio{width:100%;height:36px;margin:8px 0}.fv-empty{padding:35px 12px;text-align:center;color:var(--fv-muted);border:1px dashed var(--fv-border);border-radius:var(--fv-r-md,12px);margin-top:12px}
 .fv-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-bottom:9px}.fv-stat strong{display:block;color:var(--fv-ink);font-size:var(--fv-strong,16px);font-weight:var(--fv-semibold,600);font-variant-numeric:tabular-nums}.fv-stat span{font-size:var(--fv-micro,12px);color:var(--fv-muted)}
+/* The node panels on the canvas (not the copies inside views): one control radius, 32 px controls, padding on the grid. */
+.fv-panel:not(:is(dialog,.fv-studio) .fv-panel) :is(button,select,a,.fv-select-trigger,.fv-cast-add,.fv-cast-avatar,input[type=number],input[type=text]){border-radius:var(--fv-rad-ctl,12px)}
+.fv-panel:not(:is(dialog,.fv-studio) .fv-panel) :is(button,a,.fv-select-trigger):not(.fv-cast-add,.fv-cast-avatar,[role=switch]){display:inline-flex;align-items:center;justify-content:center;gap:var(--fv-sp-8,8px);height:var(--fv-ctl,32px);min-height:var(--fv-ctl,32px);padding:0 var(--fv-sp-12,12px);line-height:16px}
+.fv-panel:not(:is(dialog,.fv-studio) .fv-panel) :is(.fv-card,.fv-empty,.fv-connected-card,.fv-stat,.fv-preview){border-radius:var(--fv-rad-ctl,12px)}
+.fv-panel:not(:is(dialog,.fv-studio) .fv-panel) select,.fv-panel:not(:is(dialog,.fv-studio) .fv-panel) .fv-select>select{height:var(--fv-ctl,32px);min-height:var(--fv-ctl,32px);padding:0 calc(var(--fv-sp-32,32px) + var(--fv-sp-4,4px)) 0 var(--fv-sp-12,12px)!important;line-height:normal}
+/* On a phone-width window the node panels' controls are finger targets too (44 px), like every view's (a11y.css). */
+@media(max-width:720px){.fv-panel:not(:is(dialog,.fv-studio) .fv-panel) :is(button,a,.fv-select-trigger):not(.fv-cast-add,.fv-cast-avatar,[role=switch]),.fv-panel:not(:is(dialog,.fv-studio) .fv-panel) select,.fv-panel:not(:is(dialog,.fv-studio) .fv-panel) .fv-select>select{height:var(--fv-touch,44px);min-height:var(--fv-touch,44px)}}
+/* The result panel is a column that centres its children: the report button needs no auto side margins for that. */
+.fv-panel[data-freevideo=result]>.fv-report-download{margin-left:0;margin-right:0}
 `;
 document.head.append(style);
+
+// The node view in Chinese: socket names, and the values of lists, in Chinese words; switches show no words (their
+// knob says on or off). Display only: the saved values stay what the engine reads. Set again after a workflow loads,
+// since a saved workflow carries the names of the language it was saved in.
+const SLOT_ZH = {first: '首帧', 'First frame': '首帧', last: '尾帧', 'Last frame': '尾帧', references: '参考图', loras: 'LoRA', LoRAs: 'LoRA',
+    conditioning: '条件输入', media: '素材', text: '描述', reference_audio: '参考音频', 'Reference audio': '参考音频', video: '视频', report: '报告', 'Report JSON': '报告'};
+const VALUE_ZH = {
+    control_after_generate: {fixed: '保持固定', increment: '递增', decrement: '递减', randomize: '每次随机'},
+    step_cache: {none: '关', 'easycache-av': '音画缓存', fbcache: '首块缓存'},
+    audio_use: {reference: '参考', original: '原样使用'},
+};
+const LABEL_ZH = {audio_use: '音频用途'};
+// Node titles in Chinese, shown on the canvas and in search only: the saved title stays as it is, and a title the user
+// typed is shown as typed.
+const TITLE_ZH = {'FreeVideo · Generate & Preview': 'FreeVideo · 生成与预览', 'FreeVideo · Video + Audio': 'FreeVideo · 视频 + 音频',
+    'FreeVideo · Media': 'FreeVideo · 素材', 'FreeVideo · LoRA': 'FreeVideo · LoRA', 'FreeVideo · LoRAs': 'FreeVideo · LoRA',
+    'FreeVideo · First / Last Frame': 'FreeVideo · 首尾帧', 'FreeVideo · Reference (experimental)': 'FreeVideo · 参考（实验）'};
+function localizeNode(node) {
+    if (!cn) return;
+    for (const slot of [...(node.inputs || []), ...(node.outputs || [])]) {
+        // A widget's socket (shown while a link is dragged) reads like its widget.
+        const name = SLOT_ZH[slot.name] || (slot.widget?.name && node.widgets?.find(widget => widget.name === slot.widget.name)?.label);
+        if (name) slot.localized_name = name;
+    }
+    for (const widget of node.widgets || []) {
+        const names = VALUE_ZH[widget.name];
+        if (names) { widget.options ||= {}; widget.options.getOptionLabel = value => names[value] ?? value; }
+        if (widget.type === 'toggle') { widget.options ||= {}; widget.options.on = widget.options.off = ' '; }
+        if (LABEL_ZH[widget.name]) widget.label = LABEL_ZH[widget.name];
+        // The empty prompt box says what goes in it (ComfyUI puts the input's name there).
+        if (widget.name === 'text' && widget.inputEl) widget.inputEl.placeholder = '描述画面';
+    }
+    node.setDirtyCanvas?.(true, true);
+}
 
 function el(tag, label, className) {
     const element = document.createElement(tag);
@@ -109,9 +153,9 @@ function skippedNote(names) {
 }
 
 const referenceHelp = () => text('Each reference image counts as one media item.', '每张参考图片各占一个素材名额。');
-// Input names stay English like every other node's; the panel's chips are translated.
-const referenceSocket = index => `Reference image ${index + 1}`;
 const referenceLabel = index => text(`Reference image ${index + 1}`, `参考图片 ${index + 1}`);
+// Socket names follow the interface language, like the panel's chips (localizeNode).
+const referenceSocket = referenceLabel;
 
 function syncReferenceSockets(node) {
     if (!node.inputs || !node.addInput) return;
@@ -145,6 +189,7 @@ function mediaPanel(node, mount = null) {
     serialized.computeSize = () => [0, -4];
     serialized.draw = () => {};
     const panel = el("div", undefined, "fv-panel"); panel.dataset.freevideo = "media";
+    panel.freevideoMediaNode = node; // A copy of this panel elsewhere (the media tray) leads back to its node.
     panel.tabIndex = 0;
     const toolbar = el("div", undefined, "fv-toolbar");
     const note = el("div", "", "fv-note"); note.setAttribute("role", "status");
@@ -154,10 +199,19 @@ function mediaPanel(node, mount = null) {
     const add = button(text("Add", "添加"), text("Add images, video or audio", "添加图片、视频或音频"), () => {
         if (libraryMenu?.box.isConnected) { libraryMenu.close(); return; }
         libraryMenu = openReferenceMenu({api, viewURL, anchor: add, host: panel, onComputer: () => picker.click(),
-            onPick: (file, id) => upload([file]).then(() => { picked.add(id); libraryMenu?.refresh(); }),
+            onPick: (file, id, source) => fromLibrary(file, id, source ? {source} : undefined),
             state: () => ({used: picked, full: read().length >= 32})});
     });
     let libraryMenu = null; const picked = new Set();
+    // A saved picture is already an input file (options.source): the row names it, so no second copy is made.
+    const fromLibrary = (file, id, options) => (options?.source ? addInput(options.source, options) : upload([file], options))
+        .then(() => { picked.add(id); libraryMenu?.refresh(); });
+    async function addInput(file, {role: as} = {}) {
+        const rows = read();
+        if (rows.length >= 32) { message(text("Use at most 32 media items", "最多使用 32 个素材"), true); return; }
+        const use = ['reference', 'first', 'last'].includes(as) ? as : role.value;
+        rows.push({file, role: mediaKind(file) === "image" ? use : "reference", enabled: true}); update(rows);
+    }
     const generateImage = button(text('Generate with AI', 'AI 生成'), text('Generate with AI', 'AI 生成'), () => newImage());
     generateImage.hidden = !imageGenerationSupported();
     const audioPicker = el('input'); audioPicker.type = 'file'; audioPicker.multiple = true;
@@ -181,7 +235,7 @@ function mediaPanel(node, mount = null) {
         return rows;
     };
     const message = (value, error = false) => { note.textContent = value; note.hidden = !value; note.classList.toggle("fv-error", error); };
-    const update = rows => { serialized.value = JSON.stringify(rows); node.graph?.change(); window.dispatchEvent(new CustomEvent('freevideo-media', {detail: node.id})); };
+    const update = rows => { serialized.value = JSON.stringify(rows); node.graph?.change(); pinSoon(); window.dispatchEvent(new CustomEvent('freevideo-media', {detail: node.id})); };
     const changed = event => { if (String(event.detail) === String(node.id)) render(); };
     window.addEventListener('freevideo-media', changed);
     // The video this panel feeds: its canvas is the natural shape for a keyframe crop.
@@ -229,7 +283,7 @@ function mediaPanel(node, mount = null) {
         const source = original.source || agent?.source || original.file;
         // Other pictures in this panel can be placed on the image as layers.
         const library = read().filter(row => row.file !== file && mediaKind(row.file) === 'image')
-            .map(row => ({file: row.file, label: (row.source || row.file).split('/').pop()}));
+            .map(row => ({file: row.file, label: mediaName(row)}));
         let outcome;
         try {
             outcome = await openImageEditor({source, name: source, target: videoSize(), edit: original.edit || agent?.edit || null, role: original.role,
@@ -262,7 +316,7 @@ function mediaPanel(node, mount = null) {
         if (node.isUploading) return;
         if (read().length >= 32) { message(text('The media list is full (32 items, including disabled ones). Remove some to add more.', '素材已满 32 个（含未启用的），请先移除不用的素材。'), true); return; }
         const library = read().filter(row => mediaKind(row.file) === 'image')
-            .map(row => ({file: row.file, label: (row.source || row.file).split('/').pop()}));
+            .map(row => ({file: row.file, label: mediaName(row)}));
         let outcome;
         try {
             outcome = await openImageEditor({target: videoSize(), role: role.value, t: text,
@@ -277,7 +331,7 @@ function mediaPanel(node, mount = null) {
                 fraction => message(text('Saving the image', '正在保存图片') + percent(fraction)));
             message('');
             const latest = read();
-            latest.push({file: result.file, role: role.value, enabled: true, edit: outcome.edit});
+            latest.push({file: result.file, name: outcome.name, role: role.value, enabled: true, edit: outcome.edit});
             update(latest);
         } catch (error) { message(error.message, true); }
         finally { node.isUploading = false; add.disabled = addAudio.disabled = generateImage.disabled = false; }
@@ -374,7 +428,7 @@ function mediaPanel(node, mount = null) {
         }
         const middleProblem = middleNotice(active, {first, last, references: refs, seconds: videoSeconds()}, text);
         const audioUnlinked = node.widgets?.find(w => w.name === 'audio_use')?.value === 'original' && !linked('reference_audio');
-        message(audioUnlinked ? text('Connect audio to "Reference audio", or set "Audio use" to "reference", before generating.', '请连接“Reference audio”，或把“Audio use”改为“reference”后再生成。') : refs > 32 ? text('There are more than 32 references; remove some before generating.', '参考素材超过 32 个，可移除部分后再生成。') : continuing && active.filter(row => row.role === 'reference' && mediaKind(row.file) === 'image').length > 3 ? text('When continuing, only the first 3 images are used.', '接续时只用前 3\u00a0张图片。') : (first || last || middle.length) && continuing ? (middle.length ? middleLabels.continuing(text) : text("When continuing a video, the first and last frames are used as references.", "接续视频时，首尾帧会用作参考图。")) : refs && (first || last || middle.length) ? text("Choose keyframes or references. Disable unused cards.", "首尾帧与参考模式不能混用，请关闭本次不用的素材。") : first > 1 || last > 1 ? text("Keep only one first frame and one last frame enabled.", "首帧和尾帧各只能启用一张图片。") : middleProblem ? middleProblem : middleInfo(active, videoSeconds(), text) ? middleInfo(active, videoSeconds(), text) : "", Boolean(audioUnlinked || refs > 32 || refs && (first || last || middle.length) && !continuing || first > 1 || last > 1 || middleProblem && !continuing));
+        message(audioUnlinked ? text('Connect audio to "Reference audio", or set "Audio use" to "reference", before generating.', '请连接“参考音频”，或把“音频用途”改为“参考”后再生成。') : refs > 32 ? text('There are more than 32 references; remove some before generating.', '参考素材超过 32 个，可移除部分后再生成。') : continuing && active.filter(row => row.role === 'reference' && mediaKind(row.file) === 'image').length > 3 ? text('When continuing, only the first 3 images are used.', '接续时只用前 3\u00a0张图片。') : (first || last || middle.length) && continuing ? (middle.length ? middleLabels.continuing(text) : text("When continuing a video, the first and last frames are used as references.", "接续视频时，首尾帧会用作参考图。")) : refs && (first || last || middle.length) ? text("Choose keyframes or references. Disable unused cards.", "首尾帧与参考模式不能混用，请关闭本次不用的素材。") : first > 1 || last > 1 ? text("Keep only one first frame and one last frame enabled.", "首帧和尾帧各只能启用一张图片。") : middleProblem ? middleProblem : middleInfo(active, videoSeconds(), text) ? middleInfo(active, videoSeconds(), text) : "", Boolean(audioUnlinked || refs > 32 || refs && (first || last || middle.length) && !continuing || first > 1 || last > 1 || middleProblem && !continuing));
         if (!rows.length && !connections.childElementCount) cards.append(el("div", text("Drop images or video here", "拖入图片或视频"), "fv-empty"));
         if (!rows.length && connections.childElementCount) cards.append(el('div', text('Media comes from the connected inputs; no upload is needed.', '素材来自已连接的输入，无需上传。'), 'fv-connected-card'));
         rows.forEach((row, index) => {
@@ -387,7 +441,7 @@ function mediaPanel(node, mount = null) {
                 }
                 rows[index].enabled = enabled.checked; update(rows);
             };
-            const label = el("span", row.cast?.name || (row.source || row.file).split("/").pop(), "fv-file"); label.title = row.file;
+            const label = el("span", mediaName(row), "fv-file"); label.title = mediaName(row);
             const select = el("select"); select.setAttribute("aria-label", text("Media role", "素材用途"));
             // One width for every role, whatever the options say in the current state: "Middle frame" is the longest usual one.
             select.style.width = cn ? '7.5em' : '10em';
@@ -523,8 +577,10 @@ function mediaPanel(node, mount = null) {
         if (blocked) throw new Error(blocked);
         try { return JSON.stringify(read().map(({file, role, enabled, cast, sound, depth, use, range, seconds}) => ({file, role, enabled, ...(role === 'middle' && Number.isFinite(seconds) ? {seconds} : {}), ...(use === AUDIO_USE.original ? {use, ...(range && typeof range === 'object' ? {range} : {})} : {}), ...(sound === false && mediaKindOrNull(file) === 'video' ? {sound: false} : {}), ...(depth === true && role === 'reference' && mediaKindOrNull(file) === 'video' ? {depth: true} : {}), ...(typeof cast?.id === 'string' && cast.id ? {cast: {id: cast.id, ...(cast.setting === true ? {setting: true} : cast.prop === true ? {prop: true} : {})}} : {})}))); } catch { return serialized.value; }
     };
-    async function upload(files) {
+    // `as` (reference / first / last) places these images without changing the toolbar's choice.
+    async function upload(files, {role: as} = {}) {
         if (node.isUploading || !files.length) return;
+        const use = ['reference', 'first', 'last'].includes(as) ? as : role.value;
         const chosen = Array.from(files);
         const usable = chosen.filter(file => mediaKindOrNull(file.name));
         const skipped = chosen.filter(file => !mediaKindOrNull(file.name)).map(file => file.name);
@@ -538,7 +594,7 @@ function mediaPanel(node, mount = null) {
                 const result = await uploadOne(file, fraction => message(heading + percent(fraction)));
                 // Read again after the wait: another place may have changed the list meanwhile.
                 const rows = read(); if (rows.length >= 32) throw new Error(text("Use at most 32 media items", "最多使用 32 个素材"));
-                rows.push({file: result.file, role: kind === "image" ? role.value : "reference", enabled: true}); update(rows);
+                rows.push({file: result.file, ...(result.name || file.name ? {name: result.name || file.name} : {}), role: kind === "image" ? use : "reference", enabled: true}); update(rows);
             }
             if (skipped.length) message(skippedNote(skipped), !usable.length);
         } catch (error) { message(error.message, true); }
@@ -552,9 +608,28 @@ function mediaPanel(node, mount = null) {
     const dispose = () => { window.removeEventListener('freevideo-media', changed); window.removeEventListener('freevideo-audio-blocked', clearUseNote); cast.destroy(); places.destroy(); props.destroy(); };
     if (mount) { mount.append(panel); render(); return dispose; }
     node.freevideoCreateMediaEditor = target => mediaPanel(node, target);
+    // The same list, uploads and saved pictures for other surfaces (the media tray); nothing here is a second copy.
+    const media = node.freevideoMedia = {
+        limit: 32, rows: read, update, upload, addFromLibrary: fromLibrary, busy: () => Boolean(node.isUploading),
+        // The newest saved pictures (the Add menu's) and finished videos (the library's), newest first. `file` is what
+        // is added (a video is its MP4 in the output folder, so it is uploaded again like any file), `thumb` fits an <img>.
+        recent: async ({limit = 8} = {}) => {
+            // Loaded when asked (both modules are already in the page): the entry's static imports stay as they were.
+            const pictures = import('./image_library.js').then(({imageCards}) => imageCards(api)).then(cards => cards.filter(card => card.thumbnail?.file).slice(0, limit).map(card => {
+                const url = viewURL(card.thumbnail.file);
+                return {id: card.id, name: card.name, kind: 'image', file: card.thumbnail.file, url, thumb: url, at: Date.parse(card.updated_at) || 0};
+            })).catch(() => []);
+            // The library's pages hold 1–48 creations (a larger page is refused).
+            const videos = import('./library.js').then(async ({libraryPage, videoThumbnailURL}) => ((await libraryPage(text, {limit: Math.min(48, Math.max(1, limit))})).items || [])
+                .filter(row => row.kind !== 'image' && typeof row.video === 'string' && row.video)
+                // Named as in the library, never by a date or a time: its label, else what it is.
+                .map(row => ({id: row.id, name: row.agent?.label || text('Video', '视频'), kind: 'video', file: row.video, url: viewURL(row.video, 'output'), thumb: videoThumbnailURL(row), at: Date.parse(row.created_at) || 0}))).catch(() => []);
+            return [...await pictures, ...await videos].sort((a, b) => b.at - a.at).slice(0, limit).map(({at, ...item}) => item);
+        },
+    };
     node.addDOMWidget("freevideo_media", "freevideo_media", panel, {serialize: false, getMinHeight: () => 300, getMaxHeight: () => 520});
     const removed = node.onRemoved;
-    node.onRemoved = function (...args) { dispose(); return removed?.apply(this, args); };
+    node.onRemoved = function (...args) { dispose(); if (node.freevideoMedia === media) delete node.freevideoMedia; return removed?.apply(this, args); };
     const configure = node.onConfigure;
     node.onConfigure = function (...args) { const result = configure?.apply(this, args); cleanAudioUse(node); queueMicrotask(() => { syncReferenceSockets(node); render(); }); return result; };
     const connectionChanged = node.onConnectionsChange;
@@ -578,8 +653,6 @@ function resultPanel(node) {
         const removed = node.onRemoved;
         node.onRemoved = function (...args) { picker.dispose(); window.removeEventListener('freevideo-reference-prompt', changed); return removed?.apply(this, args); };
     }
-    node.addDOMWidget('freevideo_prompt_guide', 'freevideo_prompt_guide', promptGuide(),
-        {serialize: false, getMinHeight: () => 58, getMaxHeight: () => 76});
     const panel = el("div", undefined, "fv-panel"); panel.dataset.freevideo = "result";
     // Grow the node for the panel's new height. A node that is already tall
     // enough keeps its size, so lay its widgets out again; otherwise the result
@@ -708,8 +781,10 @@ function resultPanel(node) {
         for (const [label, file] of [[text("Download video", "下载视频"), value.video], [text("Report", "报告"), value.report]]) {
             if (!file) continue;
             const link = el("a", label); link.href = outputDownloadURL(api, file); link.download = file === value.video ? '' : reportFileName();
+            link.dataset.fvTip = file === value.video ? 'studio.download' : 'studio.report';
             // Named when clicked, like the creation panel's report: saving it again is not "video.debug (1).json".
             if (file !== value.video) link.onclick = () => { link.download = reportFileName(); };
+            else checkedDownload(api, link, file, {missing: () => anchoredNotice(link, unreadableVideoText(text), {below: true})});
             links.append(link);
         }
         links.append(shareButton(value, text));
@@ -890,6 +965,13 @@ app.registerExtension({
         await notifyCompatibility();
     },
     async beforeRegisterNodeDef(nodeType, nodeData) {
+        if (cn && String(nodeData.name).startsWith('FreeVideo')) {
+            const title = nodeType.prototype.getTitle;
+            nodeType.prototype.getTitle = function (...args) {
+                const shown = title ? title.apply(this, args) : this.title || this.constructor.title;
+                return TITLE_ZH[shown] || shown;
+            };
+        }
         if (nodeData.name === 'FreeVideoMedia') {
             nodeData.description = text(nodeData.description,
                 '连接图片、音频或上传文件。可以连接多张参考图片，上传的素材排在前面，连接的图片按从上到下的顺序排在后面。选择首尾帧或实验性参考生成，留空则为文生视频。');
@@ -905,9 +987,14 @@ app.registerExtension({
         }
         if (!["FreeVideoMedia", "FreeVideoGenerate", "FreeVideoLoRAStack"].includes(nodeData.name)) return;
         if (nodeData.name === "FreeVideoGenerate") nodeType.prototype.freevideoStarterPrompt = nodeData.input?.required?.text?.[1]?.default || '';
+        if (nodeData.name !== "FreeVideoLoRAStack") {
+            const configured = nodeType.prototype.onConfigure;
+            nodeType.prototype.onConfigure = function (...args) { const result = configured?.apply(this, args); localizeNode(this); return result; };
+        }
         const created = nodeType.prototype.onNodeCreated;
         nodeType.prototype.onNodeCreated = function () {
             const result = created?.apply(this, arguments);
+            if (nodeData.name !== "FreeVideoLoRAStack") queueMicrotask(() => localizeNode(this));
             this.color = '#212a37'; this.bgcolor = '#1a222e';
             if (nodeData.name === "FreeVideoMedia") mediaPanel(this);
             else if (nodeData.name === "FreeVideoLoRAStack") {
@@ -944,15 +1031,16 @@ app.registerExtension({
                 }
                 const quality = this.widgets?.find(w => w.name === 'two_pass');
                 if (quality) {
-                    quality.label = text('Two-pass acceleration', '二次采样加速');
+                    quality.label = text('Two-pass acceleration', '二采加速');
                     quality.tooltip = text('Usually faster: generates at a lower resolution, then upscales and refines.', '通常更快：先用低分辨率生成，再放大细化。');
                 }
+                // The same names as the creation panel's Advanced tray.
                 for (const [name, en, zh] of [['base_steps', 'First-pass steps', '一采步数'], ['refine_steps', 'Second-pass steps', '二采步数']]) {
                     const steps = this.widgets?.find(w => w.name === name);
                     if (steps) {
                         steps.label = text(en, zh);
-                        steps.tooltip = text('Changing sampling steps may lower generation quality. Default: 8 first-pass and 3 second-pass steps. Two-pass acceleration runs only with 8 first-pass steps. Other step counts use a single pass. Other second-pass counts must be fewer than first-pass steps.',
-                            '修改采样步数可能降低生成质量。默认一采 8 步、二采 3 步；只有一采为 8 步时才会使用二次采样加速，其他步数只采样一遍；其他二采步数需小于一采步数。');
+                        steps.tooltip = text('Changing steps may lower quality. Default: 8 first-pass and 3 second-pass steps. With other first-pass steps the video is made in one pass. Second-pass steps other than 3 must be fewer than first-pass steps.',
+                            '改步数可能降低质量。默认一采 8 步、二采 3 步；一采不是 8 步时只生成一遍；二采步数不是 3 时需少于一采步数。');
                     }
                 }
                 if (cn) {
@@ -971,7 +1059,7 @@ app.registerExtension({
                         ['voice_reference', '声音参考', '接着生成对白时，沿用原视频开头的声音，让前后声音一致。'],
                         ['hide_tail', '隐藏对白尾段', '多生成 17 帧后丢弃，让对白在前后两段之间连贯。'],
                         ['step_cache', '步间缓存', '复用相近采样步之间的计算，更快完成，结果会有细微变化。'],
-                        ['upscale_factor', '放大倍数', '二次采样时成片相对首遍的放大倍数。'],
+                        ['upscale_factor', '放大倍数', '二采时成片相对一采的放大倍数。'],
                         ['allow_empty_prompt', '允许空描述', '描述为空时直接生成，不再提示。'],
                     ]) {
                         const widget = this.widgets?.find(w => w.name === name);
@@ -1002,6 +1090,7 @@ app.registerExtension({
         };
     },
     afterConfigureGraph() {
+        pinSoon();
         syncPrompts(true);
         configuringGraph = false;
         for (const node of app.graph?._nodes || []) {
@@ -1020,7 +1109,7 @@ app.registerExtension({
         // launcher or the user asked for it, never on its own for a tab restored with the page. The startup
         // cover follows this same decision and is always released here when the workspace will not open.
         const opens = !!node && app.graph?.extra?.freevideo_studio && rememberedView !== 'nodes' && (launchVisit || userActed);
-        if (!opens) { finishWorkspaceRestore(); if (!node) collapseWorkspaces(); return; }
+        if (!opens) { finishWorkspaceRestore(); globalThis.FreeVideoShell?.hideCover(); if (!node) collapseWorkspaces(); return; }
         const opening = rememberedView === 'editor' ? beginWorkspaceRestore() : null, epoch = configuration;
         requestAnimationFrame(async () => {
             const launch = waitForLauncherRestore(); if (launch) await launch;

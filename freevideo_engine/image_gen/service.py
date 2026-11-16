@@ -1,5 +1,6 @@
 """One active image and one waiting job, with a worker leased until idle or video work."""
 import atexit
+from datetime import datetime, timezone
 import asyncio
 from collections import OrderedDict
 from copy import deepcopy
@@ -20,6 +21,8 @@ import uuid
 from . import image_model, image_pack, keep, progress_model
 from .loras import ERRORS as LORA_ERRORS, resolve_selection
 from ..download_settings import observed_speed
+from ..exit_diagnostics import clean_reading
+from ..monitoring import save
 from .failure import (Context, HOST_MESSAGE_ZH, host_memory_shortage, ERRORS, FailureError, MESSAGE_ZH, NO_REPORT, STAGES, UNIFIED_MESSAGE_ZH,
                       classify_exception)
 
@@ -32,10 +35,37 @@ H3_MAX_AREA = image_model.H3_AREAS['high'] ** 2
 H3_MAX_SIDE = 8192
 H3_GROUP = 'h3-image:' + image_pack.default_tier()
 REPORT_LIMIT = 16
+# A point selection's picture stays this long after its last use, and at most this many at once.
+SEGMENT_KEEP = 900.
+SEGMENT_INPUTS = 8
+# A page's picture that no job here holds is taken for one of an ended job after this long.
+PAGE_UPLOAD_KEEP = 24 * 3600.
 HISTORY_NAME = re.compile(r'image-\d{8}-\d{6}-\d{2}\.(?:png|jpg)')
+# Which model made each history picture; a picture from before this record has no entry.
+MODELS_FILE = 'image-models.json'
 LEGACY_NAME = re.compile(r'[0-9a-f]{32}\.png')
-PAGE_UPLOAD = re.compile(r'freevideo-image-(?:reference|mask)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.png')
+# The pictures a page sends with one request: a random name in FreeVideo's own folder, which ComfyUI's Load Image list
+# does not show (it lists only the input folder itself). Earlier pages put them in the input folder under the
+# second form. The service removes them when the job ends; nothing else in the input folder is ever removed.
+PAGE_FOLDER = 'freevideo-image-ref'
+# A picture made for a card that is not saved yet (purpose "cast-draft"): not a work, not in the history; it becomes the
+# card's own file when the card is saved, and goes when the page discards it or after a day.
+DRAFT_FOLDER = 'freevideo-draft'
+DRAFT_NAME = re.compile(r'freevideo-draft/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(?:jpg|png)')
+PURPOSES = ('cast-draft',)
+PAGE_UPLOAD = re.compile(r'freevideo-image-ref/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(?:png|jpg|webp)'
+                         r'|freevideo-image-(?:reference|mask)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.png')
 HISTORY_LIMIT = 500
+# Where a picture came from (editor saves, and generations that name a source), beside image-models.json.
+RECORDS_FILE = 'image-records.json'
+WORK_SOURCE = re.compile(r'freevideo-image/image-\d{8}-\d{6}-\d{2}\.(?:png|jpg)|[0-9a-f]{64}')
+CONTENT_ID = re.compile(r'[0-9a-f]{64}')
+SAVE_LIMIT = 256 * 1024 ** 2
+# Deleted pictures wait in freevideo-image/.deleted this long, so a click can bring them back.
+TRASH = '.deleted'
+TRASH_BATCH = re.compile(r'[0-9]{1,20}-[0-9a-f]{6}')
+UNDO_SECONDS = 10
+UNDO_GRACE = 3
 # The 高清 size is offered from this much card memory; smaller cards keep one size.
 HIGH_SIZE_MIN_TOTAL = 6 * 1024 ** 3
 INFERENCE_TIMEOUT = 600.
@@ -161,6 +191,11 @@ class Service:
         self.segment_stop = threading.Event()
         self.segment_done = threading.Event()
         self.segment_done.set()
+        # The picture each point selection reads, by name, with when it was last used: the page sends one layer
+        # once for as long as it looks the same, so it stays a while and then goes.
+        self.segment_inputs = OrderedDict()
+        self.trash_mutex = threading.RLock()
+        self.on_works_deleted = None
         atexit.register(self.close)
 
     @staticmethod
@@ -184,7 +219,8 @@ class Service:
                     segment=dict(ready=image_pack.ready(machine['model_root'], group='segment'),
                                  max_points=16, device='cpu',
                                  install=self.segment_installer.state() if self.segment_installer else None),
-                    bytes_per_second=None if ready else observed_speed(engine_root),
+                    bytes_per_second=None if ready else observed_speed(engine_root), history_trash=True, history_save=True,
+                    purposes=list(PURPOSES),
                     **({'unified_memory': True} if machine.get('device_backend') == 'mps' else {}))
 
     def model_rows(self, machine, qwen_ready, qwen_downloading):
@@ -289,7 +325,7 @@ class Service:
         directory = Path(self.input_directory()).resolve()
         folder, _, leaf = name.rpartition('/') if isinstance(name, str) else ('', '', '')
         if (not isinstance(name, str) or not leaf or name.startswith('/') or leaf in ('.', '..')
-                or folder not in ('', 'freevideo-image')
+                or folder not in ('', 'freevideo-image', PAGE_FOLDER, DRAFT_FOLDER)
                 or any(char in name for char in ('\\', ':', '\0'))):
             raise ValueError('invalid_media')
         parent = directory / folder if folder else directory
@@ -307,17 +343,108 @@ class Service:
         output.mkdir(exist_ok=True)
         return output
 
-    def output_path(self, named=False):
+    def output_path(self, named=False, suffix='.jpg'):
         """A new picture's path. Generated pictures get a readable name that the history lists."""
         output = self.output_directory()
         if not named:
             return str(output / (uuid.uuid4().hex + '.png'))
         stamp = time.strftime('image-%Y%m%d-%H%M%S')
         for number in range(1, 100):
-            path = output / ('%s-%02d.jpg' % (stamp, number))
-            if not path.exists():
-                return str(path)
+            base = '%s-%02d' % (stamp, number)
+            if not any(os.path.lexists(output / (base + other)) for other in ('.jpg', '.png')):
+                return str(output / (base + suffix))
         raise ValueError('invalid_media')
+
+    def draft_path(self):
+        """Where a card's unsaved picture is written: FreeVideo's own folder of drafts, never the history."""
+        directory = Path(self.input_directory()).resolve()
+        folder = directory / DRAFT_FOLDER
+        if folder.is_symlink() or (folder.exists() and not folder.is_dir()):
+            raise ValueError('invalid_media')
+        folder.mkdir(exist_ok=True)
+        return str(folder / ('%s.jpg' % uuid.uuid4()))
+
+    @staticmethod
+    def work_record(value, origin):
+        """What a new picture keeps about where it came from: a picture of the history or a content id, and the content
+        ids of its prompt and references. Never a prompt or a file name the user chose."""
+        record = dict(origin=origin)
+        source = value.get('source')
+        if source is not None:
+            if not isinstance(source, str) or not WORK_SOURCE.fullmatch(source):
+                raise ValueError('invalid_request')
+            record['source'] = source
+        prompt_ref = value.get('prompt_ref')
+        if prompt_ref is not None:
+            if not isinstance(prompt_ref, str) or not CONTENT_ID.fullmatch(prompt_ref):
+                raise ValueError('invalid_request')
+            record['prompt_ref'] = prompt_ref
+        refs = value.get('reference_refs')
+        if refs is not None:
+            if (not isinstance(refs, list) or len(refs) > H3_MAX_IMAGES
+                    or not all(isinstance(ref, str) and CONTENT_ID.fullmatch(ref) for ref in refs)):
+                raise ValueError('invalid_request')
+            record['reference_refs'] = list(refs)
+        return record
+
+    def records(self, output=None):
+        try:
+            rows = json.loads(((output or self.output_directory()) / RECORDS_FILE).read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            return {}
+        return {name: row for name, row in rows.items() if isinstance(row, dict)} if isinstance(rows, dict) else {}
+
+    def note_record(self, path, record):
+        """Keep a picture's record beside the model record; records of pictures that are gone are dropped."""
+        if not record or set(record) == {'origin'} and record['origin'] == 'generate':
+            return
+        try:
+            output = self.output_directory()
+            rows = self.records(output)
+            rows[Path(path).name] = record
+            present = {entry.name for entry in output.iterdir()}
+            save(output / RECORDS_FILE, {name: row for name, row in rows.items() if name in present})
+        except (OSError, ValueError):
+            pass
+
+    def history_save(self, value):
+        """Save the image editor's picture as a new work: the page uploads it to the request folder, it is written
+        under the history's own name (PNG when it has transparency, else JPEG) and the upload goes at once."""
+        if not isinstance(value, dict):
+            raise ValueError('invalid_request')
+        name = value.get('image')
+        if not isinstance(name, str) or not name.startswith(PAGE_FOLDER + '/') or not PAGE_UPLOAD.fullmatch(name):
+            raise ValueError('invalid_media')
+        try:
+            record = self.work_record(value, 'editor')
+            path = Path(self.media_path(name))
+            if path.stat().st_size > SAVE_LIMIT:
+                raise ValueError('too_large')
+            from PIL import Image
+            try:
+                with Image.open(path) as image:
+                    if max(image.size) > H3_MAX_SIDE:
+                        raise ValueError('too_large')
+                    image.load()
+                    clear = image.convert('RGBA') if image.mode in ('RGBA', 'LA', 'PA') or 'transparency' in image.info else None
+                    transparent = clear is not None and clear.getchannel('A').getextrema()[0] < 255
+                    target = Path(self.output_path(named=True, suffix='.png' if transparent else '.jpg'))
+                    temporary = target.with_name('.%s.%s.partial' % (target.name, uuid.uuid4().hex[:8]))
+                    try:
+                        if transparent:
+                            clear.save(temporary, 'PNG')
+                        else:
+                            image.convert('RGB').save(temporary, 'JPEG', quality=95)
+                        from ..file_ops import publish
+                        publish(temporary, target)
+                    finally:
+                        temporary.unlink(missing_ok=True)
+            except (OSError, Image.DecompressionBombError, SyntaxError):
+                raise ValueError('invalid_media') from None
+            self.note_record(target, record)
+        finally:
+            self.remove_uploads([name])
+        return dict(file='freevideo-image/' + target.name, name=target.name)
 
     def legacy_picture(self, path):
         """A picture from before generated names: a bare random name whose PNG is colour, since masks are grey."""
@@ -343,7 +470,33 @@ class Service:
                 except OSError:
                     pass
         names = sorted(named, reverse=True) + [name for _, name in sorted(older, reverse=True)]
-        return dict(items=[dict(file='freevideo-image/' + name, name=name) for name in names[:HISTORY_LIMIT]])
+        made = self.made_by(output)
+        return dict(items=[dict(file='freevideo-image/' + name, name=name, **(dict(model=made[name]) if name in made else {}))
+                           for name in names[:HISTORY_LIMIT]])
+
+    @staticmethod
+    def made_by(output):
+        """File name -> model id for the pictures that have a record; an unreadable file counts as no record."""
+        try:
+            rows = json.loads((output / MODELS_FILE).read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            return {}
+        if not isinstance(rows, dict):
+            return {}
+        return {name: model for name, model in rows.items() if isinstance(model, str) and model in image_model.MODELS}
+
+    def note_model(self, path, model):
+        """Record the model that made a picture, and drop the records of pictures that are gone. A failed write only loses the label."""
+        if model not in image_model.MODELS:
+            return
+        try:
+            output = self.output_directory()
+            rows = self.made_by(output)
+            rows[Path(path).name] = model
+            present = {entry.name for entry in output.iterdir()}
+            save(output / MODELS_FILE, {name: value for name, value in rows.items() if name in present})
+        except (OSError, ValueError):
+            pass
 
     def history_path(self, name):
         """The picture a history name stands for; ValueError when it is none of ours, missing when it is already gone."""
@@ -361,13 +514,167 @@ class Service:
         if not path.is_file():
             raise ValueError('invalid_media')
         path.unlink()
+        self.works_deleted([name])
         return self.history()
+
+    def works_deleted(self, names):
+        """What only a deleted picture had goes with it: its model record, the files and caches it held, and (through
+        the hook the server sets) its library card and ComfyUI's record of the request."""
+        from .. import private_store
+        names = [name for name in names if isinstance(name, str)]
+        if not names:
+            return
+        try:
+            output = self.output_directory()
+            rows = self.made_by(output)
+            gone = {name.rpartition('/')[2] for name in names}
+            if gone & set(rows):
+                save(output / MODELS_FILE, {name: model for name, model in rows.items() if name not in gone})
+            records = self.records(output)
+            if gone & set(records):
+                save(output / RECORDS_FILE, {name: row for name, row in records.items() if name not in gone})
+        except (OSError, ValueError):
+            pass
+        try:
+            input_root = self.input_directory()
+            from ..paths import data_root
+            for name in names:
+                private_store.release('image:' + name, input_root=input_root, cache_root=data_root() / 'input-cache')
+        except (OSError, ValueError):
+            logging.warning('[FreeVideo] Could not release what a deleted picture held.', exc_info=True)
+        # The failure reports kept in memory for the page drop the ones about these pictures.
+        leaves = [name.rpartition('/')[2] for name in names]
+        with self.mutex:
+            for report_id in [key for key, report in self.reports.items()
+                              if any(leaf in json.dumps(report, default=str) for leaf in leaves)]:
+                self.reports.pop(report_id, None)
+        hook = getattr(self, 'on_works_deleted', None)
+        if hook is not None:
+            try:
+                hook(names)
+            except Exception:
+                logging.warning('[FreeVideo] Could not remove what a deleted picture left elsewhere.', exc_info=True)
+
+    # Deleting from the page: the pictures move to freevideo-image/.deleted at once and go for good UNDO_SECONDS
+    # later, also when the page is closed meanwhile; a restart finishes what an earlier run left.
+    def trash_directory(self):
+        trash = self.output_directory() / TRASH
+        if trash.is_symlink() or (trash.exists() and not trash.is_dir()):
+            raise ValueError('invalid_media')
+        trash.mkdir(exist_ok=True)
+        return trash
+
+    def history_trash(self, names):
+        if not isinstance(names, list) or not names or len(names) > HISTORY_LIMIT:
+            raise ValueError('invalid_request')
+        with self.trash_mutex:
+            trash = self.trash_directory()
+            token = '%d-%s' % (time.time_ns(), secrets.token_hex(3))
+            moved, failed = [], []
+            for name in dict.fromkeys(names):
+                try:
+                    path = self.history_path(name)
+                except ValueError:
+                    failed.append(dict(file=name if isinstance(name, str) else '', reason='invalid'))
+                    continue
+                target = trash / ('%s-%s' % (token, path.name))
+                try:
+                    path.rename(target)
+                except FileNotFoundError:
+                    failed.append(dict(file=name, reason='missing'))
+                    continue
+                except OSError:
+                    failed.append(dict(file=name, reason='busy'))
+                    continue
+                moved.append(path.name)
+            if moved:
+                save(trash / ('.pending-%s.json' % token), dict(due=time.time() + UNDO_SECONDS + UNDO_GRACE, items=moved))
+                timer = threading.Timer(UNDO_SECONDS + UNDO_GRACE + 1, self.finish_trash)
+                timer.daemon = True
+                timer.start()
+        return dict(self.history(), batch=token if moved else None, undo_seconds=UNDO_SECONDS,
+                    deleted=['freevideo-image/' + leaf for leaf in moved], failed=failed)
+
+    def history_undo(self, token):
+        if not isinstance(token, str) or not TRASH_BATCH.fullmatch(token):
+            raise ValueError('invalid_request')
+        with self.trash_mutex:
+            trash = self.trash_directory()
+            manifest = trash / ('.pending-%s.json' % token)
+            try:
+                value = json.loads(manifest.read_text(encoding='utf-8'))
+            except (OSError, ValueError):
+                raise ValueError('undo_expired') from None
+            output = self.output_directory()
+            kept = []
+            for leaf in value.get('items', []):
+                if not isinstance(leaf, str) or not (HISTORY_NAME.fullmatch(leaf) or LEGACY_NAME.fullmatch(leaf)):
+                    continue
+                source, target = trash / ('%s-%s' % (token, leaf)), output / leaf
+                try:
+                    if not os.path.lexists(target):
+                        source.rename(target)
+                        continue
+                except OSError:
+                    pass
+                kept.append(leaf)
+            manifest.unlink(missing_ok=True)
+            if kept:
+                # A picture that could not be put back is not left half deleted.
+                self.purge_trash([(token, leaf) for leaf in kept])
+        return self.history()
+
+    def finish_trash(self, *, everything=False):
+        """Delete for good the batches whose undo time is over (all with ``everything``), and pictures a stopped
+        deletion moved without a record. Returns the names deleted."""
+        with self.trash_mutex:
+            try:
+                trash = self.trash_directory()
+                entries = sorted(os.listdir(trash))
+            except (OSError, ValueError):
+                return []
+            held, due = set(), []
+            for entry in entries:
+                found = re.fullmatch(r'\.pending-(%s)\.json' % TRASH_BATCH.pattern, entry)
+                if not found:
+                    continue
+                try:
+                    value = json.loads((trash / entry).read_text(encoding='utf-8'))
+                    leaves = [leaf for leaf in value.get('items', []) if isinstance(leaf, str)]
+                    late = everything or time.time() >= float(value.get('due', 0))
+                except (OSError, ValueError, TypeError):
+                    leaves, late = [], True
+                pairs = [(found.group(1), leaf) for leaf in leaves]
+                if late:
+                    due += pairs
+                    (trash / entry).unlink(missing_ok=True)
+                else:
+                    held.update('%s-%s' % pair for pair in pairs)
+            for entry in entries:
+                found = re.fullmatch(r'(%s)-(.+)' % TRASH_BATCH.pattern, entry)
+                if found and entry not in held and (found.group(1), found.group(2)) not in due:
+                    due.append((found.group(1), found.group(2)))
+            return self.purge_trash(due)
+
+    def purge_trash(self, pairs):
+        from .. import private_store
+        trash, deleted = self.trash_directory(), []
+        input_root = self.input_directory()
+        for token, leaf in pairs:
+            if not (HISTORY_NAME.fullmatch(leaf) or LEGACY_NAME.fullmatch(leaf)):
+                continue
+            relative = 'freevideo-image/%s/%s-%s' % (TRASH, token, leaf)
+            status, _ = private_store.safe_remove(input_root, relative, patterns=[re.compile(re.escape(relative))], folders=0)
+            if status in ('removed', 'gone'):
+                deleted.append('freevideo-image/' + leaf)
+        self.works_deleted(deleted)
+        return deleted
 
     def history_delete_many(self, names):
         """Delete each picture on its own; the ones that stay are listed with why (busy, missing, invalid)."""
         if not isinstance(names, list) or len(names) > HISTORY_LIMIT:
             raise ValueError('invalid_request')
-        failed = []
+        failed, deleted = [], []
         for name in dict.fromkeys(names):
             try:
                 path = self.history_path(name)
@@ -380,6 +687,9 @@ class Service:
                 failed.append(dict(file=name, reason='missing'))
             except OSError:
                 failed.append(dict(file=name, reason='busy'))
+            else:
+                deleted.append(name)
+        self.works_deleted(deleted)
         return dict(self.history(), failed=failed)
 
     def history_open(self):
@@ -426,6 +736,57 @@ class Service:
                       stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace',
                       supervise=True, start_new_session=True))
 
+    def held_tokens(self):
+        """The private_store tokens of the pictures a queued or running job, or a recent point selection, still reads."""
+        from .. import private_store
+        with self.mutex:
+            names = [name for kept in self.uploads.values() for name in kept] + list(self.segment_inputs)
+        return {found for found in map(private_store.classify, names) if found}
+
+    def note_segment_input(self, name, now=None):
+        """Keep the picture a point selection read for SEGMENT_KEEP seconds after its last use; older ones go."""
+        now = time.monotonic() if now is None else now
+        stale = []
+        with self.mutex:
+            if isinstance(name, str) and PAGE_UPLOAD.fullmatch(name):
+                self.segment_inputs.pop(name, None)
+                self.segment_inputs[name] = now
+            while self.segment_inputs and (len(self.segment_inputs) > SEGMENT_INPUTS
+                                           or now - next(iter(self.segment_inputs.values())) > SEGMENT_KEEP):
+                stale.append(self.segment_inputs.popitem(last=False)[0])
+            held = {held for kept in self.uploads.values() for held in kept}
+        self.remove_uploads([old for old in stale if old not in held and old != name])
+
+    def clean_page_uploads(self, *, older=PAGE_UPLOAD_KEEP, now=None):
+        """Remove the pictures of jobs that ended without this process seeing them end (a restart, a closed
+        program), when no job here holds them. Only the page's own temporary names; returns how many went."""
+        from .. import private_store
+        now = time.time() if now is None else now
+        try:
+            root = Path(self.input_directory())
+        except (OSError, ValueError):
+            return 0
+        names = []
+        for folder, prefix in ((root / PAGE_FOLDER, PAGE_FOLDER + '/'), (root, ''), (root / DRAFT_FOLDER, DRAFT_FOLDER + '/')):
+            try:
+                if folder.is_symlink() or not folder.is_dir():
+                    continue
+                names += [prefix + leaf for leaf in os.listdir(folder)
+                          if PAGE_UPLOAD.fullmatch(prefix + leaf) or DRAFT_NAME.fullmatch(prefix + leaf)]
+            except OSError:
+                continue
+        with self.mutex:
+            held = {name for kept in self.uploads.values() for name in kept} | set(self.segment_inputs)
+        removed = 0
+        for name in names:
+            try:
+                if name in held or now - os.lstat(root / name).st_mtime < older:
+                    continue
+            except OSError:
+                continue
+            removed += private_store.safe_remove(root, name)[0] == 'removed'
+        return removed
+
     def segment(self, value):
         """Immediate admission, no waiting queue. The HTTP caller runs this off its event loop."""
         from .segment import validate_points
@@ -434,6 +795,7 @@ class Service:
             raise ValueError('invalid_request')
         validate_points(value.get('points'))
         path = self.media_path(value.get('image'))
+        self.note_segment_input(value.get('image'))
         with self.mutex:
             if self.closed:
                 raise ValueError('closed')
@@ -564,9 +926,13 @@ class Service:
         if loras:
             from ..lora_triggers import apply_triggers
             prompt = apply_triggers(prompt, loras, folders=self.folders)
+        purpose = value.get('purpose')
+        if purpose is not None and purpose not in PURPOSES:
+            raise ValueError('invalid_request')
         result = dict(prompt=prompt, width=dimensions[0] // 32 * 32, height=dimensions[1] // 32 * 32,
                       steps=8, seed=seed, images=paths, **(dict(mask=mask_path) if mask_path else {}),
-                      **(dict(cast_view='back') if cast_view == 'back' else {}), path=self.output_path(named=True),
+                      **(dict(cast_view='back') if cast_view == 'back' else {}),
+                      path=self.draft_path() if purpose == 'cast-draft' else self.output_path(named=True),
                       **(dict(loras=loras) if loras else {}), **(dict(model=model) if model else {}))
         # Leave room for action, kind and the small size-fit record added at dispatch.
         if loras and len(json.dumps(result, ensure_ascii=True).encode('utf-8')) > BODY_LIMIT - 1024:
@@ -587,6 +953,7 @@ class Service:
         if action not in ('generate', 'compose'):
             raise ValueError('invalid_request')
         context = Context(action, value)
+        context.work_record = self.work_record(value, 'generate') if isinstance(value, dict) else None
         context.note_start()
         with self.mutex:
             if self.closed:
@@ -609,7 +976,9 @@ class Service:
             key = secrets.token_urlsafe(24)
             self.uploads[key] = [name for name in [*(raw.get('images') or []), raw.get('mask')] if isinstance(name, str)]
             while len(self.uploads) > REPORT_LIMIT:
-                self.uploads.popitem(last=False)
+                # Only a job that ended keeps an entry this old: its pictures go with it.
+                _, names = self.uploads.popitem(last=False)
+                self.remove_uploads(names)
             if waiting:
                 self.queued = dict(key=key, action=action, value=raw, context=context,
                                    state=dict(phase='queued', queued_behind='video' if video else 'image'),
@@ -698,6 +1067,7 @@ class Service:
             self.requests.put(value)
 
     def discard_queued(self, state):
+        self.drop_uploads(self.queued['key'])
         self.remember(self.queued['key'], state)
         self.queued = None
         self.queue_wake.set()
@@ -882,7 +1252,29 @@ class Service:
                 while len(self.reports) > REPORT_LIMIT:
                     self.reports.popitem(last=False)
             result['report_id'] = report_id
+        self.record_failure(result, context, error, video_busy)
         return result
+
+    def record_failure(self, result, context, error, video_busy):
+        """One line per failed image request in logs/image-failures.jsonl (a short history), so the reason can be read after the
+        page is gone. Fixed words and numbers only: no prompt, no picture, no path."""
+        try:
+            exit_code = getattr(error, 'exit_code', None)
+            if type(exit_code) is not int:
+                exit_code = (clean_reading(getattr(error, 'exit_reading', None)) or {}).get('exit_code')
+            row = dict(time=datetime.now(timezone.utc).isoformat(timespec='seconds'), kind=getattr(context, 'kind', None),
+                       error=result.get('error'), stage=result.get('stage'), report_id=result.get('report_id'),
+                       worker_exit_code=exit_code if type(exit_code) is int else None,
+                       video_busy=bool(video_busy), worker_restarts=self.worker_restarts)
+            logs = Path(self.installation()[0]) / 'logs'
+            logs.mkdir(parents=True, exist_ok=True)
+            file = logs / 'image-failures.jsonl'
+            lines = file.read_text(encoding='utf-8').splitlines()[-199:] if file.is_file() else []
+            temporary = logs / 'image-failures.jsonl.tmp'
+            temporary.write_text('\n'.join([*lines, json.dumps(row, ensure_ascii=False)]) + '\n', encoding='utf-8')
+            os.replace(temporary, file)
+        except Exception:
+            pass  # a log that cannot be written must never change the failure the user sees
 
     def report(self, report_id):
         if (not isinstance(report_id, str) or len(report_id) != 32
@@ -984,19 +1376,29 @@ class Service:
         """Remove the reference pictures and mask the page uploaded for a finished job; nothing else is touched."""
         self.remove_uploads(self.uploads.pop(key, []))
 
+    def discard_uploads(self, names):
+        """Remove page uploads that never became a job: the page turned the request away or was stopped before
+        it was sent. A name that a job holds stays until that job ends."""
+        if not isinstance(names, list) or len(names) > H3_MAX_IMAGES + 1:
+            raise ValueError('invalid_request')
+        with self.mutex:
+            held = {name for kept in self.uploads.values() for name in kept}
+            self.remove_uploads([name for name in names if name not in held])
+            drafts = [name for name in names if isinstance(name, str) and DRAFT_NAME.fullmatch(name) and name not in held]
+        from .. import private_store
+        for name in drafts:
+            private_store.safe_remove(self.input_directory(), name)
+        return dict(discarded=True)
+
     def remove_uploads(self, names):
+        from .. import private_store
         try:
-            directory = Path(self.input_directory()).resolve()
+            directory = self.input_directory()
         except (OSError, ValueError):
             return
         for name in names:
             if isinstance(name, str) and PAGE_UPLOAD.fullmatch(name):
-                path = directory / name
-                if path.is_file() and not path.is_symlink():
-                    try:
-                        path.unlink()
-                    except OSError:
-                        pass
+                private_store.safe_remove(directory, name)
 
     def cancel(self, key):
         with self.mutex:
@@ -1049,6 +1451,9 @@ class Service:
         self.stop_for_generation()
         if queue_thread is not None and queue_thread is not threading.current_thread():
             queue_thread.join()
+        with self.mutex:
+            names, self.segment_inputs = list(self.segment_inputs), OrderedDict()
+        self.remove_uploads(names)
 
     def resident_endpoint(self):
         """The video worker's endpoint when it is alive, so the image worker's text encoding can reuse its resident encoder."""
@@ -1255,6 +1660,8 @@ class Service:
                     self.preview = None
                     self._busy = False
                     self.context = None
+                    # The worker is gone, so nothing reads the job's pictures any more.
+                    self.drop_uploads(self.key)
                 self.queue_wake.set()
 
     def shrink(self, value, row, context):
@@ -1426,6 +1833,10 @@ class Service:
                     if type(seconds) not in (int, float) or not math.isfinite(seconds) or seconds < 0:
                         raise RuntimeError('worker_exit')
                     self.keep_forecast(context)
+                    draft = path.parent.name == DRAFT_FOLDER
+                    if not draft:
+                        self.note_model(path, value.get('model') or image_model.QWEN)
+                        self.note_record(path, getattr(context, 'work_record', None))
                     report_id = getattr(context, 'report_id', None)
                     if report_id:
                         done = context.report('succeeded', row=row, outcome='succeeded', worker_restarts=self.worker_restarts,
@@ -1435,7 +1846,7 @@ class Service:
                             self.reports.move_to_end(report_id)
                             while len(self.reports) > REPORT_LIMIT:
                                 self.reports.popitem(last=False)
-                    result = dict(phase='complete', file='freevideo-image/' + path.name,
+                    result = dict(phase='complete', file=(DRAFT_FOLDER if draft else 'freevideo-image') + '/' + path.name,
                                   seconds=seconds, plan=row.get('plan'), report_id=report_id)
                     if isinstance(row.get('attention'), dict):
                         result['attention'] = row['attention']
@@ -1446,6 +1857,9 @@ class Service:
                     self.preview = None
                     self._busy = False
                     self.context = None
+                    # Remove the job's uploads now, not when the page next asks: a page that was stopped,
+                    # closed or reloaded never asks again.
+                    self.drop_uploads(self.key)
                     self.queue_wake.set()
                 return
 
@@ -1491,6 +1905,46 @@ def register():
 
     service = Service(installation, folder_paths.get_input_directory, video_busy=video_busy, folders=folder_paths)
     server._freevideo_image_gen = service
+
+    def works_deleted(names):
+        # A deleted picture's library card goes with it, whichever page deleted it and even if that page is closed;
+        # an Agent job that made it keeps no prompt or pictures of it.
+        jobs = getattr(server, '_freevideo_agent', None)
+        if jobs is not None and hasattr(jobs, 'forget_works'):
+            try:
+                jobs.forget_works(list(names))
+            except Exception:
+                logging.warning('[FreeVideo] Could not update the Agent jobs of a deleted picture.', exc_info=True)
+        cast = getattr(jobs, 'cast', None)
+        if cast is None:
+            return
+        wanted = set(names)
+        with cast.changed:
+            cards = [record['card']['id'] for record in list(cast.records.values())
+                     if record['card'].get('kind') == 'image' and record['card'].get('description') in wanted]
+        for card in cards:
+            try:
+                cast.delete(card, by='user')
+            except Exception:
+                logging.warning('[FreeVideo] Could not remove the library card of a deleted picture.', exc_info=True)
+    service.on_works_deleted = works_deleted
+
+    def clean_page_uploads():
+        # A deletion an earlier run did not finish; then pictures of jobs that ended while no one here saw them end,
+        # again every few hours.
+        try:
+            service.finish_trash(everything=True)
+        except Exception:
+            logging.warning('[FreeVideo] Could not finish deleting pictures.', exc_info=True)
+        while not service.closed:
+            try:
+                removed = service.clean_page_uploads()
+                if removed:
+                    logging.info('[FreeVideo] Removed %d pictures left by image requests that had ended.', removed)
+            except Exception:
+                logging.warning('[FreeVideo] Could not remove pictures left by ended image requests.', exc_info=True)
+            time.sleep(6 * 3600)
+    threading.Thread(target=clean_page_uploads, name='freevideo-image-page-uploads', daemon=True).start()
     token = secrets.token_urlsafe(24)
 
     @server.routes.get('/freevideo/image-gen')
@@ -1544,6 +1998,8 @@ def register():
                                     headers={'Cache-Control': 'no-store', 'X-FreeVideo-Preview-Serial': str(found[0])})
             elif name == 'cancel':
                 result = service.cancel(value.get('job'))
+            elif name == 'discard-uploads':
+                result = service.discard_uploads(value.get('images'))
             elif name in ('pack-install', 'pack-cancel'):
                 result = service.pack_action(name.split('-')[1], model=value.get('model'))
             elif name in ('segment-install', 'segment-cancel'):
@@ -1553,9 +2009,15 @@ def register():
             elif name == 'history':
                 result = service.history()
             elif name == 'history-delete':
-                result = service.history_delete(value.get('file'))
+                result = await asyncio.to_thread(service.history_delete, value.get('file'))
             elif name == 'history-delete-many':
-                result = service.history_delete_many(value.get('files'))
+                result = await asyncio.to_thread(service.history_delete_many, value.get('files'))
+            elif name == 'history-save':
+                result = await asyncio.to_thread(service.history_save, value)
+            elif name == 'history-trash':
+                result = await asyncio.to_thread(service.history_trash, value.get('files'))
+            elif name == 'history-undo':
+                result = await asyncio.to_thread(service.history_undo, value.get('batch'))
             elif name == 'history-open':
                 if request.remote not in ('127.0.0.1', '::1'):
                     raise ValueError('invalid_request')

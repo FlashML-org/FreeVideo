@@ -2,8 +2,10 @@
 
 The browser supplies a small, text-only presentation frame using its own fonts.
 Video composition uses CPU PyAV and copies the existing audio packets. No model,
-CUDA context, cloud service or full report is involved. The saved ComfyUI
-workflow travels with both exports, so dropping one on the canvas restores it.
+CUDA context, cloud service or full report is involved. An export leaves this
+machine, so it carries the prompt and the ComfyUI workflow (which also names the
+files the video read) only when the user asks for them; then dropping it on the
+canvas restores the graph.
 """
 import asyncio
 import base64
@@ -118,7 +120,9 @@ def video_export(root, identity, data, stop):
     _report(path)
     info = path.stat()
     template, rect, key = layout(data)
-    key = hashlib.sha256(f'{key}:{info.st_size}:{info.st_mtime_ns}:v2'.encode()).hexdigest()[:20]
+    workflow = data.get('workflow') is True
+    # v3: an earlier export carried the graph whether or not it was asked for, so none is reused.
+    key = hashlib.sha256(f'{key}:{info.st_size}:{info.st_mtime_ns}:v3{":workflow" if workflow else ""}'.encode()).hexdigest()[:20]
     target = path.with_name('video.share-' + key + '.mp4')
     if target.is_symlink():
         raise ValueError('Invalid sharing destination')
@@ -129,7 +133,7 @@ def video_export(root, identity, data, stop):
     try:
         with av.open(str(path)) as reader, av.open(str(temporary), 'w', format='mp4',
                                                    options={'movflags': 'use_metadata_tags+faststart'}) as writer:
-            for name, value in saved_graph(path).items():
+            for name, value in (saved_graph(path).items() if workflow else ()):
                 writer.metadata[name] = value
             source = reader.streams.video[0]; source.thread_count = 1
             if abs(width / height - source.width / source.height) > 2 / height:

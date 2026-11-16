@@ -16,6 +16,7 @@ import {seconds as secondsText} from './editor_audio_notes.js';
 import {renderSpeedBadge} from './editor_speed.js';
 import {speedEdited} from './editor_speed_model.js';
 import {MUSIC_TRACK, MAX_MUSIC_FRAMES} from './editor_music_model.js';
+import {applyTip, switchTip, setTip} from './editor_tracks_tips.js';
 // A range drawn on the music track alone: music for that stretch.
 const musicRange = selection => selection?.kind === 'range' && selection.tracks?.length === 1 && selection.tracks[0] === MUSIC_TRACK;
 
@@ -121,16 +122,62 @@ export function tickSpacing(zoom) {
     return {minor: 5 * factor, major: 15 * factor};
 }
 
-export function hitEdge(position, width) {
-    if (position < -6 || position > width + 6) return null;
-    const reach = Math.min(6, width / 4);
-    return position <= reach ? 'start' : position >= width - reach ? 'end' : null;
+// `reach` is how far inside an edge a press still takes that edge, `outside` how far beyond it (6 px each by default).
+// The first stretch where a sound track has a clip and the picture track has none: {start, frames} or null.
+export function soundWithoutPicture(record) {
+    const pictures = record.tracks.find(track => track.id === 'v1')?.clips || [];
+    const sounds = record.tracks.filter(track => track.kind === 'audio').flatMap(track => track.clips).sort((a, b) => a.start - b.start);
+    for (const clip of sounds) {
+        let at = clip.start;
+        const stop = clip.start + clip.frames;
+        while (at < stop) {
+            const cover = pictures.find(picture => picture.start <= at && picture.start + picture.frames > at);
+            if (!cover) {
+                const next = pictures.filter(picture => picture.start > at).reduce((low, picture) => Math.min(low, picture.start), stop);
+                return {start: at, frames: Math.min(stop, next) - at};
+            }
+            at = cover.start + cover.frames;
+        }
+    }
+    return null;
 }
+export function hitEdge(position, width, reach = 6, outside = reach) {
+    if (position < -outside || position > width + outside) return null;
+    const inside = Math.min(reach, width / 4);
+    return position <= inside ? 'start' : position >= width - inside ? 'end' : null;
+}
+// Edges are easier to take with a finger. A mouse gets more room inside the clip; just past its end a press still
+// starts a range there, so the outer reach stays as it was.
+export const EDGE_REACH = {fine: [8, 6], coarse: [14, 14]};
 
 const clock = frame => {
     const seconds = Math.max(0, Math.floor(frame / model.FPS));
     return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 };
+// Where a dragged thing lands, to a tenth of a second when it is not on a whole one (whole seconds hid sub-second moves).
+export const preciseClock = (frame, fps = model.FPS) => {
+    const tenths = Math.max(0, Math.floor(frame * 10 / fps)), seconds = Math.floor(tenths / 10);
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}${tenths % 10 ? `.${tenths % 10}` : ''}`;
+};
+// The settle after a release: no overshoot, longer for longer ways, and it leaves at the pointer's speed (px per ms)
+// when the pointer was still moving toward where the clip lands.
+// `offset` is where it was let go relative to where it lands (positive: to the right of it).
+export function settleMotion(offset, velocity = 0) {
+    const way = Math.abs(offset);
+    if (way < .5) return null;
+    const duration = Math.round(Math.min(240, Math.max(120, 120 + way * .5)));
+    const toward = Math.sign(offset) === -Math.sign(velocity) ? Math.abs(velocity) : 0;
+    // Initial slope of the curve is y1 / x1 = speed * duration / distance; y1 stays within 0..1 so it never overshoots.
+    const x1 = .25, y1 = Math.min(1, Math.max(0, toward * duration / way * x1));
+    return {duration, easing: `cubic-bezier(${x1}, ${Math.round(y1 * 1000) / 1000}, .2, 1)`};
+}
+const reducedMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+// From an offset (where it was let go) back to its own place, by transform only.
+export function settle(node, dx, dy = 0, velocity = 0) {
+    const motion = settleMotion(Math.hypot(dx, dy) * Math.sign(dx || dy), velocity);
+    if (!motion || !node?.animate || reducedMotion()) return null;
+    return node.animate([{transform: `translate(${dx}px, ${dy}px)`}, {transform: 'translate(0, 0)'}], {...motion, fill: 'none'});
+}
 const sourceKey = clip => clip.source ? `${clip.source.kind}:${clip.source.id}` : null;
 const busy = clip => ['queued', 'running'].includes(clip.pending);
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
@@ -148,12 +195,21 @@ const icon = kind => {
     path.setAttribute('d', kind === 'video' ? 'M2 4h16v12H2z M4 13l4-5 4 4 2-2 3 4'
         : kind === 'link' ? 'M8.5 11.5l3-3 M7.5 9.5l-1.5 1.5a3 3 0 0 0 4.2 4.2l1.5-1.5 M12.5 10.5l1.5-1.5a3 3 0 0 0-4.2-4.2l-1.5 1.5'
         : kind === 'warning' ? 'M10 2a8 8 0 1 0 0 16a8 8 0 0 0 0-16 M10 6v5 M10 14v.1'
+        // Track heads: text, subtitles, music, the recording; other sound tracks keep the speaker.
+        : kind === 'text' ? 'M4 4h12 M10 4v12 M7 16h6'
+        : kind === 'subtitle' ? 'M2 4h16v12H2z M5 9h4 M11 9h4 M5 12h7'
+        : kind === 'music' ? 'M8 15V4l9-2v11 M8 15a2.5 2.5 0 1 1-2.5-2.5A2.5 2.5 0 0 1 8 15z M17 13a2.5 2.5 0 1 1-2.5-2.5A2.5 2.5 0 0 1 17 13z'
+        : kind === 'mic' ? 'M10 2a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z M4 10a6 6 0 0 0 12 0 M10 16v2'
             : 'M2 8h4l4-4v12l-4-4H2z M13 6c4 2 4 6 0 8 M13 9c1 1 1 1 0 2');
     svg.append(path); return svg;
 };
 
 export function createTracks(host, {state, sources = {}, t = en => en, actions = {}, blockProgress} = {}) {
-    const element = create('section', 'fv-ed-track-view');
+    // The floating task window keeps clear of the tracks (sgf-avoid).
+    // Resolves once the rows, clips and opening zoom are laid out at their final geometry (the view's readiness waits on it).
+    let settleReady = null;
+    const ready = new Promise(resolve => { settleReady = () => { settleReady = null; element.dataset.ready = 'true'; resolve(); }; });
+    const element = create('section', 'fv-ed-track-view sgf-avoid');
     element.tabIndex = 0; element.setAttribute('role', 'region');
     element.setAttribute('aria-label', t('Editing tracks', '剪辑轨道'));
     const heads = create('div', 'fv-ed-track-heads');
@@ -182,6 +238,7 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
     const playhead = create('div', 'fv-ed-playhead');
     const handle = create('button', 'fv-ed-playhead-handle');
     handle.type = 'button'; handle.setAttribute('aria-label', t('Play position', '播放位置'));
+    applyTip(handle, 'playhead', t);
     playhead.append(handle);
     const plannedLines = create('div', 'fv-ed-planned-borders');
     const beatLines = create('div', 'fv-ed-beat-lines');
@@ -199,7 +256,9 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
     const slider = create('input', 'fv-ed-zoom-slider');
     slider.type = 'range'; slider.min = '1'; slider.max = '160'; slider.step = '.1';
     slider.setAttribute('aria-label', t('Track zoom', '轨道缩放'));
-    const fit = create('button', 'fv-ed-fit'); fit.type = 'button'; fit.append(editorIcon('fit')); fit.setAttribute('aria-label', t('Fit all', '看全部')); fit.title = t('Fit all', '看全部');
+    const fit = create('button', 'fv-ed-fit'); fit.type = 'button'; fit.append(editorIcon('fit')); fit.setAttribute('aria-label', t('Fit all', '看全部'));
+    // Starting words; the page adds the reason when one is greyed at either end of the zoom.
+    applyTip(zoomOut, 'zoomOut', t); applyTip(zoomIn, 'zoomIn', t); applyTip(slider, 'zoomSlider', t); applyTip(fit, 'fit', t);
     zoomBar.append(zoomOut, slider, zoomIn, fit);
     element.append(heads, scroll, zoomBar, tooltip, popover); host.append(element);
 
@@ -241,7 +300,10 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         return {ok: true, frame: state.seek(at)};
     };
     const selectGestures = createSelectionGestures({state, element, content, scroll, clips, rows,
-        hitTest: pointerHit, snap, t, actions, renderSelection});
+        hitTest: pointerHit, snap, t, actions, renderSelection, settle});
+    // Said at the pointer while a dragged clip cannot be put down there; other refusals show only the red outline.
+    const refusal = error => ({busy: t('Generating; move it when it is done', '正在生成，完成后再移动'), locked: t('This track is locked', '这条轨道已锁定'),
+        track: t('It cannot go on this track', '不能放到这条轨上')})[error?.code] || '';
     function attempt(label, change, options) {
         try { state.apply(label, change, options); return true; }
         catch (error) {
@@ -350,6 +412,10 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
     }
     function renderSelection() {
         const next = selectedIds(state.selection);
+        const value = state.selection;
+        const onSecond = value?.kind === 'range' ? value.tracks.includes('a2') : value?.kind === 'gap' ? value.track === 'a2'
+            : value?.kind === 'clip' ? [...next].some(id => locate(id)?.track === 'a2') : false;
+        addAudio.dataset.shown = String(onSecond);
         for (const id of new Set([...selected, ...next])) locate(id)?.element.setAttribute('aria-selected', String(next.has(id)));
         selected = next;
         element.dataset.multiselect = String(isMultiple(state.record, [...next]));
@@ -393,7 +459,10 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         renderEmptyHints();
     }
     function renderPlayhead() {
-        playhead.style.left = `${pixels(state.playhead)}px`;
+        const x = pixels(state.playhead);
+        playhead.style.left = `${x}px`;
+        // Near time zero the 28 px grip moves right so it stays clear of the heads; the drawn tab stays on the line.
+        playhead.style.setProperty?.('--fv-ed-handle-shift', `${Math.max(0, Math.min(14, 6 - x))}px`);
         handle.setAttribute('aria-label', `${t('Play position', '播放位置')}, ${clock(state.playhead)}`);
     }
     function renderRuler() {
@@ -433,16 +502,33 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
             mountedStates.add(state);
             if (state.zoom === 12) state.setZoom(model.openingZoom(scroll.clientWidth, state.record));
         }
+        // The first layout with a real width has the opening zoom and every clip in its final place: the view may show now.
+        if (scroll.clientWidth && mountedStates.has(state)) settleReady?.();
         const duration = Math.max(model.duration(state.record), state.selection?.kind === 'range' ? state.selection.start + state.selection.frames : 0);
-        contentWidth = Math.max(scroll.clientWidth, pixels(duration + 30 * model.FPS));
+        // The content may start a little in from the heads (CSS margin); it still fills the view without a scroll bar.
+        const inset = typeof getComputedStyle === 'function' && content.isConnected ? parseFloat(getComputedStyle(content).marginLeft) || 0 : 0;
+        contentWidth = Math.max(scroll.clientWidth - inset, pixels(duration + 30 * model.FPS));
         content.style.width = `${contentWidth}px`;
-        for (const row of rows.values()) row.empty.style.width = `${scroll.clientWidth}px`;
+        for (const row of rows.values()) row.empty.style.width = `${scroll.clientWidth - inset}px`;
         for (const item of clips.values()) {
             position(item.element, item.clip.start, item.clip.frames);
             item.element.classList.toggle('fv-ed-tiny', pixels(item.clip.frames) < 2);
             item.status.hidden = pixels(item.clip.frames) < 24;
         }
-        syncVerticalScroll(); renderRuler(); renderSelection(); renderPlayhead(); slider.value = String(state.zoom);
+        syncVerticalScroll(); renderRuler(); renderSelection(); renderPlayhead(); renderTourMark(); slider.value = String(state.zoom);
+    }
+    // For the guided tour (TOUR-SPEC §10.5): the first stretch of sound with no picture above it, as an invisible mark
+    // on the picture row; none when there is no such stretch.
+    let tourMark = null;
+    function renderTourMark() {
+        const row = rows.get('v1')?.element, range = soundWithoutPicture(state.record);
+        if (!row || !range) { tourMark?.remove(); tourMark = null; return; }
+        if (!tourMark) {
+            tourMark = create('div', 'fv-ed-tour-mark'); tourMark.dataset.tourId = 'video-empty-range'; tourMark.setAttribute('aria-hidden', 'true');
+            Object.assign(tourMark.style, {position: 'absolute', top: '0', bottom: '0', pointerEvents: 'none'});
+        }
+        if (tourMark.parentNode !== row) row.append(tourMark);
+        position(tourMark, range.start, range.frames);
     }
     function waveform(item, key) {
         const viewKey = `${key}/${item.clip.in}/${item.clip.frames}/${item.clip.length}`;
@@ -506,6 +592,11 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         }
         return item;
     }
+    function land(item) {
+        const node = item.element;
+        node.classList.remove('fv-ed-landed'); void node.offsetWidth; node.classList.add('fv-ed-landed');
+        clearTimeout(item.landTimer); item.landTimer = setTimeout(() => node.classList.remove('fv-ed-landed'), 400);
+    }
     function updateProgress(item) {
         const value = progresses.get(item.clip.id) || {state: item.clip.pending === 'queued' ? 'waiting'
             : busy(item.clip) ? 'generating' : model.clipState(item.clip) === 'done' ? 'done'
@@ -535,7 +626,8 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
                 const empty = create('div', 'fv-ed-track-empty');
                 node.append(empty);
                 const head = create('div', 'fv-ed-track-head'); head.dataset.track = track.id;
-                head.title = name; head.append(icon(track.kind), create('span', '', name));
+                const glyph = track.kind === 'audio' ? (track.stem ? 'audio' : track.id === MUSIC_TRACK ? 'music' : track.id === 'a3' ? 'mic' : 'audio') : track.kind;
+                head.title = name; head.append(icon(glyph), create('span', '', name));
                 heads.append(head); content.insertBefore(node, overlays);
                 row = {element: node, head, empty}; rows.set(track.id, row); parted ||= !!track.stem;
             }
@@ -571,6 +663,9 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
                 if (next !== item.element) row.element.insertBefore(item.element, next);
                 previous = item.element;
                 const visual = model.clipState(clip), key = sourceKey(clip);
+                // A part that finishes generating lands in place: its picture or sound fades in and settles, once.
+                if (item.visual === 'running' && visual === 'done') land(item);
+                item.visual = visual;
                 item.element.dataset.state = visual; item.element.dataset.track = track.id;
                 item.element.dataset.split = String(track.kind === 'audio' && clip.stem_of === undefined && state.record.tracks.some(row => row.stem && row.clips.some(other => other.stem_of === clip.id)));
                 item.element.dataset.busy = String(busy(clip)); item.element.dataset.extend = String(clip.extend && actions.generationAvailable?.() !== false && !busy(clip));
@@ -596,7 +691,10 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
                 const status = {planned: actions.interrupted?.(clip) ? t('Interrupted', '上次中断') : t('Not generated yet', '还没生成'), running: t('Generating', '正在生成'),
                     done: t('Complete', '完成'), failed: failureText}[visual];
                 const seconds = Math.round(clip.frames / model.FPS);
-                item.element.title = '';
+                // Hover help: which clip it is, and its description (first 24 characters) or its length and state.
+                const said = (clip.text || '').trim(), words = [...said];
+                setTip(item.element, {name: t(`${name} · clip ${index + 1}`, `${name} · 第 ${index + 1} 段`),
+                    use: words.length ? (words.length > 24 ? `${words.slice(0, 24).join('')}…` : said) : t(`${seconds} s · ${status}`, `${seconds} 秒 · ${status}`)});
                 const seamText = seam === 'continued' ? t(', continues the clip before', '，接续上一段') : seam === 'separate' ? t(', separate shot', '，独立镜头') : '';
                 item.element.setAttribute('aria-label', t(`${name}, clip ${index + 1}, ${seconds} s, ${status}${seamText}`,
                     `${name}，第 ${index + 1} 段，${seconds} 秒，${status}${seamText}`));
@@ -618,9 +716,17 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         for (const [id, item] of clips) if (!retained.has(id)) { item.component?.dispose(); item.element.remove(); clips.delete(id); progresses.delete(id); }
         heads.append(addAudio);
         addAudio.style.top = `${top}px`; addAudio.disabled = tracks.find(track => track.id === 'a2')?.clips.some(busy) || false;
+        // With Audio 2 present the key removes it: it shows beside that track's head only while Audio 2 (or something on it)
+        // is selected, or the pointer is over its head; it is not there the rest of the time.
+        addAudio.dataset.mode = twoAudio ? 'remove' : 'add';
+        const second = rows.get('a2');
+        if (second) addAudio.style.setProperty?.('--fv-ed-remove-top', `${second.top + second.height / 2 - 14}px`);
         addAudio.textContent = twoAudio ? t('Remove Audio 2', '移除声音 2') : t('+ Audio track', '＋ 声音轨');
         addAudio.dataset.sign = twoAudio ? '×' : '＋'; // Phone widths show the sign alone.
-        addAudio.title = '';
+        // Wide heads draw the sign in the icon column and these words in the name column, like a track head.
+        addAudio.dataset.label = twoAudio ? t('Remove Audio 2', '移除声音 2') : t('Audio track', '声音轨');
+        applyTip(addAudio, twoAudio ? 'removeAudio' : 'addAudio', t,
+            {why: addAudio.disabled ? t('A clip on Audio 2 is generating; wait for it to finish', '声音 2 上有片段在生成，等它完成') : ''});
         addAudio.setAttribute('aria-label', addAudio.textContent);
         // Without Audio 2 the guide points at the button that adds it.
         if (twoAudio) delete addAudio.dataset.tourId; else addAudio.dataset.tourId = 'audio-a2-track';
@@ -632,6 +738,12 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         if (failure && model.clipState(failure.clip) === 'failed' && state.selection?.ids?.includes(openFailure)) failedPopover(failure);
         if (gesture?.type === 'move' && pointerEvent) updatePointer(pointerEvent);
     }
+    // While the playhead is dragged, its time (to a tenth) rides above it on the ruler.
+    function showTime() {
+        const bounds = element.getBoundingClientRect(), x = content.getBoundingClientRect().left - bounds.left + pixels(state.playhead);
+        tooltip.textContent = preciseClock(state.playhead); tooltip.hidden = false; tooltip.dataset.time = 'true';
+        tooltip.style.left = `${clamp(x + 10, 8, Math.max(8, bounds.width - 80))}px`; tooltip.style.top = '28px';
+    }
     function showGuide(frame) { guide.hidden = frame == null; if (frame != null) guide.style.left = `${pixels(frame)}px`; }
     function showInsertion(frame) { insertion.hidden = frame == null; if (frame != null) insertion.style.left = `${pixels(frame)}px`; }
     function hint(selection, event, extended = false, moving = false, limited = null) {
@@ -641,7 +753,7 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         let count = 1;
         try { count = rangeParts(selection).length; } catch (error) { if (!(error instanceof model.EditError)) throw error; }
         const label = limited != null ? t(`Max ${limited} s`, `最长 ${limited} 秒`)
-            : moving ? `${clock(selection.start)} – ${clock(selection.start + selection.frames)}`
+            : moving ? `${preciseClock(selection.start)} – ${preciseClock(selection.start + selection.frames)}`
                 : t(`${extended ? '+' : ''}${seconds} s`, `${extended ? '+' : ''}${seconds} 秒`);
         tooltip.textContent = label; tooltip.hidden = false;
         const bounds = element.getBoundingClientRect();
@@ -658,11 +770,12 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         beatSignature = ''; beatLines.replaceChildren();
         previewSelection = null; previewBox.hidden = true; guide.hidden = true; insertion.hidden = true;
         actions.previewRange?.(null);
-        tooltip.hidden = true; plannedLines.hidden = false; cachedPlan = ''; clearTimeout(estimateTimer); estimateToken++;
+        tooltip.hidden = true; delete tooltip.dataset.time; plannedLines.hidden = false; cachedPlan = ''; clearTimeout(estimateTimer); estimateToken++;
         for (const id of [...(gesture?.ids || []), ...(gesture?.rightPreviewIds || [])]) {
             const item = locate(id);
-            if (item) { item.element.classList.remove('fv-ed-dragging'); item.element.style.transform = ''; position(item.element, item.clip.start, item.clip.frames); }
+            if (item) { item.element.classList.remove('fv-ed-dragging', 'fv-ed-cannot-drop'); item.element.style.transform = ''; position(item.element, item.clip.start, item.clip.frames); }
         }
+        delete tooltip.dataset.refused;
         delete element.dataset.cursor; selectionBox.classList.remove('fv-ed-dragging', 'fv-ed-cannot-drop');
         plannedLines.querySelectorAll('[data-limited]').forEach(line => line.removeAttribute('data-limited'));
         renderSelection();
@@ -670,10 +783,10 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
     function failedPopover(item) {
         failedPopoverId = item.clip.id;
         const reason = create('p', '', actions.failureText?.(item.clip.id) || actions.reasonText?.(item.clip.reason) || item.clip.reason || t('Generation failed', '生成时出错'));
-        const report = create('button', 'fv-ed-clip-report', t('Download report', '下载报告')); report.type = 'button';
+        const report = create('button', 'fv-ed-clip-report', t('Download report', '下载报告')); report.type = 'button'; applyTip(report, 'report', t);
         report.onclick = event => { event.stopPropagation(); popover.hidden = true;
             Promise.resolve(actions.downloadFailure?.(item.clip.id)).catch(error => actions.editError?.(error)); };
-        const retry = create('button', '', t('Retry', '重试')); retry.type = 'button';
+        const retry = create('button', '', t('Retry', '重试')); retry.type = 'button'; applyTip(retry, 'retry', t);
         retry.onclick = () => { popover.hidden = true;
             Promise.resolve().then(() => actions.retry?.(item.clip.id)).catch(error => actions.editError?.(error, 'generate')); };
         // A reason whose hint names the page settings also offers to open them.
@@ -723,6 +836,8 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
     // transparent selection outline, or a child label, is the pointer target.
     function pointerHit(event) {
         const bounds = content.getBoundingClientRect(), y = event.clientY - bounds.top, x = event.clientX - bounds.left;
+        const [reach, outside] = EDGE_REACH[event.pointerType === 'touch' || event.pointerType === 'pen' ? 'coarse' : 'fine'];
+        const edgeAt = (position, width) => hitEdge(position, width, reach, outside);
         const track = [...rows].find(([, row]) => y >= row.top && y <= row.top + row.height)?.[0];
         const selection = state.selection;
         const planned = selection?.kind === 'range' ? state.record.tracks[0].clips.filter(clip =>
@@ -732,14 +847,14 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
             && planned.every((clip, i) => clip.pending && !clip.source && (!i || planned[i - 1].start + planned[i - 1].frames === clip.start));
         if (selection?.kind === 'range' && !materialized) {
             const shape = geometry(selection.tracks), position = x - pixels(selection.start), width = pixels(selection.frames);
-            if (y >= shape.top && y <= shape.top + shape.height && position >= -6 && position <= width + 6) {
-                const edge = hitEdge(position, width);
+            if (y >= shape.top && y <= shape.top + shape.height && position >= -outside && position <= width + outside) {
+                const edge = edgeAt(position, width);
                 if (edge) return {range: selection, edge, track};
                 let at = 0;
                 const parts = rangeParts(selection);
                 for (let i = 0; i < parts.length - 1; i++) {
                     at += parts[i];
-                    if (Math.abs(position - pixels(at)) <= Math.min(6, pixels(Math.min(parts[i], parts[i + 1])) / 4)) return {range: selection, boundary: i, parts, track};
+                    if (Math.abs(position - pixels(at)) <= Math.min(reach, pixels(Math.min(parts[i], parts[i + 1])) / 4)) return {range: selection, boundary: i, parts, track};
                 }
                 return {range: selection, track};
             }
@@ -748,7 +863,7 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         // Shared planned boundaries take precedence over the two outer handles.
         for (const item of candidates) {
             const neighbor = plannedNeighbor(item), at = item.clip.start + item.clip.frames;
-            if (neighbor && Math.abs(x - pixels(at)) <= Math.min(6, pixels(Math.min(item.clip.frames, neighbor.clip.frames)) / 4)) {
+            if (neighbor && Math.abs(x - pixels(at)) <= Math.min(reach, pixels(Math.min(item.clip.frames, neighbor.clip.frames)) / 4)) {
                 const primary = item.track === 'a1' && item.clip.link ? locate(item.clip.link) : item;
                 return {item: primary, neighbor: plannedNeighbor(primary), track: primary.track};
             }
@@ -758,8 +873,8 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         // left part's precedence even when the next handle overlaps.
         const direct = (pointed && pixels(pointed.clip.frames) < 2 ? pointed : null)
             || candidates.find(item => x >= pixels(item.clip.start) && x <= pixels(item.clip.start) + Math.max(2, pixels(item.clip.frames)));
-        const item = direct || candidates.find(item => hitEdge(x - pixels(item.clip.start), Math.max(2, pixels(item.clip.frames))));
-        return {item, track, edge: item ? hitEdge(x - pixels(item.clip.start), Math.max(2, pixels(item.clip.frames))) : null};
+        const item = direct || candidates.find(item => edgeAt(x - pixels(item.clip.start), Math.max(2, pixels(item.clip.frames))));
+        return {item, track, edge: item ? edgeAt(x - pixels(item.clip.start), Math.max(2, pixels(item.clip.frames))) : null};
     }
     function startPointer(event) {
         if (event.button !== 0 || !event.isPrimary || gesture || isTyping(event.target) || event.target.closest('.fv-ed-track-zoom, .fv-ed-clip-popover')) return;
@@ -780,9 +895,15 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
             ids: item ? [...pairIds(id), ...(neighbor ? pairIds(neighbor.clip.id) : [])] : [], previousSelection: state.selection, previousPlayhead: state.playhead};
         cachedPoints = seeking ? model.snapPoints(state.record, []) : allPoints(gesture.ids);
         if (item) state.select({kind: 'clip', ids: [id]});
-        if (item && model.pair(state.record, id).some(busy)) { gesture.type = 'click'; gesture.blocked = true; }
+        // A part that is generating still follows the pointer, outlined red with the reason, and goes back on release.
+        if (item && model.pair(state.record, id).some(busy)) { if (gesture.type !== 'move') gesture.type = 'click'; gesture.blocked = true; }
         if (gesture.type === 'move') gesture.members = gesture.ids.map(id => locate(id).clip);
-        if (seeking) seekPlayhead(anchor);
+        gesture.samples = [[event.clientX, event.timeStamp || performance.now()]];
+        // Visible within the press: the clip lightens, the playhead tab grows, a range shows where it starts.
+        // A clip still settling from the last release is taken where it lands (a new press interrupts the glide).
+        for (const member of gesture.ids) { const node = locate(member)?.element; node?.getAnimations?.().forEach(animation => animation.finish()); node?.setAttribute('data-pressed', 'true'); }
+        if (seeking) { element.dataset.scrub = 'true'; seekPlayhead(anchor); showTime(); }
+        else if (gesture.type === 'range') showGuide(snap(anchor, transportSnapPoints(state, cachedPoints, event), state.zoom).frame);
         element.dataset.cursor = ['move', 'rangeMove'].includes(gesture.type) ? 'grabbing' : gesture.type === 'click' ? 'default' : 'ew-resize';
         element.setPointerCapture(event.pointerId);
     }
@@ -815,12 +936,14 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         if (!gesture || gesture.pointer !== event.pointerId) return;
         const frame = frameAt(event); dragX = event.clientX; pointerEvent = event;
         const points = transportSnapPoints(state, cachedPoints, event);
+        gesture.samples?.push([event.clientX, event.timeStamp || performance.now()]); if (gesture.samples?.length > 6) gesture.samples.shift();
         gesture.moved ||= Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) >= 4;
-        if (gesture.blocked && gesture.moved && !gesture.warned) {
+        // A busy part pressed on its edge cannot change; dragging its middle is shown at the pointer (below).
+        if (gesture.blocked && gesture.moved && !gesture.warned && gesture.type === 'click') {
             gesture.warned = true; actions.editError?.(new model.EditError('busy'));
         }
         if (gesture.type === 'seek') {
-            seekPlayhead(frame, pointerEvent); return;
+            seekPlayhead(frame, pointerEvent); showTime(); return;
         }
         showBeats(event);
         if (!gesture.moved || gesture.type === 'click') return;
@@ -892,6 +1015,7 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
             gesture.rightPreviewIds = [];
             let preview, error, shifted = 0;
             try {
+                if (gesture.blocked) throw new model.EditError('busy');
                 if (textDropLocked(state.record, gesture.members, result.track)) throw new model.EditError('locked');
                 preview = model.move(state.record, gesture.id, result.frame, {targetTrack: result.targetTrack});
             }
@@ -914,7 +1038,10 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
             box(selectionBox, {start: landing, frames: gesture.clip.frames, tracks: gesture.ids.map(id => previewTracks.get(id) || locate(id).track)});
             hint({start: landing, frames: gesture.clip.frames}, event, false, true);
             selectionBox.classList.toggle('fv-ed-cannot-drop', !!error);
-            if (error) tooltip.hidden = true;
+            for (const id of gesture.ids) locate(id)?.element.classList.toggle('fv-ed-cannot-drop', !!error);
+            gesture.refused = error || null;
+            if (error) { const words = refusal(error); tooltip.textContent = words; tooltip.hidden = !words; tooltip.dataset.refused = 'true'; }
+            else delete tooltip.dataset.refused;
         } else if (gesture.type === 'edge') {
             // Past the end of a clip that cannot grow there, the drag draws the next part from that end.
             const clipEnd = gesture.clip.start + gesture.clip.frames;
@@ -1015,22 +1142,51 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         if (!gesture || (event && gesture.pointer !== event.pointerId)) return;
         cancelAnimationFrame(pointerFrame); pointerFrame = null; pointerEvent = null;
         if (!cancel && event) updatePointer(event);
-        const finished = gesture; clearPreview(); gesture = null; selectionBox.classList.remove('fv-ed-dragging'); stopAutoScroll();
+        const finished = gesture;
+        // Where each dragged clip was let go, and how fast the pointer went, for the settle into its place.
+        // Clips pushed aside by the preview glide too (back on a refusal; nowhere when the edit keeps them there).
+        const released = finished.type === 'move' && finished.moved ? [...finished.ids, ...(finished.rightPreviewIds || [])].map(id => {
+            const item = locate(id); if (!item) return null;
+            const transform = /translateY\((-?[\d.]+)px\)/.exec(item.element.style.transform || '');
+            return {id, left: parseFloat(item.element.style.left) || 0, y: transform ? Number(transform[1]) : 0, track: item.track};
+        }).filter(Boolean) : [];
+        const samples = finished.samples || [], first = samples[0], last = samples.at(-1);
+        const velocity = first && last && last[1] > first[1] ? (last[0] - first[0]) / (last[1] - first[1]) : 0;
+        for (const member of finished.ids) locate(member)?.element.removeAttribute('data-pressed');
+        delete element.dataset.scrub;
+        clearPreview(); gesture = null; selectionBox.classList.remove('fv-ed-dragging'); stopAutoScroll();
+        const settleReleased = () => {
+            for (const value of released) {
+                const item = locate(value.id); if (!item) continue;
+                const dy = value.y + (rows.get(value.track)?.top ?? 0) - (rows.get(item.track)?.top ?? 0);
+                settle(item.element, value.left - pixels(item.clip.start), dy, velocity);
+            }
+        };
         if (element.hasPointerCapture(finished.pointer)) element.releasePointerCapture(finished.pointer);
         try {
-        if (cancel) { state.select(finished.previousSelection); if (finished.type === 'seek') state.seek(finished.previousPlayhead); return; }
+        if (cancel) { state.select(finished.previousSelection); if (finished.type === 'seek') state.seek(finished.previousPlayhead); settleReleased(); return; }
         if (finished.type === 'seek') return;
         if (!finished.moved || finished.type === 'click') {
             clickSelection({target: finished.target, clientX: event.clientX, range: finished.range, kind: finished.type, clipId: finished.id}); return;
+        }
+        // Refused (generating, locked, no room): it glides back to where it was.
+        if (finished.type === 'move' && (finished.blocked || finished.refused)) {
+            settleReleased();
+            // The reason also stays in the notices, once, after the clip is back.
+            if (finished.refused instanceof model.EditError) actions.editError?.(finished.refused);
+            return;
         }
         if (finished.type === 'rangeMove' && finished.rangeBlocked) return;
         if (['range', 'rangeMove', 'rangeEdge', 'rangeBoundary'].includes(finished.type)) { state.select(finished.selection, {history: true}); return; }
         const result = finished.result;
         if (!result) return;
-        if (finished.type === 'move') attempt(t('Move', '移动'), record => {
-            if (textDropLocked(record, finished.members, result.track)) throw new model.EditError('locked');
-            return model.move(record, finished.id, result.frame, {targetTrack: result.targetTrack});
-        });
+        if (finished.type === 'move') {
+            attempt(t('Move', '移动'), record => {
+                if (textDropLocked(record, finished.members, result.track)) throw new model.EditError('locked');
+                return model.move(record, finished.id, result.frame, {targetTrack: result.targetTrack});
+            });
+            settleReleased();
+        }
         else if (finished.type === 'plannedBoundary') attempt(t('Resize parts', '调整段长'), record => model.resizePlannedBoundary(record, finished.id, finished.neighbor.clip.id, result.frame, actions.generationLimits?.()));
         else if (result.kind === 'planned') attempt(t('Resize', '改长短'), record => model.resizePlanned(record, finished.id, finished.edge, result.frame, actions.generationLimits?.()));
         else if (result.kind === 'extend') {
@@ -1061,8 +1217,11 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         if (selectGestures.move(event)) return;
         if (!gesture) {
             const hit = pointerHit(event);
-            element.dataset.cursor = hit.item && busy(hit.item.clip) ? 'default' : hit.edge || hit.boundary != null || hit.neighbor ? 'ew-resize'
-                : hit.item || hit.range ? 'grab' : 'default';
+            // A part that is generating cannot change yet: the pointer says so before the press.
+            // Empty space below the rows, or Shift over empty track, draws a selection box: the pointer says so.
+            const below = scroll.contains(event.target) && event.clientY - content.getBoundingClientRect().top > Math.max(0, ...[...rows.values()].map(row => row.top + row.height));
+            element.dataset.cursor = hit.item && busy(hit.item.clip) ? 'not-allowed' : hit.edge || hit.boundary != null || hit.neighbor ? 'ew-resize'
+                : hit.item || hit.range ? 'grab' : below || event.shiftKey ? 'crosshair' : 'default';
             return;
         }
         if (!gesture || gesture.pointer !== event.pointerId) return;
@@ -1087,7 +1246,8 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         if (key === 'escape') { event.preventDefault(); if (gesture) stopPointer(null, true); else { state.select(null, {history: true}); popover.hidden = true; } }
         else if (gesture) { event.preventDefault(); }
         else if (key === ' ' && !modifier) { event.preventDefault(); actions.togglePlay?.(); }
-        else if (key === 'arrowleft' || key === 'arrowright') { event.preventDefault(); state.seek(Math.max(0, state.playhead + (key === 'arrowleft' ? -1 : 1))); }
+        // Shift moves ten frames at a time.
+        else if (key === 'arrowleft' || key === 'arrowright') { event.preventDefault(); state.seek(Math.max(0, state.playhead + (key === 'arrowleft' ? -1 : 1) * (event.shiftKey ? 10 : 1))); }
         else if ((key === 'arrowup' || key === 'arrowdown') && !modifier && !event.altKey) {
             event.preventDefault(); actions.pause?.();
             const points = model.snapPoints(state.record), range = state.selection;
@@ -1106,6 +1266,8 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
             else if (x > scroll.scrollLeft + scroll.clientWidth) scroll.scrollLeft = x - scroll.clientWidth;
         }
         else if (modifier && key === 'z') { event.preventDefault(); event.shiftKey ? state.redo() : state.undo(); }
+        // Ctrl/Cmd+Y redoes too, as in other editors (the page handles it elsewhere; the timeline keeps its keys to itself).
+        else if (modifier && key === 'y' && !event.shiftKey) { event.preventDefault(); state.redo(); }
         else if (key === 'z' && event.shiftKey && !event.altKey) { event.preventDefault(); fitAll(); }
         else if ((key === 'enter' || key === ' ') && event.target.matches('.fv-ed-clip')) { event.preventDefault(); clickSelection({target: event.target}); }
     }
@@ -1171,7 +1333,7 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
                 const added = previewSourcePlacement(preview), sound = added.find(item => item.track !== 'v1');
                 const name = sound ? !preview.tracks.some(track => track.id === 'a3') && preview.tracks.length === 3
                     ? t(`Audio ${sound.track === 'a1' ? 1 : 2}`, `声音 ${sound.track === 'a1' ? 1 : 2}`) : t('Audio', '声音') : '';
-                dropPoint = {frame: added[0].clip.start, label: `${clock(added[0].clip.start)} – ${clock(added[0].clip.start + draggedSource.frames)}${name ? ` · ${name}` : ''}`};
+                dropPoint = {frame: added[0].clip.start, label: `${preciseClock(added[0].clip.start)} – ${preciseClock(added[0].clip.start + draggedSource.frames)}${name ? ` · ${name}` : ''}`};
             } catch (error) {
                 if (!(error instanceof model.EditError)) throw error;
                 sourcePreview = {record: state.record, nodes: []};
@@ -1254,6 +1416,10 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         }
     };
     on(addAudio, 'click', activateAudio);
+    // Focus taken by a press (for the timeline's keys) is not keyboard focus: no ring round the whole area then.
+    // Focus that arrives by Tab still shows the page's ring inside the edge.
+    on(element, 'pointerdown', () => { element.dataset.pointerFocus = 'true'; }, true);
+    on(element, 'blur', () => { delete element.dataset.pointerFocus; });
     on(element, 'pointerdown', startPointer); on(element, 'pointermove', pointerMove);
     const menu = createTrackMenu(element, {state, t, actions, hitTest: pointerHit, frameAt, trackAt, choose: id => selectGestures.choose(id)});
     on(element, 'pointerup', event => { if (selectGestures.finish(event)) return; event.stopPropagation(); stopPointer(event); });
@@ -1301,7 +1467,11 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
     const observer = new ResizeObserver(layout); observer.observe(scroll);
     selectionBox.hidden = previewBox.hidden = guide.hidden = insertion.hidden = true;
     const audioControls = attachAudioTracks(element, {state, t, actions});
-    renderRecord(); audioControls.refresh();
+    // Track head switches are drawn by the audio and text modules on every change; each gets its name, use and state.
+    const tipSwitches = () => { for (const button of heads.querySelectorAll('.fv-ed-audio-track-switch, .fv-ed-text-track-controls button')) switchTip(button, t); };
+    const headObserver = typeof MutationObserver === 'function' ? new MutationObserver(tipSwitches) : null;
+    headObserver?.observe(heads, {childList: true, subtree: true, attributes: true, attributeFilter: ['aria-pressed', 'disabled', 'title']});
+    renderRecord(); audioControls.refresh(); tipSwitches();
     let blockedTimer = null, blockedIds = [];
     function flashBlocked(frame = state.playhead) {
         clearTimeout(blockedTimer);
@@ -1337,7 +1507,7 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         const r = node.getBoundingClientRect(), left = content.getBoundingClientRect().left + pixels(start), width = 3 * state.zoom;
         return {node, rect: {left, right: left + width, top: r.top, bottom: r.bottom, width, height: r.height}, reveal: reveal(left, width)};
     }
-    return {element, keyboard, menu, dismissPopup, flashBlocked, seekPlayhead, extendClip, guideTarget,
+    return {element, ready, keyboard, menu, dismissPopup, flashBlocked, seekPlayhead, extendClip, guideTarget,
         setSnapping(enabled) {
             if (typeof enabled !== 'boolean') return {ok: false, reason: 'snapping'};
             setTransportSnapping(state, enabled); cachedPoints = allPoints(gesture?.ids || []);
@@ -1357,7 +1527,7 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
             if (gesture) stopPointer(null, true);
             selectGestures.dispose();
             menu.dispose();
-            disposed = true; clearTimeout(blockedTimer); unsubscribe(); observer.disconnect(); listeners.forEach(remove => remove());
+            disposed = true; clearTimeout(blockedTimer); unsubscribe(); observer.disconnect(); headObserver?.disconnect(); listeners.forEach(remove => remove());
             audioControls.dispose();
             addAudio.onkeydown = null;
             cancelAnimationFrame(pointerFrame); stopAutoScroll(); clearTimeout(estimateTimer); estimateToken++;

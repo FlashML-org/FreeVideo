@@ -1,10 +1,10 @@
 /* Block descriptions (Iris 10-11): the Picture page's 说明 / 重新生成 / 版本 rows and the strip on timeline blocks. */
 .fv-ed-notes{display:flex;flex-direction:column;gap:6px;margin-bottom:12px;min-width:0}
 .fv-ed-notes-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
-.fv-editor .fv-ed-notes-again{display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 8px;font-size:12px}
+.fv-editor .fv-ed-notes-again{display:inline-flex;align-items:center;gap:4px;height:28px;min-height:28px;padding:0 8px;font-size:12px}
 .fv-ed-notes-again .fv-ed-glyph{width:12px;height:12px}
 .fv-editor .fv-ed-notes-again:disabled{opacity:.4}
-.fv-editor .fv-ed-notes-text{display:block;height:auto;box-sizing:border-box;width:100%;min-height:34px;max-height:98px;padding:6px 10px;resize:none;overflow-y:auto;font:13px/20px var(--fv-font);color:var(--fv-ink);background:var(--fv-bg);border:1px solid var(--fv-border);border-radius:8px}
+.fv-editor .fv-ed-notes-text{display:block;height:auto;box-sizing:border-box;width:100%;min-height:34px;max-height:98px;padding:6px 10px;resize:none;overflow-y:auto;font:13px/20px var(--fv-font);color:var(--fv-ink);background:var(--fv-bg);border:1px solid var(--fv-border);border-radius:var(--fv-r-sm)}
 .fv-editor .fv-ed-notes-text:focus-visible{outline:1px solid var(--fv-accent);outline-offset:-1px;border-color:var(--fv-accent)}
 .fv-editor .fv-ed-notes-text:disabled{opacity:.4}
 .fv-ed-notes-versions{display:flex;flex-direction:column;gap:6px;margin-top:6px}
@@ -18,10 +18,11 @@
 .fv-ed-clip.fv-ed-seamed[data-noted=true] .fv-ed-seam-mark{bottom:2px}
 /* Block numbers take the top-left corner, so planned lengths move right beside them. */
 .fv-ed-track-view:has(.fv-ed-track-row[data-noted=true]) .fv-ed-planned-label{left:24px}
-.fv-ed-block-number{position:absolute;left:6px;top:4px;z-index:2;color:#fff;font:700 11px/1 var(--fv-font);text-shadow:0 1px 2px rgba(0,0,0,.85);pointer-events:none}
-.fv-ed-user-mark{position:absolute;right:4px;top:4px;z-index:2;display:grid;place-items:center;width:16px;height:16px;border-radius:4px;background:rgba(0,0,0,.55);color:#fff;pointer-events:none}
+/* The block's number sits on a small dark chip, so it reads on any picture and in either theme (white on .78 near-black). */
+.fv-ed-block-number{position:absolute;left:4px;top:4px;z-index:2;padding:2px 4px;border-radius:4px;background:rgb(10 12 16 / .78);color:#fff;font:700 12px/1 var(--fv-font);pointer-events:none}
+.fv-ed-user-mark{position:absolute;right:4px;top:4px;z-index:2;display:grid;place-items:center;width:16px;height:16px;border-radius:var(--fv-r-xs);background:rgba(0,0,0,.55);color:#fff;pointer-events:none}
 .fv-ed-user-mark .fv-ed-glyph{width:11px;height:11px}
 .fv-ed-clip:has(.fv-ed-picture-badge:not([hidden])) .fv-ed-user-mark{right:auto;left:22px}
-.fv-ed-note-tip{position:absolute;z-index:10;max-width:360px;padding:6px 8px;background:var(--fv-card);color:var(--fv-ink);border:1px solid var(--fv-border);border-radius:6px;font-size:12px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;pointer-events:none;box-shadow:0 4px 12px rgba(0,0,0,.35)}
-.fv-editor .fv-ed-note-input{position:absolute;top:64px;z-index:5;box-sizing:border-box;height:22px;min-height:0;margin:0;padding:0 8px;font:12px/20px var(--fv-font);color:var(--fv-ink);background:var(--fv-bg);border:1px solid var(--fv-accent);border-radius:0 0 8px 8px;outline:none;box-shadow:none}
+.fv-ed-note-tip{position:absolute;z-index:10;max-width:360px;padding:6px 8px;background:var(--fv-card);color:var(--fv-ink);border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);font-size:12px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;pointer-events:none;box-shadow:0 4px 12px rgba(0,0,0,.35)}
+.fv-editor .fv-ed-note-input{position:absolute;top:64px;z-index:5;box-sizing:border-box;height:22px;min-height:0;margin:0;padding:0 8px;font:12px/20px var(--fv-font);color:var(--fv-ink);background:var(--fv-bg);border:1px solid var(--fv-accent);border-radius:0 0 var(--fv-r-sm) var(--fv-r-sm);outline:none;box-shadow:none}
 .fv-editor .fv-ed-note-input:focus,.fv-editor .fv-ed-note-input:focus-visible{outline:none;border-color:var(--fv-accent)}

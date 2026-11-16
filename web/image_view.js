@@ -1,45 +1,60 @@
-// The picture page, beside the studio, the editing view and the Agent: one input, one Generate button,
-// either image model, and the works made here. The wire adapter, failure card, history and reference
-// rules are the editor's own (image_generation.js); this page only lays them out.
+// The picture page, beside the studio, the editing view and the Agent: a workbench of three parts.
+// Left: model, prompt, references, size, seed, prompt history and presets, and Generate under a fixed status slot.
+// Centre: the picture, always centred on the window, with its actions under it; compare replaces it on demand.
+// Right: the works, by day, with search, filters, sort, favourites, several at once and recently deleted.
+// The wire adapter, failure card, report and reference rules are the editor's own (image_generation.js);
+// a running picture belongs to the page-wide job store (task_store.js), so leaving the page never stops it.
 import { api } from '../../scripts/api.js';
 import { closeDialog } from './motion.js';
-import { listenDialogKey } from './dialog_keys.js';
+import { listenDialogKey, topDialog } from './dialog_keys.js';
 import { openEditorView } from './editor_loader.js';
 import { openSetup } from './setup.js';
 import { feedbackButton, guideButton } from './feedback.js';
 import { createPromptEnhancer } from './prompt_enhance.js';
+import { createExpandButton } from './editor_expand.js';
 import { issueButton } from './issue_button.js';
 import { openStudio, showNodes } from './studio.js';
 import { openAutopilot, viewChanged, viewSwitch } from './view_navigation.js';
-import { segmented } from './editor_adjust.js';
-import { menuSelect } from './fv_select.js';
 import { wordmark } from './wordmark.js';
 import { keepViewSwitchPlace } from './view_switch_place.js';
 import { openReferenceMenu, removeSavedImages, saveGeneratedImage } from './image_library.js';
-import { BLANK_CANVAS_AREAS, createImageGenClient, imageGenError, imageGenProgress, imageRemainingText, imageReportBar, renderImageFailure } from './image_generation.js';
+import { BLANK_CANVAS_AREAS, createImageGenClient, fittedNote, imageGenError, imageRemainingText, imageReportBar, renderImageFailure } from './image_generation.js';
 import { duration } from './generation_progress.js';
-import { createPreviewScene } from './preview_scene.js?v=20260929-swell';
+import { createPreviewScene } from './preview_scene.js?v=20261115-still';
+import { jobs, ACTIVE, IMAGE_BUSY } from './task_store.js';
+import { confirmStop, startJobSources } from './task_float.js';
+import { el, icon, t, cn, tip, button, section, readStore, writeStore, mod } from './image_view_ui.js';
+import { IMAGE_MODELS, modelPicker, modelState } from './image_view_models.js';
+import { RANGES, RATIOS, areaRange, estimateSeconds, machineLimit, presetAt, ratioValue, sizePicker, sizeFor, sizeText, megapixels } from './image_view_size.js';
+import { createMetaStore, createTrash, filterCounts, filterRows, groupRows, historyPanel, sessionPrompts } from './image_view_history.js';
+import { brokenMentions, mentionText, mentionsToEngine, promptMentions, renumberMentions, sketchPrompt } from './image_view_mentions.js';
+import { HISTORY_KEY, forgetDeletedPrompts, promptLibrary, rememberPrompt } from './image_view_prompts.js';
+import { COMPARE_MAX, compareView } from './image_view_compare.js';
+import { queuePanel } from './image_view_queue.js';
+import { isHeld, worksClient } from './image_works.js';
+import { createWarmer } from './image_view_warm.js';
+import { openPictureViewer } from './image_view_viewer.js';
+import { LORA_MODEL, imageViewLora } from './image_view_lora.js';
 
-const languageOverride = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('freevideo_lang') : null;
-const cn = languageOverride === 'zh' || (languageOverride !== 'en' && String(navigator.language || '').toLowerCase().startsWith('zh'));
-const t = (en, zh) => cn ? zh : en;
-const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
-for (const name of ['./editor_adjust.css', './image_view.css']) {
+export { IMAGE_MODELS, RATIOS };
+for (const name of ['./image_view.css']) {
     const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = new URL(name, import.meta.url).href; document.head.append(css);
 }
-
-export const IMAGE_MODELS = Object.freeze([
-    {id: 'minimax-h3-image', name: 'MiniMax H3 Image', short: 'H3 Image'},
-    {id: 'qwen-image-2.1-turbo', name: 'Qwen-Image 2.1', short: 'Qwen-Image 2.1'},
-]);
-export const RATIOS = Object.freeze(['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3']);
-const MODEL_KEY = 'freevideo.imageModel';
+const MODEL_KEY = 'freevideo.imageModel', SIZE_KEY = 'freevideo.imageView.size', FIT_KEY = 'freevideo.imageView.fitted', PANEL_KEY = 'freevideo.imageView.panels';
 const remembered = () => { try { return localStorage.getItem(MODEL_KEY); } catch { return null; } };
 const remember = id => { try { localStorage.setItem(MODEL_KEY, id); } catch { /* the choice is only not kept */ } };
 
 // H3 Image is made for 4 to 16 MP; a smaller picture would still cost a 4 MP canvas, so its tiers start there.
 const H3_AREAS = Object.freeze({standard: 2048, high: 4096});
-// A size with the ratio at about the tier's area, in steps of 32.
+// The shape of a picture as a ratio, when it is one of the common ones; otherwise nothing is said.
+const SHAPES = [[1, 1], [16, 9], [9, 16], [4, 3], [3, 4], [3, 2], [2, 3], [21, 9], [9, 21]];
+export function shapeOf(width, height) {
+    if (!(width > 0 && height > 0)) return '';
+    const hit = SHAPES.find(([w, h]) => Math.abs(width / height - w / h) / (w / h) < .02);
+    return hit ? `${hit[0]}:${hit[1]}` : '';
+}
+const pictureShape = shapeOf;
+// A size with the ratio at about the tier's area, in steps of 32 (kept for callers of the two-tier page).
 export function imageSize(ratio, tier = 'standard', same = null, model = '') {
     const [w, h] = (ratio === 'same' && same ? [same.width, same.height] : ratio.split(':').map(Number));
     const areas = model === 'minimax-h3-image' ? H3_AREAS : BLANK_CANVAS_AREAS;
@@ -50,28 +65,36 @@ export function imageSize(ratio, tier = 'standard', same = null, model = '') {
 }
 
 // Stands in for the engine until it answers (tests and the first skeleton): a flat picture after a short wait.
-// references: how many pictures each model row reports it takes, as the engine does.
-export function createFakeImageClient({delay = 600, ready = {'minimax-h3-image': true, 'qwen-image-2.1-turbo': true}, fail = null, steps = 0, references = {'minimax-h3-image': 0, 'qwen-image-2.1-turbo': 4}} = {}) {
-    const items = []; let count = 0; const jobs = new Map(), state = {...ready}; const loading = new Map();
+// references: how many pictures each model row reports it takes, as the engine does. history: rows to start with.
+// install: per model, 'missing' | 'failed' | 'downloading' to start in that state. sizes: the engine's tier list.
+export function createFakeImageClient({delay = 600, ready = {'minimax-h3-image': true, 'qwen-image-2.1-turbo': true}, fail = null, steps = 0,
+    references = {'minimax-h3-image': 0, 'qwen-image-2.1-turbo': 4}, history = [], install = {}, sizes = ['standard', 'high'], fitted = null, bytes = 12.5e9, rate = 5e6} = {}) {
+    const items = history.map(row => typeof row === 'string' ? {file: row, name: row.slice(row.lastIndexOf('/') + 1)} : row); let count = 0;
+    const jobs = new Map(), state = {...ready}; const loading = new Map(), failed = new Set(Object.keys(install).filter(id => install[id] === 'failed'));
+    for (const id of Object.keys(install)) { if (install[id] !== 'ready') state[id] = false; if (install[id] === 'downloading') loading.set(id, Date.now() - bytes / rate * .4); }
     const models = () => IMAGE_MODELS.map(m => ({id: m.id, label: m.name, ready: !!state[m.id], downloading: loading.has(m.id), max_images: references[m.id] ?? 0,
-        bytes_total: 12.5e9, bytes_done: loading.has(m.id) ? Math.min(12.5e9, (Date.now() - loading.get(m.id)) * 5e6) : 0}));
+        bytes_total: bytes, bytes_done: loading.has(m.id) ? Math.min(bytes, (Date.now() - loading.get(m.id)) * rate) : failed.has(m.id) ? bytes * .31 : 0,
+        install: failed.has(m.id) ? {state: 'failed', done: bytes * .31, total: bytes, reason: 'network', message_en: 'The connection dropped.', message_zh: '网络连接中断了。'}
+            : loading.has(m.id) ? {state: 'running', done: Math.min(bytes, (Date.now() - loading.get(m.id)) * rate), total: bytes} : null}));
     return {
-        info: async () => { for (const [id, at] of loading) if (Date.now() - at > 12.5e9 / 5e6) { state[id] = true; loading.delete(id); } return {installed: true, ready: true, max_images: 16, models: models()}; },
-        packInstall: async id => { loading.set(id, Date.now()); return {installed: true, models: models()}; },
-        packCancel: async id => { loading.delete(id); return {installed: true, models: models()}; },
+        info: async () => { for (const [id, at] of loading) if (Date.now() - at > bytes / rate) { state[id] = true; loading.delete(id); } return {installed: true, ready: true, max_images: 16, sizes, models: models()}; },
+        packInstall: async id => { failed.delete(id); loading.set(id, Date.now()); return {installed: true, sizes, models: models()}; },
+        packCancel: async id => { loading.delete(id); return {installed: true, sizes, models: models()}; },
         async generate({prompt, width, height, seed, model, images = []}) {
             if (fail) throw Object.assign(new Error(fail), {code: fail});
             if (images.length > (references[model] ?? 0)) return {error: 'too_many_images'};
-            const job = 'fake-' + ++count; jobs.set(job, {at: Date.now(), prompt, width, height, seed}); (this.requests ||= []).push({prompt, width, height, seed, model, images}); return {job};
+            const job = 'fake-' + ++count; jobs.set(job, {at: Date.now(), prompt, width, height, seed, model}); (this.requests ||= []).push({prompt, width, height, seed, model, images}); return {job};
         },
         async status(job) {
-            const row = jobs.get(job), fraction = Math.min(1, (Date.now() - row.at) / delay);
+            const row = jobs.get(job); if (!row) throw Object.assign(new Error('unknown_job'), {code: 'unknown_job'});
+            if (row.cancelled) return {state: 'error', error: 'cancelled'};
+            const fraction = Math.min(1, (Date.now() - row.at) / delay);
             // With steps, one picture per sampling step after the load, as the H3 worker sends them.
             const step = steps && fraction >= .3 ? Math.min(steps, 1 + Math.floor((fraction - .3) / .7 * steps)) : 0;
             const preview = step ? {step, total: steps, serial: step, width: 256, height: 256} : undefined;
             if (fraction < 1) return {state: 'running', stage: fraction < .3 ? 'load' : 'sample', fraction, overall: fraction * .97, remaining_seconds: Math.max(0, (1 - fraction) * delay / 1000), report_id: 'a'.repeat(32), preview};
-            const file = `freevideo-image/fake-${job}.png`; if (!items.some(i => i.file === file)) items.unshift({file, name: file.slice(15)});
-            return {state: 'done', file, fraction: 1, report_id: 'a'.repeat(32)};
+            const file = `freevideo-image/fake-${job}.png`; if (!items.some(i => i.file === file)) items.unshift({file, name: file.slice(15), model: row.model});
+            return {state: 'done', file, fraction: 1, report_id: 'a'.repeat(32), ...(fitted ? {fitted} : {})};
         },
         async previewImage(job) {
             const row = jobs.get(job); if (!steps || !row) return null;
@@ -79,7 +102,7 @@ export function createFakeImageClient({delay = 600, ready = {'minimax-h3-image':
             g.fillStyle = `hsl(${(Date.now() - row.at) / delay * 300} 60% 50%)`; g.fillRect(0, 0, 256, 256);
             return new Promise(resolve => c.toBlob(resolve, 'image/jpeg', .8));
         },
-        cancel: async job => { jobs.delete(job); },
+        cancel: async job => { const row = jobs.get(job); if (row) row.cancelled = true; },
         history: async () => items.slice(),
         historyDelete: async file => { const at = items.findIndex(i => i.file === file); if (at >= 0) items.splice(at, 1); return items.slice(); },
         async historyDeleteMany(files) { for (const f of files) await this.historyDelete(f); return {items: items.slice(), failed: []}; },
@@ -99,15 +122,58 @@ const SAMPLE_PROMPTS = {
 const STAGE_WORDS = {load: ['Loading the model', '加载模型'], text: ['Reading the prompt', '读取提示词'], encode: ['Reading the references', '读取参考图'],
     upload: ['Reading the references', '读取参考图'], sample: ['Generating', '正在生成'], decode: ['Generating', '正在生成']};
 
+// What each finished picture was made with, kept in this browser for the works column (prompt, model, size,
+// time) and for the prompt history. The store files the picture even when this page is closed, so this listens
+// at the module, not the page.
+const meta = createMetaStore();
+if (typeof window !== 'undefined') window.addEventListener('freevideo-job-done', event => {
+    const row = event.detail?.job;
+    if (row?.kind !== 'image' || row.status !== 'done' || !row.result?.file) return;
+    // The store keeps no text once a job has ended; the done event carries it this once (an empty one is no text).
+    const text = row.meta?.text || row.prompt || '', made = row.meta?.fitted?.width ? row.meta.fitted : {width: row.meta?.width, height: row.meta?.height};
+    const seconds = Math.max(1, Math.round(((row.finished_at || Date.now()) - (row.started_at || row.created_at || Date.now())) / 1000));
+    // A picture made from another one (an AI edit in the picture editor) keeps where it came from, so its facts can lead back.
+    const source = row.meta?.source ? {source: row.meta.source, edit: row.meta.edit || 'edit'} : {};
+    // The words stay in this page's memory only; the browser keeps the picture's model, size and time.
+    if (text) sessionPrompts.set(row.result.file, text);
+    meta.set(row.result.file, {model: row.model || '', width: made.width, height: made.height, seconds, at: row.finished_at || Date.now(), references: row.meta?.withImages ? 1 : 0, ...source});
+    // An edit's words describe a change, not a picture: they stay out of the prompt history.
+    if (!row.meta?.source) writeStore(HISTORY_KEY, rememberPrompt(readStore(HISTORY_KEY, []), text, {model: row.model || ''}));
+    if (row.meta?.fitted?.width && row.meta?.width && row.meta.fitted.width * row.meta.fitted.height < row.meta.width * row.meta.height) {
+        const fitted = readStore(FIT_KEY, {}); fitted[row.model] = row.meta.fitted.width * row.meta.fitted.height; writeStore(FIT_KEY, fitted);
+    }
+});
+
+// What the page showed last (the picture on the stage, the works list, its scroll), so coming back, or opening it
+// again after a reload, shows the same at once instead of the empty state while the engine's list is on its way.
+const VIEW_CACHE = 'freevideo.imageView.cache';
+let viewCache = readStore(VIEW_CACHE, null);
+// What the user is writing (the prompt, where the caret was, the reference pictures and the prompt helper's state) is
+// kept while this page is open, so leaving the view and coming back finds it as it was. In memory only: none of it is
+// written to the browser's storage.
+let keptDraft = null;
+const enhancerNode = {id: 'image-view', properties: {}};
+const keepView = value => { viewCache = value; writeStore(VIEW_CACHE, value); };
+
 let current = null;
+// The view kept after it closes (as the editor and the AI view are): {node, dialog, reopen, dispose}.
+let kept = null;
 // Opens above the studio when one is open, as the editing view does, so going back finds it as it was.
-export function openImageView(node, {studio = null, client = createImageGenClient(), poll = 500} = {}) {
+export function openImageView(node, {studio = null, client: given = null, poll = 500} = {}) {
+    const client = given || createImageGenClient();
+    // Deletes go through the page's keepalive client, so one sent as the page goes away still reaches the engine.
+    const deleter = given || worksClient();
     if (current?.open) { viewChanged('image', node); return current; }
+    // Coming back finds the view exactly as it was left, at once; its works are brought up to date in the background.
+    if (kept && kept.node === node && !given && kept.dialog.isConnected) return kept.reopen(studio);
+    kept?.dispose(); kept = null;
+    void poll;
     studio?.querySelectorAll('video,audio').forEach(media => media.pause());
-    const dialog = el('dialog', 'fv-studio fv-image'); dialog.lang = cn ? 'zh' : 'en'; dialog.setAttribute('aria-label', t('Images', '图像视图'));
+    const dialog = el('dialog', 'fv-studio fv-image'); dialog.dataset.fvReady = 'false'; dialog.lang = cn ? 'zh' : 'en'; dialog.setAttribute('aria-label', t('Images', '图像视图'));
     const header = el('header', 'fv-header'), brand = el('div', 'fv-brand'), tools = el('div', 'fv-header-actions');
     brand.append(wordmark());
     const settings = el('button', 'fv-quiet', t('Settings', '设置')); settings.type = 'button'; settings.onclick = openSetup;
+    tip(settings, t('Settings', '设置'), t('Folders, language and engine options', '文件夹、语言和引擎选项'));
     tools.append(guideButton(t), feedbackButton(t), settings);
     let next = () => studio?.open ? viewChanged('studio', node) : viewChanged('nodes', node);
     const leave = action => { next = action; closeDialog(dialog); };
@@ -117,121 +183,466 @@ export function openImageView(node, {studio = null, client = createImageGenClien
     header.append(brand, navigation, tools);
     const place = keepViewSwitchPlace(header, navigation);
 
-    // State of the page.
-    let info = null, model = IMAGE_MODELS.find(m => m.id === remembered()) || IMAGE_MODELS[0], ratio = '1:1', tier = 'standard';
+    // ───── State ─────
+    const sizes = readStore(SIZE_KEY, {}), fittedAreas = readStore(FIT_KEY, {}), panels = readStore(PANEL_KEY, {});
+    // The engine's last answer stands in until the new one arrives, so the model row never changes its words on the way in.
+    let info = viewCache?.info || null, model = IMAGE_MODELS.find(m => m.id === remembered()) || IMAGE_MODELS[0];
+    let ratio = sizes.ratio || '1:1', area = sizes[model.id] || RANGES[model.id].presets.standard, locked = sizes.locked !== false, tier = 'standard';
     const promptOf = {};
-    let ratioChosen = false, running = null, failure = null, lastReport = null, alive = true, shownFile = '', started = 0, selecting = false;
-    let menu = null; const references = [], picked = new Set(); let rows = [];
+    // A picture's words: from this page's memory (made while it is open) or the engine's record of it; never the browser's store.
+    const promptFor = file => promptOf[file] || sessionPrompts.get(file) || rows.find(r => r.file === file)?.prompt || '';
+    // running: the job this page shows ({id} once the store has it); the job itself belongs to the store and outlives the page.
+    let ratioChosen = !!sizes.ratio, running = null, failure = null, lastReport = null, alive = true, shownFile = '', started = 0, selecting = false, unwatch = null;
+    let pendingGenerate = false, fitted = null, undoNote = null, view = 'works', filter = 'all', query = '', sort = readStore('freevideo.imageView.sort', 'new');
+    // compare: two or more works picked in the works column are compared on the stage ({files, total}); soloKey: the
+    // selection whose compare was left for one picture (it comes back when the selection changes).
+    let compare = null, soloKey = '', beforeCompare = '';
+    // draft: the user is setting up the next picture (shape or size changed): the stage shows its empty frame, the same
+    // one Generate then fills, until a work is chosen again.
+    let draft = false, draftPreview = null;
+    let menu = null; const references = [], picked = new Set(); let rows = Array.isArray(viewCache?.rows) ? viewCache.rows.filter(r => r && typeof r.file === 'string') : [];
+    // historyLoaded: the engine's list has come back; until then the cached list (or a neutral frame) stands in, never the samples.
+    let historyLoaded = false;
+    const readyParts = {info: false, history: false, picture: false};
+    function markReady(part) {
+        readyParts[part] = true;
+        const pictureReady = readyParts.picture || !shownFile || (picture.complete && picture.naturalWidth > 0 && picture.dataset.file === shownFile);
+        if ((readyParts.history || rows.length > 0) && pictureReady) dialog.dataset.fvReady = 'true';
+    }
+    meta.reload();
+    // Pictures made for a character card (its drafts and its views) are not works: cast_photo.js keeps their names.
+    const readCast = () => { try { return new Set(JSON.parse(localStorage.getItem('freevideo.cast.files') || '[]')); } catch { return new Set(); } };
+    let castHidden = readCast();
+    if (viewCache?.shownFile && rows.some(r => r.file === viewCache.shownFile) && !castHidden.has(viewCache.shownFile)) shownFile = viewCache.shownFile;
+    else shownFile = rows.find(r => !castHidden.has(r.file))?.file || '';
+    // The model made ready ahead (image_view_warm.js); only the model and the level go to the engine.
+    const warmer = createWarmer({getToken: async () => info?.token || ''});
+    function warmUp(level) { if (alive && !running && modelState(info, model.id).state === 'ready') warmer.warm(model.id, level); }
     const entry = () => info?.models?.find(m => m.id === model.id) || null;
     const missing = () => entry() ? entry().ready === false : false;
-    const loading = () => !!entry()?.downloading;
+    const loading = () => modelState(info, model.id).state === 'downloading';
 
-    // Left column: model, prompt, references, shape, clarity, Generate.
-    const body = el('div', 'fv-image-body'), left = el('section', 'fv-image-left'), stage = el('section', 'fv-image-stage'), column = el('aside', 'fv-image-works-column');
-    // Two models are alternatives, not a pair: the choice appears only once both are installed, as one small menu in the input area.
-    const modelSelect = el('select'); modelSelect.setAttribute('aria-label', t('Model', '模型'));
-    modelSelect.append(...IMAGE_MODELS.map(m => Object.assign(el('option', '', m.name), {value: m.id})));
-    const modelMenu = menuSelect(modelSelect), modelPick = modelMenu.wrap; modelPick.classList.add('fv-image-models'); modelPick.hidden = true;
-    modelSelect.addEventListener('input', () => { model = IMAGE_MODELS.find(m => m.id === modelSelect.value); remember(model.id); render(); });
+    // ───── Layout ─────
+    const body = el('div', 'fv-image-body fv-iv');
+    const ambient = el('div', 'fv-iv-ambient'), ambA = el('canvas'), ambB = el('canvas'); ambA.width = ambB.width = 64; ambA.height = ambB.height = 40; ambB.style.opacity = '0';
+    ambient.append(ambA, ambB, el('div', 'fv-iv-veil'));
+    const left = el('aside', 'fv-iv-panel fv-iv-left fv-image-left fv-glass fv-g2'), stage = el('main', 'fv-iv-stage fv-image-stage'), column = el('aside', 'fv-iv-panel fv-iv-right fv-image-works-column fv-glass fv-g2');
+    left.setAttribute('aria-label', t('Make a picture', '生成图片')); column.setAttribute('aria-label', t('Works', '作品'));
+    body.append(ambient, left, stage, column);
+
+    // Left panel: head, the groups, the foot with the status slot and Generate.
+    const leftHead = el('div', 'fv-iv-panel-head');
+    const leftCollapse = button('fv-iv-icon-btn fv-iv-collapse', {iconName: 'panelL', name: t('Hide settings', '收起设置栏'), use: t('More room for the picture', '给画面腾出空间')});
+    leftHead.append(el('h2', 'fv-iv-panel-title', t('Create', '生成')), el('span', 'fv-iv-grow'), leftCollapse);
+    const scroll = el('div', 'fv-iv-panel-scroll');
     const inputs = el('div', 'fv-image-inputs');
-    const prompt = el('textarea', 'fv-image-prompt'); prompt.rows = 4;
-    const strip = el('div', 'fv-image-references'), notice = el('p', 'fv-image-notice'); notice.setAttribute('role', 'status');
-    const pick = el('input'); pick.type = 'file'; pick.accept = 'image/*'; pick.multiple = true; pick.hidden = true;
-    const ratioSelect = el('select'); ratioSelect.setAttribute('aria-label', t('Shape', '比例'));
-    const ratioMenu = menuSelect(ratioSelect), ratioHost = ratioMenu.wrap;
-    const tierPick = segmented([{value: 'standard', label: t('Standard', '标准')}, {value: 'high', label: t('High', '高清')}], {value: tier, onChange: v => { tier = v; tierPick.value = v; render(); }});
-    tierPick.setAttribute('aria-label', t('Clarity', '清晰度'));
-    const shape = el('div', 'fv-image-shape'); const addModel = el('button', 'fv-image-add-model', t('Add MiniMax H3 Image', '添加 MiniMax H3 Image')); addModel.type = 'button'; addModel.hidden = true;
-    addModel.onclick = () => { model = IMAGE_MODELS[0]; render(); void install(); };
-    // Advanced holds the video panel's own seed field and wording: empty draws a new seed for each picture, a number keeps it.
-    const advanced = el('details', 'fv-section fv-image-advanced'); advanced.append(el('summary', 'fv-section-title', t('Advanced', '高级选项')));
-    const seedInput = el('input'); seedInput.type = 'number'; seedInput.min = '0'; seedInput.max = String(2 ** 53 - 1); seedInput.step = '1';
-    seedInput.placeholder = t('New each run', '每次随机'); seedInput.setAttribute('aria-label', t('Seed', '种子'));
-    const seedField = el('label', 'fv-image-seed'); seedField.append(el('span', '', t('Seed', '种子')), seedInput); advanced.append(seedField);
-    const go = el('button', 'fv-primary fv-image-go'); go.type = 'button';
-    const note = el('p', 'fv-image-note'); note.setAttribute('role', 'status');
-    shape.append(modelPick, ratioHost, tierPick, addModel);
-    // FreeToken rewrites the text for H3 only, and only once its model is installed; nothing is offered to download here.
-    // It keeps its own record, apart from the video's on the generate node.
-    const enhancer = createPromptEnhancer({node: {id: 'image-view', properties: {}}, input: prompt, api, t, context: () => ({target: 'image'}),
-        setText: () => render(), issueButton});
-    let enhancerReady = false;
-    const enhancerOff = () => !enhancerReady || model.id !== 'minimax-h3-image';
-    enhancer.element.classList.add('fv-image-enhance');
-    enhancer.model.read().then(info => { enhancerReady = info?.ready === true; render(); }).catch(() => {});
-    inputs.append(enhancer.element, strip, notice, pick, shape, advanced, go, note);
-    left.append(inputs);
 
-    // Stage: the work, or the state that stands in for it; below it the actions and one line of facts.
-    const canvas = el('div', 'fv-image-canvas'), picture = el('img'), samples = el('div', 'fv-image-card'), block = el('div', 'fv-image-block'), failHost = el('div', 'fv-image-fail');
-    // While sampling: the model's own picture after each step, in place of the wave once the first one arrives.
+    // Model: both, always.
+    // Model: one dropdown row; the list holds every model (both today, more later).
+    const modelBox = el('section', 'fv-iv-sec fv-iv-sec-model'); modelBox.dataset.section = 'model'; modelBox.dataset.open = 'true';
+    const modelGroup = {element: modelBox, body: modelBox, meta: el('span'), open() {}, isOpen: () => true};
+    const cards = modelPicker({host: dialog, onPick: m => { chooseModel(m); }, onInstall: m => { chooseModel(m); void install(); }, onPause: m => { void pauseInstall(m.id); }});
+    modelBox.append(cards.element);
+
+    // Prompt: the enhancer wraps the box, as on the video page.
+    // Every group is open as it is (CEO: nobody folds these); when the panel has no room it scrolls.
+    const promptGroup = section('prompt', {title: t('Prompt', '描述'), iconName: 'prompt', fixed: true});
+    const prompt = el('textarea', 'fv-image-prompt fv-iv-prompt'); prompt.rows = 3; prompt.maxLength = 2000;
+    // Prompt help (the creation panel's own: switch, original and rewritten, rewrite again, back to the original,
+    // download and enable, errors) for a picture: the engine rewrites for a still image, told which image model.
+    // Mentions travel as <Picture N> and come back as the page writes them.
+    if (keptDraft?.prompt) prompt.value = keptDraft.prompt;
+    const enhancer = createPromptEnhancer({node: enhancerNode, input: prompt, api, t,
+        context: () => ({target: 'image', image_model: model.id}), setText: () => render(), issueButton,
+        prepare: text => text.replace(/@(?:图|Image) ?(\d+)/g, (_, n) => `<Picture ${n}>`),
+        restore: text => text.replace(/<Picture (\d+)>/g, (_, n) => mentionText(n))});
+    let enhancerReady = false;
+    const enhancerOff = () => false;
+    enhancer.element.classList.add('fv-image-enhance');
+    // Expand: the same quiet reading and editing panel as the studio and the editing view; it writes back live.
+    const expand = createExpandButton({t, textarea: prompt, onGenerate: () => go.click(),
+        canGenerate: () => !running && modelState(info, model.id).state === 'ready' && (!!prompt.value.trim() || references.length > 0), onDraft: () => render()});
+    enhancer.model.read().then(value => { enhancerReady = value?.ready === true; render(); fitSoon(); }).catch(() => {});
+    const promptBar = el('div', 'fv-iv-prompt-bar');
+    const clearPrompt = button('fv-iv-text-btn', {iconName: 'x', label: t('Clear', '清空'), name: t('Clear prompt', '清空描述'), use: t('Empty the box to start over', '清空描述框重新写')});
+    const promptCount = el('span', 'fv-iv-prompt-count');
+    // The prompt's tool row also adds reference pictures; their strip sits under the box when there are any.
+    const refAdd = button('fv-iv-text-btn fv-iv-ref-tool', {iconName: 'refs', label: t('References', '参考图')}); const refCount = el('span', 'fv-iv-ref-count'); refAdd.append(refCount);
+    // Expand sits in the tool row under the box (as in the studio), not over the text.
+    // A sketch: a blank canvas at this frame in the picture editor; what is drawn becomes Image 1 and gives the layout.
+    const sketchAdd = button('fv-iv-text-btn fv-iv-sketch-tool', {iconName: 'edit', label: t('Sketch', '画草图'), name: t('Draw a sketch', '画草图'),
+        use: t('Draw the layout on a blank canvas of this frame; it becomes Image 1', '在当前画幅的空白画布上画出构图，作为图 1')});
+    sketchAdd.addEventListener('click', () => void drawSketch());
+    // Prompt enhancement is a key in this row beside References and Sketch, lit while on (no switch row of its own).
+    enhancer.chip.classList.add('fv-iv-text-btn', 'fv-iv-enhance-tool'); enhancer.chip.querySelector('span')?.classList.add('fv-iv-btn-label');
+    promptBar.append(refAdd, sketchAdd, enhancer.chip, el('span', 'fv-iv-grow'), promptCount, clearPrompt, expand.element);
+    // The row stays on one line inside the panel, Expand at the same inset as the box: when its words do not fit (a
+    // narrow panel, longer English words), its keys keep their icons only (their hover cards still name them).
+    const fitPromptBar = () => {
+        if (!promptBar.isConnected) return;
+        delete promptBar.dataset.compact;
+        if (promptBar.scrollWidth > promptBar.clientWidth + 1) promptBar.dataset.compact = 'true';
+    };
+    const promptBarWatch = typeof ResizeObserver === 'function' ? new ResizeObserver(fitPromptBar) : null;
+    promptBarWatch?.observe(promptBar); document.fonts?.ready?.then(fitPromptBar).catch?.(() => {});
+    // "@" in the box lists the reference pictures; a chosen one is written as its mention and stays bound to that picture.
+    const mentions = promptMentions({prompt, host: dialog, pictures: () => references.map((r, at) => ({url: r.url, label: label(at + 1)})), onAdd: () => openRefMenu(refAdd)});
+    clearPrompt.addEventListener('click', () => { prompt.value = ''; prompt.dispatchEvent(new Event('input', {bubbles: true})); prompt.focus(); });
+    promptGroup.body.append(enhancer.element, promptBar);
+
+    // References.
+    const refGroup = section('refs', {title: t('Reference pictures', '参考图'), iconName: 'refs'});
+    const strip = el('div', 'fv-image-references fv-iv-refs'), notice = el('p', 'fv-image-notice'); notice.hidden = true; notice.setAttribute('aria-hidden', 'true');
+    const refNote = el('p', 'fv-iv-note');
+    const pick = el('input'); pick.type = 'file'; pick.accept = 'image/*'; pick.multiple = true; pick.hidden = true;
+    promptGroup.body.append(strip, refNote, notice, pick);
+    const refHeadAdd = button('fv-iv-icon-btn fv-iv-sec-add', {iconName: 'plus', name: t('Add a reference picture', '添加参考图'), use: t('From works, the library or this computer', '从作品、素材库或电脑选择')});
+    refHeadAdd.addEventListener('click', () => openRefMenu(refHeadAdd));
+    refAdd.addEventListener('click', () => openRefMenu(refAdd));
+    refGroup.tools.append(refHeadAdd);
+
+    // Frame and size.
+    const sizeGroup = section('size', {title: t('Frame & size', '画幅与尺寸'), iconName: 'size', fixed: true});
+
+    // Seed: the video panel's own field and wording; empty draws a new seed for each picture, a number keeps it.
+    const advGroup = section('advanced', {title: t('Advanced', '高级选项'), iconName: 'sliders', fixed: true});
+    advGroup.element.classList.add('fv-image-advanced');
+    const advanced = {get open() { return advGroup.isOpen(); }, set open(value) { advGroup.open(!!value); }};
+    const seedInput = el('input'); seedInput.type = 'number'; seedInput.min = '0'; seedInput.max = String(2 ** 53 - 1); seedInput.step = '1';
+    seedInput.placeholder = t('New each run', '每次随机'); tip(seedInput, t('Seed', '种子'), t('Empty: new each time; a number repeats a picture', '留空每次不同；填数字可复现同一张'));
+    const dice = button('fv-iv-icon-btn', {iconName: 'dice', name: t('Random seed', '随机种子'), use: t('Back to a new seed each run', '恢复每次随机')});
+    dice.addEventListener('click', () => { seedInput.value = ''; render(); });
+    seedInput.addEventListener('input', () => render());
+    const seedField = el('label', 'fv-image-seed fv-iv-field fv-iv-field-wide'); seedField.append(el('span', 'fv-iv-field-key', t('Seed', '种子')), seedInput, dice);
+    // LoRA: a button whose panel opens beside it; it answers for the model that takes LoRA files.
+    const loraRow = imageViewLora({host: dialog, fetchApi: (path, options) => api.fetchApi(path, options),
+        modelName: () => IMAGE_MODELS.find(m => m.id === LORA_MODEL)?.name || 'Qwen-Image 2.1', onChange: () => render()});
+    advGroup.body.append(loraRow.element, seedField);
+
+    // Prompt history and presets.
+    const libGroup = section('library', {title: t('History and presets', '提示词与预设'), iconName: 'history', fixed: true});
+    const library = promptLibrary({onUsePrompt: text => { prompt.value = text; prompt.dispatchEvent(new Event('input', {bubbles: true})); promptGroup.open(true); prompt.focus(); },
+        onApplyPreset: preset => applyPreset(preset), currentSettings: () => ({model: model.id, ratio, area, seed: seedInput.value || '', prompt: prompt.value}),
+        describe: p => [IMAGE_MODELS.find(m => m.id === p.model)?.short, p.ratio && p.ratio !== 'same' && RATIOS.includes(p.ratio) ? p.ratio : p.ratio && p.ratio !== 'same' ? t('Custom', '自定') : '', p.area ? `${megapixels(p.area)} MP` : '', p.prompt ? t('with prompt', '含提示词') : ''].filter(Boolean).join(' · ')});
+    libGroup.body.append(library.element);
+
+    inputs.append(modelGroup.element, promptGroup.element, sizeGroup.element, advGroup.element, libGroup.element);
+    inputs.addEventListener('fv-iv-section', event => { const box = event.target.closest('.fv-iv-sec'); if (box) { if (box.dataset.open === 'true') box.dataset.pinned = 'true'; else delete box.dataset.pinned; } render(); });
+    scroll.append(inputs);
+    const leftFoot = el('div', 'fv-iv-panel-foot fv-iv-gen-foot sgf-avoid');
+    // The status slot: always this tall; its words change, nothing below or around it moves.
+    const slot = el('div', 'fv-iv-slot'); slot.setAttribute('role', 'status');
+    const note = el('p', 'fv-image-note'); note.hidden = true;
+    const go = el('button', 'fv-image-go fv-iv-go'); go.type = 'button';
+    const goFill = el('i', 'fv-iv-go-fill'), goLabel = el('span', 'fv-iv-go-label'), goSub = el('span', 'fv-iv-go-sub');
+    go.append(goFill, goLabel, goSub);
+    leftFoot.append(slot, note, go);
+    const leftRail = el('div', 'fv-iv-rail');
+    const railOpen = button('fv-iv-icon-btn', {iconName: 'panelL', name: t('Show settings', '展开设置栏'), use: t('Model, prompt, size and more', '模型、描述、尺寸等')});
+    const railGen = button('fv-iv-icon-btn fv-iv-rail-go', {iconName: 'gen'});
+    leftRail.append(railOpen, el('i', 'fv-iv-rail-sep'), ...['model', 'prompt', 'refs', 'size'].map(name => {
+        const b = button('fv-iv-icon-btn', {iconName: name, name: {model: t('Model', '模型'), prompt: t('Prompt', '描述'), refs: t('Reference pictures', '参考图'), size: t('Frame & size', '画幅与尺寸')}[name], use: t('Open the settings at this group', '展开设置栏并跳到这一组')});
+        b.addEventListener('click', () => { setPanel('left', true); const s = inputs.querySelector(`[data-section=${name}]`); s?.scrollIntoView({block: 'nearest'}); });
+        return b;
+    }), el('span', 'fv-iv-grow'), railGen);
+    // Generate sits at the panel's foot, its bottom level with the stage's action row.
+    left.append(leftHead, scroll, leftFoot, leftRail);
+
+    // Stage: the picture with its actions under it, from the top edge of the panels down; compare over it.
+    // (No bar above: ← → step through the works, and compare comes from picking works.)
+
+    const canvasArea = el('div', 'fv-iv-canvas');
+    const shot = el('div', 'fv-iv-shot');
+    // The picture's frame: the floating window grows out of it and back into it; the centring check measures it.
+    const canvas = el('div', 'fv-iv-frame fv-image-canvas sgf-avoid'); canvas.dataset.fvTaskStage = 'image'; canvas.setAttribute('data-fv-main', '');
+    const frame = canvas;
+    const pic = el('div', 'fv-iv-pic');
+    const picture = el('img', 'fv-iv-picture'); picture.alt = ''; picture.draggable = false;
     const stepFrame = el('div', 'fv-image-step'), stepPicture = el('img'); stepPicture.alt = ''; stepFrame.hidden = true; stepFrame.append(stepPicture); let stepURL = '';
-    const showStep = blob => { if (stepURL) URL.revokeObjectURL(stepURL); stepURL = URL.createObjectURL(blob); stepPicture.src = stepURL; stepFrame.hidden = false; block.classList.add('fv-image-block-low'); };
-    const clearStep = () => { if (stepURL) URL.revokeObjectURL(stepURL); stepURL = ''; stepPicture.removeAttribute('src'); stepFrame.hidden = true; block.classList.remove('fv-image-block-low'); };
-    picture.alt = ''; const progressText = el('p', 'fv-image-progress');
+    // The step picture's URL belongs to the job store (the floating window shows the same one); the page only points at it.
+    const showStep = url => { if (stepURL === url) return; stepURL = url; stepPicture.src = url; stepFrame.hidden = false; block.classList.add('fv-image-block-low'); };
+    const clearStep = () => { stepURL = ''; stepPicture.removeAttribute('src'); stepFrame.hidden = true; block.classList.remove('fv-image-block-low'); };
+    const block = el('div', 'fv-image-block'), progressText = el('p', 'fv-image-progress');
     const progressLine = el('b'), progressSub = el('span'), runReport = el('div', 'fv-image-run-report');
     progressLine.setAttribute('role', 'status'); progressText.append(progressLine, progressSub); block.append(progressText, runReport);
+    const meter = el('i', 'fv-iv-meter');
     // The video's rising wave: it reads the level from this element, as in the studio.
-    const level = el('div'); level.hidden = true; canvas.append(level);
-    const stopScene = createPreviewScene(canvas, level, el('div'));
-    const grid = el('div', 'fv-image-samples');
+    const sceneHost = el('div', 'fv-iv-scene'), level = el('div'); level.hidden = true; sceneHost.append(level);
+    const stopScene = createPreviewScene(sceneHost, level, el('div'));
+    const grid = el('div', 'fv-image-samples fv-iv-samples');
     for (const key of cn ? ['fox', 'window', 'perfume', 'fjord'] : ['jazz', 'window', 'perfume', 'fjord']) {
-        const b = el('button'), i = el('img'); b.type = 'button'; i.alt = ''; i.src = new URL(`./assets/tour/sample-${key}.webp`, import.meta.url).href;
+        const b = el('button'), i = el('img'); b.type = 'button'; i.alt = ''; i.draggable = false; i.src = new URL(`./assets/tour/sample-${key}.webp`, import.meta.url).href;
         if (key === 'jazz') i.style.objectPosition = '50% 0';
-        b.setAttribute('aria-label', SAMPLE_PROMPTS[key].slice(0, 60)); b.append(i);
-        b.onclick = () => { prompt.value = SAMPLE_PROMPTS[key]; prompt.dispatchEvent(new Event('input', {bubbles: true})); prompt.focus(); };
+        tip(b, t('Try this prompt', '试试这条描述'), SAMPLE_PROMPTS[key].slice(0, 48) + '…'); b.append(i);
+        b.onclick = () => { prompt.value = SAMPLE_PROMPTS[key]; prompt.dispatchEvent(new Event('input', {bubbles: true})); promptGroup.open(true); prompt.focus(); };
         grid.append(b);
     }
-    canvas.append(picture, stepFrame, samples, grid, block, failHost);
-    const actions = el('div', 'fv-image-actions'), info_ = el('p', 'fv-image-info'), infoText = el('span'), doneReport = el('span', 'fv-image-done-report');
-    info_.append(infoText, doneReport);
-    const mk = (text, onClick) => { const b = el('button', 'fv-image-action', text); b.type = 'button'; b.onclick = onClick; return b; };
-    const editThis = mk(t('Edit this', '改这张'), () => void useAsReference(shownFile, true));
-    const asReference = mk(t('Use as reference', '用作参考图'), () => void useAsReference(shownFile, false));
-    const save = el('a', 'fv-image-action', t('Download', '下载')); save.setAttribute('download', '');
-    // Open downward when the four rows fit inside the nearest box that clips them, otherwise upward over the picture.
-    const clipBox = node => {
-        for (let e = node.parentElement; e && e !== document.body; e = e.parentElement) if (getComputedStyle(e).overflow !== 'visible') return e;
-        return document.documentElement;
-    };
-    const moreButton = mk('⋯', () => {
-        more.hidden = !more.hidden; if (more.hidden) return;
-        delete more.dataset.up;
-        const edge = clipBox(moreHost).getBoundingClientRect(), bottom = Math.min(edge.bottom, innerHeight);
-        const button = moreButton.getBoundingClientRect(), below = more.getBoundingClientRect().bottom;
-        if (below > bottom - 8 && button.top - Math.max(edge.top, 0) > bottom - button.bottom) more.dataset.up = 'true';
-    }); moreButton.setAttribute('aria-label', t('More', '更多')); moreButton.setAttribute('aria-haspopup', 'true');
-    const more = el('div', 'fv-image-more'); more.hidden = true;
-    const folder = mk(t('Open folder', '打开文件夹'), () => { more.hidden = true; void client.historyOpen?.(); });
-    const remove = mk(t('Delete', '删除'), () => { more.hidden = true; void deleteFiles([shownFile]); });
-    const copyPrompt = mk(t('Copy prompt', '复制提示词'), () => { more.hidden = true; const text = promptOf[shownFile] ?? rows.find(r => r.file === shownFile)?.prompt ?? ''; try { void navigator.clipboard?.writeText(text); } catch { /* the clipboard may be refused */ } });
-    save.addEventListener('click', () => { more.hidden = true; });
-    more.append(save, folder, copyPrompt, remove);
-    const moreHost = el('span', 'fv-image-more-host'); moreHost.append(moreButton, more);
-    actions.append(editThis, asReference, moreHost);
-    stage.append(canvas, actions, info_);
+    const failHost = el('div', 'fv-image-fail fv-iv-fail fv-glass fv-g3'); failHost.setAttribute('role', 'alert');
+    const draftNote = el('div', 'fv-iv-draft'), draftSize = el('b'), draftHint = el('span'); draftNote.append(draftSize, draftHint); draftNote.hidden = true;
+    pic.append(sceneHost, picture, stepFrame, block, draftNote, meter);
+    frame.append(pic, grid, failHost);
+    // The caption row (facts, Edit, reference, star, download, more) is where the hand goes after a picture: the floating window keeps off it.
+    const cap = el('div', 'fv-iv-cap fv-image-actions sgf-avoid');
+    const info_ = el('p', 'fv-image-info fv-iv-cap-info'), infoText = el('span'), doneReport = el('span', 'fv-image-done-report');
+    // The picture's facts, the prompt among them (selectable, to copy), one click from its caption.
+    const infoBtn = button('fv-iv-icon-btn fv-iv-info-btn', {iconName: 'info', name: t('About this picture', '图片信息'), use: t('Prompt, model, size and time', '提示词、模型、尺寸和用时'), key: 'I'});
+    const infoPop = el('div', 'fv-iv-info'); infoPop.setAttribute('aria-label', t('About this picture', '图片信息'));
+    infoBtn.addEventListener('click', () => { if (rightTab === 'info' && column.dataset.collapsed !== 'true') setRightTab('works'); else { setRightTab('info'); setPanel('right', true); } });
+    info_.append(infoBtn, infoText, doneReport);
+    const editThis = button('fv-iv-text-btn fv-image-action', {iconName: 'edit', label: t('Edit', '编辑'), name: t('Edit', '编辑'), use: t('Make a new version: it becomes Image 1', '以这张为图 1，描述要改的地方')});
+    const asReference = button('fv-iv-text-btn fv-image-action', {iconName: 'asref', label: t('Use as reference', '用作参考图'), name: t('Use as reference', '用作参考图'), use: t('Add it to the reference pictures', '加入参考图')});
+    const favBtn = button('fv-iv-icon-btn fv-iv-fav-btn', {iconName: 'star'});
+    const save = el('a', 'fv-iv-icon-btn fv-iv-btn fv-image-action'); save.setAttribute('download', ''); save.append(icon('down'));
+    tip(save, t('Download', '下载'), t('Save the full-size picture', '保存原尺寸图片'));
+    const moreButton = button('fv-iv-icon-btn', {iconName: 'more', name: t('More', '更多'), use: t('Folder, copy prompt, delete', '打开文件夹、复制提示词、删除')});
+    moreButton.setAttribute('aria-haspopup', 'true');
+    const more = el('div', 'fv-iv-menu fv-image-more fv-glass fv-g3'); more.hidden = true; more.setAttribute('role', 'menu');
+    const menuItem = (iconName, text, use, onClick, cls = '') => { const b = el('button', 'fv-iv-menu-item ' + cls); b.type = 'button'; b.setAttribute('role', 'menuitem'); b.append(icon(iconName), el('span', '', text)); tip(b, text, use); b.addEventListener('click', () => { more.hidden = true; onClick(); }); return b; };
+    const copyPrompt = () => { const text = promptFor(shownFile); try { void navigator.clipboard?.writeText(text); } catch { /* the clipboard may be refused */ } };
+    const usePromptItem = menuItem('prompt', t('Use prompt', '使用提示词'), t('Put its prompt back in the box', '把它的提示词填回描述框'), () => { const text = promptFor(shownFile); if (text) { prompt.value = text; prompt.dispatchEvent(new Event('input', {bubbles: true})); promptGroup.open(true); } });
+    more.append(menuItem('folder', t('Open folder', '打开文件夹'), t('Show the pictures on this computer', '在电脑上打开保存图片的文件夹'), () => void client.historyOpen?.()),
+        menuItem('copy', t('Copy prompt', '复制提示词'), t('Copy the words this picture was made from', '复制这张图的提示词'), copyPrompt), usePromptItem,
+        menuItem('trash', t('Delete', '删除'), t('Move to recently deleted; can be undone', '移到最近删除，可以撤销'), () => deleteFiles([shownFile]), 'fv-iv-danger'));
+    const moreHost = el('span', 'fv-image-more-host fv-iv-more-host'); moreHost.append(moreButton, more);
+    // Where there is room the menu's actions sit in the row itself; the menu is left for a phone.
+    const inline = el('span', 'fv-iv-cap-inline');
+    const inlineBtn = (iconName, name, use, onClick, cls = '') => { const b = button('fv-iv-icon-btn ' + cls, {iconName, name, use}); b.addEventListener('click', onClick); return b; };
+    const copyInline = inlineBtn('copy', t('Copy prompt', '复制提示词'), t('Copy the words this picture was made from', '复制这张图的提示词'), copyPrompt);
+    const useInline = inlineBtn('prompt', t('Use prompt', '使用提示词'), t('Put its prompt back in the box', '把它的提示词填回描述框'), () => usePromptItem.click());
+    inline.append(copyInline, useInline,
+        inlineBtn('folder', t('Open folder', '打开文件夹'), t('Show the pictures on this computer', '在电脑上打开保存图片的文件夹'), () => void client.historyOpen?.()),
+        inlineBtn('trash', t('Delete', '删除'), t('Move to recently deleted; can be undone', '移到最近删除，可以撤销'), () => deleteFiles([shownFile]), 'fv-iv-danger'));
+    const capActions = el('div', 'fv-iv-cap-actions'); capActions.append(editThis, asReference, el('i', 'fv-iv-sep'), favBtn, save, inline, moreHost);
+    cap.append(info_, capActions);
+    function paintInfo() {
+        const m = meta.get(shownFile) || {}, text = promptFor(shownFile);
+        const row = (k, v) => { const r = el('div', 'fv-iv-info-row'); r.append(el('span', 'fv-iv-info-k', k), el('span', 'fv-iv-info-v fv-copyable', v)); return r; };
+        const parts = [];
+        if (text) parts.push(el('p', 'fv-iv-info-prompt fv-copyable', text));
+        const model_ = IMAGE_MODELS.find(x => x.id === m.model)?.name;
+        if (model_) parts.push(row(t('Model', '模型'), model_));
+        const w = picture.dataset.file === shownFile && picture.naturalWidth ? picture.naturalWidth : m.width, h = picture.dataset.file === shownFile && picture.naturalHeight ? picture.naturalHeight : m.height;
+        if (w) parts.push(row(t('Size', '尺寸'), `${w} × ${h} · ${megapixels(w * h)} MP`));
+        if (m.seconds) parts.push(row(t('Time', '用时'), t(`${m.seconds} s`, `${m.seconds} 秒`)));
+        if (m.seed) parts.push(row(t('Seed', '种子'), String(m.seed)));
+        // Where it came from (an edit of another work): its thumbnail and name, opening it on the stage.
+        if (m.source) {
+            const name = String(m.source).slice(String(m.source).lastIndexOf('/') + 1), there = rows.find(r => r.file === m.source || r.name === name);
+            const line = el('div', 'fv-iv-info-row fv-iv-info-row-src'), go = el('button', 'fv-iv-info-src'); go.type = 'button';
+            if (there) { const img = el('img'); img.src = pictureURL(there.file); img.alt = ''; img.loading = 'lazy'; go.append(img); }
+            go.append(el('span', '', name));
+            if (there) { tip(go, t('Open the source', '打开来源'), t('Show the work this picture was made from', '显示这张图的来源作品')); go.addEventListener('click', () => showFile(there.file)); }
+            else { go.disabled = true; tip(go, t('Source', '来源'), t('The source is no longer in the works', '来源作品已不在作品里')); }
+            line.append(el('span', 'fv-iv-info-k', t('Source', '来源')), go); parts.push(line);
+        }
+        if (!text) parts.push(el('p', 'fv-iv-info-none', t('Prompts are not kept in this browser; one shows while the page that made the picture is open.', '提示词不保存在浏览器里，只在生成它的页面打开期间显示。')));
+        if (text) {
+            const acts = el('div', 'fv-iv-info-acts');
+            const copy = button('fv-iv-text-btn', {iconName: 'copy', label: t('Copy prompt', '复制提示词'), name: t('Copy prompt', '复制提示词'), use: t('Copy the words this picture was made from', '复制这张图的提示词')});
+            copy.addEventListener('click', copyPrompt);
+            const reuse = button('fv-iv-text-btn', {iconName: 'prompt', label: t('Use prompt', '使用提示词'), name: t('Use prompt', '使用提示词'), use: t('Put its prompt back in the box', '把它的提示词填回描述框')});
+            reuse.addEventListener('click', () => { prompt.value = text; prompt.dispatchEvent(new Event('input', {bubbles: true})); promptGroup.open(true); if (narrowQuery.matches) setPanel('left', true); });
+            acts.append(copy, reuse); parts.push(acts);
+        }
+        if (!shownFile) { const e = el('div', 'fv-iv-empty fv-iv-empty-small'); e.append(icon('info'), el('span', '', t('Pick a picture to see its facts', '选一张图片查看信息'))); parts.splice(0, parts.length, e); }
+        infoPop.replaceChildren(...parts);
+    }
+    // The picture is centred in the room above; the action row stays at the foot of the stage whatever the picture's shape.
+    const frameBox = el('div', 'fv-iv-frame-box'); frameBox.append(frame);
+    shot.append(frameBox, cap);
+    canvasArea.append(shot);
+    const sizeOf = file => { const m = meta.get(file); return m?.width ? `${m.width} × ${m.height}` : ''; };
+    const comparer = compareView({pictureURL, labelOf: sizeOf, ratioOf: file => { const m = meta.get(file); return m?.width ? m.width / m.height : 0; },
+        onPick: file => { soloKey = pickedKey(); showFile(file); },
+        onRemove: file => { picked.delete(file); drawWorks(); render(); },
+        onClose: () => { selecting = false; picked.clear(); drawWorks(); render(); }});
+    comparer.element.classList.add('sgf-avoid'); canvasArea.append(comparer.element);
+    stage.append(canvasArea);
+    // The shared frame and size picker. An option pointed at shows the next picture's empty frame at that shape (over the
+    // shown work too, which comes back when the pointer leaves without a choice); nothing is drawn over a work. A picture
+    // being made, or a compare, keeps the stage.
+    const sizer = sizePicker({onChange: patch => changeSize(patch), onPreview: frame => {
+        if ((running && !browsing) || compare) return;
+        draftPreview = frame?.width ? {width: frame.width, height: frame.height} : null; drawStage();
+    }});
+    sizeGroup.body.append(sizer.element);
+    // Opening "Custom size" is the user opening this group: the first-screen fit never folds it away under them.
+    sizer.element.addEventListener('click', event => { if (event.target.closest?.('.fvp-custom-item')) { sizeGroup.element.dataset.pinned = 'true'; fitSoon(); } }, true);
+    // The floating window keeps inside the stage here: the four corners of the window belong to the panels.
+    // The whole stage, bar included: its empty right end above the picture is the least covering place when the picture fills the canvas.
+    stage.dataset.floatBounds = ''; stage.id = stage.id || 'fv-image-stage';
 
-    // Works: newest first, two columns; "Select" lets several go at once.
-    const works = el('div', 'fv-image-works'); works.setAttribute('aria-label', t('Works', '作品'));
-    const selectBar = el('div', 'fv-image-select'), selectToggle = mk(t('Select', '选择'), () => { selecting = !selecting; picked.clear(); drawWorks(); });
-    const deleteSelected = mk('', () => void deleteFiles([...picked])); deleteSelected.hidden = true;
-    selectBar.append(selectToggle, deleteSelected);
-    column.append(works, selectBar);
-    const main = el('div', 'fv-image-main'); main.append(stage, column);
-    body.append(left, main); dialog.append(header, body);
-    inputs.addEventListener('dragover', event => { if (event.dataTransfer?.types?.includes('Files')) event.preventDefault(); });
-    inputs.addEventListener('drop', event => { if (event.dataTransfer?.files?.length) { event.preventDefault(); addFiles([...event.dataTransfer.files]); } });
+    // The status line: what is here and the page's own settings. It never holds progress. A delete is not announced:
+    // the picture is in recently deleted, where it can be put back.
+    const sbar = el('div', 'fv-iv-sbar');
+    const sbarState = el('span', 'fv-iv-sbar-state');
+    const densityBtn = button('fv-iv-icon-btn', {iconName: 'sliders'}), themeBtn = button('fv-iv-icon-btn', {iconName: 'info'}), keysBtn = button('fv-iv-icon-btn', {iconName: 'doc', name: t('Shortcuts', '快捷键'), use: t('Every key this page answers to', '这个页面的全部快捷键'), key: '?'});
+    const keysPop = el('div', 'fv-iv-menu fv-iv-keys fv-glass fv-g3'); keysPop.hidden = true; keysPop.setAttribute('role', 'dialog');
+    const keysHost = el('span', 'fv-iv-more-host'); keysHost.append(keysBtn, keysPop);
+    sbar.append(sbarState, el('span', 'fv-iv-grow'), densityBtn, themeBtn, keysHost);
+    // Held back for now: the shell settles one status area for all five views.
+    void sbar;
+    let density = readStore('freevideo.imageView.density', 'comfortable');
+    function paintSettings() {
+        body.dataset.density = density;
+        densityBtn.replaceChildren(icon(density === 'compact' ? 'grid4' : 'grid3'));
+        tip(densityBtn, density === 'compact' ? t('Compact', '紧凑') : t('Comfortable', '舒适'), density === 'compact' ? t('Smaller tiles, more at once', '缩略图更小，一屏更多') : t('Larger tiles and rows', '缩略图和行更大'));
+        const light = document.documentElement.dataset.theme === 'light';
+        themeBtn.replaceChildren(icon(light ? 'moon' : 'sun'));
+        tip(themeBtn, light ? t('Dark appearance', '深色外观') : t('Light appearance', '浅色外观'), t('Switch every view\'s colours', '切换所有视图的颜色'));
+    }
+    densityBtn.addEventListener('click', () => { density = density === 'compact' ? 'comfortable' : 'compact'; writeStore('freevideo.imageView.density', density); paintSettings(); });
+    themeBtn.addEventListener('click', () => {
+        const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+        if (globalThis.FreeVideoShell?.setTheme) globalThis.FreeVideoShell.setTheme(next); else document.documentElement.dataset.theme = next;
+        paintSettings();
+    });
+    const KEYS = [[`${mod}+Enter`, t('Generate', '生成')], ['← →', t('Previous / next picture', '上一张 / 下一张')], ['F', t('Star or unstar', '收藏 / 取消收藏')], [`${mod} / Shift`, t('Pick several works to compare', '多选作品即可对比')], ['I', t('Picture facts', '图片信息')], ['Delete', t('Delete (to recently deleted)', '删除（移到最近删除）')],
+        [`${mod}+F`, t('Search works', '搜索作品')], [`${mod}+A`, t('Select all while selecting', '多选时全选')], ['Esc', t('Close the top layer', '关闭最上层')]];
+    keysPop.append(...KEYS.map(([k, what]) => { const r = el('div', 'fv-iv-key-row'); r.append(el('span', '', what), el('kbd', 'fv-iv-kbd', k)); return r; }));
+    keysBtn.addEventListener('click', () => { keysPop.hidden = !keysPop.hidden; keysBtn.setAttribute('aria-pressed', String(!keysPop.hidden)); });
+    function paintStatus() {
+        const live = rows.filter(r => !isGone(r.file)).length;
+        sbarState.replaceChildren(el('i', 'fv-iv-dot' + (info ? '' : ' fv-iv-dot-wait')), el('span', '', info ? t(`Ready · ${live} pictures`, `就绪 · ${live} 张`) : t('Connecting…', '正在连接…')));
+    }
+    paintSettings();
+
+    // Right panel: the works.
+    const works = historyPanel({pictureURL,
+        onShow: file => showFile(file),
+        onToggleFav: files => { const list = files || [...picked]; if (!list.length) return; const all = list.every(f => meta.isFav(f)); meta.setFav(list, !all); drawWorks(); render(); },
+        onSelect: (files, add) => { if (!selecting) selecting = true; if (add) files.forEach(f => picked.add(f)); else files.forEach(f => picked.has(f) ? picked.delete(f) : picked.add(f)); drawWorks(); render(); },
+        onSelectMode: value => { selecting = value ?? !selecting; picked.clear(); drawWorks(); render(); },
+        onSelectAll: () => { visible().forEach(r => picked.add(r.file)); drawWorks(); render(); },
+        onDelete: files => deleteFiles(files || [...picked]),
+        onFilter: value => { filter = value; drawWorks(); drawStage(); },
+        onQuery: value => { query = value; drawWorks(); drawStage(); },
+        onSort: value => { sort = value; writeStore('freevideo.imageView.sort', value); drawWorks(); drawStage(); },
+        onTrash: value => { view = value === false ? 'works' : view === 'trash' ? 'works' : 'trash'; drawWorks(); },
+        onRestore: files => { restoreWorks(files); if (undoNote) undoNote.files = undoNote.files.filter(f => !files.includes(f)); if (!undoNote?.files.length) undoNote = null; drawWorks(); render(); },
+        onPurge: () => { void trash.flush(); },
+        onOpenFolder: () => void client.historyOpen?.(),
+        onCollapse: () => setPanel('right', false), onRun: () => returnToRun()});
+    const rightRail = el('div', 'fv-iv-rail fv-iv-rail-right');
+    const rightRailOpen = button('fv-iv-icon-btn', {iconName: 'panelR', name: t('Show works', '展开作品栏'), use: t('Your pictures, newest first', '你的图片，最新在前')});
+    const railThumbs = el('div', 'fv-iv-rail-thumbs');
+    rightRail.append(rightRailOpen, el('i', 'fv-iv-rail-sep'), railThumbs);
+    // The right column's three pages: works, the shown picture's facts, and the queue of every view.
+    const colHead = el('div', 'fv-iv-panel-head fv-iv-col-head');
+    const tabs = el('div', 'fv-iv-seg fv-iv-col-tabs'); tabs.setAttribute('role', 'tablist');
+    const tabWorks = button('', {label: t('Works', '作品'), name: t('Works', '作品'), use: t('Every picture made here', '在这里生成的所有图片')});
+    const tabInfo = button('', {label: t('Info', '信息'), name: t('Info', '信息'), use: t('Prompt, model, size and time of the shown picture', '当前图片的提示词、模型、尺寸和用时'), key: 'I'});
+    const tabQueue = button('', {label: t('Queue', '队列'), name: t('Queue', '队列'), use: t('What is generating in every view', '各个视图正在生成和排队的任务')});
+    const tabWorksN = el('span', 'fv-iv-tab-n'), tabQueueN = el('span', 'fv-iv-tab-n'); tabWorks.append(tabWorksN); tabQueue.append(tabQueueN);
+    for (const b of [tabWorks, tabInfo, tabQueue]) b.setAttribute('role', 'tab');
+    tabs.append(tabWorks, tabInfo, tabQueue);
+    const colCollapse = button('fv-iv-icon-btn fv-iv-collapse', {iconName: 'panelR', name: t('Hide works', '收起作品栏'), use: t('More room for the picture', '给画面腾出空间')});
+    colHead.append(tabs, colCollapse);
+    const infoPane = el('div', 'fv-iv-col-pane fv-iv-info-pane'); infoPane.append(infoPop);
+    const queue = queuePanel({jobs, confirmStop, pictureURL, onOpen: row => openQueued(row)});
+    queue.element.classList.add('fv-iv-col-pane');
+    let rightTab = readStore('freevideo.imageView.rightTab', 'works');
+    function setRightTab(name) {
+        rightTab = name; writeStore('freevideo.imageView.rightTab', name === 'info' ? 'works' : name);
+        column.dataset.tab = name;
+        for (const [b, n] of [[tabWorks, 'works'], [tabInfo, 'info'], [tabQueue, 'queue']]) { b.setAttribute('aria-pressed', String(n === name)); b.setAttribute('aria-selected', String(n === name)); }
+        works.element.hidden = name !== 'works'; infoPane.hidden = name !== 'info'; queue.element.hidden = name !== 'queue';
+        infoBtn.setAttribute('aria-pressed', String(name === 'info'));
+        if (name === 'info') paintInfo();
+    }
+    tabWorks.addEventListener('click', () => setRightTab('works'));
+    tabInfo.addEventListener('click', () => setRightTab('info'));
+    tabQueue.addEventListener('click', () => setRightTab('queue'));
+    colCollapse.addEventListener('click', () => setPanel('right', false));
+    column.addEventListener('fv-iv-queue', event => { tabQueueN.textContent = event.detail.active ? String(event.detail.active) : ''; });
+    column.append(colHead, works.element, infoPane, queue.element, rightRail);
+    // A queued row opens its own generation screen: here for a picture, in its view otherwise.
+    function openQueued(row) {
+        if (row.kind === 'image' && (row.view === 'image' || !row.view)) {
+            if (row.result?.file && !ACTIVE.has(row.status)) { showFile(row.result.file); return; }
+            if (running) { returnToRun(); return; }
+        }
+        const shell = globalThis.FreeVideoShell; if (row.view && row.view !== 'image' && shell?.go) void shell.go(row.view);
+    }
+    dialog.append(header, body);
+
+    // Other surfaces (notifications, the floating window) drop or bring back the same pictures.
+    const announce = (name, files, extra = {}) => { if (files.length) window.dispatchEvent(new CustomEvent(name, {detail: {ids: files.slice(), paths: files.slice(), source: 'image-view', ...extra}})); };
+    function restoreWorks(files) { const list = files.filter(f => trash.has(f)); trash.restore(files); announce('freevideo-works-restored', list); }
+    // A picture is out of the works while it waits out an undo window: this page's, the picture editor's, or one
+    // announced by another surface (the works library).
+    const elsewhere = new Set();
+    const isGone = file => trash.has(file) || elsewhere.has(file) || isHeld(file) || castHidden.has(file);
+    const trash = createTrash({client: deleter, onChange: (answer, list) => {
+        if (answer) {
+            // A file the engine no longer has is gone, not kept.
+            const kept = new Set((answer.failed || []).filter(f => f.reason !== 'missing').map(f => f.file));
+            const gone = (list || []).filter(f => !kept.has(f));
+            // The engine's own bin answers without a list: what it deleted leaves the works here, not only on the next load.
+            if (answer.items) rows = answer.items; else rows = rows.filter(r => !gone.includes(r.file));
+            if (gone.length) { meta.forget(gone); void removeSavedImages(api, gone).catch(() => {}); announce('freevideo-works-removed', gone, {undoable: false}); }
+            if (kept.size) say(t(`Could not delete ${kept.size}.`, `有 ${kept.size} 张没能删除。`));
+            if (undoNote && list?.some(f => undoNote.files.includes(f))) undoNote = null;
+        }
+        if (alive) { drawWorks(); render(); }
+    }});
+
+    // ───── Panels fold to a rail; the stage stays centred on the window either way ─────
+    // Under 1280 wide both panels rest as rails and open as drawers over the stage, one at a time, so the picture
+    // keeps the room; the stage still measures from the two rails, so it stays centred. Wide, they dock and fold.
+    const narrowQuery = matchMedia('(min-width: 720px) and (max-width: 1279px)');
+    let drawer = '';
+    function paintPanels() {
+        const narrow = narrowQuery.matches;
+        const leftShown = narrow ? drawer === 'left' : panels.left !== false, rightShown = narrow ? drawer === 'right' : panels.right !== false;
+        left.dataset.collapsed = String(!leftShown); column.dataset.collapsed = String(!rightShown);
+        body.dataset.narrow = String(narrow); body.dataset.drawer = narrow ? drawer : '';
+        body.dataset.left = leftShown && !narrow ? 'open' : 'rail'; body.dataset.right = rightShown && !narrow ? 'open' : 'rail';
+        paintCover();
+    }
+    // The next picture's empty frame is shown whole where the stage is not covered: an open settings drawer (narrow
+    // windows) covers its left part, so the frame centres in the rest.
+    function paintCover() {
+        let cover = 0;
+        if (stage.dataset.state === 'draft' && body.dataset.drawer === 'left' && !matchMedia('(max-width: 719px)').matches) {
+            const l = left.getBoundingClientRect(), c = canvasArea.getBoundingClientRect();
+            cover = Math.max(0, Math.round(l.right + 12 - c.left));
+        }
+        shot.style.setProperty('--iv-cover', `${cover}px`);
+    }
+    function setPanel(side, open) {
+        if (narrowQuery.matches) drawer = open ? side : drawer === side ? '' : drawer;
+        else { panels[side] = open; writeStore(PANEL_KEY, panels); }
+        paintPanels(); if (open && side === 'left') fitSoon();
+    }
+    narrowQuery.addEventListener('change', () => { drawer = ''; paintPanels(); fitSoon(); });
+    // A drawer closes when the stage is touched.
+    stage.addEventListener('pointerdown', () => { if (drawer) { drawer = ''; paintPanels(); } });
+    leftCollapse.addEventListener('click', () => setPanel('left', false));
+    railOpen.addEventListener('click', () => setPanel('left', true));
+    rightRailOpen.addEventListener('click', () => setPanel('right', true));
+    railGen.addEventListener('click', () => go.click());
+    paintPanels(); setRightTab(rightTab);
+
+    // ───── Drop and paste ─────
+    for (const target of [inputs, frame]) {
+        target.addEventListener('dragover', event => { if (event.dataTransfer?.types?.includes('Files') && cap_(model) > 0) { event.preventDefault(); promptGroup.element.dataset.drop = 'true'; } });
+        target.addEventListener('dragleave', () => { delete promptGroup.element.dataset.drop; });
+        target.addEventListener('drop', event => { delete promptGroup.element.dataset.drop; if (event.dataTransfer?.files?.length) { event.preventDefault(); promptGroup.open(true); addFiles([...event.dataTransfer.files]); } });
+    }
     listenDialogKey(prompt, 'paste', event => { const files = [...(event.clipboardData?.files || [])].filter(f => f.type.startsWith('image/')); if (files.length) { event.preventDefault(); addFiles(files); } });
 
-    const say = text => { note.textContent = text || ''; };
+    const say = text => { note.textContent = text || ''; if (alive) paintSlot(); };
     const label = number => t(`Image ${number}`, `图 ${number}`);
     // Each model row says how many pictures it takes; the strip holds as many as the most generous one.
-    const cap = m => { const n = Number(info?.models?.find(r => r.id === m.id)?.max_images); return Number.isInteger(n) && n > 0 ? n : 0; };
-    const most = () => Math.max(0, ...IMAGE_MODELS.map(cap));
-    const over = () => Math.max(0, references.length - cap(model));
+    // Until the engine answers, each model's usual reference count, so the strip has its final height from the first frame.
+    const USUAL_CAPS = {'minimax-h3-image': 16, 'qwen-image-2.1-turbo': 4};
+    function cap_(m) { if (!info?.models) return USUAL_CAPS[m.id] || 0; const n = Number(info.models.find(r => r.id === m.id)?.max_images); return Number.isInteger(n) && n > 0 ? n : 0; }
+    const most = () => Math.max(0, ...IMAGE_MODELS.map(cap_));
+    const over = () => Math.max(0, references.length - cap_(model));
     function addFiles(files, card) {
-        if (cap(model) === 0) return;
-        const room = Math.max(0, most() - references.length); let skipped = 0;
+        if (cap_(model) === 0) return;
+        let skipped = 0;
         for (const file of files) {
             if (!file.type.startsWith('image/')) continue;
             if (references.length >= most()) { skipped++; continue; }
@@ -241,7 +652,7 @@ export function openImageView(node, {studio = null, client = createImageGenClien
         // The note stays until the strip changes again.
         notice.dataset.keep = String(skipped > 0);
         notice.textContent = skipped ? t(`At most ${most()}, ${skipped} more were not added.`, `最多 ${most()} 张，多出的 ${skipped} 张没有加入。`) : '';
-        void room; render();
+        render();
     }
     async function useAsReference(file, first) {
         if (!file) return;
@@ -249,93 +660,375 @@ export function openImageView(node, {studio = null, client = createImageGenClien
             const blob = await (await fetch(pictureURL(file))).blob(), name = file.slice(file.lastIndexOf('/') + 1);
             const record = {file: new File([blob], name, {type: blob.type || 'image/png'}), url: URL.createObjectURL(blob)};
             if (references.length >= most()) { URL.revokeObjectURL(record.url); return; }
-            first ? references.unshift(record) : references.push(record);
+            changeRefs(() => { if (first) references.unshift(record); else references.push(record); });
             const probe = new Image(); probe.onload = () => { record.width = probe.naturalWidth; record.height = probe.naturalHeight; if (alive) render(); }; probe.src = record.url;
-            render(); prompt.focus();
+            promptGroup.open(true); render(); prompt.focus();
         } catch { say(t('That picture could not be read.', '这张图读不了。')); }
     }
-    function insertTag(number) {
-        const at = prompt.selectionStart ?? prompt.value.length, tag = (at && !/\s/.test(prompt.value[at - 1]) ? ' ' : '') + label(number) + ' ';
-        prompt.setRangeText(tag, at, prompt.selectionEnd ?? at, 'end'); prompt.focus(); render();
+    // Any change to the pictures' order goes through here: the mentions in the prompt follow their pictures.
+    function changeRefs(mutate) {
+        const before = references.slice(); mutate();
+        const caret = prompt.selectionStart ?? prompt.value.length, next = renumberMentions(prompt.value, before, references, caret);
+        if (next.changed) {
+            const focused = document.activeElement === prompt;
+            prompt.value = next.text; if (focused) prompt.setSelectionRange(next.caret, next.caret);
+        }
+        mentions.paint();
     }
-    // The engine reads <Picture N>; the page says "图 N" / "Image N". A prompt that names none gets them listed.
+    // The engine reads <Picture N>; the page writes "@图N" / "@Image N" (and older prompts "图 N"). A prompt that names none gets them
+    // listed, all but the sketches: the words around the description name those.
     function engineText() {
-        const swapped = prompt.value.replace(/(?:图\s?|Image\s)(\d+)/g, (_, n) => `<Picture ${n}>`);
-        return references.length && !/<Picture \d+>/.test(swapped) ? references.map((_, at) => `<Picture ${at + 1}>`).join(' ') + ' ' + swapped : swapped;
+        const swapped = mentionsToEngine(prompt.value, references.length).replace(/(?:图\s?|Image\s)(\d+)/g, (_, n) => `<Picture ${n}>`);
+        const sketches = references.map((r, at) => r.sketch && at < cap_(model) ? at + 1 : 0).filter(Boolean);
+        const others = references.map((_, at) => sketches.includes(at + 1) ? '' : `<Picture ${at + 1}>`).filter(Boolean);
+        const listed = others.length && !/<Picture \d+>/.test(swapped) ? others.join(' ') + ' ' + swapped : swapped;
+        return sketchPrompt(listed, sketches, model.id);
+    }
+    // A reference opens in the image editor; the edited picture takes its place (marked), and the original is kept to put back.
+    // The sketch canvas: the current frame, its long side at most 1536; a sketch opens again with its strokes.
+    function sketchTarget() { const s = size(), k = Math.min(1, 1536 / Math.max(s.width, s.height)); return {width: Math.max(256, Math.round(s.width * k / 32) * 32), height: Math.max(256, Math.round(s.height * k / 32) * 32)}; }
+    async function drawSketch(record = null) {
+        if (cap_(model) === 0) { say(t(`${model.short} does not take reference pictures; choose the other model`, `${model.short} 不使用参考图，请换另一个模型`)); return; }
+        if (!record && references.length >= most()) { say(t('The reference slots are full; remove one', '参考图已满，先移除一张')); return; }
+        let outcome;
+        try {
+            const {openImageEditor} = await import('./image_editor.js');
+            outcome = await openImageEditor({source: null, name: 'sketch.png', target: record ? {width: record.width, height: record.height} : sketchTarget(), edit: record?.edit || null,
+                role: 'reference', tool: 'brush', mode: 'sketch', t, resolve: url => url, upload: async blob => client.upload(blob), imageGenClient: client});
+        } catch { say(t('The sketch canvas cannot open right now.', '草图画布暂时打不开。')); return; }
+        if (!alive || !outcome?.blob) return;
+        const file = new File([outcome.blob], 'sketch.png', {type: outcome.blob.type || 'image/png'});
+        if (record) {
+            if (!references.includes(record)) return;
+            URL.revokeObjectURL(record.url); Object.assign(record, {file, url: URL.createObjectURL(file), width: outcome.width, height: outcome.height, edit: outcome.edit || null}); render(); return;
+        }
+        const fresh = {file, url: URL.createObjectURL(file), width: outcome.width, height: outcome.height, edit: outcome.edit || null, sketch: true};
+        changeRefs(() => references.unshift(fresh));
+        // A sketch is made into a picture with H3 Image when it is there (the user may still choose the other model).
+        const h3 = IMAGE_MODELS.find(m => m.id === 'minimax-h3-image');
+        if (h3 && model.id !== h3.id && modelState(info, h3.id).state === 'ready') chooseModel(h3);
+        // The box is left to say what the sketch shows (its placeholder asks for that while it is empty); the words around
+        // the description already say the sketch gives the layout.
+        promptGroup.open(true); render(); prompt.focus({preventScroll: true});
+    }
+    async function editReference(record) {
+        if (record.sketch) { void drawSketch(record); return; }
+        let outcome;
+        try {
+            const {openImageEditor} = await import('./image_editor.js');
+            outcome = await openImageEditor({source: record.original?.url || record.url, name: record.original?.file?.name || record.file?.name || 'reference.png', edit: record.edit || null,
+                role: 'reference', t, resolve: url => url, upload: async blob => client.upload(blob), imageGenClient: client});
+        } catch { say(t('This picture cannot be edited right now.', '这张图暂时无法编辑。')); return; }
+        if (!alive || !outcome || !references.includes(record)) return;
+        if (outcome.restore) { restoreReference(record); return; }
+        if (!outcome.blob) return;
+        const edited = new File([outcome.blob], outcome.name || 'reference-edit.png', {type: outcome.blob.type || 'image/png'});
+        if (record.original) URL.revokeObjectURL(record.url);
+        else record.original = {file: record.file, url: record.url, width: record.width, height: record.height};
+        Object.assign(record, {file: edited, url: URL.createObjectURL(edited), width: outcome.width, height: outcome.height, edit: outcome.edit || null});
+        render();
+    }
+    function restoreReference(record) {
+        if (!record.original) return;
+        URL.revokeObjectURL(record.url);
+        Object.assign(record, record.original); delete record.original; delete record.edit;
+        render();
     }
 
     function drawReferences() {
-        strip.replaceChildren(...references.map((r, at) => {
-            const cell = el('span', 'fv-image-reference'), use = el('button', 'fv-image-reference-use'), x = el('button', 'fv-image-reference-remove', '×');
-            cell.dataset.over = String(at >= cap(model));
-            use.type = x.type = 'button'; use.title = t(`Refer to ${label(at + 1)} in the prompt`, `在描述里引用${label(at + 1)}`); use.setAttribute('aria-label', use.title);
-            x.title = t('Remove', '移除'); x.setAttribute('aria-label', x.title);
-            const i = el('img'); i.src = r.url; i.alt = ''; use.append(i, el('b', '', label(at + 1)));
-            use.onclick = () => insertTag(at + 1);
-            x.onclick = () => { notice.dataset.keep = 'false'; URL.revokeObjectURL(r.url); references.splice(references.indexOf(r), 1); render(); };
-            cell.append(use, x); return cell;
-        }));
-        if (cap(model) > 0 && references.length < most()) {
-            const add = el('button', 'fv-image-add', '+'); add.type = 'button'; add.setAttribute('aria-label', t('Add a reference picture', '添加参考图')); add.onclick = () => { if (menu?.box.isConnected) { menu.close(); return; } menu = openReferenceMenu({api, viewURL: pictureURL, anchor: () => dialog.querySelector('.fv-image-add') || add, host: dialog, onComputer: () => pick.click(),
-                onPick: (file, id) => { addFiles([file], id); }, state: () => ({used: new Set(references.map(r => r.card)), full: references.length >= most()})}); };
-            if (references.length < cap(model) || over() === 0) strip.append(add);
+        const cells = references.map((r, at) => {
+            const cell = el('span', 'fv-image-reference fv-iv-ref'), use = el('button', 'fv-image-reference-use'), x = el('button', 'fv-image-reference-remove');
+            cell.dataset.over = String(at >= cap_(model)); cell.dataset.edited = String(!!r.original);
+            use.type = x.type = 'button';
+            tip(use, t('Edit', '编辑'), r.original ? t(`${label(at + 1)}, edited. Crop or retouch it again`, `${label(at + 1)}（已编辑）：继续裁剪或修图`) : t(`Crop or retouch ${label(at + 1)}; it stays in its place`, `裁剪或修图${label(at + 1)}，改完放回原位`));
+            tip(x, t('Remove', '移除'), cell.dataset.over === 'true' ? t(`${model.short} takes ${cap_(model)}; remove this one`, `${model.short} 最多 ${cap_(model)} 张，请移除这张`) : t('Take this picture out', '去掉这张参考图'));
+            x.append(icon('x'));
+            const i = el('img'); i.src = r.url; i.alt = ''; i.draggable = false; use.append(i, el('b', '', label(at + 1)));
+            use.onclick = () => void editReference(r);
+            x.onclick = () => { notice.dataset.keep = 'false'; URL.revokeObjectURL(r.url); if (r.original) URL.revokeObjectURL(r.original.url); changeRefs(() => references.splice(references.indexOf(r), 1)); render(); };
+            cell.append(use, x);
+            if (r.sketch) { const badge = el('i', 'fv-iv-ref-sketch', t('Sketch', '草图')); cell.append(badge); cell.dataset.sketch = 'true'; }
+            // Edited here: a mark, and in its place on pointing the way back to the original.
+            if (r.original) {
+                const mark = el('i', 'fv-iv-ref-mark'); mark.append(icon('edit'));
+                const back = el('button', 'fv-iv-ref-restore'); back.type = 'button'; back.append(icon('restore'));
+                tip(back, t('Restore original', '恢复原图'), t('Put back the picture as it was before editing', '换回编辑前的原图'));
+                back.onclick = () => restoreReference(r);
+                cell.append(mark, back);
+            }
+            return cell;
+        });
+        const room = cap_(model) > 0 && references.length < most() && (references.length < cap_(model) || over() === 0);
+        // With pictures in the strip, one more small tile adds the next; with none, the tool row's button is the way in.
+        if (room && references.length) {
+            const add = el('button', 'fv-image-add fv-iv-ref fv-iv-ref-add'); add.type = 'button'; add.append(icon('plus'));
+            tip(add, t('Add a reference picture', '添加参考图'), t('From works, the library or this computer; or drop or paste', '从作品、素材库或电脑选择；也可拖入或粘贴'));
+            add.onclick = () => openRefMenu(add);
+            cells.push(add);
         }
+        strip.replaceChildren(...cells);
+        strip.hidden = !cells.length;
+        // No running count; only a full strip says so.
+        refCount.textContent = cap_(model) && references.length >= cap_(model) ? t('Full', '已满') : '';
+        refAdd.setAttribute('aria-disabled', String(!room));
+        tip(refAdd, t('Reference pictures', '参考图'), room ? t('Add from works, the library or this computer; or drop or paste', '从作品、素材库或电脑添加；也可拖入或粘贴') : '');
+        if (!room) refAdd.dataset.fvTipWhy = cap_(model) === 0 ? t(`${model.short} does not take reference pictures; choose the other model`, `${model.short} 不使用参考图，请换另一个模型`) : t('The reference slots are full; remove one', '参考图已满，先移除一张'); else delete refAdd.dataset.fvTipWhy;
+        refNote.textContent = info && cap_(model) === 0 && references.length ? t(`${model.short} does not take reference pictures.`, `${model.short} 不使用参考图。`) : '';
+        refNote.hidden = !refNote.textContent;
+        refHeadAdd.hidden = true;
+    }
+    function openRefMenu(anchor) {
+        if (refAdd.getAttribute('aria-disabled') === 'true' && anchor === refAdd) return;
+        if (menu?.box.isConnected) { menu.close(); return; }
+        menu = openReferenceMenu({api, viewURL: pictureURL, anchor: () => anchor.isConnected ? anchor : refAdd, host: dialog, prefer: 'up', onComputer: () => pick.click(),
+            onPick: (file, id) => { addFiles([file], id); }, state: () => ({used: new Set(references.map(r => r.card)), full: references.length >= most()})});
     }
     pick.onchange = () => { addFiles([...pick.files]); pick.value = ''; };
-
-    function drawRatios() {
-        const wanted = references.length && !ratioChosen ? 'same' : ratio;
-        const options = [...(references.length ? [['same', t('Same as Image 1', '与图 1 相同')]] : []), ...RATIOS.map(r => [r, r])];
-        if (ratioSelect.dataset.key !== options.map(o => o[0]).join()) {
-            ratioSelect.replaceChildren(...options.map(([v, text]) => { const o = el('option', '', text); o.value = v; return o; }));
-            ratioSelect.dataset.key = options.map(o => o[0]).join();
+    // The reference pictures the user had when the view was left come back as they were (marks, sketches, originals).
+    if (keptDraft?.references?.length) {
+        for (const kept of keptDraft.references) {
+            const record = {...kept, url: URL.createObjectURL(kept.file)};
+            if (kept.original) record.original = {...kept.original, url: URL.createObjectURL(kept.original.file)};
+            references.push(record);
         }
-        ratioSelect.value = options.some(o => o[0] === wanted) ? wanted : '1:1';
-        ratioMenu.refresh();
     }
-    ratioSelect.addEventListener('input', () => { ratio = ratioSelect.value; ratioChosen = true; });
+    if (keptDraft && Number.isInteger(keptDraft.caret)) { try { prompt.setSelectionRange(keptDraft.caret, keptDraft.caret); } catch { /* the box may not take a caret yet */ } }
+    if (keptDraft?.prompt) queueMicrotask(() => mentions.paint());
 
-    function size() {
-        const first = references[0];
-        const same = (!ratioChosen && references.length) || ratioSelect.value === 'same';
-        return imageSize(same && first?.width ? 'same' : (ratioSelect.value === 'same' ? '1:1' : ratioSelect.value || ratio), tier, same && first?.width ? first : null, model.id);
+    // ───── Size ─────
+    const firstRef = () => references[0]?.width ? references[0] : null;
+    const shapeOf = () => ratio === 'same' ? (firstRef() || '1:1') : ratio;
+    function size() { return sizeFor(model.id, ratioValue(shapeOf()), area); }
+    function keepSize() {
+        sizes[model.id] = area; if (ratioChosen && ratio !== 'same') sizes.ratio = ratio; sizes.locked = locked;
+        if (ratio !== 'same' && !RATIOS.includes(ratio)) sizes.custom = ratio;
+        writeStore(SIZE_KEY, sizes);
+        tier = area > RANGES[model.id].presets.standard * 1.02 ? 'high' : 'standard';
+    }
+    function changeSize(patch) {
+        if (patch.ratio) {
+            ratio = patch.ratio; ratioChosen = true;
+            const limits = areaRange(model.id, ratioValue(shapeOf())); area = Math.min(limits.max, Math.max(limits.min, area));
+        }
+        if (patch.area != null) area = patch.area;
+        if (patch.locked != null) locked = patch.locked;
+        // Typed width × height: with the lock the shape stays and the area follows; without it the shape follows too
+        // (a typed shape that is one of the usual ones becomes that one).
+        if (patch.dims) {
+            const {width, height} = patch.dims;
+            if (!locked && width > 0 && height > 0) { ratio = RATIOS.find(r => Math.abs(ratioValue(r) - width / height) < .002) || `${width}:${height}`; ratioChosen = true; }
+            const next = sizeFor(model.id, ratioValue(shapeOf()), width * height); area = next.width * next.height;
+        }
+        startDraft(); keepSize(); render(); warmUp('full');
+    }
+    // Another model keeps the shape; a quick point stays the same quick point, any other size is kept inside the new range.
+    function chooseModel(m) {
+        if (m.id === model.id) return;
+        const at = presetAt(model.id, area);
+        model = m; remember(m.id);
+        const limits = areaRange(model.id, ratioValue(shapeOf()));
+        area = at ? RANGES[model.id].presets[at] : sizes[model.id] || RANGES[model.id].presets.standard;
+        area = Math.min(limits.max, Math.max(limits.min, area));
+        if (!missing() && !loading()) pendingGenerate = false;
+        keepSize(); render(); warmUp('full');
+    }
+    function applyPreset(preset) {
+        const m = IMAGE_MODELS.find(x => x.id === preset.model); if (m) chooseModel(m);
+        if (preset.ratio) { ratio = preset.ratio; ratioChosen = true; }
+        if (preset.area) area = preset.area;
+        if (preset.ratio || preset.area) startDraft();
+        seedInput.value = preset.seed ?? '';
+        if (preset.prompt) { prompt.value = preset.prompt; prompt.dispatchEvent(new Event('input', {bubbles: true})); }
+        keepSize(); render();
     }
 
+    // ───── Drawing ─────
+    const visible = () => filterRows(rows.filter(r => !isGone(r.file)), {filter, query, sort}, meta);
+    const labelOf = file => { const m = meta.get(file); return [IMAGE_MODELS.find(x => x.id === m?.model)?.short, m?.width ? `${m.width} × ${m.height}` : '', m?.seconds ? t(`${m.seconds} s`, `${m.seconds} 秒`) : ''].filter(Boolean).join(' · ') || t('Picture', '图片'); };
+    const runRow = () => running?.id ? jobs.get(running.id) : null;
+
+    function paintSlot() {
+        // One fixed-height line above Generate: the most pressing thing there is to say.
+        const s = modelState(info, model.id), tooMany = over() > 0;
+        let kind = '', parts = [];
+        if (note.textContent) { kind = note.dataset.kind === 'busy' ? 'info' : 'warn'; parts = [icon(kind === 'info' ? 'clock' : 'warn'), el('span', 'fv-iv-slot-tx', note.textContent)]; }
+        else if (tooMany) {
+            kind = 'warn';
+            parts = [icon('warn'), el('span', 'fv-iv-slot-tx', cap_(model) === 0 ? t(`${model.short} does not take reference pictures. Remove ${over()}.`, `${model.short} 暂不支持参考图，请移除 ${over()} 张。`) : t(`${model.short} takes at most ${cap_(model)}. Remove ${over()}.`, `${model.short} 最多 ${cap_(model)} 张，请移除 ${over()} 张。`))];
+        } else if (notice.dataset.keep === 'true' && notice.textContent) { kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', notice.textContent)]; }
+        else if (brokenMentions(prompt.value, references.length)) {
+            kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', t('A picture named in the prompt was removed; choose it again with @', '描述里引用的参考图已移除，请用 @ 重新选择'))];
+        }
+        else if (s.state === 'failed') {
+            kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', [t(`${model.short} download failed.`, `${model.short} 下载失败。`), s.reason].filter(Boolean).join(' '))];
+        } else if (s.state === 'downloading') {
+            kind = 'info'; parts = [icon('down'), el('span', 'fv-iv-slot-tx', pendingGenerate ? t(`Installing ${model.short}; it generates when done`, `正在安装 ${model.short}，完成后自动生成`) : t(`Installing ${model.short}`, `正在安装 ${model.short}`))];
+        } else if (s.state === 'missing') {
+            kind = 'info'; parts = [icon('cloud'), el('span', 'fv-iv-slot-tx', t(`${model.short} is not installed; Generate installs it first`, `${model.short} 未安装，点生成会先安装`))];
+        } else if (sizeWarning()) { kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', sizeWarning())]; }
+        else if (fitted && fitted.file === shownFile) { kind = 'info'; parts = [icon('info'), el('span', 'fv-iv-slot-tx', fittedNote(fitted, t, !!info?.unified_memory))]; }
+        else parts = running ? [el('span', 'fv-iv-slot-tx', t('Generating; you can leave this view', '正在生成，可以离开这个视图'))] : [];
+        slot.dataset.kind = kind; slot.replaceChildren(...parts);
+        paintStatus();
+    }
+
+    // A size above what this computer has shown it can make: said before Generate, with the size it will fall back to.
+    function sizeWarning() {
+        const limit = machineLimit(model.id, info, fittedAreas[model.id]), now = size();
+        if (!Number.isFinite(limit.area) || now.width * now.height <= limit.area * 1.02) return '';
+        const smaller = sizeFor(model.id, ratioValue(shapeOf()), limit.area);
+        return t(`May not fit this computer; it would be made at about ${sizeText(smaller)}`, `这台电脑可能放不下，会自动改为约 ${sizeText(smaller)}`);
+    }
+    // The left panel's first screen is whole: groups that would be cut at its bottom fold for this screen only
+    // (the saved choice stays), least needed first; more room opens them again. A group the user opens stays open.
+    // Order: the groups least needed at first, then a shorter prompt box (down to three lines), then size and model.
+    const FIT_ORDER = [];
+    const PROMPT_MIN = 76;
+    function fitLeft() {
+        if (!alive || !scroll.clientHeight || left.dataset.collapsed === 'true' || matchMedia('(max-width: 719px)').matches) return;
+        // While a long prompt is being typed the box is taller for a moment; the panel fits again when it closes.
+        if (prompt.dataset.grown === 'true') return;
+        scroll.classList.add('fv-iv-instant');
+        for (const group of FIT_ORDER) if (group.element.dataset.fitted === 'true') { group.open(true, false); delete group.element.dataset.fitted; }
+        if (prompt.dataset.fitted === 'true') { prompt.style.height = ''; delete prompt.dataset.fitted; }
+        const over = () => scroll.scrollHeight - scroll.clientHeight;
+        for (let step of FIT_ORDER) {
+            // A few pixels are the focus rings' room, not content.
+            if (over() <= 8) break;
+            if (step === 'prompt') {
+                const now = prompt.offsetHeight, target = Math.max(PROMPT_MIN, now - over());
+                if (target < now) { prompt.style.height = `${target}px`; prompt.dataset.fitted = 'true'; }
+                continue;
+            }
+            if (typeof step === 'function') step = step();
+            // A group the user opened on this screen stays open; scrolling is then their choice.
+            if (step && step.isOpen() && step.element.dataset.pinned !== 'true') { step.open(false, false); step.element.dataset.fitted = 'true'; }
+        }
+        void scroll.offsetHeight; scroll.classList.remove('fv-iv-instant');
+    }
+    let fitFrame = 0;
+    const fitSoon = () => { cancelAnimationFrame(fitFrame); fitFrame = requestAnimationFrame(() => { fitFrame = 0; fitLeft(); }); };
+    // Blur costs most while content moves under it: a panel being scrolled turns solid until it rests.
+    for (const panel of [left, column]) {
+        let rest = 0;
+        panel.addEventListener('scroll', () => { panel.dataset.scrolling = 'true'; clearTimeout(rest); rest = setTimeout(() => { delete panel.dataset.scrolling; }, 160); }, {capture: true, passive: true});
+    }
+    const fitWatch = typeof ResizeObserver === 'function' ? new ResizeObserver(fitSoon) : null;
+    fitWatch?.observe(scroll); fitWatch?.observe(inputs);
+
+    function paintGo() {
+        const s = modelState(info, model.id), busy = !!running, now = size(), est = estimateSeconds(meta.samples(), model.id, now.width * now.height);
+        go.className = 'fv-image-go fv-iv-go ' + (failure ? 'fv-image-go-quiet' : 'fv-primary');
+        go.disabled = false; go.dataset.state = busy ? 'running' : s.state === 'downloading' ? 'downloading' : (s.state === 'missing' || s.state === 'failed') ? 'install' : 'ready';
+        goFill.style.setProperty('--p', String(s.state === 'downloading' ? s.fraction : 0));
+        delete go.dataset.fvTipWhy;
+        if (busy) {
+            goLabel.textContent = t('Stop', '停止'); goSub.textContent = '';
+            tip(go, t('Stop', '停止'), t('Cancel this picture; asks first', '取消这一张，会先确认'));
+        } else if (s.state === 'downloading') {
+            goLabel.textContent = t(`Installing ${Math.floor(s.fraction * 100)}%`, `正在安装 ${Math.floor(s.fraction * 100)}%`);
+            goSub.textContent = pendingGenerate ? t('then generates', '完成后生成') : '';
+            tip(go, pendingGenerate ? t('Generates when installed', '安装完自动生成') : t('Generate when installed', '安装完再生成'), pendingGenerate ? t('Press to not generate after it', '再按一次取消自动生成') : t('Press to generate as soon as it is installed', '按下后，安装完成即自动生成'));
+        } else if (s.state === 'missing' || s.state === 'failed') {
+            goLabel.textContent = t('Install and generate', '安装并生成'); goSub.textContent = s.total ? t(`about ${(s.total / 1e9).toFixed(1)} GB`, `约 ${(s.total / 1e9).toFixed(1)} GB`) : '';
+            tip(go, t('Install and generate', '安装并生成'), t(`Downloads ${model.short}, then makes the picture`, `先下载 ${model.short}，再生成图片`), `${mod}+Enter`);
+        } else {
+            // The size is said once, on its own chip; Generate says only how long it may take.
+            goLabel.textContent = t('Generate', '生成'); goSub.textContent = est ? t(`about ${est} s`, `约 ${est} 秒`) : '';
+            tip(go, t('Generate', '生成'), t(`Makes a ${sizeText(now)} picture`, `生成一张 ${sizeText(now)} 的图片`), `${mod}+Enter`);
+            if (!prompt.value.trim() && !references.length) go.dataset.fvTipWhy = t('Describe the picture first', '先写一句描述');
+        }
+        // With no time (or size) to say beside it, the word sits alone in the middle of the key.
+        go.dataset.eta = String(!!goSub.textContent);
+        railGen.replaceChildren(icon(busy ? 'stop' : 'gen')); tip(railGen, goLabel.textContent, go.dataset.fvTipUse, `${mod}+Enter`);
+    }
+
+    // The works picked, in the order picked, that are still there.
+    const pickedFiles = () => [...picked].filter(f => rows.some(r => r.file === f) && !isGone(f));
+    const pickedKey = () => pickedFiles().join('|');
+    // Compare follows the selection: two or more picked works are compared (the first four); fewer, and the stage shows
+    // one picture again. It wins over the next picture's empty frame; a picture being made moves to the floating window.
+    // Back to one picture: the one still picked, or with none picked the one viewed before the compare.
+    function syncCompare() {
+        const files = pickedFiles(), key = files.join('|');
+        if (files.length < 2) {
+            if (compare) { const back = files[0] || beforeCompare; if (back && rows.some(r => r.file === back) && !isGone(back)) shownFile = back; }
+            soloKey = ''; compare = null; return;
+        }
+        if (key === soloKey) { compare = null; return; }
+        if (!compare) { beforeCompare = shownFile; if (running && !browsing) leaveRun(); }
+        compare = {files: files.slice(0, COMPARE_MAX), total: files.length};
+    }
     function render() {
+        if (!alive) return;
+        syncCompare();
+        // Generate fills the draft frame in place; when the picture is done the stage shows it.
+        if (running && !browsing) { draft = false; draftPreview = null; }
         enhancer.element.dataset.off = String(enhancerOff());
-        const both = info?.models?.length > 1 && info.models.every(m => m.ready !== false);
-        const only = info?.models?.find(m => m.id === IMAGE_MODELS[1].id)?.ready && info.models.find(m => m.id === IMAGE_MODELS[0].id)?.ready === false;
-        addModel.hidden = !only || model.id !== IMAGE_MODELS[1].id; modelPick.hidden = !both; if (modelSelect.value !== model.id) { modelSelect.value = model.id; modelMenu.refresh(); }
+        cards.paint(info, model.id, pendingGenerate);
+        loraRow.paint(model.id);
         drawReferences();
-        if (alive) drawRatios();
-        const tooMany = over() > 0, busy = !!running, canUse = !missing();
-        prompt.placeholder = references.length ? t('What to make or change', '要画什么或要改什么') : t('Describe the picture', '描述画面');
-        prompt.setAttribute('aria-label', prompt.placeholder);
+        const tooMany = over() > 0, busy = !!running;
+        // No words inside the empty box (the group says what it is for), except beside a sketch: what it shows is known only
+        // from the words (a stick figure is a person when the words say so), so the empty box asks for them.
+        prompt.placeholder = references.some((r, at) => r.sketch && at < cap_(model))
+            ? t('Write what the sketch shows, for example: a person raising both hands', '写下草图画的是什么，例如：一个人举起双手') : '';
+        prompt.setAttribute('aria-label', references.length ? t('What to make or change', '要画什么或要改什么') : t('Describe the picture', '描述画面'));
+        // Said only near the limit.
+        promptCount.textContent = prompt.value.length >= 1600 ? `${prompt.value.length} / 2000` : '';
+        // Its room is kept while empty, so typing the first letter moves nothing below it.
+        clearPrompt.hidden = !prompt.value; promptCount.hidden = prompt.value.length < 1600;
         if (tooMany) notice.dataset.keep = 'false';
-        notice.textContent = tooMany ? (cap(model) === 0 ? t(`${model.name} does not take reference pictures. Remove ${over()}.`, `${model.name} 暂不支持参考图，请移除 ${over()} 张。`) : t(`${model.name} takes at most ${cap(model)}. Remove ${over()}.`, `${model.name} 最多 ${cap(model)} 张，请移除 ${over()} 张。`)) : notice.dataset.keep === 'true' ? notice.textContent : '';
-        go.className = 'fv-image-go ' + (failure ? 'fv-image-go-quiet' : 'fv-primary');
-        go.disabled = false;
-        if (busy) go.textContent = t('Stop', '停止');
-        else if (loading()) go.textContent = t('Pause', '暂停');
-        else if (missing()) go.textContent = t('Download model', '下载模型');
-        else { go.textContent = t('Generate', '生成'); go.disabled = false; }
-        go.removeAttribute('title'); seedInput.disabled = busy;
+        if (!tooMany && notice.dataset.keep !== 'true') notice.textContent = '';
+        if (ratio === 'same' && !references.length) ratio = sizes.ratio && sizes.ratio !== 'same' ? sizes.ratio : '1:1';
+        if (!ratioChosen && references.length && firstRef()) ratio = 'same';
+        const sent = size();
+        const limit = machineLimit(model.id, info, fittedAreas[model.id]);
+        const custom = ratio !== 'same' && !RATIOS.includes(ratio) ? ratio : sizes.custom || null;
+        sizer.paint({model: model.id, ratio, ref: references.length && firstRef() ? {url: references[0].url, ratio: ratioValue(firstRef())} : null, custom,
+            area, size: sent, locked, limit, ratioValue: ratioValue(shapeOf())});
+        seedInput.disabled = busy;
+        advGroup.meta.textContent = seedInput.value ? t(`Seed ${seedInput.value}`, `种子 ${seedInput.value}`) : '';
+        paintGo(); paintSlot();
         drawStage();
+        const row = runRow(); paintRunTile(row?.percent || 0);
     }
 
+    // While a picture is being made the user may look at other works: the generation leaves the stage for the floating
+    // window and comes back from the works' first tile, the rail or the queue.
+    let browsing = false;
+    function stageState() { return running && !browsing ? 'running' : (draft || draftPreview) && !compare ? 'draft' : failure && !browsing ? 'failed' : shownFile ? 'done' : running ? 'running' : historyLoaded ? 'blank' : 'waiting'; }
+    // Setting up the next picture: called for each change of shape or size. A picture being made stays on the stage.
+    function startDraft() { if (running && !browsing) return; draft = true; draftPreview = null; }
+    function leaveRun() {
+        browsing = true;
+        window.dispatchEvent(new CustomEvent('freevideo-task-stage-leave', {detail: {view: 'image', element: canvas, id: running?.id || null}}));
+    }
+    function returnToRun() {
+        if (!running) return;
+        browsing = false; soloKey = pickedKey(); compare = null;
+        window.dispatchEvent(new CustomEvent('freevideo-task-stage-return', {detail: {view: 'image', element: canvas, id: running?.id || null}}));
+        render(); drawWorks();
+    }
     function drawStage() {
-        const row = entry(), busy = !!running;
-        const state = busy ? 'running' : failure ? 'failed' : missing() || loading() ? 'missing' : shownFile ? 'done' : 'blank';
-        canvas.dataset.state = stage.dataset.state = state;
-        picture.hidden = state !== 'done'; stepFrame.hidden = state !== 'running' || !stepURL; block.hidden = state !== 'running'; failHost.hidden = state !== 'failed'; samples.hidden = state !== 'missing'; grid.hidden = state !== 'blank';
-        // While running they keep their room unseen, so a step picture and the finished one sit in the same place.
-        actions.hidden = info_.hidden = state !== 'done' && state !== 'running';
-        if (state === 'missing') {
-            const total = row?.bytes_total || 0, done = row?.bytes_done || 0, gb = n => (n / 1e9).toFixed(1);
-            samples.replaceChildren(el('b', '', model.name), loading()
-                ? el('p', '', t(`Downloading · ${gb(done)} GB / ${gb(total)} GB`, `正在下载 · ${gb(done)} GB / ${gb(total)} GB`))
-                : el('p', '', total ? t(`About ${gb(total)} GB to download. Files shared with video are not downloaded again.`, `下载约 ${gb(total)} GB。和视频共用的文件不重复下载。`) : t('Not installed yet.', '尚未安装。')));
-            if (loading()) { const bar = el('i', 'fv-image-download'); bar.style.setProperty('--p', String(total ? Math.min(100, done / total * 100) : 0)); samples.append(bar); }
+        const state = stageState();
+        frame.dataset.state = stage.dataset.state = state; paintCover();
+        frame.dataset.loading = String(state === 'waiting' || (state === 'done' && picture.dataset.loaded !== 'true'));
+        picture.hidden = state !== 'done'; stepFrame.hidden = state !== 'running' || !stepURL; block.hidden = state !== 'running'; failHost.hidden = state !== 'failed'; grid.hidden = state !== 'blank';
+        sceneHost.hidden = state !== 'running'; draftNote.hidden = state !== 'draft';
+        // While running the caption keeps its room unseen, so a step picture and the finished one sit in the same place.
+        // The caption row also waits for the picture's shape: it takes the frame's width, so it shows at its final one.
+        cap.dataset.hidden = String(state !== 'done' || (!meta.get(shownFile)?.width && !(picture.dataset.file === shownFile && picture.naturalWidth)));
+        const row = runRow(), asked = row?.meta?.width ? row.meta : running ? size() : failure?.sent || null;
+        const shown = meta.get(shownFile);
+        const next = state === 'draft' ? draftPreview || size() : null;
+        const ar = state === 'done' ? (picture.naturalWidth && picture.dataset.file === shownFile ? picture.naturalWidth / picture.naturalHeight : shown?.width ? shown.width / shown.height : 1)
+            : next ? next.width / next.height : asked?.width ? asked.width / asked.height : 1;
+        shot.style.setProperty('--ar', String(ar));
+        if (next) {
+            draftSize.textContent = sizeText(next);
+            const est = estimateSeconds(meta.samples(), model.id, next.width * next.height);
+            draftHint.textContent = draftPreview ? '' : [t('Next picture', '下一张'), est ? t(`about ${est} s`, `约 ${est} 秒`) : ''].filter(Boolean).join(' · ');
         }
         if (state === 'done') {
             const mine = lastReport?.file === shownFile ? lastReport.id : null;
@@ -343,122 +1036,485 @@ export function openImageView(node, {studio = null, client = createImageGenClien
                 doneReport.dataset.id = String(mine); doneReport.replaceChildren();
                 if (mine) doneReport.append(imageReportBar(doneReport, mine, t, {productVersion: () => null, quiet: true, fetchApi: (path, options) => api.fetchApi(path, options)}).bar);
             }
-            picture.src = pictureURL(shownFile); save.href = pictureURL(shownFile); save.setAttribute('download', shownFile.slice(shownFile.lastIndexOf('/') + 1));
-            editThis.disabled = asReference.disabled = references.length >= most() || cap(model) === 0;
-            infoText.textContent = [model.short, picture.naturalWidth ? `${picture.naturalWidth}×${picture.naturalHeight}` : '', started ? t(`${started} s`, `${started} 秒`) : ''].filter(Boolean).join(' · ');
+            const url = pictureURL(shownFile);
+            // A picture shows whole once decoded (never painted half-loaded); until then its frame holds a placeholder.
+            if (picture.dataset.file !== shownFile) {
+                picture.dataset.file = shownFile; picture.dataset.loaded = 'false'; picture.src = url;
+                if (picture.complete && picture.naturalWidth) picture.dataset.loaded = 'true';
+                // A picture of unknown shape: its size is read from its first bytes (long before it has loaded), so the
+                // frame and the caption row take their final size then, and the view is ready with them.
+                else if (!shown?.width) {
+                    const file = shownFile, early = () => {
+                        if (!alive || picture.dataset.file !== file || picture.dataset.loaded === 'true') return;
+                        if (picture.naturalWidth) { meta.set(file, {width: picture.naturalWidth, height: picture.naturalHeight}); drawStage(); markReady('picture'); return; }
+                        requestAnimationFrame(early);
+                    };
+                    requestAnimationFrame(early);
+                }
+            }
+            save.href = url; save.setAttribute('download', shownFile.slice(shownFile.lastIndexOf('/') + 1));
+            const full = references.length >= most() || cap_(model) === 0;
+            editThis.disabled = asReference.disabled = full;
+            const why = cap_(model) === 0 ? t(`${model.short} takes no references; choose the other model`, `${model.short} 不用参考图，请换另一个模型`) : t('The reference slots are full; remove one', '参考图已满，先移除一张');
+            tip(editThis, t('Edit', '编辑'), t('Make a new version: it becomes Image 1', '以这张为图 1，描述要改的地方'));
+            tip(asReference, t('Use as reference', '用作参考图'), t('Add it to the reference pictures', '加入参考图'));
+            for (const b of [editThis, asReference]) { if (full) b.dataset.fvTipWhy = why; else delete b.dataset.fvTipWhy; }
+            const fav = meta.isFav(shownFile); favBtn.setAttribute('aria-pressed', String(fav));
+            tip(favBtn, fav ? t('Remove star', '取消收藏') : t('Star', '收藏'), fav ? t('Take it out of favourites', '移出收藏') : t('Keep it in favourites', '加入收藏'), 'F');
+            const known = promptFor(shownFile); usePromptItem.hidden = !known; copyInline.hidden = useInline.hidden = !known;
+            // The line under the picture is about the picture shown: the model that made it, its size, its shape and the time it took.
+            const width = picture.naturalWidth && picture.dataset.file === shownFile ? picture.naturalWidth : shown?.width || 0, height = picture.naturalWidth && picture.dataset.file === shownFile ? picture.naturalHeight : shown?.height || 0;
+            const madeBy = IMAGE_MODELS.find(m => m.id === (shown?.model || rows.find(r => r.file === shownFile)?.model))?.name;
+            infoText.textContent = [madeBy, width ? `${width} × ${height}` : '', width ? pictureShape(width, height) : '',
+                shown?.seconds ? t(`${shown.seconds} s`, `${shown.seconds} 秒`) : started ? t(`${started} s`, `${started} 秒`) : ''].filter(Boolean).join(' · ');
         }
+        comparer.paint(compare);
+        stage.dataset.mode = compare ? 'compare' : 'single';
+        if (rightTab === 'info' && infoPop.dataset.file !== shownFile) { infoPop.dataset.file = shownFile; paintInfo(); }
+        tabWorksN.textContent = '';
     }
-    picture.onload = () => { if (!alive) return; const tail = infoText.textContent.split(' · ').filter(Boolean); infoText.textContent = [model.short, `${picture.naturalWidth}×${picture.naturalHeight}`, started ? t(`${started} s`, `${started} 秒`) : ''].filter(Boolean).join(' · '); void tail; };
+    picture.onload = () => {
+        // Its real shape is kept, so the next time this picture opens its frame is the right size from the first frame.
+        picture.dataset.loaded = 'true'; frame.dataset.loading = 'false';
+        const file = picture.dataset.file, known = meta.get(file);
+        if (file && picture.naturalWidth && (!known?.width || known.width * picture.naturalHeight !== known.height * picture.naturalWidth))
+            meta.set(file, {width: picture.naturalWidth, height: picture.naturalHeight});
+        markReady('picture'); if (!alive) return; drawStage(); paintAmbient(picture);
+    };
+    // A click on the shown picture opens it large; ← → there step through the works and the stage follows.
+    let viewer = null;
+    picture.addEventListener('click', () => {
+        if (stageState() !== 'done' || !shownFile || viewer?.isOpen()) return;
+        viewer = openPictureViewer({host: body, url: pictureURL(shownFile), onClose: () => { viewer = null; },
+            step: by => { const before = shownFile; step(by); return shownFile !== before ? pictureURL(shownFile) : ''; }});
+    });
+    picture.onerror = () => { picture.dataset.loaded = 'true'; frame.dataset.loading = 'false'; markReady('picture'); };
+
+    // The stage light: the shown picture, 64 × 40, stretched and faded behind everything.
+    let ambTurn = false;
+    function paintAmbient(source) {
+        try {
+            const target = ambTurn ? ambA : ambB, other = ambTurn ? ambB : ambA; ambTurn = !ambTurn;
+            target.getContext('2d').drawImage(source, 0, 0, 64, 40); target.style.opacity = '1'; other.style.opacity = '0';
+        } catch { /* a picture that cannot be read leaves the light as it was */ }
+    }
+    function paintRunTile(fraction) {
+        if (!running && browsing) browsing = false;
+        for (const tile of body.querySelectorAll('.fv-iv-tile-run,.fv-iv-rail-run')) tile.style.setProperty('--p', String(fraction));
+        meter.style.setProperty('--p', String(fraction));
+    }
 
     function drawWorks() {
-        column.hidden = rows.length === 0 && !running; body.classList.toggle('fv-image-no-works', column.hidden);
-        works.replaceChildren(...(running ? [Object.assign(el('div', 'fv-image-work fv-image-work-running'), {})] : []),
-            ...rows.map(row => {
-                const b = el('button', 'fv-image-work'); b.type = 'button'; const i = el('img'); i.loading = 'lazy'; i.alt = ''; i.src = pictureURL(row.file);
-                b.setAttribute('aria-pressed', String(selecting ? picked.has(row.file) : row.file === shownFile));
-                b.append(i); b.onclick = () => { if (selecting) { picked.has(row.file) ? picked.delete(row.file) : picked.add(row.file); drawWorks(); } else { shownFile = row.file; started = 0; failure = null; render(); drawWorks(); } };
-                return b;
-            }));
-        selectToggle.textContent = selecting ? t('Done', '完成') : t('Select', '选择'); selectToggle.hidden = rows.length === 0;
-        deleteSelected.hidden = !selecting || picked.size === 0; deleteSelected.textContent = t(`Delete ${picked.size}`, `删除 ${picked.size} 张`);
+        if (!alive) return;
+        const list = visible();
+        if (selecting) for (const f of [...picked]) if (!rows.some(r => r.file === f) || isGone(f)) picked.delete(f);
+        const live = rows.filter(r => !isGone(r.file)), row = runRow();
+        works.paint({rows: list, groups: groupRows(list, meta, sort), running: running ? {percent: row?.percent || 0, preview: row?.meta?.preview || ''} : null,
+            shownFile, selecting, picked, filter, query, sort, counts: filterCounts(live, meta), total: live.length, trash: trash.list(), view, meta,
+            loading: !historyLoaded && !rows.length, holdSeconds: trash.holdMs / 1000, allFiles: new Set(rows.map(r => r.file))});
+        const runThumb = running ? (() => { const b = el('button', 'fv-iv-rail-thumb fv-iv-rail-run'); b.type = 'button'; b.style.setProperty('--p', String(row?.percent || 0)); b.append(el('i', 'fv-iv-ring'));
+            tip(b, t('Generating', '正在生成'), t('Show its progress', '查看进度')); b.addEventListener('click', () => returnToRun()); return b; })() : null;
+        railThumbs.replaceChildren(...(runThumb ? [runThumb] : []), ...live.slice(0, runThumb ? 5 : 6).map(r => { const b = el('button', 'fv-iv-rail-thumb'); b.type = 'button'; const i = el('img'); i.alt = ''; i.draggable = false; i.src = pictureURL(r.file); b.append(i); b.classList.toggle('fv-iv-current', r.file === shownFile); tip(b, t('Show', '显示'), t('Put it on the stage', '在中间显示')); b.addEventListener('click', () => showFile(r.file)); return b; }));
     }
-    async function loadWorks() { try { rows = await client.history(); if (alive) { if (!shownFile && rows[0]) shownFile = rows[0].file; drawWorks(); render(); } } catch { /* the list stays as it was */ } }
-    async function deleteFiles(files) {
+    function showFile(file) { if (!file) return; if (running && !browsing) leaveRun(); draft = false; draftPreview = null; shownFile = file; if (historyLoaded) queueMicrotask(rememberView); started = 0; if (!running) failure = null; compare = null; render(); drawWorks(); }
+    // ← → step through the works shown (not while comparing); the works column follows without jumping.
+    function step(by) {
+        if (compare) return; const list = visible(), at = list.findIndex(r => r.file === shownFile); const target = list[at + by]; if (!target) return;
+        showFile(target.file);
+        works.element.querySelector(`.fv-iv-tile[data-file="${CSS.escape(target.file)}"]`)?.scrollIntoView({block: 'nearest'});
+    }
+    async function loadWorks() {
+        try {
+            rows = await client.history(); meta.reload(); historyLoaded = true;
+            if (alive) {
+                if (shownFile && (!rows.some(r => r.file === shownFile) || isGone(shownFile)) && !running) shownFile = visible()[0]?.file || '';
+                if (!shownFile && !running && !failure) shownFile = visible()[0]?.file || '';
+                drawWorks(); render(); rememberView();
+            }
+        } catch { historyLoaded = true; if (alive) { drawWorks(); render(); } }
+        markReady('history');
+    }
+    function rememberView() { keepView({shownFile, rows: rows.slice(0, 120), scroll: works.element.querySelector('.fv-iv-works-body')?.scrollTop || 0,
+        info: info?.models ? {models: info.models, sizes: info.sizes, max_images: info.max_images, ...(info.unified_memory ? {unified_memory: true} : {})} : viewCache?.info || null}); }
+    // Delete goes to recently deleted: gone from the works at once, with nothing said; it is put back from recently deleted
+    // (or with Ctrl+Z while it is still held there).
+    function deleteFiles(files) {
         const list = files.filter(Boolean); if (!list.length) return;
-        try { const answer = list.length === 1 ? {items: await client.historyDelete(list[0])} : await client.historyDeleteMany(list); rows = answer.items || []; void removeSavedImages(api, list).catch(() => {});
-            if (!rows.some(r => r.file === shownFile)) shownFile = rows[0]?.file || ''; picked.clear(); selecting = false; drawWorks(); render(); }
-        catch { say(t('Could not delete.', '没能删除。')); }
+        // The engine's key is fetched now, so a delete sent while the page goes away needs one request only.
+        void deleter.info?.().catch(() => {});
+        trash.remove(list.map(f => rows.find(r => r.file === f) || {file: f, name: f.slice(f.lastIndexOf('/') + 1)}));
+        announce('freevideo-works-removed', list, {undoable: true});
+        const mine = undoNote = {files: list, at: Date.now()};
+        setTimeout(() => { if (undoNote === mine) undoNote = null; }, trash.holdMs);
+        if (list.includes(shownFile)) { const rest = visible(); shownFile = rest[0]?.file || ''; }
+        picked.clear(); selecting = false; drawWorks(); render();
     }
 
+    // Installing from the page: the engine fetches the model; the page watches until it is ready, then generates if asked to.
     async function install() {
         const mine = model.id;
         try { info = await client.packInstall(mine); } catch (error) { say(imageGenError(error.code, info, t)); return; }
         render();
-        while (alive && entry() && !entry().ready && entry().downloading) {
+        while (alive && modelState(info, mine).state === 'downloading') {
             await new Promise(r => setTimeout(r, 1500)); try { info = await client.info(); } catch { /* asked again */ } render();
         }
+        if (alive && pendingGenerate && model.id === mine && modelState(info, mine).state === 'ready') { pendingGenerate = false; render(); if (!running) void generate(); }
+    }
+    async function pauseInstall(id) {
+        try { info = await client.packCancel?.(id); info = await client.info(); } catch { /* the next look shows it */ }
+        if (id === model.id) pendingGenerate = false;
+        render();
     }
     // Over the model's limit, Generate stays solid: a click flashes the note and moves to the first greyed picture's remove.
     function blockOver() {
-        notice.classList.remove('fv-image-notice-flash'); void notice.offsetWidth; notice.classList.add('fv-image-notice-flash');
+        slot.classList.remove('fv-image-notice-flash'); void slot.offsetWidth; slot.classList.add('fv-image-notice-flash');
         strip.querySelector('.fv-image-reference[data-over=true] .fv-image-reference-remove')?.focus();
     }
+    // ── run: tasks owns this block (job store) ──
+    // Uploads and the prompt step stay with the page; once the worker has the job, the store follows it.
     async function generate() {
         if (over()) { blockOver(); return; }
         if (!seedInput.checkValidity()) { advanced.open = true; seedInput.reportValidity(); return; }
         const seed = seedInput.value === '' ? undefined : Number(seedInput.value);
-        say(''); failure = null; const mine = running = {cancelled: false}, begun = Date.now(), withImages = references.length > 0, sent = size(), tierNow = tier;
-        render(); drawWorks(); progressLine.textContent = progressSub.textContent = ''; runReport.replaceChildren(); doneReport.replaceChildren(); lastReport = null;
+        say(''); note.dataset.kind = ''; failure = null; const mine = running = {cancelled: false}, withImages = references.length > 0, sent = size(), tierNow = tier;
+        render(); drawWorks(); progressLine.textContent = progressSub.textContent = ''; runReport.replaceChildren(); runReport.dataset.id = ''; doneReport.replaceChildren(); lastReport = null;
         level.hidden = false; level.dataset.counted = 'false'; level.style.setProperty('--fv-progress', '0');
         clearStep();
-        let reportId = null, stepSerial = 0;
+        const names = [];
         try {
-            const names = []; for (const r of references.slice(0, cap(model))) names.push(await client.upload(r.file));
+            for (const r of references.slice(0, cap_(model))) names.push(await client.upload(r.file));
             if (mine.cancelled) return;
-            if (!enhancerOff() && await enhancer.beforeGenerate() === false) { say(''); return; }
-            const row = await client.generate({prompt: engineText(), ...sent, model: model.id, remember: true, images: names, ...(seed === undefined ? {} : {seed})});
-            mine.job = row.job; if (!row.job) throw Object.assign(new Error(row.error), {code: row.error, ...row});
-            if (mine.cancelled) { void client.cancel(row.job); return; }
-            for (;;) {
-                await new Promise(done => setTimeout(done, poll)); if (!alive || mine.cancelled) return;
-                const status = await client.status(row.job, model.id);
-                const fraction = imageGenProgress(status.stage, status.fraction, withImages, status.overall), left = imageRemainingText(status.remaining_seconds, t);
-                progressLine.textContent = [t(...(STAGE_WORDS[status.stage] || STAGE_WORDS.sample)), `${Math.floor(fraction * 100)}%`].join(' · ');
-                // The second line changes with every poll, so the page never looks stuck.
-                progressSub.textContent = [`${t('Elapsed', '已用时')} ${duration((Date.now() - begun) / 1000)}`, left].filter(Boolean).join(' · ');
-                level.dataset.counted = Number.isFinite(status.overall) ? 'true' : 'false'; level.style.setProperty('--fv-progress', String(fraction * 100));
-                const serial = status.state === 'running' ? status.preview?.serial : undefined;
-                if (Number.isInteger(serial) && serial > stepSerial && client.previewImage) {
-                    stepSerial = serial;
-                    const blob = await client.previewImage(row.job).catch(() => null);
-                    if (blob && alive && !mine.cancelled && running === mine) showStep(blob);
-                }
-                if (status.report_id && status.report_id !== reportId) {
-                    reportId = status.report_id; runReport.replaceChildren(imageReportBar(runReport, reportId, t, {productVersion: () => null, quiet: true, fetchApi: (path, options) => api.fetchApi(path, options)}).bar);
-                }
-                if (status.state === 'done') { shownFile = status.file; promptOf[shownFile] = prompt.value; void saveGeneratedImage(api, {url: pictureURL(status.file), file: status.file, prompt: prompt.value}).catch(() => { /* the picture stays in Works */ }); started = Math.max(1, Math.round((Date.now() - begun) / 1000)); lastReport = status.report_id || reportId ? {file: status.file, id: status.report_id || reportId} : null; break; }
-                if (status.state === 'error') throw Object.assign(new Error(status.error), {...status, code: status.error});
-            }
+            if (!enhancerOff() && await enhancer.beforeGenerate() === false) { say(''); if (running === mine) running = null; level.hidden = true; render(); drawWorks(); return; }
+            startJobSources();
+            const loras = loraRow.value(model.id);
+            const {id} = await jobs.submit('image', {prompt: engineText(), ...sent, model: model.id, remember: true, images: names, ...(seed === undefined ? {} : {seed}), ...(loras.length ? {loras} : {})},
+                {view: 'image', client, meta: {text: prompt.value, withImages, tier: tierNow, width: sent.width, height: sent.height}});
+            if (!alive || running !== mine) return;
+            mine.id = id;
+            if (mine.cancelled) { void jobs.cancel(id); return; }
+            follow(id);
         } catch (error) {
-            if (alive && !mine.cancelled) { failure = {error: error.code || 'generation_failed', report_id: error.report_id, stage: error.stage, fitted: error.fitted, memory: error.memory, other_usage: error.other_usage, retryStandard: tierNow === 'high' && error.code === 'no_memory'};
-                renderFailure(); }
-        } finally { level.hidden = true; if (running === mine) { clearStep(); running = null; if (alive) { await loadWorks(); render(); drawWorks(); } } }
+            if (!alive || mine.cancelled || running !== mine) return;
+            running = null; level.hidden = true; clearStep();
+            // The worker is full: a state of the worker, shown in place, not a failed picture.
+            if (IMAGE_BUSY.has(error.code)) { note.dataset.kind = 'busy'; say(imageGenError(error.code, info, t)); render(); drawWorks(); return; }
+            failure = {error: error.code || 'generation_failed', report_id: error.report_id, stage: error.stage, fitted: error.fitted, memory: error.memory, other_usage: error.other_usage, retryStandard: tierNow === 'high' && error.code === 'no_memory'};
+            renderFailure(); render(); drawWorks();
+        } finally {
+            // Pictures sent for a request that never became a job; a job's own go when it ends.
+            if (!mine.id && names.length) void client.discardUploads?.(names).catch(() => {});
+        }
     }
+    // Shows a job of the store: its progress while it runs, its picture or its reason when it ends.
+    function follow(id) {
+        unwatch?.();
+        unwatch = jobs.subscribe(() => showJob(jobs.get(id)), {id});
+    }
+    function showJob(row) {
+        if (!alive) return;
+        if (!row) { unwatch?.(); unwatch = null; if (running) { running = null; level.hidden = true; clearStep(); render(); drawWorks(); } return; }
+        if (!running || running.id !== row.id) running = {cancelled: false, id: row.id};
+        canvas.dataset.fvTaskId = row.id;
+        if (ACTIVE.has(row.status)) {
+            const percent = Number.isFinite(row.percent) ? row.percent : 0;
+            const words = row.status === 'cancelling' ? t('Stopping', '正在停止') : row.status === 'queued' || row.status === 'submitting' ? t('Waiting', '等待开始') : t(...(STAGE_WORDS[row.phase] || STAGE_WORDS.sample));
+            progressLine.textContent = row.status === 'running' ? [words, `${Math.floor(percent * 100)}%`].join(' · ') : words;
+            // The second line changes with every report, so the page never looks stuck; elapsed counts from the job's own start.
+            const begun = row.started_at || row.created_at || Date.now();
+            progressSub.textContent = [`${t('Elapsed', '已用时')} ${duration((Date.now() - begun) / 1000)}`, imageRemainingText(row.eta_seconds, t)].filter(Boolean).join(' · ');
+            level.hidden = false; level.dataset.counted = row.status === 'running' ? 'true' : 'false'; level.style.setProperty('--fv-progress', String(percent * 100));
+            if (row.meta?.preview) showStep(row.meta.preview);
+            const reportId = row.meta?.report_id;
+            if (reportId && runReport.dataset.id !== reportId) {
+                runReport.dataset.id = reportId; runReport.replaceChildren(imageReportBar(runReport, reportId, t, {productVersion: () => null, quiet: true, fetchApi: (path, options) => api.fetchApi(path, options)}).bar);
+            }
+            render();
+            return;
+        }
+        // Ended: the page lets go of the job; the floating window has nothing more to say about it once seen here.
+        unwatch?.(); unwatch = null; running = null; level.hidden = true; clearStep(); delete canvas.dataset.fvTaskId;
+        jobs.markSeen(row.id);
+        if (row.status === 'done' && row.result?.file) {
+            shownFile = row.result.file; promptOf[shownFile] = row.meta?.text ?? row.prompt ?? '';
+            started = Math.max(1, Math.round(((row.finished_at || Date.now()) - (row.started_at || row.created_at || Date.now())) / 1000));
+            const reportId = row.meta?.report_id; lastReport = reportId ? {file: shownFile, id: reportId} : null;
+            failure = null; jobs.dismiss(row.id);
+        } else if (row.status === 'failed' || row.status === 'interrupted') {
+            const reason = row.failure || {};
+            failure = {error: reason.code || 'generation_failed', report_id: reason.report_id, stage: reason.stage, fitted: reason.fitted, memory: reason.memory, other_usage: reason.other_usage,
+                retryStandard: row.meta?.tier === 'high' && reason.code === 'no_memory'};
+            renderFailure(); jobs.dismiss(row.id);
+        } else jobs.dismiss(row.id);
+        void loadWorks().then(() => { if (alive) { render(); drawWorks(); } });
+        render(); drawWorks();
+    }
+    // ── end run ──
+    // The failure card sits in the picture's own frame: what went wrong, where it stopped, Retry and the report.
     function renderFailure() {
+        const asked = failure.sent || size();
+        failure.sent = asked;
         renderImageFailure(failHost, {...failure, info}, t, {retry: {
             label: failure.retryStandard ? ['Retry at Standard', '改用标准并重试'] : ['Retry', '重试'],
-            onClick: () => { if (failure.retryStandard) { tier = 'standard'; tierPick.value = 'standard'; } void generate(); }}});
+            onClick: () => { if (failure.retryStandard) { area = RANGES[model.id].presets.standard; keepSize(); } void generate(); }}});
+        const head = el('div', 'fv-iv-fail-head'), mark = el('i', 'fv-iv-fail-icon'); mark.append(icon('warn'));
+        head.append(mark, el('h3', '', failure.error === 'engine_closed' || failure.error === 'engine_restarted' ? t('The engine stopped', '引擎停止了') : t('The picture was not made', '这张没有生成出来')));
+        failHost.prepend(head);
+        const stage_ = STAGE_WORDS[failure.stage];
+        failHost.append(el('p', 'fv-iv-fail-facts', [model.short, sizeText(asked), stage_ ? t(`stopped at: ${stage_[0].toLowerCase()}`, `停在：${stage_[1]}`) : ''].filter(Boolean).join(' · ')));
     }
-    go.onclick = () => {
-        if (running) { running.cancelled = true; if (running.job) void client.cancel(running.job); running = null; render(); drawWorks(); }
-        else if (loading()) void client.packCancel?.(model.id).then(value => { info = value; return client.info(); }).then(value => { info = value; render(); }).catch(() => {});
-        else if (missing()) void install();
-        else if (!prompt.value.trim() && !references.length) prompt.focus();
+    // ── run: tasks owns this block (job store) ──
+    // Stop asks first; closing the page or switching views never stops the job.
+    go.onclick = async () => {
+        if (running) {
+            const mine = running;
+            if (!await confirmStop(go, {kind: 'image', queued: jobs.get(mine.id)?.status === 'queued'})) return;
+            if (running !== mine) return;
+            mine.cancelled = true;
+            if (mine.id) { try { await jobs.cancel(mine.id); } catch { say(t('Could not stop. Try again.', '没有停止成功，请重试。')); } return; }
+            running = null; level.hidden = true; render(); drawWorks();
+        }
+    // ── end run ──
+        // A model being installed: Generate says whether the picture follows the install.
+        else if (loading()) { pendingGenerate = !pendingGenerate && (!!prompt.value.trim() || references.length > 0); if (!prompt.value.trim() && !references.length) { promptGroup.open(true); prompt.focus(); } render(); }
+        // A model not installed: installs it, then generates.
+        else if (missing() || modelState(info, model.id).state === 'failed') { pendingGenerate = !!prompt.value.trim() || references.length > 0; void install(); }
+        else if (!prompt.value.trim() && !references.length) { promptGroup.open(true); prompt.focus(); }
         else void generate();
     };
-    prompt.addEventListener('input', render);
-    listenDialogKey(prompt, 'keydown', event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !go.disabled && !running && (prompt.value.trim() || references.length)) void generate(); });
+    go.addEventListener('click', () => { if (drawer === 'left' && go.dataset.state === 'ready' && (prompt.value.trim() || references.length)) { drawer = ''; paintPanels(); } }, {capture: true});
+    prompt.addEventListener('input', () => { growPrompt(); render(); });
+    // Getting the model ready before Generate is pressed (nothing of it shows): being here a few seconds or touching
+    // anything says "light"; a prompt being written, a model or shape chosen, or the pointer on Generate says "full".
+    const warmSoon = setTimeout(() => warmUp('light'), 3000);
+    let warmTyping = 0;
+    prompt.addEventListener('input', () => { clearTimeout(warmTyping); warmTyping = setTimeout(() => { if (prompt.value.trim()) warmUp('full'); }, 500); });
+    for (const type of ['pointerdown', 'keydown']) dialog.addEventListener(type, () => warmUp('light'), {capture: true, passive: true});
+    go.addEventListener('pointerenter', () => warmUp('full'));
+    // Three lines at rest; while focused it grows with what is typed (up to eight lines) and settles back on leaving.
+    function growPrompt() {
+        // An empty box never grows (its sheet may still be loading when the page first focuses it).
+        // The box fills the panel's free height now; it scrolls inside instead of growing.
+        if (true) { prompt.style.height = ''; delete prompt.dataset.grown; return; }
+        const rest = parseFloat(getComputedStyle(prompt).minHeight) || 0;
+        prompt.style.height = ''; const need = prompt.scrollHeight + 2;
+        if (need > rest + 2) { prompt.style.height = `${Math.min(need, rest * 8 / 3)}px`; prompt.dataset.grown = 'true'; } else delete prompt.dataset.grown;
+    }
+    prompt.addEventListener('focus', growPrompt);
+    prompt.addEventListener('blur', () => { growPrompt(); fitSoon(); });
+    favBtn.addEventListener('click', () => { if (!shownFile) return; meta.setFav([shownFile], !meta.isFav(shownFile)); drawWorks(); render(); });
+    editThis.addEventListener('click', () => void editPicture(shownFile));
+    // Crop, paint, add text, or change a part with AI in the image editor; the result comes back as Image 1 and into the library.
+    async function editPicture(file) {
+        if (!file) return;
+        let outcome;
+        try {
+            const {openImageEditor} = await import('./image_editor.js');
+            outcome = await openImageEditor({source: file, name: file, role: 'reference', t, resolve: pictureURL, upload: async blob => client.upload(blob), imageGenClient: client});
+        } catch { say(t('This picture cannot be edited right now.', '这张图暂时无法编辑。')); return; }
+        if (!alive || !outcome?.blob) return;
+        try {
+            const edited = new File([outcome.blob], outcome.name || 'edited.png', {type: outcome.blob.type || 'image/png'});
+            const name = await client.upload(edited);
+            void saveGeneratedImage(api, {url: pictureURL(name), file: name, prompt: promptFor(file)}).catch(() => {});
+            const record = {file: edited, url: URL.createObjectURL(edited), width: outcome.width, height: outcome.height};
+            if (references.length >= most()) URL.revokeObjectURL(record.url); else { changeRefs(() => references.unshift(record)); promptGroup.open(true); }
+            render();
+        } catch { say(t('The edited picture could not be saved.', '编辑后的图片没能保存。')); }
+    }
+    asReference.addEventListener('click', () => void useAsReference(shownFile, false));
+    // Opens downward when it fits inside the stage, otherwise upward over the picture.
+    moreButton.addEventListener('click', () => {
+        more.hidden = !more.hidden; if (more.hidden) return;
+        delete more.dataset.up;
+        const box = canvasArea.getBoundingClientRect(), below = more.getBoundingClientRect().bottom;
+        if (below > box.bottom + 40) more.dataset.up = 'true';
+    });
     document.addEventListener('click', closeMore, true);
-    function closeMore(event) { if (!more.hidden && !moreHost.contains(event.target)) more.hidden = true; }
+    function closeMore(event) {
+        if (!more.hidden && !moreHost.contains(event.target)) more.hidden = true;
+        if (!keysPop.hidden && !keysHost.contains(event.target)) { keysPop.hidden = true; keysBtn.setAttribute('aria-pressed', 'false'); }
+    }
+    // A picture finished anywhere (here, or an AI edit in the picture editor) joins the works at once.
+    const onJobDone = event => {
+        if (!alive) return; meta.reload(); library.paint(); drawWorks(); render();
+        const job = event?.detail?.job, file = job?.kind === 'image' && job.status === 'done' ? job.result?.file : null;
+        if (file && !rows.some(r => r.file === file)) void loadWorks();
+    };
+    window.addEventListener('freevideo-job-done', onJobDone);
+    // A picture added to the works elsewhere (a saved edit) too.
+    const onWorksAdded = event => { if (alive && event.detail?.source !== 'image-view') void loadWorks(); };
+    window.addEventListener('freevideo-works-added', onWorksAdded);
+    // Pictures deleted elsewhere (the picture editor, the works library) leave the works here at once: hidden while
+    // their undo window runs, dropped when the engine has deleted them, and back if the delete is undone there.
+    const fileOf = path => { const name = String(path).slice(String(path).lastIndexOf('/') + 1); return rows.find(r => r.file === path || r.name === name)?.file || null; };
+    // Works deleted for good (here or anywhere): their words leave the prompt history unless still in use.
+    const forgetPrompts = () => { void forgetDeletedPrompts().then(n => { if (n && alive) library.paint(); }); };
+    const onWorksGone = event => { if (alive && event.detail?.undoable === false) forgetPrompts(); };
+    window.addEventListener('freevideo-works-removed', onWorksGone);
+    forgetPrompts();
+    const onWorksRemoved = event => {
+        const detail = event.detail || {}; if (!alive || detail.source === 'image-view') return;
+        const files = (detail.paths || detail.ids || []).map(fileOf).filter(Boolean); if (!files.length) return;
+        if (detail.undoable === false) { rows = rows.filter(r => !files.includes(r.file)); files.forEach(f => elsewhere.delete(f)); }
+        else files.forEach(f => elsewhere.add(f));
+        files.forEach(f => picked.delete(f));
+        if (files.includes(shownFile) && !running) shownFile = visible()[0]?.file || '';
+        drawWorks(); render();
+    };
+    const onWorksRestored = event => {
+        const detail = event.detail || {}; if (!alive || detail.source === 'image-view') return;
+        let unknown = false;
+        for (const path of detail.paths || detail.ids || []) { const file = fileOf(path); if (file) elsewhere.delete(file); else unknown = true; }
+        if (unknown) void loadWorks(); else { drawWorks(); render(); }
+    };
+    window.addEventListener('freevideo-works-removed', onWorksRemoved); window.addEventListener('freevideo-works-restored', onWorksRestored);
+    // A picture filed as a character card's (here or in another tab) leaves the works.
+    const onCastFiles = event => {
+        if (!alive || (event.type === 'storage' && event.key !== 'freevideo.cast.files')) return;
+        castHidden = readCast();
+        if (shownFile && castHidden.has(shownFile) && !running) shownFile = visible()[0]?.file || '';
+        drawWorks(); render();
+    };
+    window.addEventListener('freevideo-cast-files', onCastFiles); window.addEventListener('storage', onCastFiles);
+    // Leaving the page ends this page's undo window: the pictures are deleted as asked, not left on disk.
+    const onPageHide = () => { void trash.flush(); };
+    window.addEventListener('pagehide', onPageHide);
+    // Global search and notifications open a picture here: shown on the stage, the works list reloaded if it is new.
+    const onOpenWork = async event => {
+        const file = event.detail?.kind === 'image' ? event.detail.file : null; if (!alive || !file) return;
+        if (!rows.some(r => r.file === file)) await loadWorks();
+        if (filter !== 'all' && !visible().some(r => r.file === file)) filter = 'all';
+        showFile(file);
+    };
+    window.addEventListener('freevideo-open-work', onOpenWork);
+    // The floating window asks for the generation screen back while this page is showing another picture.
+    const onStageOpen = event => { if (alive && (event.detail?.view || 'image') === 'image' && running) returnToRun(); };
+    window.addEventListener('freevideo-task-stage-open', onStageOpen);
 
-    dialog.addEventListener('cancel', event => { event.preventDefault(); if (!more.hidden) more.hidden = true; else closeDialog(dialog); });
+    // Keys: the page's own, never while typing.
+    const onKeys = event => {
+        const typing = event.target.closest?.('input,textarea,[contenteditable=true]');
+        if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { if (!running && (prompt.value.trim() || references.length)) { event.preventDefault(); go.click(); } return; }
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f' && !typing) { event.preventDefault(); setPanel('right', true); setRightTab('works'); works.focusSearch(); return; }
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z' && !typing && undoNote) { event.preventDefault(); restoreWorks(undoNote.files); undoNote = null; drawWorks(); render(); return; }
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a' && selecting && !typing) { event.preventDefault(); visible().forEach(r => picked.add(r.file)); drawWorks(); render(); return; }
+        if (typing || event.altKey || event.ctrlKey || event.metaKey) return;
+        const steering = event.target.closest?.('[role=slider],input[type=range],[role=radiogroup],[role=menu]');
+        if (event.key === 'ArrowLeft' && !steering) { step(-1); event.preventDefault(); }
+        else if (event.key === 'ArrowRight' && !steering) { step(1); event.preventDefault(); }
+        else if (event.key.toLowerCase() === 'f' && selecting && picked.size) { const list = [...picked]; meta.setFav(list, !list.every(f => meta.isFav(f))); drawWorks(); }
+        else if (event.key.toLowerCase() === 'f' && shownFile && !selecting) favBtn.click();
+        else if (event.key.toLowerCase() === 'i') infoBtn.click();
+        else if (event.key === '?') keysBtn.click();
+        // Only the Delete key deletes (as the delete buttons do); Backspace never deletes a picture.
+        else if (event.key === 'Delete' && (selecting ? picked.size : shownFile && !running)) { event.preventDefault(); deleteFiles(selecting ? [...picked] : [shownFile]); }
+    };
+    listenDialogKey(dialog, 'keydown', onKeys);
+    // A click that moves the focus off a control leaves it on the page body; the page's keys still work then.
+    const strayKeys = event => { if (event.target === document.body && dialog.open && topDialog() === dialog) onKeys(event); };
+    document.addEventListener('keydown', strayKeys);
+    // Escape steps back one layer at a time; the view itself closes last.
+    dialog.addEventListener('cancel', event => {
+        event.preventDefault();
+        if (!more.hidden) more.hidden = true;
+        else if (!keysPop.hidden) { keysPop.hidden = true; keysBtn.setAttribute('aria-pressed', 'false'); }
+        else if (drawer) { drawer = ''; paintPanels(); }
+        else if (compare) { selecting = false; picked.clear(); drawWorks(); render(); }
+        else if (draft && shownFile) { draft = false; draftPreview = null; render(); }
+        else if (view === 'trash') { view = 'works'; drawWorks(); }
+        else if (selecting) { selecting = false; picked.clear(); drawWorks(); render(); }
+        else closeDialog(dialog);
+    });
+    // Leaving keeps the view, closed and out of reach (as the editor and the AI view are): its picture, works, prompt,
+    // references and panels stay as they were, and the page's events (a picture finished or deleted elsewhere) keep it
+    // up to date. Only a view opened for another node, or with a client of its own (tests), is taken down.
+    const keepable = !given;
+    let refreshSoon = 0;
+    function dispose() {
+        window.removeEventListener('freevideo-job-done', onJobDone); window.removeEventListener('freevideo-open-work', onOpenWork); window.removeEventListener('freevideo-task-stage-open', onStageOpen); fitWatch?.disconnect(); cancelAnimationFrame(fitFrame); sizer.dispose(); mentions.dispose();
+        clearTimeout(warmSoon); clearTimeout(warmTyping); if (!running) warmer.cancel(model.id); viewer?.close();
+        window.removeEventListener('freevideo-works-removed', onWorksRemoved); window.removeEventListener('freevideo-works-restored', onWorksRestored); window.removeEventListener('pagehide', onPageHide); window.removeEventListener('freevideo-works-added', onWorksAdded);
+        window.removeEventListener('freevideo-cast-files', onCastFiles); window.removeEventListener('storage', onCastFiles); window.removeEventListener('freevideo-works-removed', onWorksGone);
+        // Kept for the next time the view opens on this page (the pictures as files; their addresses are made again).
+        keptDraft = {prompt: prompt.value, caret: prompt.selectionStart ?? prompt.value.length,
+            references: references.map(({url, original, ...rest}) => ({...rest, ...(original ? {original: {file: original.file, width: original.width, height: original.height}} : {})}))};
+        references.forEach(r => { if (r.original) URL.revokeObjectURL(r.original.url); });
+        // Deleted pictures waiting for their undo window go now: nothing is left half-deleted behind a closed page.
+        void trash.flush(); trash.dispose(); loraRow.dispose();
+        // ── run: tasks owns this block (job store) ──
+        // Leaving only stops watching: the job runs on, the floating window carries it, and its picture reaches the works.
+        rememberView(); document.removeEventListener('keydown', strayKeys); expand.dispose?.();
+        alive = false; place.dispose(); stopScene(); enhancer.dispose(); promptBarWatch?.disconnect(); document.removeEventListener('click', closeMore, true);
+        unwatch?.(); unwatch = null; references.forEach(r => URL.revokeObjectURL(r.url)); clearStep(); dialog.remove();
+        // ── end run ──
+        if (kept?.dialog === dialog) kept = null;
+    }
+    function hide() {
+        clearTimeout(refreshSoon); clearTimeout(warmSoon); clearTimeout(warmTyping); if (!running) warmer.cancel(model.id); viewer?.close();
+        more.hidden = true; keysPop.hidden = true; keysBtn.setAttribute('aria-pressed', 'false');
+        // Deleted pictures waiting for their undo window go now, as when the view closed for good.
+        void trash.flush();
+        rememberView(); dialog.inert = true;
+    }
     dialog.onclose = () => {
-        alive = false; place.dispose(); stopScene(); enhancer.dispose(); document.removeEventListener('click', closeMore, true);
-        if (running?.job) void client.cancel(running.job); references.forEach(r => URL.revokeObjectURL(r.url)); clearStep(); dialog.remove();
+        if (keepable && alive) hide(); else dispose();
         if (current === dialog) current = null;
         next();
     };
-    current = dialog; document.body.append(dialog); dialog.showModal(); viewChanged('image', node); render(); drawWorks();
-    // The first model to offer: the last used, or H3 Image when installed, else the other.
+    function reopen(nextStudio) {
+        studio = nextStudio;
+        next = () => studio?.open ? viewChanged('studio', node) : viewChanged('nodes', node);
+        // What the last close left on the dialog (its fade, the leaving mark) goes, so it shows as it was.
+        dialog.getAnimations?.().forEach(animation => animation.cancel());
+        delete dialog.dataset.closing; delete dialog.dataset.fvLeaving; dialog.inert = false;
+        // Keys go to the last open dialog in page order: move it after one opened since.
+        const later = [...document.querySelectorAll('dialog[open]')].some(other => other !== dialog && dialog.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING);
+        if (!dialog.isConnected || later) document.body.append(dialog);
+        current = dialog; if (!dialog.open) dialog.showModal(); viewChanged('image', node);
+        // The view's own tab takes the focus after the first frame (not the first control, which would wear a ring),
+        // as in the editor and the AI view.
+        const focused = document.activeElement;
+        requestAnimationFrame(() => setTimeout(() => { if (dialog.open && document.activeElement === focused) navigation.querySelector('[data-view=image]')?.focus({preventScroll: true}); }));
+        // ── run: tasks owns this block (job store) ──
+        startJobSources();
+        const live = jobs.active({kind: 'image', view: 'image'})[0];
+        if (live && !running) { running = {cancelled: false, id: live.id}; follow(live.id); }
+        // ── end run ──
+        // Nothing is redrawn at the press (the view is as it was, and the page's events kept it current while away):
+        // the works are read again once it is in front, after the switch has finished, and redrawn only from that answer.
+        clearTimeout(refreshSoon);
+        refreshSoon = setTimeout(() => { if (alive && dialog.open) { meta.reload(); fitLeft(); void loadWorks(); } }, 700);
+        return dialog;
+    }
+    if (keepable) kept = {node, dialog, reopen, dispose};
+    // ── run: tasks owns this block (job store) ──
+    // A picture still being made (started here before, or before a reload) is shown before the first paint, so the page never looks idle.
+    startJobSources();
+    // Only the image view's own job: a picture the image editor is making is a draft of the editor's.
+    const live = jobs.active({kind: 'image', view: 'image'})[0];
+    if (live) { running = {cancelled: false, id: live.id}; if (!prompt.value && live.meta?.text) prompt.value = live.meta.text; follow(live.id); }
+    // ── end run ──
+    current = dialog; document.body.append(dialog); dialog.showModal(); viewChanged('image', node); keepSize(); render(); drawWorks(); fitLeft();
+    if (viewCache?.scroll) requestAnimationFrame(() => { const list = works.element.querySelector('.fv-iv-works-body'); if (list) list.scrollTop = viewCache.scroll; });
+    // The shell reveals the view when it says ready (it waits 800 ms at most): say so once the first screen is the final
+    // one (the engine's model states, its works list and the shown picture), so nothing changes after it appears.
+    setTimeout(() => { dialog.dataset.fvReady = 'true'; }, 1500);
+    markReady('start');
+    // The first model to offer: the last used, or an installed one (H3 Image first). Both are always shown.
     client.info().then(value => {
         info = value;
-        // Only one installed: that one. Neither: H3 Image, in its not-installed state.
-        const ready = IMAGE_MODELS.filter(m => value.models?.find(r => r.id === m.id)?.ready !== false);
-        if (value.models && !ready.includes(model)) model = ready[0] || IMAGE_MODELS[0];
-        if (value.models && !remembered() && ready.length === 2) model = IMAGE_MODELS[0];
-        const poller = setInterval(() => { if (!alive) return clearInterval(poller); if (loading()) client.info().then(v => { info = v; render(); }).catch(() => {}); }, 2000);
-        if (alive) render();
-    }).catch(() => {});
-    void loadWorks(); prompt.focus();
+        const ready = IMAGE_MODELS.filter(m => value.models?.find(r => r.id === m.id)?.ready);
+        const offered = IMAGE_MODELS.filter(m => value.models?.some(r => r.id === m.id));
+        if (value.models && !remembered() && ready.length) model = ready[0];
+        if (value.models && offered.length && !offered.includes(model)) model = offered[0];
+        const limits = areaRange(model.id, ratioValue(shapeOf()));
+        area = Math.min(limits.max, Math.max(limits.min, sizes[model.id] || RANGES[model.id].presets.standard));
+        keepSize();
+        const poller = setInterval(() => { if (!alive) return clearInterval(poller); if (IMAGE_MODELS.some(m => modelState(info, m.id).state === 'downloading')) client.info().then(v => { info = v; render(); }).catch(() => {}); }, 2000);
+        if (alive) { render(); fitLeft(); if (historyLoaded) rememberView(); }
+        markReady('info');
+    }).catch(() => markReady('info'));
+    // No focus on open: the box stays neutral until the user goes to it.
+    void loadWorks();
     return dialog;
 }

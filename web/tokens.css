@@ -1,0 +1,240 @@
+/* ═══════════════════════════════════════════════════════════════════════════════════════════════
+   FreeVideo design tokens · the single source (glob, v1 · 2026-11-14 23:20 PST)
+   ───────────────────────────────────────────────────────────────────────────────────────────────
+   Everything every view, popover, tooltip and the floating task window reads. Names are FreeVideo's
+   own (--fv-*); they never touch ComfyUI's theme. The names match what shell already committed in
+   web/theme.css (f77c46ea8) so nothing has to be renamed; values that changed are marked  ▲ changed .
+   TOKENS.md explains each group, when to use what, and the measured contrast.
+
+   Who sets what on <html>:
+     data-theme="dark|light"   shell (follows the system unless the user picked one)
+     data-glass="glass|solid"  shell (solid on reduced transparency, no backdrop support, slow frames, or .lite)
+     class="lite"              the user's "light effects" switch (8 GB laptops, integrated graphics)
+     data-density="comfortable|compact"   settings (default comfortable)
+     data-fv-theme="dark|light" on any element re-scopes the colours below it (catalog pages, the image editor)
+   Media queries below handle prefers-reduced-motion / -transparency / pointer:coarse / phone width.
+   ═══════════════════════════════════════════════════════════════════════════════════════════════ */
+
+:root{
+  /* ── 1 · Brand ─────────────────────────────────────────────────────────────────────────── */
+  --fv-brand:#1B94FC;                 /* logo blue; fills use --fv-accent-fill (AA with white text) */
+
+  /* ── 2 · Space: 8 px grid, 4 px half step ──────────────────────────────────────────────── */
+  --fv-sp-0:0px;
+  --fv-sp-2:2px;                      /* hairline only: focus offset, ring gap, icon optical nudge. Never layout. */
+  --fv-sp-4:4px;  --fv-sp-8:8px;  --fv-sp-12:12px; --fv-sp-16:16px; --fv-sp-20:20px; --fv-sp-24:24px;
+  --fv-sp-32:32px; --fv-sp-40:40px; --fv-sp-48:48px; --fv-sp-56:56px; --fv-sp-64:64px;
+  /* roles (use these first; they follow density) */
+  --fv-gap-icon:8px;                  /* icon ↔ label inside a control */
+  --fv-gap-ctl:4px;                   /* control ↔ control in a toolbar */
+  --fv-gap-item:8px;                  /* items in a list / grid of tiles */
+  --fv-gap-group:24px;                /* between groups in a panel */
+  --fv-pad-ctl:12px;                  /* button side padding */
+  --fv-pad-pop:8px;                   /* menu / popover inner padding (menu items sit 8 px in) */
+  --fv-pad-panel:16px;                /* panel / card / dialog inner padding */
+  --fv-edge-gap:16px;                 /* floating layer ↔ window edge (docks, console, floating window) */
+  --fv-gutter:24px;                   /* top bar sides, centred column gutter */
+
+  /* ── 3 · Type: four sizes, three weights, digits tabular ───────────────────────────────── */
+  --fv-font:-apple-system,BlinkMacSystemFont,"Segoe UI Variable Text","Segoe UI","FreeVideo Quotes",
+            "PingFang SC","Hiragino Sans GB","Microsoft YaHei UI","Noto Sans CJK SC","Noto Sans SC",system-ui,sans-serif;
+  --fv-font-mono:ui-monospace,"SF Mono",Menlo,Consolas,"Cascadia Mono","Noto Sans Mono CJK SC",monospace;
+  --fv-fs-1:12px;  --fv-lh-1:16px;    /* caption, badge, timecode, shortcut key, helper line */
+  --fv-fs-2:13px;  --fv-lh-2:20px;    /* body and every control */
+  --fv-fs-3:16px;  --fv-lh-3:24px;    /* panel / dialog / card title; phone text inputs (≥16 px, no zoom) */
+  --fv-fs-4:20px;  --fv-lh-4:28px;    /* view title, empty-state title, big numbers */
+  --fv-lh-tight:1.3; --fv-lh:1.5;     /* unitless, for multi-line copy (CJK paragraphs use --fv-lh) */
+  --fv-fw-1:400; --fv-fw-2:500; --fv-fw-3:600;   /* regular · medium (controls) · semibold (titles, selected) */
+  --fv-num:"tnum" 1,"cv11" 1;         /* font-feature-settings for times, %, sizes, MP, GB */
+  --fv-measure:70ch;                  /* max line length for copy */
+
+  /* ── 4 · Radius: grows with the object; outer = inner + padding (concentric) ───────────── */
+  --fv-rad-xs:4px;                    /* badge, key cap, checkbox, progress bar */
+  --fv-rad-sm:8px;                    /* menu item, small tile, chip inside a field, compact button */
+  --fv-rad-ctl:12px;                  /* button, field, segmented control, tooltip */
+  --fv-rad-pic:12px;                  /* the user's picture / video frame, thumbnails ≥ 64 px */
+  --fv-rad-pop:16px;                  /* ▲ changed 18→16 · menu, popover, toast, context menu (8 pad + 8 item) */
+  --fv-rad-dock:20px;                 /* ▲ changed 22→20 · dock panel, sheet, floating window card */
+  --fv-rad-console:24px;              /* ▲ changed 26→24 · console, dialog (12 pad + 12 control) */
+  --fv-rad-pill:999px;                /* tabs, status capsule, filter chips */
+
+  /* ── 5 · Heights ───────────────────────────────────────────────────────────────────────── */
+  --fv-ctl-s:28px;                    /* compact control, toolbar icon button in dense panels */
+  --fv-ctl:32px;                      /* default control (button, field, menu row, tab) */
+  --fv-ctl-l:40px;                    /* prominent control: tab group, status capsule, dialog primary */
+  --fv-touch:44px;                    /* finger target */
+  --fv-hit:28px;                      /* minimum pointer target; 44 on coarse pointers (see below) */
+  --fv-row:32px;                      /* list / menu row */
+  --fv-row-2:48px;                    /* list row with a second line (notification, search result) */
+  --fv-header-h:56px;                 /* the one top bar, every view */
+  --fv-icon:18px; --fv-icon-s:16px; --fv-icon-stroke:1.7;   /* line icons, round caps and joins */
+
+  /* ── 6 · Layout ────────────────────────────────────────────────────────────────────────── */
+  --fv-content-max:1280px;
+  --fv-panel-w:320px;                 /* docked side panel default; drag range below */
+  --fv-panel-min:240px; --fv-panel-max:480px;
+  --fv-pop-w:320px;                   /* popover / notification centre / toast column */
+  --fv-palette-w:640px;               /* command palette and global search */
+  --fv-dialog-w:440px;                /* confirm dialog; wide dialogs 640 */
+
+  /* ── 7 · Glass recipe (values that do not change with theme) ───────────────────────────── */
+  --fv-glass-blur1:22px; --fv-glass-blur2:30px; --fv-glass-blur3:40px;
+  --fv-glass-sat1:150%;  --fv-glass-sat2:165%;  --fv-glass-sat3:175%;
+
+  /* ── 8 · Motion: 160–260 ms, ease out, never past the target, interruptible ────────────── */
+  --fv-dur-press:100ms;               /* pressed state (scale, fill) — visible on the same frame */
+  --fv-dur-1:160ms;                   /* hover, small state change, menu / tooltip in, popover out */
+  --fv-dur-2:200ms;                   /* view cross-fade, popover / dialog in, panel content swap */
+  --fv-dur-3:260ms;                   /* panel open/close, layout re-flow, shared-element travel (incl. floating window) */
+  --fv-ease-out:cubic-bezier(.2,.8,.2,1);   /* arrivals and state changes (default) */
+  --fv-ease-move:cubic-bezier(.4,0,.2,1);   /* something already on screen moving to a new place (snap, re-centre) */
+  --fv-ease-exit:cubic-bezier(.4,0,1,1);    /* leaving popovers only, with --fv-dur-1 */
+  --fv-shift:4px;                     /* entering offset (views, menus, toasts); dialogs 8 px */
+  --fv-press-scale:.96;               /* small controls */
+  --fv-press-scale-l:.985;            /* large surfaces: cards, tiles, floating window, generate */
+  --fv-hover-scale:1.03;              /* the ceiling; most hovers change colour only */
+  --fv-tip-delay:500ms; --fv-tip-hide:100ms; --fv-tip-warm:300ms;   /* neighbour tips are instant within the warm window */
+  --fv-ready-wait:120ms;              /* a new view waits at most this long for first paint before fading in */
+  --fv-skel-after:400ms;              /* waits longer than this show a skeleton / progress */
+  --fv-toast-life:5s;                 /* receipts and done notices; failures stay until dismissed */
+  --fv-undo-life:10s;                 /* undo bar after delete / discard */
+
+  /* ── 9 · Layers (z-index for non top-layer elements; top-layer order = open order) ────── */
+  --fv-z-stage:0;                     /* pictures, video, timeline, canvas */
+  --fv-z-view:1000;                   /* view surfaces */
+  --fv-z-bar:1100;                    /* top bar, console, docks */
+  --fv-z-panel:1200;                  /* dock panels and inspectors floating over the stage */
+  --fv-z-float:2000;                  /* the floating task window */
+  --fv-z-pop:2400;                    /* menus, context menus, popovers */
+  --fv-z-modal:2600;                  /* dialogs, palette, search, shortcut sheet (with scrim) */
+  --fv-z-toast:2800;                  /* toasts and undo bar */
+  --fv-z-tip:3000;                    /* tooltip, above everything of ours */
+
+  color-scheme:dark;
+}
+
+/* ── Colour · dark (default) ───────────────────────────────────────────────────────────────── */
+:root,:root[data-theme=dark],[data-fv-theme=dark]{
+  --fv-shell-bg:#06080c;
+  --fv-fg:#f3f5f8;                    /* primary text      15.8:1 on solid1 */
+  --fv-fg2:#c3c9d3;                   /* secondary text    10.4:1 */
+  --fv-fg3:#a3abb8;                   /* ▲ changed #99a1ae→#a3abb8 · tertiary; 5.0:1 even on a hovered control */
+  --fv-on-fill:#ffffff;               /* text on accent / danger fills */
+
+  --fv-accent-ink:#66b6ff;            /* links, selected text, progress, focus */
+  --fv-accent-fill:#0d6dcc;           /* primary button: white 5.15:1 */
+  --fv-accent-fill-hover:#0f78de;
+  --fv-accent-soft:rgb(27 148 252 / .16);
+  --fv-accent-line:rgb(102 182 255 / .5);
+
+  --fv-ok:#4cd59a;    --fv-ok-soft:rgb(76 213 154 / .14);        /* done, installed, connected */
+  --fv-caution:#f2b54b; --fv-caution-soft:rgb(242 181 75 / .14);  /* will download, disk nearly full, slow network */
+  --fv-warn:#ff8f80;  --fv-warn-soft:rgb(255 110 100 / .14);      /* failed, destructive, offline */
+  --fv-warn-fill:#c42f35;             /* ▲ new · armed destructive button: white 5.5:1 (was #c8353a, measured 4.47 in shots) */
+
+  --fv-line:rgb(255 255 255 / .08);   /* dividers */
+  --fv-line2:rgb(255 255 255 / .14);  /* control outlines, tracks, dashed slots */
+  --fv-ctl-bg:rgb(255 255 255 / .06);
+  --fv-ctl-hover:rgb(255 255 255 / .11);
+  --fv-ctl-press:rgb(255 255 255 / .16);
+  --fv-scrim:rgb(3 4 6 / .52);        /* behind modal dialogs, palette, search */
+  --fv-on-pic:rgb(0 0 0 / .55);       /* chips drawn on the user's picture (duration, badge) — same in both themes */
+  --fv-focus:#66b6ff;                 /* focus ring colour, 6.4:1 against panels */
+  --fv-selection:rgb(27 148 252 / .34);
+  --fv-scroll:rgb(243 245 248 / .22);
+  --fv-skel:rgb(255 255 255 / .06); --fv-skel-hi:rgb(255 255 255 / .11);
+
+  /* glass */
+  --fv-tint:20 23 30;                 /* shell may replace with the work's softened hue (stage light) */
+  --fv-a1:.54; --fv-a2:.66; --fv-a3:.8;
+  --fv-edge:rgb(255 255 255 / .075); --fv-edge-hi:rgb(255 255 255 / .14);
+  --fv-sh1:0 1px 1px rgb(0 0 0 / .25),0 10px 30px -6px rgb(0 0 0 / .45);
+  --fv-sh2:0 1px 2px rgb(0 0 0 / .3),0 22px 54px -10px rgb(0 0 0 / .55);
+  --fv-sh3:0 2px 6px rgb(0 0 0 / .32),0 32px 80px -12px rgb(0 0 0 / .62);
+  --fv-pic-sh:0 2px 6px rgb(0 0 0 / .35),0 40px 90px -20px rgb(0 0 0 / .7);
+  --fv-solid1:24 27 34; --fv-solid2:29 32 40; --fv-solid3:35 39 48;
+  color-scheme:dark;
+}
+
+/* ── Colour · light ────────────────────────────────────────────────────────────────────────── */
+:root[data-theme=light],[data-fv-theme=light]{
+  --fv-shell-bg:#e7eaef;
+  --fv-fg:#14161b; --fv-fg2:#323844; --fv-fg3:#535a68;
+  --fv-on-fill:#ffffff;
+
+  --fv-accent-ink:#0759ab; --fv-accent-fill:#0d6dcc; --fv-accent-fill-hover:#0b62b8;
+  --fv-accent-soft:rgb(15 116 214 / .1); --fv-accent-line:rgb(10 102 194 / .45);
+
+  --fv-ok:#086b3f;    --fv-ok-soft:rgb(20 160 100 / .1);
+  --fv-caution:#8a5200; --fv-caution-soft:rgb(214 137 16 / .12);
+  --fv-warn:#a82b25;  --fv-warn-soft:rgb(211 58 63 / .09);
+  --fv-warn-fill:#c42f35;
+
+  --fv-line:rgb(20 24 32 / .08); --fv-line2:rgb(20 24 32 / .13);
+  --fv-ctl-bg:rgb(20 24 32 / .05); --fv-ctl-hover:rgb(20 24 32 / .09); --fv-ctl-press:rgb(20 24 32 / .13);
+  --fv-scrim:rgb(20 24 32 / .28);
+  --fv-on-pic:rgb(0 0 0 / .55);
+  --fv-focus:#0a66c2;
+  --fv-selection:rgb(27 148 252 / .26);
+  --fv-scroll:rgb(20 24 32 / .24);
+  --fv-skel:rgb(20 24 32 / .05); --fv-skel-hi:rgb(20 24 32 / .09);
+
+  --fv-tint:250 251 253;
+  --fv-a1:.72; --fv-a2:.8; --fv-a3:.9;
+  --fv-edge:rgb(20 24 32 / .07); --fv-edge-hi:rgb(255 255 255 / .9);
+  --fv-sh1:0 1px 1px rgb(30 40 60 / .06),0 10px 28px -8px rgb(30 40 60 / .16);
+  --fv-sh2:0 1px 2px rgb(30 40 60 / .07),0 22px 50px -12px rgb(30 40 60 / .22);
+  --fv-sh3:0 2px 6px rgb(30 40 60 / .08),0 30px 70px -14px rgb(30 40 60 / .28);
+  --fv-pic-sh:0 2px 6px rgb(30 40 60 / .1),0 30px 60px -30px rgb(30 40 60 / .3);
+  --fv-solid1:246 247 249; --fv-solid2:250 250 252; --fv-solid3:255 255 255;
+  color-scheme:light;
+}
+
+/* ── Density ───────────────────────────────────────────────────────────────────────────────── */
+:root[data-density=compact]{
+  --fv-ctl:28px; --fv-ctl-l:32px; --fv-row:28px; --fv-row-2:40px;
+  --fv-pad-panel:12px; --fv-gap-group:16px; --fv-pad-ctl:8px; --fv-panel-w:280px;
+}
+
+/* ── Phone width (< 720 px) and touch ──────────────────────────────────────────────────────── */
+@media (max-width:719px){
+  :root{ --fv-edge-gap:12px; --fv-gutter:16px; --fv-rad-console:20px; --fv-panel-w:100vw; }
+}
+@media (pointer:coarse){
+  :root{ --fv-hit:44px; }
+}
+
+/* ── Reduced motion: every duration collapses (1 ms, so transitionend still fires); no offsets ── */
+@media (prefers-reduced-motion:reduce){
+  :root{ --fv-dur-press:1ms; --fv-dur-1:1ms; --fv-dur-2:1ms; --fv-dur-3:1ms; --fv-shift:0px;
+         --fv-press-scale:1; --fv-press-scale-l:1; --fv-hover-scale:1; }
+}
+
+/* ═══ Material: glass only on layers that float (bars, trays, docks, popovers, dialogs, tooltip,
+   floating window). Never behind the user's picture or video, never behind long copy.
+   At most two glass layers overlap at any point on screen; a third (e.g. a menu opened from a
+   popover inside a dock) is solid: give it .fv-solid or data-fv-layer="3".
+   g1 bars that stay · g2 panels and popovers · g3 dialogs, menus over panels, tooltip. ═══════ */
+.fv-glass{
+  background:rgb(var(--fv-tint) / var(--fv-ga,var(--fv-a2)));
+  border:1px solid var(--fv-edge);
+  box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-gsh,var(--fv-sh2));
+  -webkit-backdrop-filter:blur(var(--fv-gb,var(--fv-glass-blur2))) saturate(var(--fv-gs,var(--fv-glass-sat2)));
+          backdrop-filter:blur(var(--fv-gb,var(--fv-glass-blur2))) saturate(var(--fv-gs,var(--fv-glass-sat2)));
+}
+.fv-g1{--fv-ga:var(--fv-a1);--fv-gb:var(--fv-glass-blur1);--fv-gs:var(--fv-glass-sat1);--fv-gsh:var(--fv-sh1);--fv-solid:var(--fv-solid1)}
+.fv-g2{--fv-ga:var(--fv-a2);--fv-gb:var(--fv-glass-blur2);--fv-gs:var(--fv-glass-sat2);--fv-gsh:var(--fv-sh2);--fv-solid:var(--fv-solid2)}
+.fv-g3{--fv-ga:var(--fv-a3);--fv-gb:var(--fv-glass-blur3);--fv-gs:var(--fv-glass-sat3);--fv-gsh:var(--fv-sh3);--fv-solid:var(--fv-solid3)}
+/* Solid fallback — the same layer, same edge, same shadow, opaque. It must look finished, not broken. */
+.fv-glass.fv-solid,.fv-glass[data-fv-layer="3"],
+:is(:root[data-glass=solid],:root.lite) .fv-glass{
+  -webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--fv-solid,var(--fv-solid2)));
+}
+@media (prefers-reduced-transparency:reduce){
+  .fv-glass{-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:rgb(var(--fv-solid,var(--fv-solid2)))!important}
+  :root{ --fv-scrim:rgb(3 4 6 / .72); }
+  :root[data-theme=light]{ --fv-scrim:rgb(20 24 32 / .45); }
+}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  .fv-glass{background:rgb(var(--fv-solid,var(--fv-solid2)))}
+}

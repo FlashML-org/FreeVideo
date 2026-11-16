@@ -48,7 +48,7 @@ To connect from computers on your local network without SSH:
 freevideo server --listen 0.0.0.0
 ```
 
-This prints an access link with a token, and a QR code of it to scan with a phone camera. Anyone with the link can use FreeVideo on the server; `freevideo server --listen 0.0.0.0 --new-token` replaces it, and `freevideo status` shows it again. ComfyUI itself still listens only on the server; a small proxy in front of it turns away every request without the token. The connection is not encrypted, so use it on a network you trust, or add `--tls-cert cert.pem --tls-key key.pem` for HTTPS.
+This prints an access link with a token, and a QR code of it to scan with a phone camera. Anyone with the link can use FreeVideo on the server; `freevideo server --listen 0.0.0.0 --new-token` replaces it, and `freevideo status` shows it again. ComfyUI itself still listens only on the server; a small proxy in front of it turns away every request without the token. The connection is not encrypted, so use it on a network you trust, or add `--tls-cert cert.pem --tls-key key.pem` for HTTPS. Through the link, pictures in ComfyUI's input folder can be opened only from FreeVideo's own folders there.
 
 To start FreeVideo with the server, add `--enable`; it becomes a systemd user service. To keep it running after you log out and start it at boot, also run `sudo loginctl enable-linger $USER` once. `freevideo server --disable` removes the service.
 

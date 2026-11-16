@@ -1,7 +1,6 @@
-/* Keep the preview row height. Visible tools reserve 30px + an 8px gap
-   above the picture; the remaining area retains the existing 16px inset. */
+/* The Fill / Fit switch floats at the stage's top left and never changes the picture's size or place
+   (it used to add 54px above the picture whenever the playhead crossed a part of another shape). */
 .fv-editor .fv-ed-preview{position:relative}
-.fv-editor .fv-ed-preview:has(>.fv-ed-picture-tools:not([hidden])){padding-top:54px}
 .fv-ed-picture{height:min(100cqh,calc(100cqw * var(--fv-ed-height,9) / var(--fv-ed-width,16)));transition:width 150ms ease,height 150ms ease}
 .fv-ed-picture[data-playing=true]{transition:none}
 @media(prefers-reduced-motion:reduce){.fv-ed-picture{transition:none}}
@@ -9,11 +8,11 @@
 .fv-ed-crop-shade>div{position:absolute;background:rgba(0,0,0,.65)}
 .fv-ed-crop-top{top:0;left:0;right:0}.fv-ed-crop-bottom{bottom:0;left:0;right:0}
 .fv-ed-crop-left{left:0;top:0;bottom:0}.fv-ed-crop-right{right:0;top:0;bottom:0}
-.fv-ed-picture-tools{position:absolute;top:16px;left:16px;z-index:3;display:flex;width:max-content;gap:2px;padding:2px;border:1px solid var(--fv-border);border-radius:6px;background:var(--fv-bg)}
-.fv-editor .fv-ed-picture-tools button{flex:none;height:24px;padding:0 7px;border:0;border-radius:4px;background:transparent;color:var(--fv-muted);font-size:11px;white-space:nowrap}
+.fv-ed-picture-tools{position:absolute;top:16px;left:16px;z-index:3;display:flex;width:max-content;gap:2px;padding:2px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);background:var(--fv-bg)}
+.fv-editor .fv-ed-picture-tools button{flex:none;height:24px;padding:0 7px;border:0;border-radius:var(--fv-r-xs);background:transparent;color:var(--fv-muted);font-size:11px;white-space:nowrap}
 .fv-editor .fv-ed-picture-tools button[aria-pressed=true]{background:var(--fv-raised);color:var(--fv-ink)}
 .fv-ed-clip{container-type:inline-size}
-.fv-ed-picture-badge{position:absolute;right:8px;top:5px;max-width:calc(100% - 12px);height:22px;display:flex;align-items:center;gap:3px;padding:2px 4px;border:1px solid var(--fv-warning);border-radius:4px;background:var(--fv-bg);color:var(--fv-warning);z-index:5;white-space:nowrap;font-size:11px;line-height:16px}
+.fv-ed-picture-badge{position:absolute;right:8px;top:5px;max-width:calc(100% - 12px);height:22px;display:flex;align-items:center;gap:3px;padding:2px 4px;border:1px solid var(--fv-warning);border-radius:var(--fv-r-xs);background:var(--fv-bg);color:var(--fv-warning);z-index:5;white-space:nowrap;font-size:11px;line-height:16px}
 .fv-ed-picture-badge svg{width:14px;height:14px;flex:none;stroke:currentColor;stroke-width:1.3;fill:none}
 .fv-ed-picture-badge[data-fit=contain]{border-color:var(--fv-muted);color:var(--fv-muted)}
 @container(max-width:84px){.fv-ed-picture-badge[data-fit=contain] .fv-ed-picture-badge-label{display:none}}
@@ -25,8 +24,21 @@
 .fv-ed-picture-size-menu button[aria-checked=true]:before{content:'✓'}
 .fv-ed-export-hint{display:block;white-space:nowrap;line-height:16px}
 .fv-editor .fv-ed-crop-notice{display:inline-flex;align-items:center;gap:6px;height:auto;min-height:0;padding:0;border:0;background:transparent;color:var(--fv-muted);font-size:12px;line-height:16px;text-align:left}
-.fv-ed-crop-notice:before{content:'';width:5px;height:5px;border-radius:50%;background:var(--fv-warning);flex:none}
+.fv-ed-crop-notice:before{content:'';width:5px;height:5px;border-radius:var(--fv-r-pill);background:var(--fv-warning);flex:none}
 .fv-editor .fv-ed-crop-notice:hover{color:var(--fv-ink)}
 .fv-ed-gap-notice{display:inline;white-space:pre}
 .fv-editor .fv-ed-picture-size-menu button{display:flex;align-items:center;justify-content:flex-start}
 .fv-ed-picture-size-detail{margin-left:auto;padding-left:16px;color:var(--fv-muted);font-variant-numeric:tabular-nums}
+
+/* Glass version: the switch is a small floating capsule (g3), solid where glass is off. */
+.fv-studio.fv-editor .fv-ed-picture-tools{top:12px;left:12px;gap:2px;padding:2px;border:1px solid var(--fv-edge,var(--fv-line));border-radius:var(--fv-r-md);
+  background:rgb(var(--fv-tint) / var(--fv-a3,.8));box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh2);-webkit-backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%);backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%)}
+.fv-studio.fv-editor .fv-ed-picture-tools button{height:28px;padding:0 10px;border-radius:var(--fv-r-md);font-size:var(--fv-fs-1,12px);color:var(--fv-fg2)}
+.fv-studio.fv-editor .fv-ed-picture-tools button:hover{color:var(--fv-fg)}
+.fv-studio.fv-editor .fv-ed-picture-tools button[aria-pressed=true]{background:var(--fv-ctl-hover);color:var(--fv-fg)}
+:is(:root[data-glass=solid],:root.lite) .fv-studio.fv-editor .fv-ed-picture-tools{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--fv-solid3))}
+@media(prefers-reduced-transparency:reduce){.fv-studio.fv-editor .fv-ed-picture-tools{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--fv-solid3))}}
+/* The picture is centred on the window, not on its column (the side panes may differ in width); see editor_player.js. */
+.fv-studio.fv-editor .fv-ed-picture{translate:var(--fv-ed-center-shift,0px) 0}
+/* The empty picture: one line and the next step, centred, in the caption size. */
+.fv-studio.fv-editor .fv-ed-empty-preview-text{margin:0;max-width:32em;font-size:var(--fv-fs-2,13px);line-height:20px;color:var(--fv-fg3)}

@@ -107,6 +107,8 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}, levels 
     rail.setAttribute('role', 'slider'); rail.setAttribute('aria-label', label.textContent);
     rail.setAttribute('aria-valuemin', '0'); rail.setAttribute('aria-valuemax', '3');
     rail.setAttribute('aria-orientation', 'horizontal');
+    rail.dataset.fvTipName = t('Quality level', '质量档位'); rail.dataset.fvTipKey = '← →';
+    rail.dataset.fvTipUse = t('More steps look finer and take longer', '步数越多越细，用时越长');
     // A thick track with the knob inside it; stops sit at the knob's centers.
     const track = el('span', 'fv-effort-track'); track.setAttribute('aria-hidden', 'true');
     const fill = el('span', 'fv-effort-fill'); track.append(fill);
@@ -117,6 +119,11 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}, levels 
     const nameButtons = efforts.map((tier, i) => {
         const b = el('button', 'fv-effort-name', effortName(t, tier)); b.type = 'button'; b.tabIndex = -1;
         b.style.setProperty('--fv-stop', i / 3);
+        b.dataset.fvTipName = effortName(t, tier);
+        b.dataset.fvTipUse = tier.twoPass
+            ? (tier.upscale < 2 ? t(`${tier.steps} + 3 steps from a larger first pass: more detail`, `两遍 ${tier.steps} + 3 步，一采更大、细节更多`)
+                : t(`${tier.steps} + 3 steps in two passes: fastest`, `两遍 ${tier.steps} + 3 步，最快`))
+            : t(`${tier.steps} steps in one pass: finer, slower`, `一遍 ${tier.steps} 步，更细也更慢`);
         b.onclick = () => { if (!disabled && pointer === null) commit(i); };
         names.append(b); return b;
     });
@@ -191,6 +198,7 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}, levels 
         if (isCustom) rail.setAttribute('aria-valuetext', `${t('Custom', '自定义')} · ${currentSteps}${twoPass ? ' + ' + currentRefine : ''} ${unit}`);
         rail.title = disabled ? reason || t('Controlled by connected nodes.', '由连接的节点控制。')
             : t('Same model. Higher effort uses more sampling steps; results vary by scene.', '使用同一模型，提高档位会增加采样步数；效果因场景而异。');
+        if (disabled) rail.dataset.fvTipWhy = reason || t('Set by connected nodes', '由连接的节点决定'); else delete rail.dataset.fvTipWhy;
         for (const name of nameButtons) { name.disabled = disabled; name.title = ''; }
     }
     // The machine's own table (effortsFrom); the names stay, the plans follow the machine.

@@ -1,0 +1,84 @@
+/* The shared right-click menu (context_menu.js) and the key chips every part of the command layer uses.
+   Glass from theme.css (.fv-glass .fv-g3, solid when transparency is reduced, unsupported or switched off).
+   Only opacity and transform animate, eased out, no overshoot; nothing here is selectable text. */
+.fv-cm[popover], .fv-cm {
+  position: fixed; inset: auto; left: 0; top: 0; z-index: var(--fv-z-tip, 3000); margin: 0; box-sizing: border-box;
+  min-width: 224px; max-width: min(320px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow-y: auto; overscroll-behavior: contain;
+  padding: var(--fv-pad-pop, 8px); border-radius: var(--fv-rad-pop, 16px); color: var(--fv-fg, #f3f5f8);
+  font: 400 var(--fv-fs-2, 13px)/var(--fv-lh, 1.5) var(--fv-font, "Segoe UI", "Microsoft YaHei UI", "Noto Sans CJK SC", system-ui, sans-serif);
+  -webkit-user-select: none; user-select: none; color-scheme: dark; outline: none; scrollbar-width: thin;
+}
+:root[data-theme=light] .fv-cm { color-scheme: light; }
+/* The menu box takes the focus when opened by a pointer; it is not a control and never wears a ring (a view's general
+   focus rule would otherwise draw one round it). Its rows show where the keyboard is. */
+:root .fv-cm:focus-visible { outline: none; }
+.fv-cm[popover]:not(:popover-open) { display: none; }
+/* A row is a <button>; views style their own buttons broadly, so it starts from the browser's defaults and sets
+   everything it shows (no view needs a guard rule for it). */
+:root .fv-cm .fv-cm-item {
+  all: revert-layer; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; transform: none; opacity: 1; filter: none;
+  letter-spacing: normal; text-transform: none; text-decoration: none; outline: none; min-width: 0; max-width: none; flex: none;
+  display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; column-gap: var(--fv-sp-12, 12px);
+  width: 100%; height: auto; min-height: var(--fv-row, 32px); margin: 0; padding: 0 var(--fv-sp-8, 8px); box-sizing: border-box;
+  border: 0; border-radius: var(--fv-rad-sm, 8px); background: transparent; color: inherit; font: inherit; text-align: left; cursor: default; white-space: nowrap;
+  transition: background-color var(--fv-dur-1, 160ms) var(--fv-ease-out, ease-out);
+}
+:root .fv-cm .fv-cm-item:hover { background: transparent; box-shadow: none; transform: none; }
+:root .fv-cm .fv-cm-item:focus { outline: none; }
+:root .fv-cm .fv-cm-item.is-active { background: var(--fv-accent-soft, rgb(27 148 252 / .16)); }
+:root .fv-cm .fv-cm-item.is-active .fv-cm-icon { color: var(--fv-fg, #f3f5f8); }
+:root .fv-cm .fv-cm-item:focus-visible.is-active { box-shadow: inset 0 0 0 2px var(--fv-accent-line, rgb(102 182 255 / .5)); }
+:root .fv-cm .fv-cm-item:active { background: var(--fv-accent-soft, rgb(27 148 252 / .16)); transform: none; transition-duration: 0s; }
+:root .fv-cm .fv-cm-item[aria-disabled=true] { color: var(--fv-fg3, #99a1ae); }
+:root .fv-cm .fv-cm-item[aria-disabled=true].is-active { background: transparent; }
+:root .fv-cm .fv-cm-item[aria-disabled=true] .fv-cm-icon { color: var(--fv-fg3, #99a1ae); opacity: .7; }
+:root .fv-cm .fv-cm-item[data-danger=true]:not([aria-disabled=true]) { color: var(--fv-warn, #ff8f80); }
+:root .fv-cm .fv-cm-item[data-danger=true].is-active:not([aria-disabled=true]) { background: var(--fv-warn-soft, rgb(255 110 100 / .14)); }
+:root .fv-cm .fv-cm-icon { display: grid; place-items: center; width: 16px; height: 16px; color: var(--fv-fg2, #c3c9d3); }
+:root .fv-cm .fv-cm-item[data-danger=true] .fv-cm-icon { color: inherit; }
+:root .fv-cm .fv-cm-item[role=menuitemcheckbox] .fv-cm-icon { color: var(--fv-accent-ink, #66b6ff); }
+:root .fv-cm .fv-cm-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:root .fv-cm .fv-cm-more { display: grid; place-items: center; color: var(--fv-fg3, #99a1ae); }
+:root .fv-cm .fv-cm-sep { height: 1px; margin: var(--fv-sp-4, 4px) var(--fv-sp-8, 8px); background: var(--fv-line, rgb(255 255 255 / .08)); }
+
+/* Key chips: the same face in menus, the command palette, the shortcut sheet and hover tips. */
+.fv-keys { display: inline-flex; align-items: center; gap: var(--fv-sp-2, 2px); white-space: nowrap; }
+.fv-keys kbd {
+  display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 var(--fv-sp-4, 4px); box-sizing: border-box;
+  border-radius: var(--fv-r-sm); background: var(--fv-ctl-bg, rgb(255 255 255 / .06)); box-shadow: inset 0 -1px 0 var(--fv-line2, rgb(255 255 255 / .14));
+  font: 500 var(--fv-fs-1, 12px)/1 var(--fv-font, system-ui, sans-serif); font-variant-numeric: tabular-nums; color: var(--fv-fg2, #c3c9d3);
+}
+.fv-keys-or { padding: 0 var(--fv-sp-2, 2px); color: var(--fv-fg3, #99a1ae); font-size: var(--fv-fs-1, 12px); }
+:root .fv-cm .fv-cm-key { font-size: var(--fv-fs-1, 12px); color: var(--fv-fg3, #99a1ae); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.fv-glyph { display: block; flex: none; }
+
+@media (prefers-reduced-motion: reduce) { :root .fv-cm .fv-cm-item { transition: none; } }
+@media (forced-colors: active) { :root .fv-cm .fv-cm-item.is-active { outline: 2px solid Highlight; } }
+
+/* A layer of the command layer (createLayer): a modal dialog above every view, glass g3, a light dim behind.
+   The browser's own dialog box (border, padding, centring, colours) is taken back first. */
+dialog.fv-layer {
+  position: fixed; inset: auto; left: 50%; top: max(var(--fv-sp-64, 64px), 12vh); translate: -50% 0; margin: 0; padding: 0; box-sizing: border-box;
+  max-width: calc(100vw - 2 * var(--fv-sp-16, 16px)); max-height: calc(100vh - max(var(--fv-sp-64, 64px), 12vh) - var(--fv-sp-24, 24px));
+  display: flex; flex-direction: column; overflow: hidden; border-radius: var(--fv-rad-pop, 18px); color: var(--fv-fg, #f3f5f8);
+  font: 400 var(--fv-fs-2, 13px)/var(--fv-lh, 1.5) var(--fv-font, "Segoe UI", "Microsoft YaHei UI", "Noto Sans CJK SC", system-ui, sans-serif);
+  -webkit-user-select: none; user-select: none; color-scheme: dark; outline: none; transform-origin: 50% 0;
+}
+:root[data-theme=light] dialog.fv-layer { color-scheme: light; }
+dialog.fv-layer:not([open]) { display: none; }
+dialog.fv-layer::backdrop { background: rgb(6 8 12 / .36); }
+:root[data-theme=light] dialog.fv-layer::backdrop { background: rgb(40 48 64 / .18); }
+dialog.fv-layer :is(input, textarea) { -webkit-user-select: text; user-select: text; }
+dialog.fv-layer :focus-visible { outline: 2px solid var(--fv-accent-ink, #66b6ff); outline-offset: 2px; }
+dialog.fv-layer input:focus-visible { outline: none; }
+@media (max-width: 520px) {
+  dialog.fv-layer { top: var(--fv-sp-8, 8px); max-height: calc(100vh - var(--fv-sp-16, 16px)); max-width: calc(100vw - 2 * var(--fv-sp-8, 8px)); border-radius: var(--fv-rad-ctl, 12px); }
+}
+/* A quiet icon button used in layer headers. */
+.fv-layer-icon {
+  display: grid; place-items: center; flex: none; width: var(--fv-ctl, 32px); height: var(--fv-ctl, 32px); padding: 0; border: 0; border-radius: var(--fv-r-sm);
+  background: transparent; color: var(--fv-fg3, #99a1ae); cursor: pointer;
+  transition: background-color var(--fv-dur-1, 160ms) var(--fv-ease-out, ease-out), color var(--fv-dur-1, 160ms) var(--fv-ease-out, ease-out);
+}
+.fv-layer-icon:hover { background: var(--fv-ctl-hover, rgb(255 255 255 / .11)); color: var(--fv-fg, #f3f5f8); }
+.fv-layer-icon:active { background: var(--fv-accent-soft, rgb(27 148 252 / .16)); transition-duration: 0s; }

@@ -9,7 +9,7 @@
 .fv-generation-label-sep[data-cut]{font-size:0}
 .fv-generation-label-rest[data-cut]{display:inline-block;width:100%}
 .fv-generation-count{font-size:clamp(26px,3vw,40px);font-weight:var(--fv-medium);line-height:1.2;letter-spacing:.02em;font-variant-numeric:tabular-nums;color:var(--fv-ink,#edf2f9)}
-.fv-generation-track{position:relative;height:4px;background:var(--fv-raised,#212a37);border-radius:999px;overflow:hidden}
+.fv-generation-track{position:relative;height:4px;background:var(--fv-raised,#212a37);border-radius:var(--fv-r-pill);overflow:hidden}
 .fv-generation-fill{position:relative;height:100%;border-radius:inherit;overflow:hidden;background:linear-gradient(90deg,var(--fv-accent,#6db8fa),var(--fv-accent-ramp,#82dcd3));transition:width .6s var(--fv-ease-out,cubic-bezier(.22,1,.36,1));will-change:width}
 /* Finished: the success colour fades in over the accent. */
 .fv-generation-fill::before{content:'';position:absolute;inset:0;background:linear-gradient(90deg,var(--fv-success,#76d9b3),#a8eed3);opacity:0;transition:opacity .45s var(--fv-ease,ease)}
@@ -91,7 +91,7 @@
 .fv-generation-progress:lang(zh) :is(.fv-generation-label,.fv-generation-status,.fv-generation-compatibility){word-break:keep-all;overflow-wrap:anywhere}
 /* Small bar under the stage line: slow stages only, no number. A light track
    shows on the dark card and on Studio's wave alike. */
-.fv-generation-mini{position:relative;width:160px;max-width:60%;height:3px;margin:8px auto 0;border-radius:999px;background:rgba(255,255,255,.14);overflow:hidden}
+.fv-generation-mini{position:relative;width:160px;max-width:60%;height:3px;margin:8px auto 0;border-radius:var(--fv-r-pill);background:rgba(255,255,255,.14);overflow:hidden}
 .fv-generation-mini[hidden]{display:none!important}
 .fv-generation-mini-fill{height:100%;border-radius:inherit;background:var(--fv-accent,#6db8fa);transition:width .6s var(--fv-ease-out,cubic-bezier(.22,1,.36,1))}
 .fv-generation-mini[data-mode=indeterminate] .fv-generation-mini-fill{position:absolute;top:0;left:-40px;width:40px;transition:none;animation:fv-generation-mini-sweep 1.6s ease-in-out infinite}

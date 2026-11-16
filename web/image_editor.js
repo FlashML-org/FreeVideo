@@ -8,8 +8,12 @@ import {BLENDS, emptyAdjust, migrate, blankDocument, orientedSize, orientMatrix,
 import * as commands from './image_commands.js';
 import {FONT_KEYS, fontStack, fontLoaded, loadFont, loadFonts} from './fonts.js';
 import {api} from '../../scripts/api.js';
-import {createImageGenClient, createImageGeneration, imageGenerationSupported, blankCanvasSize, blankCanvasRatio, segmentAt} from './image_generation.js';
+import {createImageGenClient, createImageGeneration, imageGenerationSupported, blankCanvasSize, blankCanvasRatio, segmentAt, discardSegmentUploads} from './image_generation.js';
 import {productVersion} from './updates.js';
+import {jobs, ACTIVE} from './task_store.js';
+import {confirmStop, startJobSources} from './task_float.js';
+import {saveToWorks, discardDrafts, keepDrafts} from './image_works.js';
+import {listenDialogKey} from './dialog_keys.js';
 import {issueButton} from './issue_button.js';
 import {skinSelect} from './fv_select.js';
 
@@ -40,6 +44,8 @@ export const ICONS = {
     gradient: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M11 4v16" opacity=".55"/><path d="M15 4v16" opacity=".3"/>',
     text: '<path d="M5 6V4h14v2M12 4v16M9 20h6"/>',
     shape: '<rect x="3" y="11" width="9" height="9" rx="1"/><circle cx="15.5" cy="8.5" r="5.5"/>',
+    line: '<path d="M5 19 19 5"/>', arrow: '<path d="M5 19 19 5M10 5h9v9"/>', rect: '<rect x="4" y="6" width="16" height="12" rx="1"/>',
+    circle: '<circle cx="12" cy="12" r="8"/>', triangle: '<path d="M12 4.5 20.5 19.5h-17z"/>',
     eyedropper: '<path d="m2 22 1-1h3l9-9"/><path d="M3 21v-3l9-9"/><path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3z"/>',
     hand: '<path d="M18 11V6a2 2 0 0 0-4 0v5M14 10V4a2 2 0 0 0-4 0v6M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-6-2.4l-3.6-3.6a2 2 0 0 1 2.8-2.8L7 15"/>',
     undo: '<path d="M8 4 3 9l5 5"/><path d="M3 9h11.5a5.5 5.5 0 0 1 0 11H10"/>',
@@ -131,15 +137,52 @@ const strip = d => JSON.stringify({...d, active: null});
  *   source: original image file; resolve(file) → URL; upload(file) → {file};
  *   target: {width, height} of the video, if known; library: [{file, label}] other media images.
  */
-export async function openImageEditor({source = null, name = source || '', target = null, edit = null, role = 'reference', t, resolve,
-                                       upload = null, library = [], tool: startTool = null, imageGenClient = null}) {
+// One editor at a time: a second click while one is opening or open (Edit this pressed twice while the picture loads)
+// does nothing instead of opening another over it.
+let editorBusy = false;
+export async function openImageEditor(options) {
+    if (editorBusy) return null;
+    editorBusy = true;
+    const opening = showOpening(options?.mode === 'sketch');
+    try { return await openImageEditorNow({...options, opening}); } finally { opening?.drop(); editorBusy = false; }
+}
+// The editor's frame shows the moment Edit this is pressed (the view's own bar, the editor's empty rows) while the
+// picture and fonts load; the editor then takes its place, its picture fading in. Nothing on the page reacts meanwhile.
+function showOpening(sketch = false) {
+    const shell = globalThis.FreeVideoShell, from = shell?.view?.();
+    if (!shell?.go || !from) return null;
+    const frame = document.createElement('dialog'); frame.className = 'fv-image-editor fv-ie-full fv-ie-opening' + (sketch ? ' fv-ie-sketch' : ''); frame.setAttribute('aria-busy', 'true');
+    const bar = shell.viewDialog?.(from)?.querySelector(':scope > .fv-header');
+    if (bar) { const copy = bar.cloneNode(true); copy.inert = true; copy.removeAttribute('id'); frame.append(copy); }
+    const rows = document.createElement('div'); rows.className = 'fv-ie-skeleton';
+    for (const part of ['head', 'tools', 'options', 'stage', 'panel']) { const block = document.createElement('i'); block.dataset.part = part; rows.append(block); }
+    frame.append(rows); document.body.append(frame);
+    frame.addEventListener('cancel', event => event.preventDefault());
+    try { frame.showModal(); } catch { frame.remove(); return null; }
+    return {drop() { if (frame.isConnected) { if (frame.open) frame.close(); frame.remove(); } }};
+}
+async function openImageEditorNow({source = null, name = source || '', target = null, edit = null, role = 'reference', t, resolve,
+                                       upload = null, library = [], tool: startTool = null, imageGenClient = null, mode = 'edit', opening = null}) {
+    // Sketch: a plain sheet of the given size (or a picture to draw over), brush and eraser in a few sizes and colours;
+    // Done uploads the drawing as one PNG through the image client and hands its name back (a reference picture).
+    const sketch = mode === 'sketch';
     const hasOriginal = !!source && (!edit || edit.version !== 2 || edit.layers.some(l => l.id === 'base'));
     const baseImage = hasOriginal ? await loadImage(resolve(source)) : null;
     const renderer = new Renderer(resolve);
     const fresh = !edit;
     const blankSizeForRatio = (ratio, tier = 'standard') => blankCanvasSize(ratio, null, tier);
     const blankSize = edit || (target?.width > 0 && target?.height > 0 ? target : blankSizeForRatio('16:9'));
+    const sketchSheet = sketch ? (() => {
+        // Paper (white) or the picture, locked; the drawing goes on its own layer above it. Made once, so Clear and the
+        // unchanged check compare the same document.
+        let d = hasOriginal ? migrate(null, source, baseImage) : blankDocument(blankSize, blankCanvasRatio(blankSize));
+        if (hasOriginal) d.layers[0].name = t('Original', '原图');
+        else { d = commands.addPaintLayer(d, t('Paper', '画纸')); d = commands.fillSelection(d, d.active, '#ffffff', null); }
+        d = commands.setLayer(d, d.layers[0].id, {locked: true});
+        return commands.addPaintLayer(d, t('Sketch', '草图'));
+    })() : null;
     const original = () => {
+        if (sketchSheet) return sketchSheet;
         if (!hasOriginal) return blankDocument(blankSize, edit?.ratio || blankCanvasRatio(target));
         const d = migrate(null, source, baseImage); d.layers[0].name = t('Original', '原图'); return d;
     };
@@ -165,7 +208,7 @@ export async function openImageEditor({source = null, name = source || '', targe
     let history = [doc], future = [];
     let selection = null;            // {parts, feather, invert}; not part of the saved document
     let maskTarget = false;          // painting goes to the active layer's mask
-    let fg = '#ffffff', bg = '#111111';
+    let fg = sketch ? '#111111' : '#ffffff', bg = sketch ? '#ffffff' : '#111111';
     let healing = null;              // a heal stroke about to be applied; Save and leaving wait for it
     let tool = 'move';
     const opts = {
@@ -175,7 +218,7 @@ export async function openImageEditor({source = null, name = source || '', targe
         heal: {size: .025, hardness: .6, text: false}, clone: {size: .035, hardness: .6, opacity: 1, source: null, offset: null, picking: false},
         blur: {size: .05, hardness: .4, strength: .6}, gradient: {shape: 'linear', end: 'bg'},
         text: {font: 'sans', weight: 700, align: 'left', outline: false, shadow: true},
-        shape: {type: 'rect', width: 6},
+        shape: {type: 'rect', width: 6, mode: 'stroke', size: .01},
         move: {auto: true},
     };
     const extension = /\.jpe?g$/i.test(name) ? 'jpg' : 'png';
@@ -185,23 +228,24 @@ export async function openImageEditor({source = null, name = source || '', targe
     const stem = name ? name.split('/').pop().replace(/\.[^.]+$/, '').replace(/-edit$/, '') : `ai-${stamp()}`;
 
     // ----- frame --------------------------------------------------------------
-    const dialog = el('dialog', null, 'fv-image-editor');
+    const dialog = el('dialog', null, 'fv-image-editor' + (sketch ? ' fv-ie-sketch' : ''));
     dialog.setAttribute('aria-label', t('Edit image', '编辑图片'));
     const header = el('header', null, 'fv-ie-header');
     const title = el('div', null, 'fv-ie-title');
     // The picture's size; clicking it opens Image size.
     const sizeLabel = el('button', '', 'fv-ie-size'); sizeLabel.type = 'button';
     sizeLabel.title = t('Image size…', '图像大小…'); sizeLabel.onclick = () => imageSizeDialog();
-    title.append(el('strong', t('Edit image', '编辑图片')), el('span', name.split('/').pop(), 'fv-ie-file'), sizeLabel);
+    title.append(el('strong', sketch ? t('Sketch', '画草图') : t('Edit image', '编辑图片')), ...(sketch ? [] : [el('span', name.split('/').pop(), 'fv-ie-file')]), sizeLabel);
+    if (sketch) { sizeLabel.onclick = null; sizeLabel.tabIndex = -1; sizeLabel.removeAttribute('title'); }
     const zoomLabel = button('100%', t('Fit to window (Ctrl+0)', '适合窗口（Ctrl+0）'), () => fit(), 'fv-ie-zoom-label');
     const zoom = el('div', null, 'fv-ie-zoom');
     zoom.append(iconButton('minus', t('Zoom out (Ctrl −)', '缩小（Ctrl −）'), () => zoomBy(1 / 1.25)), zoomLabel,
         iconButton('plus', t('Zoom in (Ctrl +)', '放大（Ctrl +）'), () => zoomBy(1.25)));
     const undo = iconButton('undo', t('Undo (Ctrl+Z)', '撤销（Ctrl+Z）'), () => step(-1));
     const redo = iconButton('redo', t('Redo (Ctrl+Shift+Z)', '重做（Ctrl+Shift+Z）'), () => step(1));
-    const reset = button(t('Reset', '全部重置'), t('Back to the original image', '回到原图，清除全部修改'), () => { deselectQuiet(); const next = original(); followSize(doc, next); commit(next); }, 'fv-ie-button fv-ie-reset');
+    const reset = button(sketch ? t('Clear', '清空') : t('Reset', '全部重置'), sketch ? t('Erase every stroke', '擦掉全部笔画') : t('Back to the original image', '回到原图，清除全部修改'), () => { deselectQuiet(); const next = original(); followSize(doc, next); commit(next); }, 'fv-ie-button fv-ie-reset');
     const cancel = button(t('Cancel', '取消'), null, () => leave());
-    const save = button(t('Save', '保存'), t('Save (Ctrl+Enter)', '保存（Ctrl+Enter）'), () => finish(), 'fv-ie-button fv-ie-primary');
+    const save = button(sketch ? t('Done', '完成') : t('Save', '保存'), sketch ? t('Use the sketch as a reference (Ctrl+Enter)', '把草图用作参考图（Ctrl+Enter）') : t('Save (Ctrl+Enter)', '保存（Ctrl+Enter）'), () => finish(), 'fv-ie-button fv-ie-primary');
     const actions = el('div', null, 'fv-ie-actions'); actions.append(undo, redo, reset, cancel, save);
     header.append(title, zoom, actions);
 
@@ -210,6 +254,8 @@ export async function openImageEditor({source = null, name = source || '', targe
     const workspace = el('div', null, 'fv-ie-workspace');
     const optionsBar = el('div', null, 'fv-ie-options');
     const stage = el('div', null, 'fv-ie-stage'); stage.tabIndex = -1;
+    // The generation screen of this editor's AI jobs: the floating window grows back into it and never covers it.
+    stage.dataset.fvTaskStage = 'image-editor';
     const view = el('canvas', null, 'fv-ie-view');
     const ants = el('canvas', null, 'fv-ie-ants');
     const overlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); overlay.classList.add('fv-ie-overlay');
@@ -222,18 +268,51 @@ export async function openImageEditor({source = null, name = source || '', targe
     panel.append(props, layersBox);
     main.append(toolbar, workspace, panel);
     const confirmBar = el('div', null, 'fv-ie-confirm'); confirmBar.hidden = true;
-    confirmBar.append(el('span', t('Leave without saving? Your changes to this image will be lost.', '不保存就离开？对这张图的修改会丢失。')),
+    confirmBar.append(el('span', sketch ? t('Discard this sketch?', '放弃这张草图？') : t('Leave without saving? Your changes to this image will be lost.', '不保存就离开？对这张图的修改会丢失。')),
         button(t('Discard', '放弃修改'), null, () => close(null), 'fv-ie-button fv-ie-danger'),
-        button(t('Keep editing', '继续编辑'), null, () => { confirmBar.hidden = true; save.focus(); }));
+        button(t('Keep editing', '继续编辑'), null, () => { confirmBar.hidden = true; afterLeave = null; save.focus(); }));
     const status = el('div', '', 'fv-ie-status'); status.setAttribute('role', 'status');
     const filePicker = el('input'); filePicker.type = 'file'; filePicker.accept = 'image/*'; filePicker.hidden = true;
     dialog.append(header, main, confirmBar, status, filePicker);
+    // Inside the new shell the editor fills the window under the same top bar as every view (tabs, status capsule,
+    // settings): the view it was opened from stays the pressed tab. Esc, Cancel or Save go back to that view; another
+    // tab leaves the editor (asking first about unsaved changes) and then switches. Leaving never stops a generation.
+    const shell = globalThis.FreeVideoShell;
+    const fromView = shell?.view?.() || null;
+    let afterLeave = null;
+    if (shell?.go && fromView) {
+        dialog.classList.add('fv-ie-full'); dialog.dataset.fvTipScope = '';
+        try {
+            const {viewSwitch} = await import('./view_navigation.js');
+            const bar = el('header', null, 'fv-header fv-ie-bar'), nothing = () => {};
+            const tabs = viewSwitch(fromView, nothing, nothing, nothing, nothing, nothing);
+            tabs.addEventListener('click', event => {
+                const tab = event.target.closest?.('[data-view]'); if (!tab) return;
+                event.preventDefault(); event.stopImmediatePropagation();
+                const view = tab.dataset.view;
+                afterLeave = view === fromView ? null : () => { void shell.go(view); };
+                void leave();
+            }, true);
+            bar.append(tabs);
+            dialog.prepend(bar);
+        } catch (error) { console.warn('FreeVideo image editor bar:', error); }
+    }
     document.body.append(dialog);
     const genClient = imageGenClient || createImageGenClient(api.fetchApi.bind(api));
     const generation = createImageGeneration({client: genClient,
         renderer, t, getDoc: () => doc, getSelection: () => selection, commit: commitInserted, el, button, segmented,
         library, resolve, icon, onRatioChange: setBlankCanvasRatio, onNewCanvas: newCanvasDocument, onPlace: (file, label) => addImageLayer(file, label, {keepTool: true}), productVersion, fetchApi: (path, options) => api.fetchApi(path, options),
-        resumeKey: `${role}|${source || ''}|${name}`});
+        resumeKey: sketch ? null : `${role}|${source || ''}|${name}`,
+        // AI edits are jobs of the page: the top bar, the floating window and notifications show them, and closing
+        // the editor never stops one. The picture each one makes lands in the works with the picture it came from.
+        tasks: {jobs, ACTIVE, confirmStop, startJobSources, view: 'image-editor', client: genClient.standIn ? genClient : null,
+            meta: request => ({source: source || null, edit: request.mode, draft: true}), onResult: file => sessionDrafts.add(file)}});
+    // What this editor made or brought in that is not kept unless the edit is saved: the AI's pictures (drafts, kept out of
+    // the works) and pictures added from this computer (uploaded under a random name).
+    const sessionDrafts = new Set(), sessionUploads = new Set();
+    // The image view hands its image client: pictures from this computer go through it (random names the service can
+    // remove); other pages keep their own media upload.
+    const ownUpload = !!imageGenClient || !upload;
 
     // ----- tools ----------------------------------------------------------------
     const TOOLS = [
@@ -245,7 +324,18 @@ export async function openImageEditor({source = null, name = source || '', targe
         ['text', t('Text', '文字'), 'T'], ['shape', t('Shape', '形状'), 'U'], ['eyedropper', t('Eyedropper', '吸管'), 'I'], ['hand', t('Hand', '抓手'), 'H'],
     ];
     const toolButtons = {};
-    for (const entry of TOOLS) {
+    // Sketch: select, brush, eraser and the five shapes, all on the strip (a shape button picks the shape tool and its type).
+    const SKETCH_TOOLS = ['move', 'brush', 'eraser', 'shape'];
+    const SKETCH_STRIP = [['move', t('Select', '选择'), 'V', 'move'], null, ['brush', t('Brush', '画笔'), 'B', 'brush'], ['eraser', t('Eraser', '橡皮'), 'E', 'eraser'], null,
+        ['shape:line', t('Line', '直线'), null, 'line'], ['shape:arrow', t('Arrow', '箭头'), null, 'arrow'], ['shape:rect', t('Rectangle', '矩形'), null, 'rect'],
+        ['shape:ellipse', t('Circle', '圆'), null, 'circle'], ['shape:triangle', t('Triangle', '三角形'), null, 'triangle']];
+    if (sketch) for (const entry of SKETCH_STRIP) {
+        if (!entry) { toolbar.append(el('span', null, 'fv-ie-tool-gap')); continue; }
+        const [id, label, key, glyph] = entry;
+        const b = iconButton(glyph, key ? `${label} (${key})` : label, () => select(id), 'fv-ie-tool');
+        b.dataset.tool = id; b.dataset.fvTipName = label; toolButtons[id] = b; toolbar.append(b);
+    }
+    for (const entry of sketch ? [] : TOOLS) {
         if (!entry) { toolbar.append(el('span', null, 'fv-ie-tool-gap')); continue; }
         const [id, label, key] = entry;
         if ((id === 'generate' || id === 'point') && !imageGenerationSupported()) continue;
@@ -456,7 +546,7 @@ export async function openImageEditor({source = null, name = source || '', targe
     }
     function drawTransformBox() {
         const layer = active();
-        if (!layer || layer.locked || !layer.visible) return;
+        if (!layer || layer.locked || !layer.visible || (sketch && layer.kind !== 'shape')) return;
         const pts = layerCorners(layer);
         overlay.append(svg('polygon', {points: pts.map(p => p.join(',')).join(' '), class: 'fv-ie-box'}));
         const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
@@ -519,12 +609,14 @@ export async function openImageEditor({source = null, name = source || '', targe
         zoomLabel.textContent = Math.round(layout.k * 100) + '%';
         for (const [id, b] of Object.entries(toolButtons)) {
             b.disabled = !doc.layers.length && !['generate', 'hand'].includes(id);
-            b.setAttribute('aria-pressed', String(id === tool));
+            b.setAttribute('aria-pressed', String(id === tool || (id.startsWith('shape:') && tool === 'shape' && opts.shape.type === id.slice(6))));
         }
         stage.dataset.tool = tool;
         stage.dataset.pick = String(tool === 'generate' && generation.drawsSelection());
     }
     function select(id) {
+        if (sketch && id.startsWith('shape:')) { opts.shape.type = id.slice(6); id = 'shape'; }
+        if (sketch && !SKETCH_TOOLS.includes(id) && id !== 'hand') return;
         if (!doc.layers.length && !['generate', 'hand'].includes(id)) { message(emptyCanvasReason()); return; }
         if (id === 'generate' && !imageGenerationSupported()) return;
         commitText();
@@ -565,8 +657,13 @@ export async function openImageEditor({source = null, name = source || '', targe
             return s.row;
         };
         const pct = (o, key, text) => slider(`fv-ie-${tool}-${key}`, text, 0, 100, 1, Math.round(o[key] * 100), v => { o[key] = v / 100; }, null, '%').row;
-        add(el('span', TOOLS.find(x => x?.[0] === tool)?.[1] || '', 'fv-ie-opt-title'));
-        if (tool === 'move') {
+        const sketchName = sketch ? SKETCH_STRIP.find(x => x && (x[0] === tool || x[0] === `shape:${opts.shape.type}` && tool === 'shape'))?.[1] : null;
+        add(el('span', sketchName || TOOLS.find(x => x?.[0] === tool)?.[1] || '', 'fv-ie-opt-title'));
+        if (sketch && tool === 'move') {
+            const layer = active();
+            if (layer?.kind === 'shape') add(...shapeStyle(layer), sep(), button(t('Delete', '删除'), t('Delete this shape (Delete)', '删除这个形状（Delete）'), () => deleteLayer(), 'fv-ie-button fv-ie-danger'));
+            else add(note(t('Click a shape to move, resize or turn it.', '点一个形状，可以移动、缩放或旋转。')));
+        } else if (tool === 'move') {
             const auto = el('label', null, 'fv-ie-check'); const box = el('input'); box.type = 'checkbox'; box.checked = opts.move.auto;
             box.onchange = () => { opts.move.auto = box.checked; }; auto.append(box, el('span', t('Pick layer by clicking', '点击自动选择图层')));
             add(auto, sep(),
@@ -609,6 +706,12 @@ export async function openImageEditor({source = null, name = source || '', targe
                 add(segmented([['replace', t('New', '新选区')], ['add', t('Add · Shift', '添加 · Shift')], ['subtract', t('Subtract · Alt', '减去 · Alt')]], o.mode, v => { o.mode = v; }, t('Mode', '方式')).group);
             }
             add(sep(), ...selectionActions());
+        } else if (sketch && (tool === 'brush' || tool === 'eraser')) {
+            add(sketchSizes(opts[tool].size, SKETCH_SIZES[tool], v => { opts[tool].size = v; }));
+            if (tool === 'brush') add(sep(), sketchColors(fg, c => { fg = c; fgInput.value = c; }));
+        } else if (sketch && tool === 'shape') {
+            add(...shapeStyle(null));
+
         } else if (tool === 'brush' || tool === 'eraser') {
             const o = opts[tool];
             add(sizeSlider(o), pct(o, 'hardness', t('Hardness', '硬度')), pct(o, 'opacity', t('Opacity', '不透明度')));
@@ -643,6 +746,79 @@ export async function openImageEditor({source = null, name = source || '', targe
         } else if (tool === 'hand') {
             add(note(t('Drag to pan. Hold Space to pan with any tool; Ctrl + wheel zooms.', '拖动平移。用任何工具时按住空格也能平移，Ctrl + 滚轮缩放。')));
         }
+        fitOptions();
+    }
+    // The options row is one line for every tool, so the picture never moves when the tool changes: what does not fit
+    // goes, in its order, under More at the end of the row (a long hint is cut short instead, with its full text on hover).
+    function fitOptions() {
+        for (const n of optionsBar.querySelectorAll(':scope > .fv-ie-opt-note')) n.title = n.textContent;
+        if (optionsBar.scrollWidth <= optionsBar.clientWidth + 1) return;
+        const more = el('details', null, 'fv-ie-menu fv-ie-more'), summary = el('summary', t('More', '更多')), list = el('div', null, 'fv-ie-menu-list fv-ie-more-list');
+        summary.dataset.fvTipName = t('More options', '更多选项'); summary.setAttribute('aria-label', summary.dataset.fvTipName);
+        more.append(summary, list); optionsBar.append(more);
+        const kids = [...optionsBar.children].filter(k => k !== more);
+        while (optionsBar.scrollWidth > optionsBar.clientWidth + 1 && kids.length > 1) list.prepend(kids.pop());
+        // A separator left at the end of the row goes with what followed it.
+        while (kids.length > 1 && kids.at(-1).classList.contains('fv-ie-sep')) list.prepend(kids.pop());
+        // Open, it closes on a click elsewhere or on Esc (before the editor's own Esc); a redraw of the row drops it.
+        let offKey = null;
+        const stop = () => { document.removeEventListener('pointerdown', away, true); offKey?.(); offKey = null; };
+        const away = event => { if (!more.isConnected) stop(); else if (!more.contains(event.target)) more.open = false; };
+        const esc = event => {
+            if (!more.isConnected) { stop(); return; }
+            if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); more.open = false; summary.focus(); }
+        };
+        more.ontoggle = () => { stop(); if (more.open) { document.addEventListener('pointerdown', away, true); offKey = listenDialogKey(dialog, 'keydown', esc, true); } };
+    }
+    // Sketch sizes (a dot drawn at each size) and colours (black, grey, white and a few strong ones).
+    const SKETCH_SIZES = {brush: [.004, .01, .02, .04], eraser: [.01, .025, .05, .1]};
+    const SKETCH_COLORS = [['#111111', t('Black', '黑')], ['#808080', t('Grey', '灰')], ['#ffffff', t('White', '白')], ['#e5484d', t('Red', '红')],
+        ['#f5a524', t('Yellow', '黄')], ['#30a46c', t('Green', '绿')], ['#3e63dd', t('Blue', '蓝')]];
+    // The size nearest to a value, so a shape made at any width still lights one of the four.
+    const nearest = (value, sizes) => sizes.reduce((a, b) => Math.abs(b - value) < Math.abs(a - value) ? b : a);
+    function sketchSizes(value, sizes, onPick) {
+        const group = el('div', null, 'fv-ie-seg fv-ie-sketch-sizes'); group.setAttribute('role', 'radiogroup'); group.setAttribute('aria-label', t('Size', '粗细'));
+        const words = [t('Fine', '细'), t('Medium', '中'), t('Thick', '粗'), t('Bold', '特粗')], current = nearest(value, sizes);
+        sizes.forEach((size, index) => {
+            const b = el('button', null, 'fv-ie-seg-item fv-ie-sketch-size'); b.type = 'button';
+            const dot = el('i'); dot.style.setProperty('--dot', `${[4, 7, 11, 16][index]}px`); b.append(dot);
+            b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', String(current === size)); b.setAttribute('aria-label', words[index]);
+            b.dataset.fvTipName = words[index]; b.setAttribute('aria-pressed', String(current === size));
+            b.onclick = () => { onPick(size); renderOptions(); drawOverlay(); };
+            group.append(b);
+        });
+        return group;
+    }
+    function sketchColors(value, onPick) {
+        const group = el('div', null, 'fv-ie-sketch-colors'); group.setAttribute('role', 'radiogroup'); group.setAttribute('aria-label', t('Colour', '颜色'));
+        for (const [color, word] of SKETCH_COLORS) {
+            const b = el('button', null, 'fv-ie-sketch-color'); b.type = 'button'; b.style.setProperty('--swatch', color);
+            const on = String(value || '').toLowerCase() === color; b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', String(on)); b.setAttribute('aria-label', word);
+            b.dataset.fvTipName = word; if (on) b.dataset.on = 'true';
+            b.onclick = () => { onPick(color); renderOptions(); };
+            group.append(b);
+        }
+        return group;
+    }
+    // Outline or fill, size and colour: of the next shape (layer null) or of the selected one (each change one undo step).
+    const LINE_SHAPES = ['line', 'arrow'];
+    function shapeStyle(layer) {
+        const s = layer?.shape, type = s ? s.type : opts.shape.type, line = LINE_SHAPES.includes(type);
+        const filled = s ? !!s.fill && !line : opts.shape.mode === 'fill' && !line;
+        const color = s ? (s.fill || s.stroke) : fg, minSide = Math.min(doc.width, doc.height);
+        const change = patch => commit(commands.updateShape(doc, layer.id, patch));
+        const parts = [];
+        if (!line) parts.push(segmented([['stroke', t('Outline', '描边')], ['fill', t('Fill', '填充')]], filled ? 'fill' : 'stroke', v => {
+            if (layer) change(v === 'fill' ? {fill: color, stroke: null} : {fill: null, stroke: color}); else opts.shape.mode = v;
+            renderOptions();
+        }, t('Outline or fill', '描边或填充')).group);
+        if (!filled) parts.push(sketchSizes(s ? s.width / minSide : opts.shape.size, SKETCH_SIZES.brush, v => {
+            if (layer) change({width: Math.max(1, Math.round(v * minSide))}); else opts.shape.size = v;
+        }));
+        parts.push(el('span', null, 'fv-ie-sep'), sketchColors(color, c => {
+            if (layer) change(s.fill && !line ? {fill: c} : {stroke: c}); else { fg = c; fgInput.value = c; }
+        }));
+        return parts;
     }
     function maskToggle() {
         return segmented([['layer', t('On layer', '画在图层')], ['mask', t('On mask', '画在蒙版')]], maskTarget ? 'mask' : 'layer',
@@ -927,9 +1103,14 @@ export async function openImageEditor({source = null, name = source || '', targe
     }
     filePicker.onchange = async () => {
         const file = filePicker.files?.[0]; filePicker.value = '';
-        if (!file || !upload) return;
+        if (!file) return;
         const done = working('Uploading the image', '正在上传图片');
-        try { const result = await upload(file); done(); await addImageLayer(result.file, file.name); }
+        try {
+            let name;
+            if (ownUpload) { name = await genClient.upload(file); sessionUploads.add(name); }
+            else { const result = await upload(file); name = typeof result === 'string' ? result : result?.file; }
+            done(); await addImageLayer(name, file.name);
+        }
         catch (error) { message(error.message || t('Upload failed.', '上传失败。'), ['Image editor upload', '图片编辑器上传']); }
     };
     function duplicateLayer() {
@@ -979,6 +1160,15 @@ export async function openImageEditor({source = null, name = source || '', targe
     function turn(op) { commit(commands.turn(doc, op, target)); }
     // Pad (never crop) to the video's shape with the background colour.
     function padToVideo() { commit(commands.padToVideo(doc, target, bg)); }
+    // Enter in a field of the Canvas size or Image size box applies it, Escape puts it away (as Cancel). Through the views'
+    // key routing (see `keys` below): a view under the editor takes every key at the window and hands it only to handlers
+    // registered this way.
+    function sizeKeys(box, apply) {
+        listenDialogKey(box, 'keydown', event => {
+            if (event.key === 'Escape' && !event.isComposing) { event.preventDefault(); event.stopPropagation(); box.remove(); stage.focus(); return; }
+            if (event.key === 'Enter' && !event.ctrlKey && !event.metaKey && !event.isComposing && event.target.tagName === 'INPUT') { event.preventDefault(); event.stopPropagation(); apply(); }
+        });
+    }
     function canvasDialog() {
         stage.querySelector('.fv-ie-popover')?.remove();
         const box = el('div', null, 'fv-ie-popover');
@@ -1010,9 +1200,7 @@ export async function openImageEditor({source = null, name = source || '', targe
         const ok = button(t('Apply', '应用'), null, apply, 'fv-ie-button fv-ie-primary');
         buttons.append(button(t('Cancel', '取消'), null, () => { box.remove(); stage.focus(); }), ok);
         for (const input of Object.values(inputs)) input.oninput = update;
-        box.addEventListener('keydown', event => {
-            if (event.key === 'Enter' && !event.ctrlKey && !event.metaKey && event.target.tagName === 'INPUT') { event.preventDefault(); event.stopPropagation(); apply(); }
-        });
+        sizeKeys(box, apply);
         box.append(el('h3', t('Canvas size', '画布大小')), note,
             grid, field(t('Fill color', '补边颜色'), color), buttons);
         update(); stage.append(box); inputs.t.focus();
@@ -1112,9 +1300,7 @@ export async function openImageEditor({source = null, name = source || '', targe
             box.remove(); stage.focus();
             commit(next);
         }
-        box.addEventListener('keydown', event => {
-            if (event.key === 'Enter' && !event.ctrlKey && !event.metaKey && event.target.tagName === 'INPUT') { event.preventDefault(); event.stopPropagation(); apply(); }
-        });
+        sizeKeys(box, apply);
         box.append(el('h3', t('Image size', '图像大小')),
             el('p', t(`Now ${now[0]} × ${now[1]} px`, `现在 ${now[0]} × ${now[1]} 像素`), 'fv-ie-opt-note'),
             choice.group, dims, notes, buttons);
@@ -1217,7 +1403,7 @@ export async function openImageEditor({source = null, name = source || '', targe
     function hitLayer(p) {
         const d = toD(toO(...p));
         for (const layer of [...doc.layers].reverse()) {
-            if (!layer.visible || layer.locked) continue;
+            if (!layer.visible || layer.locked || (sketch && layer.kind !== 'shape')) continue;
             const [u, v] = toLocal(layer, d);
             if (u >= 0 && u <= 1 && v >= 0 && v <= 1) return layer;
         }
@@ -1284,6 +1470,14 @@ export async function openImageEditor({source = null, name = source || '', targe
             addText(d); return null;
         }
         if (use === 'shape') return shapeGesture(o);
+        if (sketch && use === 'brush') {
+            // Above everything drawn so far: the top layer when it is the drawing, else a new drawing layer on top.
+            const top = doc.layers[doc.layers.length - 1];
+            if (top.kind === 'paint' && !top.locked) return strokeGesture(top, d, commands.setActive(doc, top.id));
+            const made = commands.addPaintLayer(commands.setActive(doc, top.id), t('Sketch', '草图'));
+            return strokeGesture(made.layers.find(l => l.id === made.active), d, made);
+        }
+        if (sketch && use === 'eraser') return strokeGesture(doc.layers[doc.layers.length - 1], d, doc);
         // Pixel tools.
         let target = layer, base = doc;
         if ((use === 'brush' || use === 'gradient') && (!rasterKinds.has(layer.kind) || (layer.locked && !maskTarget))) {
@@ -1347,10 +1541,39 @@ export async function openImageEditor({source = null, name = source || '', targe
                     }, 40));
                     return;
                 }
+                if (sketch && kind === 'erase') { sketchErase(points, sizePx, o); return; }
                 // Onto the latest document, unless this stroke made its own layer.
                 pushOp(layer, op, base === started ? doc : base);
             },
             cancel() { liveStroke = null; },
+        };
+    }
+    // The eraser in a sketch: one stroke, one undo step, over every drawing layer and every shape it crosses (a shape
+    // keeps being a shape: the stroke hides that part of it through its mask).
+    function sketchErase(points, sizePx, o) {
+        let next = doc;
+        const opFor = (layer, tool) => ({type: 'stroke', tool, pts: points.map(q => toLocal(layer, q).map(v => Math.round(v * 1e5) / 1e5)),
+            size: sizePx * (layer.nw / layer.w) / Math.min(layer.nw, layer.nh), hardness: o.hardness ?? 1, opacity: 1, color: fg, selection: null});
+        const crosses = layer => { const m = sizePx / Math.max(1, Math.min(Math.abs(layer.w), Math.abs(layer.h)));
+            return points.some(q => { const [u, v] = toLocal(layer, q); return u >= -m && u <= 1 + m && v >= -m && v <= 1 + m; }); };
+        for (const layer of doc.layers) {
+            if (!layer.visible || layer.locked || !crosses(layer)) continue;
+            if (layer.kind === 'paint') next = commands.pushOp(next, layer.id, opFor(layer, 'erase'));
+            else if (layer.kind === 'shape') next = commands.maskStroke(next, layer.id, opFor(layer, 'hide'));
+        }
+        if (next !== doc) commit(next); else draw();
+    }
+    // A line or arrow; Shift keeps it level or upright.
+    function dragLineLevel(start, done) {
+        let end = start;
+        return {
+            move(p, event) {
+                end = toO(...p);
+                if (event?.shiftKey) end = Math.abs(end[0] - start[0]) >= Math.abs(end[1] - start[1]) ? [end[0], start[1]] : [start[0], end[1]];
+                drawOverlay();
+            },
+            up() { if (Math.hypot(end[0] - start[0], end[1] - start[1]) * layout.k > 3) done(start, end); },
+            preview() { const [x1, y1] = fromO(...start), [x2, y2] = fromO(...end); return svg('line', {x1, y1, x2, y2, class: 'fv-ie-drag'}); },
         };
     }
     function dragBox(start, done, ellipse = false) {
@@ -1404,14 +1627,20 @@ export async function openImageEditor({source = null, name = source || '', targe
         };
     }
     function shapeGesture(o) {
-        const kind = opts.shape.type;
-        return {...dragBox(o, (a, b) => {
-            const width = opts.shape.width, dx = b[0] - a[0], dy = b[1] - a[1];
+        const kind = opts.shape.type, line = kind === 'line' || kind === 'arrow';
+        const make = (a, b) => {
+            const width = sketch ? Math.max(1, Math.round(brushPixels(opts.shape.size))) : opts.shape.width, dx = b[0] - a[0], dy = b[1] - a[1];
             if (Math.hypot(dx, dy) * layout.k < 4) { message(t('Drag to draw a shape.', '请拖动画出形状。')); return; }
-            const shape = {type: kind, fill: kind === 'line' ? null : fg, stroke: kind === 'line' ? fg : null, width, radius: 0};
-            commitInserted(commands.addShapeLayer(doc, {from: a, to: b, shape,
-                name: {rect: t('Rectangle', '矩形'), ellipse: t('Ellipse', '椭圆'), line: t('Line', '直线')}[kind]}));
-        }, kind === 'ellipse'), ...(kind === 'line' ? {preview: null} : {})};
+            const filled = !line && (!sketch || opts.shape.mode === 'fill');
+            const shape = {type: kind, fill: filled ? fg : null, stroke: filled ? null : fg, width, radius: 0};
+            // A sketch puts each new shape on top of everything drawn so far.
+            const base = sketch ? commands.setActive(doc, doc.layers[doc.layers.length - 1].id) : doc;
+            commitInserted(commands.addShapeLayer(base, {from: a, to: b, shape,
+                name: {rect: t('Rectangle', '矩形'), ellipse: t('Ellipse', '椭圆'), line: t('Line', '直线'), arrow: t('Arrow', '箭头'), triangle: t('Triangle', '三角形')}[kind]}));
+            if (sketch) renderOptions();
+        };
+        if (sketch && line) return dragLineLevel(o, make);
+        return {...dragBox(o, make, kind === 'ellipse'), ...(line ? {preview: null} : {})};
     }
     function cropGesture(event, o) {
         const handle = event.target.dataset?.handle;
@@ -1458,10 +1687,12 @@ export async function openImageEditor({source = null, name = source || '', targe
     function moveGesture(event, p, d) {
         let layer = active();
         const handle = event.target.dataset?.handle;
-        if (!handle && opts.move.auto) {
+        if (!handle && (opts.move.auto || sketch)) {
             const hit = hitLayer(p);
-            if (hit && hit.id !== layer.id) { setActive(hit.id); maskTarget = false; renderPanels(); layer = hit; }
+            if (hit && hit.id !== layer.id) { setActive(hit.id); maskTarget = false; renderPanels(); if (sketch) { renderOptions(); drawOverlay(); } layer = hit; }
+            if (sketch && !hit) { const paint = [...doc.layers].reverse().find(l => l.kind === 'paint' && !l.locked); if (paint && layer.kind === 'shape') { setActive(paint.id); renderPanels(); renderOptions(); drawOverlay(); } return null; }
         }
+        if (sketch && layer.kind !== 'shape') return null;
         if (layer.locked && !(layer.id === 'base' && doc.layers.length === 1)) { transformBase(); return null; }
         const l0 = {...layer};
         let copied = false;
@@ -1572,6 +1803,7 @@ export async function openImageEditor({source = null, name = source || '', targe
         if (mod && key === '1') { event.preventDefault(); actualSize(); return; }
         if (mod || event.altKey && key !== 'backspace' && key !== 'delete') return;
         if (event.key === ' ') { event.preventDefault(); if (!spaceHeld) { spaceHeld = true; stage.dataset.pan = 'true'; } return; }
+        if (sketch && (event.key === 'Delete' || event.key === 'Backspace')) { event.preventDefault(); if (active()?.kind === 'shape') deleteLayer(); return; }
         if ((event.key === 'Delete' || event.key === 'Backspace') && event.altKey) { event.preventDefault(); fillSelection(); return; }
         if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); clearSelection(); return; }
         if (event.key === 'Enter' && gesture?.close) { event.preventDefault(); gesture.close(); return; }
@@ -1596,8 +1828,9 @@ export async function openImageEditor({source = null, name = source || '', targe
         (event.type === 'keydown' ? keys : keyup)(event);
         event.stopPropagation();
     }
-    dialog.addEventListener('keydown', keys);
-    dialog.addEventListener('keyup', keyup);
+    // Through the views' key routing: a view under the editor (the creation panel, the image view) takes every key at the
+    // window and hands it only to handlers registered this way, so plain listeners here would never hear a shortcut.
+    const unlistenKeys = [listenDialogKey(dialog, 'keydown', keys), listenDialogKey(dialog, 'keyup', keyup)];
     window.addEventListener('keydown', stray, true);
     window.addEventListener('keyup', stray, true);
     dialog.addEventListener('cancel', event => {
@@ -1642,7 +1875,6 @@ export async function openImageEditor({source = null, name = source || '', targe
         return () => { if (workingTimer === timer) message(''); };
     }
     async function leave() {
-        void generation.cancel();
         if (healing) await healing;
         commitText();
         if (changed()) { confirmBar.hidden = false; confirmBar.querySelector('.fv-ie-danger').focus(); return; }
@@ -1650,26 +1882,50 @@ export async function openImageEditor({source = null, name = source || '', targe
     }
     async function finish() {
         if (!doc.layers.length) { message(emptyCanvasReason()); return; }
-        void generation.cancel();
         if (healing) await healing;
         commitText();
+        if (sketch && strip(doc) === strip(original())) { message(t('Draw something first.', '先画点什么。')); return; }
         if (strip(doc) === strip(original())) { close(fresh ? null : {restore: true}); return; }
         if (!changed() && !fresh) { close(null); return; }
         save.disabled = cancel.disabled = true; working('Saving the image', '正在保存图片');
         try {
             const {blob, width, height} = await renderer.export(doc, extension === 'jpg' ? 'image/jpeg' : 'image/png');
-            close({blob, name: name ? `${stem}-edit.${extension}` : `${stem}.${extension}`, edit: doc, width, height});
+            const named = name ? `${stem}-edit.${extension}` : `${stem}.${extension}`;
+            if (sketch) {
+                // The drawing is a reference picture, not a work: one PNG handed back with its layers, so opening it again
+                // with that edit keeps every stroke. The page uploads it with the request, as every reference picture.
+                const png = extension === 'png' ? blob : (await renderer.export(doc, 'image/png')).blob;
+                close({blob: png, name: 'sketch.png', sketch: true, edit: doc, width, height});
+                return;
+            }
+            // The saved edit is also one of the works (with the picture it came from), where the engine offers that.
+            const works = await saveToWorks(blob, {name: named, source: source || null, client: genClient}).catch(() => null);
+            close({blob, name: named, edit: doc, width, height, ...(works ? {works} : {})});
         } catch {
             message(t('The image could not be saved. Try a smaller canvas or reload the page.', '图片没能保存，请缩小画布或刷新页面后重试。'), ['Image editor save', '图片编辑器保存']);
             save.disabled = cancel.disabled = false;
         }
     }
+    // Leaving: drafts and uploads go unless the saved edit keeps them. A page that keeps the edit itself (not the image
+    // view, which keeps only the picture) keeps the ones its layers use; everything else is deleted now.
+    function releaseLeftovers(saved, finalDoc) {
+        const keepsEdit = saved && !imageGenClient;
+        const used = new Set(keepsEdit ? finalDoc.layers.map(l => l.src).filter(Boolean) : []);
+        const keep = [...sessionDrafts].filter(f => used.has(f)), drop = [...sessionDrafts].filter(f => !used.has(f));
+        if (keep.length) keepDrafts(keep);
+        if (drop.length) void discardDrafts(drop).catch(() => {});
+        const uploads = [...sessionUploads].filter(f => !used.has(f));
+        if (uploads.length) Promise.resolve().then(() => genClient.discardUploads?.(uploads)).catch(() => {});
+        sessionDrafts.clear(); sessionUploads.clear();
+        discardSegmentUploads(genClient);
+    }
     function close(value) {
+        releaseLeftovers(!!value?.blob, doc);
         window.removeEventListener('beforeunload', beforeUnload); unloadWarning = false;
         void generation.dispose();
         clearInterval(antsTimer); clearInterval(workingTimer); clearTimeout(messageTimer);
-        observer.disconnect();
-        dialog.removeEventListener('keydown', keys); dialog.removeEventListener('keyup', keyup);
+        observer.disconnect(); optionsObserver.disconnect();
+        for (const off of unlistenKeys) off();
         window.removeEventListener('keydown', stray, true); window.removeEventListener('keyup', stray, true);
         if (dialog.open) dialog.close();
         // Give every canvas back: this editor holds nothing once it is closed.
@@ -1678,6 +1934,7 @@ export async function openImageEditor({source = null, name = source || '', targe
         composited = null; antsEdge = null;
         dialog.remove();
         resolveResult(value);
+        const next = afterLeave; afterLeave = null; next?.();
     }
 
     // A read-only view of the editor for automation and tests.
@@ -1690,7 +1947,19 @@ export async function openImageEditor({source = null, name = source || '', targe
     // ----- start -------------------------------------------------------------------------------------
     const observer = new ResizeObserver(() => { computeLayout(); draw(); controls(); });
     observer.observe(stage);
+    // A wider or narrower row lays the tool's options out again (what fits in the row, what goes under More).
+    let optionsWidth = 0;
+    const optionsObserver = new ResizeObserver(() => {
+        const width = Math.round(optionsBar.clientWidth);
+        if (width === optionsWidth) return;
+        const first = !optionsWidth; optionsWidth = width;
+        if (!first && tool !== 'generate') renderOptions();
+    });
+    optionsObserver.observe(optionsBar);
+    // Over the opening frame: shown at once (no fade of its own: only the picture fades in), then the frame goes.
+    if (opening && dialog.classList.contains('fv-ie-full')) dialog.classList.add('fv-ie-arrived');
     dialog.showModal();
+    if (opening) requestAnimationFrame(() => requestAnimationFrame(() => opening.drop()));
     computeLayout();
     renderPanels();
     // The result is placed on the canvas the request was made for, not on the one a reload rebuilt.
@@ -1699,8 +1968,12 @@ export async function openImageEditor({source = null, name = source || '', targe
         const next = blankDocument(resumedCanvas, blankCanvasRatio(resumedCanvas));
         followSize(doc, next); deselectQuiet(); commit(next);
     }
-    select(!doc.layers.length || generation.state().running ? 'generate' : startTool || (fresh && target && role !== 'reference' ? 'crop' : 'move'));
+    // A picture opened to be changed starts in AI edit with the description field ready (a keyframe still starts in crop,
+    // to fit the video's shape); a blank canvas starts in AI generate. Nothing opens over the picture.
+    const aiFirst = !!toolButtons.generate;
+    select(sketch ? 'brush' : !doc.layers.length || generation.state().running ? 'generate' : startTool || (fresh && target && role !== 'reference' ? 'crop' : aiFirst ? 'generate' : 'move'));
     (save.disabled ? stage : save).focus();
+    if (tool === 'generate') generation.focusPrompt();
     // The other fonts load in the background, so switching to one is immediate.
     loadFonts(FONT_KEYS.flatMap(k => [[k, 400], [k, 700]])).catch(error => console.warn('FreeVideo image editor fonts unavailable; using fallback fonts.', error));
     return result;

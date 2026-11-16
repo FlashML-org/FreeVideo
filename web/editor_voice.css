@@ -7,31 +7,32 @@
 .fv-ed-voice[hidden]{display:none}
 .fv-ed-voice-top{display:flex;align-items:center;gap:12px;min-height:28px;font-size:13px;color:var(--fv-muted)}
 .fv-ed-voice-name{flex:1;min-width:0}
-.fv-ed-voice-compare{display:flex;border:1px solid var(--fv-border);border-radius:6px;overflow:hidden}
+.fv-ed-voice-compare{display:flex;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);overflow:hidden}
 .fv-ed-voice-compare[hidden]{display:none}
 .fv-editor .fv-ed-voice-compare button{height:26px;min-height:26px;padding:0 12px;border:0;border-radius:0;background:transparent;color:var(--fv-muted);font-size:12px}
 .fv-editor .fv-ed-voice-compare button[aria-pressed=true]{background:var(--fv-accent,#6db8fa);color:#0f1722}
 /* The lines scroll inside their own box: at most 40% of the editor and never so tall that the timeline loses its picture track and
    three sound tracks (the bar takes 104px besides the list; the picture keeps about 160px where the window allows). */
 .fv-ed-voice-lines{display:flex;flex-direction:column;gap:6px;max-height:max(44px,min(calc(6 * 44px),calc((100dvh - 32px) * .4 - 104px),calc(100dvh - 32px - 76px - 80px - 160px - var(--fv-ed-lines-tracks,280px) - 104px)));overflow-y:auto}
+/* The editor keeps its own rows while the lines are open (editor.css); the lines float above the bar. */
 @media(min-width:681px){
-.fv-studio.fv-editor:has(.fv-ed-genbar[data-voice=true]){--fv-ed-lines-tracks:min(var(--fv-ed-tracks-min,174px),280px);grid-template-rows:auto minmax(96px,1fr) 40px var(--fv-ed-generation-row,max-content) 40px var(--fv-ed-lines-tracks)}}
+.fv-studio.fv-editor:has(.fv-ed-genbar[data-voice=true]){--fv-ed-lines-tracks:min(var(--fv-ed-tracks-min,174px),280px)}}
 .fv-ed-voice-line{display:flex;flex-direction:column;gap:2px}
 .fv-ed-voice-main{display:flex;align-items:flex-start;gap:8px;position:relative;padding-left:8px}
-.fv-ed-voice-mark{position:absolute;left:0;top:4px;bottom:4px;width:2px;border-radius:1px;background:transparent}
+.fv-ed-voice-mark{position:absolute;left:0;top:4px;bottom:4px;width:2px;border-radius:var(--fv-r-xs);background:transparent}
 .fv-ed-voice-line[data-changed=true] .fv-ed-voice-mark,.fv-ed-voice-line[data-active=true] .fv-ed-voice-mark{background:var(--fv-accent,#6db8fa)}
 .fv-ed-voice-line[data-active=true] .fv-ed-voice-mark{animation:fv-ed-voice-run 1.2s ease-in-out infinite}
 @keyframes fv-ed-voice-run{50%{opacity:.35}}
 @media (prefers-reduced-motion:reduce){.fv-ed-voice-line[data-active=true] .fv-ed-voice-mark{animation:none}}
 .fv-editor .fv-ed-voice-time{flex:none;width:44px;height:36px;min-height:36px;padding:0;border:0;background:transparent;color:var(--fv-muted);font-size:13px;font-variant-numeric:tabular-nums;font-family:ui-monospace,monospace;text-align:left}
-.fv-editor .fv-ed-voice textarea.fv-ed-voice-text{flex:1;min-width:0;resize:none;overflow:hidden;box-sizing:border-box;min-height:36px;max-height:none;line-height:20px;padding:8px;border:1px solid var(--fv-border);border-radius:6px;background:transparent;color:var(--fv-ink);font:inherit;font-size:13px;line-height:18px}
+.fv-editor .fv-ed-voice textarea.fv-ed-voice-text{flex:1;min-width:0;resize:none;overflow:hidden;box-sizing:border-box;min-height:36px;max-height:none;line-height:20px;padding:8px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);background:transparent;color:var(--fv-ink);font:inherit;font-size:13px;line-height:18px}
 .fv-ed-voice-extra{display:flex;align-items:center;gap:10px;padding-left:60px;font-size:12px;color:var(--fv-muted)}
 .fv-ed-voice-extra[hidden]{display:none}
 .fv-ed-voice-over{color:var(--fv-warn,#e0a84a)}
 .fv-ed-voice-old,.fv-ed-voice-short{color:var(--fv-muted)}
 .fv-ed-voice-line[data-failed=true] .fv-ed-voice-mark{background:var(--fv-warn,#e0a84a)}
 .fv-editor .fv-ed-voice-link{height:auto;min-height:0;padding:0;border:0;background:transparent;color:var(--fv-accent,#6db8fa);font-size:12px}
-.fv-ed-voice-placeholder{height:36px;border-radius:6px;background:var(--fv-border);opacity:.4}
+.fv-ed-voice-placeholder{height:36px;border-radius:var(--fv-r-sm);background:var(--fv-border);opacity:.4}
 .fv-ed-voice-note{font-size:13px;color:var(--fv-muted)}
 .fv-ed-voice-note[hidden]{display:none}
 @media (max-width:640px){
@@ -48,9 +49,9 @@
 .fv-ed-voice-install .fv-ed-voice-install-note[hidden]{display:none}
 .fv-ed-voice-install .fv-actions{flex:none}
 .fv-ed-voice-install .fv-actions [hidden]{display:none}
-.fv-ed-voice-bar{order:3;flex:1 1 100%;height:4px;border-radius:2px;background:var(--fv-border);overflow:hidden}
+.fv-ed-voice-bar{order:3;flex:1 1 100%;height:4px;border-radius:var(--fv-r-xs);background:var(--fv-border);overflow:hidden}
 .fv-ed-voice-bar[hidden]{display:none}
-.fv-ed-voice-bar>span{display:block;height:100%;width:0;border-radius:2px;background:var(--fv-accent,#6db8fa);transition:width .3s}
+.fv-ed-voice-bar>span{display:block;height:100%;width:0;border-radius:var(--fv-r-xs);background:var(--fv-accent,#6db8fa);transition:width .3s}
 .fv-ed-voice-bar[data-indeterminate=true]>span{width:35%;animation:fv-ed-voice-slide 1.4s ease-in-out infinite}
 @keyframes fv-ed-voice-slide{from{margin-left:-35%}to{margin-left:100%}}
 @media (prefers-reduced-motion:reduce){.fv-ed-voice-bar>span{transition:none}.fv-ed-voice-bar[data-indeterminate=true]>span{animation:none;width:100%;opacity:.5}}

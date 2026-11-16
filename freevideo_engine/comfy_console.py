@@ -51,9 +51,14 @@ class Capture:
                     self.handlers.append((handler, previous))
                     handler.stream = sys.stdout if previous is self.stdout else sys.stderr
         self.handler = None
-        if not any(handler in logging.getLogger().handlers for handler, _ in self.handlers):
-            self.handler = logging.StreamHandler(sys.stderr)
-            logging.getLogger().addHandler(self.handler)
+        root = logging.getLogger()
+        if not any(handler in root.handlers for handler, _ in self.handlers):
+            # A console handler on a stream that was replaced before this capture (for example by
+            # ComfyUI-Manager's stdout/stderr wrappers) still prints; only the log file misses its records.
+            printing = any(isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler)
+                           and getattr(handler, 'stream', None) is not None for handler in root.handlers)
+            self.handler = logging.StreamHandler(self if printing else sys.stderr)
+            root.addHandler(self.handler)
 
     def write(self, value):
         with self.lock:
