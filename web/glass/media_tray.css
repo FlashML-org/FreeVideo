@@ -210,10 +210,11 @@
 .fvs-tray .fv-mt-glide{position:absolute;left:0;top:0;box-sizing:border-box;border-radius:var(--fv-r-xs);background:var(--fv-ctl-press);pointer-events:none;opacity:0;transition:transform .16s ease-out,width .16s ease-out,opacity .16s ease-out}
 .fvs-tray .fv-mt-glide[data-on=true]{opacity:1}
 :root[data-theme=light] .fvs-tray .fv-mt-glide{background:rgb(var(--fv-solid2));box-shadow:0 1px 2px rgb(20 30 50 / .12)}
-.fvs-tray .fv-mt-works-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--fv-sp-8);align-content:start;max-height:352px;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+.fvs-tray .fv-mt-works-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-auto-rows:auto;gap:var(--fv-sp-8);align-content:start;max-height:352px;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
 @media (max-width:520px){.fvs-tray .fv-mt-works-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 .fvs-tray .fv-mt-works[data-loading=true] .fv-mt-works-grid:empty{min-height:106px;border-radius:var(--fv-r-sm);background:var(--fv-ctl-bg)}
-.fvs-tray .fv-mt-work{position:relative;display:block;aspect-ratio:1;width:100%!important;height:auto!important;min-height:auto!important;margin:0;padding:0!important;border:0!important;border-radius:var(--fv-r-sm)!important;overflow:hidden;background:var(--fv-ctl-bg)!important;box-shadow:none!important;cursor:pointer}
+/* A square: as tall as it is wide (its padding), whatever the grid's height. */
+.fvs-tray .fv-mt-works-grid>.fv-mt-work{position:relative;display:block;justify-self:stretch;align-self:start;aspect-ratio:auto;width:auto!important;height:0!important;min-height:0!important;margin:0;padding:0 0 100%!important;border:0!important;border-radius:var(--fv-r-sm)!important;overflow:hidden;background:var(--fv-ctl-bg)!important;box-shadow:none!important;cursor:pointer}
 .fvs-tray .fv-mt-work>:is(img,video){position:absolute;inset:0;display:block;width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;margin:0;border-radius:0;object-fit:cover!important;object-position:50% 50%!important;opacity:0;pointer-events:none;transition:opacity .16s ease-out}
 .fvs-tray .fv-mt-work[data-shown=true]>img,.fvs-tray .fv-mt-work[data-frame=true]>video{opacity:1}
 .fvs-tray .fv-mt-work:hover:not(:disabled)>:is(img,video){filter:brightness(1.1)}
