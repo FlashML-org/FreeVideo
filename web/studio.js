@@ -2880,6 +2880,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
             {element: mention},
             {element: framePicker.element},
             {element: stepper.element}, {element: qualityChip.element},
+            // Prompt enhancement as a key in this row (lit while on); its versions and Rewrite follow it while it is on.
+            {element: enhancer.chip},
             {spacer: true},
             {id: 'lora', tray: 'lora', icon: 'lora', read: () => {
                 const n = loraCount();
@@ -3065,6 +3067,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // Enhancement progress and its errors read in the console's status slot (one line, fixed height).
     const enhanceStatus = enhancer.element.querySelector('.fv-enhance-status');
     if (enhanceStatus) consoleUI.slot.append(enhanceStatus);
+    enhancer.chip.after(enhancer.bar);
     consoleUI.trays.querySelector('[data-tray=size] .fvs-tray-title')?.append(canvasLock);
     consoleUI.element.classList.add('sgf-avoid');
     mention.dataset.fvTipName = t('Mention', '引用');

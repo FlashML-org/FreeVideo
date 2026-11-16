@@ -178,7 +178,8 @@
 .fvs-console-status .fv-add-video-note{text-align:left;font-size:var(--fv-fs-1)}
 .fvs-console-status .fv-enhance-status{display:flex!important;align-items:center;gap:var(--fv-sp-8);padding:0;border:0;background:none;font-size:var(--fv-fs-1);line-height:20px}
 .fvs-console-status .fv-enhance-status:not([data-state=progress]):not([data-state=error]):not([data-state=note]){display:none!important}
-.fvs-console-status .fv-enhance-status[data-state=error]{color:var(--fv-warn)}
+/* A failure the user can act on reads as an ordinary note (not a warning colour); nothing else is said here. */
+.fvs-console-status .fv-enhance-status[data-state=error]{color:var(--fv-fg2)}
 .fvs-console-status .fv-enhance-meter{width:72px;flex:none;margin:0}
 .fvs-console-status .fv-enhance-status .fv-issue-button{margin:0;min-height:20px;height:20px;padding:0 var(--fv-sp-8)}
 
@@ -187,6 +188,18 @@
 .fv-studio.fv-create .fvs-console-prompt .fv-label{display:none}
 .fv-studio.fv-create .fvs-console .fv-enhance{display:flex;flex-direction:column;border:0;border-radius:0;background:none;overflow:visible;font-size:var(--fv-fs-1)}
 .fv-studio.fv-create .fvs-console .fv-enhance>.fv-enhance-bar{order:2;min-height:var(--fv-ctl);padding:0;border:0;gap:var(--fv-sp-8)}
+/* Prompt enhancement in the chip row (studio.js): a chip lit while on; after it, while on, the versions, Rewrite and
+   Cancel (the bar without its switch). */
+.fv-studio.fv-create .fvs-chip.fv-enhance-chip{gap:var(--fv-sp-8)}
+.fv-studio.fv-create .fvs-chip.fv-enhance-chip svg{flex:none}
+/* Lit while on, under the pointer too (the console's hover rule would otherwise grey it). */
+.fv-studio.fv-create .fvs-console .fvs-chip.fv-enhance-chip[aria-pressed=true]{background:var(--fv-accent-soft);color:var(--fv-accent-ink)}
+.fv-studio.fv-create .fvs-chips>.fv-enhance-bar{display:flex;align-items:center;flex:none;gap:var(--fv-sp-4);min-height:0;height:var(--fvs-row,36px);padding:0;border:0}
+.fv-studio.fv-create .fvs-chips>.fv-enhance-bar>.fv-enhance-toggle,.fv-studio.fv-create .fvs-chips>.fv-enhance-bar[data-enabled=false]:not([data-busy=true]){display:none}
+/* Nothing in it (an empty box has nothing to rewrite): no gap is left for it in the row. */
+.fv-studio.fv-create .fvs-chips>.fv-enhance-bar:not(:has(>:not([hidden]):not(.fv-enhance-toggle))){display:none}
+.fv-studio.fv-create .fvs-chips>.fv-enhance-bar>.fv-quiet{min-height:var(--fv-ctl-s);height:var(--fv-ctl-s);padding:0 var(--fv-sp-8);font-size:var(--fv-fs-1);border-radius:var(--fv-rad-pill)}
+.fv-studio.fv-create .fvs-chips>.fv-enhance-bar>.fv-enhance-redo{width:var(--fv-ctl-s);padding:0}
 .fv-studio.fv-create .fvs-console .fv-enhance>:is(.fv-prompt-editor,textarea){order:1}
 .fv-studio.fv-create .fvs-console .fv-enhance-toggle{font-size:var(--fv-fs-2);color:var(--fv-fg2);gap:var(--fv-sp-8)}
 .fv-studio.fv-create .fvs-console .fv-enhance-toggle input{width:32px;height:20px;min-height:20px;border-radius:var(--fv-rad-pill);background:var(--fv-line2)}
@@ -620,7 +633,9 @@
   /* The switch's track (not its wider hit box) starts on the column's edge. */
   .fv-studio.fv-create .fvs-console .fv-enhance-toggle{margin-left:calc(-1 * var(--fv-sp-4))}
   /* Two lines when short, growing with the text up to five. */
-  .fv-studio.fv-create .fvs-console .fv-prompt-editor textarea{field-sizing:content;height:auto;min-height:56px;max-height:128px;padding:var(--fv-sp-4) 0;font-size:var(--fv-fs-3);line-height:24px}
+  /* The description takes the row the enhancement switch had (the switch is a key in the chip row now): three lines
+     when short, growing with the text up to six. */
+  .fv-studio.fv-create .fvs-console .fv-prompt-editor textarea{field-sizing:content;height:auto;min-height:calc(56px + var(--fvs-row) + var(--fv-sp-8));max-height:152px;padding:var(--fv-sp-4) 0;font-size:var(--fv-fs-3);line-height:24px}
   .fv-studio.fv-create .fvs-console .fv-prompt-tools{position:absolute;top:0;right:calc(-1 * (var(--fvs-key-w) + var(--fv-sp-16)));height:var(--fv-ctl);gap:var(--fv-sp-4)}
   /* Chips: one shape, one height, 8 px apart; icon-only chips are square. */
   .fv-studio.fv-create .fvs-chips{grid-column:1;grid-row:3;align-self:end;margin-left:0;gap:var(--fv-sp-8);min-height:var(--fvs-row)}
