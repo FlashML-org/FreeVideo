@@ -1810,6 +1810,19 @@ class Service:
         return True
 
     @staticmethod
+    def result_size(value):
+        """The size of the picture the worker writes: the requested one, except for a region edit, which is made at the
+        requested (or memory-fitted) size and blended over the picture it edits, so it keeps that picture's size."""
+        if value.get('mask') and value.get('images'):
+            from PIL import Image
+            try:
+                with Image.open(value['images'][0]) as picture:
+                    return picture.size
+            except (OSError, Image.DecompressionBombError):
+                pass
+        return value['width'], value['height']
+
+    @staticmethod
     def worker_gone(session, heard, requested_stop=False, loading=False):
         """The error for a worker pipe that ended; it carries the exit code for the report.
 
@@ -1938,7 +1951,7 @@ class Service:
                         raise RuntimeError('worker_exit')
                     from PIL import Image
                     with Image.open(path) as image:
-                        if image.format != ('JPEG' if path.suffix == '.jpg' else 'PNG') or image.size != (value['width'], value['height']):
+                        if image.format != ('JPEG' if path.suffix == '.jpg' else 'PNG') or image.size != self.result_size(value):
                             raise RuntimeError('worker_exit')
                         image.verify()
                     seconds = row.get('seconds')
