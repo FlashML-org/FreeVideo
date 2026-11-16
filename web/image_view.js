@@ -276,6 +276,15 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     // Prompt enhancement is a key in this row beside References and Sketch, lit while on (no switch row of its own).
     enhancer.chip.classList.add('fv-iv-text-btn', 'fv-iv-enhance-tool'); enhancer.chip.querySelector('span')?.classList.add('fv-iv-btn-label');
     promptBar.append(refAdd, sketchAdd, enhancer.chip, el('span', 'fv-iv-grow'), promptCount, clearPrompt, expand.element);
+    // The row stays on one line inside the panel, Expand at the same inset as the box: when its words do not fit (a
+    // narrow panel, longer English words), its keys keep their icons only (their hover cards still name them).
+    const fitPromptBar = () => {
+        if (!promptBar.isConnected) return;
+        delete promptBar.dataset.compact;
+        if (promptBar.scrollWidth > promptBar.clientWidth + 1) promptBar.dataset.compact = 'true';
+    };
+    const promptBarWatch = typeof ResizeObserver === 'function' ? new ResizeObserver(fitPromptBar) : null;
+    promptBarWatch?.observe(promptBar); document.fonts?.ready?.then(fitPromptBar).catch?.(() => {});
     // "@" in the box lists the reference pictures; a chosen one is written as its mention and stays bound to that picture.
     const mentions = promptMentions({prompt, host: dialog, pictures: () => references.map((r, at) => ({url: r.url, label: label(at + 1)})), onAdd: () => openRefMenu(refAdd)});
     clearPrompt.addEventListener('click', () => { prompt.value = ''; prompt.dispatchEvent(new Event('input', {bubbles: true})); prompt.focus(); });
@@ -1433,7 +1442,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         // ── run: tasks owns this block (job store) ──
         // Leaving only stops watching: the job runs on, the floating window carries it, and its picture reaches the works.
         rememberView(); document.removeEventListener('keydown', strayKeys); expand.dispose?.();
-        alive = false; place.dispose(); stopScene(); enhancer.dispose(); document.removeEventListener('click', closeMore, true);
+        alive = false; place.dispose(); stopScene(); enhancer.dispose(); promptBarWatch?.disconnect(); document.removeEventListener('click', closeMore, true);
         unwatch?.(); unwatch = null; references.forEach(r => URL.revokeObjectURL(r.url)); clearStep(); dialog.remove();
         // ── end run ──
         if (kept?.dialog === dialog) kept = null;
