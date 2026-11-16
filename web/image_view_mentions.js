@@ -27,23 +27,29 @@ export function renumberMentions(text, before, after, caret = 0) {
 export function mentionsToEngine(text, count) {
     return text.replace(TOKEN, (_, n) => n !== '?' && Number(n) >= 1 && Number(n) <= count ? `<Picture ${n}>` : '').replace(/ {2,}/g, ' ');
 }
-// A picture drawn as a sketch (image editor's sketch mode) gives the layout only. The words sent around it describe the
-// finished picture the user wants, all in plain affirmative sentences (the models follow what is said, and a "do not"
-// can bring about the very thing it names): a finished, fully coloured, detailed picture of the description, the
-// sketch's composition, positions and poses, the style the description names, a complete scene behind.
+// A picture drawn as a sketch (image editor's sketch mode) is a plan of the picture, not its look: a stick figure is a
+// person, a box or a circle is where a thing goes. The words sent around it say so, all in plain affirmative sentences
+// (the models follow what is said, and a "do not" can bring about the very thing it names) and with no style of their
+// own: the description, then what the sketch's marks stand for (each stick figure one real person, or the character
+// the description names, whole and clothed, in the figure's place and pose; each shape a real object at its place and
+// size), a finished, coloured picture and a complete scene behind. With no description of its own the subject is
+// still what the sketch plans, never the drawing itself (a bare "the scene in the sketch" came back as a stick figure).
 // `numbers`: the sketches' places (1-based) in the reference list; `text`: the engine text with <Picture N>.
 const SKETCH_LEAD = /^\s*(?:按\s*<Picture (\d+)>\s*的构图[，,]?|Following the layout of <Picture (\d+)>,?)\s*/;
 export function sketchPrompt(text, numbers, model) {
     if (!numbers?.length) return text;
     const desc = String(text || '').replace(SKETCH_LEAD, '').trim().replace(/[。.]+$/, '');
-    const pics = numbers.map(n => `<Picture ${n}>`).join(' and ');
-    const what = desc || 'the scene in the sketch';
-    const rest = `The composition, positions and poses match ${pics}. The style follows the description. The background is a complete scene that fits the content.`;
+    const pics = numbers.map(n => `<Picture ${n}>`).join(' and '), many = numbers.length > 1;
+    const what = desc || `The real people and things that ${pics} ${many ? 'plan' : 'plans'} out, in a real place`;
+    const marks = `${pics} ${many ? 'are layout sketches' : 'is a layout sketch'} drawn with simple lines: ${many ? 'they show' : 'it shows'} where everything goes and how each person stands. `
+        + `Each stick figure in ${pics} is one real person, or the character the description names, with a whole natural body, a face, hair and clothing, in the figure's place and pose. `
+        + `Each box, circle or other shape marks the place and size of an object, which appears as the real object the description names, or one that fits the scene.`;
     // The user's words come first as the picture's own description (after a colon they were drawn as a caption).
     // Qwen keeps an input picture's plain paper unless the whole frame is described as filled.
-    if (model === 'qwen-image-2.1-turbo') return `Redraw ${pics} as a finished, fully coloured and detailed image that fills the whole frame with a complete scene. ${what}. `
-        + `The composition, positions and poses match ${pics}. The style follows the description. Every part of the picture, from edge to edge, shows the scene around and behind the subject: its ground, its surroundings and its light.`;
-    return `${what}. A finished, fully coloured and detailed image. ${rest}`;
+    if (model === 'qwen-image-2.1-turbo') return `Redraw ${pics} as a finished, fully coloured and detailed image that fills the whole frame with a complete scene. ${what}. ${marks} `
+        + `The style follows the description. Every part of the picture, from edge to edge, shows the scene around and behind the people and objects: its ground, its surroundings and its light.`;
+    return `${what}. ${marks} The finished image is fully coloured and detailed, with these people and objects arranged as in ${pics}. `
+        + `The style follows the description. The background is a complete scene that fits the content.`;
 }
 export const brokenMentions = (text, count) => [...text.matchAll(TOKEN)].filter(([, n]) => n === '?' || Number(n) < 1 || Number(n) > count).length;
 export const hasMentions = text => new RegExp(TOKEN.source).test(text);
