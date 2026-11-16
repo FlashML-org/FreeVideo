@@ -705,7 +705,8 @@ html body :is(.fv-studio.fv-create .fvs-console,.fv-editor .fv-ed-genbar .fv-ed-
 .fv-studio.fv-create .fv-stage[data-next=true] .fv-stage-media{opacity:0;visibility:hidden}
 .fv-studio.fv-create .fvs-next-size{position:absolute;left:var(--fv-sp-12);top:var(--fv-sp-12);z-index:3;display:none;padding:var(--fv-sp-2) var(--fv-sp-8);border-radius:var(--fv-r-xs);
   background:rgb(var(--fv-solid1));color:var(--fv-fg2);font-size:var(--fv-fs-1);line-height:16px;font-variant-numeric:tabular-nums}
-.fv-studio.fv-create .fv-stage[data-next=true]:not(:has(.fv-generation-progress:not([hidden]))) .fvs-next-size{display:block}
+/* The next frame's pixels are not written on it: the console's Frame & size key says them. */
+.fv-studio.fv-create .fv-stage[data-next=true]:not(:has(.fv-generation-progress:not([hidden]))) .fvs-next-size{display:none}
 .fv-studio.fv-create .fv-stage[data-next=true]:not(:has(.fv-generation-progress:not([hidden])))::after{content:var(--fvs-empty-hint,'');position:absolute;left:var(--fv-sp-8);right:var(--fv-sp-8);top:50%;translate:0 -50%;
   text-align:center;color:var(--fv-fg3);font-size:var(--fv-fs-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* A frame too narrow for the hint on one line shows none; the pixels badge shows only while the tray covers the bar. */

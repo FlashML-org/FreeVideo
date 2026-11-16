@@ -2550,7 +2550,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
         if (!nextShown) { nextShown = true; stage.dataset.next = 'true'; stage.querySelector('video')?.pause(); }
         nextSize.textContent = `${shown.width} × ${shown.height}`;
         // The bar under the picture names the next generation instead of the work.
-        stageBar.setNext(true); summaryFor = null; stageBar.setSummary('', {name: `${t('Next', '下一次生成')} · ${shown.width} × ${shown.height}`});
+        // The frame itself shows the shape; no line names it or its pixels (the chip in the console says them).
+        stageBar.setNext(true); summaryFor = null; stageBar.setSummary('');
         previewSize(shown.width, shown.height);
         // An upright frame is too slim for the hint sentence: it shows its size only (glass/frame_picker.css).
         stage.dataset.nextSlim = String(shown.width < shown.height);
