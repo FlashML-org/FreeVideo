@@ -26,8 +26,9 @@ function place(tray) {
     tray.fvPopAfter?.();
     // The buttons at the right of the row (LoRA, Advanced): the window keeps within the console's width instead of
     // running out over the history rail; its right edge then lines up with the console's.
-    const shelf = chip.closest('.fvs-console')?.getBoundingClientRect(), box = tray.getBoundingClientRect();
-    if (shelf && box.right > shelf.right + .5 && box.width <= shelf.width) tray.style.left = `${Math.round(shelf.right - box.width)}px`;
+    // (Its laid-out box, not the opening motion's slightly smaller one.)
+    const shelf = chip.closest('.fvs-console')?.getBoundingClientRect(), left = parseFloat(tray.style.left), width = tray.offsetWidth;
+    if (shelf && left + width > shelf.right + .5 && width <= shelf.width) tray.style.left = `${Math.round(shelf.right - width)}px`;
     // The window grows out of its button: from the button's side of it.
     const a = chip.getBoundingClientRect(), b = tray.getBoundingClientRect();
     const align = a.left + a.width / 2 > b.left + b.width / 2 ? 'end' : 'start';
