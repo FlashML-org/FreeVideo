@@ -27,7 +27,7 @@ import { el, icon, t, cn, tip, button, section, readStore, writeStore, mod } fro
 import { IMAGE_MODELS, modelPicker, modelState } from './image_view_models.js';
 import { RANGES, RATIOS, areaRange, estimateSeconds, machineLimit, presetAt, ratioValue, sizePicker, sizeFor, sizeText, megapixels } from './image_view_size.js';
 import { createMetaStore, createTrash, filterCounts, filterRows, groupRows, historyPanel, sessionPrompts } from './image_view_history.js';
-import { brokenMentions, mentionText, mentionsToEngine, promptMentions, renumberMentions, sketchPrompt } from './image_view_mentions.js';
+import { brokenMentions, mentionText, mentionsToEngine, promptMentions, renumberMentions, sketchDescribed, sketchPrompt } from './image_view_mentions.js';
 import { HISTORY_KEY, forgetDeletedPrompts, promptLibrary, rememberPrompt } from './image_view_prompts.js';
 import { COMPARE_MAX, compareView } from './image_view_compare.js';
 import { queuePanel } from './image_view_queue.js';
@@ -849,6 +849,10 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         } else if (notice.dataset.keep === 'true' && notice.textContent) { kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', notice.textContent)]; }
         else if (brokenMentions(prompt.value, references.length)) {
             kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', t('A picture named in the prompt was removed; choose it again with @', '描述里引用的参考图已移除，请用 @ 重新选择'))];
+        }
+        // A sketch shows where things go; what they are comes from the words (a stick figure is a person only when said).
+        else if (references.some((r, at) => r.sketch && at < cap_(model)) && !sketchDescribed(mentionsToEngine(prompt.value, references.length))) {
+            kind = 'info'; parts = [icon('edit'), el('span', 'fv-iv-slot-tx', t('Say what the sketch shows, for example "a person raising both hands"', '请写下草图画的是什么，例如“一个人举起双手”'))];
         }
         else if (s.state === 'failed') {
             kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', [t(`${model.short} download failed.`, `${model.short} 下载失败。`), s.reason].filter(Boolean).join(' '))];
