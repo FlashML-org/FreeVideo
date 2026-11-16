@@ -11,7 +11,7 @@
    the glass becomes solid under data-glass=solid, .lite or reduced transparency. */
 
 /* ── 1. Blacks and glass values ─────────────────────────────────────────────────────────────────────────────── */
-html[data-fv-lux]:root dialog.fv-studio:is(.fv-create,.fv-image),
+html[data-fv-lux]:root dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot),
 html[data-fv-lux]:root :is(.fvp.fvp-pop,.fv-select-menu){
   --lx-l0:#06080c;
   --lx-g1:rgb(22 25 33 / .60); --lx-g2:rgb(27 30 39 / .94); --lx-l3:#1c1f27;
@@ -27,7 +27,7 @@ html[data-fv-lux]:root :is(.fvp.fvp-pop,.fv-select-menu){
   --lx-key-glow:0 10px 28px -12px rgb(27 148 252 / .55);
   --lx-ease:cubic-bezier(.2,.8,.2,1);
 }
-html[data-fv-lux][data-theme=light]:root dialog.fv-studio:is(.fv-create,.fv-image),
+html[data-fv-lux][data-theme=light]:root dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot),
 html[data-fv-lux][data-theme=light]:root :is(.fvp.fvp-pop,.fv-select-menu){
   --lx-l0:#eef1f5;
   --lx-g1:rgb(255 255 255 / .62); --lx-g2:rgb(255 255 255 / .94); --lx-l3:#ffffff;
@@ -38,32 +38,34 @@ html[data-fv-lux][data-theme=light]:root :is(.fvp.fvp-pop,.fv-select-menu){
   --lx-key-glow:0 10px 24px -12px rgb(13 109 204 / .5);
 }
 /* The shell tokens follow, so everything that already reads them lands on the same layers. */
-html[data-fv-lux]:root dialog.fv-studio:is(.fv-create,.fv-image){
+html[data-fv-lux]:root dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot){
   --fv-shell-bg:var(--lx-l0); --fv-bg:var(--lx-l0);
   --fv-edge:var(--lx-edge); --fv-edge-hi:var(--lx-hi);
   background-color:var(--lx-l0)!important;
 }
-html[data-fv-lux]:not([data-theme=light]):root dialog.fv-studio:is(.fv-create,.fv-image){
+html[data-fv-lux]:not([data-theme=light]):root dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot){
   --fv-tint:22 25 33; --fv-solid1:14 16 22; --fv-solid2:22 25 33; --fv-solid3:28 31 40;
 }
 html[data-fv-lux]:root dialog.fv-studio.fv-image .fv-image-body{background:transparent!important}
+/* The assistant view's own wash (it carried a second hue) gives way to this layer's lights. */
+html[data-fv-lux]:root dialog.fv-studio.fv-autopilot .fv-autopilot-body{background:transparent!important}
 
 /* ── 2. The light under the views ───────────────────────────────────────────────────────────────────────────── */
 /* Two pseudo-elements of the view's own dialog, drawn first, so every part of the view is above them. Each is one
    soft radial light on its own layer; only its transform moves. A fine grain keeps the falloff from banding. */
-html[data-fv-lux]:root dialog.fv-studio:is(.fv-create,.fv-image)::before,
-html[data-fv-lux]:root dialog.fv-studio:is(.fv-create,.fv-image)::after{
+html[data-fv-lux]:root dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot)::before,
+html[data-fv-lux]:root dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot)::after{
   content:"";position:absolute;z-index:-1;pointer-events:none;border-radius:50%;
   will-change:transform;animation-play-state:var(--lx-in-play,paused);
 }
 
 /* One light top left (about 60 vw), one below the middle, behind the console (about 70 vw). 40 s there and back. */
-html[data-fv-lux]:root dialog.fv-studio:is(.fv-create,.fv-image)::before{
+html[data-fv-lux]:root dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot)::before{
   left:-18vw;top:-30vw;width:max(60vw,520px);height:max(60vw,520px);
   background:radial-gradient(closest-side,rgb(var(--lx-a) / var(--lx-a1)),rgb(var(--lx-a) / calc(var(--lx-a1) * .45)) 45%,transparent 100%);
   animation:fv-lux-a 40s linear infinite;animation-play-state:var(--lx-in-play,paused);
 }
-html[data-fv-lux]:root dialog.fv-studio:is(.fv-create,.fv-image)::after{
+html[data-fv-lux]:root dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot)::after{
   left:calc(50% - max(35vw,300px));bottom:calc(-1 * max(37vw,320px));width:max(70vw,600px);height:max(70vw,600px);
   background:radial-gradient(closest-side,rgb(var(--lx-b) / var(--lx-a2)),rgb(var(--lx-b) / calc(var(--lx-a2) * .45)) 45%,transparent 100%);
   animation:fv-lux-b 40s linear infinite;animation-play-state:var(--lx-in-play,paused);
@@ -74,20 +76,20 @@ html[data-fv-lux]:root dialog.fv-studio:is(.fv-create,.fv-image)::after{
 @keyframes fv-lux-b{0%{transform:translate3d(-4%,0%,0) scale(1.06);animation-timing-function:steps(8,end)}10%{transform:translate3d(-3.6%,-0.15%,0) scale(1.057);animation-timing-function:steps(24,end)}40%{transform:translate3d(3.6%,-2.85%,0) scale(1.003);animation-timing-function:steps(8,end)}50%{transform:translate3d(4%,-3%,0) scale(1);animation-timing-function:steps(8,end)}60%{transform:translate3d(3.6%,-2.85%,0) scale(1.003);animation-timing-function:steps(24,end)}90%{transform:translate3d(-3.6%,-0.15%,0) scale(1.057);animation-timing-function:steps(8,end)}100%{transform:translate3d(-4%,0%,0) scale(1.06)}}
 
 /* ── 3. Top bar ─────────────────────────────────────────────────────────────────────────────────────────────── */
-html[data-fv-lux]:root body dialog.fv-studio:is(.fv-create,.fv-image) .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch,
-html[data-fv-lux]:root body dialog.fv-studio:is(.fv-create,.fv-image) .fv-topbar .fv-tb-cap{
+html[data-fv-lux]:root body dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot) .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch,
+html[data-fv-lux]:root body dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot) .fv-topbar .fv-tb-cap{
   background:var(--lx-g1)!important;
   box-shadow:inset 0 0 0 1px var(--lx-edge),inset 0 1px 0 var(--lx-hi),var(--fv-sh1)!important;
   -webkit-backdrop-filter:var(--lx-blur1)!important;backdrop-filter:var(--lx-blur1)!important;
 }
 /* The chosen view: a raised block with a short blue line of light on its lower edge. */
-html[data-fv-lux]:root body dialog.fv-studio:is(.fv-create,.fv-image) .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch::before{
+html[data-fv-lux]:root body dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot) .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch::before{
   background:
     radial-gradient(ellipse 34px 1.5px at var(--lx-ink-x,50%) 100%,rgb(102 182 255 / .9),transparent 100%),
     linear-gradient(180deg,rgb(255 255 255 / .11),rgb(255 255 255 / .06));
   box-shadow:inset 0 1px 0 rgb(255 255 255 / .16);
 }
-html[data-fv-lux][data-theme=light]:root body dialog.fv-studio:is(.fv-create,.fv-image) .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch::before{
+html[data-fv-lux][data-theme=light]:root body dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot) .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch::before{
   background:linear-gradient(180deg,#fff,rgb(255 255 255 / .82));
   box-shadow:inset 0 0 0 1px rgb(20 24 32 / .05),0 1px 2px rgb(30 40 60 / .1);
 }
@@ -198,6 +200,13 @@ html[data-fv-lux]:root dialog.fv-studio.fv-image .fv-iv-panel{
   -webkit-backdrop-filter:var(--lx-blur1)!important;backdrop-filter:var(--lx-blur1)!important;
 }
 html[data-fv-lux]:root dialog.fv-studio.fv-image .fv-iv-panel{isolation:isolate}
+/* The edit view: its library and its generate bar are the same L1 glass; the preview and the tracks keep their own
+   ground, and nothing here draws over a clip. The assistant view's two side panels likewise. */
+html[data-fv-lux]:root dialog.fv-studio.fv-editor :is(.fv-ed-library,.fv-ed-genbar),
+html[data-fv-lux]:root dialog.fv-studio.fv-autopilot :is(.fv-chat-rail,.fv-chat-side){
+  background:var(--lx-g1)!important;
+  -webkit-backdrop-filter:var(--lx-blur1)!important;backdrop-filter:var(--lx-blur1)!important;
+}
 /* Fields and blocks in the image view: the chip face. */
 html[data-fv-lux]:root dialog.fv-studio.fv-image :is(.fv-iv-mpick,.fv-iv-search,.fv-iv-seg,.fv-iv-prompt,.fv-iv-field){background:var(--lx-chip);box-shadow:inset 0 0 0 1px var(--lx-chip-edge)!important}
 html[data-fv-lux]:root dialog.fv-studio.fv-image .fv-iv-prompt:focus-within{box-shadow:inset 0 0 0 1px var(--fv-accent-line)!important}
@@ -210,7 +219,7 @@ html[data-fv-lux]:not([data-theme=light]):root dialog.fv-studio.fv-image .fv-iv-
 html[data-fv-lux][data-theme=light]:root dialog.fv-studio.fv-create .fv-stage{box-shadow:0 24px 50px -30px rgb(30 40 60 / .35)!important}
 
 /* ── 10. Glass off, and stillness ───────────────────────────────────────────────────────────────────────────── */
-:is(html[data-glass=solid],html.lite)[data-fv-lux]:root dialog.fv-studio :is(.fvs-console,.fv-recent,.fvs-rail,.fv-iv-panel,.fv-view-switch,.fv-tb-cap){
+:is(html[data-glass=solid],html.lite)[data-fv-lux]:root dialog.fv-studio :is(.fvs-console,.fv-recent,.fvs-rail,.fv-iv-panel,.fv-view-switch,.fv-tb-cap,.fv-ed-library,.fv-ed-genbar,.fv-chat-rail,.fv-chat-side){
   -webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:var(--lx-s1)!important;
 }
 :is(html[data-glass=solid],html.lite)[data-fv-lux]:root :is(dialog.fv-studio .fvs-tray[open],dialog.fv-studio .fvs-info-panel,.fvp.fvp-pop){
@@ -219,7 +228,7 @@ html[data-fv-lux][data-theme=light]:root dialog.fv-studio.fv-create .fv-stage{bo
 /* Glass off also means a weak machine: the light stays, and stays still. */
 :is(html[data-glass=solid],html.lite)[data-fv-lux]{--lx-in-play:paused!important}
 @media (prefers-reduced-transparency:reduce){
-  html[data-fv-lux]:root dialog.fv-studio :is(.fvs-console,.fv-recent,.fvs-rail,.fv-iv-panel,.fv-view-switch,.fv-tb-cap){-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:var(--lx-s1)!important}
+  html[data-fv-lux]:root dialog.fv-studio :is(.fvs-console,.fv-recent,.fvs-rail,.fv-iv-panel,.fv-view-switch,.fv-tb-cap,.fv-ed-library,.fv-ed-genbar,.fv-chat-rail,.fv-chat-side){-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:var(--lx-s1)!important}
   html[data-fv-lux]:root :is(dialog.fv-studio .fvs-tray[open],dialog.fv-studio .fvs-info-panel,.fvp.fvp-pop){-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:var(--lx-s2)!important}
 }
 @media (prefers-reduced-motion:reduce){
