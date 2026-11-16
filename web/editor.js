@@ -2137,7 +2137,9 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         async switchView(view) {
             if (closing || disposed || view === 'editor') return;
             leaveTo = view;
-            if (await handle.close() !== false) await onView(view);
+            // A refusal answers false, so the switch stops waiting and the bar shows this view again at once.
+            if (await handle.close() === false) return false;
+            await onView(view);
         },
         async close() {
             if (handle.kept) return true;
