@@ -46,6 +46,7 @@ const PATHS = {
     editor: '<circle cx="6.5" cy="7" r="2.5"/><circle cx="6.5" cy="17" r="2.5"/><path d="M8.6 8.4 19.5 18M8.6 15.6 19.5 6"/>',
     autopilot: '<path d="M12 3.5 13.9 9l5.6 1.9-5.6 1.9L12 18.5l-1.9-5.7L4.5 11 10.1 9z"/>',
     stop: '<rect x="7" y="7" width="10" height="10" rx="2"/>',
+    first: '<path d="M6 5.5h12M12 19V9.5M7.5 14l4.5-4.5 4.5 4.5"/>',
 };
 export const iconURL = name => `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'>${PATHS[name]}</svg>`)}")`;
 function withIcon(element, name) { element.classList.add('fv-tb-ico'); element.style.setProperty('--fv-tb-icon', iconURL(name)); return element; }
@@ -308,13 +309,28 @@ function buildActivity(t) {
         go.onclick = () => visit(row);
         line.append(go);
         if (row.status === 'running') { const bar = el('span', 'fv-tb-job-bar'); bar.style.setProperty('--p', String(Math.max(0, Math.min(1, Number(row.percent) || 0)))); line.append(bar); }
+        // A waiting video behind another waiting one can go to the front of the queue (the engine moves it, then the
+        // list is read again).
+        if (row.kind === 'video' && row.status === 'queued' && row.prompt_id && row.node != null && row.position > 1) {
+            const first = el('button', 'fv-tb-job-first'); first.type = 'button'; withIcon(first, 'first');
+            first.setAttribute('aria-label', t('Move to front', '排到最前'));
+            tip(first, t('Move to front', '排到最前'), t('Make it the next to start', '让它下一个开始'));
+            first.onclick = async event => {
+                event.stopPropagation(); first.disabled = true;
+                try { await api.fetchApi('/freevideo/queue/first', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({prompt_id: row.prompt_id, node_id: String(row.node)})}); }
+                catch { /* The list is read again either way. */ }
+                await jobs.refresh(); first.disabled = false;
+            };
+            line.append(first);
+        }
         if (row.cancellable !== false && (row.status === 'running' || row.status === 'queued')) {
             const queued = row.status === 'queued', stop = el('button', 'fv-tb-job-stop'); stop.type = 'button'; withIcon(stop, 'stop');
             stop.setAttribute('aria-label', queued ? t('Remove from queue', '取消排队') : t('Stop', '停止'));
             tip(stop, queued ? t('Remove from queue', '取消排队') : t('Stop', '停止'), queued ? t('It will not be made', '这项不会再生成') : t('Stop this one; asks first', '停止这一项，会先确认'));
             stop.onclick = async event => {
                 event.stopPropagation();
-                try { const {confirmStop} = await import('./task_float.js'); if (await confirmStop(stop, {kind: row.kind === 'image' ? 'image' : 'video', queued})) await jobs.cancel(row.id); }
+                // The question sits in this panel, so answering it keeps the panel (and the rest of the list) open.
+                try { const {confirmStop} = await import('./task_float.js'); if (await confirmStop(stop, {kind: row.kind === 'image' ? 'image' : 'video', queued, host: box})) await jobs.cancel(row.id); }
                 catch { /* The row stays as it is. */ }
             };
             line.append(stop);

@@ -202,6 +202,13 @@ html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"] .fv-tb-cap.is-warn.has
 .fv-tb-job:hover .fv-tb-job-stop,.fv-tb-job:focus-within .fv-tb-job-stop{opacity:1}
 .fv-tb-pop .fv-tb-job-stop:hover{background:var(--fv-warn-soft)}
 @media(hover:none){.fv-tb-pop .fv-tb-job-stop{opacity:1}}
+/* Move to front: the same key as Stop, in the text colour. */
+.fv-tb-pop .fv-tb-job-first{flex:none;display:grid;place-items:center;width:var(--fv-ctl);height:var(--fv-ctl);margin:0;padding:0;border:0;border-radius:var(--fv-rad-ctl);background:transparent;color:var(--fv-fg2);cursor:pointer;opacity:0}
+.fv-tb-pop .fv-tb-job-first::before{content:"";width:16px;height:16px;background:currentColor;-webkit-mask:var(--fv-tb-icon) center/16px 16px no-repeat;mask:var(--fv-tb-icon) center/16px 16px no-repeat}
+.fv-tb-job:hover .fv-tb-job-first,.fv-tb-job:focus-within .fv-tb-job-first{opacity:1}
+.fv-tb-pop .fv-tb-job-first:hover{background:var(--fv-ctl-hover);color:var(--fv-fg)}
+.fv-tb-pop .fv-tb-job-first:focus-visible{outline:2px solid var(--fv-accent-ink);outline-offset:-2px}
+@media(hover:none){.fv-tb-pop .fv-tb-job-first{opacity:1}}
 /* This computer: video memory in large figures, then meters with right-aligned values */
 .fv-tb-mem{display:flex;align-items:baseline;gap:var(--fv-sp-4);padding:var(--fv-sp-4) var(--fv-sp-8) 0}
 .fv-tb-mem-v{font-size:var(--fv-fs-4);line-height:28px;font-weight:600;color:var(--fv-fg);font-variant-numeric:tabular-nums}

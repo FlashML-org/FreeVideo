@@ -55,7 +55,9 @@ export function createJobStore({now = () => Date.now(), storage = null} = {}) {
         const ra = ACTIVE.has(a.status) ? RANK[a.status] : 3, rb = ACTIVE.has(b.status) ? RANK[b.status] : 3;
         if (ra !== rb) return ra - rb;
         if (ra === 3) return (b.finished_at || 0) - (a.finished_at || 0);
-        return ra === 2 ? (a.created_at || 0) - (b.created_at || 0) : (b.created_at || 0) - (a.created_at || 0);
+        // Waiting ones in their place in the queue when the engine says it (Move to front changes it), else as added.
+        if (ra === 2) return (finite(a.position) && finite(b.position) ? a.position - b.position : 0) || (a.created_at || 0) - (b.created_at || 0);
+        return (b.created_at || 0) - (a.created_at || 0);
     };
     const matches = (row, filter) => !filter || Object.entries(filter).every(([key, value]) => value == null || row[key] === value);
     function publish(change) {
@@ -344,7 +346,8 @@ export function progressSource(store, {target = globalThis, now = store.now, can
 export function queueSource(store, {fetchJson, clientId = () => null, interval = 3000, setTimer = setTimeout, clearTimer = clearTimeout} = {}) {
     let known = new Map(), reading = null, again = false, timer = 0, disposed = false;
     const generateOf = row => Object.entries(row?.[2] || {}).find(([, node]) => node?.class_type === 'FreeVideoGenerate');
-    const ours = row => Boolean(generateOf(row)) && (!clientId() || row?.[3]?.client_id === clientId());
+    // A long video's parts are the chain's own (chainSource lists the chain once): they are left out here.
+    const ours = row => Boolean(generateOf(row)) && !row?.[3]?.freevideo_chain && (!clientId() || row?.[3]?.client_id === clientId());
     const text = row => String(generateOf(row)?.[1]?.inputs?.text ?? '').replace(/\s+/g, ' ').trim();
     async function close(id, promptId) {
         let entry = null;

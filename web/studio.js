@@ -1669,7 +1669,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     previewObserver.observe(output); cleanup.push(() => previewObserver.disconnect());
     function showProgress(message) {
         phoneAccess.observe(message);
-        summaryFor = null; stageBar.setSummary(runningSummary || t('Generating', '正在生成'));
+        // The bar under the picture says nothing about the run (the top bar's task shows it and its place).
+        summaryFor = null; stageBar.setSummary('');
         watchedRun = true; reportTipFor = null; clearTimeout(reportTipTimer);
         reuseRow.hidden = true;
         stats.hidden = true;
@@ -2106,12 +2107,14 @@ export function openStudio(node, {extendFrom = null} = {}) {
         catch (error) { showQueueError(error); }
         finally { stopLoop.disabled = false; }
     }, 'fv-quiet');
-    queueActions.append(queueDetails, cancelCurrent, stopLoop, resumeChain);
+    // The queue (each video with its place, Move to front, Remove) and Cancel are in the top bar's task panel
+    // (topbar.js); under the picture only a loop's stop and a stopped long video's Continue remain, while they apply.
+    queueActions.append(stopLoop, resumeChain);
     tip(stopLoop, t('Stop after this video', '完成当前后停止'), t('Finish this one, then start no more', '做完这一个就不再继续'));
     tip(queueToggle, t('Queue', '队列'), t('See, reorder or remove waiting videos', '查看、调整或移除排队的视频'));
     syncResume = () => {
         resumeChain.hidden = !['cancelled', 'failed', 'interrupted'].includes(chainController?.state?.state) || partList.resumes();
-        queueActions.hidden = !chainController?.active && !busy && !queueState?.looping && resumeChain.hidden;
+        queueActions.hidden = stopLoop.hidden && resumeChain.hidden;
     };
     const otherUsage = createOtherUsageNotice(runbar, t, api.fetchApi.bind(api));
     cleanup.push(() => otherUsage.dispose());
@@ -2233,6 +2236,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         cancelCurrent.disabled = cancelling;
         cancelCurrent.textContent = cancelling ? t('Cancelling…', '正在取消…') : t('Cancel current', '取消当前');
         stopLoop.hidden = !queueState?.looping;
+        queueActions.hidden = stopLoop.hidden && resumeChain.hidden;
         updateExtendButton();
     }
     function updateExtendButton() {
@@ -2260,7 +2264,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     function renderQueue(state) {
         if (disposed) return;
         queueState = state;
-        if (chainController?.active && !state.running_all) { queueActions.hidden = false; updateRunButton(); return; }
+        if (chainController?.active && !state.running_all) { updateRunButton(); return; }
         const active = state.running || state.pending[0];
         activePrompt = active?.id || null;
         const wasBusy = busy;
@@ -2279,7 +2283,6 @@ export function openStudio(node, {extendFrom = null} = {}) {
             : [running && t(`${running} generating`, `生成中 ${running} 个`), waiting && t(`${waiting} queued`, `排队 ${waiting} 个`)]
                 .filter(Boolean).join(' · ');
         queueDetails.hidden = queueRows.length === 0;
-        queueActions.hidden = !busy && !state.looping && resumeChain.hidden;
         const signature = JSON.stringify(queueRows.map(row => [row.id, row.inputs.width, row.inputs.height,
             ...(state.running_all ? [state.running_all.includes(row), row.progress?.sequence] : [])]));
         if (queueList.dataset.signature !== signature) {

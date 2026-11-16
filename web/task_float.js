@@ -225,7 +225,9 @@ const narrow = () => innerWidth <= 720;
 const raise = element => { try { if (element.matches(':popover-open')) element.hidePopover(); element.showPopover(); } catch { /* not connected */ } };
 
 // ---------- the stop question, anchored to any button (the floating window's own, or a view's Stop) ----------
-export function confirmStop(anchor, {kind = 'video', queued = false} = {}) {
+// host: where the question goes (a panel it belongs to, so a press on it does not close that panel); by default the
+// open dialog the button is in, or the page.
+export function confirmStop(anchor, {kind = 'video', queued = false, host = null} = {}) {
     return new Promise(resolve => {
         const box = el('div', 'sgf sgf-confirm'); box.setAttribute('popover', 'manual'); box.dataset.fvTipScope = '';
         const sheet = el('div', 'sgf-sheet'); sheet.setAttribute('role', 'alertdialog');
@@ -239,7 +241,7 @@ export function confirmStop(anchor, {kind = 'video', queued = false} = {}) {
         tip(keep, t('Keep going', '继续生成'), t('Close this and keep generating', '不停止，接着生成'), 'Esc');
         tip(stop, stop.textContent, queued ? t('Take it out of the queue', '从队列里拿掉这一项') : t('Stop it now; nothing is kept', '立即停止，不保留结果'));
         acts.append(keep, stop); ask.append(title, text, acts); sheet.append(ask); box.append(sheet);
-        (anchor.closest('dialog[open]') || document.body).append(box); raise(box);
+        (host || anchor.closest('dialog[open]') || document.body).append(box); raise(box);
         const a = anchor.getBoundingClientRect(), w = 300, h = box.offsetHeight || 132;
         const x = Math.min(innerWidth - w - 12, Math.max(12, a.left + a.width / 2 - w / 2)), above = a.top - h - 10 > 12;
         box.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(above ? a.top - h - 10 : a.bottom + 10)}px, 0)`;
