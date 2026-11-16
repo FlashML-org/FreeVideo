@@ -601,6 +601,13 @@
 /* The new video comes in from a hair larger and settles, while the light lifts off it. */
 .fv-studio.fv-create .fv-stage[data-revealing=true] .fv-stage-media>video:first-child{animation:fvs-reveal .55s cubic-bezier(.2,.8,.2,1) both}
 @keyframes fvs-reveal{from{opacity:0;transform:scale(1.02)}to{opacity:1;transform:none}}
+/* Light look: the frame being made is light (the dark scene is not drawn), so its words are dark ink, without the glow
+   that lifted light words off the dark scene. */
+:root[data-theme=light] .fv-studio.fv-create .fv-stage .fv-generation-progress{--fv-ink:inherit;--fv-muted:inherit;--fv-fg:inherit;--fv-fg2:inherit;--fv-fg3:inherit;color:var(--fv-fg)}
+:root[data-theme=light] .fv-studio.fv-create .fv-stage .fv-generation-progress .fv-generation-count{color:var(--fv-fg)}
+:root[data-theme=light] .fv-studio.fv-create .fv-stage .fv-generation-progress :is(.fv-generation-label,.fv-generation-times,.fv-chain-position){color:var(--fv-fg2)}
+:root[data-theme=light] .fv-studio.fv-create .fv-stage .fv-generation-progress :is(.fv-generation-heading,.fv-generation-times){text-shadow:none}
+:root[data-theme=light] .fv-studio.fv-create .fv-stage .fv-generation-progress.fv-generation-compact{background:none}
 @media(prefers-reduced-motion:reduce){
   .fv-studio.fv-create .fvs-making{animation:none;transition:none}
   .fv-studio.fv-create .fvs-making-sweep{display:none}
