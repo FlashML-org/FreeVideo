@@ -1160,6 +1160,15 @@ async function openImageEditorNow({source = null, name = source || '', target = 
     function turn(op) { commit(commands.turn(doc, op, target)); }
     // Pad (never crop) to the video's shape with the background colour.
     function padToVideo() { commit(commands.padToVideo(doc, target, bg)); }
+    // Enter in a field of the Canvas size or Image size box applies it, Escape puts it away (as Cancel). Through the views'
+    // key routing (see `keys` below): a view under the editor takes every key at the window and hands it only to handlers
+    // registered this way.
+    function sizeKeys(box, apply) {
+        listenDialogKey(box, 'keydown', event => {
+            if (event.key === 'Escape' && !event.isComposing) { event.preventDefault(); event.stopPropagation(); box.remove(); stage.focus(); return; }
+            if (event.key === 'Enter' && !event.ctrlKey && !event.metaKey && !event.isComposing && event.target.tagName === 'INPUT') { event.preventDefault(); event.stopPropagation(); apply(); }
+        });
+    }
     function canvasDialog() {
         stage.querySelector('.fv-ie-popover')?.remove();
         const box = el('div', null, 'fv-ie-popover');
@@ -1191,9 +1200,7 @@ async function openImageEditorNow({source = null, name = source || '', target = 
         const ok = button(t('Apply', '应用'), null, apply, 'fv-ie-button fv-ie-primary');
         buttons.append(button(t('Cancel', '取消'), null, () => { box.remove(); stage.focus(); }), ok);
         for (const input of Object.values(inputs)) input.oninput = update;
-        box.addEventListener('keydown', event => {
-            if (event.key === 'Enter' && !event.ctrlKey && !event.metaKey && event.target.tagName === 'INPUT') { event.preventDefault(); event.stopPropagation(); apply(); }
-        });
+        sizeKeys(box, apply);
         box.append(el('h3', t('Canvas size', '画布大小')), note,
             grid, field(t('Fill color', '补边颜色'), color), buttons);
         update(); stage.append(box); inputs.t.focus();
@@ -1293,9 +1300,7 @@ async function openImageEditorNow({source = null, name = source || '', target = 
             box.remove(); stage.focus();
             commit(next);
         }
-        box.addEventListener('keydown', event => {
-            if (event.key === 'Enter' && !event.ctrlKey && !event.metaKey && event.target.tagName === 'INPUT') { event.preventDefault(); event.stopPropagation(); apply(); }
-        });
+        sizeKeys(box, apply);
         box.append(el('h3', t('Image size', '图像大小')),
             el('p', t(`Now ${now[0]} × ${now[1]} px`, `现在 ${now[0]} × ${now[1]} 像素`), 'fv-ie-opt-note'),
             choice.group, dims, notes, buttons);
