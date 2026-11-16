@@ -78,3 +78,5 @@ import('./advanced_tray.js').catch(error => {
     const keep = () => { for (const row of document.querySelectorAll('.fv-runrow.fv-at-moved')) row.classList.remove('fv-at-moved'); };
     keep(); new MutationObserver(keep).observe(document.body, {childList: true, subtree: true});   // also rows built later
 });
+// The look layer over the views (glass and light). It installs itself; ?look=off leaves it out.
+import('./look_lux.js').catch(error => console.warn('FreeVideo look layer:', error));
