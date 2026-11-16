@@ -172,6 +172,13 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
 .fv-studio .fv-iv .fv-iv-prompt::placeholder{color:var(--fv-fg3)}
 .fv-iv .fv-iv-prompt-bar{display:flex;align-items:center;gap:4px;height:28px;margin-top:4px}
 .fv-iv .fv-iv-prompt-bar .fv-ed-expand{position:static;right:auto;bottom:auto;flex:none;width:28px;height:28px;min-width:28px;min-height:28px}
+/* Expand is one of the row's keys: the same clear ground, ink, corners and hover, press and focus as References,
+   Sketch and Enhance (not the page colour the shared key brings, which reads as a dark square). */
+.fv-iv .fv-iv-prompt-bar .fv-ed-expand{border-radius:var(--fv-rad-ctl,12px);background:transparent;color:var(--fv-fg2);cursor:pointer;
+  transition:background-color var(--fv-dur-1,160ms),color var(--fv-dur-1,160ms),transform 90ms var(--iv-ease)}
+.fv-iv .fv-iv-prompt-bar .fv-ed-expand:hover{background:var(--fv-ctl-hover);color:var(--fv-fg)}
+.fv-iv .fv-iv-prompt-bar .fv-ed-expand:active{transform:scale(.96);transition-duration:0s}
+.fv-iv .fv-iv-prompt-bar .fv-iv-enhance-tool:not([aria-pressed=true]){color:var(--fv-fg2)}
 .fv-iv .fv-iv-prompt-bar .fv-iv-text-btn{height:28px;padding:0 8px;font-size:var(--fv-fs-1,12px);color:var(--fv-fg3)}
 /* The count (shown from 1600 characters) stays on one line at its full width; the empty space before it gives way first. */
 .fv-iv .fv-iv-prompt-count{flex:none;white-space:nowrap;font-size:var(--fv-fs-1,12px);color:var(--fv-fg3);font-variant-numeric:tabular-nums}
