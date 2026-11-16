@@ -2,6 +2,7 @@ import { api } from '../../scripts/api.js';
 import { setLauncherPresent, setOfflineInstall } from './repair_hint.js';
 import { issueButton } from './issue_button.js';
 import './glass/library.js';
+import { hasWhatsNew } from './whatsnew_pages.js';
 
 // Every platform downloads from one release: the latest vX.Y.Z.
 const releasePage = 'https://github.com/FlashML-org/FreeVideo/releases/latest';
@@ -246,7 +247,7 @@ function fillNotes(body, cn) {
         body.append(empty, issueButton(t, () => ({where: ['Version information', '版本信息'], message})));
         if (!started) void checkUpdates();
     }
-    return /^0\.5\./.test(productVersion() || '');
+    return hasWhatsNew(productVersion());
 }
 export function releaseNotesInto(body, cn, {onNews = () => {}} = {}) {
     body.classList.add('fv-release-body');

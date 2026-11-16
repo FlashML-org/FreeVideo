@@ -20,8 +20,10 @@ export const LINES = [
     [['The rain seems to be letting up.', '雨好像小了。']],
 ];
 
+// A page is shown from the version in its `since` on, and `seen` is the record it leaves once seen: [key, value] in local
+// storage. The two 0.5 pages keep the records they had in 0.5, so nobody who saw them sees them again.
 export const PAGES = [
-    {id: 'overview', title: ['0.5.0: A fully upgraded sound system', '0.5.0 声音系统全面升级'], length: 11000, height: 400, list: [
+    {id: 'overview', since: '0.5.0', seen: ['freevideo.whatsnew-seen', '0.5'], title: ['0.5.0: A fully upgraded sound system', '0.5.0 声音系统全面升级'], length: 11000, height: 400, list: [
         ['Separate tracks: dialogue, music, ambience', '分离音轨：人声、音乐、环境声'], ['Replace music: from a text description', '替换配乐：根据文字描述重新生成'],
         ['Add music: generated to fit the selected length', '添加配乐：按选中的长度生成'], ['Edit lines: only changed lines are redubbed', '修改台词：只为改过的台词重新配音'],
         ["Dub: in the original speaker's voice", '配音：沿用原说话人的声音'], ['Record: onto an audio track', '录音：录制到声音轨'],
@@ -44,9 +46,29 @@ export const PAGES = [
         [13400, {bar: {phase: 'recording'}, rec: {id: 'take', from: .3, to: .52, ms: 3000}, play: [.3, .52, 3000]}],
         [16500, {bar: {mode: 'idle', phase: null, text: null, button: ['Generate', '生成'], ph: ['Describe this part', '描述这一段']}, select: null, lit: []}]]},
     // The picture page comes from 0.5.1: one real H3 Image output (the tea poster), with its prompt typed over it.
-    {id: 'image', kind: 'still', patch: 1, title: ['H3 Image', 'H3 Image'],
+    {id: 'image', kind: 'still', since: '0.5.1', seen: ['freevideo.whatsnew-seen-image', '1'], open: 'image', title: ['H3 Image', 'H3 Image'],
         poster: {src: 'assets/image/h3-7.webp', prompt: ['A quiet Chinese poster: tea hills in morning mist, with the brushed title “Tea in the Hills” down the right side',
             '一张清雅的中式海报：晨雾中的层层茶山，右侧竖排毛笔大字“山间茶事”']},
         list: [['Images view: a picture from one sentence', '图像视图：一句话生成图片'], ['Text in pictures, such as poster titles', '图中可写文字，如海报标题'],
             ['The image model can be installed on its own', '可只安装图像模型']]},
 ];
+
+// Versions compare as major.minor.patch; anything after the patch number (a build or a pre-release tag) is ignored.
+const parts = version => {
+    const match = /^v?(\d+)\.(\d+)(?:\.(\d+))?/.exec(String(version ?? '').trim());
+    return match ? [Number(match[1]), Number(match[2]), Number(match[3] || 0)] : null;
+};
+export const atLeast = (version, since) => {
+    const [a, b] = [parts(version), parts(since)];
+    if (!a || !b) return false;
+    for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] > b[i];
+    return true;
+};
+// Every record starts with this, so a page that holds only these has not been used before.
+export const SEEN_PREFIX = 'freevideo.whatsnew-seen';
+export const seenRecord = page => page.seen || [`${SEEN_PREFIX}-${page.id}`, '1'];
+// The pages a version has, in their order; an unknown version has none.
+export const pagesFor = (version, pages = PAGES) => pages.filter(page => atLeast(version, page.since));
+// Those of them not yet seen; read(key) returns the stored value or null.
+export const unseenPages = (version, read, pages = PAGES) => pagesFor(version, pages).filter(page => { const [key, value] = seenRecord(page); return read(key) !== value; });
+export const hasWhatsNew = version => pagesFor(version).length > 0;

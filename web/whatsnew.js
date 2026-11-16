@@ -1,11 +1,9 @@
 // What's new in 0.5: the editor's own track view drawn with the editor's own classes and played once.
 // Nothing is recorded; the picture is a placeholder, the tracks, clips, progress and waveforms are the real styles.
-import {PAGES, LINES} from './whatsnew_pages.js';
+import {PAGES, LINES, SEEN_PREFIX, seenRecord, unseenPages, hasWhatsNew} from './whatsnew_pages.js';
 import {PEAKS} from './whatsnew_peaks.js';
 import './glass/library.js';
 
-const KEY = 'freevideo.whatsnew-seen';
-const SERIES = '0.5';
 const el = (tag, text, cls) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; };
 const svg = (tag, attrs = {}) => { const e = document.createElementNS('http://www.w3.org/2000/svg', tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
 const ICON = {video: 'M2 4h16v12H2z M4 13l4-5 4 4 2-2 3 4', audio: 'M2 8h4l4-4v12l-4-4H2z M13 6c4 2 4 6 0 8 M13 9c1 1 1 1 0 2'};
@@ -253,15 +251,11 @@ export function play(stage, page, reduce) {
     return () => { dead = true; timers.forEach(clearTimeout); };
 }
 
-// Two records: the 0.5 sound page, and the 0.5.1 picture page, which people who already saw the sound page get once more.
-const IMAGE_KEY = 'freevideo.whatsnew-seen-image';
+// Each page keeps its own record of being seen (whatsnew_pages.js); an upgrade shows the pages of the running version
+// that have no record yet, so an upgrade across several versions shows every page it skipped, newest first.
 const read = key => { try { return localStorage.getItem(key); } catch { return null; } };
-const seen = page => page.id === 'image' ? read(IMAGE_KEY) === '1' : read(KEY) === SERIES;
-const remember = pages => { try { for (const page of pages) localStorage.setItem(page.id === 'image' ? IMAGE_KEY : KEY, page.id === 'image' ? '1' : SERIES); } catch { /* Shown again next time. */ } };
-const patch = version => Number((/^0\.5\.(\d+)/.exec(version || '') || [])[1] ?? -1);
-// The pages a version of the product has: the sound page from 0.5.0, the picture page from 0.5.1.
-const forVersion = version => PAGES.filter(page => patch(version) >= (page.patch || 0));
-const unseen = version => forVersion(version).filter(page => !seen(page));
+const remember = pages => { try { for (const page of pages) localStorage.setItem(...seenRecord(page)); } catch { /* Shown again next time. */ } };
+const unseen = version => unseenPages(version, read);
 
 export function showWhatsNew(cn, {openedBy = 'user', pages = PAGES} = {}) {
     const t = (en, zh) => cn ? zh : en;
@@ -298,7 +292,7 @@ export function showWhatsNew(cn, {openedBy = 'user', pages = PAGES} = {}) {
     function show(at) {
         stop(); stop = () => {}; listNode?.remove();
         index = at; const page = pages[at];
-        title.textContent = page.title[cn ? 1 : 0]; next.hidden = at === pages.length - 1; open.hidden = page.kind !== 'still';
+        title.textContent = page.title[cn ? 1 : 0]; next.hidden = at === pages.length - 1; open.hidden = page.open !== 'image';
         [...dots.children].forEach((dot, i) => dot.classList.toggle('on', i === at));
         dots.setAttribute('aria-label', t(`Page ${at + 1} of ${pages.length}`, `第 ${at + 1} 页，共 ${pages.length} 页`));
         if (page.kind === 'still' && page.poster) {
@@ -364,7 +358,7 @@ export function showWhatsNew(cn, {openedBy = 'user', pages = PAGES} = {}) {
     return () => { if (dialog.open) dialog.close(); };
 }
 
-// The first open after upgrading to 0.5 or 0.5.1: the pages not yet seen, once, and not while something is being generated.
+// The first open after an upgrade: the pages not yet seen, once, and not while something is being generated.
 export function maybeShowWhatsNew({cn, version, busy}) {
     const pages = unseen(version);
     if (!pages.length) return false;
@@ -378,7 +372,7 @@ const usedBefore = () => {
     try {
         for (let index = 0; index < localStorage.length; index++) {
             const key = localStorage.key(index) || '';
-            if (key !== KEY && key !== IMAGE_KEY && key !== 'freevideo.page-retry' && (key.startsWith('freevideo.') || key.startsWith('fv-'))) return true;
+            if (!key.startsWith(SEEN_PREFIX) && key !== 'freevideo.page-retry' && (key.startsWith('freevideo.') || key.startsWith('fv-'))) return true;
         }
     } catch { /* Unreadable storage: treat as an upgrade rather than hide the news. */ return true; }
     return false;
@@ -397,4 +391,4 @@ export function startWhatsNew({api, cn, productVersion}) {
     }, 5000);
 }
 
-export const hasWhatsNew = version => !!version && version.startsWith(SERIES + '.');
+export {hasWhatsNew};
