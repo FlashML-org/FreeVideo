@@ -1392,6 +1392,10 @@ class Session:
             value = state.get('error') or ''
             if (alias_failure(value) or (state is self.upgrade.state and state.get('status') == 'failed')) and value not in raw:
                 raw += ('\n' if raw else '') + value
+        if 'NVIDIA driver/nvidia-smi is missing.' in raw:
+            # Six reports said the driver was missing without saying whether a card was there.
+            from .display_adapters import adapters, report_line
+            raw += ('\n' if raw else '') + report_line(adapters())
         pack_report = self.image_pack_report()
         if pack_report:
             # The existing ZIP exporter retains launcher/error.txt in full.
@@ -2668,8 +2672,13 @@ class Session:
             if line(zh, names):
                 failure['note'] = line(zh, names)
             if only_other_vendors(names):
+                # No NVIDIA card is listed: the card says what FreeVideo needs, and the note would repeat it.
                 from .failure_details import UNSUPPORTED_VENDOR
                 failure['title'], failure['action'] = UNSUPPORTED_VENDOR[1 if zh else 0]
+                failure.pop('note', None)
+            elif names:
+                from .failure_details import DRIVER_FOR_LISTED_CARD
+                failure['title'], failure['action'] = DRIVER_FOR_LISTED_CARD[1 if zh else 0]
         if failure.get('path'):
             # The local repair instruction needs the actual file location; copied details stay redacted.
             from .model_repair import MISMATCH_PATH

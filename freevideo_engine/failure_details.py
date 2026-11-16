@@ -454,12 +454,19 @@ def model_mismatch_package(value, zh=False):
     return pack_title(paths[-1], zh) if paths else pack_title('models/encoder/', zh)
 
 
-# Shown instead of the missing-driver card when the system lists only AMD or Intel graphics.
+# Shown instead of the missing-driver card when the system lists no NVIDIA graphics card.
 UNSUPPORTED_VENDOR = (
-    ('FreeVideo supports NVIDIA graphics cards only',
-     'Installing a driver cannot change this. Use FreeVideo on a computer with an NVIDIA graphics card.'),
-    ('FreeVideo 只支持 NVIDIA 显卡',
-     '安装驱动无法改变这一点，请在装有 NVIDIA 显卡的电脑上使用 FreeVideo。'))
+    ('No NVIDIA graphics card was found',
+     'FreeVideo requires an NVIDIA RTX 30 series or newer graphics card.'),
+    ('未找到 NVIDIA 显卡',
+     'FreeVideo 需要 NVIDIA RTX 30 系列或更新的显卡。'))
+
+# The system lists an NVIDIA card but no driver answers.
+DRIVER_FOR_LISTED_CARD = (
+    ('No NVIDIA driver was found',
+     'Install the NVIDIA driver, version 580 or newer, restart the computer, then click "Retry installation".'),
+    ('未找到 NVIDIA 显卡驱动',
+     '请安装 580 或更新版本的 NVIDIA 显卡驱动，重启电脑后点击“重试安装”。'))
 
 
 # What each download source returned, as one short line per host and route on
