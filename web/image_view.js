@@ -369,7 +369,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     const infoPop = el('div', 'fv-iv-info'); infoPop.setAttribute('aria-label', t('About this picture', '图片信息'));
     infoBtn.addEventListener('click', () => { if (rightTab === 'info' && column.dataset.collapsed !== 'true') setRightTab('works'); else { setRightTab('info'); setPanel('right', true); } });
     info_.append(infoBtn, infoText, doneReport);
-    const editThis = button('fv-iv-text-btn fv-image-action', {iconName: 'edit', label: t('Edit this', '改这张'), name: t('Edit this', '改这张'), use: t('Make a new version: it becomes Image 1', '以这张为图 1，描述要改的地方')});
+    const editThis = button('fv-iv-text-btn fv-image-action', {iconName: 'edit', label: t('Edit', '编辑'), name: t('Edit', '编辑'), use: t('Make a new version: it becomes Image 1', '以这张为图 1，描述要改的地方')});
     const asReference = button('fv-iv-text-btn fv-image-action', {iconName: 'asref', label: t('Use as reference', '用作参考图'), name: t('Use as reference', '用作参考图'), use: t('Add it to the reference pictures', '加入参考图')});
     const favBtn = button('fv-iv-icon-btn fv-iv-fav-btn', {iconName: 'star'});
     const save = el('a', 'fv-iv-icon-btn fv-iv-btn fv-image-action'); save.setAttribute('download', ''); save.append(icon('down'));
@@ -1041,7 +1041,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             const full = references.length >= most() || cap_(model) === 0;
             editThis.disabled = asReference.disabled = full;
             const why = cap_(model) === 0 ? t(`${model.short} takes no references; choose the other model`, `${model.short} 不用参考图，请换另一个模型`) : t('The reference slots are full; remove one', '参考图已满，先移除一张');
-            tip(editThis, t('Edit this', '改这张'), t('Make a new version: it becomes Image 1', '以这张为图 1，描述要改的地方'));
+            tip(editThis, t('Edit', '编辑'), t('Make a new version: it becomes Image 1', '以这张为图 1，描述要改的地方'));
             tip(asReference, t('Use as reference', '用作参考图'), t('Add it to the reference pictures', '加入参考图'));
             for (const b of [editThis, asReference]) { if (full) b.dataset.fvTipWhy = why; else delete b.dataset.fvTipWhy; }
             const fav = meta.isFav(shownFile); favBtn.setAttribute('aria-pressed', String(fav));
