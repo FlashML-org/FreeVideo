@@ -150,6 +150,15 @@
 .fv-iv .fv-image-enhance:not([data-off=true]){border:0;border-radius:0;background:none;overflow:visible}
 .fv-iv .fv-image-enhance .fv-enhance-bar{min-height:32px;padding:0 0 4px;border-bottom:0}
 .fv-iv .fv-image-enhance .fv-enhance-toggle{align-items:center;line-height:16px}
+/* The switch is the Enhance key in the prompt's tool row (image_view.js); the bar keeps the versions, Rewrite and Cancel
+   and shows only while one of them is there. */
+.fv-iv .fv-image-enhance .fv-enhance-bar>.fv-enhance-toggle{display:none}
+.fv-iv .fv-image-enhance .fv-enhance-bar:not(:has(>:not([hidden]):not(.fv-enhance-toggle))){display:none}
+.fv-iv .fv-iv-prompt-bar .fv-iv-enhance-tool svg{flex:none}
+.fv-iv .fv-iv-prompt-bar .fv-iv-enhance-tool[aria-pressed=true]{color:var(--fv-accent-ink)}
+/* While the count shows (from 1600 characters) the row's keys keep their icons only (their hover cards name them), so
+   the count, Clear and Expand fit on the row's one line. */
+.fv-iv .fv-iv-prompt-bar:has(.fv-iv-prompt-count:not([hidden])) .fv-iv-text-btn .fv-iv-btn-label{display:none}
 .fv-iv .fv-image-enhance .fv-iv-prompt:focus-visible{box-shadow:inset 0 0 0 1.5px var(--fv-accent-line)}
 /* the helper's status line (with its report button) only while the helper is on */
 .fv-iv .fv-image-enhance:not(:has(.fv-enhance-toggle input:checked)) .fv-enhance-status{display:none}

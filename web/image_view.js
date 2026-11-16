@@ -267,7 +267,9 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     const sketchAdd = button('fv-iv-text-btn fv-iv-sketch-tool', {iconName: 'edit', label: t('Sketch', '画草图'), name: t('Draw a sketch', '画草图'),
         use: t('Draw the layout on a blank canvas of this frame; it becomes Image 1', '在当前画幅的空白画布上画出构图，作为图 1')});
     sketchAdd.addEventListener('click', () => void drawSketch());
-    promptBar.append(refAdd, sketchAdd, el('span', 'fv-iv-grow'), promptCount, clearPrompt, expand.element);
+    // Prompt enhancement is a key in this row beside References and Sketch, lit while on (no switch row of its own).
+    enhancer.chip.classList.add('fv-iv-text-btn', 'fv-iv-enhance-tool'); enhancer.chip.querySelector('span')?.classList.add('fv-iv-btn-label');
+    promptBar.append(refAdd, sketchAdd, enhancer.chip, el('span', 'fv-iv-grow'), promptCount, clearPrompt, expand.element);
     // "@" in the box lists the reference pictures; a chosen one is written as its mention and stays bound to that picture.
     const mentions = promptMentions({prompt, host: dialog, pictures: () => references.map((r, at) => ({url: r.url, label: label(at + 1)})), onAdd: () => openRefMenu(refAdd)});
     clearPrompt.addEventListener('click', () => { prompt.value = ''; prompt.dispatchEvent(new Event('input', {bubbles: true})); prompt.focus(); });
