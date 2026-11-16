@@ -71,7 +71,7 @@
    pointed at or holds the focus; the crop key always, since it says the frame will be cropped. */
 .fvs-tray .fv-mt .fv-card>.fv-mt-keys{position:absolute;top:var(--fv-sp-4);right:var(--fv-sp-4);z-index:2;display:flex;gap:var(--fv-sp-4);pointer-events:none;opacity:0;transition:opacity .16s ease-out}
 .fvs-tray .fv-mt .fv-card:is(:hover,:focus-within)>.fv-mt-keys{opacity:1}
-.fvs-tray .fv-mt .fv-card>.fv-mt-keys>button,.fvs-tray .fv-mt .fv-card .fv-shape-note>button{pointer-events:auto;flex:none;display:grid;place-items:center;width:24px!important;height:24px!important;min-height:24px!important;padding:0!important;border:0!important;border-radius:var(--fv-r-xs)!important;background:var(--fv-on-pic)!important;color:var(--fv-on-fill)!important;font-size:0!important;line-height:0}
+.fvs-tray .fv-mt .fv-card>.fv-mt-keys>button,.fvs-tray .fv-mt .fv-card .fv-shape-note>button{pointer-events:auto;flex:none;display:flex!important;align-items:center;justify-content:center;gap:0!important;width:24px!important;height:24px!important;min-height:24px!important;padding:0!important;border:0!important;border-radius:var(--fv-r-xs)!important;background:var(--fv-on-pic)!important;color:var(--fv-on-fill)!important;font-size:0!important;line-height:0}
 .fvs-tray .fv-mt .fv-card>.fv-mt-keys>button::after,.fvs-tray .fv-mt .fv-card .fv-shape-note>button::after{content:"";position:absolute;inset:-4px}
 .fvs-tray .fv-mt .fv-card>.fv-mt-keys>button,.fvs-tray .fv-mt .fv-card .fv-shape-note>button{position:relative}
 .fvs-tray .fv-mt .fv-card>.fv-mt-keys>button:hover:not(:disabled),.fvs-tray .fv-mt .fv-card .fv-shape-note>button:hover{filter:brightness(1.3)}
@@ -106,10 +106,10 @@
 .fvs-tray .fv-mt .fv-mt-slot-empty[data-over=true]{border-color:var(--fv-accent-line);background:var(--fv-accent-soft)}
 .fvs-tray .fv-mt .fv-mt-slot-name{font-size:var(--fv-fs-1);line-height:16px;color:var(--fv-fg2)}
 .fvs-tray .fv-mt .fv-mt-slot-keys{display:flex;justify-content:center;gap:var(--fv-sp-4)}
-.fvs-tray .fv-mt .fv-mt-slot-keys>button{display:grid!important;place-items:center;width:32px!important;height:32px!important;min-height:32px!important;padding:0!important;border:0!important;border-radius:var(--fv-r-sm)!important;background:var(--fv-ctl-bg)!important;color:var(--fv-fg2)!important;font-size:0!important;line-height:0}
+.fvs-tray .fv-mt .fv-mt-slot-keys>button{display:flex!important;align-items:center;justify-content:center;gap:0!important;width:32px!important;height:32px!important;min-height:32px!important;padding:0!important;border:0!important;border-radius:var(--fv-r-sm)!important;background:var(--fv-ctl-bg)!important;color:var(--fv-fg2)!important;font-size:0!important;line-height:0}
 .fvs-tray .fv-mt .fv-mt-slot-keys>button:hover:not(:disabled){background:var(--fv-ctl-hover)!important;color:var(--fv-fg)!important}
 .fvs-tray .fv-mt .fv-mt-slot-keys>button::before{content:"";width:16px;height:16px;background:currentColor;-webkit-mask:var(--fv-mt-icon) center/16px no-repeat;mask:var(--fv-mt-icon) center/16px no-repeat}
-.fvs-tray .fv-mt .fv-mt-computer{--fv-mt-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='3' width='12' height='8' rx='1.5'/%3E%3Cpath d='M6 13.5h4M8 11v2.5'/%3E%3C/svg%3E")}
+.fvs-tray .fv-mt .fv-mt-computer{--fv-mt-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='2.75' width='12' height='8' rx='1.5'/%3E%3Cpath d='M6 13.25h4M8 10.75v2.5'/%3E%3C/svg%3E")}
 .fvs-tray .fv-mt .fv-mt-saved,.fvs-tray .fv-mt .fv-mt-browse{--fv-mt-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2.5' y='2.5' width='4.5' height='4.5' rx='1'/%3E%3Crect x='9' y='2.5' width='4.5' height='4.5' rx='1'/%3E%3Crect x='2.5' y='9' width='4.5' height='4.5' rx='1'/%3E%3Crect x='9' y='9' width='4.5' height='4.5' rx='1'/%3E%3C/svg%3E")}
 .fvs-tray .fv-mt .fv-mt-cards:has(>.fv-mt-slot-empty)>.fv-empty{display:none}
 /* Nothing can be added here (the list comes from connected inputs, or the panel has no node): one quiet line. */
@@ -162,7 +162,7 @@
 .fvs-tray .fv-mt .fv-mt-actions>.fv-mt-audio{--fv-mt-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 11.5V3.5l6.5-1.5v8'/%3E%3Ccircle cx='4.25' cy='11.75' r='1.75'/%3E%3Ccircle cx='10.75' cy='10.25' r='1.75'/%3E%3C/svg%3E")}
 /* When their words do not fit on the line (a narrow window, longer words), the AI and audio keys show their pictures only
    (their names are in the hover cards). */
-.fvs-tray .fv-mt .fv-mt-actions[data-compact=true]>:is(.fv-mt-ai,.fv-mt-audio){width:32px;padding:0!important;justify-content:center;font-size:0!important}
+.fvs-tray .fv-mt .fv-mt-actions[data-compact=true]>:is(.fv-mt-ai,.fv-mt-audio){width:32px;padding:0!important;justify-content:center;gap:0!important;font-size:0!important;line-height:0!important}
 .fvs-tray .fv-mt .fv-mt-actions[data-compact=true]>:is(.fv-mt-ai,.fv-mt-audio)::before{color:var(--fv-fg)}
 
 /* 4. Characters, scenes and props: a third of the width each; the group's title, then its small square pictures and its
@@ -177,7 +177,7 @@
 .fvs-tray .fv-mt .fv-cast-library:not([data-kind=character]) .fv-cast-avatar>img{object-position:50% 50%!important}
 .fvs-tray .fv-mt .fv-cast-library .fv-cast-avatar>.fv-cast-initial{display:grid;place-items:center;width:100%;height:100%;font-size:var(--fv-fs-1);color:var(--fv-fg2)}
 .fvs-tray .fv-mt .fv-cast-library .fv-cast-add{flex:1 1 56px;min-width:0;display:flex;align-items:center;justify-content:center;gap:var(--fv-sp-4);width:auto;height:32px!important;min-height:32px!important;padding:0 var(--fv-sp-8)!important;border:0;border-radius:var(--fv-r-sm);background:var(--fv-ctl-bg);color:var(--fv-fg2);font-size:var(--fv-fs-2);line-height:16px;font-weight:var(--fv-fw-1,400)}
-.fvs-tray .fv-mt .fv-cast-library .fv-cast-add::after{content:attr(data-fv-mt-short);font-size:var(--fv-fs-1);line-height:16px;white-space:nowrap}
+.fvs-tray .fv-mt .fv-cast-library .fv-cast-add::after{content:attr(data-fv-mt-short);font-size:var(--fv-fs-1);line-height:16px;white-space:nowrap;translate:0 -.5px}
 .fvs-tray .fv-mt .fv-cast-library .fv-cast-add:not([data-fv-mt-short])::after{content:attr(aria-label)}
 .fvs-tray .fv-mt .fv-cast-library .fv-cast-add:hover{background:var(--fv-ctl-hover);color:var(--fv-fg)}
 .fvs-tray .fv-mt>.fv-cast-libraries>:not(.fv-cast-library){grid-column:1/-1}
@@ -194,7 +194,7 @@
 .fvs-tray .fv-mt-works{display:grid;gap:var(--fv-sp-12);min-width:0}
 .fvs-tray .fv-mt-works[hidden]{display:none!important}
 .fvs-tray .fv-mt-works-head{display:flex;align-items:center;gap:var(--fv-sp-8);min-height:32px;margin-bottom:calc(-1 * var(--fv-sp-4))}
-.fvs-tray .fv-mt-works .fv-mt-back{flex:none;display:grid;place-items:center;width:32px!important;height:32px!important;min-height:32px!important;margin:0 0 0 calc(-1 * var(--fv-sp-8));padding:0!important;border:0!important;border-radius:var(--fv-r-sm)!important;background:none!important;color:var(--fv-fg2)!important}
+.fvs-tray .fv-mt-works .fv-mt-back{flex:none;display:flex!important;align-items:center;justify-content:center;width:32px!important;height:32px!important;min-height:32px!important;margin:0 0 0 calc(-1 * var(--fv-sp-8));padding:0!important;border:0!important;border-radius:var(--fv-r-sm)!important;background:none!important;color:var(--fv-fg2)!important}
 .fvs-tray .fv-mt-works .fv-mt-back:hover{background:var(--fv-ctl-hover)!important;color:var(--fv-fg)!important}
 .fvs-tray .fv-mt-works .fv-mt-back::before{content:"";width:16px;height:16px;background:currentColor;
   -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9.5 3.5-4.5 4.5 4.5 4.5'/%3E%3C/svg%3E") center/16px no-repeat;

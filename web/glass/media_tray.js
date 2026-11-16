@@ -353,7 +353,6 @@ function markNow(panel) {
         const {generate, audio} = markKeys(panel, toolbar);
         for (const key of [generate, audio]) if (key && key.parentElement !== panel.fvMtActions) panel.fvMtActions.append(key);
     }
-    for (const old of cards.querySelectorAll(':scope > .fv-mt-slot-empty')) old.remove();
     const tiles = [...cards.querySelectorAll(':scope > .fv-card')];
     for (const card of tiles) markCard(card);
     const media = mediaOf(panel), rows = rowsOf(media);
@@ -362,8 +361,13 @@ function markNow(panel) {
     for (const [slot, order] of [['first', '-2'], ['last', '-1']]) {
         const at = known ? rows.findIndex(row => row.role === slot && on(row)) : -1;
         for (const [index, card] of tiles.entries()) if (card.dataset.fvSlot === slot && index !== at) { delete card.dataset.fvSlot; card.style.order = ''; }
-        if (at >= 0) { tiles[at].dataset.fvSlot = slot; tiles[at].style.order = order; }
-        else if (media) { const empty = emptySlot(panel, slot); empty.style.order = order; cards.append(empty); }
+        // An empty slot is made once and kept (so a key keeps its focus while the list repaints around it).
+        const slots = panel.fvMtSlots ||= {};
+        if (at >= 0) { tiles[at].dataset.fvSlot = slot; tiles[at].style.order = order; slots[slot]?.remove(); }
+        else if (media) {
+            const empty = slots[slot] ||= emptySlot(panel, slot); empty.style.order = order;
+            if (empty.parentElement !== cards) cards.append(empty);
+        } else slots[slot]?.remove();
     }
     // Frames and references cannot be used together: while a frame is on, the references that are also on are held
     // back in plain sight, and one key beside the remark turns them off.
