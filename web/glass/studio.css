@@ -36,6 +36,8 @@
   transition:width var(--fv-dur-3) var(--fv-ease-out),height var(--fv-dur-3) var(--fv-ease-out)}
 .fv-studio.fv-create .fv-stage[data-empty=true]{background:var(--fv-ctl-bg);outline:1px dashed var(--fv-line2);box-shadow:none}
 .fv-studio.fv-create .fv-stage video,.fv-studio.fv-create .fv-stage img{background:rgb(var(--fv-solid1))}
+/* The video on the stage plays or pauses on a click (studio.js). */
+.fv-studio.fv-create .fv-stage .fv-stage-media video:not([data-leaving]){cursor:pointer}
 .fv-studio.fv-create .fv-body.fv-recent-resizing .fv-stage,.fv-studio.fv-create .fv-body.fv-recent-resizing .fv-preview-space{transition:none}
 .fv-studio.fv-create .fv-preview-badge{top:var(--fv-sp-12);left:var(--fv-sp-12);padding:var(--fv-sp-2) var(--fv-sp-8);font-size:var(--fv-fs-1);border-radius:var(--fv-rad-pill);
   color:#fff;background:rgb(10 12 16 / .62);border:0;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}

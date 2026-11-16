@@ -1865,6 +1865,11 @@ export function openStudio(node, {extendFrom = null} = {}) {
         const cover = /^FreeVideo\/\d{4}-\d{2}-\d{2}\/[0-9a-f]{32}\/video\.mp4$/.test(r.video) && !r.preview ? videoThumbnailURL(r) : '';
         video.dataset.pending = 'true'; stageMedia.prepend(video); lastShown.set(node, r); rememberShown(r);
         playerBar = attachPlayer(video, playerRow, {t});
+        // A click on the picture plays or pauses it, as the play bar's key does.
+        video.addEventListener('click', event => {
+            if (event.button !== 0 || video.dataset.leaving || !video.isConnected) return;
+            if (video.paused) video.play().catch(() => {}); else video.pause();
+        });
         const take = () => { if (!video.dataset.pending) return; delete video.dataset.pending; if (kept?.isConnected) kept.remove(); };
         // The view reports ready once the first frame is there, so the first frame the shell fades in is the picture;
         // over a slow link it waits up to 700 ms (inside the shell's 800 ms), then fades in the stage's plain colour.
