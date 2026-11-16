@@ -715,7 +715,7 @@ export function openLibrary(t, options = {}) {
                 frame.style.setProperty('--fv-ratio', String(picture.naturalWidth / picture.naturalHeight));
                 if (selected === workKey(row)) geometry.textContent = pictureDimensions(row);
             };
-            picture.onerror = () => { if (selected === workKey(row)) { const note = el('p', null, 'fv-library-message'); fault(note, t('This picture can no longer be read. It may have been moved or deleted.', '这张图片已无法读取，可能已被移动或删除。')); frame.replaceChildren(note); } };
+            picture.onerror = () => { if (selected === workKey(row)) frame.replaceChildren(pictureProblem()); };
             if (row.size?.width) frame.style.setProperty('--fv-ratio', String(row.size.width / row.size.height)); else frame.style.setProperty('--fv-ratio', '1');
             media.append(picture, big); frame.append(media);
             return;
@@ -728,21 +728,24 @@ export function openLibrary(t, options = {}) {
         if (row.preview) media.append(previewBadge(row, t));
         frame.append(media);
         player.addEventListener('error', event => {
-            if (!disposed && selected === workKey(row) && event.currentTarget === player) {
-                const note = el('p', videoUnavailableText(t), 'fv-library-message');
-                // The player only says it failed: its error code and what the file's address answers tell a moved or
-                // empty file from an unsupported encoding, and travel with the feedback.
-                let detail = 'media-error-' + (player.error?.code ?? 'none');
-                const source = player.currentSrc || player.src;
-                fault(note, videoUnavailableText(t), undefined, () => detail);
-                frame.replaceChildren(note);
-                fetch(source, {method: 'HEAD', signal: AbortSignal.timeout(5000)}).then(response => {
-                    const type = (response.headers.get('content-type') || '').replace(/[^\w./+-]/g, '').slice(0, 40);
-                    detail += ` http-${response.status} length-${response.headers.get('content-length') ?? 'none'} type-${type || 'none'}`;
-                }, () => { detail += ' head-failed'; });
-            }
+            if (!disposed && selected === workKey(row) && event.currentTarget === player) frame.replaceChildren(videoProblem(player));
         }, {once: true});
     }
+    // A video that cannot be opened, in the details and on the stage: the sentence and the feedback button.
+    function videoProblem(video) {
+        const note = el('p', null, 'fv-library-message');
+        // The player only says it failed: its error code and what the file's address answers tell a moved or
+        // empty file from an unsupported encoding, and travel with the feedback.
+        let detail = 'media-error-' + (video.error?.code ?? 'none');
+        const source = video.currentSrc || video.src;
+        fault(note, videoUnavailableText(t), undefined, () => detail);
+        fetch(source, {method: 'HEAD', signal: AbortSignal.timeout(5000)}).then(response => {
+            const type = (response.headers.get('content-type') || '').replace(/[^\w./+-]/g, '').slice(0, 40);
+            detail += ` http-${response.status} length-${response.headers.get('content-length') ?? 'none'} type-${type || 'none'}`;
+        }, () => { detail += ' head-failed'; });
+        return note;
+    }
+    const pictureProblem = () => { const note = el('p', null, 'fv-library-message'); fault(note, t('This picture can no longer be read. It may have been moved or deleted.', '这张图片已无法读取，可能已被移动或删除。')); return note; };
     const pictureDimensions = row => [t('Picture', '图片'), row.size?.width ? `${row.size.width} × ${row.size.height}` : ''].filter(Boolean).join(' · ');
     // The hover tips of the shared action bar, which the studio's module builds.
     function tipActions(root) {
@@ -2160,6 +2163,8 @@ export function openLibrary(t, options = {}) {
             if (cover) { const stand = el('img', null, 'fv-cover'); stand.alt = ''; stand.draggable = false; stand.src = cover; layer.append(stand); }
             media = el('img', null, 'fv-full'); media.alt = ''; media.draggable = false; media.decoding = 'async'; media.src = pictureURL(row);
             media.addEventListener('load', () => { media.dataset.loaded = 'true'; drawn(); if (!row.size) row.size = {width: media.naturalWidth, height: media.naturalHeight}; spec.textContent = sizeOf(); });
+            // A picture that cannot be read says so where it would be, with the feedback button, as in the details.
+            media.addEventListener('error', () => { if (!disposed && viewing === key && layer.isConnected) { layer.replaceChildren(pictureProblem()); drawn(); } }, {once: true});
             if (!cover) media.dataset.loaded = 'true';
             layer.append(media); zoomable(stage, media);
         } else {
@@ -2171,6 +2176,12 @@ export function openLibrary(t, options = {}) {
             media.addEventListener('click', () => { if (media.paused) media.play().catch(() => {}); else media.pause(); });
             // The video and its play bar as one block at the video's displayed width, centred.
             const group = el('div', null, 'fv-library-viewer-group'); group.append(media, playBar(media)); layer.append(group);
+            // A video that cannot be opened: the sentence and the feedback button in its place, as in the details.
+            media.addEventListener('error', () => {
+                if (disposed || viewing !== key || !layer.isConnected) return;
+                const note = videoProblem(media);
+                media.pause(); media.removeAttribute('src'); media.load(); group.replaceWith(note); drawn();
+            }, {once: true});
             const g = row.geometry || {};
             const fit = () => {
                 const w0 = media.videoWidth || g.width || 16, h0 = media.videoHeight || g.height || 9, box = stage.getBoundingClientRect();
