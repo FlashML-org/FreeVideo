@@ -2836,7 +2836,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
         return target.closest('dialog') !== dialog;
     };
     dialog.addEventListener('pointerdown', event => { if (!keepsTray(event.target)) consoleUI.close({animate: true}); }, true);
-    dialog.addEventListener('focusin', event => { if (!keepsTray(event.target)) consoleUI.close({animate: true}); });
+    // A press on words that take no focus (a switched-off LoRA row's "Click to turn on", a reason) leaves the focus on the
+    // panel itself: that is no move elsewhere, and the press above has already decided.
+    dialog.addEventListener('focusin', event => { if (event.target !== dialog && !keepsTray(event.target)) consoleUI.close({animate: true}); });
     // ── The console: the prompt, a row of chips and Generate. Each settings group moves, as it is, into a tray
     // above the console; temporary lines go to fixed slots (status slot above the console, the bar under the picture).
     runbar.replaceChildren(runrow);
