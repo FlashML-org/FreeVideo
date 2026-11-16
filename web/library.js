@@ -424,9 +424,11 @@ export function openLibrary(t, options = {}) {
             try {
                 const {createCastRoom} = await import('./cast_room.js');
                 if (disposed || tab !== 'cast') return;
-                castRoom = createCastRoom({api, t, viewURL: view});
-                dialog.insertBefore(castRoom.element, viewer);
-            } catch (error) { console.warn('FreeVideo cast room:', error); showTab('works'); return; }
+                const room = createCastRoom({api, t, viewURL: view});
+                // On the stage the viewer sits in the page body, not in the dialog.
+                if (viewer.parentNode === dialog) dialog.insertBefore(room.element, viewer); else dialog.append(room.element);
+                castRoom = room;
+            } catch (error) { castRoom = null; console.warn('FreeVideo cast room:', error); showTab('works'); return; }
         }
         if (tab !== 'cast') return;
         body.hidden = true; castRoom.element.hidden = false; castRoom.refresh();
