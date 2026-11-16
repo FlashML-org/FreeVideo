@@ -152,6 +152,8 @@
 .fvs-tray .fv-mt .fv-mt-actions>button{flex:none;display:inline-flex!important;align-items:center;gap:var(--fv-sp-8);height:32px!important;min-height:32px!important;margin:0;padding:0 var(--fv-sp-12)!important;border:0!important;border-radius:var(--fv-r-sm)!important;
   background:var(--fv-ctl-bg)!important;box-shadow:none!important;color:var(--fv-fg)!important;font-size:var(--fv-fs-2)!important;line-height:20px;font-weight:var(--fv-fw-1,400)!important;white-space:nowrap}
 .fvs-tray .fv-mt .fv-mt-actions>button:hover:not(:disabled){background:var(--fv-ctl-hover)!important}
+/* (The words of Choose from works sit half a pixel high in their line box, so their ink is on the key's middle.) */
+.fvs-tray .fv-mt .fv-mt-browse-name{translate:0 -.5px}
 .fvs-tray .fv-mt .fv-mt-actions>button:disabled{opacity:.45}
 .fvs-tray .fv-mt .fv-mt-actions>button[hidden]{display:none!important}
 .fvs-tray .fv-mt .fv-mt-actions>button::before{content:"";flex:none;width:16px;height:16px;background:currentColor;color:var(--fv-fg2);-webkit-mask:var(--fv-mt-icon) center/16px no-repeat;mask:var(--fv-mt-icon) center/16px no-repeat}
