@@ -395,17 +395,6 @@ def library(port, jobs, *, limit=24, before=None, query=None, project=None):
     return dict(items=items, next=page['next'])
 
 
-def _copy_response(web, copy, headers):
-    """A file response (ranges included) for a copy that is deleted once it has been sent, or has failed to send."""
-    class CopyResponse(web.FileResponse):
-        async def prepare(self, request):
-            try:
-                return await super().prepare(request)
-            finally:
-                await asyncio.to_thread(Path(self._path).unlink, missing_ok=True)
-    return CopyResponse(copy, headers=headers)
-
-
 def register():
     from aiohttp import web
     from server import PromptServer
@@ -2110,33 +2099,25 @@ def register():
         def read():
             identity = saved_identity(port, request.match_info['day'], request.match_info['run'])
             try:
-                path, name, copy = video_download(port.output_root, identity)
+                path, name = video_download(port.output_root, identity)
             except (OSError, ValueError, TypeError):
                 return None
-            try:
-                if request.headers.get('Range'):
-                    try:
-                        byte_range = request.http_range
-                        size = path.stat().st_size
-                        if byte_range.start is not None and byte_range.start >= size:
-                            raise ValueError
-                    except ValueError:
-                        raise JobError('invalid_range', 'Invalid byte range') from None
-            except BaseException:
-                if copy is not None:
-                    copy.unlink(missing_ok=True)
-                raise
-            return path, name, copy
+            if request.headers.get('Range'):
+                try:
+                    byte_range = request.http_range
+                    size = path.stat().st_size
+                    if byte_range.start is not None and byte_range.start >= size:
+                        raise ValueError
+                except ValueError:
+                    raise JobError('invalid_range', 'Invalid byte range') from None
+            return path, name
         value = await asyncio.to_thread(read)
         if value is None:
             return problem('not_found', 'The saved video is unavailable.', 404, details=[], retryable=False,
                            next='GET /freevideo/agent/v1/library and select an existing video ID.')
-        path, name, copy = value
-        headers = {'Content-Type': 'video/mp4', 'Content-Disposition': 'attachment; filename="%s"' % name,
-                   'Cache-Control': 'private, no-store'}
-        if copy is None:
-            return web.FileResponse(path, headers=headers)
-        return _copy_response(web, copy, headers)
+        path, name = value
+        return web.FileResponse(path, headers={'Content-Type': 'video/mp4',
+            'Content-Disposition': 'attachment; filename="%s"' % name, 'Cache-Control': 'private, no-store'})
 
     @routes.get(PREFIX + '/library/{day}/{run}/thumbnail')
     @guarded
