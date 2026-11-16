@@ -32,22 +32,24 @@
 .fvs-tray .fv-mt .fv-card :is(img,video).fv-preview{position:absolute;inset:0;display:block;width:100%!important;height:100%!important;max-height:none;margin:0!important;aspect-ratio:auto;object-fit:cover!important;object-position:50% 50%;border-radius:0;background:var(--fv-shell-bg)}
 .fvs-tray .fv-mt .fv-card[data-kind=image]:not(.fv-mt-broken) .fv-preview{cursor:pointer}
 .fvs-tray .fv-mt .fv-card .fv-file{display:none}
-.fvs-tray .fv-mt .fv-card>.fv-row:first-of-type{position:absolute;left:0;right:0;bottom:0;z-index:1;display:flex;align-items:center;gap:0;margin:0;padding:0 0 0 var(--fv-sp-4);
-  background:linear-gradient(to top,rgb(0 0 0 / .62),rgb(0 0 0 / .38) 70%,transparent);color:#fff}
-.fvs-tray .fv-mt .fv-card>.fv-row:first-of-type input[type=checkbox]{flex:none;width:16px;height:16px;min-height:16px;margin:0 var(--fv-sp-2) 0 var(--fv-sp-4)}
-.fvs-tray .fv-mt .fv-card>.fv-row:first-of-type .fv-select{flex:1;min-width:0;color:#fff}
+/* A square: the box that turns it on or off in its top-left corner; its use along its foot, across the whole width. */
+.fvs-tray .fv-mt .fv-card>.fv-row:first-of-type{position:absolute;inset:0;z-index:1;display:flex;align-items:flex-end;gap:0;margin:0;padding:0;background:none;color:#fff;pointer-events:none}
+.fvs-tray .fv-mt .fv-card>.fv-row:first-of-type>*{pointer-events:auto}
+.fvs-tray .fv-mt .fv-card:not([data-fv-mt-wide=true])>.fv-row:first-of-type input[type=checkbox]{position:absolute;top:var(--fv-sp-4);left:var(--fv-sp-4);flex:none;width:16px;height:16px;min-height:16px;margin:0;box-shadow:0 0 0 2px rgb(0 0 0 / .25)}
+.fvs-tray .fv-mt .fv-card>.fv-row:first-of-type .fv-select{flex:1;min-width:0;color:#fff;background:linear-gradient(to top,rgb(0 0 0 / .62),rgb(0 0 0 / .38) 70%,transparent)}
 .fvs-tray .fv-mt .fv-card>.fv-row:first-of-type .fv-select::after{right:var(--fv-sp-4);width:14px;height:14px;margin-top:0;translate:0 -50%;color:#fff;-webkit-mask-size:14px;mask-size:14px}
-.fvs-tray .fv-mt .fv-card>.fv-row:first-of-type select{width:100%!important;height:32px!important;min-height:32px!important;padding:0 var(--fv-sp-20) 0 var(--fv-sp-4)!important;border:0!important;border-radius:0!important;
+.fvs-tray .fv-mt .fv-card>.fv-row:first-of-type select{width:100%!important;height:32px!important;min-height:32px!important;padding:0 var(--fv-sp-20) 0 var(--fv-sp-8)!important;border:0!important;border-radius:0!important;
   background:transparent!important;color:#fff!important;font-size:var(--fv-fs-1)!important;line-height:32px;box-shadow:none!important}
 .fvs-tray .fv-mt .fv-card>.fv-row:first-of-type select option{color:var(--fv-fg);background:rgb(var(--fv-solid3))}
-.fvs-tray .fv-mt .fv-card .fv-edited{position:absolute;top:var(--fv-sp-4);left:var(--fv-sp-4);z-index:1;padding:0 var(--fv-sp-4);border-radius:var(--fv-r-xs);background:var(--fv-on-pic);color:var(--fv-on-fill);font-size:var(--fv-fs-1);line-height:16px;pointer-events:none}
+.fvs-tray .fv-mt .fv-card .fv-edited{position:absolute;top:var(--fv-sp-4);left:calc(var(--fv-sp-4) + 20px);z-index:1;padding:0 var(--fv-sp-4);border-radius:var(--fv-r-xs);background:var(--fv-on-pic);color:var(--fv-on-fill);font-size:var(--fv-fs-1);line-height:16px;pointer-events:none}
 .fvs-tray .fv-mt .fv-card[data-fv-slot]>.fv-preview-wrap::before{content:none}
 /* A tile with more to set (a middle frame's time, a video's depth and sound, audio): three squares, the picture in the
    first, the settings beside it. */
 .fvs-tray .fv-mt .fv-card[data-fv-mt-wide=true]{grid-column:span 3;aspect-ratio:auto;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);grid-template-rows:auto;align-content:start;column-gap:var(--fv-sp-8);row-gap:0;padding:0 var(--fv-sp-8) 0 0!important}
 .fvs-tray .fv-mt .fv-card[data-fv-mt-wide=true]>:is(.fv-preview-wrap,video.fv-preview){position:relative;inset:auto;grid-column:1;grid-row:1 / span 8;aspect-ratio:1;height:auto!important}
 .fvs-tray .fv-mt .fv-card[data-fv-mt-wide=true]>audio.fv-preview{position:static;grid-column:1 / -1;grid-row:auto;width:calc(100% - var(--fv-sp-8))!important;height:32px!important;aspect-ratio:auto;margin:var(--fv-sp-8) var(--fv-sp-8) 0!important}
-.fvs-tray .fv-mt .fv-card[data-fv-mt-wide=true]>.fv-row:first-of-type{position:static;grid-column:2;padding:var(--fv-sp-4) 0 0;background:none;color:var(--fv-fg)}
+.fvs-tray .fv-mt .fv-card[data-fv-mt-wide=true]>.fv-row:first-of-type{position:static;grid-column:2;align-items:center;gap:var(--fv-sp-4);padding:var(--fv-sp-4) 0 0;background:none;color:var(--fv-fg)}
+.fvs-tray .fv-mt .fv-card[data-fv-mt-wide=true]>.fv-row:first-of-type .fv-select{background:none}
 .fvs-tray .fv-mt .fv-card[data-fv-mt-wide=true]>.fv-row:first-of-type input[type=checkbox]{margin-left:0}
 .fvs-tray .fv-mt .fv-card[data-fv-mt-wide=true]>.fv-row:first-of-type :is(.fv-select,select){color:var(--fv-fg)!important}
 .fvs-tray .fv-mt .fv-card[data-fv-mt-wide=true]>.fv-row:first-of-type .fv-select::after{color:var(--fv-fg2)}
@@ -77,7 +79,8 @@
 .fvs-tray .fv-mt .fv-card>.fv-mt-keys>button::before,.fvs-tray .fv-mt .fv-card .fv-shape-note>button::before{content:"";width:14px;height:14px;background:currentColor;-webkit-mask:var(--fv-mt-icon) center/14px no-repeat;mask:var(--fv-mt-icon) center/14px no-repeat}
 .fvs-tray .fv-mt .fv-mt-remove{--fv-mt-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='m4.5 4.5 7 7m0-7-7 7'/%3E%3C/svg%3E")}
 .fvs-tray .fv-mt .fv-card>.fv-mt-keys>:is(.fv-mt-up,.fv-mt-down){display:none}
-.fvs-tray .fv-mt .fv-card .fv-shape-note{position:absolute;top:var(--fv-sp-4);left:var(--fv-sp-4);z-index:2;display:block;margin:0!important;padding:0;border:0;background:none}
+.fvs-tray .fv-mt .fv-card.fv-mt-crop>.fv-mt-keys{right:calc(var(--fv-sp-8) + 24px)}
+.fvs-tray .fv-mt .fv-card .fv-shape-note{position:absolute;top:var(--fv-sp-4);right:var(--fv-sp-4);left:auto;z-index:2;display:block;margin:0!important;padding:0;border:0;background:none}
 .fvs-tray .fv-mt .fv-card .fv-shape-note>span{display:none}
 .fvs-tray .fv-mt .fv-card .fv-shape-note>button{--fv-mt-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 1.5v10h10M1.5 4.5h10v10'/%3E%3C/svg%3E")}
 /* The picture is the way into the editor; the separate Edit keys are kept for the keyboard only. */
@@ -94,7 +97,7 @@
 .fvs-tray .fv-mt .fv-card.fv-mt-broken .fv-preview-edit{display:none}
 /* References held back while a frame is on: dimmed, the reason across the picture. */
 .fvs-tray .fv-mt .fv-card.fv-mt-held .fv-preview{opacity:.4}
-.fvs-tray .fv-mt .fv-mt-held-note{position:absolute;left:var(--fv-sp-4);right:var(--fv-sp-4);top:var(--fv-sp-8);padding:2px var(--fv-sp-4);border-radius:var(--fv-r-xs);background:var(--fv-on-pic);color:var(--fv-on-fill);font-size:var(--fv-fs-1);line-height:16px;text-align:center;pointer-events:none}
+.fvs-tray .fv-mt .fv-mt-held-note{position:absolute;left:var(--fv-sp-4);right:var(--fv-sp-4);top:50%;translate:0 -60%;padding:2px var(--fv-sp-4);border-radius:var(--fv-r-xs);background:var(--fv-on-pic);color:var(--fv-on-fill);font-size:var(--fv-fs-1);line-height:16px;text-align:center;pointer-events:none}
 .fvs-tray .fv-mt .fv-card.fv-mt-held .fv-preview-edit{display:none}
 
 /* An empty frame slot: a dashed square that takes a picture; its name, and two small picture keys (this computer, the
@@ -157,11 +160,10 @@
   mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4.5 3 3 3-3 3'/%3E%3C/svg%3E") center/12px no-repeat}
 .fvs-tray .fv-mt .fv-mt-actions>.fv-mt-ai{--fv-mt-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round'%3E%3Cpath d='M7 2.5 8.2 6 11.5 7.2 8.2 8.4 7 12 5.8 8.4 2.5 7.2 5.8 6z'/%3E%3Cpath d='M12 10.5v3M10.5 12h3' stroke-linecap='round'/%3E%3C/svg%3E")}
 .fvs-tray .fv-mt .fv-mt-actions>.fv-mt-audio{--fv-mt-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 11.5V3.5l6.5-1.5v8'/%3E%3Ccircle cx='4.25' cy='11.75' r='1.75'/%3E%3Ccircle cx='10.75' cy='10.25' r='1.75'/%3E%3C/svg%3E")}
-/* A narrow window: the AI and audio keys show their pictures only (their names are in the hover cards). */
-@media (max-width:520px){
-  .fvs-tray .fv-mt .fv-mt-actions>:is(.fv-mt-ai,.fv-mt-audio){width:32px;padding:0!important;justify-content:center;font-size:0!important}
-  .fvs-tray .fv-mt .fv-mt-actions>:is(.fv-mt-ai,.fv-mt-audio)::before{color:var(--fv-fg)}
-}
+/* When their words do not fit on the line (a narrow window, longer words), the AI and audio keys show their pictures only
+   (their names are in the hover cards). */
+.fvs-tray .fv-mt .fv-mt-actions[data-compact=true]>:is(.fv-mt-ai,.fv-mt-audio){width:32px;padding:0!important;justify-content:center;font-size:0!important}
+.fvs-tray .fv-mt .fv-mt-actions[data-compact=true]>:is(.fv-mt-ai,.fv-mt-audio)::before{color:var(--fv-fg)}
 
 /* 4. Characters, scenes and props: a third of the width each; the group's title, then its small square pictures and its
    "+ New" key. */

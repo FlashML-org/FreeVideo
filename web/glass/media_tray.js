@@ -254,6 +254,9 @@ function layout(panel) {
     // An add tile alone on its row is as tall as a square.
     const gap = parseFloat(getComputedStyle(box).columnGap) || 0, square = `${Math.floor((box.clientWidth - gap * (cols - 1)) / cols)}px`;
     if (box.style.getPropertyValue('--fv-mt-square') !== square) box.style.setProperty('--fv-mt-square', square);
+    // The line of keys: words while they fit, else the AI and audio keys show their pictures only.
+    const line = panel.fvMtActions;
+    if (line?.clientWidth) { line.dataset.compact = 'false'; if (line.scrollWidth > line.clientWidth + 1) line.dataset.compact = 'true'; }
     const span = `span ${rest}`;
     if (toolbar.style.gridColumn !== span) toolbar.style.gridColumn = span;
     const fit = rest === 1 ? 'one' : 'more';
