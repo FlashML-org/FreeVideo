@@ -2975,6 +2975,13 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const bandWatch = new MutationObserver(syncBand);
     bandWatch.observe(consoleUI.slot, {childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['hidden', 'data-state']});
     syncBand(); cleanup.push(() => bandWatch.disconnect());
+    // A note that takes two lines (the add-video answer on a short line) makes the band as tall as the line it fills, so
+    // it never covers the console (glass/studio.css --fvs-band).
+    const bandSize = typeof ResizeObserver === 'function' ? new ResizeObserver(() => {
+        const height = `${Math.ceil(consoleUI.slot.getBoundingClientRect().height)}px`;
+        if (controls.style.getPropertyValue('--fvs-band') !== height) controls.style.setProperty('--fvs-band', height);
+    }) : null;
+    bandSize?.observe(consoleUI.slot); cleanup.push(() => bandSize?.disconnect());
     // Receipts (filled in, preset applied or saved) go to the shared toast in the top bar's right column (a bottom strip
     // on phones): 5 s, 8 s with Undo, held while hovered, Esc closes, failures stay. Until the shared toast takes an
     // Undo action (toast.actions), a receipt with Undo uses the console's status slot instead, so Undo is never lost.
