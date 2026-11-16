@@ -33,6 +33,24 @@ function markCastFiles(add = [], remove = []) {
     window.dispatchEvent(new CustomEvent('freevideo-cast-files'));
 }
 
+// The image client the views are made through. The engine removes a page upload when the job that sent it ends, and the
+// photo (an edited view, the clothes picture) goes into several jobs: the first job takes the upload itself, each later
+// one a fresh upload of the same picture. references: name → used by a generation (what the dialog uploaded);
+// purpose: the purpose each request carries ('' for none).
+export function photoClient(client, references = new Map(), purpose = () => '') {
+    const sources = new Map(), spent = new Set();
+    async function upload(file) { const name = await client.upload(file); references.set(name, false); sources.set(name, file); return name; }
+    async function fresh(name) {
+        if (!sources.has(name)) return name;
+        if (!spent.has(name)) { spent.add(name); return name; }
+        const copy = await upload(sources.get(name)); spent.add(copy); return copy;
+    }
+    return {...client, upload, generate: async args => {
+        const images = await Promise.all((args.images || []).map(fresh)), why = purpose();
+        return client.generate({...args, images, ...(why ? {purpose: why} : {})});
+    }};
+}
+
 export function mountCastPhoto({container, api, text, viewURL, onState = () => {}, fetchApi, client}) {
     const tr = text || (en => en);
     const fetcher = fetchApi || (api ? api.fetchApi.bind(api) : globalThis.fetch.bind(globalThis));
@@ -214,7 +232,7 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
         discardNames(names);
     };
     // Views as drafts when the engine offers them: the same generate call with the purpose.
-    const draftClient = {...client, generate: args => client.generate({...args, ...(drafts ? {purpose: 'cast-draft'} : {})})};
+    const draftClient = photoClient(client, references, () => drafts ? 'cast-draft' : '');
     const otherUsage = createOtherUsageNotice(side, tr, fetcher);
     const generator = createCastGenerator({client: draftClient, kind: 'character', views: MAKE, beforeGenerate: query => otherUsage.check(query), onDiscard: discard,
         onChange: state => {
@@ -271,7 +289,7 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
     }
     field.addEventListener('input', () => { if (attention) attention = ''; render(); });
     async function referenceOf(record) {
-        const name = await client.upload(record.file); references.set(name, false); return name;
+        return draftClient.upload(record.file);
     }
     async function begin() {
         if (action.getAttribute('aria-disabled') === 'true') { attention = action.dataset.fvTipWhy || ''; render(); return; }
