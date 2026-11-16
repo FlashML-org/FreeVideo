@@ -23,7 +23,7 @@ export const LINES = [
 // A page is shown from the version in its `since` on, and `seen` is the record it leaves once seen: [key, value] in local
 // storage. The two 0.5 pages keep the records they had in 0.5, so nobody who saw them sees them again.
 export const PAGES = [
-    // The 0.6.0 page: the creation panel with Media open beside its button, one picture per language.
+    // The 0.6.0 page: the creation panel, a work playing on the stage and earlier works open from Media; one picture per language.
     {id: 'interface', kind: 'still', since: '0.6.0', seen: ['freevideo.whatsnew-seen-interface', '1'], title: ['0.6.0: A new interface', '0.6.0 全新界面'],
         poster: {src: ['assets/whatsnew/interface-en.webp', 'assets/whatsnew/interface-zh.webp']},
         list: [['Frame, length, quality and media: set in a small window beside the button', '画幅、时长、质量、素材在按钮旁的小窗里调整'],
