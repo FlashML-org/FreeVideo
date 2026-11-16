@@ -77,6 +77,9 @@ dialog.fv-studio.fv-editor:not([open]){display:none!important}
 .fv-editor .fv-ed-genbar .fv-ed-description-box:focus-within{border-color:var(--fv-line);box-shadow:inset 0 0 0 1px var(--fv-accent-line),0 0 0 3px var(--fv-accent-soft)}
 .fv-editor .fv-ed-genbar .fv-ed-description{background:transparent}
 .fv-editor .fv-ed-genbar .fv-ed-expand{background:transparent}
+/* Expand looks and answers like the history key beside it: same ink and corners, same hover; pressed, it eases in. */
+.fv-editor .fv-ed-genbar .fv-ed-expand{border-radius:var(--fv-r-sm);color:var(--fv-muted);cursor:pointer}
+.fv-editor .fv-ed-genbar .fv-ed-expand:hover{background:var(--fv-hover);color:var(--fv-ink)}
 /* Inside the 12 px bar with a 4 px inset, the press takes 8 (concentric). */
 .fv-editor .fv-ed-genbar .fv-ed-generate{border-radius:var(--fv-r-sm)}
 /* Not yet the next step (nothing chosen, or no description yet): a secondary key, a clear accent tint with accent words,
