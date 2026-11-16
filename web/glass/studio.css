@@ -655,6 +655,8 @@
   /* One 32 px band between the picture's bar and the console; the notes line (and the run's status) reads in it,
      on the console's text edge. */
   .fv-studio.fv-create .fvs-console-status{top:0;bottom:auto;left:calc(var(--fv-sp-16) + 1px);right:calc(var(--fv-sp-16) + 1px)}
+  /* The band is there only while it has something to say: otherwise the console sits 16 px under the picture's bar. */
+  .fv-studio.fv-create .fv-controls[data-status=false]{padding-top:var(--fv-sp-8)}
   .fvs-console-status>.fv-status{width:auto;min-height:0;line-height:20px;text-align:left;align-self:auto}
   .fvs-console-status .fv-status-issue{min-height:20px;height:20px;padding:0 var(--fv-sp-8)}
   /* The history rail: centred on the picture and never taller than it; the selected card's ring has room. */
@@ -747,7 +749,10 @@ html body .fv-studio.fv-create .fvs-console :is(.fvs-console-prompt,.fv-section,
 /* The play bar under the stage video: as wide as the picture, 8 px under it (the column's gap); hidden (its row kept)
    while the stage shows the next frame, a run's progress or a comparison; it steps back with the bar while a tray is open. */
 .fv-studio.fv-create .fvs-player{align-self:center;box-sizing:border-box;width:var(--fvs-stage-w,100%);max-width:100%;min-height:32px;transition:opacity var(--fv-dur-1) var(--fv-ease-out)}
-.fv-studio.fv-create .fv-preview-column:has(.fv-stage[data-next=true],.fv-stage[data-comparing=true],.fv-stage .fv-generation-progress:not([hidden])) .fvs-player{visibility:hidden}
+.fv-studio.fv-create .fv-preview-column:has(.fv-stage[data-comparing=true]) .fvs-player{visibility:hidden}
+/* No video to play (the next generation's empty frame, a video being made): the play bar's row goes and the picture
+   takes its room (studio.js fitPreview), so no empty band sits between the picture and the console. */
+.fv-studio.fv-create .fv-preview-column:has(.fv-stage[data-next=true],.fv-stage .fv-generation-progress:not([hidden])) .fvs-player{display:none}
 .fv-studio.fv-create .fv-body:not([data-tray=""]) .fvs-player{opacity:0;pointer-events:none}
 @media(prefers-reduced-motion:reduce){.fv-studio.fv-create .fvs-player{transition:none}}
 /* Phones: the play bar's buttons and track are 44 px touch targets (the row's room in fitPreview follows). */

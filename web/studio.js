@@ -1553,6 +1553,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         clearTimeout(revealTimer); revealTimer = null;
         delete stage.dataset.revealing; progress.hide();
         if (result?.video) showSummary(result); else stageBar.setSummary('');
+        fitPreview();
     }
     // The bar's line for a result: the work's name (the prompt's first 24 characters; untitled without one, the whole
     // prompt on hover) and then its facts. The name follows once the saved prompt is read.
@@ -1595,8 +1596,10 @@ export function openStudio(node, {extendFrom = null} = {}) {
         // On a phone a 56 px slot stays free above the console for the shared toast strip, so a toast never covers the
         // result's bar and its actions; the status line keeps its own row there. Wider windows show only the picture and
         // its bar here (the status line reads in the notes line at the top of the dock).
+        // The play bar's row is left out while there is no video to play (glass/studio.css), and its room with it.
+        const playerShown = getComputedStyle(playerRow).display !== 'none';
         const room = output.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom)
-            - (phone?.matches ? 88 + TOAST_SLOT + STATUS_LINE + 2 * gap : 40 + gap) - playerRoom() - gap;
+            - (phone?.matches ? 88 + TOAST_SLOT + STATUS_LINE + 2 * gap : 40 + gap) - (playerShown ? playerRoom() + gap : 0);
         if (!(width > 0) || !(room > 0) || !Number.isFinite(previewRatio) || previewRatio <= 0) return;
         const height = Math.max(Math.min(room, 160), Math.min(room, width / previewRatio));
         const fittedWidth = Math.min(width, height * previewRatio), fittedHeight = fittedWidth / previewRatio;
@@ -1672,8 +1675,10 @@ export function openStudio(node, {extendFrom = null} = {}) {
         delete progress.report.dataset.covered;
         prewarm.textContent = '';
         clearTimeout(revealTimer); revealTimer = null; delete stage.dataset.revealing;
-        if (progress.element.hidden) stage.querySelector('video')?.pause();
+        const appearing = progress.element.hidden;
+        if (appearing) stage.querySelector('video')?.pause();
         progress.update(message);
+        if (appearing) fitPreview();
     }
     const status = el('div', '', 'fv-status'); status.setAttribute('role', 'status');
     // A fault in the status line carries the report button; the next text written to the line removes it.
@@ -2550,7 +2555,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     }
     function leaveNext() {
         if (!nextShown) return; nextShown = false; delete stage.dataset.next; stage.style.translate = '';
-        stageBar.setNext(false);
+        stageBar.setNext(false); fitPreview();
     }
     // One button in the console's row ([▭ 16:9 · 1M]) with a small panel beside it: Frame, Size, and a typed width × height.
     // Under them, what the frame tray held besides (canvas): a long length's notes and the first-frame switch, each
@@ -2932,6 +2937,15 @@ export function openStudio(node, {extendFrom = null} = {}) {
         fitPreview();
     };
     placeStatus(); phone?.addEventListener?.('change', placeStatus); cleanup.push(() => phone?.removeEventListener?.('change', placeStatus));
+    // The band above the console is kept only while its line has something to say (glass/studio.css), so an empty band
+    // never sits between the picture and the console.
+    const syncBand = () => {
+        const said = [...consoleUI.slot.children].some(item => !item.hidden && item.textContent.trim() && getComputedStyle(item).display !== 'none');
+        if (controls.dataset.status !== String(said)) controls.dataset.status = String(said);
+    };
+    const bandWatch = new MutationObserver(syncBand);
+    bandWatch.observe(consoleUI.slot, {childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['hidden', 'data-state']});
+    syncBand(); cleanup.push(() => bandWatch.disconnect());
     // Receipts (filled in, preset applied or saved) go to the shared toast in the top bar's right column (a bottom strip
     // on phones): 5 s, 8 s with Undo, held while hovered, Esc closes, failures stay. Until the shared toast takes an
     // Undo action (toast.actions), a receipt with Undo uses the console's status slot instead, so Undo is never lost.
