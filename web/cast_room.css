@@ -50,3 +50,9 @@
   .fv-cast-tiles{grid-template-columns:repeat(auto-fill,minmax(104px,1fr))}
   .fv-cast-tiles[data-kind=setting]{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
 }
+/* On wide windows the creations shelf shows its details only while selecting, or puts the viewer in the middle; the cast room keeps its three columns and its detail. */
+@media(min-width:1181px){
+  .fv-library[data-tab=cast] .fv-library-body.fv-cast-room{grid-template-columns:var(--lib-side) minmax(0,1fr) 320px}
+  .fv-library[data-tab=cast] .fv-library-body.fv-cast-room>.fv-library-collection{--lib-pad:var(--fv-sp-24,24px);grid-column:2;grid-row:1;border-left:0}
+  .fv-library[data-tab=cast] .fv-library-body.fv-cast-room>.fv-library-detail{display:flex}
+}
