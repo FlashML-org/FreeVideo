@@ -913,10 +913,8 @@ const progressConnection = createProgressConnection(api, message => {
 
 const isGenerate = node => node?.comfyClass === 'FreeVideoGenerate' || node?.type === 'FreeVideoGenerate';
 const isFreeVideoNode = id => /^FreeVideo/.test(String(app.graph?.getNodeById(id)?.comfyClass || app.graph?.getNodeById(id)?.type || ''));
-// Only the launcher, a click or a key brings a workspace over a page; a restored tab alone never does.
+// Only the FreeVideo launcher brings a workspace over a page; any other way of opening ComfyUI leaves it as it is.
 const launchVisit = isLaunchVisit(globalThis.location?.search, globalThis.sessionStorage);
-let userActed = false;
-for (const type of ['pointerdown', 'keydown']) globalThis.addEventListener?.(type, () => { userActed = true; }, {capture: true, once: true});
 
 let menuFailure;
 async function openFromMenu() {
@@ -1105,10 +1103,10 @@ app.registerExtension({
         refreshNavigation();
         const rememberedView = preferredView();
         const node = (app.graph?._nodes || []).find(isGenerate);
-        // The user's own workflow is shown as it is. A FreeVideo workflow opens its workspace once the
-        // launcher or the user asked for it, never on its own for a tab restored with the page. The startup
+        // ComfyUI is shown as it is. A FreeVideo workspace opens over it only for a visit the FreeVideo launcher
+        // made (and a refresh of that tab); a click or a key in the user's own ComfyUI never brings it. The startup
         // cover follows this same decision and is always released here when the workspace will not open.
-        const opens = !!node && app.graph?.extra?.freevideo_studio && rememberedView !== 'nodes' && (launchVisit || userActed);
+        const opens = !!node && app.graph?.extra?.freevideo_studio && rememberedView !== 'nodes' && launchVisit;
         if (!opens) { finishWorkspaceRestore(); globalThis.FreeVideoShell?.hideCover(); if (!node) collapseWorkspaces(); return; }
         const opening = rememberedView === 'editor' ? beginWorkspaceRestore() : null, epoch = configuration;
         requestAnimationFrame(async () => {
