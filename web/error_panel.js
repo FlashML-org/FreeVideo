@@ -492,6 +492,20 @@ export function failureAdvice(value, t, known = knownError(value)) {
         return row('executors', ['Generation stopped unexpectedly', '生成意外中断'],
             ['', ''],
             ['Restart FreeVideo and generate again.', '请重启 FreeVideo 后重新生成。']);
+    // The generation process ended without a Python error: it crashed or was ended from outside. The code
+    // names which (freevideo_engine/failure_details.py generation_failure prints "(exit N)"); the number stays in the details.
+    const exit = /FreeVideo generation failed \(exit (-?\d+)\)/.exec(text);
+    if (exit) {
+        const code = Number(exit[1]);
+        const killed = code === 137 || code === -9 || code === 3221225786;
+        return row('process-exit', ['Generation stopped unexpectedly', '生成意外中断'],
+            killed ? ['The generation was ended by another program.', '生成已被其他程序结束。']
+                   : ['FreeVideo closed unexpectedly while generating.', '生成过程中 FreeVideo 意外关闭。'],
+            killed ? ['Close cleaner or memory-limiting programs and generate again. Export the report if it still fails.',
+                      '请关闭清理类或限制内存的软件后重新生成。仍然失败时，请导出报告。']
+                   : ['Generate again. If it stops at the same step, export the report and send it to us.',
+                      '请重新生成。若仍停在同一步，请导出报告并发给我们。']);
+    }
     return row('unknown', ['Generation stopped', '生成已停止'],
         ['', ''], ['', '']);
 }
