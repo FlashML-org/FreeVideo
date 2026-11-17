@@ -20,6 +20,11 @@ from .spec import SpecError
 MAX_EVENT_BYTES = 16 * 1024
 
 
+# Folders under input/freevideo/agent that a conversation names: uploads and media-tool results (a 32-hex folder under
+# assets), a task's own folder (j...) and an image-editing session's (i-...).
+FOLDER_NAMED = re.compile(r'freevideo/agent/(?:assets/[0-9a-f]{32}|j[0-9a-f]{6,}|i-[0-9a-f]{32})(?![0-9a-zA-Z_-])')
+
+
 class SessionError(JobError):
     def view(self):
         if self.code == 'invalid_request':
@@ -248,6 +253,11 @@ class Sessions:
                                               self._path(sid).read_text(encoding='utf-8', errors='replace'))))
             except OSError:
                 named = []
+            try:
+                text = self._path(sid).read_text(encoding='utf-8', errors='replace')
+            except OSError:
+                text = ''
+            self.folders_of_deleted = sorted(set(FOLDER_NAMED.findall(text)))
             self._path(sid).unlink(missing_ok=True)
             self._closing.discard(sid)
             waiters = self._waiters.pop(sid, ())
@@ -263,6 +273,18 @@ class Sessions:
             except RuntimeError:
                 pass  # A closed client loop no longer needs notification.
         return named
+
+    def other_text(self, sid):
+        """The text of every other conversation, to tell whether a folder is still named."""
+        with self.lock:
+            parent, pieces = self._path(sid).parent, []
+            for path in parent.glob('*.jsonl'):
+                if path != self._path(sid):
+                    try:
+                        pieces.append(path.read_text(encoding='utf-8', errors='replace'))
+                    except OSError:
+                        pass
+        return ''.join(pieces)
 
     def list(self, *, limit=50, before=None) -> dict:
         _check(schema.session_schema('list'), dict(limit=limit, **({'before': before} if before is not None else {})))

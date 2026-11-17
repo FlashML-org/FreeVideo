@@ -255,6 +255,80 @@ def save(directory, record):
             temporary.unlink(missing_ok=True)
 
 
+# A finished chain keeps its words (every part's text, the plan, the ids of what it made) only this long.
+RECORD_RETENTION = 30 * 24 * 3600
+
+
+def forget_record(record):
+    """What a chain keeps once it is forgotten: its id, state, times and the work ids it made, nothing it was
+    asked or told. Pure: the argument is not changed. A forgotten chain is never run or resumed again."""
+    blocks = record.get('blocks') if isinstance(record.get('blocks'), list) else []
+    made = record.get('output_blocks') if type(record.get('output_blocks')) is int else 0
+    outputs = [row['output'] for row in blocks[:made] if isinstance(row, dict) and isinstance(row.get('output'), str)]
+    value = dict(version=1, id=record.get('id'), forgotten=True, state=record.get('state'),
+                 created=record.get('created'), updated=record.get('updated'),
+                 output=record.get('output') if isinstance(record.get('output'), str) else None,
+                 segments=outputs)
+    return value
+
+
+def _forgotten(record):
+    return (isinstance(record, dict) and record.get('forgotten') is True and record.get('version') == 1
+            and isinstance(record.get('id'), str) and re.fullmatch(r'c-[0-9a-f]{12}', record['id']) is not None)
+
+
+def load_forgotten(directory):
+    """The work ids kept by forgotten chains, by chain id: {id: {output, segments}}."""
+    found = {}
+    for path in Path(directory).glob('c-*.json'):
+        try:
+            record = json.loads(path.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            continue
+        if _forgotten(record) and path.stem == record['id']:
+            found[record['id']] = dict(output=record['output'],
+                                       segments=[row for row in record.get('segments', []) if isinstance(row, str)])
+    return found
+
+
+def purge(directory, now, retention=RECORD_RETENTION):
+    """At startup: finished chains older than the retention are cut down to what forget_record keeps and lose
+    their kept seam sound. A running chain is never touched. Returns the ids forgotten."""
+    gone = []
+    for path in Path(directory).glob('c-*.json'):
+        try:
+            record = json.loads(path.read_text(encoding='utf-8'))
+            if (not isinstance(record, dict) or _forgotten(record) or record.get('state') not in CHAIN_STATES
+                    or record.get('state') in ACTIVE or path.stem != record.get('id')):
+                continue
+            stamp = record.get('updated', record.get('created'))
+            if type(stamp) not in (int, float) or stamp > now - retention:
+                continue
+            save(directory, forget_record(record))
+            remove_leads(directory, record['id'])
+            gone.append(record['id'])
+        except (OSError, ValueError, TypeError):
+            continue
+    return gone
+
+
+def remove_leads(directory, identity):
+    try:
+        for path in Path(directory).glob(identity + '.*.lead.npz'):
+            path.unlink(missing_ok=True)
+    except OSError:
+        logging.warning('[FreeVideo] Chain seam sound could not be removed')
+
+
+def discard(directory, identity):
+    """Remove one chain's record and its kept seam sound."""
+    remove_leads(directory, identity)
+    try:
+        (Path(directory) / (identity + '.json')).unlink(missing_ok=True)
+    except OSError:
+        logging.warning('[FreeVideo] A chain record could not be removed')
+
+
 def load_all(directory, limit=200, *, identity=None, visitor=None):
     if identity is not None and (not isinstance(identity, str) or not re.fullmatch(r'c-[0-9a-f]{12}', identity)):
         return []
@@ -271,6 +345,8 @@ def load_all(directory, limit=200, *, identity=None, visitor=None):
             break
         try:
             record = json.loads(path.read_text(encoding='utf-8'))
+            if _forgotten(record):
+                continue  # kept only for the work ids it names; see load_forgotten
             if not isinstance(record, dict) or record.get('version') != 1:
                 raise ValueError('Unsupported chain version')
             identity = record.get('id')

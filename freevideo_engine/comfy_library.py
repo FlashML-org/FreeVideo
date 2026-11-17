@@ -977,6 +977,8 @@ def _forget_works(root, facts):
     private_store.forget_prompts({fact['prompt'] for fact in facts if fact['prompt']} - kept_prompts)
     ids = {fact['prompt_id'] for fact in facts if fact['prompt_id']}
     runs = {fact['run'] for fact in facts if re.fullmatch('[0-9a-f]{32}', fact['run'] or '')}
+    from .comfy_chain import discard_chains
+    discard_chains(runs)  # a long video's chain record and its seam sound go with it
     try:
         from server import PromptServer
         server = PromptServer.instance
@@ -1206,6 +1208,10 @@ def delete_videos(output_directory, identities, *, queue=None, batch=None, exten
     finish_deleted(output_directory)
     cache, moved, skipped = {}, [], []
     from .monitoring import save
+    from .comfy_chain import segment_identities
+    # A long video's hidden part videos leave with it, in the same undo batch; one that is not ours to delete
+    # (in use, not FreeVideo's) is skipped as any other.
+    identities = list(dict.fromkeys([*identities, *segment_identities(identities)]))
     token = batch or '%d-%s' % (time.time_ns(), os.urandom(3).hex())
     manifest = root / '.deleted' / (_MANIFEST + token + '.json')
     _claim(token, manifest)

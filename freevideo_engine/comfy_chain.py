@@ -377,6 +377,28 @@ def hidden_outputs(root):
         return set()
 
 
+def segment_identities(identities):
+    """The run folders of the hidden part videos that the given creations were joined from: deleting a long video
+    takes them with it, in the same undo batch."""
+    try:
+        if RUNNER is None:
+            return []
+        outputs = {'FreeVideo/%s/video.mp4' % identity for identity in identities}
+        return sorted(name[len('FreeVideo/'):-len('/video.mp4')] for name in RUNNER.segments_of(outputs)
+                      if name.startswith('FreeVideo/') and name.endswith('/video.mp4'))
+    except Exception:
+        return []
+
+
+def discard_chains(runs):
+    """Forget the chain records and seam sound of works deleted for good."""
+    try:
+        return RUNNER.discard_for(runs) if RUNNER is not None else []
+    except Exception:
+        logging.warning('[FreeVideo] Could not remove the chain record of a deleted creation.', exc_info=True)
+        return []
+
+
 def register(host_factory=None):
     """Routes and runner. The package never passes `host_factory`; only a test harness supplies another host."""
     global RUNNER

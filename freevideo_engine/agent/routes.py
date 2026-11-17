@@ -18,6 +18,7 @@ import re
 from pathlib import Path
 import secrets
 import stat
+import shutil
 import tempfile
 import time
 import uuid
@@ -1418,6 +1419,7 @@ def register():
                         if not busy():
                             break
                     time.sleep(0.25)
+            owned = jobs.session_folders(sid)  # read before its jobs are forgotten
             store.begin_delete(sid)
             try:
                 with jobs.lock:  # Productions share it.
@@ -1436,6 +1438,23 @@ def register():
                                          queue=getattr(server, 'prompt_queue', None)), named or [])
             except Exception:
                 logging.getLogger(__name__).warning('[FreeVideo] Could not remove the pictures of a deleted conversation.')
+            try:
+                named_folders = set(getattr(store, 'folders_of_deleted', ())) | owned
+                elsewhere = store.other_text(sid) + jobs.text_outside_session(sid)
+                for folder in sorted(named_folders):
+                    if folder not in elsewhere:
+                        shutil.rmtree(port.input_root / folder, ignore_errors=True)
+                        if folder.rsplit('/', 1)[-1].startswith('i-'):  # an image-editing session goes with its folder
+                            try:
+                                jobs.images._path(folder.rsplit('/', 1)[-1]).unlink(missing_ok=True)
+                            except Exception:
+                                pass
+            except Exception:
+                logging.getLogger(__name__).warning('[FreeVideo] Could not remove the files of a deleted conversation.')
+            try:
+                jobs.productions.delete_session(sid)  # its finished films (script, shots) go before the jobs they name
+            except Exception:
+                logging.getLogger(__name__).warning('[FreeVideo] Could not remove the films of a deleted conversation.')
             try:
                 jobs.forget_session(sid)  # its finished jobs, with their prompts, go with it
             except Exception:
@@ -2265,7 +2284,7 @@ def register():
 
     for operation, (method, suffix, _) in contract.DRAMA_OPERATIONS.items():
         getattr(routes, method.lower())(PREFIX + suffix)(drama_handler(operation))
-    for operation in ('pause', 'resume'):
+    for operation in ('pause', 'resume', 'delete'):
         routes.post('/freevideo/agent/drama/{id}/' + operation)(drama_handler(operation, local=True))
 
     def cast_handler(operation, *, local=False):

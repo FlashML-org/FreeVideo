@@ -123,8 +123,10 @@ class ChainRunner:
         self.closed = threading.Event()
         # The listed records stay bounded; which receipt made a saved video is indexed on first use, over every receipt on disk.
         self.work_receipts = None
+        store.purge(store_dir, wall())
         self.records = {row['id']: row for row in store.load_all(store_dir)}
         chain_leads.prune(store_dir, self.records)
+        self.forgotten = store.load_forgotten(store_dir)
         self.starts, self.success, self.cancel_sent, self.progress_values = {}, {}, set(), {}
         # Prompts whose block finished and whose seam record is still being checked, and those whose
         # block is made again once, because the engine did not leave the record.
@@ -591,9 +593,42 @@ class ChainRunner:
                     self.recover.add(chain_id)
             return self._view(self.records[chain_id])
 
+    def segments_of(self, outputs):
+        """The hidden part videos that the given joined videos were made from."""
+        outputs = set(outputs)
+        with self.lock:
+            found = set()
+            for record in self.records.values():
+                if record['join'] and record['output'] in outputs and record['output_state'] == 'done':
+                    found.update(row['output'] for row in record['blocks'][:record['output_blocks']]
+                                 if row['output'] is not None and row['output'] != record['output'])
+            for row in self.forgotten.values():
+                if row['output'] in outputs:
+                    found.update(name for name in row['segments'] if name != row['output'])
+            return found
+
+    def discard_for(self, runs):
+        """After works are gone for good: the records and seam sound of the chains that made them."""
+        runs = {run for run in runs if isinstance(run, str) and run}
+        if not runs:
+            return []
+        with self.lock:
+            gone = [identity for identity, record in self.records.items()
+                    if record['state'] not in store.ACTIVE and isinstance(record['output'], str)
+                    and any(('/' + run + '/') in record['output'] for run in runs)]
+            gone += [identity for identity, row in self.forgotten.items()
+                     if isinstance(row['output'], str) and any(('/' + run + '/') in row['output'] for run in runs)]
+            for identity in gone:
+                self.records.pop(identity, None)
+                self.forgotten.pop(identity, None)
+                store.discard(self.store_dir, identity)
+        return gone
+
     def hidden(self, exists=None):
         with self.lock:
-            return {row['output'] for record in self.records.values()
+            kept = {name for row in self.forgotten.values() if row['output'] is not None for name in row['segments']
+                    if name != row['output'] and (exists is None or exists(row['output'])) and (exists is None or exists(name))}
+            return kept | {row['output'] for record in self.records.values()
                     if record['join'] and record['output_state'] == 'done'
                     and (record['output_blocks'] > 1 or record.get('original_audio') is not None)
                     and record['output'] not in {block['output'] for block in record['blocks']}
