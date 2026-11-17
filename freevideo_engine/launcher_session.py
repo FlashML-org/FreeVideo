@@ -1431,7 +1431,7 @@ class Session:
         def work():
             target = Path(output)
             # Collection never writes over a file; a confirmed replacement is built beside it and swapped in whole.
-            partial = target.with_name('.%s.%s.partial' % (target.name, uuid.uuid4().hex[:8])) if overwrite else target
+            partial = target.with_name('.%s.%s.partial.zip' % (target.name, uuid.uuid4().hex[:8])) if overwrite else target
             replacing = False
             try:
                 result = collect(root, root / 'machine.json', None, partial,
