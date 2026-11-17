@@ -1976,10 +1976,10 @@ ApplicationWindow {
         objectName: "closeChoiceDialog"; visible: closeChoice !== ""
         title: t("Close FreeVideo?", "关闭 FreeVideo？")
         text: closeChoice === "generating"
-              ? t("A video is being generated. Exit stops ComfyUI and this generation. In the background, the generation continues, and this window can be reopened from the " + (closePlace === "menubar" ? "menu bar icon." : closePlace === "taskbar" ? "taskbar." : "tray icon."),
-                  "正在生成视频。退出会停止 ComfyUI 和这次生成；后台运行时生成会继续，可从" + (closePlace === "menubar" ? "菜单栏图标" : closePlace === "taskbar" ? "任务栏" : "托盘图标") + "重新打开此窗口。")
-              : t("Exit stops ComfyUI. In the background, ComfyUI keeps running, and this window can be reopened from the " + (closePlace === "menubar" ? "menu bar icon." : closePlace === "taskbar" ? "taskbar." : "tray icon."),
-                  "退出会停止 ComfyUI。后台运行时 ComfyUI 继续运行，可从" + (closePlace === "menubar" ? "菜单栏图标" : closePlace === "taskbar" ? "任务栏" : "托盘图标") + "重新打开此窗口。")
+              ? t("A video is being generated. Exit stops FreeVideo and this generation. In the background, the generation continues, and this window can be reopened from the " + (closePlace === "menubar" ? "menu bar icon." : closePlace === "taskbar" ? "taskbar." : "tray icon."),
+                  "正在生成视频。退出会停止 FreeVideo 和这次生成；后台运行时生成会继续，可从" + (closePlace === "menubar" ? "菜单栏图标" : closePlace === "taskbar" ? "任务栏" : "托盘图标") + "重新打开此窗口。")
+              : t("Exit stops FreeVideo. In the background, FreeVideo keeps running, and this window can be reopened from the " + (closePlace === "menubar" ? "menu bar icon." : closePlace === "taskbar" ? "taskbar." : "tray icon."),
+                  "退出会停止 FreeVideo。后台运行时 FreeVideo 继续运行，可从" + (closePlace === "menubar" ? "菜单栏图标" : closePlace === "taskbar" ? "任务栏" : "托盘图标") + "重新打开此窗口。")
         acceptText: t("Run in background", "后台运行"); altText: t("Exit", "退出"); rejectText: t("Cancel", "取消"); defaultFocus: true
         onAccepted: { closeChoice = ""; backend.runInBackground() }
         onAlternative: { closeChoice = ""; backend.close() }

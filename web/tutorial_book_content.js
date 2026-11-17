@@ -781,19 +781,19 @@ export const TUTORIAL_CHAPTERS = [
     {
         id: 'launcher-close',
         title: {zh: '关闭启动器：退出或后台运行', en: 'Closing the launcher: exit or keep running'},
-        summary: {zh: '关闭启动器窗口时，可以选择停止 ComfyUI 退出，或让 ComfyUI 在后台继续运行。', en: 'When the launcher window is closed, choose to stop ComfyUI and exit, or keep ComfyUI running in the background.'},
+        summary: {zh: '关闭启动器窗口时，可以选择停止 FreeVideo 退出，或让 FreeVideo 在后台继续运行。', en: 'When the launcher window is closed, choose to stop FreeVideo and exit, or keep FreeVideo running in the background.'},
         media: {
             type: 'image',
             src: {zh: 'launcher-close-1.webp', en: 'launcher-close-2.webp'},
             alt: {zh: '启动器的“关闭 FreeVideo？”对话框：“退出”和“后台运行”按钮已用红框标出。', en: 'The launcher\'s "Close FreeVideo?" dialog, with the "Exit" and "Run in background" buttons outlined in red.'},
         },
         steps: {
-            zh: ['FreeVideo 运行时关闭启动器窗口，会出现“关闭 FreeVideo？”。', '点“后⁠台⁠运⁠行”（默认按钮，按 Enter 也可以），窗口关闭，ComfyUI 和正在生成的视频继续运行。', '点“退⁠出”，ComfyUI 停止；正在生成的视频也会停止。', '后台运行时，点托盘图标（macOS 为菜单栏图标）或在它的菜单中选“打开 FreeVideo”，重新打开窗口。', '在托盘菜单中选“退⁠出”可以完全退出；只有视频正在生成时会再确认一次。'],
-            en: ['Close the launcher window while FreeVideo is running and "Close FreeVideo?" appears.', 'Choose "Run in background" (the default; Enter also works). The window closes, and ComfyUI and any video being generated keep running.', 'Choose "Exit" to stop ComfyUI. A video being generated stops as well.', 'While it runs in the background, click the tray icon (the menu bar icon on macOS) or choose "Open FreeVideo" in its menu to bring the window back.', 'Choose "Exit" in the tray menu to exit completely. It asks again only while a video is being generated.'],
+            zh: ['FreeVideo 运行时关闭启动器窗口，会出现“关闭 FreeVideo？”。', '点“后⁠台⁠运⁠行”（默认按钮，按 Enter 也可以），窗口关闭，FreeVideo 和正在生成的视频继续运行。', '点“退⁠出”，FreeVideo 停止；正在生成的视频也会停止。', '后台运行时，点托盘图标（macOS 为菜单栏图标）或在它的菜单中选“打开 FreeVideo”，重新打开窗口。', '在托盘菜单中选“退⁠出”可以完全退出；只有视频正在生成时会再确认一次。'],
+            en: ['Close the launcher window while FreeVideo is running and "Close FreeVideo?" appears.', 'Choose "Run in background" (the default; Enter also works). The window closes, and FreeVideo and any video being generated keep running.', 'Choose "Exit" to stop FreeVideo. A video being generated stops as well.', 'While it runs in the background, click the tray icon (the menu bar icon on macOS) or choose "Open FreeVideo" in its menu to bring the window back.', 'Choose "Exit" in the tray menu to exit completely. It asks again only while a video is being generated.'],
         },
         limits: {
-            zh: ['只在 ComfyUI 由启动器启动时询问；由其他方式启动的 ComfyUI 不会被停止。', '启动器正在安装或下载时关闭窗口，会先询问“暂停并退出？”。', '系统没有托盘时，窗口缩到任务栏。'],
-            en: ['It asks only when the launcher started ComfyUI. A ComfyUI started another way is not stopped.', 'Closing the window while the launcher is installing or downloading first asks "Pause and close?".', 'Without a system tray, the window goes to the taskbar.'],
+            zh: ['只在 FreeVideo 由启动器启动时询问；由其他方式启动的不会被停止。', '启动器正在安装或下载时关闭窗口，会先询问“暂停并退出？”。', '系统没有托盘时，窗口缩到任务栏。'],
+            en: ['It asks only when the launcher started FreeVideo. FreeVideo started another way is not stopped.', 'Closing the window while the launcher is installing or downloading first asks "Pause and close?".', 'Without a system tray, the window goes to the taskbar.'],
         },
     },
     {
