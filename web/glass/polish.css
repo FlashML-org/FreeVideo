@@ -97,7 +97,6 @@ html:not([data-fv-polish="off"]) :is(.fv-image .fv-iv-pic:not(:has(>button)),.fv
    the ground. The corners stay the frame's own. An empty edit preview keeps its dashed line instead. */
 html:not([data-fv-polish="off"]) :is(.fv-create .fv-stage,.fv-editor .fv-ed-picture:not([data-empty=true])){outline:1px solid var(--fv-line);outline-offset:-1px}
 html:not([data-fv-polish="off"]) .fv-editor .fv-ed-picture:not([data-empty=true]){box-shadow:none!important}
-html:not([data-fv-polish="off"]) :is(.fv-iv-ambient,.fv-iv-veil,.fv-ed-ambient){display:none!important}
 /* Thumbnails: no stacked offset, no halo; the chosen one has a 2 px line and nothing else. */
 html:not([data-fv-polish="off"]) :is(.fv-recent-card,.fv-library-card) .fv-library-picture{box-shadow:none!important}
 html:not([data-fv-polish="off"]) :is(.fv-recent-card,.fv-library-card):is([aria-pressed=true],.fv-picked) .fv-library-picture{box-shadow:0 0 0 2px var(--fv-accent-line)!important}

@@ -129,9 +129,6 @@
 :root:not([data-fv-material=glass]):not([data-fv-look=stage]) :is([class*="fv-"],[class*="fv-"] *):not(:is(.fv-topbar,.fv-tb-pop,.fv-view-switch,.sgf,.sgf-sheet,.fv-tip,.fv-toasts,.fv-toast,.fv-note,.fv-pal,.fv-pal-panel,.fv-header-menu,.fv-select-menu,[popover]:popover-open,[role=menu]),:is(.fv-topbar,.fv-tb-pop,.sgf,.fv-tip,.fv-toasts,.fv-pal,.fv-header-menu,.fv-select-menu,[popover]:popover-open,[role=menu]) *){
   -webkit-backdrop-filter:none!important;backdrop-filter:none!important}
 /* No coloured light or blurred picture behind the views; no glow on the primary button. */
-/* Off by default, not removed: a look (html[data-fv-look], e.g. polish.css for "stage") may turn them back on with a
-   more specific rule. */
-:root:not([data-fv-material=glass]):not([data-fv-look=stage]) :is(.fv-iv-ambient,.fv-iv-veil,.fv-ed-ambient){display:none}
 :root:not([data-fv-material=glass]) .fv-studio .fv-preview-column{background:none}
 :root:not([data-fv-material=glass]) :is(.fv-primary,.fv-image-go,[class*="-primary"],.fv-iv-go,.fvs-go){box-shadow:none!important}
 /* The probe that says theme.css (and tokens.css) took effect; independent of colours, so a palette change never

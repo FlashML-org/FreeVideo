@@ -25,11 +25,6 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
 .fv-iv .fv-iv-icon{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .fv-iv .fv-iv-grow{flex:1;min-width:0}
 
-/* ── stage light: the shown picture, 64 × 40, stretched; never a live blur ── */
-.fv-iv .fv-iv-ambient{position:absolute;inset:0;overflow:hidden;z-index:0;pointer-events:none;opacity:.62}
-.fv-iv .fv-iv-ambient canvas{position:absolute;left:-4%;top:-4%;width:108%;height:108%;transition:opacity .45s var(--iv-ease)}
-.fv-iv .fv-iv-veil{position:absolute;inset:0;background:radial-gradient(120% 90% at 50% 38%,color-mix(in srgb,var(--fv-shell-bg) 25%,transparent) 0%,color-mix(in srgb,var(--fv-shell-bg) 72%,transparent) 72%,color-mix(in srgb,var(--fv-shell-bg) 88%,transparent) 100%)}
-
 /* ── panels: hug the window edges; the stage is symmetric about the window centre whatever they do ── */
 .fv-iv .fv-iv-panel{position:absolute;top:var(--iv-gut);bottom:calc(var(--iv-gut) + var(--iv-sbar));z-index:2;display:flex;flex-direction:column;min-width:0;border-radius:var(--fv-rad-dock,20px);overflow:hidden;
   transition:width var(--iv-dur) var(--iv-ease)}
@@ -486,7 +481,6 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
 
 /* solid fallback: panels keep a visible edge so the layers still read apart */
 :is(:root[data-glass=solid],:root.lite) .fv-iv .fv-iv-panel{box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh1)}
-:is(:root[data-glass=solid],:root.lite) .fv-iv .fv-iv-ambient{opacity:.35}
 
 /* ── widths ── */
 @media(min-width:720px) and (max-width:1279px){
@@ -500,7 +494,6 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
 }
 @media(max-width:719px){
   .fv-iv{overflow:auto;display:flex;flex-direction:column;gap:12px;padding:8px 12px 0;--iv-gut:0px}
-  .fv-iv .fv-iv-ambient{position:fixed}
   .fv-iv .fv-iv-panel,.fv-iv .fv-iv-stage{position:relative;inset:auto;left:auto;right:auto;top:auto;bottom:auto;width:auto;flex:none}
   .fv-iv .fv-iv-panel[data-collapsed=true]>:not(.fv-iv-rail){opacity:1;pointer-events:auto;visibility:visible}
   .fv-iv .fv-iv-rail,.fv-iv .fv-iv-collapse,.fv-iv .fv-iv-show-works{display:none!important}

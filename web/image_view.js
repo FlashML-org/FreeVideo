@@ -228,11 +228,9 @@ export function openImageView(node, {studio = null, client: given = null, poll =
 
     // ───── Layout ─────
     const body = el('div', 'fv-image-body fv-iv');
-    const ambient = el('div', 'fv-iv-ambient'), ambA = el('canvas'), ambB = el('canvas'); ambA.width = ambB.width = 64; ambA.height = ambB.height = 40; ambB.style.opacity = '0';
-    ambient.append(ambA, ambB, el('div', 'fv-iv-veil'));
     const left = el('aside', 'fv-iv-panel fv-iv-left fv-image-left fv-glass fv-g2'), stage = el('main', 'fv-iv-stage fv-image-stage'), column = el('aside', 'fv-iv-panel fv-iv-right fv-image-works-column fv-glass fv-g2');
     left.setAttribute('aria-label', t('Make a picture', '生成图片')); column.setAttribute('aria-label', t('Works', '作品'));
-    body.append(ambient, left, stage, column);
+    body.append(left, stage, column);
 
     // Left panel: head, the groups, the foot with the status slot and Generate.
     const leftHead = el('div', 'fv-iv-panel-head');
@@ -1111,7 +1109,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         const file = picture.dataset.file, known = meta.get(file);
         if (file && picture.naturalWidth && (!known?.width || known.width * picture.naturalHeight !== known.height * picture.naturalWidth))
             meta.set(file, {width: picture.naturalWidth, height: picture.naturalHeight});
-        markReady('picture'); if (!alive) return; drawStage(); paintAmbient(picture);
+        markReady('picture'); if (!alive) return; drawStage();
     };
     // A click on the shown picture opens it large; ← → there step through the works and the stage follows.
     let viewer = null;
@@ -1122,14 +1120,6 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     });
     picture.onerror = () => { picture.dataset.loaded = 'true'; frame.dataset.loading = 'false'; markReady('picture'); };
 
-    // The stage light: the shown picture, 64 × 40, stretched and faded behind everything.
-    let ambTurn = false;
-    function paintAmbient(source) {
-        try {
-            const target = ambTurn ? ambA : ambB, other = ambTurn ? ambB : ambA; ambTurn = !ambTurn;
-            target.getContext('2d').drawImage(source, 0, 0, 64, 40); target.style.opacity = '1'; other.style.opacity = '0';
-        } catch { /* a picture that cannot be read leaves the light as it was */ }
-    }
     function paintRunTile(fraction) {
         if (!running && browsing) browsing = false;
         for (const tile of body.querySelectorAll('.fv-iv-tile-run,.fv-iv-rail-run')) tile.style.setProperty('--p', String(fraction));
