@@ -34,8 +34,9 @@ from .runtime_alias import checked_real_path
 # Background launcher release checks while the window stays open.
 CHECK_SECONDS = 30 * 60
 SETTLE_SECONDS = 60
-# "Later" hides one reminder for this long; a newer release reminds at once.
-SNOOZE_SECONDS = 4 * 3600
+# A dismissed update stays closed until the launcher is opened again (the state is in memory only);
+# a newer release reminds at once.
+SNOOZE_SECONDS = 365 * 24 * 3600
 QUEUE_POLL_SECONDS = 3
 RECEIPT_POLL_SECONDS = 5
 
