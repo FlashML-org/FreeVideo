@@ -1906,6 +1906,13 @@ export function openStudio(node, {extendFrom = null} = {}) {
         // over a slow link it waits up to 700 ms (inside the shell's 800 ms), then fades in the stage's plain colour.
         let done = false; const ready = () => { if (!done) { done = true; markReady(); } };
         video.addEventListener('loadeddata', () => { video.removeAttribute('poster'); take(); ready(); }, {once: true});
+        // The stage wraps the video itself: when the work's recorded size is missing or does not match the file (an old
+        // or imported work), it takes the video's own shape once that is known.
+        video.addEventListener('loadedmetadata', () => {
+            if (disposed || result !== r || nextShown || !video.isConnected || !(video.videoWidth > 0 && video.videoHeight > 0)) return;
+            const own = video.videoWidth / video.videoHeight;
+            if (!(Math.abs(own - previewRatio) <= own * .01)) previewSize(video.videoWidth, video.videoHeight);
+        }, {once: true});
         setTimeout(() => { if (disposed || !video.isConnected || video.readyState >= 2) return; if (cover) video.poster = cover; take(); }, kept ? 1000 : 400);
         setTimeout(ready, 700);
         video.addEventListener('error', () => {
@@ -2591,7 +2598,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
     function leaveNext() {
         if (!nextShown) return; nextShown = false; delete stage.dataset.next; stage.style.translate = '';
         // The stage takes back the shape of what it shows: the work's own, or the chosen frame when it is empty.
-        const g = stageMedia.querySelector('video, img') && result?.geometry?.width > 0 && result.geometry.height > 0 ? result.geometry
+        const own = [...stageMedia.querySelectorAll('video')].find(v => !v.dataset.leaving && v.videoWidth > 0 && v.videoHeight > 0);
+        const g = own ? {width: own.videoWidth, height: own.videoHeight}
+            : stageMedia.querySelector('video, img') && result?.geometry?.width > 0 && result.geometry.height > 0 ? result.geometry
             : {width: Number(value(node, 'width')), height: Number(value(node, 'height'))};
         stageBar.setNext(false); previewSize(g.width, g.height); fitPreview();
     }
