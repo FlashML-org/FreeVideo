@@ -57,6 +57,8 @@ export function attach(video, host, {compact = false, t = words} = {}) {
         const at = video.duration ? video.currentTime / video.duration : 0;
         fill.style.transform = `scaleX(${at})`; track.setAttribute('aria-valuenow', String(Math.round(at * 100)));
         if (!compact) time.textContent = `${clock(video.currentTime)} / ${clock(video.duration)}`;
+        // One loop only: a seek, a loop restart or a key press draws again while the loop is still pending.
+        cancelAnimationFrame(frame);
         if (!video.paused && video.isConnected) frame = requestAnimationFrame(draw);
     };
     const sync = () => {
