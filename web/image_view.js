@@ -1048,7 +1048,9 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         sceneHost.hidden = state !== 'running'; draftNote.hidden = state !== 'draft';
         // While running the caption keeps its room unseen, so a step picture and the finished one sit in the same place.
         // The caption row also waits for the picture's shape: it takes the frame's width, so it shows at its final one.
-        cap.dataset.hidden = String(state !== 'done' || (!meta.get(shownFile)?.width && !(picture.dataset.file === shownFile && picture.naturalWidth)));
+        // A work whose file is gone keeps its row (without the actions that need the picture), so it can still be deleted here.
+        const gone = picture.dataset.file === shownFile && picture.dataset.missing === 'true'; cap.dataset.missing = String(gone);
+        cap.dataset.hidden = String(state !== 'done' || (!gone && !meta.get(shownFile)?.width && !(picture.dataset.file === shownFile && picture.naturalWidth)));
         const row = runRow(), asked = row?.meta?.width ? row.meta : running ? size() : failure?.sent || null;
         const shown = meta.get(shownFile);
         const next = state === 'draft' ? draftPreview || size() : null;
@@ -1119,7 +1121,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             step: by => { const before = shownFile; step(by); return shownFile !== before ? pictureURL(shownFile) : ''; }});
     });
     // A picture that can no longer be read (its file gone) leaves a quiet empty frame, never the browser's broken-image mark.
-    picture.onerror = () => { picture.dataset.loaded = 'true'; picture.dataset.missing = 'true'; frame.dataset.loading = 'false'; markReady('picture'); };
+    picture.onerror = () => { picture.dataset.loaded = 'true'; picture.dataset.missing = 'true'; frame.dataset.loading = 'false'; markReady('picture'); if (alive) drawStage(); };
 
     function paintRunTile(fraction) {
         if (!running && browsing) browsing = false;
