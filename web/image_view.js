@@ -27,7 +27,7 @@ import { el, icon, t, cn, tip, button, section, readStore, writeStore, mod } fro
 import { IMAGE_MODELS, modelPicker, modelState, verifyText } from './image_view_models.js';
 import { RANGES, RATIOS, areaRange, estimateSeconds, machineLimit, presetAt, ratioValue, sizePicker, sizeFor, sizeText, megapixels } from './image_view_size.js';
 import { createMetaStore, createTrash, filterCounts, filterRows, groupRows, historyPanel, sessionPrompts } from './image_view_history.js';
-import { brokenMentions, mentionText, mentionsToEngine, promptMentions, renumberMentions, sketchPrompt } from './image_view_mentions.js';
+import { brokenMentions, mentionText, mentionsToEngine, posePrompt, promptMentions, renumberMentions, sketchPrompt } from './image_view_mentions.js';
 import { HISTORY_KEY, forgetDeletedPrompts, promptLibrary, rememberPrompt } from './image_view_prompts.js';
 import { COMPARE_MAX, compareView } from './image_view_compare.js';
 import { queuePanel } from './image_view_queue.js';
@@ -700,9 +700,15 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     }
     // The engine reads <Picture N>; the page writes "@图N" / "@Image N" (and older prompts "图 N"). A prompt that names none gets them
     // listed, all but the sketches: the words around the description name those.
-    function engineText() {
+    function engineText(seed) {
         const swapped = mentionsToEngine(prompt.value, references.length).replace(/(?:图\s?|Image\s)(\d+)/g, (_, n) => `<Picture ${n}>`)
             .replace(/(?:主体\s?|Subject\s)(\d+)/g, (_, n) => `<Subject ${n}>`);
+        // A sketch with mannequins takes the pose words (the other pictures listed in front when the text names none).
+        const poseAt = references.findIndex((r, at) => r.sketch && r.pose && at < cap_(model));
+        if (poseAt >= 0) {
+            const rest = references.map((_, at) => at === poseAt || at >= cap_(model) ? '' : `<Picture ${at + 1}>`).filter(Boolean);
+            return posePrompt(rest.length && !/<Picture \d+>/.test(swapped) ? rest.join(' ') + ' ' + swapped : swapped, poseAt + 1, references[poseAt].pose, seed);
+        }
         const sketches = references.map((r, at) => r.sketch && at < cap_(model) ? at + 1 : 0).filter(Boolean);
         const others = references.map((_, at) => sketches.includes(at + 1) ? '' : `<Picture ${at + 1}>`).filter(Boolean);
         const listed = others.length && !/<Picture \d+>/.test(swapped) ? others.join(' ') + ' ' + swapped : swapped;
@@ -732,13 +738,14 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         const file = new File([outcome.blob], 'sketch.png', {type: outcome.blob.type || 'image/png'});
         if (record) {
             if (!references.includes(record)) return;
-            URL.revokeObjectURL(record.url); Object.assign(record, {file, url: URL.createObjectURL(file), width: outcome.width, height: outcome.height, edit: outcome.edit || null}); render(); return;
+            URL.revokeObjectURL(record.url); Object.assign(record, {file, url: URL.createObjectURL(file), width: outcome.width, height: outcome.height, edit: outcome.edit || null, pose: outcome.pose || null}); render(); return;
         }
-        const fresh = {file, url: URL.createObjectURL(file), width: outcome.width, height: outcome.height, edit: outcome.edit || null, sketch: true};
+        const fresh = {file, url: URL.createObjectURL(file), width: outcome.width, height: outcome.height, edit: outcome.edit || null, sketch: true, pose: outcome.pose || null};
         changeRefs(() => references.unshift(fresh));
-        // A sketch is made into a picture with H3 Image when it is there (the user may still choose the other model).
-        const h3 = IMAGE_MODELS.find(m => m.id === 'minimax-h3-image');
-        if (h3 && model.id !== h3.id && modelState(info, h3.id).state === 'ready') chooseModel(h3);
+        // A sketch is made into a picture with H3 Image when it is there; a sketch with mannequins with Qwen-Image 2.1, on
+        // which its words were settled (the user may still choose the other model).
+        const best = IMAGE_MODELS.find(m => m.id === (fresh.pose ? 'qwen-image-2.1-turbo' : 'minimax-h3-image'));
+        if (best && model.id !== best.id && modelState(info, best.id).state === 'ready') chooseModel(best);
         // The box is left to say what the sketch shows (its placeholder asks for that while it is empty); the words around
         // the description already say the sketch gives the layout.
         promptGroup.open(true); render(); prompt.focus({preventScroll: true});
@@ -1004,8 +1011,10 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         const tooMany = over() > 0, busy = !!running;
         // No words inside the empty box (the group says what it is for), except beside a sketch: what it shows is known only
         // from the words (a stick figure is a person when the words say so), so the empty box asks for them.
-        prompt.placeholder = references.some((r, at) => r.sketch && at < cap_(model))
-            ? t('Write what the sketch shows, for example: a person raising both hands', '写下草图画的是什么，例如：一个人举起双手') : '';
+        prompt.placeholder = references.some((r, at) => r.sketch && r.pose && at < cap_(model))
+            ? t('Describe the people, their clothes and the place, for example: a young woman in a beige trench coat on a pier at dusk', '写下人物、衣着和地点，例如：穿米色风衣的年轻女性，站在黄昏的海边栈桥上')
+            : references.some((r, at) => r.sketch && at < cap_(model))
+                ? t('Write what the sketch shows, for example: a person raising both hands', '写下草图画的是什么，例如：一个人举起双手') : '';
         prompt.setAttribute('aria-label', references.length ? t('What to make or change', '要画什么或要改什么') : t('Describe the picture', '描述画面'));
         // Said only near the limit.
         promptCount.textContent = prompt.value.length >= 1600 ? `${prompt.value.length} / 2000` : '';
@@ -1220,7 +1229,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             // The engine makes one picture at a time: a second request waits its turn here and starts by itself; Stop cancels the wait.
             for (;;) {
                 try {
-                    ({id} = await jobs.submit('image', {prompt: engineText(), ...sent, model: model.id, remember: true, images: names, ...(seed === undefined ? {} : {seed}), ...(loras.length ? {loras} : {})},
+                    ({id} = await jobs.submit('image', {prompt: engineText(seed ?? Math.floor(Math.random() * 1e9)), ...sent, model: model.id, remember: true, images: names, ...(seed === undefined ? {} : {seed}), ...(loras.length ? {loras} : {})},
                         {view: 'image', client, meta: {text: prompt.value, withImages, tier: tierNow, width: sent.width, height: sent.height}}));
                     break;
                 } catch (error) {
