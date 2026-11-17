@@ -47,7 +47,12 @@ def policy(args, memory=None):
     capacity = min(memory['total_bytes'], amount('ram_gib', memory['total_bytes']))
     working = min(capacity, memory['available_bytes']) - reserve
     if working < 2 * GiB:
-        error = MemoryError('Native generation needs at least 2 GiB working unified memory after the system reserve')
+        # Whole numbers lie by up to a GiB on an 8 GiB Mac: available rounds down, required rounds up.
+        down = lambda value: math.floor(value / GiB * 10) / 10
+        error = MemoryError('Native generation needs at least 2 GiB working unified memory after the system reserve; '
+            '%.1f GiB of %.1f GiB is available and %.1f GiB is required' % (
+                down(min(capacity, memory['available_bytes'])), capacity / GiB,
+                -down(-(reserve + 2 * GiB))))
         # What the system reported at this moment, so the report shows whether the Mac is small or busy.
         error.memory_record = dict(total_bytes=memory['total_bytes'], available_bytes=memory['available_bytes'], reserve_bytes=reserve)
         if getattr(args, 'ram_gib', None) is not None:
