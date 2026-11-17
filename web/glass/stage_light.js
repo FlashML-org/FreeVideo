@@ -71,7 +71,7 @@ function rgb([h, s, l]) {
 // nudges the tone, so a white or a black work still gives a calm ground.
 export function tone(colour, light) {
     const [h, s, l] = hsl(colour);
-    return rgb(light ? [h, Math.min(.72, s * 1.25), .82 + l * .07] : [h, Math.min(.78, s * 1.3), .17 + l * .1]);
+    return rgb(light ? [h, Math.min(.55, s * .96), .82 + l * .07] : [h, Math.min(.6, s), .17 + l * .1]);
 }
 const near = (a, b) => a && b && a.every((c, k) => c.every((v, i) => Math.abs(v - b[k][i]) <= CLOSE));
 
