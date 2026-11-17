@@ -435,6 +435,8 @@ class ReverseCache:
             _check(stop.is_set)
             if identity != _file_identity(path) or (path, target) != self._location(key):
                 raise ValueError('Reverse source changed')
+            from .comfy_editor import trim_caches
+            trim_caches(self.root)
         except BaseException as error:
             target.unlink(missing_ok=True)
             with self.lock:

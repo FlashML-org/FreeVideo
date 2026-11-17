@@ -1104,10 +1104,17 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     function confirmDelete() {
         const words = deleteEditText(t, state.record.name);
         menu.replaceChildren();
-        menu.append(el('p', 'fv-ed-delete-question', words.confirm));
+        const question = el('p', 'fv-ed-delete-question', words.confirm);
+        menu.append(question);
         const remove = button(words.remove, deleteCurrentProject, 'fv-ed-delete-confirm');
         const cancel = button(words.cancel, showMenu);
         menu.append(remove, cancel); cancel.focus();
+        // What goes with it is listed as soon as the server answers; the question stays usable meanwhile.
+        const id = state.record.id;
+        if (id) void store.residue(id).then(found => {
+            const line = words.also(found);
+            if (line && question.isConnected && state.record.id === id) question.textContent = words.confirm + ' ' + line;
+        });
     }
     async function showMenu() {
         menu.replaceChildren(); menu.hidden = false; title.setAttribute('aria-expanded', 'true');

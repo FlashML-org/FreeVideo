@@ -257,6 +257,11 @@ export function createEditorStore(api, {t = en => en, notify = () => {}, onGener
         sources, cache,
         activateProject,
         get uploading() { return uploads.size > 0; },
+        // What deleting this edit also removes (media only it uses). Empty when the server cannot say.
+        async residue(id) {
+            try { return (await json('/freevideo/editor/project/residue?' + new URLSearchParams({id})))?.residue || {}; }
+            catch { return {}; }
+        },
         async deleteProject(id) {
             // A lease that could not be renewed must not stop the delete: the server checks the leases itself.
             await sessionWrites.catch(() => {});
