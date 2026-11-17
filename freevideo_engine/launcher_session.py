@@ -59,6 +59,17 @@ EXPORT_FAILURES = {
 }
 
 
+def report_target(path):
+    """The file to write and whether the save dialog already asked about that name.
+
+    The collector accepts a name only when Path.suffix is .zip, so the same test decides here: a name such as
+    '.zip' (no stem) or 'report.zip.' ends in the letters but not in the suffix, and is extended like any other."""
+    path = str(path)
+    if Path(path).suffix.lower() == '.zip':
+        return path, True
+    return path + '.zip', False
+
+
 def export_reason(error):
     """The EXPORT_FAILURES key for an export error, or '' when its words are the only explanation."""
     import errno

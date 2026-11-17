@@ -369,9 +369,8 @@ def create_ui(session, *, show=True, instance=None):
                 'ZIP (*.zip)')
             if path:
                 # The dialog asked before replacing the name it returned; a name we extend was never asked about.
-                confirmed = path.lower().endswith('.zip')
-                if not confirmed:
-                    path += '.zip'
+                from .launcher_session import report_target
+                path, confirmed = report_target(path)
                 self.invoke(session.export_report, path, confirmed)
 
         @Slot(str)
