@@ -20,8 +20,12 @@ export function pictureRow(item, favorite = false) {
     const at = match ? new Date(+match[1], +match[2] - 1, +match[3], +match[4], +match[5], +match[6]) : null;
     return {kind: 'image', file: item.file, type: typeof item.type === 'string' ? item.type : undefined, name: item.name || item.file.slice(item.file.lastIndexOf('/') + 1),
         created_at: at && !Number.isNaN(at.getTime()) ? at.toISOString() : null, favorite: !!favorite,
+        ...(typeof item.origin === 'string' ? {origin: item.origin} : {}),
         ...(typeof item.prompt === 'string' && item.prompt ? {prompt: item.prompt} : {})};
 }
+
+// Where a picture came from, kept by the engine with the picture: the image view, the image editor or a character card.
+export const pictureSource = row => row.origin === 'cast' ? 'cast' : row.origin === 'edit' || row.origin === 'editor' ? 'edit' : 'image';
 
 export const seconds = row => {
     const g = row.geometry || {};
@@ -48,6 +52,7 @@ export function matches(row, filter, {tagsOf = () => [], promptOf = () => '', no
     if (filter.kind === 'video' && row.kind === 'image') return false;
     if (filter.kind === 'image' && row.kind !== 'image') return false;
     if (filter.favorites && !row.favorite) return false;
+    if (filter.source && (row.kind !== 'image' || pictureSource(row) !== filter.source)) return false;
     if (filter.tag && !tagsOf(workKey(row)).includes(filter.tag)) return false;
     if (filter.preview && !row.preview) return false;
     if (filter.agent && !row.agent) return false;

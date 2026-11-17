@@ -12,7 +12,7 @@ import {createImageGenClient, createImageGeneration, imageGenerationSupported, b
 import {productVersion} from './updates.js';
 import {jobs, ACTIVE} from './task_store.js';
 import {confirmStop, startJobSources} from './task_float.js';
-import {saveToWorks, discardDrafts, keepDrafts} from './image_works.js';
+import {saveToWorks} from './image_works.js';
 import {listenDialogKey} from './dialog_keys.js';
 import {issueButton} from './issue_button.js';
 import {skinSelect} from './fv_select.js';
@@ -306,10 +306,10 @@ async function openImageEditorNow({source = null, name = source || '', target = 
         // AI edits are jobs of the page: the top bar, the floating window and notifications show them, and closing
         // the editor never stops one. The picture each one makes lands in the works with the picture it came from.
         tasks: {jobs, ACTIVE, confirmStop, startJobSources, view: 'image-editor', client: genClient.standIn ? genClient : null,
-            meta: request => ({source: source || null, edit: request.mode, draft: true}), onResult: file => sessionDrafts.add(file)}});
-    // What this editor made or brought in that is not kept unless the edit is saved: the AI's pictures (drafts, kept out of
-    // the works) and pictures added from this computer (uploaded under a random name).
-    const sessionDrafts = new Set(), sessionUploads = new Set();
+            purpose: 'edit', meta: request => ({source: source || null, edit: request.mode})}});
+    // Pictures added from this computer (uploaded under a random name) go unless the edit is saved. What the AI made is a
+    // work of the library from the start.
+    const sessionUploads = new Set();
     // The image view hands its image client: pictures from this computer go through it (random names the service can
     // remove); other pages keep their own media upload.
     const ownUpload = !!imageGenClient || !upload;
@@ -1906,17 +1906,14 @@ async function openImageEditorNow({source = null, name = source || '', target = 
             save.disabled = cancel.disabled = false;
         }
     }
-    // Leaving: drafts and uploads go unless the saved edit keeps them. A page that keeps the edit itself (not the image
-    // view, which keeps only the picture) keeps the ones its layers use; everything else is deleted now.
+    // Leaving: uploads go unless the saved edit keeps them. A page that keeps the edit itself (not the image view, which
+    // keeps only the picture) keeps the ones its layers use.
     function releaseLeftovers(saved, finalDoc) {
         const keepsEdit = saved && !imageGenClient;
         const used = new Set(keepsEdit ? finalDoc.layers.map(l => l.src).filter(Boolean) : []);
-        const keep = [...sessionDrafts].filter(f => used.has(f)), drop = [...sessionDrafts].filter(f => !used.has(f));
-        if (keep.length) keepDrafts(keep);
-        if (drop.length) void discardDrafts(drop).catch(() => {});
         const uploads = [...sessionUploads].filter(f => !used.has(f));
         if (uploads.length) Promise.resolve().then(() => genClient.discardUploads?.(uploads)).catch(() => {});
-        sessionDrafts.clear(); sessionUploads.clear();
+        sessionUploads.clear();
         discardSegmentUploads(genClient);
     }
     function close(value) {

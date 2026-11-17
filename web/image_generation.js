@@ -139,7 +139,18 @@ export function createImageGenClient(fetchImpl = globalThis.fetch.bind(globalThi
         segmentInstall: () => post('segment-install', {}),
         segmentCancel: () => post('segment-cancel', {}),
         // Every picture generated on this machine, newest first; the engine keeps them in a folder.
-        async history(model) { return (await post('history', model ? {model} : {})).items || []; },
+        // Every picture, page by page (the engine has no cap; an older engine answers all of them in the first page).
+        async history(model) {
+            const items = [];
+            for (let offset = 0; offset < 100000;) {
+                const page = await post('history', {...(model ? {model} : {}), offset, limit: 200});
+                const rows = page.items || [];
+                items.push(...rows);
+                if (page.more !== true || !rows.length) break;
+                offset += rows.length;
+            }
+            return items;
+        },
         async historyDelete(file) { return (await post('history-delete', {file})).items || []; },
         async historyDeleteMany(files) { const answer = await post('history-delete-many', {files}); return {items: answer.items || [], failed: answer.failed || []}; },
         historyOpen: () => post('history-open', {}),
@@ -659,7 +670,8 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
             if (!alive()) return;
             const request_ = {prompt: request.prompt, width: context.width, height: context.height, images, mask,
                 ...(request.seed === undefined ? {} : {seed: request.seed}),
-                ...(request.loras === undefined ? {} : {loras: request.loras})};
+                ...(request.loras === undefined ? {} : {loras: request.loras}),
+                ...(tasks?.purpose ? {purpose: tasks.purpose} : {})};
             if (tasks) {
                 tasks.startJobSources?.();
                 const {id} = await tasks.jobs.submit('image', request_, {view: tasks.view || 'image-editor',

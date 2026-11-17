@@ -17,7 +17,7 @@ import { openStudio, showNodes } from './studio.js';
 import { openAutopilot, viewChanged, viewSwitch } from './view_navigation.js';
 import { wordmark } from './wordmark.js';
 import { keepViewSwitchPlace } from './view_switch_place.js';
-import { openReferenceMenu, removeSavedImages, saveGeneratedImage } from './image_library.js';
+import { openReferenceMenu, removeSavedImages } from './image_library.js';
 import { BLANK_CANVAS_AREAS, createImageGenClient, fittedNote, imageGenError, imageRemainingText, imageReportBar, renderImageFailure } from './image_generation.js';
 import { duration } from './generation_progress.js';
 import { createPreviewScene } from './preview_scene.js?v=20261115-still';
@@ -31,7 +31,7 @@ import { brokenMentions, mentionText, mentionsToEngine, promptMentions, renumber
 import { HISTORY_KEY, forgetDeletedPrompts, promptLibrary, rememberPrompt } from './image_view_prompts.js';
 import { COMPARE_MAX, compareView } from './image_view_compare.js';
 import { queuePanel } from './image_view_queue.js';
-import { isHeld, worksClient } from './image_works.js';
+import { isHeld, worksClient, saveToWorks } from './image_works.js';
 import { createWarmer } from './image_view_warm.js';
 import { openPictureViewer } from './image_view_viewer.js';
 import { LORA_MODEL, imageViewLora } from './image_view_lora.js';
@@ -220,11 +220,8 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         if ((readyParts.history || rows.length > 0) && pictureReady) dialog.dataset.fvReady = 'true';
     }
     meta.reload();
-    // Pictures made for a character card (its drafts and its views) are not works: cast_photo.js keeps their names.
-    const readCast = () => { try { return new Set(JSON.parse(localStorage.getItem('freevideo.cast.files') || '[]')); } catch { return new Set(); } };
-    let castHidden = readCast();
-    if (viewCache?.shownFile && rows.some(r => r.file === viewCache.shownFile) && !castHidden.has(viewCache.shownFile)) shownFile = viewCache.shownFile;
-    else shownFile = rows.find(r => !castHidden.has(r.file))?.file || '';
+    if (viewCache?.shownFile && rows.some(r => r.file === viewCache.shownFile)) shownFile = viewCache.shownFile;
+    else shownFile = rows[0]?.file || '';
     // The model made ready ahead (image_view_warm.js); only the model and the level go to the engine.
     const warmer = createWarmer({getToken: async () => info?.token || ''});
     function warmUp(level) { if (alive && !running && modelState(info, model.id).state === 'ready') warmer.warm(model.id, level); }
@@ -597,7 +594,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     // A picture is out of the works while it waits out an undo window: this page's, the picture editor's, or one
     // announced by another surface (the works library).
     const elsewhere = new Set();
-    const isGone = file => trash.has(file) || elsewhere.has(file) || isHeld(file) || castHidden.has(file);
+    const isGone = file => trash.has(file) || elsewhere.has(file) || isHeld(file);
     const trash = createTrash({client: deleter, onChange: (answer, list) => {
         if (answer) {
             // A file the engine no longer has is gone, not kept.
@@ -1385,7 +1382,8 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         try {
             const edited = new File([outcome.blob], outcome.name || 'edited.png', {type: outcome.blob.type || 'image/png'});
             const name = await client.upload(edited);
-            void saveGeneratedImage(api, {url: pictureURL(name), file: name, prompt: promptFor(file)}).catch(() => {});
+            // The edited picture is one work of the library (one copy, no card of its own); the upload above only serves as the reference.
+            void saveToWorks(outcome.blob, {name: outcome.name || 'edited.png', source: file, client}).catch(() => {});
             const record = {file: edited, url: URL.createObjectURL(edited), width: outcome.width, height: outcome.height};
             if (references.length >= most()) URL.revokeObjectURL(record.url); else { changeRefs(() => references.unshift(record)); promptGroup.open(true); }
             render();
@@ -1419,7 +1417,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     const fileOf = path => { const name = String(path).slice(String(path).lastIndexOf('/') + 1); return rows.find(r => r.file === path || r.name === name)?.file || null; };
     // Works deleted for good (here or anywhere): their words leave the prompt history unless still in use.
     const forgetPrompts = () => { void forgetDeletedPrompts().then(n => { if (n && alive) library.paint(); }); };
-    const onWorksGone = event => { if (alive && event.detail?.undoable === false) forgetPrompts(); };
+    const onWorksGone = event => { if (alive && event.detail?.undoable === false) { forgetPrompts(); setTimeout(forgetPrompts, 5000); } };
     window.addEventListener('freevideo-works-removed', onWorksGone);
     forgetPrompts();
     const onWorksRemoved = event => {
@@ -1438,14 +1436,6 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         if (unknown) void loadWorks(); else { drawWorks(); render(); }
     };
     window.addEventListener('freevideo-works-removed', onWorksRemoved); window.addEventListener('freevideo-works-restored', onWorksRestored);
-    // A picture filed as a character card's (here or in another tab) leaves the works.
-    const onCastFiles = event => {
-        if (!alive || (event.type === 'storage' && event.key !== 'freevideo.cast.files')) return;
-        castHidden = readCast();
-        if (shownFile && castHidden.has(shownFile) && !running) shownFile = visible()[0]?.file || '';
-        drawWorks(); render();
-    };
-    window.addEventListener('freevideo-cast-files', onCastFiles); window.addEventListener('storage', onCastFiles);
     // Leaving the page ends this page's undo window: the pictures are deleted as asked, not left on disk.
     const onPageHide = () => { void trash.flush(); };
     window.addEventListener('pagehide', onPageHide);
@@ -1504,7 +1494,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         window.removeEventListener('freevideo-job-done', onJobDone); window.removeEventListener('freevideo-open-work', onOpenWork); window.removeEventListener('freevideo-task-stage-open', onStageOpen); fitWatch?.disconnect(); cancelAnimationFrame(fitFrame); sizer.dispose(); mentions.dispose();
         clearTimeout(warmSoon); clearTimeout(warmTyping); if (!running) warmer.cancel(model.id); viewer?.close();
         window.removeEventListener('freevideo-works-removed', onWorksRemoved); window.removeEventListener('freevideo-works-restored', onWorksRestored); window.removeEventListener('pagehide', onPageHide); window.removeEventListener('freevideo-works-added', onWorksAdded);
-        window.removeEventListener('freevideo-cast-files', onCastFiles); window.removeEventListener('storage', onCastFiles); window.removeEventListener('freevideo-works-removed', onWorksGone);
+        window.removeEventListener('freevideo-works-removed', onWorksGone);
         // Kept for the next time the view opens on this page (the pictures as files; their addresses are made again).
         keptDraft = {prompt: prompt.value, caret: prompt.selectionStart ?? prompt.value.length,
             references: references.map(({url, original, ...rest}) => ({...rest, ...(original ? {original: {file: original.file, width: original.width, height: original.height}} : {})}))};

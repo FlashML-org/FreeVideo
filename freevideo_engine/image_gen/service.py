@@ -57,14 +57,18 @@ LEGACY_NAME = re.compile(r'[0-9a-f]{32}\.png')
 # does not show (it lists only the input folder itself). Earlier pages put them in the input folder under the
 # second form. The service removes them when the job ends; nothing else in the input folder is ever removed.
 PAGE_FOLDER = 'freevideo-image-ref'
-# A picture made for a card that is not saved yet (purpose "cast-draft"): not a work, not in the history; it becomes the
-# card's own file when the card is saved, and goes when the page discards it or after a day.
+# Earlier versions wrote the pictures made for a card that is not saved yet (purpose "cast-draft") here; they are works
+# of the library now, and this folder is only cleaned of what older versions left (a day at most).
 DRAFT_FOLDER = 'freevideo-draft'
 DRAFT_NAME = re.compile(r'freevideo-draft/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(?:jpg|png)')
-PURPOSES = ('cast-draft',)
+# What a picture is for, and the source its record keeps: a card's view, or a picture made inside the image editor.
+PURPOSES = ('cast-draft', 'edit')
+PURPOSE_ORIGIN = {'cast-draft': 'cast', 'edit': 'edit'}
 PAGE_UPLOAD = re.compile(r'freevideo-image-ref/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(?:png|jpg|webp)'
                          r'|freevideo-image-(?:reference|mask)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.png')
-HISTORY_LIMIT = 500
+HISTORY_LIMIT = 500  # most names one trash or delete request carries
+HISTORY_PAGE = 200  # default page of the history
+CAST_NAME_LIMIT = 40
 # Where a picture came from (editor saves, and generations that name a source), beside image-models.json.
 RECORDS_FILE = 'image-records.json'
 WORK_SOURCE = re.compile(r'freevideo-image/image-\d{8}-\d{6}-\d{2}\.(?:png|jpg)|[0-9a-f]{64}')
@@ -246,6 +250,8 @@ class Service:
         self.segment_inputs = OrderedDict()
         self.trash_mutex = threading.RLock()
         self.on_works_deleted = None
+        # names -> {name: [card names]} for pictures a character card keeps; the server sets it.
+        self.works_in_use = None
         atexit.register(self.close)
 
     @staticmethod
@@ -505,25 +511,28 @@ class Service:
                 return str(output / (base + suffix))
         raise ValueError('invalid_media')
 
-    def draft_path(self):
-        """Where a card's unsaved picture is written: FreeVideo's own folder of drafts, never the history."""
-        directory = Path(self.input_directory()).resolve()
-        folder = directory / DRAFT_FOLDER
-        if folder.is_symlink() or (folder.exists() and not folder.is_dir()):
-            raise ValueError('invalid_media')
-        folder.mkdir(exist_ok=True)
-        return str(folder / ('%s.jpg' % uuid.uuid4()))
-
     @staticmethod
     def work_record(value, origin):
         """What a new picture keeps about where it came from: a picture of the history or a content id, and the content
         ids of its prompt and references. Never a prompt or a file name the user chose."""
         record = dict(origin=origin)
+        name = value.get('cast_name')
+        if name is not None:
+            if origin != 'cast' or not isinstance(name, str) or len(name) > CAST_NAME_LIMIT or '\0' in name:
+                raise ValueError('invalid_request')
+            if name.strip():
+                record['cast_name'] = name.strip()
         source = value.get('source')
         if source is not None:
             if not isinstance(source, str) or not WORK_SOURCE.fullmatch(source):
                 raise ValueError('invalid_request')
             record['source'] = source
+        prompt = value.get('prompt')
+        if isinstance(prompt, str) and prompt.strip():
+            # A keyed hash, never the text: when the last picture made with this prompt goes, the pages drop it from
+            # their history of prompts too.
+            from .. import private_store
+            record['prompt_hash'] = private_store.name('prompt', prompt.strip())
         prompt_ref = value.get('prompt_ref')
         if prompt_ref is not None:
             if not isinstance(prompt_ref, str) or not CONTENT_ID.fullmatch(prompt_ref):
@@ -553,6 +562,14 @@ class Service:
             rows = self.records(output)
             rows[Path(path).name] = record
             present = {entry.name for entry in output.iterdir()}
+            # A picture waiting in the trash keeps its record: undo needs it, and the final delete forgets its prompt by it.
+            try:
+                for entry in os.listdir(output / TRASH):
+                    found = re.fullmatch(r'%s-(.+)' % TRASH_BATCH.pattern, entry)
+                    if found:
+                        present.add(found.group(1))
+            except OSError:
+                pass
             save(output / RECORDS_FILE, {name: row for name, row in rows.items() if name in present})
         except (OSError, ValueError):
             pass
@@ -607,8 +624,12 @@ class Service:
             return False
         return head[:8] == b'\x89PNG\r\n\x1a\n' and head[25] in (2, 6)
 
-    def history(self):
-        """Every picture generated here, newest first; the folder is the record, so it outlives sessions."""
+    def history(self, offset=0, limit=None):
+        """The pictures generated here, newest first, a page at a time (`more` says whether older ones remain); the
+        folder is the record, so it outlives sessions. `origin` and `cast_name` come from the picture's record."""
+        if type(offset) is not int or offset < 0 or limit is not None and (type(limit) is not int or not 1 <= limit <= 1000):
+            raise ValueError('invalid_request')
+        limit = HISTORY_PAGE if limit is None else limit
         output = self.output_directory()
         named, older = [], []
         for entry in output.iterdir():
@@ -623,9 +644,19 @@ class Service:
         # A picture removed some other way (by hand, by a cleanup) takes its small copy for the grids with it now.
         from ..work_thumbnails import prune_pictures
         prune_pictures(self.input_directory(), present=set(names))
-        made = self.made_by(output)
-        return dict(items=[dict(file='freevideo-image/' + name, name=name, **(dict(model=made[name]) if name in made else {}))
-                           for name in names[:HISTORY_LIMIT]])
+        made, records = self.made_by(output), self.records(output)
+
+        def item(name):
+            row = dict(file='freevideo-image/' + name, name=name)
+            if name in made:
+                row['model'] = made[name]
+            kept = records.get(name, {})
+            for key in ('origin', 'cast_name'):
+                if isinstance(kept.get(key), str):
+                    row[key] = kept[key]
+            return row
+        page = names[offset:offset + limit]
+        return dict(items=[item(name) for name in page], more=offset + limit < len(names), total=len(names))
 
     @staticmethod
     def made_by(output):
@@ -662,10 +693,24 @@ class Service:
             raise ValueError('invalid_media')
         return path
 
+    def used_by_cards(self, names):
+        """The cards that keep each of these pictures: a picture a card uses is not deleted from the library (the card
+        holds no copy), so no picture stays behind in a card after it was deleted."""
+        hook = getattr(self, 'works_in_use', None)
+        if hook is None:
+            return {}
+        try:
+            return {name: list(cards) for name, cards in hook(list(names)).items() if cards}
+        except Exception:
+            logging.warning('[FreeVideo] Could not tell which cards keep a picture.', exc_info=True)
+            return {}
+
     def history_delete(self, name):
         path = self.history_path(name)
         if not path.is_file():
             raise ValueError('invalid_media')
+        if self.used_by_cards([name]):
+            raise ValueError('picture_in_use')
         path.unlink()
         self.works_deleted([name])
         return self.history()
@@ -685,7 +730,11 @@ class Service:
                 save(output / MODELS_FILE, {name: model for name, model in rows.items() if name not in gone})
             records = self.records(output)
             if gone & set(records):
-                save(output / RECORDS_FILE, {name: row for name, row in records.items() if name not in gone})
+                kept = {name: row for name, row in records.items() if name not in gone}
+                save(output / RECORDS_FILE, kept)
+                kept_prompts = {row.get('prompt_hash') for row in kept.values()}
+                private_store.forget_prompts({row.get('prompt_hash') for name, row in records.items() if name in gone}
+                                             - kept_prompts - {None})
         except (OSError, ValueError):
             pass
         try:
@@ -727,11 +776,15 @@ class Service:
             trash = self.trash_directory()
             token = '%d-%s' % (time.time_ns(), secrets.token_hex(3))
             moved, failed = [], []
+            kept = self.used_by_cards([name for name in names if isinstance(name, str)])
             for name in dict.fromkeys(names):
                 try:
                     path = self.history_path(name)
                 except ValueError:
                     failed.append(dict(file=name if isinstance(name, str) else '', reason='invalid'))
+                    continue
+                if name in kept:
+                    failed.append(dict(file=name, reason='card', cards=kept[name]))
                     continue
                 target = trash / ('%s-%s' % (token, path.name))
                 try:
@@ -831,11 +884,15 @@ class Service:
         if not isinstance(names, list) or len(names) > HISTORY_LIMIT:
             raise ValueError('invalid_request')
         failed, deleted = [], []
+        kept = self.used_by_cards([name for name in names if isinstance(name, str)])
         for name in dict.fromkeys(names):
             try:
                 path = self.history_path(name)
             except ValueError:
                 failed.append(dict(file=name if isinstance(name, str) else '', reason='invalid'))
+                continue
+            if name in kept:
+                failed.append(dict(file=name, reason='card', cards=kept[name]))
                 continue
             try:
                 path.unlink()
@@ -1100,7 +1157,7 @@ class Service:
         result = dict(prompt=prompt, width=dimensions[0] // 32 * 32, height=dimensions[1] // 32 * 32,
                       steps=8, seed=seed, images=paths, **(dict(mask=mask_path) if mask_path else {}),
                       **(dict(cast_view='back') if cast_view == 'back' else {}),
-                      path=self.draft_path() if purpose == 'cast-draft' else self.output_path(named=True),
+                      path=self.output_path(named=True),
                       **(dict(loras=loras) if loras else {}), **(dict(model=model) if model else {}))
         # Leave room for action, kind and the small size-fit record added at dispatch.
         if loras and len(json.dumps(result, ensure_ascii=True).encode('utf-8')) > BODY_LIMIT - 1024:
@@ -1121,7 +1178,8 @@ class Service:
         if action not in ('generate', 'compose'):
             raise ValueError('invalid_request')
         context = Context(action, value)
-        context.work_record = self.work_record(value, 'generate') if isinstance(value, dict) else None
+        context.work_record = (self.work_record(value, PURPOSE_ORIGIN.get(value.get('purpose'), 'generate'))
+                               if isinstance(value, dict) else None)
         context.note_start()
         with self.mutex:
             if self.closed:
@@ -2355,14 +2413,12 @@ class Service:
                     if type(seconds) not in (int, float) or not math.isfinite(seconds) or seconds < 0:
                         raise RuntimeError('worker_exit')
                     self.keep_forecast(context)
-                    draft = path.parent.name == DRAFT_FOLDER
-                    if not draft:
-                        self.note_model(path, value.get('model') or image_model.QWEN)
-                        self.note_record(path, getattr(context, 'work_record', None))
-                        receipts = row.get('receipts')
-                        from ..private_refs import hold
-                        hold('image:' + path.name, value.get('images') or (), input_root=self.input_directory(),
-                             receipts=[r for r in receipts if isinstance(r, str)] if isinstance(receipts, list) else ())
+                    self.note_model(path, value.get('model') or image_model.QWEN)
+                    self.note_record(path, getattr(context, 'work_record', None))
+                    receipts = row.get('receipts')
+                    from ..private_refs import hold
+                    hold('image:' + path.name, value.get('images') or (), input_root=self.input_directory(),
+                         receipts=[r for r in receipts if isinstance(r, str)] if isinstance(receipts, list) else ())
                     report_id = getattr(context, 'report_id', None)
                     if report_id:
                         done = context.report('succeeded', row=row, outcome='succeeded', worker_restarts=self.worker_restarts,
@@ -2372,7 +2428,7 @@ class Service:
                             self.reports.move_to_end(report_id)
                             while len(self.reports) > REPORT_LIMIT:
                                 self.reports.popitem(last=False)
-                    result = dict(phase='complete', file=(DRAFT_FOLDER if draft else 'freevideo-image') + '/' + path.name,
+                    result = dict(phase='complete', file='freevideo-image/' + path.name,
                                   seconds=seconds, plan=row.get('plan'), report_id=report_id)
                     if isinstance(row.get('attention'), dict):
                         result['attention'] = row['attention']
@@ -2454,6 +2510,26 @@ def register():
             except Exception:
                 logging.warning('[FreeVideo] Could not remove the library card of a deleted picture.', exc_info=True)
     service.on_works_deleted = works_deleted
+
+    def works_in_use(names):
+        cast = getattr(getattr(server, '_freevideo_agent', None), 'cast', None)
+        if cast is None:
+            return {}
+        wanted, found = set(names), {}
+        with cast.changed:
+            for record in list(cast.records.values()):
+                card = record['card']
+                if card.get('kind') == 'image' or card.get('tombstone'):
+                    continue
+                for key in ('images', 'candidates'):
+                    for row in card.get(key) or []:
+                        file = row.get('media', {}).get('file') if isinstance(row, dict) and isinstance(row.get('media'), dict) else None
+                        if file in wanted:
+                            found.setdefault(file, [])
+                            if card.get('name') not in found[file]:
+                                found[file].append(card.get('name') or '')
+        return found
+    service.works_in_use = works_in_use
 
     def clean_page_uploads():
         # A deletion an earlier run did not finish; then pictures of jobs that ended while no one here saw them end,
@@ -2574,7 +2650,7 @@ def register():
             elif name == 'face-box':
                 result = await asyncio.to_thread(service.face_box, value)
             elif name == 'history':
-                result = service.history()
+                result = service.history(value.get('offset', 0), value.get('limit'))
             elif name == 'history-delete':
                 result = await asyncio.to_thread(service.history_delete, value.get('file'))
             elif name == 'history-delete-many':

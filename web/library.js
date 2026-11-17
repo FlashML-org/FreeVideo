@@ -450,7 +450,7 @@ export function openLibrary(t, options = {}) {
     const remembered = readView();
     // The shelf's filter: category from the side bar, the rest from the tool row. Opened to show one creation from
     // elsewhere, every creation is listed this time so it is found; the saved choices stay for the next opening.
-    const filter = {kind: remembered.kind, favorites: false, tag: null, query: '', period: 'any', preview: false, agent: false};
+    const filter = {kind: remembered.kind, favorites: false, tag: null, query: '', period: 'any', preview: false, agent: false, source: ''};
     // Every opening starts newest first; the sort button still changes it for this opening.
     let sort = 'new', dense = remembered.dense, trash = false;
     if (!selectedWork) try { filter.favorites = localStorage.getItem(FILTER_KEY) === 'favorites'; } catch { /* Show all. */ }
@@ -653,9 +653,6 @@ export function openLibrary(t, options = {}) {
     // Pictures deleted in the image view or the image editor: hidden while their undo lasts, gone when the engine
     // has deleted them, back when undone (freevideo-works-removed / -restored from image_works.js).
     const heldElsewhere = new Set();
-    // Pictures made for a character card (drafts and the card's own views) are not works (cast_photo.js keeps the list).
-    const readCastFiles = () => { try { return new Set(JSON.parse(localStorage.getItem('freevideo.cast.files') || '[]')); } catch { return new Set(); } };
-    let castHidden = readCastFiles();
     const dayHeadings = new Map();
     const prompts = new Map();
     // What each picture was made with (prompt, time), as the image view keeps it in this browser.
@@ -986,7 +983,7 @@ export function openLibrary(t, options = {}) {
         const loadedVideos = [...works.values()].filter(row => row.kind !== 'image');
         const pics = filter.kind === 'video' ? [] : sort === 'new' && !everything ? inOrderPictures(pictureRows, loadedVideos, !!next) : pictureRows;
         const context = {tagsOf: key => meta.tagsOf(key), promptOf: row => prompts.get(row.id) || ''};
-        return sortRows([...videos, ...pics.filter(row => !pictureBin.holding(row.file) && !heldElsewhere.has(row.file) && !castHidden.has(row.file))].filter(row => matches(row, filter, context)), sort);
+        return sortRows([...videos, ...pics.filter(row => !pictureBin.holding(row.file) && !heldElsewhere.has(row.file))].filter(row => matches(row, filter, context)), sort);
     }
     const seconds = row => { const g = row.geometry || {}; return g.seconds || (g.frames && g.frames / (g.fps || 24)) || 0; };
     // A video's card is named after its prompt, read when the card first comes into view (four at a time).
@@ -1178,7 +1175,7 @@ export function openLibrary(t, options = {}) {
     function emptyText() {
         if (filter.query) return t('Nothing matches this search.', '没有符合搜索的作品。');
         if (filter.tag) return t('No creation has this tag yet. Select creations and press Tag.', '还没有作品带这个标签。选中作品后点“标签”。');
-        if (filter.period !== 'any' || filter.preview || filter.agent) return t('Nothing matches these filters.', '没有符合筛选条件的作品。');
+        if (filter.period !== 'any' || filter.source || filter.preview || filter.agent) return t('Nothing matches these filters.', '没有符合筛选条件的作品。');
         if (filter.favorites) return t("No favorite creations. Click the heart in a creation's details to add one.", '暂无收藏的作品。点作品详情中的爱心图标收藏。');
         if (filter.kind === 'image') return picturesState === 'failed' ? t('Pictures could not be read just now. Try Refresh.', '图片暂时无法读取，请点击刷新。') : t('Pictures made in the image view appear here.', '在图像视图里生成的图片会保存在这里。');
         return t('Finished videos and pictures appear here.', '生成完成的视频和图片会保存在这里。');
@@ -1300,11 +1297,15 @@ export function openLibrary(t, options = {}) {
         const period = [['any', t('Any time', '任何时间')], ['today', t('Today', '今天')], ['week', t('Last 7 days', '最近 7 天')], ['month', t('Last 30 days', '最近 30 天')]];
         filterMenu.replaceChildren(el('div', t('When', '时间'), 'fv-library-menu-label'));
         for (const [key, label] of period) filterMenu.append(menuItem(label, filter.period === key, () => { filter.period = key; drawFilterMenu(); applyFilter(); }));
+        filterMenu.append(el('div', null, 'fv-library-menu-sep'), el('div', t('Pictures from', '图片来源'), 'fv-library-menu-label'));
+        for (const [key, label] of [['', t('Any', '全部')], ['image', t('Image', '图片')], ['edit', t('Edit', '编辑')], ['cast', t('Character', '角色')]]) {
+            filterMenu.append(menuItem(label, filter.source === key, () => { filter.source = key; drawFilterMenu(); applyFilter(); }));
+        }
         filterMenu.append(el('div', null, 'fv-library-menu-sep'), el('div', t('Only', '只看'), 'fv-library-menu-label'));
         filterMenu.append(menuItem(t('First-pass previews', '一采预览'), filter.preview, () => { filter.preview = !filter.preview; drawFilterMenu(); applyFilter(); }, 'menuitemcheckbox', t('Videos that still need a second pass', '还没有继续二采的视频')));
         filterMenu.append(menuItem(t('Made by the assistant', '助手生成'), filter.agent, () => { filter.agent = !filter.agent; drawFilterMenu(); applyFilter(); }, 'menuitemcheckbox', t('Videos made by the assistant', '由助手生成的视频')));
-        const clear = button(t('Clear filters', '清除筛选'), () => { filter.period = 'any'; filter.preview = filter.agent = false; drawFilterMenu(); applyFilter(); }, 'fv-library-menu-clear');
-        clear.disabled = filter.period === 'any' && !filter.preview && !filter.agent;
+        const clear = button(t('Clear filters', '清除筛选'), () => { filter.period = 'any'; filter.source = ''; filter.preview = filter.agent = false; drawFilterMenu(); applyFilter(); }, 'fv-library-menu-clear');
+        clear.disabled = filter.period === 'any' && !filter.source && !filter.preview && !filter.agent;
         tip(clear, t('Clear filters', '清除筛选'), t('Show everything again', '恢复显示全部'));
         filterMenu.append(el('div', null, 'fv-library-menu-sep'), clear);
     }
@@ -1315,7 +1316,7 @@ export function openLibrary(t, options = {}) {
         for (const [key, label] of Object.entries(SORT_NAMES())) sortMenu.append(menuItem(label, sort === key, () => { sort = key; persistView(); closeMenus(); applyFilter(); }));
     }
     function syncTools() {
-        const count = (filter.period !== 'any') + filter.preview + filter.agent;
+        const count = (filter.period !== 'any') + !!filter.source + filter.preview + filter.agent;
         filterButton.querySelector('.fv-library-badge').textContent = count ? String(count) : '';
         filterButton.dataset.active = String(!!count);
         sortButton.querySelector('.fv-library-tool-label').textContent = SORT_NAMES()[sort];
@@ -2510,8 +2511,6 @@ export function openLibrary(t, options = {}) {
         if (!disposed) render();
     };
     window.addEventListener('freevideo-works-removed', worksRemoved); window.addEventListener('freevideo-works-restored', worksRestored);
-    const castChanged = event => { if (event.type === 'storage' && event.key !== 'freevideo.cast.files') return; castHidden = readCastFiles(); if (!disposed) renderSoon(); };
-    window.addEventListener('freevideo-cast-files', castChanged); window.addEventListener('storage', castChanged);
     // Leaving the view puts the room's menus and viewer away in the same frame; the room itself stays with its view.
     // On the stage the room stays as it is (a comparison of the selection included); full screen ends.
     const viewLeft = () => { closeMenus(); if (layout === 'stage') exitFull(); else closeViewer(); };

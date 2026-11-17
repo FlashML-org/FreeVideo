@@ -162,6 +162,14 @@ export function createSearch({fetchVideos, fetchPrompt, fetchPictures, pictureMe
 
     return {
         ready, warm: () => { ready().catch(() => {}); },
+        // A deleted work takes its kept prompt with it, now and on disk: by library id (videos) or the video's path.
+        forget(ids) {
+            const gone = new Set((ids || []).filter(id => typeof id === 'string' && id).flatMap(id => [id, id.replace(/^FreeVideo\//, '').replace(/\/video\.mp4$/, '')]));
+            if (!gone.size) return;
+            for (const id of gone) delete prompts[id];
+            videos = videos.filter(row => !gone.has(row.id) && !gone.has(String(row.video || '')));
+            savePrompts();
+        },
         // Groups of results for a query: [{id, label, items, total}] for works (videos and pictures together), prompts
         // and cast. An empty query gives the newest works, then the newest prompts and the cast.
         async search(query, {limit = 6} = {}) {
@@ -253,6 +261,10 @@ async function browserSearch() {
             },
         },
     });
+    // Deleting a work also deletes the prompt this search kept for it, at once.
+    const removed = event => pageSearch.forget([...(event.detail?.ids || []), event.detail?.id, event.detail?.video]);
+    addEventListener('freevideo-works-removed', removed);
+    addEventListener('freevideo-library-deleted', removed);
     return pageSearch;
 }
 
