@@ -99,6 +99,9 @@ html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-works::before{display:block}
 html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="1"][data-fv-works="name"] .fv-tb-link.fv-tb-works{width:auto;padding:0 var(--fv-sp-8);font-size:var(--fv-fs-2);gap:var(--fv-sp-8)}
 html body .fv-topbar.fv-topbar.fv-topbar:not([data-fv-fit="1"][data-fv-works="name"]) .fv-tb-works .fv-tb-lbl{display:none}
 html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"] .fv-tb-right>.fv-tb-works{width:var(--fv-touch);height:var(--fv-touch);min-height:var(--fv-touch);margin-right:0;padding:0;border-radius:var(--fv-r-pill)}
+/* The name's glyphs sit about 1 px below the line box's centre (CJK and Latin alike); lift them onto the icon's centre line,
+   the same line the status capsule and search sit on */
+html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-works .fv-tb-lbl{translate:0 -0.08em}
 html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-works[aria-current]{background:var(--fv-ctl-hover);color:var(--fv-fg)}
 /* Dots: a new version, a phone link not yet seen */
 html body .fv-topbar.fv-topbar.fv-topbar :is(.fv-version-dot,.fv-lan-dot){position:absolute;top:4px;right:2px;width:6px;height:6px;margin:0;border:0;border-radius:var(--fv-r-pill);background:var(--fv-accent-ink);box-sizing:border-box}
