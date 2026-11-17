@@ -69,8 +69,9 @@ export function createImageGenClient(fetchImpl = globalThis.fetch.bind(globalThi
     let token = '';
     const p = IMAGE_GEN_PROTOCOL;
     async function request(path, options) {
-        const response = await fetchImpl(path, options);
-        const value = await response.json();
+        let response, value;
+        try { response = await fetchImpl(path, options); } catch (error) { throw failure(error instanceof TypeError ? 'connection_lost' : 'engine_error', {stage: 'start'}); }
+        try { value = await response.json(); } catch { throw failure('engine_error', {stage: 'start'}); }
         if (!response.ok || value[p.error] && !value[p.phase] && !value.state) throw failure(value[p.error], value);
         return value;
     }
@@ -220,6 +221,8 @@ export function imageGenError(code, info, t) {
         invalid_request: ['The image settings are invalid. Adjust them and try again.', '图片设置有误，请调整后重试。'],
         invalid_media: ['The reference image cannot be read. Choose another image.', '参考图读不出来，请换一张图。'],
         reload: ['Image generation was interrupted. Try again.', '图片生成中途被打断，请重试。'],
+        engine_error: ['The image engine returned an unreadable answer. Try again; if it keeps failing, report the problem.', '图像引擎返回了无法读取的结果。请重试；仍然失败请提交问题。'],
+        connection_lost: ['Lost the connection to FreeVideo. Try again once it is back.', '与 FreeVideo 的连接已断开，恢复后请重试。'],
         generation_failed: ['Image generation ran into an error. Try again.', '图像生成出错了，请再试一次。'],
         small_memory: ['This Mac has less than 16 GB of memory and cannot generate pictures.',
             '这台 Mac 的内存不足 16 GB，无法生成图片。'],
@@ -260,6 +263,7 @@ const RETRIED = Object.freeze({
     generation_failed: ['Image generation ran into an error.', '图像生成出错。'],
 });
 const FAILED_AT = Object.freeze({
+    start: ['An error occurred while starting image generation.', '启动图像生成时出错。'],
     load: ['An error occurred while loading the image model.', '加载图像模型时出错。'],
     text: ['An error occurred while reading the prompt.', '读取提示词时出错。'],
     encode: ['An error occurred while reading the reference images.', '读取参考图时出错。'],
@@ -348,12 +352,23 @@ export function renderImageFailure(host, {error, report_id, stage, fitted, info,
         again.className = 'fv-action fv-action-primary fv-image-retry'; again.textContent = t(...retry.label);
         again.onclick = () => retry.onClick();
     }
-    if (!report_id && !again) return card;
+    // The card always has a way to report: the diagnostic report (with its own technical details) when the engine made one,
+    // else a form that carries the code and stage, and the same facts under a details fold.
     let bar;
     if (report_id) ({bar} = imageReportBar(card, report_id, t, {productVersion, fetchApi}));
-    else { bar = doc.createElement('div'); bar.className = 'fv-actions'; }
-    if (again) bar.prepend(again);
-    card.append(bar);
+    else {
+        const facts = [[['Error code', '错误码'], error], [['Stage', '阶段'], stage], [['Memory', '内存'], memory]].filter(([, v]) => v);
+        bar = doc.createElement('div'); bar.className = 'fv-actions';
+        bar.append(issueButton(t, () => ({where: ['Image generation', '图像生成'], message: facts.map(([[en, zh], v]) => `${t(en, zh)}: ${v}`).join('\n')})));
+        if (again) bar.prepend(again);
+        card.append(bar);
+        const details = doc.createElement('details'); details.className = 'fv-image-failure-details';
+        const summary = doc.createElement('summary'); summary.textContent = t('Technical details', '技术详情'); details.append(summary);
+        for (const [[en, zh], v] of facts) { const row = doc.createElement('div'); row.textContent = `${t(en, zh)}: ${v}`; details.append(row); }
+        card.append(details);
+        bar = null;
+    }
+    if (bar) { if (again) bar.prepend(again); card.append(bar); }
     // Let native Enter/Space activate these buttons without invoking editor
     // canvas shortcuts. Tab and the shared card's Escape handling still work.
     card.addEventListener('keydown', event => {

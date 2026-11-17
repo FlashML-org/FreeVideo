@@ -1212,8 +1212,24 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             if (!enhancerOff() && await enhancer.beforeGenerate() === false) { say(''); if (running === mine) running = null; level.hidden = true; render(); drawWorks(); return; }
             startJobSources();
             const loras = loraRow.value(model.id);
-            const {id} = await jobs.submit('image', {prompt: engineText(), ...sent, model: model.id, remember: true, images: names, ...(seed === undefined ? {} : {seed}), ...(loras.length ? {loras} : {})},
-                {view: 'image', client, meta: {text: prompt.value, withImages, tier: tierNow, width: sent.width, height: sent.height}});
+            let id;
+            // The engine makes one picture at a time: a second request waits its turn here and starts by itself; Stop cancels the wait.
+            for (;;) {
+                try {
+                    ({id} = await jobs.submit('image', {prompt: engineText(), ...sent, model: model.id, remember: true, images: names, ...(seed === undefined ? {} : {seed}), ...(loras.length ? {loras} : {})},
+                        {view: 'image', client, meta: {text: prompt.value, withImages, tier: tierNow, width: sent.width, height: sent.height}}));
+                    break;
+                } catch (error) {
+                    if (error.code !== 'busy') throw error;
+                    if (!alive || mine.cancelled || running !== mine) return;
+                    note.dataset.kind = 'busy';
+                    say(t('Another image is generating. This one starts when it finishes.', '前面有 1 张在生成，完成后自动开始。'));
+                    progressLine.textContent = t('Waiting', '等待开始');
+                    await new Promise(done => setTimeout(done, 2000));
+                    if (!alive || mine.cancelled || running !== mine) return;
+                }
+            }
+            say(''); note.dataset.kind = '';
             if (!alive || running !== mine) return;
             mine.id = id;
             if (mine.cancelled) { void jobs.cancel(id); return; }

@@ -72,3 +72,6 @@
 .fv-action-reuse .fv-reuse-undo{all:unset;cursor:pointer;color:var(--fv-accent,#6db8fa);text-decoration:underline;text-underline-offset:2px}
 .fv-action-reuse .fv-reuse-undo:focus-visible{outline:2px solid var(--fv-accent,#6db8fa);outline-offset:2px;border-radius:var(--fv-r-xs)}
 .fv-action-reuse[hidden]{display:none}
+.fv-result-links .fv-image-failure-details{flex:1 0 100%;font-size:12px;color:var(--fv-muted,#9aa)}
+.fv-result-links .fv-image-failure-details summary{cursor:pointer}
+.fv-result-links .fv-image-failure-details div{padding-top:2px;user-select:text;overflow-wrap:anywhere}
