@@ -1469,9 +1469,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
             reuse});
     }, 'fv-works-entry'); worksButton.dataset.tourId = 'works-entry';
     worksButton.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1.2"/><rect x="9" y="2.5" width="4.5" height="4.5" rx="1.2"/><rect x="2.5" y="9" width="4.5" height="4.5" rx="1.2"/><rect x="9" y="9" width="4.5" height="4.5" rx="1.2"/></svg>';
-    worksButton.append(el('span', t('All works', '全部作品'), 'fv-works-label'));
-    worksButton.setAttribute('aria-label', t('All works', '全部作品'));
-    tip(worksButton, t('All works', '全部作品'), t('Open your works to sort and manage them', '打开作品库，筛选和管理'));
+    worksButton.append(el('span', t('Creations', '作品库'), 'fv-works-label'));
+    worksButton.setAttribute('aria-label', t('Creations', '作品库'));
+    tip(worksButton, t('Creations', '作品库'), t('Open your works to sort and manage them', '打开作品库，筛选和管理'));
     previewHead.append(previewTools); previewHead.hidden = true; output.append(previewHead);
     // The picture's space: its size comes from the column and the shape alone (fitPreview), never from what is below it.
     const previewSpace = el('div', null, 'fv-preview-space sgf-avoid'); previewSpace.dataset.fvMain = ''; output.append(previewSpace);
@@ -1770,7 +1770,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     if (node.freevideoFailure) failure.show(node.freevideoFailureReport || node.freevideoFailure, false);
     failureLayer.hidden = failure.element.hidden;
     let result = node.freevideoLastResult || app.nodeOutputs?.[node.id]?.freevideo_summary?.[0] || lastShown.get(node) || recallShown();
-    // The history stays beside the picture as a rail of thumbnails; All works opens the full library from its top.
+    // The history stays beside the picture as a rail of thumbnails; Creations opens the full library from its top.
     // Compare (F9): the video on screen against another one, on the stage; a card picked in the rail becomes the other.
     const savedVideo = video => /^FreeVideo\/\d{4}-\d{2}-\d{2}\/[0-9a-f]{32}\/video\.mp4$/.test(video || '');
     const compare = createCompare({t, host: stage,
@@ -1800,10 +1800,10 @@ export function openStudio(node, {extendFrom = null} = {}) {
         onChange: () => syncHistory()});
     recent.element.classList.add('sgf-avoid');
     recent.element.prepend(worksButton); body.append(recent.element);
-    // Phones have no rail: All works sits in the bar under the picture instead.
+    // Phones have no rail: Creations sits in the bar under the picture instead.
     const worksPhone = button('', () => worksButton.click(), 'fvs-icon-button fvs-works-phone');
-    worksPhone.innerHTML = worksButton.querySelector('svg').outerHTML; worksPhone.setAttribute('aria-label', t('All works', '全部作品'));
-    tip(worksPhone, t('All works', '全部作品'), t('Open your works to sort and manage them', '打开作品库，筛选和管理'));
+    worksPhone.innerHTML = worksButton.querySelector('svg').outerHTML; worksPhone.setAttribute('aria-label', t('Creations', '作品库'));
+    tip(worksPhone, t('Creations', '作品库'), t('Open your works to sort and manage them', '打开作品库，筛选和管理'));
     stageBar.start.prepend(worksPhone);
     function syncHistory() {
         stageBar.element.dataset.empty = String(!result?.video);

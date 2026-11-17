@@ -181,7 +181,7 @@ export async function goToView(view) {
 }
 // The library opens from the view's own Creations button when it has one (it carries that view's upscale and
 // extend actions); otherwise directly, with a back button naming the view.
-async function openCreations({selectedWork = null} = {}) {
+export async function openCreations({selectedWork = null} = {}) {
     const view = currentView();
     const own = shell()?.viewDialog?.(view)?.querySelector('[data-tour-id="works-entry"]');
     if (own && !selectedWork && own.getClientRects().length) { own.click(); return; }

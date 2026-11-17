@@ -167,6 +167,8 @@ const offeredUndoRows = () => undoRows().filter(row => !deletingNow.has(row.toke
 const undoChangedHere = () => window.dispatchEvent(new CustomEvent('freevideo-library-undo'));
 // Tells the notices and the task window which creations left the library (or came back): ids are the creations' ids
 // (a picture's is its file), paths the files; undoable is true while Undo can still bring them back.
+// The bar's Creations entry shows the room as current while it is open (topbar.js).
+const announceOpen = open => window.dispatchEvent(new CustomEvent('freevideo-library', {detail: {open}}));
 const worksEvent = (name, ids, paths, undoable) => { if (ids.length) window.dispatchEvent(new CustomEvent(name, {detail: {ids, paths, undoable}})); };
 // The server is the authority on what can still be undone; what it says replaces what this page guessed.
 const applyUndoStates = states => {
@@ -2438,7 +2440,7 @@ export function openLibrary(t, options = {}) {
         // Parked: the room keeps its creations, stage, selection and scroll; listeners keep it current in the background.
         exitFull(); closeMenus(); if (viewing === 'compare') closeViewer();
         for (const media of dialog.querySelectorAll('video')) media.pause();
-        parked = {dialog, reopen}; dialog.onclose = park; dialog.inert = true;
+        parked = {dialog, reopen}; dialog.onclose = park; dialog.inert = true; announceOpen(false);
         if (opener?.isConnected && !opener.closest('[inert]') && (!document.activeElement || document.activeElement === document.body || !document.activeElement.isConnected)) opener.focus({preventScroll: true});
     };
     dialog.onclose = park;
@@ -2454,7 +2456,7 @@ export function openLibrary(t, options = {}) {
             if (where) { dialog.dataset.fvEmbedded = 'true'; if (dialog.parentNode !== where) where.append(dialog); dialog.show(); where.addEventListener('close', hostClosed); }
             else { delete dialog.dataset.fvEmbedded; if (dialog.parentNode !== document.body) document.body.append(dialog); dialog.showModal(); }
         }
-        host = where; opened = dialog; dialog.dataset.fvReady = 'true';
+        host = where; opened = dialog; dialog.dataset.fvReady = 'true'; announceOpen(true);
         dialog.focus({preventScroll: true});
         if (next.selectedWork) {
             const row = [...works.values()].find(item => item.id === next.selectedWork || item.video === next.selectedWork);
@@ -2541,7 +2543,7 @@ export function openLibrary(t, options = {}) {
     const show = () => {
         if (host) { dialog.dataset.fvEmbedded = 'true'; host.append(dialog); dialog.show(); host.addEventListener('close', hostClosed); }
         else { document.body.append(dialog); dialog.showModal(); }
-        dialog.focus({preventScroll: true}); load(false); showUndo(); syncUndo();
+        dialog.focus({preventScroll: true}); load(false); showUndo(); syncUndo(); announceOpen(true);
         // Nothing cached yet: quiet cards hold the shelf while the first list comes.
         if (!works.size) render();
         holdUntilDrawn();

@@ -199,7 +199,7 @@
  .fv-studio:not(.fv-library) .fv-body{grid-template-columns:460px minmax(0,1fr) 0;transition:grid-template-columns 200ms ease}
  .fv-studio:not(.fv-library) .fv-body[data-recent=true]{grid-template-columns:440px minmax(0,1fr) 296px}
  .fv-studio .fv-recent{display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;border-left:1px solid var(--fv-border);background:color-mix(in srgb,var(--fv-bg) 70%,#000)}
- .fv-studio .fv-body[data-recent=false] .fv-recent{visibility:hidden;border-left-width:0}
+ .fv-studio .fv-body[data-recent=false] .fv-recent:not(.fvs-rail){visibility:hidden;border-left-width:0}
  /* fitPreview follows the animated grid; a second size transition would delay the picture. */
  .fv-studio .fv-body.fv-recent-resizing .fv-stage{transition:none}
 }

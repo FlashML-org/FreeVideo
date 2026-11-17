@@ -61,8 +61,11 @@ html body .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch>button[aria-pressed=tru
 /* The bold label's width is reserved (view_navigation.css), so the current tab never changes the pill's width. */
 html body .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch>button>span,html body .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch>button::after{grid-area:1/1}
 html body .fv-topbar.fv-topbar.fv-topbar:is([data-fv-fit="1"],[data-fv-fit="2"])>.fv-view-switch>button{padding:0 var(--fv-sp-12)}
+html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="2"]>.fv-view-switch>button{padding:0 var(--fv-sp-10, 10px)}
 /* Phone: only the current tab shows, as a picker with a chevron; pressing it lists the views. */
-html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"]>.fv-view-switch{height:var(--fv-touch);padding:0}
+/* Phone: the picker takes the room between the logo and the right group, so a fuller right group never runs into it. */
+html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"]{grid-template-columns:auto minmax(0,1fr) auto!important}
+html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"]>.fv-view-switch{height:var(--fv-touch);padding:0;justify-self:center;min-width:0;max-width:100%}
 html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"]>.fv-view-switch::before{display:none}
 html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"]>.fv-view-switch>button:not([aria-pressed=true]){display:none}
 html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"]>.fv-view-switch>button[aria-pressed=true]{height:var(--fv-touch);min-height:var(--fv-touch);grid-template-columns:auto 16px;column-gap:var(--fv-sp-4);
@@ -89,6 +92,14 @@ html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-ico::before{content:"";display:n
   -webkit-mask:var(--fv-tb-icon) center/16px 16px no-repeat;mask:var(--fv-tb-icon) center/16px 16px no-repeat}
 html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-btn.fv-tb-ico::before{display:block}
 html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-search svg{display:none}
+/* Creations: the library's fixed entry, a link like its neighbours (it leads the group, so it sits flush with it). Icon and
+   name at fit 0–1, the icon alone from fit 2 (its tip names it); at fit 3 it stays on the bar as a touch-size icon */
+html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-right>.fv-tb-works{margin-right:calc(-1 * var(--fv-sp-8))}
+html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-works::before{display:block}
+html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="1"][data-fv-works="name"] .fv-tb-link.fv-tb-works{width:auto;padding:0 var(--fv-sp-8);font-size:var(--fv-fs-2);gap:var(--fv-sp-8)}
+html body .fv-topbar.fv-topbar.fv-topbar:not([data-fv-fit="1"][data-fv-works="name"]) .fv-tb-works .fv-tb-lbl{display:none}
+html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"] .fv-tb-right>.fv-tb-works{width:var(--fv-touch);height:var(--fv-touch);min-height:var(--fv-touch);margin-right:0;padding:0;border-radius:var(--fv-r-pill)}
+html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-works[aria-current]{background:var(--fv-ctl-hover);color:var(--fv-fg)}
 /* Dots: a new version, a phone link not yet seen */
 html body .fv-topbar.fv-topbar.fv-topbar :is(.fv-version-dot,.fv-lan-dot){position:absolute;top:4px;right:2px;width:6px;height:6px;margin:0;border:0;border-radius:var(--fv-r-pill);background:var(--fv-accent-ink);box-sizing:border-box}
 /* fit 1–2: the links become 32 px icon buttons; their tips give the name */
@@ -98,6 +109,8 @@ html body .fv-topbar.fv-topbar.fv-topbar:is([data-fv-fit="1"],[data-fv-fit="2"])
 html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="2"] .fv-tb-link{width:var(--fv-ctl-s)}
 /* fit 3: one menu button for search and the links */
 html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"] .fv-tb-right{gap:var(--fv-sp-4)}
+/* Narrowest phones: the 44 px targets touch (their icons stay 28 px apart) so the view picker keeps its whole name. */
+@media (max-width:375px){html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"]{column-gap:var(--fv-sp-4)}html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"] .fv-tb-right{gap:0}}
 html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"] .fv-tb-right>:is(.fv-tb-links,.fv-tb-search,.fv-tb-sep){display:none!important}
 html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"] .fv-tb-menu{display:inline-flex;width:var(--fv-touch);height:var(--fv-touch);min-height:var(--fv-touch);border-radius:var(--fv-r-pill)}
 
