@@ -192,7 +192,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     // A picture's words: from this page's memory (made while it is open) or the engine's record of it; never the browser's store.
     const promptFor = file => promptOf[file] || sessionPrompts.get(file) || rows.find(r => r.file === file)?.prompt || '';
     // running: the job this page shows ({id} once the store has it); the job itself belongs to the store and outlives the page.
-    let ratioChosen = !!sizes.ratio, running = null, failure = null, lastReport = null, alive = true, shownFile = '', started = 0, selecting = false, unwatch = null;
+    let ratioChosen = !!sizes.ratio, running = null, failure = null, lastReport = null, alive = true, shownFile = '', started = 0, selecting = false, unwatch = null, asking = false;
     let pendingGenerate = false, fitted = null, undoNote = null, view = 'works', filter = 'all', query = '', sort = readStore('freevideo.imageView.sort', 'new');
     // compare: two or more works picked in the works column are compared on the stage ({files, total}); soloKey: the
     // selection whose compare was left for one picture (it comes back when the selection changes).
@@ -1274,6 +1274,17 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             running = null; level.hidden = true; render(); drawWorks();
         }
     // ── end run ──
+        // The engine has not said which models this computer offers yet: ask first, so a request never names a model that is not here.
+        else if (!info?.models) {
+            if (asking) return;
+            // Another press while it waits is ignored; the bar shows the press was taken.
+            asking = true; level.hidden = false; level.dataset.counted = 'false'; level.style.setProperty('--fv-progress', '0');
+            try { settleModel(await client.info(), true); } catch { /* the request below gets the engine's own answer */ }
+            asking = false; level.hidden = true;
+            if (!alive) return;
+            render();
+            if (info?.models) go.onclick(); else void generate();
+        }
         // A model being installed: Generate says whether the picture follows the install.
         else if (loading()) { pendingGenerate = !pendingGenerate && (!!prompt.value.trim() || references.length > 0); if (!prompt.value.trim() && !references.length) { promptGroup.open(true); prompt.focus(); } render(); }
         // A model not installed: installs it, then generates.
@@ -1501,15 +1512,21 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     setTimeout(() => { dialog.dataset.fvReady = 'true'; }, 1500);
     markReady('start');
     // The first model to offer: the last used, or an installed one (H3 Image first). Both are always shown.
-    client.info().then(value => {
-        info = value;
+    // A model the engine lists no row for is not offered on this computer (H3 Image on a Mac) and is never kept.
+    function settleModel(value, keepChosen = false) {
+        info = value; const before = model;
         const ready = IMAGE_MODELS.filter(m => value.models?.find(r => r.id === m.id)?.ready);
         const offered = IMAGE_MODELS.filter(m => value.models?.some(r => r.id === m.id));
         if (value.models && !remembered() && ready.length) model = ready[0];
         if (value.models && offered.length && !offered.includes(model)) model = offered[0];
+        // A press that waited for this list keeps the size the user already chose, unless the model changed.
+        if (keepChosen && model === before) return;
         const limits = areaRange(model.id, ratioValue(shapeOf()));
         area = Math.min(limits.max, Math.max(limits.min, sizes[model.id] || RANGES[model.id].presets.standard));
         keepSize();
+    }
+    client.info().then(value => {
+        settleModel(value);
         const poller = setInterval(() => { if (!alive) return clearInterval(poller); if (IMAGE_MODELS.some(m => modelState(info, m.id).state === 'downloading')) client.info().then(v => { info = v; render(); }).catch(() => {}); }, 2000);
         if (alive) { render(); fitLeft(); if (historyLoaded) rememberView(); }
         markReady('info');

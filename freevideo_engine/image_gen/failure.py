@@ -124,20 +124,23 @@ def _number(value):
             or type(value) is float and math.isfinite(value) and value >= 0)
 
 
-def seed_redactor(redactor, value):
-    """Seed before allowlisting; escaped and multiline echoes must also disappear."""
+def seed_redactor(redactor, value, names=True):
+    """Seed before allowlisting; escaped and multiline echoes must also disappear.
+
+    `names` is for a request, where a person's or scene's `name` is user text. The machine record has `name`
+    fields of its own (a Mac's device name), which the report keeps."""
     redactor.structured(value)
     if isinstance(value, dict):
         for key, item in value.items():
-            if key in ('prompt', 'negative_prompt', 'prompt_text', 'scene', 'name') and isinstance(item, str) and item:
+            if key in ('prompt', 'negative_prompt', 'prompt_text', 'scene', *(('name',) if names else ())) and isinstance(item, str) and item:
                 redactor.prompts.update((item, repr(item)[1:-1], json.dumps(item, ensure_ascii=True)[1:-1],
                                          json.dumps(item, ensure_ascii=False)[1:-1]))
                 redactor.prompts.update(line for line in item.splitlines() if line.strip())
             elif isinstance(item, (dict, list)):
-                seed_redactor(redactor, item)
+                seed_redactor(redactor, item, names)
     elif isinstance(value, list):
         for item in value:
-            seed_redactor(redactor, item)
+            seed_redactor(redactor, item, names)
 
 
 def clean(value, redactor, depth=0):
@@ -275,7 +278,7 @@ class Context:
 
     def set_machine(self, machine):
         if isinstance(machine, dict):
-            seed_redactor(self.redactor, machine)
+            seed_redactor(self.redactor, machine, names=False)
             self.machine = machine
 
     def report(self, code, *, row=None, error=None, video_busy=False, worker_restarts=0, outcome='failed', forecast=None):
