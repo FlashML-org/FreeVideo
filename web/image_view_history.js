@@ -230,7 +230,7 @@ export function historyPanel({pictureURL, onShow, onToggleFav, onSelect, onSelec
         const open = el('button', 'fv-iv-tile-open'); open.type = 'button';
         const image = el('img'); image.alt = ''; image.loading = 'lazy'; image.decoding = 'async'; image.draggable = false;
         // Shown whole once loaded; until then the tile is a placeholder (and shows no "selected" ring on nothing).
-        image.dataset.loaded = 'false'; image.addEventListener('load', () => { image.dataset.loaded = 'true'; }); image.addEventListener('error', () => { image.dataset.loaded = 'true'; });
+        image.dataset.loaded = 'false'; image.addEventListener('load', () => { image.dataset.loaded = 'true'; }); image.addEventListener('error', () => { image.dataset.loaded = 'true'; image.dataset.missing = 'true'; });
         image.src = pictureURL(row.file); if (image.complete && image.naturalWidth) image.dataset.loaded = 'true';
         open.append(image);
         const check = el('button', 'fv-iv-tile-check'); check.type = 'button'; check.append(icon('check'));

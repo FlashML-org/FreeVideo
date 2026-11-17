@@ -439,6 +439,9 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
 .fv-iv .fv-iv-picture[data-loaded=false],.fv-iv .fv-iv-tile img[data-loaded=false]{opacity:0;animation:none}
 .fv-iv .fv-iv-tile img[data-loaded=true]{animation:fv-iv-in 120ms var(--iv-ease)}
 .fv-iv .fv-iv-tile.fv-iv-current:has(img[data-loaded=false])::after{display:none}
+/* a picture whose file is gone: a plain tile or frame in place of the browser's broken-image mark */
+.fv-iv img[data-missing=true]{visibility:hidden}
+.fv-iv .fv-iv-pic:has(.fv-iv-picture[data-missing=true]){background:rgb(var(--fv-tint))}
 @media(prefers-reduced-motion:reduce){.fv-iv .fv-iv-frame[data-loading=true] .fv-iv-pic,.fv-iv .fv-iv-tile:has(img[data-loaded=false]){animation:none}}
 /* the shown picture opens large on a click */
 .fv-iv .fv-iv-frame[data-state=done] .fv-iv-picture{cursor:zoom-in}

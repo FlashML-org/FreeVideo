@@ -1069,7 +1069,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             const url = pictureURL(shownFile);
             // A picture shows whole once decoded (never painted half-loaded); until then its frame holds a placeholder.
             if (picture.dataset.file !== shownFile) {
-                picture.dataset.file = shownFile; picture.dataset.loaded = 'false'; picture.src = url;
+                picture.dataset.file = shownFile; picture.dataset.loaded = 'false'; delete picture.dataset.missing; picture.src = url;
                 if (picture.complete && picture.naturalWidth) picture.dataset.loaded = 'true';
                 // A picture of unknown shape: its size is read from its first bytes (long before it has loaded), so the
                 // frame and the caption row take their final size then, and the view is ready with them.
@@ -1118,7 +1118,8 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         viewer = openPictureViewer({host: body, url: pictureURL(shownFile), onClose: () => { viewer = null; },
             step: by => { const before = shownFile; step(by); return shownFile !== before ? pictureURL(shownFile) : ''; }});
     });
-    picture.onerror = () => { picture.dataset.loaded = 'true'; frame.dataset.loading = 'false'; markReady('picture'); };
+    // A picture that can no longer be read (its file gone) leaves a quiet empty frame, never the browser's broken-image mark.
+    picture.onerror = () => { picture.dataset.loaded = 'true'; picture.dataset.missing = 'true'; frame.dataset.loading = 'false'; markReady('picture'); };
 
     function paintRunTile(fraction) {
         if (!running && browsing) browsing = false;
