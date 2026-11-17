@@ -2096,6 +2096,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
     let videoMissing = false;
     const addVideoNote = el('p', '', 'fv-add-video-note'); addVideoNote.hidden = true;
     addVideoNote.setAttribute('role', 'status');
+    // A length the device cannot make greys the main button: the reason and the next step are said beside it, not only on hover.
+    const lengthWhy = el('p', '', 'fv-length-why'); lengthWhy.hidden = true;
+    lengthWhy.setAttribute('role', 'status');
     videoModelState((path, options) => api.fetchApi(path, options)).then(state => {
         if (disposed || state.installed) return;
         videoMissing = true;
@@ -2235,6 +2238,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
             : chainWait ? t('Parts are generating. Wait, or cancel them in the queue.', '分段视频生成中，完成或在队列里取消后可再生成')
             : lengthControl.blocked ? lengthControl.message || ''
             : t('A loop is running. Stop it to start again.', '正在循环生成，停止后可重新开始');
+        const lengthSaid = lengthControl.blocked && !videoMissing ? lengthControl.visibleMessage : '';
+        if (lengthWhy.textContent !== lengthSaid) lengthWhy.textContent = lengthSaid;
+        lengthWhy.hidden = !lengthSaid;
         const words = {fvTipName: keyLabel.textContent.replace(/…$/, ''), fvTipUse: use && keySetup && keyShowsEta ? `${use} · ${t('Includes first-time setup', '含首次准备')}` : use, fvTipKey: TIPS['studio.generate'].key, fvTipWhy: why};
         for (const [field, value] of Object.entries(words)) {
             if (value) { if (generate.dataset[field] !== value) generate.dataset[field] = value; } else delete generate.dataset[field];
@@ -2918,7 +2924,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             }},
             {id: 'advanced', tray: 'advanced', icon: 'sliders', read: () => ({label: '', tip: [t('Advanced', '高级选项'), t('Run mode, seed, steps and parts', '生成方式、种子、步数和分段')]})},
         ],
-        status: [requestAssets.element, addVideoNote, otherUsage.element], onTray: open => {
+        status: [requestAssets.element, addVideoNote, lengthWhy, otherUsage.element], onTray: open => {
             placeTray(); fitPreview();
             // An open tray: the play bar and the bar under the picture step back (CSS); they show again when it closes.
             void open;

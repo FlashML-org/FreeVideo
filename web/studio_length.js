@@ -204,6 +204,12 @@ export function createStudioLength({api, node, seconds, advanced, fields, t, fie
         get estimate() { return limits?.estimate || null; },
         get capabilityState() { return capabilityState; }, get estimating() { return waiting; },
         get blocked() { return !absent && Boolean(error); }, get message() { return error ? errorMessage(error) : ''; },
+        // The line shown beside the greyed button: the reason, and always what to do next.
+        get visibleMessage() {
+            if (absent || !error) return '';
+            const next = t('Choose a shorter duration.', '请缩短时长。');
+            return error === 'single_unavailable' || (error === 'continuation_unavailable' && noParts) ? `${errorMessage(error)} ${next}` : errorMessage(error);
+        },
         fallback() { absent = true; invalidate(); },
         // Follows the Autopilot tab when its state settles after the panel opened.
         set autopilot(shown) { if (disposed || Boolean(shown) === autopilotShown) return; autopilotShown = Boolean(shown); writeHint(); paint(); onChange(); },
