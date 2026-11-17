@@ -42,7 +42,6 @@ web/vendor/*
 web/vendor/three/*
 !web/vendor/three/three.module.min.js
 !web/vendor/three/LICENSE
-!web/vendor/three/TransformControls.js
 downloads/
 prepared/
 kernel-cache/
