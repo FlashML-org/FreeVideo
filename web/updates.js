@@ -3,6 +3,7 @@ import { setLauncherPresent, setOfflineInstall } from './repair_hint.js';
 import { issueButton } from './issue_button.js';
 import './glass/library.js';
 import { hasWhatsNew } from './whatsnew_pages.js';
+import { releaseMedia, mediaKind, mediaPath, splitChange } from './release_media.js';
 
 // Every platform downloads from one release: the latest vX.Y.Z.
 const releasePage = 'https://github.com/FlashML-org/FreeVideo/releases/latest';
@@ -34,6 +35,113 @@ export const earlierNotes = (release, installed) => installed
     ? (release?.release_history || []).filter(row => newerThan(row.product_version, installed)) : [];
 const publish = () => { for (const render of listeners) render(); };
 const later = ms => { clearTimeout(timer); timer = setTimeout(checkUpdates, ms); };
+
+// The picture or video above a version's notes: release.media = {url, poster, sha256} from the update metadata. The
+// engine keeps a verified copy (GET /freevideo/updates/media); the page shows the cover first, and the cover only
+// when the file is slow, offline or does not match. Without media nothing is drawn.
+const MEDIA_WAIT_MS = 8000;
+const mediaAddress = (which, part, media) => api.apiURL(mediaPath(which, part, media));
+const reducedMotion = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } };
+const SOUND_OFF = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="m23 9-6 6M17 9l6 6"/></svg>';
+const SOUND_ON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>';
+
+// One 16:9 block: the cover at once, the video or moving picture over it once it plays. A video plays muted and loops;
+// a click on it or on the speaker turns the sound on or off. With reduced motion nothing moves until it is clicked.
+export function createReleaseMedia(release, which, cn) {
+    const media = releaseMedia(release);
+    if (!media) return null;
+    const t = (en, zh) => cn ? zh : en, kind = mediaKind(media);
+    const element = document.createElement('figure'); element.className = 'fv-release-media';
+    element.dataset.kind = kind; element.dataset.state = 'cover';
+    const cover = document.createElement('img'); cover.className = 'fv-release-cover'; cover.alt = '';
+    cover.decoding = 'async'; cover.draggable = false;
+    element.append(cover);
+    let motion = null, sound = null, timer = 0, coverFailed = false, closed = false, seen = true;
+    const give = () => {
+        // The file did not come in time or cannot be shown: the cover stays, or nothing when it has none either.
+        clearTimeout(timer);
+        if (motion) { motion.removeAttribute('src'); if (kind === 'video') try { motion.load(); } catch {} motion.remove(); motion = null; }
+        sound?.remove(); sound = null;
+        element.classList.remove('is-clickable'); element.onclick = null;
+        element.dataset.state = 'cover';
+        if (coverFailed) element.hidden = true;
+    };
+    // Without its cover the block waits hidden for the file itself; shown() brings it back.
+    cover.onerror = () => { coverFailed = true; if (element.dataset.state !== 'media') element.hidden = true; };
+    cover.src = mediaAddress(which, 'poster', media);
+    const shown = () => { clearTimeout(timer); element.hidden = false; element.dataset.state = 'media'; if (sound) sound.hidden = false; };
+    const setSound = on => {
+        if (!motion || kind !== 'video') return;
+        motion.muted = !on;
+        if (on) void motion.play()?.catch?.(() => {});
+        if (sound) {
+            sound.innerHTML = on ? SOUND_ON : SOUND_OFF; sound.setAttribute('aria-pressed', String(on));
+            sound.dataset.fvTipName = on ? t('Sound on', '声音已打开') : t('Sound off', '声音已关闭');
+        }
+    };
+    const load = ({withSound = false} = {}) => {
+        if (motion || closed) return;
+        if (kind === 'video') {
+            motion = document.createElement('video'); motion.className = 'fv-release-motion';
+            motion.muted = !withSound; motion.defaultMuted = !withSound; motion.loop = true; motion.playsInline = true;
+            motion.setAttribute('playsinline', ''); motion.preload = 'auto'; motion.disablePictureInPicture = true;
+            motion.addEventListener('playing', shown, {once: true});
+            motion.addEventListener('error', give, {once: true});
+            motion.src = mediaAddress(which, 'media', media);
+            sound.before(motion); setSound(withSound);
+            void motion.play()?.catch?.(() => {});
+        } else {
+            motion = document.createElement('img'); motion.className = 'fv-release-motion'; motion.alt = ''; motion.decoding = 'async'; motion.draggable = false;
+            motion.addEventListener('load', shown, {once: true});
+            motion.addEventListener('error', give, {once: true});
+            motion.src = mediaAddress(which, 'media', media);
+            element.append(motion);
+        }
+        timer = setTimeout(() => { if (element.dataset.state !== 'media') give(); }, MEDIA_WAIT_MS);
+    };
+    const still = reducedMotion() && kind !== 'image';
+    if (kind === 'video') {
+        // The speaker: shown once the video plays; with reduced motion at once, and it starts the video with sound.
+        sound = document.createElement('button'); sound.type = 'button'; sound.className = 'fv-release-sound'; sound.hidden = !still;
+        sound.innerHTML = SOUND_OFF; sound.setAttribute('aria-pressed', 'false');
+        sound.setAttribute('aria-label', t('Sound', '声音'));
+        sound.dataset.fvTipName = t('Sound off', '声音已关闭'); sound.dataset.fvTipUse = t('Turn the sound on or off', '打开或关闭声音');
+        sound.onclick = event => { event.stopPropagation(); if (!motion) load({withSound: true}); else setSound(motion.muted); };
+        element.append(sound);
+    }
+    if (kind === 'video' || still) {
+        element.classList.add('is-clickable');
+        element.onclick = () => { if (!motion) load({withSound: kind === 'video'}); else setSound(motion.muted); };
+    }
+    if (!still) load();
+    // Off screen or in a hidden tab the video waits, so it costs nothing there.
+    const playing = () => motion && kind === 'video' && element.dataset.state === 'media';
+    const visibility = () => { if (!playing()) return; if (document.hidden || !seen) motion.pause(); else void motion.play()?.catch?.(() => {}); };
+    document.addEventListener('visibilitychange', visibility);
+    let observer = null;
+    try { observer = new IntersectionObserver(rows => { seen = rows.at(-1).isIntersecting; visibility(); }); observer.observe(element); } catch {}
+    return {element, media, which, dispose() {
+        closed = true; clearTimeout(timer); observer?.disconnect(); document.removeEventListener('visibilitychange', visibility);
+        if (motion) { motion.removeAttribute('src'); if (kind === 'video') try { motion.load(); } catch {} }
+        element.remove();
+    }};
+}
+// Keeps one media block in a holder while the release it shows stays the same, so a status poll does not restart it.
+function mediaHolder(holder, cn) {
+    let current = null;
+    return {
+        set(release, which) {
+            const media = releaseMedia(release), key = media ? which + ':' + media.sha256 + ':' + media.poster : '';
+            if (key === (current ? current.which + ':' + current.media.sha256 + ':' + current.media.poster : '')) return current;
+            current?.dispose(); current = null;
+            if (media) { current = createReleaseMedia(release, which, cn); holder.prepend(current.element); }
+            return current;
+        },
+        dispose() { current?.dispose(); current = null; },
+    };
+}
+// The release shown first: the available update, else the version in use.
+const topRelease = () => value?.available ? [value.available, 'available'] : [value?.current_release, 'current'];
 
 export async function checkUpdates() {
     if (pending || Date.now() - lastCheck < 1500 || (document.hidden && !updating)) return;
@@ -124,12 +232,14 @@ export function createUpdateNotice(cn) {
     const details = document.createElement('button'); details.type = 'button';
     details.textContent = t("What's new", '更新内容');
     let closeNotes = () => {};
-    // The notes are in Settings › Version & updates; the sheet is the fallback when Settings cannot open.
-    details.onclick = async () => {
-        closeNotes();
-        try { const {openSetup} = await import('./setup.js'); await openSetup({section: 'about'}); }
-        catch { closeNotes = showReleaseNotes(cn); }
-    };
+    // The update's own window: its picture or video on top, the full notes below, Later and Update now at the bottom.
+    details.onclick = () => { closeNotes(); closeNotes = showReleaseNotes(cn); };
+    // The update's cover, when it has one; it opens the same window. The button beside it is the keyboard's way in.
+    const thumb = document.createElement('img'); thumb.className = 'fv-update-thumb'; thumb.alt = ''; thumb.hidden = true;
+    thumb.draggable = false; thumb.decoding = 'async'; thumb.setAttribute('aria-hidden', 'true');
+    thumb.onload = () => { thumb.dataset.ready = thumb.getAttribute('src'); render(); };
+    thumb.onerror = () => { thumb.dataset.failed = thumb.getAttribute('src'); render(); };
+    thumb.onclick = () => details.click();
     const apply = document.createElement('button'); apply.type = 'button'; apply.className = 'fv-update-apply';
     apply.textContent = t('Update now', '立即更新');
     apply.title = t('FreeVideo restarts once; running videos finish first.', 'FreeVideo 会重启一次，正在生成的视频会先完成。');
@@ -156,7 +266,7 @@ export function createUpdateNotice(cn) {
     const stop = document.createElement('button'); stop.type = 'button';
     stop.textContent = t('Cancel update', '取消更新');
     stop.onclick = () => { stop.disabled = true; void cancelUpdate().finally(() => { stop.disabled = false; }); };
-    element.append(label, details, apply, link, dismiss, stop, close);
+    element.append(thumb, label, details, apply, link, dismiss, stop, close);
     const render = () => {
         const launcher = value?.launcher, phase = launcher?.phase || '', candidate = value?.available;
         const mac = value?.channel === 'macos-preview', linux = value?.channel === 'linux-preview';
@@ -201,6 +311,13 @@ export function createUpdateNotice(cn) {
             element.append(problem);
         } else problem?.remove();
         details.hidden = !actions;
+        const media = actions && !failure && candidate ? releaseMedia(candidate) : null;
+        const cover = media ? mediaAddress('available', 'poster', media) : '';
+        if ((thumb.getAttribute('src') || '') !== cover) {
+            if (cover) thumb.src = cover; else thumb.removeAttribute('src');
+        }
+        thumb.hidden = !cover || thumb.dataset.ready !== cover || thumb.dataset.failed === cover;
+        element.classList.toggle('has-thumb', !thumb.hidden);
         const direct = !!launcher && !launcher.manual && !failure;
         apply.hidden = !actions || !direct;
         link.hidden = !actions || direct;
@@ -222,7 +339,8 @@ function fillNotes(body, cn) {
         if (!release) continue;
         const section = document.createElement('section'), heading = document.createElement('h3');
         section.dataset.kind = kind;
-        heading.textContent = label + ' · ' + displayVersion(release); section.append(heading);
+        // The update is named by its version alone; the version in use keeps its label.
+        heading.textContent = (kind === 'new' ? '' : label + ' · ') + displayVersion(release); section.append(heading);
         const build = document.createElement('p'); build.className = 'fv-release-build fv-copyable';
         build.textContent = release.development ? t('Development version', '开发版本') : t('Build: ', '构建号：') + (release.version || '—');
         section.append(build);
@@ -230,21 +348,13 @@ function fillNotes(body, cn) {
         heading.dataset.fvTipName = displayVersion(release); heading.dataset.fvTipUse = build.textContent;
         const notes = localizedNotes(release, cn), summary = document.createElement('p');
         summary.textContent = notes?.summary || t('No release notes were included with this version.', '此版本未附带更新说明。'); section.append(summary);
-        const list = document.createElement('ul');
-        for (const item of notes?.changes || []) {
-            const row = document.createElement('li'); row.textContent = item; list.append(row);
-        }
-        section.append(list);
+        section.append(changeList(notes?.changes));
         if (release === value?.available) {
             for (const row of earlierNotes(release, value?.current_release?.product_version)) {
                 const earlier = localizedNotes(row, cn);
                 const name = document.createElement('h4'); name.textContent = 'v' + row.product_version;
                 const text = document.createElement('p'); text.textContent = earlier?.summary || '';
-                const items = document.createElement('ul');
-                for (const item of earlier?.changes || []) {
-                    const entry = document.createElement('li'); entry.textContent = item; items.append(entry);
-                }
-                section.append(name, text, items);
+                section.append(name, text, changeList(earlier?.changes));
             }
         }
         body.append(section);
@@ -259,33 +369,128 @@ function fillNotes(body, cn) {
 }
 export function releaseNotesInto(body, cn, {onNews = () => {}} = {}) {
     body.classList.add('fv-release-body');
-    const render = () => { onNews(fillNotes(body, cn)); };
+    // The picture or video of the newest version above the notes; kept across status polls.
+    const top = document.createElement('div'); top.className = 'fv-release-top';
+    const sections = document.createElement('div'); sections.className = 'fv-release-sections';
+    body.replaceChildren(top, sections);
+    const media = mediaHolder(top, cn);
+    const render = () => { const [release, which] = topRelease(); top.hidden = !media.set(release, which); onNews(fillNotes(sections, cn)); };
     listeners.add(render); render(); body.scrollTop = 0;
-    return {dispose: () => listeners.delete(render)};
+    return {dispose: () => { listeners.delete(render); media.dispose(); }};
+}
+
+function noteRows(release, cn) {
+    const t = (en, zh) => cn ? zh : en, notes = localizedNotes(release, cn), rows = [];
+    const summary = document.createElement('p'); summary.className = 'fv-release-summary';
+    summary.textContent = notes?.summary || t('No release notes were included with this version.', '此版本未附带更新说明。');
+    rows.push(summary);
+    if (notes?.changes?.length) rows.push(changeList(notes.changes));
+    return rows;
+}
+// The changes as "label + sentence" rows (the update window and Settings › Version & updates alike).
+function changeList(changes) {
+    const list = document.createElement('ul'); list.className = 'fv-release-list';
+    for (const item of changes || []) {
+        const [topic, sentence] = splitChange(item), row = document.createElement('li');
+        if (topic) { const tag = document.createElement('span'); tag.className = 'fv-release-tag'; tag.textContent = topic; row.append(tag); }
+        const text = document.createElement('span'); text.className = 'fv-release-text'; text.textContent = sentence; row.append(text);
+        list.append(row);
+    }
+    return list;
+}
+const versionName = release => release?.product_version || release?.version || '—';
+// The update window: the newest version's picture or video, its full notes (with every version it skips), then the
+// version in use in one line. Returns whether the version in use has a "What's new" tour.
+function fillSheet(body, cn) {
+    const t = (en, zh) => cn ? zh : en;
+    body.replaceChildren();
+    const available = value?.available, current = value?.current_release || (value?.current_version ? {version: value.current_version} : null);
+    const release = available || current;
+    if (!release) {
+        const message = t('Version information is not available yet.', '暂时无法获取版本信息。');
+        const empty = document.createElement('p'); empty.className = 'fv-release-empty'; empty.textContent = message;
+        body.append(empty, issueButton(t, () => ({where: ['Version information', '版本信息'], message})));
+        if (!started) void checkUpdates();
+        return false;
+    }
+    const head = document.createElement('h2'); head.className = 'fv-release-ver';
+    const name = document.createElement('b'); name.textContent = versionName(release);
+    // The version alone heads the notes; the buttons and the version-in-use line below say the rest.
+    head.append(name);
+    const build = release.development ? t('Development version', '开发版本') : t('Build: ', '构建号：') + (release.version || '—');
+    head.dataset.fvTipName = displayVersion(release); head.dataset.fvTipUse = build;
+    body.append(head, ...noteRows(release, cn));
+    if (available) {
+        for (const row of earlierNotes(available, value?.current_release?.product_version)) {
+            const name = document.createElement('h3'); name.className = 'fv-release-earlier'; name.textContent = row.product_version;
+            body.append(name, ...noteRows(row, cn));
+        }
+        if (current) {
+            const line = document.createElement('p'); line.className = 'fv-release-current';
+            line.textContent = t('Current version ', '当前版本 ') + versionName(current);
+            line.dataset.fvTipName = displayVersion(current);
+            line.dataset.fvTipUse = current.development ? t('Development version', '开发版本') : t('Build: ', '构建号：') + (current.version || '—');
+            body.append(line);
+        }
+    }
+    return !available && hasWhatsNew(productVersion());
 }
 
 function showReleaseNotes(cn) {
     const t = (en, zh) => cn ? zh : en;
-    const dialog = document.createElement('dialog'); dialog.className = 'fv-release-notes';
-    const title = document.createElement('h2'); title.textContent = t('Version & release notes', '版本与更新说明');
-    dialog.setAttribute('aria-label', title.textContent);
+    const dialog = document.createElement('dialog'); dialog.className = 'fv-release-notes fv-release-rich';
+    dialog.setAttribute('aria-label', t('Version & updates', '版本与更新'));
+    const top = document.createElement('div'); top.className = 'fv-release-top';
     const body = document.createElement('div'); body.className = 'fv-release-body';
-    const close = document.createElement('button'); close.type = 'button'; close.autofocus = true; close.className = 'fv-primary';
-    close.textContent = t('Close', '关闭'); close.onclick = () => dialog.close();
-    close.dataset.fvTipName = close.textContent; close.dataset.fvTipUse = t('Close the release notes', '关闭版本说明'); close.dataset.fvTipKey = 'Esc';
-    const news = document.createElement('button'); news.type = 'button'; news.textContent = t("What's new", '新功能');
-    news.dataset.fvTipName = news.textContent; news.dataset.fvTipUse = t('Play the tour of this version', '播放这一版的新功能介绍');
+    const button = (text, className = '') => { const b = document.createElement('button'); b.type = 'button'; b.textContent = text; if (className) b.className = className; b.dataset.fvTipName = text; return b; };
+    const close = button(t('Close', '关闭'), 'fv-primary'); close.onclick = () => dialog.close();
+    close.dataset.fvTipUse = t('Close the release notes', '关闭版本说明'); close.dataset.fvTipKey = 'Esc';
+    const news = button(t("What's new", '新功能'));
+    news.dataset.fvTipUse = t('Play the tour of this version', '播放这一版的新功能介绍');
     news.onclick = () => { dialog.close(); import('./whatsnew.js').then(({showWhatsNew}) => showWhatsNew(cn)); };
-    // The title stays at the top and the buttons at the bottom; only the notes scroll, and they open at the newest.
-    const head = document.createElement('header'); head.className = 'fv-release-head'; head.append(title);
-    const foot = document.createElement('footer'); foot.className = 'fv-release-foot'; foot.append(news, close);
-    dialog.append(head, body, foot);
-    const render = () => { news.hidden = !fillNotes(body, cn); };
-    const dispose = () => { listeners.delete(render); dialog.remove(); };
+    const later = button(t('Later', '稍后'));
+    later.dataset.fvTipUse = t('Keep this version for now', '暂不更新'); later.dataset.fvTipKey = 'Esc';
+    later.onclick = () => {
+        dismissed = identity(value?.available); failure = '';
+        try { sessionStorage.setItem(storageKey, dismissed); } catch {}
+        dialog.close(); publish();
+    };
+    const apply = button(t('Update now', '立即更新'), 'fv-primary fv-update-apply');
+    apply.dataset.fvTipUse = t('FreeVideo restarts once; running videos finish first.', 'FreeVideo 会重启一次，正在生成的视频会先完成。');
+    apply.onclick = () => { apply.disabled = true; dialog.close(); void applyUpdate().finally(() => { apply.disabled = false; }); };
+    const link = document.createElement('a'); link.className = 'fv-primary'; link.href = releasePage; link.target = '_blank'; link.rel = 'noopener noreferrer';
+    link.textContent = t('Download update', '下载新版'); link.onclick = () => dialog.close();
+    const foot = document.createElement('footer'); foot.className = 'fv-release-foot'; foot.append(news, later, apply, link, close);
+    dialog.append(top, body, foot);
+    const media = mediaHolder(top, cn);
+    const render = () => {
+        const [release, which] = topRelease();
+        const shown = media.set(release, which);
+        top.hidden = !shown; dialog.classList.toggle('has-media', !!shown);
+        news.hidden = !fillSheet(body, cn);
+        // As the bar: Later and Update now while an update can start; Close otherwise.
+        const launcher = value?.launcher, phase = launcher?.phase || '';
+        const busy = updating && (working.has(phase) || !!launcher?.model || offline);
+        const offer = !!value?.available && !busy && !failure && phase !== 'review';
+        const direct = !!launcher && !launcher.manual;
+        later.hidden = !offer; apply.hidden = !offer || !direct; link.hidden = !offer || direct; close.hidden = offer;
+        const mac = value?.channel === 'macos-preview', linux = value?.channel === 'linux-preview';
+        link.title = mac ? t('After your task finishes, open the new FreeVideo.app to update.', '当前任务完成后，打开新版 FreeVideo.app 更新。')
+            : linux ? t('After your task finishes, open the new FreeVideo AppImage to update.', '当前任务完成后，打开新版 FreeVideo AppImage 更新。')
+            : t('After your task finishes, open the new FreeVideo.exe to update.', '当前任务完成后，打开新版 FreeVideo.exe 更新。');
+    };
+    // While more notes are below, their lower edge fades out instead of cutting a line of text in half.
+    const edge = () => { body.dataset.more = String(body.scrollTop + body.clientHeight < body.scrollHeight - 1); };
+    body.addEventListener('scroll', edge, {passive: true});
+    let sized = null;
+    try { sized = new ResizeObserver(edge); sized.observe(body); } catch {}
+    const dispose = () => { listeners.delete(render); listeners.delete(edge); sized?.disconnect(); media.dispose(); dialog.remove(); };
     dialog.addEventListener('close', dispose, {once: true});
     // Keep Escape local to this sheet; the creative workspace stays open.
     dialog.addEventListener('keydown', event => event.stopPropagation());
-    listeners.add(render); render(); document.body.append(dialog); dialog.showModal(); body.scrollTop = 0;
+    listeners.add(render); listeners.add(edge); render(); document.body.append(dialog); dialog.showModal(); body.scrollTop = 0; edge();
+    // The main action takes the focus: Update now, or Close.
+    (([...foot.children].reverse().find(b => !b.hidden)) || close).focus({preventScroll: true});
     return () => { if (dialog.open) dialog.close(); dispose(); };
 }
 
