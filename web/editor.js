@@ -350,7 +350,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     let discardOnSwitch = false, leaveTo = null, initialSelection = null, offerInitial = null, extendEntry = null;
     let viewKey = null, viewReady = false;
     let library = null, closing = false, closePromise = null, exportSnapshot = null, lastSeed = null, projectEpoch = 0;
-    let cleanupBar = null, stems = null, disposed = false, suppressSave = false, savedContent = '', initializing = true, tracks = null, genbar = null, adjustPanel = null, exportStatus = null, pointerEditing = false, deferredStamp = null;
+    let stems = null, disposed = false, suppressSave = false, savedContent = '', initializing = true, tracks = null, genbar = null, adjustPanel = null, exportStatus = null, pointerEditing = false, deferredStamp = null;
     // Selects the clip and, when nothing follows it yet, adds one minimum draft. Returns false while the generation probe has not said yes.
     function enterClip(match, epoch, {select = true, settled = () => {}, fresh = false} = {}) {
         if (closing || disposed || epoch !== projectEpoch) return true;
@@ -815,9 +815,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         }
         if (!value.node || !value.prompt?.[value.node]) throw new Error('missing_node');
         const inputs = value.prompt[value.node].inputs;
-        // With the creation panel's bar in the editor, its values are the request's (the edit's size is its starting point).
-        if (!panel.barActive) Object.assign(inputs, state.record.settings || {}, capability.generationSize || generationSize(state.record));
-        else if (bar?.overrides) for (const [name, setting] of Object.entries(bar.overrides())) if (name in inputs && !Array.isArray(inputs[name])) inputs[name] = setting;
+        Object.assign(inputs, state.record.settings || {}, capability.generationSize || generationSize(state.record));
         // The media panel's pictures guide every part (the engine keeps only the references for a part that continues);
         // without a panel to show them they stay out of the request.
         if (!panel.references?.available()) delete inputs.media;
@@ -1462,8 +1460,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 }
                 const values = new Uint32Array(1);
                 if (globalThis.crypto?.getRandomValues) crypto.getRandomValues(values); else values[0] = Math.floor(Math.random() * 2 ** 32);
-                const typed = panel.barActive ? bar?.overrides?.().seed : undefined; // a seed typed in the bar is the run's seed
-                const seed = Number.isSafeInteger(typed) && typed >= 0 ? typed : values[0] === lastSeed ? (values[0] + 1) >>> 0 : values[0]; lastSeed = seed;
+                const seed = values[0] === lastSeed ? (values[0] + 1) >>> 0 : values[0]; lastSeed = seed;
                 // An @name in a description becomes <Subject N> and its definition, as in the creative panel; a part that
                 // continues carries only the pictures the engine keeps for it, and is numbered among them.
                 const castRows = panel.references?.available() ? panel.references.rows?.() ?? [] : [];
@@ -1762,43 +1759,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     actions.narration = narration;
     actions.music = {target: selection => music.target(selection), preset: selection => music.preset(selection), choose: value => music.choose(value),
         styles: music.styles, moods: music.moods, downloadBytes: music.downloadBytes};
-    let bar = null, barLabel = '', attachBar = null, detachBar = null;
-    actions.onLabel = text => { barLabel = text; if (bar) queueMicrotask(() => bar.sync()); };
     genbar = createEditorGenbar(genHost, {state, t, actions, text: ''}); settleService();
-    // The creation panel's own bar (same chips, trays and rules) stands in for the description, size, duration and quality
-    // controls here; what the editor adds (music, narration, dubbing, downloads) stays in its own bar. Without a panel to
-    // borrow from, the editor's bar is shown as before.
-    if (panel.borrowBar) {
-        let observer = null, arranged = false;
-        attachBar = () => {
-        if (bar) return;
-        bar = panel.borrowBar({mount: genHost, onSeconds: value => { const field = genbar.duration; if (!field || field.element.hidden || field.input.disabled || !(value > 0)) return; field.input.value = String(Math.round(value)); field.commit(); }, label: () => barLabel || null, disabled: () => !genbar.canGenerate(),
-            submit: async options => { genbar.setText(bar.prompt.value); await genbar.press(options?.allowEmpty === true); }});
-        if (bar) {
-            genHost.classList.add('fv-ed-genbar-borrowed');
-            element.dataset.barBorrowed = 'true';
-            // The bar's height is the row's: the timeline below keeps what is left.
-            const fit = () => element.style.setProperty('--fv-ed-generation-row', `${Math.ceil(bar.shell.getBoundingClientRect().height) + 18}px`);
-            if (typeof ResizeObserver === 'function') { observer = new ResizeObserver(fit); observer.observe(bar.shell); }
-            fit();
-            // What the three ways in prefill and lock: a new part takes the edit's size and the selection's length; a part
-            // that continues keeps the size it continues; one made again keeps its size and length.
-            const arrange = () => {
-                if (!bar) return;
-                const selection = state.selection, clips = selection?.kind === 'clip' ? selection.ids.map(id => model.find(state.record, id)).filter(Boolean) : [];
-                const edit = capability.generationSize || generationSize(state.record), again = clips.some(clip => clip.source);
-                const continuing = !again && clips.length > 0 && model.generationBefore(state.record, clips.map(clip => clip.id)).some(Boolean);
-                const range = selectionRange(), length = clips.length ? clips.reduce((sum, clip) => sum + clip.frames, 0) / model.FPS : range ? range.frames / model.FPS : null;
-                bar.apply({initial: {size: edit, ...(length ? {seconds: Number(length.toFixed(3))} : {})}, locked: again ? ['size', 'seconds'] : continuing ? ['size'] : []});
-            };
-            arrange(); if (!arranged) { arranged = true; state.subscribe(event => { if (event.type === 'selection') arrange(); }); }
-        }
-        };
-        // Hidden, the editor gives the panel its bar back; shown again, it takes it once more.
-        detachBar = () => { observer?.disconnect(); observer = null; bar?.release(); bar = null; panel.barActive = false; genHost.classList.remove('fv-ed-genbar-borrowed'); delete element.dataset.barBorrowed; };
-        cleanupBar = detachBar;
-        attachBar();
-    }
     {
         // What the editor gives the bar is the video job's; a chosen piece of music being made shows its own instead.
         const update = genbar.update;
@@ -2235,7 +2196,6 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             const later = [...document.querySelectorAll('dialog[open]')].some(dialog => dialog !== element && element.compareDocumentPosition(dialog) & Node.DOCUMENT_POSITION_FOLLOWING);
             if (!element.isConnected || later) document.body.append(element);
             element.inert = false;
-            attachBar?.();
             if (!element.open) element.showModal();
             viewChanged('editor'); globalThis.FreeVideoStageLight?.refresh();
             // The tab takes focus after the first frame: focusing now would lay the whole view out a second time before it shows.
@@ -2252,7 +2212,6 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         player.pause(); lineStop?.();
         // The microphone is let go with the view: an open record bar closes, and a take in progress lands as Stop would.
         recording.hide();
-        detachBar?.();
         if (element.open) element.close();
         element.inert = true;
         resumeCanvasPointer(); resumeCanvasPointer = () => {};
@@ -2265,7 +2224,6 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         releaseTakes(); rememberView(); disposed = true; handle.kept = false; poster.dispose(); music.dispose(); narration.dispose(); voice.dispose(); voiceInstall.dispose(); guide?.dispose(); transportControls.dispose(); toolbarMore.dispose(); player.dispose();
         textTools.dispose(); adjust.dispose(); notes.dispose(); pictureEdit.dispose();
         audio.dispose(); stems?.dispose(); recording.dispose(); headerFit.dispose();
-        cleanupBar?.();
         listeners.splice(0).forEach(remove => remove());
         for (const node of [element, ...element.querySelectorAll('*')]) for (const name of ['onclick', 'ondblclick', 'oninput', 'onchange', 'onkeydown', 'ondragstart']) node[name] = null;
         unsubscribe(); stopSources(); library?.dispose(); genbar.dispose(); tracks?.dispose(); stopExport?.();

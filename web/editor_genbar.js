@@ -84,8 +84,6 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         lastTime = time;
         const downloads = downloadText(), line = downloads ? t('Downloads first', '需先下载') : time;
         verbText.textContent = verb; timeText.textContent = line; timeText.hidden = !line;
-        // The creation panel's key shows its own estimate on its second line, so the label carries the verb alone; a plain Generate is the panel's own "Generate video".
-        actions.onLabel?.(verb === t('Generate', '生成') ? '' : verb, !generate.disabled);
         timeText.classList.toggle('fv-ed-generate-download', !!downloads);
         generate.setAttribute('aria-label', [verb, time, downloads].filter(Boolean).join(' · '));
         if (downloads && generate.getAttribute('data-fv-tip-name')) generate.setAttribute('data-fv-tip-use', downloads);
@@ -644,7 +642,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         event.preventDefault(); event.stopPropagation(); passMenu.open = false; passMenu.querySelector('summary').focus();
         return true;
     }
-    return {element: host, duration, tray, say, downloadFailure, commit, dismiss, press: allowEmpty => press(allowEmpty === true), canGenerate: () => !generate.disabled,
+    return {element: host, tray, say, downloadFailure, commit, dismiss,
         service(value) {
             service = value;
             if (!value && note.contains(retryService)) { retryService.remove(); note.hidden = true; }

@@ -261,12 +261,9 @@ function createChainPartList(t, save, {onShow = () => {}, onHide = () => {}, red
 const button = (label, action, cls = '') => { const e = el('button', label, cls); e.type = 'button'; e.onclick = action; return e; };
 const widget = (node, name) => node?.widgets?.find(w => w.name === name);
 const linked = (node, name) => node?.inputs?.some(input => input.name === name && input.link != null);
-// While the editor borrows the bar, edits stay in a shadow copy so the workflow's own widgets are never touched.
-let shadow = null;
-const value = (node, name) => shadow?.get(node)?.has(name) ? shadow.get(node).get(name) : widget(node, name)?.value;
+const value = (node, name) => widget(node, name)?.value;
 function set(node, name, value) {
     const w = widget(node, name); if (!w || linked(node, name)) return false;
-    if (shadow) { if (!shadow.has(node)) shadow.set(node, new Map()); shadow.get(node).set(name, value); return true; }
     w.value = value; w.callback?.(value); node.graph?.change(); node.setDirtyCanvas?.(true, true);
     rememberPromptDraft(api, node); return true;
 }
@@ -634,14 +631,6 @@ export function showNodes(node, dialog = null) {
 }
 
 const studioQueues = new WeakMap();
-// The editor's way to the creation bar: the panel of this node is made (parked, out of sight) when none is open yet.
-export function borrowCreationBar(node, options) {
-    if (current?.node !== node || !current.dialog.isConnected) {
-        const dialog = openStudio(node);
-        if (current?.dialog === dialog && dialog.open) { dialog.dataset.fvParked = 'true'; closeDialog(dialog); }
-    }
-    return current?.node === node ? current.borrow?.(options) ?? null : null;
-}
 // The video each node's panel showed last: the panel opens on it at once, before the library answers.
 const lastShown = new WeakMap();
 // The last saved creation the panel showed, kept in this browser, so the first open after a reload shows it (and its
@@ -723,8 +712,6 @@ export function openStudio(node, {extendFrom = null} = {}) {
     let firstStart = null, exampleFocused = false;
     // The console (studio_console.js) is put together once every control exists; until then nothing reads it.
     let consoleUI = null, promptLibrary = null;
-    // Set while the editor borrows this panel's bar (current.borrow below).
-    let borrowed = null;
     // Frame & size picker and the stage's outline of a new frame (set with the size tray).
     let framePicker = null;
     const header = el('header', null, 'fv-header'), brand = el('div', null, 'fv-brand');
@@ -2288,10 +2275,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
             : runMode === 'loop' ? (queueState?.looping ? t('Looping', '循环中') : t('Start loop', '开始循环'))
             : busy ? t('Add to queue', '加入队列')
             : previewFirst.checked && !previewFirst.disabled ? t('Generate preview', '生成预览') : t('Generate video', '生成视频'));
-        paintKey(borrowed?.label?.() ?? label, borrowed ? true : !submitting && !chainReason);
+        paintKey(label, !submitting && !chainReason);
         syncKeyMore();
-        if (borrowed) generate.disabled = borrowed.disabled?.() ?? false;
-        else if (videoMissing) { paintKey(addVideoLabel(t), false); generate.disabled = false; }
+        if (videoMissing) { paintKey(addVideoLabel(t), false); generate.disabled = false; }
         // The hover card names what the button does now (its own label), and when it is greyed, why and how to free it.
         const lineUse = enhancer.element.dataset.enabled === 'true'
             ? t('Each line is one video, sent as written without enhancement', '每行生成一个视频，按原文发送，不做描述增强')
@@ -2471,16 +2457,6 @@ export function openStudio(node, {extendFrom = null} = {}) {
         } catch (error) { cancelling = false; updateRunButton(); showQueueError(error); }
     }
     async function submitDraft(options) {
-        // Borrowed by the editor: its Generate runs the editor's own submission (editor_bar.js), with this bar's values.
-        if (borrowed) {
-            // The enhancement and the replace-person check are this bar's; what is then made is the editor's.
-            if (swapState(mediaNode)) {
-                const missing = swapMissing(swapState(mediaNode));
-                if (missing) { status.dataset.error = 'true'; status.textContent = swapMissingText(missing, t); return; }
-            }
-            if (prompt.value.trim() && !swapState(mediaNode) && await enhancer.beforeGenerate() === false) return;
-            return borrowed.submit(options);
-        }
         if (videoMissing) {
             // The answer comes from this computer at once; the button waits for it so a click is never silent.
             generate.disabled = true;
@@ -2728,7 +2704,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const addedNote = t('Added to the queue. It starts when the current video finishes.', '已加入队列，当前视频完成后自动开始。');
     const clearAddedNote = () => { if (status.textContent === addedNote) status.textContent = ''; };
     seconds.addEventListener('input', clearAddedNote); prompt.addEventListener('input', clearAddedNote);
-    seconds.onchange = () => { if (lengthControl.commit({report: false})) updateCanvas(); if (borrowed?.onSeconds && !borrowed.applying) borrowed.onSeconds(Number(seconds.value)); };
+    seconds.onchange = () => { if (lengthControl.commit({report: false})) updateCanvas(); };
     // Audio used as is fixes the duration; long selections use the background chain.
     const SECONDS_BEFORE_AUDIO = 'freevideo_seconds_before_audio';
     let audioRevision = 0;
@@ -2847,7 +2823,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         open.open = false; open.querySelector(':scope>summary')?.focus({preventScroll: true}); return true;
     };
     dialog.addEventListener('cancel', e => { e.preventDefault(); if (!closeMenu() && !compare.close() && !promptLibrary?.hide() && !consoleUI?.dismiss() && !monitor.dismiss() && !recent.dismiss()) closeDialog(dialog); });
-    const dispose = () => { if (disposed) return; disposed = true; borrowed?.release({disposing: true}); blockOriginal('extend', false); blockOriginal('preview', false); for (const f of cleanup) f(); stage.querySelector('video')?.pause(); dialog.remove(); if (current?.dialog === dialog) { current = null; viewChanged('nodes', node); } };
+    const dispose = () => { if (disposed) return; disposed = true; blockOriginal('extend', false); blockOriginal('preview', false); for (const f of cleanup) f(); stage.querySelector('video')?.pause(); dialog.remove(); if (current?.dialog === dialog) { current = null; viewChanged('nodes', node); } };
     const onClose = () => {
         // Parked behind the node view: everything stays as it is (closeDialog may have taken this handler while a
         // switch held the frames, so it is put back for the real close later).
@@ -2855,67 +2831,6 @@ export function openStudio(node, {extendFrom = null} = {}) {
         dispose();
     };
     dialog.onclose = onClose; current.dispose = dispose;
-    // The editor borrows this panel's bar: the same controls and pop-ups move into the editor's dialog, so both show the
-    // same chips and their rules stay in one place. Pressing Generate runs the editor's submission instead; the values
-    // come from the same node the bar edits. Release puts everything back as it was.
-    current.borrow = ({mount, submit, label = null, disabled = null, onSeconds = null, initial = {}, locked = []}) => {
-        if (borrowed || disposed) return null;
-        const outer = mount.closest('dialog') || document.body;
-        const home = {parent: controls.parentNode, next: controls.nextSibling};
-        const pops = [...dialog.children].filter(child => child !== header && child !== body);
-        const shell = el('div', null, 'fv-studio fv-create fv-borrowed'), shellBody = el('div', null, 'fv-body');
-        shell.append(shellBody); shellBody.append(controls); mount.append(shell); outer.append(...pops);
-        const lockedNow = []; let secondsLocked = false;
-        const lock = (element, name) => {
-            if (!element) return;
-            for (const control of [element, ...element.querySelectorAll('button, input, select')]) {
-                if (control.disabled) continue;
-                control.disabled = true; control.dataset.fvLocked = name; lockedNow.push(control);
-            }
-            element.dataset.fvLocked = name;
-        };
-        const state = {shell, prompt, controls, sync: () => { updateRunButton(); consoleUI?.sync?.(); },
-            values: () => ({width: Number(value(node, 'width')), height: Number(value(node, 'height')), seconds: Number(value(node, 'seconds'))}),
-            // Every setting changed in the bar while it is borrowed (the request is built from these).
-            overrides: () => Object.fromEntries(shadow?.get(node) || []),
-            setLabel: next => { state.labelFn = next; updateRunButton(); },
-            release({disposing = false} = {}) {
-                if (!borrowed) return;
-                borrowed = null; shadow = null;
-                unlock();
-                shell.remove();
-                if (!disposing) {
-                    if (home.next?.parentNode === home.parent) home.parent.insertBefore(controls, home.next); else home.parent.append(controls);
-                    dialog.append(...pops);
-                }
-                updateRunButton();
-            }};
-        shadow = new Map();
-        borrowed = {submit, label: () => (state.labelFn ?? label)?.(), disabled, onSeconds, applying: false, release: state.release};
-        const unlock = () => {
-            for (const control of lockedNow.splice(0)) { control.disabled = false; delete control.dataset.fvLocked; }
-            for (const element of [framePicker?.element, stepper?.element]) delete element?.dataset.fvLocked;
-            if (secondsLocked) { secondsLocked = false; if (!linked(node, 'seconds')) { seconds.disabled = false; stepper?.sync?.(); } }
-        };
-        // What an entry prefills and locks (new part, continuation, one made again); called again as the choice moves.
-        state.apply = ({initial = {}, locked = []}) => {
-            unlock(); if (borrowed) borrowed.applying = true;
-            if (initial.size) {
-                for (const [input, key] of [[width, 'width'], [height, 'height']]) {
-                    if (initial.size[key] && Number(input.value) !== Number(initial.size[key])) { input.value = String(initial.size[key]); input.onchange?.(); }
-                }
-            }
-            if (initial.seconds != null && Number(seconds.value) !== Number(initial.seconds)) { seconds.value = String(initial.seconds); seconds.onchange?.(); }
-            if (typeof initial.text === 'string') { prompt.value = initial.text; prompt.dispatchEvent(new Event('input', {bubbles: true})); }
-            if (locked.includes('size')) lock(framePicker?.element, 'size');
-            if (locked.includes('seconds')) { lock(stepper?.element, 'seconds'); if (!seconds.disabled) { secondsLocked = true; seconds.disabled = true; } stepper?.sync?.(); }
-            if (borrowed) borrowed.applying = false;
-            consoleUI?.sync?.(); updateRunButton();
-        };
-        state.apply({initial, locked});
-        consoleUI?.sync?.(); updateRunButton();
-        return state;
-    };
     capabilityView = createCapabilityView({node, api, t, getState: () => ({ratio,
         custom: selected === 'custom', steps: Number(baseSteps.value), twoPass: twoPass.checked,
         refine: Number(refineSteps.value), stepCache: stepCacheNow(), upscale: upscaleNow(), disabled: Boolean(extension.source) || dimensionsLinked || seconds.disabled}),
