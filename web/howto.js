@@ -4,12 +4,25 @@ import {showHowTo} from './first_run_guide.js';
 // A step names its control; when that control is not on screen (nothing generated yet, say) `image` stands in for it.
 const shown = node => Boolean(node?.isConnected && node.getClientRects().length);
 
-// The whole Media section, from its title to the last line, and it is opened if it was folded.
+// The whole Media section, from its title to the last line. It is a closed tray behind the Media chip: the chip is shown
+// first, and the tray opens when the step is reached (then the ring follows the open section).
+let tourOpened = null;
+let tourWatch = null;
+const putMediaAway = () => { if (tourOpened) tourOpened.open = false; tourOpened = null; tourWatch?.disconnect(); tourWatch = null; };
+// A tray the walk-through opened is put away when it moves on and when it ends, however it ends; one the person had open stays.
+const openMedia = details => () => {
+    if (details.open) return;
+    details.open = true; tourOpened = details;
+    tourWatch ||= new MutationObserver(() => { if (!document.querySelector('.fv-guide-layer')) putMediaAway(); });
+    tourWatch.observe(document.body, {childList: true, subtree: true});
+};
 const mediaSection = dialog => {
-    const title = dialog.querySelector('[data-fv-guide="media"]'), details = title?.closest('details');
-    if (!details || !shown(details)) return null;
-    const r = details.getBoundingClientRect();
-    return {node: details, rect: {left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height}, reveal: () => { details.open = true; }};
+    const box = node => { const r = node.getBoundingClientRect(); return {left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height}; };
+    const details = dialog.querySelector('[data-fv-guide="media"]')?.closest('details');
+    if (!details) return null;
+    if (shown(details)) return {node: details, rect: box(details), reveal: openMedia(details)};
+    const chip = dialog.querySelector('.fvs-chip[data-chip="media"]');
+    return shown(chip) ? {node: chip, rect: box(chip), reveal: openMedia(details)} : null;
 };
 // Only the part on the timeline: the selected clip or range, else the first part.
 const selectedPart = dialog => {
@@ -24,11 +37,11 @@ const HOWTOS = [
         steps: [
             {id: 'media', target: mediaSection, en: 'Add images here and set each one as a reference, first frame, or last frame.',
                 zh: '在此添加图片，每张可设为参\u2060考、首\u2060帧或尾\u2060帧。'},
-            {id: 'describe', anchor: '[data-fv-guide="describe"]', en: 'Type @ in the prompt and choose an image, then say what it does in the scene.',
+            {id: 'describe', prepare: putMediaAway, anchor: '[data-fv-guide="describe"]', en: 'Type @ in the prompt and choose an image, then say what it does in the scene.',
                 zh: '在描述中输入 @ 选择图片，并写明它在画面中的作用。'},
             {id: 'media-av', target: mediaSection, en: 'Videos and audio can be references too: add them the same way with "Add" and mention them in the prompt with @.',
                 zh: '视频和音频也可作为参考：同样点“添\u2060加”，在描述中输入 @ 引用。'},
-            {id: 'generate', anchor: '[data-fv-guide="generate"]', en: 'Choose "Generate video".', zh: '点“生成视频”。'}]},
+            {id: 'generate', prepare: putMediaAway, anchor: '[data-fv-guide="generate"]', en: 'Choose "Generate video".', zh: '点“生成视频”。'}]},
     {id: 'long-video', view: 'studio', needsParts: true, title: ['Make a longer video', '连续的长视频'],
         steps: [
             {id: 'seconds', anchor: '[data-fv-guide="seconds"]', en: 'Enter a longer duration. It is made in parts automatically.',

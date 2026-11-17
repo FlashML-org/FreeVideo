@@ -1147,20 +1147,17 @@ export function openStudio(node, {extendFrom = null} = {}) {
         return {node: anchor, rect: {left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height},
             reveal: () => { mediaDetails.open = true; }};
     };
-    const paintMediaHint = () => { try { mediaHint.hidden = mediaDetails.open || !mediaNode?.freevideoCreateMediaEditor || mediaFilled(); } catch { mediaHint.hidden = true; } };
     const [mediaDetails, mediaMount] = expand(t('Media', '素材'));
-    const mediaTitle = mediaDetails.querySelector('summary'), mediaHint = el('span', t('Reference images, first and last frames', '参考图、首帧、尾帧'), 'fv-section-hint');
-    mediaTitle.dataset.fvGuide = 'media'; mediaTitle.append(mediaHint);
+    const mediaTitle = mediaDetails.querySelector('summary');
+    mediaTitle.dataset.fvGuide = 'media';
     const extendMount = el('div', null, 'fv-extend-source'); extendMount.hidden = true; mediaMount.prepend(extendMount);
     let releaseExtendThumbnail = () => {};
     cleanup.push(() => releaseExtendThumbnail());
     if (mediaNode?.freevideoCreateMediaEditor) { cleanup.push(mediaNode.freevideoCreateMediaEditor(mediaMount)); mediaDetails.open = mediaFilled(); }
     else mediaMount.append(el('p', t('Connect a FreeVideo Media panel in node view to upload here.', '在节点视图连接 FreeVideo 素材面板，可在这里上传。'), 'fv-legacy'));
-    paintMediaHint(); mediaDetails.addEventListener('toggle', paintMediaHint);
     mediaTitle.addEventListener('click', () => {
         queueMicrotask(() => { if (mediaDetails.open && mediaDetails.dataset.expanded !== 'false') { firstStart?.dismiss(); triggerFeatureTour('media'); } });
     });
-    controls.addEventListener('change', paintMediaHint, true); controls.addEventListener('input', paintMediaHint, true);
     const connectedLora = upstream(node, 'loras');
     const loraNode = connectedLora?.properties?.[CREATED_BY_PANEL] ? pendingLoras(node, connectedLora) : connectedLora || pendingLoras(node);
     // Replace person: its LoRA row is found among the registered names (it may sit in a subfolder), a row the user had
@@ -1198,16 +1195,15 @@ export function openStudio(node, {extendFrom = null} = {}) {
     }
     const ensureSwapLora = (retry = false) => (swapLoraBusy = swapLoraBusy.then(() => applySwapLora(retry), () => applySwapLora(retry)));
     function swapChanged(info) {
-        mediaHint.textContent = swapState(mediaNode) ? t('Source video, person image', '源视频、人物图') : t('Reference images, first and last frames', '参考图、首帧、尾帧');
         // Switching the option only changes which media the prompt reads: its pictures are re-bound, never renumbered.
-        syncReferencePrompt(node, t, info?.toggled === true); paintMediaHint();
+        syncReferencePrompt(node, t, info?.toggled === true);
         ensureSwapLora(info?.toggled === true).then(problem => { if (problem && !swapDownload.shown) swapPanel?.notify(problem); });
         window.dispatchEvent(new CustomEvent('freevideo-media', {detail: mediaNode.id}));
     }
     if (mediaNode?.freevideoCreateMediaEditor) {
         const swap = swapPanel = createReplacePerson({t, api, media: mediaNode, mount: mediaMount, view, onChange: swapChanged, extra: swapDownload.element});
         cleanup.push(() => swap.dispose());
-        if (swapState(mediaNode)) { mediaHint.textContent = t('Source video, person image', '源视频、人物图'); mediaDetails.open = true; }
+        if (swapState(mediaNode)) mediaDetails.open = true;
     }
     const [loraDetails, loraMount] = expand(t('LoRA', 'LoRA'));
     if (loraNode && widget(loraNode, 'adapters')) {
@@ -2367,7 +2363,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         const wasBusy = busy;
         busy = Boolean(active) || progressLive(); queued = !state.running && Boolean(state.pending.length);
         // A finished, failed or cancelled video may have downloaded what the line above Generate still lists.
-        if (wasBusy && !busy) { requestAssets?.refresh(true); paintMediaHint(); }
+        if (wasBusy && !busy) { requestAssets?.refresh(true); }
         const g = active?.inputs;
         runningSummary = Number.isFinite(g?.width) && Number.isFinite(g?.height)
             ? [t('Generating', '正在生成'), `${g.width} × ${g.height}`, Number(g.seconds) > 0 ? t(`${g.seconds} s`, `${g.seconds} 秒`) : ''].filter(Boolean).join(' · ') : '';
