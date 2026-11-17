@@ -18,19 +18,25 @@
 @property --fv-amb-1{syntax:'<color>';inherits:true;initial-value:transparent}
 @property --fv-amb-2{syntax:'<color>';inherits:true;initial-value:transparent}
 @property --fv-amb-3{syntax:'<color>';inherits:true;initial-value:transparent}
-:root{--fv-light-op:.62;transition:--fv-amb-1 .6s cubic-bezier(.4,0,.2,1),--fv-amb-2 .6s cubic-bezier(.4,0,.2,1),--fv-amb-3 .6s cubic-bezier(.4,0,.2,1)}
-:root[data-theme=light]{--fv-light-op:.75}
+:root{--fv-light-op:.92;transition:--fv-amb-1 .6s cubic-bezier(.4,0,.2,1),--fv-amb-2 .6s cubic-bezier(.4,0,.2,1),--fv-amb-3 .6s cubic-bezier(.4,0,.2,1)}
+:root[data-theme=light]{--fv-light-op:.9}
+:root{--fv-light-paint:
+    radial-gradient(75% 85% at 10% 10%,var(--fv-amb-1),transparent 78%),
+    radial-gradient(70% 80% at 92% 25%,var(--fv-amb-2),transparent 78%),
+    radial-gradient(95% 75% at 45% 108%,var(--fv-amb-3),transparent 78%),
+    linear-gradient(160deg,color-mix(in srgb,var(--fv-amb-1) 70%,transparent),color-mix(in srgb,var(--fv-amb-3) 60%,transparent))}
 :root[data-fv-light-instant]{transition:none}
 .fv-look-light{display:none}
 html:root:not([data-fv-polish=off]):not([data-fv-look=calm]):not([data-glass=solid]):not(.lite) dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot)>.fv-look-light{
   display:block;position:absolute;inset:0;z-index:-1;overflow:hidden;pointer-events:none;contain:strict;
   opacity:0;transition:opacity .6s cubic-bezier(.4,0,.2,1);
-  background:
-    radial-gradient(70% 80% at 12% 8%,var(--fv-amb-1),transparent 70%),
-    radial-gradient(65% 75% at 92% 22%,var(--fv-amb-2),transparent 70%),
-    radial-gradient(90% 70% at 45% 108%,var(--fv-amb-3),transparent 72%),
-    radial-gradient(120% 100% at 50% 40%,color-mix(in srgb,var(--fv-amb-1) 55%,transparent),transparent 85%)}
+  background:var(--fv-light-paint)}
 html:root[data-fv-light=on]:not([data-fv-polish=off]):not([data-fv-look=calm]):not([data-glass=solid]):not(.lite) dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot)>.fv-look-light{opacity:var(--fv-light-op)}
+/* The page under the views carries the light too: between one view closing and the next being drawn, the page is what
+   shows, and it should not drop to its plain ground for that frame; its colour is the light's own, since a part of a
+   view not yet drawn shows the page colour. */
+@media not (prefers-reduced-transparency:reduce){
+html:root[data-fv-light=on]:not([data-fv-polish=off]):not([data-fv-look=calm]):not([data-glass=solid]):not(.lite){background-color:color-mix(in srgb,var(--fv-amb-1) 60%,var(--fv-amb-2));background-image:var(--fv-light-paint);background-attachment:fixed}}
 /* The views' former own lights (the stretched picture) are gone; their places stay empty if an old sheet names them. */
 @media (prefers-reduced-transparency:reduce){html:root .fv-look-light{display:none!important}}
 @media (prefers-reduced-motion:reduce){:root{transition:none}html:root dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot)>.fv-look-light{transition:none}}

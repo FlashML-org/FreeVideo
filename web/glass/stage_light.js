@@ -43,6 +43,16 @@ export function mainColours(data) {
     const groups = centres.map((c, k) => ({c, n: counts[k]})).sort((a, b) => b.n - a.n);
     return groups.map(g => (g.n >= pixels.length * .08 ? g.c : groups[0].c).map(Math.round));
 }
+// The work's colour leads: the most colourful of the groups (over 8 % of the picture) comes first, and a grey group
+// takes that colour's hue at low strength, so a portrait by a white window still gives the shirt's warmth, not grey.
+export function lead(colours) {
+    const shades = colours.map(hsl);
+    let best = 0; shades.forEach((x, k) => { if (x[1] * (1 - Math.abs(2 * x[2] - 1)) > shades[best][1] * (1 - Math.abs(2 * shades[best][2] - 1))) best = k; });
+    const [h, s] = shades[best];
+    if (s < .12) return colours;                                                        // a grey work stays grey
+    const order = [best, ...colours.keys()].filter((k, i, all) => all.indexOf(k) === i);
+    return order.map(k => shades[k][1] < .12 ? rgb([h, s * .45, shades[k][2]]) : colours[k]);
+}
 
 function hsl([r, g, b]) {
     r /= 255; g /= 255; b /= 255;
@@ -57,11 +67,11 @@ function rgb([h, s, l]) {
     const [r, g, b] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
     return [r, g, b].map(v => Math.round((v + m) * 255));
 }
-// Toned for the theme: deep and muted on dark, pale and muted on light; the hue stays, the picture's brightness only
+// Toned for the theme: deep on dark, pale on light, with the colour kept strong enough to read; the hue stays, the picture's brightness only
 // nudges the tone, so a white or a black work still gives a calm ground.
 export function tone(colour, light) {
     const [h, s, l] = hsl(colour);
-    return rgb(light ? [h, Math.min(s, .5) * .8, .9 + l * .05] : [h, Math.min(s, .6) * .85, .1 + l * .1]);
+    return rgb(light ? [h, Math.min(.72, s * 1.25), .82 + l * .07] : [h, Math.min(.78, s * 1.3), .17 + l * .1]);
 }
 const near = (a, b) => a && b && a.every((c, k) => c.every((v, i) => Math.abs(v - b[k][i]) <= CLOSE));
 
@@ -115,7 +125,7 @@ const canvas = document.createElement('canvas'); canvas.width = W; canvas.height
 
 function paint(instant) {
     if (!raw) return;
-    const next = raw.map(c => tone(c, root.dataset.theme === 'light'));
+    const next = lead(raw).map(c => tone(c, root.dataset.theme === 'light'));
     if (!instant && near(next, toned)) return;
     toned = next;
     if (instant) root.dataset.fvLightInstant = 'true';
