@@ -1,5 +1,10 @@
 import {agentGet, agentPost, retryAgentPost} from './agent_session.js';
 export const SEND_ATTEMPTS = 3, WAIT_FOR_AGENT = ['not_connected', 'not_listening'];
+// The engine refuses one chat event above 16 KiB of UTF-8, counted as written in JSON (a line break is two bytes, a
+// Chinese character three). The words get that size less room for the event's own fields. Anything the page lets
+// through that is still over is refused by the engine with the same sentence.
+export const MAX_MESSAGE_BYTES = 16 * 1024 - 512;
+export const messageTooLong = text => new TextEncoder().encode(JSON.stringify(String(text))).length - 2 > MAX_MESSAGE_BYTES;
 // A listening/connection race is queued; other 4xx refusals never repeat automatically.
 export const sendRefused = (error, response) => error?.code === 'session_full' || error?.retryable === false
     || response?.status >= 400 && response.status < 500 && !WAIT_FOR_AGENT.includes(error?.code);

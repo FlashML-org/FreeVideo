@@ -4,7 +4,7 @@ import {agentGet, agentPost, retryAgentPost} from './agent_session.js';
 import {emptyFrameIcon} from './empty_frame.js';
 import {ATTACH, attachmentURL, pickPictures, pictureGone, picturesOf, releasePicture, releasePictures, thumbnail, uploadPicture} from './chat_attachments.js';
 import {SCENE_TEXT, pickScene, sceneList, startScene, watchScene} from './whitebox_scenes.js';
-import {chatData, chatDelay, chatReadRequest, emptyChat, chatMerge, chatEntries, canSend, newId, SEND_ATTEMPTS, WAIT_FOR_AGENT, sendRefused, sendError} from './chat_data.js';
+import {chatData, chatDelay, chatReadRequest, emptyChat, chatMerge, chatEntries, canSend, newId, SEND_ATTEMPTS, WAIT_FOR_AGENT, sendRefused, sendError, messageTooLong} from './chat_data.js';
 export {emptyChat, chatMerge, chatEntries, canSend} from './chat_data.js';
 import {isolateDialogKeys, listenDialogKey, routeDialogKey} from './dialog_keys.js';
 import {closeDialog} from './motion.js';
@@ -499,7 +499,10 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
     // A receipt's one action (Undo) sits beside it on the same line.
     const noticeAction = press('fv-chat-notice-action', null, () => noticeAction.run?.()); noticeAction.hidden = true;
     noticeRow.append(noticeAction, noticeIssue);
-    function say(text, failure = false) { quoted(notice, text); notice.title = text || ''; notice.hidden = !text; noticeIssue.hidden = !text || !failure; noticeAction.hidden = true; noticeAction.run = null; }
+    // The line says the message is too long until the words fit.
+    let tooLong = false;
+    const TOO_LONG = () => t('This message is too long; shorten it or send it in two parts', '这条消息太长，请缩短或分成两条发送');
+    function say(text, failure = false) { if (text !== TOO_LONG()) tooLong = false; quoted(notice, text); notice.title = text || ''; notice.hidden = !text; noticeIssue.hidden = !text || !failure; noticeAction.hidden = true; noticeAction.run = null; }
     function receipt(text, label, key, run) {
         say(text); noticeAction.textContent = label; noticeAction.run = run; noticeAction.hidden = false; tip(noticeAction, key, t);
     }
@@ -1127,6 +1130,8 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             editor = {box, actions, note, cancel, go, target: current, id: newId(), busy: false};
             const fit = () => { box.style.height = 'auto'; box.style.height = `${box.scrollHeight + 2}px`; go.disabled = editor.busy || !box.value.trim(); };
             box.addEventListener('input', fit);
+            // The too-long line goes as soon as the words fit.
+            box.addEventListener('input', () => { if (note.textContent === TOO_LONG() && !messageTooLong(box.value.trim())) note.hidden = true; });
             listenDialogKey(box, 'keydown', event => {
                 if (event.key === 'Escape' && !editor.busy) { event.preventDefault(); event.stopPropagation(); closeEditor(); return; }
                 if (event.key !== 'Enter' || event.shiftKey || event.isComposing || event.keyCode === 229) return;
@@ -1146,6 +1151,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             const words = editor?.box.value.trim();
             if (!words || editor.busy) return;
             const open = editor;
+            if (messageTooLong(words)) { editor.note.textContent = TOO_LONG(); editor.note.hidden = false; return; }
             open.busy = open.cancel.disabled = open.go.disabled = true; open.note.hidden = true;
             const problem = await rewrite(open.target, words, open.id);
             if (editor !== open) return;
@@ -1913,7 +1919,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             entry.error = t('The message changed. Click "Retry" to send the original.', '消息已修改，点“重试”发送原消息。');
             say('');
         }
-        if (!input.value.trim()) say('');
+        if (!input.value.trim() || tooLong && !messageTooLong(input.value.trim())) { tooLong = false; say(''); }
         grow(); if (unsaidSessions.has(draftSession)) renderConversations();
     });
     // Enter sends, Shift+Enter starts a new line; Enter that confirms an input-method candidate does neither.
@@ -1930,6 +1936,8 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         const draft = saveDraft();
         const pictures = readyPictures();
         if (!text.trim() && !pictures.length || !composeAllowed() || draftSending() || stagedList().some(item => !item.attachment)) return;
+        // Too long for one message: nothing is sent, and the words stay in the box to shorten.
+        if (messageTooLong(text.trim())) { say(TOO_LONG()); tooLong = true; return; }
         const failed = pending.find(entry => entry.session === state.session && entry.draft === draft && entry.error);
         void send(text, failed, draft, false, pictures);
     });

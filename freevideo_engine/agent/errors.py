@@ -295,6 +295,7 @@ def safe_details(value):
 # is classified, never echoed: it can contain prompts, filenames or credentials.
 FAILURE_REASONS_ZH = {
     **LORA_MESSAGE_ZH,
+    'too_large': '这条消息太长，请缩短或分成两条发送',
     'lan_unavailable': '局域网设置需要启动器安装记录',
     'capabilities_computing': '正在计算这台电脑的生成能力，稍后再试',
     'out_of_memory': '生成时显存或内存不足',
@@ -347,6 +348,7 @@ FAILURE_REASONS_ZH = {
 }
 FAILURE_REASONS_EN = {
     **LORA_MESSAGE_EN,
+    'too_large': 'This message is too long; shorten it or send it in two parts',
     'lan_unavailable': 'Phone access requires FreeVideo installed with the launcher',
     'capabilities_computing': 'Working out what this computer can generate; try again shortly',
     'out_of_memory': 'Graphics or system memory ran out during generation',
