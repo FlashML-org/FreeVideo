@@ -11,7 +11,7 @@ import {issueButton} from './issue_button.js';
 import * as model from './editor_model.js';
 import {discardEmptyEdit, hiddenEmptyEdit, deleteEditText} from './editor_lifecycle.js';
 import {createEditorState} from './editor_state.js';
-import {createEditorStore, sourceKey, mediaURL} from './editor_store.js';
+import {createEditorStore, sourceKey, mediaURL, isReportableSaveFailure} from './editor_store.js';
 import {createPicturePoster} from './editor_poster.js';
 import {generationSize, continuedSize} from './editor_generation.js';
 import {uploadMedia} from './media_upload.js';
@@ -512,6 +512,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     store.generationReady();
     // Media details from the cache draw at once and are read again from the server (marked as stand-ins).
     if (fromCache?.sources && Object.keys(fromCache.sources).length) try { store.cache(Object.fromEntries(Object.entries(fromCache.sources).map(([key, value]) => [key, {...value, _fallback: true}]))); } catch { /* Read again later. */ }
+    let saveFailureShown = false;
     const queue = store.createSaveQueue({get record() { return state.record; },
         adopt(value) {
             if (pointerEditing) { deferredStamp = value; return; }
@@ -521,8 +522,14 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             if (held.length) rememberView();
         },
     }, {onStatus: () => {
-        if (!queue.dirty) { discardOnSwitch = false; leaveTo = null; saveWarning.hidden = true; }
+        if (!queue.dirty) { discardOnSwitch = false; leaveTo = null; saveWarning.hidden = true; saveFailureShown = false; }
         updateSaveState();
+    }, onFailed: error => {
+        // An unexpected engine error says so once, with the way to report it; retries after it stay quiet.
+        if (!isReportableSaveFailure(error) || saveFailureShown) return;
+        saveFailureShown = true;
+        notify(t('Saving changes failed because of an unexpected error. Your changes stay in this page and are saved again automatically.', '保存改动时出现意外错误。改动仍在这个页面里，会自动再次保存。'),
+            EDITOR_ISSUE, failureKind('save', {reason: saveReason(error)}));
     }});
     // Whether the edit is saved, beside its name only when it needs attention: a failed save (which offers to save
     // again from there), changes left unsaved, or saving that takes longer than 2 s. A saved edit shows nothing; the

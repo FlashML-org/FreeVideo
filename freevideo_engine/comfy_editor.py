@@ -1575,8 +1575,11 @@ def register():
                     return web.json_response(dict(saved=False, retry=True, **_disk_full(error)), status=503, headers=_HEADERS)
                 except (ValueError, TypeError, KeyError, RecursionError):
                     return web.json_response(dict(error='Invalid editor request'), status=400, headers=_HEADERS)
-                except Exception:
-                    return web.json_response(dict(error='Editor media unavailable'), status=404, headers=_HEADERS)
+                except Exception as error:
+                    # An unexpected failure is never a 404: the page reads that as "this engine has no editor API".
+                    request_id = uuid.uuid4().hex[:12]
+                    _LOG.exception('Editor request %s failed (%s %s, request_id=%s).', type(error).__name__, method.upper(), path, request_id)
+                    return web.json_response({'error': 'internal', 'class': type(error).__name__, 'request_id': request_id}, status=500, headers=_HEADERS)
             getattr(server.routes, method)(path)(guarded)
             return guarded
         return decorate
