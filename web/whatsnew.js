@@ -381,7 +381,7 @@ const usedBefore = () => {
 };
 
 // Waits for the version answer and for an idle server, then shows the pages once.
-export function startWhatsNew({api, cn, productVersion}) {
+export function startWhatsNew({api, cn, productVersion, inFront = () => true}) {
     if (!usedBefore()) { remember(PAGES); return; }
     let queued = 0, done = false;
     const status = event => { queued = event?.detail?.exec_info?.queue_remaining || 0; };
@@ -389,6 +389,7 @@ export function startWhatsNew({api, cn, productVersion}) {
     const timer = setInterval(() => {
         const version = productVersion();
         if (done || (version && !unseen(version).length)) { done = true; clearInterval(timer); return; }
+        if (!inFront()) return; // Kept for the next time FreeVideo is in front.
         if (maybeShowWhatsNew({cn, version, busy: () => queued > 0})) { done = true; clearInterval(timer); }
     }, 5000);
 }

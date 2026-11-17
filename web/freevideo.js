@@ -16,7 +16,7 @@ import { startWhiteboxWorker } from './whitebox_worker.js';
 import { startDoneNotify, askDesktopPermission, DESKTOP_SETTING } from './done_notify.js';
 import { installNavigation, refreshNavigation, preferredView, collapseWorkspaces, openImage } from './view_navigation.js';
 import { videoModelState } from './video_model.js';
-import { isLaunchVisit } from './launch_visit.js';
+import { isLaunchVisit, freeVideoInFront } from './launch_visit.js';
 import { openFreeVideoWorkflow } from './launcher.js';
 import { agentInterfaceState } from './agent_connect.js';
 import { attachReferencePicker, referenceItems, syncReferencePrompt, referenceInputs, mediaRows, mediaNodeOf } from './prompt_references.js';
@@ -918,6 +918,7 @@ const isGenerate = node => node?.comfyClass === 'FreeVideoGenerate' || node?.typ
 const isFreeVideoNode = id => /^FreeVideo/.test(String(app.graph?.getNodeById(id)?.comfyClass || app.graph?.getNodeById(id)?.type || ''));
 // Only the FreeVideo launcher brings a workspace over a page; any other way of opening ComfyUI leaves it as it is.
 const launchVisit = isLaunchVisit(globalThis.location?.search, globalThis.sessionStorage);
+const inFront = freeVideoInFront(launchVisit);
 
 let menuFailure;
 async function openFromMenu() {
@@ -955,7 +956,7 @@ app.registerExtension({
     async setup() {
         // One failing part must not take the others down; health.js shows what failed.
         for (const [where, start] of [['progress', () => progressConnection.start()], ['navigation', () => installNavigation(showStudio, agentInterfaceState(api), {openWorkflow: openFreeVideoWorkflow, recheck: () => agentInterfaceState(api)})],
-            ['updates', startUpdateChecks], ['whatsnew', () => startWhatsNew({api, cn, productVersion})], ['done-notify', () => startDoneNotify({api, text, desktop: desktopNoticeEnabled, isFreeVideoNode,
+            ['updates', startUpdateChecks], ['whatsnew', () => startWhatsNew({api, cn, productVersion, inFront})], ['done-notify', () => startDoneNotify({api, text, desktop: desktopNoticeEnabled, isFreeVideoNode,
                 isFreeVideoWorkflow: () => (app.graph?._nodes || []).some(isGenerate)})],
             ['whitebox', () => startWhiteboxWorker({api})]]) {
             try { start(); } catch (error) { health({type: 'error', where, error}); }
@@ -963,7 +964,7 @@ app.registerExtension({
         window.addEventListener('pagehide', () => savePromptDraft(api, true));
         void savePromptDraft(api); // Retry this tab's outbox after an interrupted save.
         window.FreeVideoUI = {...window.FreeVideoUI, ready: true};
-        await notifyCompatibility();
+        void notifyCompatibility({inFront});
     },
     async beforeRegisterNodeDef(nodeType, nodeData) {
         if (cn && String(nodeData.name).startsWith('FreeVideo')) {
