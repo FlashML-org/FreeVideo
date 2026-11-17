@@ -1,0 +1,66 @@
+// From a photo: where the face is small, the face close-up is made from the face cut out and enlarged instead of the
+// whole photo. Measured with Qwen-Image 2.1 on six fictional people, three seeds each: a face under 256 px on its long
+// side keeps the likeness much better this way (225 px photos: average similarity 0.758 → 0.835, worst 0.275 → 0.581);
+// a larger face keeps it a little better from the whole photo, so it stays as it is. The face size that counts is the
+// smaller of the photo's own and the one the engine sees once it brings a reference to about 1 MP.
+// The engine finds the faces (face-box, on the CPU, the upload stays); the page cuts and enlarges with a canvas. Any
+// failure (an engine without face-box, no face, a picture that cannot be read) keeps the whole photo.
+import {IMAGE_GEN_PROTOCOL} from './image_generation.js';
+
+// below: the face size (px, long side) under which the face is cut out; engineArea: the area the engine brings a
+// reference to; side: the cut-out's side in face-box heights (hair and chin inside); raise: how far its centre sits
+// above the box's, in box heights; size: the side the cut-out is enlarged to.
+export const FACE_CROP = Object.freeze({below: 256, engineArea: 1024 * 1024, side: 2, raise: .1, size: 1024, waitMs: 20000});
+
+// The square to cut out of a width × height photo, in its pixels, or null to keep the whole photo. faces: the engine's
+// list ({box: [left, top, right, bottom]}); the largest box is the person's.
+export function faceCrop(width, height, faces) {
+    if (!(width > 0 && height > 0) || !Array.isArray(faces)) return null;
+    const area = face => (face.box[2] - face.box[0]) * (face.box[3] - face.box[1]);
+    const usable = faces.filter(face => Array.isArray(face?.box) && face.box.length === 4 && face.box.every(Number.isFinite)
+        && face.box[2] > face.box[0] && face.box[3] > face.box[1]);
+    if (!usable.length) return null;
+    const [x0, y0, x1, y1] = usable.reduce((best, face) => area(face) > area(best) ? face : best).box;
+    const boxHeight = y1 - y0, long = Math.max(x1 - x0, boxHeight);
+    const seen = long * Math.sqrt(FACE_CROP.engineArea / (width * height));
+    if (Math.min(long, seen) >= FACE_CROP.below) return null;
+    const side = Math.min(FACE_CROP.side * boxHeight, width, height);
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2 - FACE_CROP.raise * boxHeight;
+    const left = Math.round(Math.min(Math.max(0, cx - side / 2), width - side));
+    const top = Math.round(Math.min(Math.max(0, cy - side / 2), height - side));
+    return {left, top, side: Math.max(1, Math.min(Math.round(side), width - left, height - top)), face: Math.round(Math.min(long, seen))};
+}
+
+// The faces the engine finds in an uploaded picture, or null where it cannot tell (an engine without face-box included).
+export async function findFaces(client, fetcher, name) {
+    const p = IMAGE_GEN_PROTOCOL, info = await client.info();
+    if (info?.face_box !== true || !info[p.token]) return null;
+    const stop = new AbortController(), timer = setTimeout(() => stop.abort(), FACE_CROP.waitMs);
+    try {
+        const response = await fetcher(`${p.root}/face-box`, {method: 'POST', signal: stop.signal,
+            headers: {'Content-Type': 'application/json', [p.header]: info[p.token]}, body: JSON.stringify({image: name})});
+        if (!response.ok) return null;
+        const value = await response.json();
+        return Number.isFinite(value?.width) && Number.isFinite(value?.height) && Array.isArray(value?.faces) ? value : null;
+    } finally { clearTimeout(timer); }
+}
+
+// The face cut out of `file` (the photo uploaded as `name`) and enlarged, as a PNG file, or null to keep the whole photo.
+export async function faceCloseUp({client, fetcher, name, file}) {
+    try {
+        const found = await findFaces(client, fetcher, name);
+        if (!found) return null;
+        const bitmap = await createImageBitmap(file);
+        try {
+            // The engine reads the photo as it is shown (its orientation applied), as the browser draws it.
+            if (bitmap.width !== found.width || bitmap.height !== found.height) return null;
+            const crop = faceCrop(found.width, found.height, found.faces);
+            if (!crop) return null;
+            const size = FACE_CROP.size, canvas = new OffscreenCanvas(size, size), g = canvas.getContext('2d');
+            g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+            g.drawImage(bitmap, crop.left, crop.top, crop.side, crop.side, 0, 0, size, size);
+            const blob = await canvas.convertToBlob({type: 'image/png'});
+            return {file: new File([blob], 'face.png', {type: 'image/png'}), crop};
+        } finally { bitmap.close?.(); }
+    } catch { return null; }
+}

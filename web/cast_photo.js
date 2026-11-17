@@ -10,6 +10,7 @@
 // is left or the tab closes, are deleted at once (keepalive, so a closing tab still deletes them).
 import {createImageGenClient, imagePackUnavailableMessage, renderImageFailure, IMAGE_GEN_INFO_POLL_MS} from './image_generation.js';
 import {createCastGenerator} from './cast_generate.js';
+import {faceCloseUp} from './cast_face_crop.js';
 import {createOtherUsageNotice} from './other_usage.js';
 
 // Generation order: the face close-up first (from the photo alone), then the front, side and back from the photo and
@@ -291,16 +292,27 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
     async function referenceOf(record) {
         return draftClient.upload(record.file);
     }
+    // A small face in the photo: the close-up is made from it cut out and enlarged (cast_face_crop.js), uploaded once per
+    // photo; '' keeps the whole photo.
+    let closeUp = {photo: '', name: ''};
+    async function closeUpOf(photo) {
+        if (closeUp.photo !== photo) {
+            const made = await faceCloseUp({client, fetcher, name: photo, file: photoSlot.get().file});
+            closeUp = {photo, name: made && !disposed ? await referenceOf(made).catch(() => '') : ''};
+        }
+        return closeUp.name;
+    }
     async function begin() {
         if (action.getAttribute('aria-disabled') === 'true') { attention = action.dataset.fvTipWhy || ''; render(); return; }
         attention = ''; render();
         try {
             if (!photoRef) photoRef = await referenceOf(photoSlot.get());
+            await closeUpOf(photoRef);
             if (mode === 'image' && !outfitRef) outfitRef = await referenceOf(outfitSlot.get());
         } catch (error) { attention = error.message || tr('Could not read this picture. Please choose another one.', '无法读取这张图片，请换一张。'); render(); return; }
         if (disposed) return;
-        for (const name of [photoRef, mode === 'image' ? outfitRef : '']) if (name && references.has(name)) references.set(name, true);
-        void generator.start('', {photo: photoRef, outfit: mode === 'keep' ? '' : field.value, outfitImage: mode === 'image' ? outfitRef : ''});
+        for (const name of [photoRef, closeUp.name, mode === 'image' ? outfitRef : '']) if (name && references.has(name)) references.set(name, true);
+        void generator.start('', {photo: photoRef, closeUp: closeUp.name, outfit: mode === 'keep' ? '' : field.value, outfitImage: mode === 'image' ? outfitRef : ''});
     }
     action.onclick = () => generator.state().running ? void generator.stop() : void begin();
     async function checkInfo() {

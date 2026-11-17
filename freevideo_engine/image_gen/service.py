@@ -220,6 +220,7 @@ class Service:
                     downloading=downloading,
                     bytes=sum(row['bytes'] for row in spec['groups']['image']), busy=self.busy(),
                     max_images=MAX_IMAGES, sizes=self.size_tiers(machine), install=self.pack_state(ready),
+                    face_box=True,
                     segment=dict(ready=image_pack.ready(machine['model_root'], group='segment'),
                                  max_points=16, device='cpu',
                                  install=self.segment_installer.state() if self.segment_installer else None),
@@ -971,6 +972,18 @@ class Service:
                 self.segmenting = False
                 self.segment_done.set()
                 self.queue_wake.set()
+
+    def face_box(self, value):
+        """The faces in an uploaded picture, found on the CPU at once: no queue, no graphics card, and the upload stays."""
+        if not isinstance(value, dict):
+            raise ValueError('invalid_request')
+        path = self.media_path(value.get('image'))
+        from .face_box import WeightsError, detect
+        try:
+            return detect(path)
+        except WeightsError:
+            logging.warning('[FreeVideo] The face detector weights are missing or changed; faces are not looked for.')
+            raise ValueError('model_unreadable') from None
 
     def request(self, value):
         if not isinstance(value, dict):
@@ -2105,6 +2118,8 @@ def register():
                 result = service.pack_action(name.split('-')[1], group='segment')
             elif name == 'segment':
                 result = await asyncio.to_thread(service.segment, value)
+            elif name == 'face-box':
+                result = await asyncio.to_thread(service.face_box, value)
             elif name == 'history':
                 result = service.history()
             elif name == 'history-delete':

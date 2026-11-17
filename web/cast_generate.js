@@ -95,6 +95,8 @@ export function createCastGenerator({client, kind = 'character', views = null, f
     const fresh = () => names.map(view => ({view, file: '', fraction: 0}));
     let state = {pictures: fresh(), running: false, current: -1, error: '', report_id: null, waiting: '', description: '', photo: '', outfit: ''};
     let epoch = 0, timer = null, job = null, plan = null, seed = 0, disposed = false, loras, outfit = '';
+    // From a photo with a small face: the face cut out and enlarged by the page, for the face close-up only.
+    let closeUp = '';
     const seeds = [];
     // Pictures standing in for a view as a reference (an edited face or front, uploaded by the page).
     const overrides = {};
@@ -108,7 +110,8 @@ export function createCastGenerator({client, kind = 'character', views = null, f
         const dress = view.outfit && state.outfit ? [state.outfit] : [];
         // From a photo: each view names the pictures it sees (the photo, the face close-up, the front, the clothes).
         const picked = name => { const at = names.indexOf(name), row = at >= 0 ? state.pictures[at] : null; return row?.original ? state.photo : row?.file || ''; };
-        const roles = {photo: () => state.photo, face: () => overrides.face || picked('face'), front: () => overrides.front || picked('front'), outfit: () => state.outfit};
+        // The face close-up sees the face cut out of the photo where the page made one (a small face), else the photo.
+        const roles = {photo: () => (view.view === 'face' && closeUp) || state.photo, face: () => overrides.face || picked('face'), front: () => overrides.front || picked('front'), outfit: () => state.outfit};
         const images = view.refs ? view.refs.map(role => roles[role]?.() || '').filter(Boolean)
             : view.photo ? [state.photo, ...dress] : view.from_front ? [front, ...dress] : [];
         await beforeGenerate({kind: 'image', width: view.width, height: view.height, image_references: images.length});
@@ -138,10 +141,11 @@ export function createCastGenerator({client, kind = 'character', views = null, f
         }
     }
 
-    async function start(description, {loras: selectedLoras, photo = '', outfit: wear = '', outfitImage = ''} = {}) {
+    async function start(description, {loras: selectedLoras, photo = '', closeUp: face = '', outfit: wear = '', outfitImage = ''} = {}) {
         description = String(description || '').trim();
         if (photo && !description) description = PHOTO_WHO;
         if (state.running || disposed || !description) return;
+        closeUp = photo ? face : '';
         if (photo && (photo !== state.photo || wear !== outfit || outfitImage !== state.outfit)) { plan = null; emit({photo, outfit: outfitImage}); outfit = wear; for (const row of state.pictures) if (row.file && !row.original) onDiscard(row.file); emit({pictures: fresh(), description: ''}); }
         // After a failure the same description goes on from the picture that failed.
         const resume = !!state.error && description === state.description && plan && !done()
