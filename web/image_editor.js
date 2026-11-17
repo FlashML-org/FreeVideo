@@ -70,6 +70,7 @@ export const ICONS = {
     swap: '<path d="M7 4 4 7l3 3"/><path d="M4 7h11a5 5 0 0 1 5 5v1"/><path d="m17 20 3-3-3-3"/>',
     minus: '<path d="M5 12h14"/>',
     edit: '<path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17z"/><path d="m14 8 2 2"/>',
+    pose: '<circle cx="12" cy="4.6" r="2.1"/><path d="M12 7.6v6.2M12 13.8 8.6 20.6M12 13.8l3.4 6.8M6.4 11.6 12 9l5.6 2.6"/>',
 };
 export const icon = (name, size = 18) => SVG(ICONS[name], size);
 
@@ -243,7 +244,14 @@ async function openImageEditorNow({source = null, name = source || '', target = 
         iconButton('plus', t('Zoom in (Ctrl +)', '放大（Ctrl +）'), () => zoomBy(1.25)));
     const undo = iconButton('undo', t('Undo (Ctrl+Z)', '撤销（Ctrl+Z）'), () => step(-1));
     const redo = iconButton('redo', t('Redo (Ctrl+Shift+Z)', '重做（Ctrl+Shift+Z）'), () => step(1));
-    const reset = button(sketch ? t('Clear', '清空') : t('Reset', '全部重置'), sketch ? t('Erase every stroke', '擦掉全部笔画') : t('Back to the original image', '回到原图，清除全部修改'), () => { deselectQuiet(); const next = original(); followSize(doc, next); commit(next); }, 'fv-ie-button fv-ie-reset');
+    const reset = button(sketch ? t('Clear', '清空') : t('Reset', '全部重置'), sketch ? t('Erase every stroke', '擦掉全部笔画') : t('Back to the original image', '回到原图，清除全部修改'), () => {
+        deselectQuiet();
+        let next = original();
+        // In a sketch the mannequins stay where they are (the pose tool has its own Reset).
+        const mannequins = sketch && doc.layers.find(l => l.kind === 'pose');
+        if (mannequins) next = {...next, layers: [next.layers[0], mannequins, ...next.layers.slice(1)]};
+        followSize(doc, next); commit(next);
+    }, 'fv-ie-button fv-ie-reset');
     const cancel = button(t('Cancel', '取消'), null, () => leave());
     const save = button(sketch ? t('Done', '完成') : t('Save', '保存'), sketch ? t('Use the sketch as a reference (Ctrl+Enter)', '把草图用作参考图（Ctrl+Enter）') : t('Save (Ctrl+Enter)', '保存（Ctrl+Enter）'), () => finish(), 'fv-ie-button fv-ie-primary');
     const actions = el('div', null, 'fv-ie-actions'); actions.append(undo, redo, reset, cancel, save);
@@ -298,6 +306,19 @@ async function openImageEditorNow({source = null, name = source || '', target = 
         } catch (error) { console.warn('FreeVideo image editor bar:', error); }
     }
     document.body.append(dialog);
+    // The pose tool (mannequins) and three.js load only when the tool is chosen or the sketch already has mannequins.
+    let pose = null, poseLoading = null;
+    function loadPose() {
+        poseLoading ||= import('./pose_tool.js').then(module => {
+            if (!dialog.isConnected) return null;
+            pose ||= module.createPoseTool({t, dialog, host: stage, el, button, iconButton, doc: () => doc, preview, commit,
+                sheetRect: () => { const r = rect(), [x, y] = fromO(r.x, r.y); return {x, y, w: r.w * layout.k, h: r.h * layout.k}; }});
+            renderer.posePainter = pose.painter;
+            composited = null;
+            return pose;
+        }).finally(() => { poseLoading = null; });
+        return poseLoading;
+    }
     const genClient = imageGenClient || createImageGenClient(api.fetchApi.bind(api));
     const generation = createImageGeneration({client: genClient,
         renderer, t, getDoc: () => doc, getSelection: () => selection, commit: commitInserted, el, button, segmented,
@@ -325,10 +346,11 @@ async function openImageEditorNow({source = null, name = source || '', target = 
     ];
     const toolButtons = {};
     // Sketch: select, brush, eraser and the five shapes, all on the strip (a shape button picks the shape tool and its type).
-    const SKETCH_TOOLS = ['move', 'brush', 'eraser', 'shape'];
+    const SKETCH_TOOLS = ['move', 'brush', 'eraser', 'shape', 'pose'];
     const SKETCH_STRIP = [['move', t('Select', '选择'), 'V', 'move'], null, ['brush', t('Brush', '画笔'), 'B', 'brush'], ['eraser', t('Eraser', '橡皮'), 'E', 'eraser'], null,
         ['shape:line', t('Line', '直线'), null, 'line'], ['shape:arrow', t('Arrow', '箭头'), null, 'arrow'], ['shape:rect', t('Rectangle', '矩形'), null, 'rect'],
-        ['shape:ellipse', t('Circle', '圆'), null, 'circle'], ['shape:triangle', t('Triangle', '三角形'), null, 'triangle']];
+        ['shape:ellipse', t('Circle', '圆'), null, 'circle'], ['shape:triangle', t('Triangle', '三角形'), null, 'triangle'], null,
+        ['pose', t('Mannequin', '人偶'), 'P', 'pose']];
     if (sketch) for (const entry of SKETCH_STRIP) {
         if (!entry) { toolbar.append(el('span', null, 'fv-ie-tool-gap')); continue; }
         const [id, label, key, glyph] = entry;
@@ -483,6 +505,7 @@ async function openImageEditorNow({source = null, name = source || '', target = 
         ctx.drawImage(pic, x0, y0, r.w * layout.k, r.h * layout.k);
         if (liveStroke) drawLiveStroke(ctx);
         drawOverlay();
+        pose?.draw();
     }
     let checkerPattern = null;
     function checker(ctx) {
@@ -619,9 +642,17 @@ async function openImageEditorNow({source = null, name = source || '', target = 
         if (sketch && !SKETCH_TOOLS.includes(id) && id !== 'hand') return;
         if (!doc.layers.length && !['generate', 'hand'].includes(id)) { message(emptyCanvasReason()); return; }
         if (id === 'generate' && !imageGenerationSupported()) return;
+        if (id === 'pose' && !pose) {
+            void loadPose().then(tool => { if (tool && dialog.open) select('pose'); })
+                .catch(() => message(t('The mannequin cannot load right now. Reload the page and try again.', '人偶暂时无法载入，请刷新页面后重试。'), ['Sketch mannequin', '草图人偶']));
+            return;
+        }
         commitText();
         gesture?.cancel?.(); gesture = null;
-        tool = id; renderOptions(); controls(); draw(); showHint(); keepFocus();
+        if (tool === 'pose' && id !== 'pose') pose?.deactivate();
+        tool = id;
+        if (id === 'pose') pose.activate();
+        renderOptions(); controls(); draw(); showHint(); keepFocus();
         if (id === 'generate') void generation.selected();
     }
     function emptyCanvasReason() { return t('The canvas is empty. Add or generate an image first.', '画布是空的，请先添加或生成一张图片。'); }
@@ -711,6 +742,8 @@ async function openImageEditorNow({source = null, name = source || '', target = 
             if (tool === 'brush') add(sep(), sketchColors(fg, c => { fg = c; fgInput.value = c; }));
         } else if (sketch && tool === 'shape') {
             add(...shapeStyle(null));
+        } else if (sketch && tool === 'pose') {
+            pose?.options(add, sep, note);
 
         } else if (tool === 'brush' || tool === 'eraser') {
             const o = opts[tool];
@@ -1376,7 +1409,7 @@ async function openImageEditorNow({source = null, name = source || '', target = 
     });
     stage.addEventListener('pointermove', event => {
         const p = pointer(event); cursorPos = p;
-        if (gesture?.move) gesture.move(p, event); else drawOverlay();
+        if (gesture?.move) gesture.move(p, event); else { drawOverlay(); if (tool === 'pose') pose?.hover(p); }
     });
     const release = event => {
         if (!gesture) return;
@@ -1386,9 +1419,10 @@ async function openImageEditorNow({source = null, name = source || '', target = 
     };
     stage.addEventListener('pointerup', release);
     stage.addEventListener('pointercancel', event => { if (gesture && !gesture.keep) { gesture.cancel?.(); gesture = null; draw(); } void event; });
-    stage.addEventListener('pointerleave', () => { cursorPos = null; drawOverlay(); });
+    stage.addEventListener('pointerleave', () => { cursorPos = null; drawOverlay(); pose?.hover(null); });
     stage.addEventListener('dblclick', event => {
         if (gesture?.close) { gesture.close(); return; }
+        if (tool === 'pose') { pose?.dblclick(pointer(event)); return; }
         if (tool === 'move' || tool === 'text') {
             const hit = hitLayer(pointer(event));
             if (hit?.kind === 'text') { setActive(hit.id); renderPanels(); textArea?.focus(); textArea?.select(); }
@@ -1396,6 +1430,8 @@ async function openImageEditorNow({source = null, name = source || '', target = 
     });
     stage.addEventListener('wheel', event => {
         event.preventDefault();
+        // With the mannequin tool, the wheel moves the camera nearer or further (Ctrl + wheel still zooms the view).
+        if (tool === 'pose' && pose?.wheel(event)) return;
         if (event.ctrlKey || event.metaKey) zoomAt(pointer(event), Math.exp(-event.deltaY * .0025));
         else { viewState = {...viewState, panX: viewState.panX - event.deltaX, panY: viewState.panY - event.deltaY}; computeLayout(); draw(); controls(); }
     }, {passive: false});
@@ -1416,6 +1452,7 @@ async function openImageEditorNow({source = null, name = source || '', target = 
         const use = choosing ? 'marquee' : tool;
         const o = toO(...p), d = toD(o), layer = active();
         const mode = event.shiftKey ? 'add' : event.altKey ? 'subtract' : null;
+        if (use === 'pose') return pose ? pose.gesture(event, p) : null;
         if (use === 'crop') return cropGesture(event, o);
         if (use === 'move') return moveGesture(event, p, d);
         if (use === 'marquee') {
@@ -1789,6 +1826,9 @@ async function openImageEditorNow({source = null, name = source || '', target = 
         // Nothing typed here reaches ComfyUI's canvas shortcuts behind the dialog.
         if (event.key !== 'Escape' && event.key !== 'Tab') event.stopPropagation();
         if (event.target.closest?.('.fv-issue-button')) return;
+        // Esc with the mannequin tool closes its window, then clears its selection, before it would leave: taken here, at the
+        // key, so the browser never counts it as a request to close the editor.
+        if (event.key === 'Escape' && !typing && tool === 'pose' && !gesture && pose?.escape()) { event.preventDefault(); return; }
         if (typing) { if (mod && key === 'enter') { event.preventDefault(); finish(); } return; }
         if (mod && key === 'z') { event.preventDefault(); step(event.shiftKey ? 1 : -1); return; }
         if (mod && key === 'y') { event.preventDefault(); step(1); return; }
@@ -1803,6 +1843,7 @@ async function openImageEditorNow({source = null, name = source || '', target = 
         if (mod && key === '1') { event.preventDefault(); actualSize(); return; }
         if (mod || event.altKey && key !== 'backspace' && key !== 'delete') return;
         if (event.key === ' ') { event.preventDefault(); if (!spaceHeld) { spaceHeld = true; stage.dataset.pan = 'true'; } return; }
+        if (tool === 'pose' && pose?.key(event)) { event.preventDefault(); return; }
         if (sketch && (event.key === 'Delete' || event.key === 'Backspace')) { event.preventDefault(); if (active()?.kind === 'shape') deleteLayer(); return; }
         if ((event.key === 'Delete' || event.key === 'Backspace') && event.altKey) { event.preventDefault(); fillSelection(); return; }
         if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); clearSelection(); return; }
@@ -1815,6 +1856,7 @@ async function openImageEditorNow({source = null, name = source || '', target = 
             else o.size = clamp(o.size * (key === ']' ? 1.2 : 1 / 1.2), .002, .25);
             renderOptions(); drawOverlay(); return;
         }
+        if (sketch && key === 'p') { select('pose'); return; }
         if (KEYS[key]) {
             if (key === 'm' && tool === 'marquee' && event.shiftKey) opts.marquee.shape = opts.marquee.shape === 'rect' ? 'ellipse' : 'rect';
             if (key === 'l' && tool === 'lasso' && event.shiftKey) opts.lasso.type = opts.lasso.type === 'free' ? 'polygon' : 'free';
@@ -1836,6 +1878,7 @@ async function openImageEditorNow({source = null, name = source || '', target = 
     dialog.addEventListener('cancel', event => {
         event.preventDefault();
         if (gesture?.cancel) { gesture.cancel(); gesture = null; draw(); return; }
+        if (tool === 'pose' && pose?.escape()) return;
         // Escape in a text field ends typing there; the next one leaves. In a popover it closes it.
         const field = document.activeElement;
         const open = field?.closest?.('.fv-ie-popover');
@@ -1895,7 +1938,9 @@ async function openImageEditorNow({source = null, name = source || '', target = 
                 // The drawing is a reference picture, not a work: one PNG handed back with its layers, so opening it again
                 // with that edit keeps every stroke. The page uploads it with the request, as every reference picture.
                 const png = extension === 'png' ? blob : (await renderer.export(doc, 'image/png')).blob;
-                close({blob: png, name: 'sketch.png', sketch: true, edit: doc, width, height});
+                // With mannequins, the words for the prompt go with it: which way each person faces, how much of them shows.
+                const words = pose?.words(doc) || null;
+                close({blob: png, name: 'sketch.png', sketch: true, edit: doc, width, height, ...(words ? {pose: words} : {})});
                 return;
             }
             // The saved edit is also one of the works (with the picture it came from), where the engine offers that.
@@ -1928,6 +1973,7 @@ async function openImageEditorNow({source = null, name = source || '', target = 
         for (const off of unlistenKeys) off();
         window.removeEventListener('keydown', stray, true); window.removeEventListener('keyup', stray, true);
         if (dialog.open) dialog.close();
+        pose?.dispose(); pose = null; renderer.posePainter = null;
         // Give every canvas back: this editor holds nothing once it is closed.
         renderer.release();
         for (const c of [view, ants]) { c.width = c.height = 0; }
@@ -1939,8 +1985,9 @@ async function openImageEditorNow({source = null, name = source || '', target = 
 
     // A read-only view of the editor for automation and tests.
     dialog.freevideoEditor = {
-        state: () => ({doc, selection, tool, fg, bg, zoom: layout.k, maskTarget, history: history.length, future: future.length, healing: !!healing,
+        state: () => ({doc, selection, tool, fg, bg, zoom: layout.k, maskTarget, history: history.length, future: future.length, healing: !!healing, pose: pose?.state() || null,
             generation: {...generation.state(), info: generation.state().info ? {installed: generation.state().info.installed} : null, job: undefined}}),
+        posePoint: (index, joint) => pose?.point(index, joint) || null,
         pictureBox: () => { const b = stage.getBoundingClientRect(), r = rect(), [x, y] = fromO(r.x, r.y); return {x: b.left + x, y: b.top + y, width: r.w * layout.k, height: r.h * layout.k}; },
     };
 
@@ -1961,6 +2008,7 @@ async function openImageEditorNow({source = null, name = source || '', target = 
     dialog.showModal();
     if (opening) requestAnimationFrame(() => requestAnimationFrame(() => opening.drop()));
     computeLayout();
+    if (doc.layers.some(l => l.kind === 'pose')) await loadPose().catch(error => console.warn('FreeVideo sketch mannequin unavailable:', error));
     renderPanels();
     // The result is placed on the canvas the request was made for, not on the one a reload rebuilt.
     const resumedCanvas = generation.resumedCanvas;

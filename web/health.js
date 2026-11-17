@@ -30,7 +30,8 @@ export const MODULES = ['audio_original.js', 'chat_data.js', 'phone_model.js', '
     'autopilot_panels.js', 'autopilot_tips.js', 'autopilot_history.js', 'a11y.js', 'topbar.js', 'view_switch_place.js', 'view_navigation_fit.js', 'editor_tips.js', 'editor_narration.js', 'editor_narration_model.js', 'editor_beats_model.js', 'empty_frame.js', 'studio_compare.js', 'image_library.js', 'fv_select.js', 'preview_style.js',
     'feature_tour_layer.js', 'settings_room.js', 'settings_kit.js', 'settings_words.js',
     'image_works.js', 'cast_photo.js', 'editor_opening.js', 'editor_poster.js', 'topbar_state.js', 'preload_setting.js',
-    'private_pin.js', 'private_settings.js', 'private_offers.js'];
+    'private_pin.js', 'private_settings.js', 'private_offers.js',
+    'pose_body.js', 'pose_props.js', 'pose_stage.js', 'pose_tool.js'];
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 let visibleAt = 0;
 async function waitForVisible() {
