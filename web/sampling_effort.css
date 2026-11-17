@@ -4,20 +4,23 @@
 .fv-studio .fv-sampling-settings .fv-two-pass input{width:34px;height:20px;min-height:20px}
 .fv-studio .fv-sampling-settings .fv-two-pass input::before{width:14px;height:14px}
 .fv-studio .fv-sampling-settings .fv-two-pass input:checked::before{transform:translateX(14px)}
-.fv-effort{--fv-position:0;--fv-move:cubic-bezier(.25,1.15,.45,1);--fv-tone:var(--fv-accent,#6db8fa)}
+.fv-effort{--fv-position:0;--fv-snap:.18s;--fv-move:cubic-bezier(.25,1.15,.45,1);--fv-tone:var(--fv-accent,#6db8fa)}
 .fv-effort-heading{display:flex;align-items:baseline;gap:8px;margin:0 0 10px;color:var(--fv-muted,#969a9f);font:12px/1.5 var(--fv-font,system-ui)}
 .fv-effort-estimate{margin-left:auto;font-variant-numeric:tabular-nums;text-align:right;font-size:11px}
 .fv-effort-warning{margin:-4px 0 10px;color:var(--fv-warning);font:11px/1.5 var(--fv-font,system-ui);text-align:left}
 .fv-effort-rail{position:relative;cursor:pointer;touch-action:pan-y;user-select:none;-webkit-user-select:none;outline:none;border-radius:var(--fv-r-lg)}
 /* A thick track in the interface's own accent; the knob travels inside it. */
 .fv-effort-track{position:relative;display:block;height:36px;border-radius:var(--fv-r-lg);background:color-mix(in srgb,var(--fv-ink,#eee) 7%,transparent);box-shadow:inset 0 1px 2px #0005}
-.fv-effort-fill{position:absolute;inset:0;border-radius:inherit;background:linear-gradient(90deg,color-mix(in srgb,var(--fv-tone) 55%,transparent),var(--fv-tone));clip-path:inset(0 calc((1 - var(--fv-position)) * (100% - 36px)) 0 0 round 18px);transition:clip-path .5s var(--fv-move)}
+.fv-effort-fill{position:absolute;inset:0;border-radius:inherit;background:linear-gradient(90deg,color-mix(in srgb,var(--fv-tone) 55%,transparent),var(--fv-tone));clip-path:inset(0 calc((1 - var(--fv-position)) * (100% - 36px)) 0 0 round 18px);transition:clip-path var(--fv-snap) var(--fv-move)}
 .fv-effort-stop{position:absolute;top:50%;left:calc(18px + (100% - 36px) * var(--fv-stop));width:5px;height:5px;margin:-2.5px 0 0 -2.5px;border-radius:var(--fv-r-pill);background:color-mix(in srgb,var(--fv-ink,#eee) 26%,transparent);transition:background .3s;pointer-events:none}
 .fv-effort-stop[data-filled]{background:#ffffffb8}
-.fv-effort-knob{position:absolute;top:4px;left:calc(4px + (100% - 36px) * var(--fv-position));width:28px;height:28px;border-radius:var(--fv-r-pill);background:#fff;box-shadow:0 1px 4px #0006,0 0 0 .5px #0000001f;transition:left .5s var(--fv-move),box-shadow .25s,transform .25s ease;pointer-events:none}
+.fv-effort-knob{position:absolute;top:4px;left:calc(4px + (100% - 36px) * var(--fv-position));width:28px;height:28px;border-radius:var(--fv-r-pill);background:#fff;box-shadow:0 1px 4px #0006,0 0 0 .5px #0000001f;transition:left var(--fv-snap) var(--fv-move),box-shadow .25s,transform .25s ease;pointer-events:none}
 .fv-effort-rail:hover .fv-effort-knob{box-shadow:0 2px 6px #0006,0 0 0 5px color-mix(in srgb,var(--fv-tone) 20%,transparent)}
-.fv-effort-rail[data-dragging=true] .fv-effort-knob{transform:scale(1.08);transition:left 40ms linear,box-shadow .2s,transform .2s ease;box-shadow:0 3px 10px #0007,0 0 0 6px color-mix(in srgb,var(--fv-tone) 26%,transparent)}
-.fv-effort-rail[data-dragging=true] .fv-effort-fill{transition:clip-path 40ms linear}
+/* While dragged, the knob and the fill are drawn where the pointer is, in the same frame: their position has no
+   transition (an eased or even 40 ms one trails the pointer by a frame or more on every move). On release they ease to
+   the nearest level in --fv-snap. */
+.fv-effort-rail[data-dragging=true] .fv-effort-knob{transform:scale(1.08);transition:box-shadow .2s,transform .2s ease;box-shadow:0 3px 10px #0007,0 0 0 6px color-mix(in srgb,var(--fv-tone) 26%,transparent)}
+.fv-effort-rail[data-dragging=true] .fv-effort-fill{transition:none}
 .fv-effort-knob.fv-effort-pop{animation:fv-effort-pop .36s ease}
 @keyframes fv-effort-pop{50%{transform:scale(1.1)}}
 .fv-studio .fv-effort .fv-effort-rail:focus-visible,.fv-effort .fv-effort-rail:focus-visible{outline:none}
