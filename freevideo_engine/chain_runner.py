@@ -628,12 +628,17 @@ class ChainRunner:
         with self.lock:
             kept = {name for row in self.forgotten.values() if row['output'] is not None for name in row['segments']
                     if name != row['output'] and (exists is None or exists(row['output'])) and (exists is None or exists(name))}
+            def joined(record):
+                return (record['join'] and record['output_state'] == 'done'
+                        and (record['output_blocks'] > 1 or record.get('original_audio') is not None)
+                        and record['output'] not in {block['output'] for block in record['blocks']})
+            # A part that is also the finished video of another record (a preview or first pass shown on its own) stays visible.
+            alone = {record['output'] for record in self.records.values()
+                    if record['output'] is not None and record['output_state'] == 'done' and not joined(record)}
             return kept | {row['output'] for record in self.records.values()
-                    if record['join'] and record['output_state'] == 'done'
-                    and (record['output_blocks'] > 1 or record.get('original_audio') is not None)
-                    and record['output'] not in {block['output'] for block in record['blocks']}
-                    and (exists is None or exists(record['output']))
-                    for row in record['blocks'][:record['output_blocks']] if row['output'] is not None}
+                    if joined(record) and (exists is None or exists(record['output']))
+                    for row in record['blocks'][:record['output_blocks']]
+                    if row['output'] is not None and row['output'] not in alone}
 
     def active_ids(self):
         """Stable chain order for both the legacy turn and the concurrent host."""
