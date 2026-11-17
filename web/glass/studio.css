@@ -811,13 +811,13 @@ html body .fv-studio.fv-create .fvs-console :is(.fvs-console-prompt,.fv-section,
 /* LoRA tray: an empty list is just a left-aligned Add; no standing note; the tray is as tall as what it holds. */
 .fv-studio.fv-create .fvs-tray .fv-lora-add{justify-content:flex-start}
 .fv-studio.fv-create .fvs-tray :is(.fv-lora-note,.fv-lora-list):empty{display:none}
-/* Phones: the chips stay one row (no chip left alone on a line); the row scrolls sideways and fades at its end. */
+/* Narrow windows: the chips wrap inside the console (nothing scrolls out of sight); LoRA and Advanced sit together at
+   the right end of the last line. */
 @media(max-width:760px){
-  .fv-studio.fv-create .fvs-chips{flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none;
-    -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent);padding-right:var(--fv-sp-24)}
-  .fv-studio.fv-create .fvs-chips>*{flex:none}
-  /* (A ring there is drawn inside its key, so the row's sideways scroll does not cut it.) */
-  html body .fv-studio.fv-create .fvs-console .fvs-chips :is(button,[role=button]):focus-visible{outline-offset:-2px!important}
+  .fv-studio.fv-create .fvs-console .fvs-chips{flex-wrap:wrap;overflow:visible;row-gap:var(--fv-sp-4);column-gap:var(--fv-sp-4);padding-right:0;-webkit-mask-image:none;mask-image:none}
+  .fv-studio.fv-create .fvs-console .fvs-chips>.fvs-chip-spacer{display:none}
+  .fv-studio.fv-create .fvs-console .fvs-chips>*{flex:none}
+  .fv-studio.fv-create .fvs-console .fvs-chips>[data-chip=lora]{margin-left:auto}
 }
 /* Narrow phones (about 400 px): the chips wrap inside the console instead of scrolling sideways; LoRA and Advanced
    go to the second line together, at its right end (what does not fit on the first line goes before them); the
