@@ -955,7 +955,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             goLabel.textContent = t('Stop', '停止'); goSub.textContent = '';
             tip(go, t('Stop', '停止'), t('Cancel this picture; asks first', '取消这一张，会先确认'));
         } else if (s.state === 'downloading') {
-            goLabel.textContent = t(`Installing ${Math.floor(s.fraction * 100)}%`, `正在安装 ${Math.floor(s.fraction * 100)}%`);
+            goLabel.textContent = s.verifying ? t(`Verifying ${Math.floor(s.fraction * 100)}%`, `正在校验 ${Math.floor(s.fraction * 100)}%`) : t(`Installing ${Math.floor(s.fraction * 100)}%`, `正在安装 ${Math.floor(s.fraction * 100)}%`);
             goSub.textContent = pendingGenerate ? t('then generates', '完成后生成') : '';
             tip(go, pendingGenerate ? t('Generates when installed', '安装完自动生成') : t('Generate when installed', '安装完再生成'), pendingGenerate ? t('Press to not generate after it', '再按一次取消自动生成') : t('Press to generate as soon as it is installed', '按下后，安装完成即自动生成'));
         } else if (s.state === 'missing' || s.state === 'failed') {

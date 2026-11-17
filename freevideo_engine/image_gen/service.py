@@ -329,7 +329,9 @@ class Service:
         from ..failure_details import image_pack_failure
         value = installer.state()
         row = dict(state=value['state'], done=value.get('done', 0), total=value.get('total', 0),
-                   bytes_per_second=round(value.get('bytes_per_second', 0)))
+                   bytes_per_second=round(value.get('bytes_per_second', 0)),
+                   **({'phase': 'verify', 'verify_done': value.get('verify_done'), 'verify_total': value.get('verify_total')}
+                      if value.get('phase') == 'verify' else {}))
         if value['state'] == 'failed':
             row.update(reason=value.get('reason'), message_en=image_pack_failure(value.get('reason'))['detail'],
                        message_zh=image_pack_failure(value.get('reason'), zh=True)['detail'])

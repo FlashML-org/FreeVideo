@@ -255,6 +255,34 @@ def _read(folder, name):
         return {}
 
 
+def _moved_stamp(ledger, path, row):
+    """Adopt the stamp of the same file recorded under another installation directory.
+
+    Stamps are keyed by absolute path and carry inode, device and change time, all of which a move,
+    a hard link or a copy that keeps modification times changes. A file at a new place whose size,
+    modification time and expected hash equal a verification stamp recorded for the same
+    relative name is the same file: it is stamped again here instead of being hashed again. Any
+    difference in size or modification time still means a full check.
+    """
+    name = str(path)
+    try:
+        if not path.is_file():
+            return False
+        info = path.stat()
+        if info.st_size != row['bytes'] or info.st_mtime_ns >= time.time_ns() - 10**9:
+            return False
+        suffix = '/' + row['file']
+        for key, prior in ledger.items():
+            if (key != name and isinstance(prior, dict) and key.replace('\\', '/').endswith(suffix)
+                    and prior.get('bytes') == row['bytes'] and prior.get('mtime_ns') == info.st_mtime_ns
+                    and prior.get('sha256') == row.get('sha256')):
+                ledger[name] = dict(provision.file_identity(path, row), method='relocated_unchanged_file')
+                return True
+    except OSError:
+        pass
+    return False
+
+
 def _intact(path, row, ledger):
     try:
         prior = ledger.get(str(path), {})
@@ -440,6 +468,8 @@ def status(root=None, *, group='image'):
     for row in rows(group=group):
         path = target(row, root)
         intact = _intact(path, row, ledger)
+        if not intact and row.get('sha256') and _moved_stamp(ledger, path, row):
+            intact = _intact(path, row, ledger)
         old = not intact and _stale(path, row, ledger)
         if old:
             stale.append(path)
@@ -600,8 +630,10 @@ def _verify(folder, root, progress, check, full=False, *, group='image'):
             nonlocal hashed
             hashed = True
             check()
-            progress(dict(phase='verify', done=done + current, total=total))
+            progress(dict(phase='verify', done=done + current, total=total, verify_done=done + current, verify_total=total))
         before = model_repair.identity(path)
+        if not full and row.get('sha256') and not _intact(path, row, ledger):
+            _moved_stamp(ledger, path, row)
         intact = provision.verified(path, row, ledger, mode='full' if full else 'auto', progress=checked)
         progress(dict(phase='diagnostic', diagnostic=dict(file=row['file'], verification='verified' if intact else
                                       'mismatch' if path.exists() else 'missing',
@@ -653,6 +685,9 @@ def _transfer(plan, row, path, progress, check, background=None, diagnostic=None
             details.update(verification='verified', method='sha256')
         elif value.get('reason') == 'integrity-mismatch':
             details.update(verification='mismatch', method='sha256')
+        if diagnostic and value.get('action') == 'verify-progress':
+            diagnostic(dict(phase='verify', verify_done=value.get('done_bytes'), verify_total=value.get('total_bytes')))
+            return prior_event(value) if prior_event else None
         if diagnostic:
             diagnostic(dict(phase='diagnostic', diagnostic=details))
             if value.get('action') == 'verifying':
@@ -897,6 +932,7 @@ class Installer:
             return
         with self.lock:
             if value.get('phase') == 'download':
+                value.update(verify_done=None, verify_total=None)
                 now, done = time.monotonic(), value['done']
                 if self.last_done is not None:
                     self.transferred += max(0, done - self.last_done)
