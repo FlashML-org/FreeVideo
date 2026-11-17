@@ -38,6 +38,7 @@ def run(args):
                 'output': str(destination), 'gpu_budget_gb': policy.gpu_budget_bytes / 1e9,
                 'metrics': str(destination.with_suffix('.encoding.json')),
                 'release_gpu': bool(getattr(args, 'release_gpu', False)),
+                'empty_cache': bool(getattr(args, 'empty_cache', False)),
                 **({'h3_image_references': [str(Path(p).resolve()) for p in args.h3_image_references]}
                    if getattr(args, 'h3_image_references', None) else {})}) + '\n', encoding='utf-8')
             env = dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[1]),

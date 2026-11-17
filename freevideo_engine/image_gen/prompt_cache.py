@@ -57,20 +57,21 @@ def _open_cache(*, encoder, comfy_root, comfy_python, model_paths):
         return None
 
 
-def encode(prompt, images, compute, *, cache, encoder, stats=None):
-    """``compute()`` returns the conditioning dict; it runs only when the cache has no entry for this input."""
+def encode(prompt, images, compute, *, cache, encoder, stats=None, use_saved=True):
+    """``compute()`` returns the conditioning dict; it runs only when the cache has no entry for this input, or
+    always with ``use_saved`` false (the encoding is then wanted for what it does besides, and is saved again)."""
     import time
     import torch
     started = time.perf_counter()
     stats = stats if stats is not None else {}
-    stats['encode_cache'] = 'off' if cache is None else 'miss'
+    stats['encode_cache'] = 'off' if cache is None else 'miss' if use_saved else 'skipped'
     if cache is None:
         return compute()
     key = reference_key(prompt, images, encoder)
     with tempfile.TemporaryDirectory(prefix='freevideo-h3cond-') as directory:
         target = Path(directory) / 'cond.pt'
         try:
-            found = cache.get(key, target)
+            found = cache.get(key, target) if use_saved else None
             if found is not None:
                 value = torch.load(target, map_location='cpu', weights_only=False)
                 if isinstance(value, dict) and 'prompt_embeds' in value:

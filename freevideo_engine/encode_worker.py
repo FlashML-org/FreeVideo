@@ -629,6 +629,10 @@ def _encode(args, request, resident, trace):
             print(json.dumps({'event': 'encoder_left_gpu', 'kept_in_ram': False,
                               'gpu_allocated_gib': round(torch.cuda.memory_allocated() / _GiB, 2),
                               'gpu_reserved_gib': round(torch.cuda.memory_reserved() / _GiB, 2)}), flush=True)
+    elif request.get('empty_cache') and resident is not None:
+        # The encoder stays on the card for the next picture; the picture plans with the working memory it used.
+        import comfy.model_management as _memory
+        _memory.soft_empty_cache()
     # Keyframe and reference-media encoding read the drive themselves.
     stop_model_read_ahead(trace)
     keyframe_metrics = {}
