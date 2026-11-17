@@ -35,9 +35,11 @@ KEEP_IDLE_SECONDS = None
 OTHER_GPU_GROWTH = 512 * 2**20
 PRELOAD_CONTEXT_BYTES = 1536 * 2**20  # what the preload's process adds beside its weights (context, allocator, staging; measured 1.4 GiB)
 HOST_FLOOR = 4 * GiB
-# Below this much host memory (free plus the idle worker's own), a kept worker's
-# base leaves the next part less room than a fresh one; measured on 16 GiB.
-KEEP_MIN_HOST = 24 * GiB
+# The host memory a kept idle worker leaves free, as a share of the memory this process may use (the cgroup limit
+# when there is one, else the machine's); never less than HOST_FLOOR. Below it another program is pressing and the
+# worker goes. There is no fixed floor beyond this: the next request's plan counts the idle worker's reclaimable
+# memory as available (credit) and the worker gives back only what that request needs (ModelBank.make_room).
+HOST_MARGIN_FRACTION = .05
 RELEASE_LOG = 20
 
 
@@ -393,7 +395,7 @@ class SessionOwner:
         self.identity = None
         self.active = False
         self.prewarm = None
-        self.gpu = self.baseline = self.own = None
+        self.gpu = self.baseline = self.own = self.foreign = None
         self.mutex = threading.RLock()
         self.generation = 0
         self.idle_since = None
@@ -404,6 +406,9 @@ class SessionOwner:
         row.setdefault('at', time.time())
         with self.mutex:
             self.decisions = (self.decisions + [row])[-RELEASE_LOG:]
+        if row.get('action') in ('released', 'trimmed'):
+            from . import server_mode
+            server_mode.released('video', row)
         return row
 
     def take_decisions(self):
@@ -429,9 +434,9 @@ class SessionOwner:
                 warm = False
             if not next_part or (hold is not None and hold <= 0):
                 return self.release('finished' if not next_part else 'no_hold')
-            # The worker settles individual caches against its live RAM budget.
-            # A small host alone is no reason to discard everything it kept.
-            reason = pressure(gpu, None) or self._tight()
+            # The worker settles individual caches against its live RAM budget, and the next request takes back only
+            # what it needs: a small host alone is no reason to discard everything it kept.
+            reason = pressure(gpu, None)
             if reason:
                 return self.release(reason)
             self.generation += 1
@@ -441,25 +446,14 @@ class SessionOwner:
                 return self.release('gpu_unreadable')
             self.gpu, self.baseline = gpu, baseline
             self.own = gpu_own(gpu) if warm else None
+            # A server counts only programs outside it: the picture worker beside the video models is its own.
+            from . import server_mode
+            self.foreign = (baseline - self.own if warm and server_mode.coresident() and self.own is not None
+                            and baseline is not None else None)
             threading.Thread(target=self._watch, args=(self.generation, self.idle_since, hold, gpu),
                              name='freevideo-resident-hold', daemon=True).start()
             return self.record(action='kept', reason=next_part, seconds=hold, pid=self.process.pid,
                                **(held_summary(decisions) if decisions else {}))
-
-    def _tight(self):
-        from .system import windows
-        if windows():
-            # Windows keeps its earlier behaviour: the available-memory reading
-            # here has not been checked against its commit accounting.
-            return None
-        try:
-            from .background_room import available_memory
-            own = worker_memory(self.process.pid).get('worker_rss_bytes', 0)
-            if available_memory() + own < KEEP_MIN_HOST:
-                return 'host_memory_tight'
-        except (OSError, RuntimeError, AttributeError, ValueError, ImportError):
-            pass
-        return None
 
     def preloading(self):
         return self.prewarm is not None and self.prewarm.thread is not None and self.prewarm.thread.is_alive()
@@ -533,6 +527,7 @@ class SessionOwner:
                     self.baseline = used
             reason = ('gpu_unreadable' if unreadable else
                       'idle' if hold is not None and time.monotonic() - since >= hold
+                      else server_pressure(gpu, self.foreign) if self.foreign is not None
                       else pressure(gpu, None if placing else self.baseline))
             with self.mutex:
                 if generation != self.generation or self.active or self.process is None:
@@ -693,11 +688,31 @@ def gpu_own(gpu):
         return None
 
 
+def host_margin():
+    """The host memory a kept idle worker leaves free: HOST_MARGIN_FRACTION of the cgroup limit, or of the machine's
+    memory without one, and at least HOST_FLOOR."""
+    limit = None
+    try:
+        from .hardware import cgroup_memory
+        limit = cgroup_memory().get('limit_bytes')
+    except (OSError, RuntimeError, ValueError, ImportError):
+        pass
+    if type(limit) is not int or limit <= 0:
+        try:
+            from .system import system_memory
+            limit = system_memory().get('total_bytes')
+        except (OSError, RuntimeError, ValueError, ImportError, KeyError):
+            limit = None
+    if type(limit) is not int or limit <= 0:
+        return HOST_FLOOR
+    return max(HOST_FLOOR, int(limit * HOST_MARGIN_FRACTION))
+
+
 def pressure(gpu, baseline):
     """Why a kept idle worker should go now, or None."""
     try:
         from .background_room import available_memory
-        if available_memory() < HOST_FLOOR:
+        if available_memory() < host_margin():
             return 'host_memory_low'
     except (OSError, RuntimeError, AttributeError, ValueError, ImportError):
         pass
@@ -709,6 +724,18 @@ def pressure(gpu, baseline):
         if used - baseline >= OTHER_GPU_GROWTH:
             return 'other_program_gpu'
     return None
+
+
+def server_pressure(gpu, foreign):
+    """Why a kept worker of a server should go now, or None: as ``pressure``, but card growth counts only for
+    programs outside this server's process tree (the picture worker loading beside the video models is inside it)."""
+    reason = pressure(gpu, None)
+    if reason:
+        return reason
+    used, own = gpu_used(gpu), gpu_own(gpu)
+    if used is None or own is None:
+        return 'gpu_unreadable'
+    return 'other_program_gpu' if used - own - foreign >= OTHER_GPU_GROWTH else None
 
 
 def worker_memory(pid):

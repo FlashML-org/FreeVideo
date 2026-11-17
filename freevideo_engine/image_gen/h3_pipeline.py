@@ -54,11 +54,20 @@ class KeptModels:
     def __init__(self):
         self.items = {}
 
-    def take(self, role, key):
+    def take(self, role, key, host_free=None):
+        """The kept model of ``role`` for this request, or None (it is closed when it does not match).
+
+        ``host_free`` is the host memory available now, with the kept planes still locked. When it no longer covers
+        the working headroom and the staging reserve, the locked planes are given back and the caller loads again:
+        that load re-decides how many layers to lock from what the host has now, not what it had at the first image.
+        """
         entry = self.items.pop(role, None)
         if entry is None:
             return None
         if entry[0] != key:
+            self.close_entry(entry)
+            return None
+        if role == 'dit' and host_free is not None and host_free < host_floor():
             self.close_entry(entry)
             return None
         return entry[1]
@@ -94,11 +103,7 @@ class KeptModels:
             if small:
                 stack.set_resident(0)
                 # The embedders and tables are about 1 GiB on the card; the next encode needs that room.
-                model = value[0]
-                for name, child in model.named_children():
-                    if name != 'blocks':
-                        child.to('cpu')
-                model.adaln_t_table = model.adaln_t_table.to('cpu')
+                small_parts_to_host(value[0])
         old = self.items.pop(role, None)
         if old is not None:
             self.close_entry(old)
@@ -134,8 +139,8 @@ RESIDENT_ENCODE_MIN_FREE = ENCODER_MIN_FREE + RESIDENT_CONTEXT + PICTURE_SHARE
 
 def resident_encode_decision(free_now, placed=0):
     """(use the resident encoder?, reason) from the free memory the driver reports, plus ``placed``: the bytes of the
-    encoder the resident worker already holds on the card (kept there after the last picture), which the encoding
-    uses where they are."""
+    encoder the resident worker already holds on the card (kept there after the last picture, or put there while the
+    page was being set up), which the encoding uses where they are."""
     if free_now is None:
         return True, dict(reason='free memory unreadable; resident kept')
     parts = dict(free_gib=round(free_now / 2**30, 2), need_gib=round(RESIDENT_ENCODE_MIN_FREE / 2**30, 2),
@@ -311,6 +316,46 @@ def denoise_floor_bytes(copies, width, height):
 
 
 
+# Host memory the request takes beyond the locked weights: the read-ahead staging, the unlocked layers' direct-read
+# buffers and the encoder worker. Measured on a 31.7 GiB Windows machine under an 8 GiB card limit at 3.9-4.8 GiB
+# outside the locked weights, on top of the 8 GiB working headroom the lock capacity already keeps.
+HOST_STAGING_RESERVE = 5 * 2**30
+
+
+def host_free_bytes():
+    """Physical host memory available now, or None when it cannot be read."""
+    try:
+        from ..system import system_memory
+        memory = system_memory()
+        return int(memory.get('physical_available_bytes') or memory['available_bytes'])
+    except Exception:
+        return None
+
+
+def host_floor():
+    """Host memory that must stay available beside a kept DiT: the working headroom plus the staging reserve."""
+    from ..system import HOST_WEIGHT_HEADROOM
+    return HOST_WEIGHT_HEADROOM + HOST_STAGING_RESERVE
+
+
+def host_pin_budget(free_bytes=None, reserve=HOST_STAGING_RESERVE):
+    """Most bytes of weights to lock for this load, or None when host memory cannot be read.
+
+    The lock capacity is read once, at load, and nothing allocated afterwards is charged to it; the staging
+    reserve is charged here so a tight machine locks fewer layers instead of running out of memory later in
+    the request. Locking changes transfer speed only, never the numbers.
+    """
+    if free_bytes is None:
+        try:
+            from ..system import system_memory
+            memory = system_memory()
+            free_bytes = memory.get('physical_available_bytes') or memory['available_bytes']
+        except Exception:
+            return None
+    from ..system import HOST_WEIGHT_HEADROOM
+    return max(0, int(free_bytes) - HOST_WEIGHT_HEADROOM - reserve)
+
+
 def _tensor_bytes(value):
     """Bytes of the tensors held by a module, or by nested tuples, lists and dicts of them (a decoder object)."""
     if isinstance(value, torch.Tensor):
@@ -423,6 +468,131 @@ def reference_moments(copies, vae_path, device, *, cache=True, cache_root=None, 
     return out
 
 
+def load_dit(dit_path, device, host_free, *, mapped=True):
+    """(model, stack): the DiT with its small parts on the card and its blocks in a streamed stack that locks as
+    much of the host as ``host_free`` allows; no block is on the card yet."""
+    from .image_stream import StreamedStack, checkpoint_layer_source
+    model = load_h3_dit(str(dit_path), 'cpu', mapped=mapped)
+    for name, child in model.named_children():
+        if name != 'blocks':
+            child.to(device)
+    model.adaln_t_table = model.adaln_t_table.to(device)
+    source = checkpoint_layer_source(str(dit_path), list(model.blocks)) if mapped else None
+    # Layers the host cannot keep locked are read from the file ahead of their
+    # use through the staging buffer, one device slot (see LayerOffloader).
+    pin_cap = host_pin_budget(host_free)
+    stack = (StreamedStack(model.blocks, name='h3', device=device, weight_source=source,
+                           prefetch=os.environ.get('FREEVIDEO_H3_DEVICE_PREFETCH') == '1',
+                           host_prefetch=True, max_pin_bytes=pin_cap) if source is not None
+             else StreamedStack(model.blocks, name='h3', device=device, max_pin_bytes=pin_cap))
+    return model, stack
+
+
+def picture_shape(model, stack):
+    from .image_policy import ImageShape
+    shape = ImageShape.measure(list(model.blocks), None)
+    # Blocks the host did not keep read from the checkpoint file when used and hold no bytes between calls, so a
+    # measure of the modules alone gives 0 for them and the plan puts every block on the card. The stack's layout
+    # keeps their real sizes.
+    return ImageShape(**{**shape.__dict__, 'steps': 6,
+                         'dit_block_bytes': max(shape.dit_block_bytes, int(getattr(stack, 'layer_bytes', 0) or 0))})
+
+
+def small_parts_to_host(model):
+    """The embedders and tables (about 1 GiB) leave the card; the next picture puts them back."""
+    for name, child in model.named_children():
+        if name != 'blocks':
+            child.to('cpu')
+    model.adaln_t_table = model.adaln_t_table.to('cpu')
+
+
+# The picture a warm-up prepares for: the default size, no references.
+PREPARE_SIZE = (1024, 1024)
+
+
+def prepare(dit_path, vae_path, *, kept, resident_endpoint=None, should_stop=lambda: False, stats=None):
+    """Leave the DiT and the decoder in ``kept`` as a picture of the default size leaves them, before any prompt is
+    known, so the next picture starts sampling right after its encoding. Returns what happened, as a word.
+
+    The card keeps only what leaves the resident text encoder the room its encoding needs
+    (``resident_encode_decision``), so the next encoding is never moved to a short process by this; with too little
+    room the blocks stay in host memory. ``KeptModels.keep`` decides whether the host can hold them at all.
+    ``should_stop()`` ends it between steps; what is already loaded stays kept, as the next picture would load it."""
+    stats = stats if stats is not None else {}
+    if kept is None:
+        return 'no_kept'
+    from .h3_vae import H3ImageDecoder
+    from .image_policy import plan_image
+    torch.set_grad_enabled(False)
+    device = torch.device('cuda')
+    placed = placed_encoder_bytes(resident_endpoint) if resident_endpoint else 0
+    encoder_room = max(0, RESIDENT_ENCODE_MIN_FREE - placed) if resident_endpoint else 0
+    host_free = host_free_bytes()
+    canvas_h, canvas_w = h3_dit.canvas_size(*PREPARE_SIZE)
+    tick = time.perf_counter()
+    held = kept.items.get('dit')
+    if held is not None and held[0] == str(dit_path):
+        # Already kept: only blocks that were moved to the host for room go back to the card, from their locked
+        # host copy; nothing is read from the file again.
+        model, stack = held[1]
+        free, _ = torch.cuda.mem_get_info()
+        budget = max(0, min(card_budget(None), int(free + torch.cuda.memory_reserved())) - encoder_room)
+        plan = plan_image(gpu_budget_bytes=budget, host_available_bytes=None, width=canvas_w, height=canvas_h,
+                          shape=picture_shape(model, stack), sequence_rows=0)
+        before = getattr(stack, 'resident', 0)
+        if not should_stop() and (plan.dit_kept_layers or 0) > before:
+            for name, child in model.named_children():
+                if name != 'blocks':
+                    child.to(device)
+            model.adaln_t_table = model.adaln_t_table.to(device)
+            stack.set_resident(plan.dit_kept_layers)
+        stats.update(prepare_kept_before=before)
+        state = 'kept' if getattr(stack, 'resident', 0) == before else 'returned'
+    else:
+        if host_free is not None and host_free < host_floor():
+            return 'host_memory'
+        free, _ = torch.cuda.mem_get_info()
+        budget = max(0, min(card_budget(None), int(free + torch.cuda.memory_reserved())) - encoder_room)
+        model, stack = load_dit(dit_path, device, host_free)
+        try:
+            plan = plan_image(gpu_budget_bytes=budget, host_available_bytes=host_free, width=canvas_w, height=canvas_h,
+                              shape=picture_shape(model, stack), sequence_rows=0)
+            if not should_stop():
+                stack.set_resident(plan.dit_kept_layers or 0)
+            if not kept.keep('dit', str(dit_path), (model, stack), stack):
+                stack.close()
+                free_host_memory()
+                return 'host_memory'
+        except BaseException:
+            stack.close()
+            raise
+        state = 'prepared'
+    kept.budget = budget
+    del model, stack
+    if not should_stop() and 'vae' not in kept.items:
+        decoder = H3ImageDecoder.load(str(vae_path), device)
+        if not kept.keep('vae', str(vae_path), decoder, None):
+            del decoder
+    torch.cuda.empty_cache()
+
+    def short():
+        return torch.cuda.mem_get_info()[0] + placed < RESIDENT_ENCODE_MIN_FREE
+
+    # The plan is an estimate: what the card really has left decides, the decoder first, then the blocks.
+    if resident_endpoint and short() and 'vae' in kept.items:
+        kept.close_entry(kept.items.pop('vae'))
+        torch.cuda.empty_cache()
+    if resident_endpoint and short():
+        model, stack = kept.items['dit'][1]
+        stack.set_resident(0)
+        small_parts_to_host(model)
+        torch.cuda.empty_cache()
+    stack = kept.items['dit'][2]
+    stats.update(prepare_s=round(time.perf_counter() - tick, 2), prepare_budget_gib=round(budget / 2**30, 2),
+                 prepare_resident=getattr(stack, 'resident', None), prepare_vae='vae' in kept.items)
+    return 'stopped' if should_stop() else state
+
+
 def generate(prompt, width, height, seed, references=None, progress_cb=None, cancel=None, *, dit_path, vae_path,
              encoder='qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors', comfy_root=None, comfy_python=None,
              model_paths=None, vram_gib=None, ram_gib=None, resident=None, cpu_noise=False, stats=None, mapped=True,
@@ -477,16 +647,21 @@ def generate(prompt, width, height, seed, references=None, progress_cb=None, can
     keep_encoder = False
     if resident_endpoint:
         initialized = torch.cuda.is_initialized()
+        held_dit = kept.items.get('dit') if kept is not None else None
+        same_dit = held_dit is not None and held_dit[0] == str(dit_path)
+        shape = picture_shape(*held_dit[1]) if same_dit else _SHAPES.get(str(dit_path))
         vae_held = _tensor_bytes(kept.items['vae'][1]) if kept is not None and 'vae' in kept.items else 0
         keep_encoder, why = keep_encoder_decision(
-            free_now=free_now, placed=placed, shape=_SHAPES.get(str(dit_path)),
+            free_now=free_now, placed=placed, shape=shape,
             budget_cap=vram_gib * 2**30 - PICTURE_CONTEXT if vram_gib else float('inf'),
-            reserved=torch.cuda.memory_reserved() if initialized else 0, vae_held=vae_held, width=width, height=height,
+            reserved=torch.cuda.memory_reserved() if initialized else 0, vae_held=vae_held,
+            host_free=None if same_dit else host_free_bytes(), width=width, height=height,
             sequence_rows=reference_sequence_rows(copies), context=0 if initialized else PICTURE_CONTEXT)
         stats['encoder_keep'] = why
-    # An encoder left on the card that this picture does not keep leaves it only through an encoding: a saved
-    # conditioning would keep it there beside the picture model for the whole picture. With the encoder already on
-    # the card the encoding itself is short, and the model gets the card it would have had.
+    # An encoder left on the card that this picture does not keep (placed while the page was set up, after a video,
+    # or after the last picture) leaves it only through an encoding: a saved conditioning would keep it there beside
+    # the picture model for the whole picture. With the encoder already on the card the encoding itself is short,
+    # and the model gets the card it would have had.
     encoder_on_card = bool(resident_endpoint) and placed > 0 and not keep_encoder
     tick = time.perf_counter()
     from . import prompt_cache
@@ -523,8 +698,7 @@ def generate(prompt, width, height, seed, references=None, progress_cb=None, can
     check()
 
     from .h3_vae import H3ImageDecoder, to_unit
-    from .image_policy import ImageShape, plan_image
-    from .image_stream import StreamedStack, checkpoint_layer_source
+    from .image_policy import plan_image
     from PIL import Image
     torch.set_grad_enabled(False)
     device = torch.device('cuda')
@@ -554,7 +728,14 @@ def generate(prompt, width, height, seed, references=None, progress_cb=None, can
     if enter is not None:
         enter('load')
     tick = time.perf_counter()
-    held = kept.take('dit', str(dit_path)) if kept is not None else None
+    # Read before the weights are loaded. A kept model is given back when the host no longer covers its working
+    # room, and the load below then locks only what the host has now.
+    host_free = host_free_bytes()
+    held = kept.take('dit', str(dit_path), host_free) if kept is not None else None
+    if held is not None:
+        host_free = None  # the kept model already holds its locked copy
+    elif kept is not None and host_free is not None:
+        host_free = host_free_bytes()  # the give-back above returned its locked planes
     if held is not None:
         model, stack = held
         stats['dit_kept'] = True
@@ -564,27 +745,11 @@ def generate(prompt, width, height, seed, references=None, progress_cb=None, can
                 child.to(device)
         model.adaln_t_table = model.adaln_t_table.to(device)
     else:
-        model = load_h3_dit(str(dit_path), 'cpu', mapped=mapped)
-        for name, child in model.named_children():
-            if name != 'blocks':
-                child.to(device)
-        model.adaln_t_table = model.adaln_t_table.to(device)
-        source = checkpoint_layer_source(str(dit_path), list(model.blocks)) if mapped else None
-        # Layers the host cannot keep locked are read from the file ahead of their
-        # use through the staging buffer, one device slot (see LayerOffloader).
-        stack = (StreamedStack(model.blocks, name='h3', device=device, weight_source=source,
-                               prefetch=os.environ.get('FREEVIDEO_H3_DEVICE_PREFETCH') == '1',
-                               host_prefetch=True) if source is not None
-                 else StreamedStack(model.blocks, name='h3', device=device))
-    shape = ImageShape.measure(list(model.blocks), None)
-    # Blocks the host did not keep read from the checkpoint file when used and hold no bytes between calls, so a
-    # measure of the modules alone gives 0 for them and the plan puts every block on the card. The stack's layout
-    # keeps their real sizes.
-    shape = ImageShape(**{**shape.__dict__, 'steps': 6,
-                          'dit_block_bytes': max(shape.dit_block_bytes, int(getattr(stack, 'layer_bytes', 0) or 0))})
+        model, stack = load_dit(dit_path, device, host_free, mapped=mapped)
+    shape = picture_shape(model, stack)
     _SHAPES[str(dit_path)] = shape
-    plan = plan_image(gpu_budget_bytes=budget, width=canvas_w, height=canvas_h, shape=shape,
-                      sequence_rows=reference_sequence_rows(copies))
+    plan = plan_image(gpu_budget_bytes=budget, host_available_bytes=host_free, width=canvas_w, height=canvas_h,
+                      shape=shape, sequence_rows=reference_sequence_rows(copies))
     stack.set_resident(plan.dit_resident_layers if resident is None else resident)
     stats.update(load_s=round(time.perf_counter() - tick, 2), canvas=[canvas_h, canvas_w],
                  resident=plan.dit_resident_layers if resident is None else resident,

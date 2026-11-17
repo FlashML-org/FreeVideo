@@ -242,6 +242,9 @@ class FreeVideoGenerate(io.ComfyNode):
         from .background_compile import COMPILE
         # Returns once the idle compile released the GPU and the engine lease.
         COMPILE.stop(final=True)
+        from . import video_warm
+        # A warm-up for this video gives the lease back; the worker and the encoder it placed stay for the video.
+        video_warm.stop()
         from .comfy_media import continued, export
         import folder_paths
         import comfy.model_management as memory
@@ -253,7 +256,14 @@ class FreeVideoGenerate(io.ComfyNode):
         stop_prestart_for_generation(PromptServer.instance)
         try:   # the image option must never keep a video from starting
             from .image_gen.service import stop_prestart_for_generation as stop_image_for_generation
-            stop_image_for_generation(PromptServer.instance)
+            # An idle picture model stays when the planner places this video the same beside it; only a plain
+            # text-to-video request is planned here, anything with media or a continuation stops it as before.
+            plain = not any((first, last, references, loras, conditioning, media, refine_from,
+                             options.get('continue_from'), chain is not None and chain.get('count', 1) > 1))
+            video = dict(width=width, height=height, seconds=seconds, steps=base_steps, two_pass=two_pass,
+                         refine=refine_steps, step_cache=step_cache_option(step_cache).get('step_cache'),
+                         upscale=upscale_option(upscale_factor).get('upscale_factor', 2)) if plain else None
+            stop_image_for_generation(PromptServer.instance, video=video)
         except Exception as error:
             logging.warning('[FreeVideo] Could not stop image generation before the video: %s', error)
         try:   # nor music for a cut, which composes again after the video

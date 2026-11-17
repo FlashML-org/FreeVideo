@@ -1,5 +1,6 @@
 """One active image and one waiting job, with a worker leased until idle or video work."""
 import atexit
+import contextlib
 from datetime import datetime, timezone
 import asyncio
 from collections import OrderedDict
@@ -20,6 +21,7 @@ import time
 import uuid
 
 from . import image_model, image_pack, keep, progress_model
+from .. import server_mode
 from .loras import ERRORS as LORA_ERRORS, resolve_selection
 from ..download_settings import observed_speed
 from ..exit_diagnostics import clean_reading
@@ -41,6 +43,12 @@ SEGMENT_KEEP = 900.
 SEGMENT_INPUTS = 8
 # A page's picture that no job here holds is taken for one of an ended job after this long.
 PAGE_UPLOAD_KEEP = 24 * 3600.
+WARM_LEVELS = ('light', 'full')
+# How long after registration a server starts loading its models (ComfyUI finishes starting meanwhile).
+START_DELAY_SECONDS = 5.
+# How long a step of a server-mode session (a trim of the video worker, an encoder placement) waits for the lease.
+LEASE_WAIT_SECONDS = 30.
+WARM_MODES = ('eager', 'conservative')
 HISTORY_NAME = re.compile(r'image-\d{8}-\d{6}-\d{2}\.(?:png|jpg)')
 # Which model made each history picture; a picture from before this record has no entry.
 MODELS_FILE = 'image-models.json'
@@ -84,6 +92,24 @@ def comfy_server():
         return PromptServer.instance
     except (ImportError, AttributeError):
         return None
+
+
+class AnyOf:
+    """A stop for code that only asks ``is_set()``: set once any of its checks is true."""
+
+    def __init__(self, *checks):
+        self.checks = checks
+
+    def is_set(self):
+        return any(check() for check in self.checks)
+
+    def wait(self, timeout=None):
+        deadline = None if timeout is None else time.monotonic() + timeout
+        while not self.is_set():
+            if deadline is not None and time.monotonic() >= deadline:
+                return False
+            time.sleep(.05)
+        return True
 
 
 class WorkerIdleExit(RuntimeError):
@@ -142,7 +168,12 @@ class Worker:
         self.error_reader.join(timeout=5)
         for stream in (self.process.stdin, self.process.stdout, self.process.stderr):
             if not stream.closed:
-                stream.close()
+                try:
+                    stream.close()
+                except OSError:
+                    # A row that could not reach a worker that already left is still buffered; closing flushes it
+                    # again into the closed pipe. The worker is gone either way.
+                    pass
         crash_file = getattr(self.process, 'crash_file', None)
         if crash_file:
             try:
@@ -175,6 +206,21 @@ class Service:
         self.reports = OrderedDict()
         self.context = None
         self.last_machine = {}
+        # The last H3 encoder placement for the page (state, reason, seconds), read by measurements and tests.
+        self.warm_placement = None
+        # The model the image worker holds or is loading (a picture or a full warm-up), for a conservative warm-up.
+        self.loaded_model = None
+        # Server mode: the worker's last report of a full warm-up, and why the last session ended.
+        self.warm_facts = None
+        self.warm_full = threading.Event()
+        self.end_reason = None
+        # Server mode: the worker takes the GPU lease for each picture and model load, and the session holds none
+        # between them (a video starts beside the kept picture model). ``placing``: the session holds it to place the
+        # encoder.
+        self.per_request = False
+        self.placing = False
+        # A full warm-up asked for and not reported done: the worker may be loading the model under its lease.
+        self.loading_full = False
         self.worker_restarts = 0
         # The last memory_budget reading of each calling thread, for the report.
         self.budget_reading = threading.local()
@@ -1154,6 +1200,177 @@ class Service:
         except Exception as error:
             raise FailureError(self.failed(classify_exception(error), context, error=error)) from None
 
+    def warm(self, value):
+        """Get ready for the picture the page is setting up ({model, level, mode}); no prompt or picture is sent.
+
+        ``level`` 'light' (the default: the page was opened or touched) reads the model files ahead and, for H3
+        Image, puts the shared text encoder on the card. 'full' (a picture is likely next) also loads the model as a
+        picture leaves it. ``mode`` 'eager' (the default) may start a model that is not loaded; 'conservative' only
+        keeps ready a model this worker already holds. Never a job and never in the way of one: skipped while video
+        or a picture is running or queued, while the card is being given to video, or when the plan says the model
+        does not fit. Nothing about a warm-up shows on the page until a picture is asked for."""
+        if (not isinstance(value, dict) or value.get('model') not in image_model.MODELS
+                or value.get('level', 'light') not in WARM_LEVELS or value.get('mode', 'eager') not in WARM_MODES):
+            raise ValueError('invalid_request')
+        model, level = value['model'], value.get('level', 'light')
+        h3 = model == image_model.H3
+
+        def skipped(reason):
+            return dict(warm='skipped', reason=reason)
+
+        with self.mutex:
+            if self.closed:
+                return skipped('closed')
+            if self.segmenting or self._busy or self.queued is not None:
+                return skipped('busy')
+            if self.thread is not None and self.thread.is_alive() and self.session_stop.is_set():
+                return skipped('busy')
+            try:
+                video = self.yielding or self.video_busy()
+            except Exception:
+                video = True
+            if video:
+                return skipped('video_busy')
+            alive = self.thread is not None and self.thread.is_alive()
+            if value.get('mode') == 'conservative' and not (alive and self.loaded_model == model):
+                return skipped('not_loaded')
+            try:
+                root, machine = self.installation()
+            except (OSError, ValueError):
+                return skipped('pack_missing')
+            if not image_pack.ready(machine['model_root'], group=H3_GROUP if h3 else 'image'):
+                return skipped('pack_missing')
+            from .image_policy import UNIFIED_MIN_TOTAL
+            unified = self.unified_total(machine)
+            if unified is not None and unified < UNIFIED_MIN_TOTAL:
+                return skipped('memory')
+            row = dict(action='warm', model=model, level=level, keep_seconds=keep.keep_seconds(keep.path(root)))
+            if h3:
+                row['files'] = self.warm_files(machine)
+                row['place_encoder'] = self.h3_resident(machine)
+            elif level == 'light':
+                row['files'] = self.qwen_files(machine)
+            else:
+                try:
+                    plan = self.preflight(machine, dict(images=[], width=1024, height=1024))
+                except Exception:
+                    return skipped('memory')
+                if plan is not None and not plan['feasible']:
+                    return skipped('memory')
+            # The same model already held: the row still goes, to keep it and the encoder ready for longer.
+            ready = alive and self.loaded_model == model
+            if level == 'full':
+                self.loaded_model = model
+                self.warm_full.clear()
+                self.loading_full = True
+            if not alive:
+                self.session_stop = threading.Event()
+                self.requests = queue.Queue()
+                self.thread = threading.Thread(target=self.work, args=(root, machine),
+                                               name='freevideo-image-gen', daemon=True)
+            self.requests.put(row)
+            if not alive:
+                self.thread.start()
+            return dict(warm='ready' if ready else 'loading', level=level)
+
+    def unwarm(self):
+        """The page left the picture view: the worker goes back to the wait a picture would have left."""
+        with self.mutex:
+            if self.thread is not None and self.thread.is_alive() and not self.session_stop.is_set():
+                self.requests.put(dict(action='unwarm', keep_seconds=keep.keep_seconds(keep.path(self.habit_root))))
+        return dict(warm='cancelled')
+
+    def drain_warm(self, session):
+        """Read the rows a worker without a job sends about a warm-up; nothing else arrives between jobs."""
+        while True:
+            try:
+                row = session.rows.get_nowait()
+            except queue.Empty:
+                return
+            if row is None:
+                # The end of the pipe stays for whoever reads next.
+                session.rows.put(None)
+                return
+            if isinstance(row, dict) and row.get('phase') == 'warmed':
+                self.warm_facts = row
+                if row.get('level') == 'full':
+                    self.warm_full.set()
+                    with self.mutex:
+                        self.loading_full = False
+
+    def wait_warm(self, timeout):
+        """Wait until the worker reports a full warm-up done, the session ends, or ``timeout`` seconds pass; True
+        when it reported."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if self.warm_full.wait(.25):
+                return True
+            with self.mutex:
+                if self.thread is None or not self.thread.is_alive():
+                    return False
+        return False
+
+    def worker_alive(self):
+        """True while a picture worker process runs."""
+        with self.mutex:
+            process = self.process
+        return process is not None and process.poll() is None
+
+    def installed_models(self):
+        """The picture models whose files are installed."""
+        _, machine = self.installation()
+        return [model for model, group in ((image_model.H3, H3_GROUP), (image_model.QWEN, 'image'))
+                if image_pack.ready(machine['model_root'], group=group)]
+
+    def place_encoder(self, root, machine, env, descriptor, stop=None):
+        """Put H3 Image's text encoder on the card in the resident worker, as it idles after a video, and wait for it.
+        ``stop`` (default: the session's) ends it: the warm-up passes one that is also set by a picture asked for
+        meanwhile, which loads the encoder itself (a speculative placement can be slower than that load). A video
+        or another user of the lease stops the session and with it the placement, so they wait only for the worker
+        to yield. Returns the worker's report."""
+        from .. import resident_process
+        from ..comfy_bridge import source_root
+        from ..hardware import detect
+        from ..idle_encoder import place_now
+        from ..kernel_capabilities import available_backends
+        from ..policy import choose
+        endpoint = self.resident_endpoint()
+        if endpoint is None:
+            return dict(state='skipped', reason='no resident worker')
+        hardware = detect()
+        policy = choose(hardware, available_backends=available_backends(hardware), allow_capacity_trial=True)
+        directory = Path(endpoint).parent
+        environment = dict(env, PYTHONPATH=str(source_root()))
+        environment.pop(resident_process.ENV, None)
+        return place_now(endpoint, dict(encoder=machine.get('encoder'), comfy_root=machine.get('comfy_root'),
+                                        model_paths=machine.get('model_paths')),
+                         descriptor=descriptor, environment=environment, directory=directory,
+                         gpu_budget_bytes=policy.gpu_budget_bytes, ram_budget_bytes=policy.ram_budget_bytes,
+                         allocator=policy.allocator_config, limits=dict(system=hardware.system),
+                         stop=stop or self.session_stop)
+
+    @staticmethod
+    def qwen_files(machine):
+        """The picture model's files to read ahead for a light warm-up of the default model."""
+        try:
+            rows = [image_pack.target(row, machine['model_root']) for row in image_pack.rows(group='image')]
+        except Exception:
+            return []
+        return [str(item) for item in rows if Path(item).is_file()]
+
+    @staticmethod
+    def warm_files(machine):
+        """H3 Image's picture model files to read ahead into the OS file cache, in the order a picture reads them.
+        The encoder is not among them: placing it reads it, and a second copy in the file cache would only crowd it."""
+        from .h3_runner import files
+        rows = []
+        try:
+            found = files(Path(image_pack.base(machine['model_root'])).parent)
+            rows += [Path(found['dit']), Path(found['vae'])]
+        except Exception:
+            pass
+        return [str(item) for item in rows if item.is_file()]
+
     def remember(self, key, state):
         self.finished[key] = deepcopy(state)
         while len(self.finished) > REPORT_LIMIT:
@@ -1526,17 +1743,24 @@ class Service:
             self.state['phase'] = 'cancelling'
             return dict(phase='cancelling')
 
-    def stop_for_generation(self, only_idle=False):
+    def stop_for_generation(self, only_idle=False, video=None):
         """Reap even an in-flight spawn before video acquires the runtime lease.
 
         ``only_idle`` is for other users of the lease (the prompt model): they get it
         back from an idle worker but never cut off an image that is being made.
+        ``video`` (width, height, seconds, steps, two_pass, refine, step_cache, upscale of a text-to-video request)
+        lets an idle picture worker stay when the planner places that video the same beside it.
         """
         with self.mutex:
             if only_idle and (self.busy() or (self.segment_worker is None and
                     (self.thread is None or not self.thread.is_alive()))):
                 return False
+            if not only_idle and self.keeps_through_video() and self.video_fits(video):
+                # The worker holds no lease and no job: the video takes the lease and the picture model stays.
+                server_mode.note_keep('image', True, reason='video_start')
+                return False
             self.yielding = True
+            self.end_reason = 'video_start' if not only_idle else 'lease_needed'
             self.segment_stop.set()
             self.stop.set()
             self.session_stop.set()
@@ -1555,6 +1779,53 @@ class Service:
                 self.yielding = False
                 self.queue_wake.set()
         return True
+
+    def keeps_through_video(self):
+        """With co-residency (server_mode.coresident), whether the picture worker stays while a video runs: it is
+        between jobs (no picture, no placement, no model load asked for or under way), so it holds no lease. Called
+        under the mutex."""
+        return (self.per_request and server_mode.coresident() and not self._busy and not self.placing
+                and not self.segmenting and self.segment_worker is None and self.queued is None
+                and self.thread is not None and self.thread.is_alive() and not self.session_stop.is_set()
+                and self.worker is not None and self.requests.empty()
+                and not self.loading_full)
+
+    def video_fits(self, video):
+        """Whether the video is planned the same beside the idle picture worker (its card and host memory held) as
+        without it. Server mode keeps the worker without a request to plan (the start of the server). Called under
+        the mutex."""
+        if video is None:
+            return server_mode.enabled()
+        try:
+            from ..background_room import Gpu, family
+            from ..comfy_capabilities import _machine_context
+            from ..other_usage import _rss, fits_beside
+            # machine.json keeps the card and host totals only in its setup plan; the planner needs them, as the
+            # capabilities route reads them.
+            machine = _machine_context()
+            pids = family(self.process.pid)
+            gpu = Gpu(machine.get('gpu_uuid'))
+            try:
+                rows = gpu.processes()
+            finally:
+                gpu.close()
+            if rows is None or any(rows.get(pid) is None for pid in pids if pid in rows):
+                return False
+            vram = sum(rows[pid] for pid in pids if pid in rows)
+            fits = fits_beside(machine, vram, _rss(pids), **video)
+        except Exception:  # an unreadable card or plan keeps the earlier behaviour: the picture worker goes
+            logging.warning('[FreeVideo] Could not plan the video beside the picture model', exc_info=True)
+            return False
+        server_mode.note_keep('image', fits, reason='video_start', card_bytes=vram)
+        return fits
+
+    @staticmethod
+    def lease(path, descriptor):
+        """The GPU lease for one step of a session: the session's own on the desktop, else taken for this step."""
+        if descriptor is not None:
+            return contextlib.nullcontext(descriptor)
+        from ..locking import runtime_lock
+        return runtime_lock(path, inherit=False, wait_seconds=LEASE_WAIT_SECONDS)
 
     def close(self):
         with self.mutex:
@@ -1587,6 +1858,28 @@ class Service:
             env.pop(name, None)
         return env
 
+    def server_keeps_video(self, machine):
+        """With co-residency, whether the video models in the resident worker stay while the picture is made: the
+        card has room for the picture model's files and the picture's reserve beside everything on it now. Where it
+        has not (a 24 GB card), they go as before."""
+        if not server_mode.coresident():
+            return False
+        from ..resident_process import gpu_memory
+        memory = gpu_memory(machine.get('gpu_uuid'))
+        if not memory:
+            return False
+        # Which picture model comes is not known yet when the session starts: the larger installed one counts.
+        sizes = []
+        for files in (self.warm_files(machine), self.qwen_files(machine)):
+            try:
+                sizes.append(sum(os.path.getsize(item) for item in files))
+            except OSError:
+                return False
+        need = max(sizes) + keep.RESERVE_BYTES
+        keeps = max(sizes) > 0 and memory[1] - memory[0] >= need
+        server_mode.note_keep('image', keeps, free=memory[1] - memory[0], need=need)
+        return keeps
+
     @staticmethod
     def h3_resident(machine):
         """Whether H3 Image is installed on a card whose encoder the resident worker can hold."""
@@ -1607,6 +1900,10 @@ class Service:
         command = processes.module_command('freevideo_engine.image_gen.worker', image_pack.base(machine['model_root']),
                                            '--device', machine.get('device_backend', 'cuda'),
                                            '--idle-seconds', self.idle_seconds)
+        if server_mode.coresident():
+            # The worker stays until this installation stops or a program outside it needs the card or host memory;
+            # its own processes (the video worker) are not "another program" that makes it leave.
+            command += ['--server-root', str(os.getpid())]
         command[0] = machine['comfy_python']
         from ..exit_diagnostics import CRASH_FILE_ENV, new_crash_file
         crash_file = None
@@ -1614,12 +1911,17 @@ class Service:
             crash_file = new_crash_file()
         except OSError:
             pass
-        env = dict(env, FREEVIDEO_RUNTIME_LOCK_FD=str(descriptor))
+        if descriptor is None:
+            # Co-residency: the worker takes the lease itself for each picture and model load.
+            command += ['--lock-path', str(Path(root) / 'engine.lock')]
+        else:
+            env = dict(env, FREEVIDEO_RUNTIME_LOCK_FD=str(descriptor))
         if crash_file:
             env[CRASH_FILE_ENV] = crash_file
         process = processes.popen(command, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                   stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace',
-                                  pass_fds=(descriptor,), supervise=True, start_new_session=True)
+                                  pass_fds=() if descriptor is None else (descriptor,), supervise=True,
+                                  start_new_session=True)
         process.crash_file = crash_file
         return process
 
@@ -1639,6 +1941,8 @@ class Service:
             if self.video_busy() or resident_process.OWNER.active:
                 raise BlockingIOError('busy_video')
             resident_process.OWNER.stop_prewarm()
+            from .. import video_warm
+            video_warm.stop()
             IDLE.stop()
             from ..comfy_residency import release_native
             try:
@@ -1651,7 +1955,11 @@ class Service:
                 with self.mutex:
                     if self.context is not None:
                         self.context.native_release = released
-            with runtime_lock(Path(root) / 'engine.lock', inherit=False) as descriptor:
+            per_request = server_mode.coresident()
+            lock_path = Path(root) / 'engine.lock'
+            with (contextlib.nullcontext(None) if per_request else runtime_lock(lock_path, inherit=False)) as descriptor:
+                with self.mutex:
+                    self.per_request = per_request
                 try:
                     if self.session_stop.is_set():
                         return
@@ -1667,16 +1975,17 @@ class Service:
                         foreign = not isinstance(held, dict) or any(
                             row.get('role') != 'encoder' for row in held.get('models') or [])
                         try:
-                            if not keep_encoder or foreign:
-                                try:
-                                    resident_process.release_idle_cache(env, descriptor, keep=('encoder',) if keep_encoder else ())
-                                except resident_process.SessionRestarted:
-                                    raise
-                                except RuntimeError:
-                                    if not keep_encoder:
+                            if (not keep_encoder or foreign) and not self.server_keeps_video(machine):
+                                with self.lease(lock_path, descriptor) as held:
+                                    try:
+                                        resident_process.release_idle_cache(env, held, keep=('encoder',) if keep_encoder else ())
+                                    except resident_process.SessionRestarted:
                                         raise
-                                    # A worker from before partial release: give everything back as before.
-                                    resident_process.release_idle_cache(env, descriptor)
+                                    except RuntimeError:
+                                        if not keep_encoder:
+                                            raise
+                                        # A worker from before partial release: give everything back as before.
+                                        resident_process.release_idle_cache(env, held)
                                 resident_process.OWNER.record(action='trimmed' if keep_encoder else 'released', reason='image_model')
                         except resident_process.SessionRestarted:
                             pass
@@ -1708,6 +2017,7 @@ class Service:
                         try:
                             value = self.requests.get(timeout=.05)
                         except queue.Empty:
+                            self.drain_warm(session)
                             with self.mutex:
                                 if session.process.poll() is not None and self.requests.empty():
                                     self.session_stop.set()
@@ -1715,6 +2025,54 @@ class Service:
                             continue
                         if session.process.poll() == 0:
                             respawn()
+                        if value.get('action') in ('warm', 'unwarm'):
+                            place = value.pop('place_encoder', False)
+                            # H3 Image loads its picture model only once the encoder is placed: the room left on the
+                            # card beside the encoder decides how much of it stays there.
+                            later = value.get('level') == 'full' and value.get('model') == image_model.H3
+                            try:
+                                session.send(**(dict(value, level='light') if later else value))
+                            except OSError:
+                                pass
+                            if place and not self.session_stop.is_set() and not self._busy:
+                                from .h3_pipeline import placed_encoder_bytes
+                                # The placement is speculative: whatever goes wrong in it, the session and a picture
+                                # that arrived meanwhile carry on (the picture places the encoder itself).
+                                try:
+                                    endpoint = self.resident_endpoint()
+                                    if endpoint is not None and placed_encoder_bytes(endpoint) > 0:
+                                        placed = dict(state='kept', reason='The encoder is already on the card')
+                                    else:
+                                        with self.mutex:
+                                            self.placing = True
+                                        try:
+                                            with self.lease(lock_path, descriptor) as held:
+                                                placed = self.place_encoder(root, machine, env, held, stop=AnyOf(
+                                                    self.session_stop.is_set, lambda: self._busy))
+                                        finally:
+                                            with self.mutex:
+                                                self.placing = False
+                                        if self._busy and placed.get('state') != 'ready':
+                                            placed = dict(placed, state='stopped', reason='A picture was asked for')
+                                except Exception as error:  # noqa: BLE001
+                                    logging.warning('[FreeVideo] Encoder placement for the warm-up failed: %s', type(error).__name__)
+                                    placed = dict(state='failed', reason='Encoder placement failed')
+                                with self.mutex:
+                                    self.warm_placement = {k: placed.get(k) for k in ('state', 'reason', 'elapsed_seconds')}
+                            # A picture asked for meanwhile loads its model itself.
+                            if later and not self.session_stop.is_set() and not self._busy:
+                                if session.process.poll() == 0:
+                                    # The worker left at its idle limit while the encoder was placed.
+                                    respawn()
+                                try:
+                                    session.send(**dict(value, files=[], h3=dict(resident_endpoint=self.resident_endpoint())))
+                                except OSError:
+                                    pass
+                            continue
+                        self.loaded_model = value.get('model') or image_model.QWEN
+                        with self.mutex:
+                            # A picture loads the model itself; a warm-up it overtook is not reported.
+                            self.loading_full = False
                         try:
                             self.infer(session, value)
                         except WorkerIdleExit as error:
@@ -1738,17 +2096,30 @@ class Service:
                 finally:
                     # Keep the parent's lease until the whole owned process tree exits.
                     if session is not None:
+                        # A worker without a job (idle, or warming for the page) has nothing to finish: it is
+                        # not waited for, so video starts as soon as it would without it.
+                        self.drain_warm(session)
+                        with self.mutex:
+                            grace = 5 if self._busy else 0
                         try:
                             if session.process.poll() is None:
                                 session.send(action='close')
-                                session.process.wait(timeout=5)
+                                session.process.wait(timeout=grace or .2)
                         except (OSError, subprocess.TimeoutExpired):
                             pass
-                        processes.stop(session.process, grace=5)
+                        processes.stop(session.process, grace=5 if grace else .5)
                         session.process.wait()
                         session.close()
-                    if started_resident and not resident_process.OWNER.active:
-                        # The picture session started this worker only to hold the encoder between pictures.
+                    # Every end of the picture worker is recorded with its reason, for the running status: 'crowded'
+                    # when it left because another program needed the card or host memory, 'idle' after an idle
+                    # time (no model held, or where it does not keep one with no time limit).
+                    reason = self.end_reason or ('closed' if self.closed else ('crowded' if keep.CROWDED_LINE in session.tail else 'idle')
+                                                 if session is not None and session.process.poll() == 0 else 'worker_exit')
+                    self.end_reason = None
+                    server_mode.released('image', dict(action='released', reason=reason))
+                    if started_resident and not resident_process.OWNER.active and not server_mode.coresident():
+                        # The picture session started this worker only to hold the encoder between pictures
+                        # (with co-residency it stays: it is the video worker too).
                         resident_process.OWNER.release('image_session_end')
         except BlockingIOError as error:
             failure = 'busy_video'
@@ -1762,6 +2133,9 @@ class Service:
         finally:
             with self.mutex:
                 self.process = self.worker = None
+                self.loaded_model = None
+                self.per_request = False
+                self.loading_full = False
                 self.session_stop.set()
                 if self._busy:
                     context = self.context or Context('generate', {})
@@ -1776,6 +2150,9 @@ class Service:
                     self.context = None
                     # The worker is gone, so nothing reads the job's pictures any more.
                     self.drop_uploads(self.key)
+                elif failure_error is not None:
+                    # Without a job (a warm-up for the page) nothing shows on the page; the run log keeps why.
+                    logging.warning('[FreeVideo] Picture worker stopped without a job (%s): %s', failure, failure_error)
                 self.queue_wake.set()
 
     def shrink(self, value, row, context):
@@ -1914,8 +2291,10 @@ class Service:
                 continue
             if row is None:
                 raise self.worker_gone(session, heard, self.stop.is_set(), loading=loading)
-            heard = True
             phase = row.get('phase')
+            # The end of a warm-up sent before this picture is no answer to it: a worker that leaves at its idle limit
+            # right after one never read the picture, which then goes to a fresh worker.
+            heard = heard or phase != 'warmed'
             if phase == 'progress':
                 stage, fraction = row.get('stage'), row.get('fraction')
                 loading = loading and stage in ('start', 'load')
@@ -1932,6 +2311,9 @@ class Service:
                             context.forecast.update(stage, float(fraction))
                         self.state.update(phase='cancelling' if self.stop.is_set() else 'progress',
                                           stage=stage, fraction=fraction)
+            elif phase == 'warmed':
+                # The end of a warm-up the queue sent before this picture; the picture's own rows follow.
+                pass
             elif phase == 'preview':
                 self.keep_preview(row)
             elif phase == 'plan':
@@ -1991,10 +2373,10 @@ class Service:
                 return
 
 
-def stop_prestart_for_generation(server):
+def stop_prestart_for_generation(server, video=None):
     service = getattr(server, '_freevideo_image_gen', None)
     if service is not None:
-        service.stop_for_generation()
+        service.stop_for_generation(video=video)
 
 
 def get_service(server=None):
@@ -2072,7 +2454,15 @@ def register():
                 logging.warning('[FreeVideo] Could not remove pictures left by ended image requests.', exc_info=True)
             time.sleep(6 * 3600)
     threading.Thread(target=clean_page_uploads, name='freevideo-image-page-uploads', daemon=True).start()
+    from .. import video_warm
+    videos = video_warm.warmer(installation, busy=lambda: video_busy() or service.busy())
     token = secrets.token_urlsafe(24)
+    if server_mode.enabled():
+        # A server loads its models as it starts, once ComfyUI has finished starting (its queue answers).
+        def load_at_start():
+            time.sleep(START_DELAY_SECONDS)
+            logging.info('[FreeVideo] Server mode: loading the models at start: %s', server_mode.warm())
+        threading.Thread(target=load_at_start, name='freevideo-server-start', daemon=True).start()
 
     @server.routes.get('/freevideo/image-gen')
     async def info(request):
@@ -2091,6 +2481,26 @@ def register():
         stamp = datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')
         headers['Content-Disposition'] = 'attachment; filename="FreeVideo-report-%s.json"' % stamp
         return web.json_response(value, headers=headers)
+
+    @server.routes.post('/freevideo/video/{action}')
+    async def video_action(request):
+        """The creation panel's warm-up: {level, mode} only. The panel asks through ComfyUI's own request helper,
+        as for its other /freevideo calls, without the image view's page token: the request carries nothing but
+        the level and the mode, and the worst it can do is read the video model ahead."""
+        try:
+            if request.content_length and request.content_length > 1024:
+                raise ValueError('invalid_request')
+            value = json.loads(await request.content.read(1025) or b'{}')
+            name = request.match_info['action']
+            if name == 'warm':
+                result = await asyncio.to_thread(videos.warm, value)
+            elif name == 'warm-cancel':
+                result = await asyncio.to_thread(videos.cancel)
+            else:
+                return web.json_response(dict(error='unknown_action'), status=404)
+        except (ValueError, TypeError):
+            return web.json_response(dict(error='invalid_request'), status=400)
+        return web.json_response(result, headers={'Cache-Control': 'no-store'})
 
     @server.routes.post('/freevideo/image-gen/{action}')
     async def action(request):
@@ -2126,6 +2536,10 @@ def register():
                                     headers={'Cache-Control': 'no-store', 'X-FreeVideo-Preview-Serial': str(found[0])})
             elif name == 'cancel':
                 result = service.cancel(value.get('job'))
+            elif name == 'warm':
+                result = await asyncio.to_thread(service.warm, value)
+            elif name == 'warm-cancel':
+                result = service.unwarm()
             elif name == 'discard-uploads':
                 result = service.discard_uploads(value.get('images'))
             elif name in ('pack-install', 'pack-cancel'):

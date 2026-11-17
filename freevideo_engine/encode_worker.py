@@ -420,7 +420,16 @@ def _encode(args, request, resident, trace):
         import comfy.model_management as memory
         phase('encoder_idle_preload')
         with readonly_pinning(torch, memory, nonlocal_reserve_bytes=_reserve(resident)):
-            return preload(clip, request, resident)
+            result = preload(clip, request, resident)
+        if result.get('state') in ('cancelled', 'released'):
+            # The bank dropped the unfinished placement while this frame (and preload's) still held the encoder, so
+            # its weights outlived that cache release: free them now, or the card keeps memory nobody uses and the
+            # next process on it plans around it.
+            del clip
+            import gc
+            gc.collect()
+            torch.cuda.empty_cache()
+        return result
     gpu_ready_at_start = encoder_on_gpu(clip)
     loading['resident_encoder_gpu_ready_at_start'] = gpu_ready_at_start
     load_seconds = time.perf_counter() - started

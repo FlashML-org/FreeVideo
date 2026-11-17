@@ -188,6 +188,25 @@ def placements(machine, usage, *, kind='video', width=1344, height=768, frames=2
     return dict(idle=base, occupied=occupied, worse=bool(worse))
 
 
+def fits_beside(machine, vram, ram, *, width, height, seconds, steps=8, two_pass=True, refine=3, step_cache=None,
+                upscale=2):
+    """Whether a text-to-video request is planned the same with ``vram`` card bytes and ``ram`` host bytes held by
+    something that stays (the idle picture worker) as without: same admission, no fewer resident blocks, the same
+    decoder placement. False when the machine cannot be read or either plan is refused."""
+    idle = _machine(machine)
+    if idle is None or idle['mac'] or _mac(machine):
+        return False
+    from .geometry import geometry
+    frames = geometry(width, height, seconds=seconds)['frames']
+    current = dict(idle, vram_free=max(0, idle['vram_free'] - vram), ram_available=max(0, idle['ram_available'] - ram))
+    params = dict(width=width, height=height, frames=frames, steps=steps, two_pass=two_pass, task='t2va',
+                  refine=refine, references=None, step_cache=step_cache, upscale=upscale)
+    base, occupied = _admit(idle, **params), _admit(current, **params)
+    if base[0] is None or occupied[0] is None:
+        return False
+    return not _worse(occupied, base)
+
+
 def for_request(machine, usage, **request):
     try:
         comparison = placements(machine, usage, **request)

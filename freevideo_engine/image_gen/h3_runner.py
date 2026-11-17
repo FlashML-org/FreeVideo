@@ -52,7 +52,27 @@ def _stub(prompt, *, width, height, seed, progress, cancel, preview=None):
 
 
 class H3Runner:
-    full_card = False
+    # Its long wait is new, so it is given only where a reserve stays free on the card.
+    long_wait_needs_room = True
+
+    @property
+    def host_least_bytes(self):
+        """Host memory below which the kept DiT would be dropped at the next picture anyway."""
+        from .h3_pipeline import host_floor
+        return host_floor()
+
+    @property
+    def full_card(self):
+        """True while the kept DiT has every block on the card and the decoder is kept too, so the next picture
+        needs no loading; the worker may then wait long for it and gives the card back when it is wanted."""
+        items = (self.kept.items if self.kept is not None else None) or {}
+        dit, vae = items.get('dit'), items.get('vae')
+        if dit is None or vae is None or dit[2] is None:
+            return False
+        try:
+            return dit[2].resident >= len(dit[2].layers)
+        except (AttributeError, TypeError):
+            return False
 
     def __init__(self, pack_dir, *, device='cuda', progress=None):
         self.pack_dir = Path(pack_dir)
@@ -116,6 +136,17 @@ class H3Runner:
         warm = getattr(__import__(__package__ + '.h3_pipeline', fromlist=['x']), 'warm', None)
         if warm is not None:
             warm(self.files['dit'], kept=self.kept, should_stop=should_stop)
+
+    def prepare(self, setup, should_stop):
+        """Load the picture model as a picture leaves it, before the prompt is known (``h3_pipeline.prepare``).
+        ``setup`` names the resident encoder's worker only."""
+        if should_stop() or os.environ.get(STUB_ENV) == '1':
+            return 'skipped'
+        from . import h3_pipeline
+        if self.kept is None:
+            self.kept = h3_pipeline.KeptModels()
+        return h3_pipeline.prepare(self.files['dit'], self.files['vae'], kept=self.kept,
+                                   resident_endpoint=(setup or {}).get('resident_endpoint'), should_stop=should_stop)
 
     def at_boundary(self):
         return True
