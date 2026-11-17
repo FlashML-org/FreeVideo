@@ -87,9 +87,16 @@
 @media(hover:none){.fv-cp .fv-cp-cell-tools{opacity:1}}
 @media(prefers-reduced-motion:reduce){.fv-cp .fv-cp-cell-tools{transition:none}}
 
-/* From a description: the description fills the column above the LoRA row and the clothes choice. */
+/* From a description: the description fills the column; under it one row as wide as the description, the clothes choice
+   with the LoRA picker at its right end, the same height and corners. The LoRA list opens below the row, across its width. */
 .fv-cp[data-mode=ai] .fv-cp-describe{min-height:120px}
-.fv-cp[data-mode=ai] .fv-cg-row:empty{display:none}
+.fv-cp .fv-cp-ai-row{position:relative;align-items:stretch}
+.fv-cp .fv-cp-ai-row>.fv-cp-wear{flex:1;min-width:0;grid-template-columns:repeat(2,minmax(max-content,1fr))}
+.fv-cp .fv-cp-ai-row>.fv-ie-lora{flex:none;position:static}
+.fv-cp .fv-cp-ai-row>.fv-ie-lora>summary{height:36px;padding:0 var(--fv-sp-10,10px);border:0;background:var(--fv-ctl-bg,#ffffff0a);color:var(--fv-fg2,#c9d0db);font-size:var(--fv-fs-1,12px)}
+.fv-cp .fv-cp-ai-row>.fv-ie-lora>summary:hover,.fv-cp .fv-cp-ai-row>.fv-ie-lora[open]>summary{background:var(--fv-ctl-hover,#ffffff1a);color:var(--fv-fg,#e8ecf3)}
+.fv-cp .fv-cp-ai-row>.fv-ie-lora[data-active=true]>summary,.fv-cp .fv-cp-ai-row>.fv-ie-lora[open]>summary{color:var(--fv-fg,#e8ecf3)}
+.fv-cp .fv-cp-ai-row>.fv-ie-lora>.fv-ie-lora-panel{position:absolute;top:auto;bottom:calc(100% + 6px);left:0;right:0;z-index:5;width:auto;max-height:min(320px,50vh);overflow:auto;margin:0;padding:10px;border:1px solid var(--fv-border,#ffffff1f);border-radius:var(--fv-r-md);background:var(--fv-card,#1a2230);box-shadow:0 14px 40px rgba(0,0,0,.5)}
 /* Narrow: a view cell is too small for its name and the "Edited" badge side by side; the badge becomes a dot (it keeps its
    words for screen readers). */
 @container (max-width:520px){

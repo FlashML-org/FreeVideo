@@ -193,8 +193,9 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
     };
     foot.append(rest);
     if (ai) {
-        const row = el('div', 'fv-cg-row');
-        side.append(describe, row, wear, outfitSlot.element, foot);
+        // The clothes choice and the LoRA picker share one row as wide as the description.
+        const row = el('div', 'fv-cg-row fv-cp-ai-row'); row.append(wear);
+        side.append(describe, row, outfitSlot.element, foot);
         import('./image_lora.js').then(({createImageLoras}) => {
             if (disposed) return;
             picker = createImageLoras({t: tr, fetchApi: fetcher, getPrompt: () => describe.value, setPrompt: words => { describe.value = words; }, onChange: () => render()});
