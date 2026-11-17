@@ -444,6 +444,9 @@ export function createEditorStore(api, {t = en => en, notify = () => {}, onGener
         watchImports(fn) { return watch(() => store.imports(), items => { fn(items); return true; }); },
         upload(file, progress = () => {}) {
             if (disposed) return Promise.reject(new Error('editor_closed'));
+            // The page's background loading of works (work_media.js) waits while an upload runs.
+            const running = active => { try { globalThis.dispatchEvent?.(new CustomEvent('freevideo-upload', {detail: {active}})); } catch { /* no page */ } };
+            running(true);
             return new Promise((resolve, reject) => {
                 const xhr = new XMLHttpRequest();
                 const release = () => { uploads.delete(upload); xhr.onload = xhr.onerror = null; xhr.upload.onprogress = null; };
@@ -461,7 +464,7 @@ export function createEditorStore(api, {t = en => en, notify = () => {}, onGener
                 };
                 xhr.onerror = () => { release(); reject(new Error('import_failed')); };
                 try { xhr.send(file); } catch (error) { release(); reject(error); }
-            });
+            }).finally(() => running(false));
         },
         capabilities(options, onReady = () => {}) {
             capabilityPoll?.dispose();

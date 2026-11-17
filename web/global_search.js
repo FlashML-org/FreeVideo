@@ -229,7 +229,9 @@ async function browserSearch() {
         },
         urls: {
             video: row => api.apiURL('/freevideo/library/thumbnail?' + new URLSearchParams({id: row.id || String(row.video || '').replace(/^FreeVideo\//, '').replace(/\/video\.mp4$/, '')})),
-            picture: row => view(row.file),
+            // The engine's small copy of a picture of the history (work_media.js); any other picture as itself.
+            picture: row => /^freevideo-image\/(?:image-\d{8}-\d{6}-\d{2}\.(?:png|jpg)|[0-9a-f]{32}\.png)$/.test(row.file || '')
+                ? api.apiURL('/freevideo/library/picture-thumbnail?' + new URLSearchParams({file: row.file})) : view(row.file),
             cast: row => view(row.thumbnail.file),
         },
         open: {

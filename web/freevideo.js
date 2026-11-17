@@ -617,7 +617,10 @@ function mediaPanel(node, mount = null) {
             // Loaded when asked (both modules are already in the page): the entry's static imports stay as they were.
             const pictures = import('./image_library.js').then(({imageCards}) => imageCards(api)).then(cards => cards.filter(card => card.thumbnail?.file).slice(0, limit).map(card => {
                 const url = viewURL(card.thumbnail.file);
-                return {id: card.id, name: card.name, kind: 'image', file: card.thumbnail.file, url, thumb: url, at: Date.parse(card.updated_at) || 0};
+                // The square shows the engine's small copy of a picture of the history; any other picture as itself.
+                const thumb = /^freevideo-image\/(?:image-\d{8}-\d{6}-\d{2}\.(?:png|jpg)|[0-9a-f]{32}\.png)$/.test(card.thumbnail.file)
+                    ? api.apiURL('/freevideo/library/picture-thumbnail?' + new URLSearchParams({file: card.thumbnail.file})) : url;
+                return {id: card.id, name: card.name, kind: 'image', file: card.thumbnail.file, url, thumb, at: Date.parse(card.updated_at) || 0};
             })).catch(() => []);
             // The library's pages hold 1–48 creations (a larger page is refused).
             const videos = import('./library.js').then(async ({libraryPage, videoThumbnailURL}) => ((await libraryPage(text, {limit: Math.min(48, Math.max(1, limit))})).items || [])

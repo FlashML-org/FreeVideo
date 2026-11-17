@@ -13,6 +13,7 @@ import { createMeta, createPictureBin, dayOf, inOrderPictures, matches, needsEve
     sortRows, workKey, TAG_COLORS } from './library_meta.js';
 import { createMetaStore, promptOfRow } from './image_view_history.js';
 import { attach as attachPlayerBar } from './glass/player_bar.js';
+import { hasPictureThumbnail, mediaQueue, pictureThumbnailURL, watchCards } from './work_media.js';
 
 const style = document.createElement('link');
 style.rel = 'stylesheet'; style.href = new URL('./library.css', import.meta.url).href; document.head.append(style);
@@ -100,26 +101,30 @@ if (typeof window !== 'undefined') {
     window.addEventListener('freevideo-works-removed', event => { if (event.detail?.undoable === false) forgetPictures(event.detail.paths || event.detail.ids); });
     window.addEventListener('freevideo-pictures-deleted', event => forgetPictures(event.detail?.files));
 }
-function pictureThumb(file, source) {
+function pictureThumb(file, source, fallback = source) {
     if (thumbsMade.has(file)) return thumbsMade.get(file);
     const made = (async () => {
         const key = thumbKey(file);
         const store = globalThis.caches ? await caches.open(THUMBS).catch(() => null) : null;
         const hit = store && await store.match(key).catch(() => null);
         if (hit) return {url: URL.createObjectURL(await hit.blob()), width: Number(hit.headers.get('x-width')) || 0, height: Number(hit.headers.get('x-height')) || 0};
-        const blob = await (await fetch(source)).blob();
-        const bitmap = await createImageBitmap(blob);
-        const width = bitmap.width, height = bitmap.height, scale = Math.min(1, 320 / width);
+        const response = await fetch(source);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const blob = await response.blob();
+        // The engine's small copy (work_media.js) names the picture's own size; it is kept as it came.
+        const named = [response.headers.get('x-picture-width'), response.headers.get('x-picture-height')].map(Number);
+        const bitmap = named.every(value => value > 0) ? null : await createImageBitmap(blob);
+        const width = bitmap ? bitmap.width : named[0], height = bitmap ? bitmap.height : named[1], scale = bitmap ? Math.min(1, 320 / width) : 1;
         let small = blob;
-        if (typeof OffscreenCanvas === 'function' && scale < 1) {
+        if (bitmap && typeof OffscreenCanvas === 'function' && scale < 1) {
             const canvas = new OffscreenCanvas(Math.round(width * scale), Math.round(height * scale));
             canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
             small = await canvas.convertToBlob({type: 'image/webp', quality: .82});
         }
-        bitmap.close?.();
+        bitmap?.close?.();
         if (store) store.put(key, new Response(small, {headers: {'content-type': small.type || 'image/webp', 'x-width': String(width), 'x-height': String(height)}})).catch(() => {});
         return {url: URL.createObjectURL(small), width, height};
-    })().catch(() => ({url: source, width: 0, height: 0}));
+    })().catch(() => ({url: fallback, width: 0, height: 0}));
     thumbsMade.set(file, made);
     return made;
 }
@@ -711,6 +716,7 @@ export function openLibrary(t, options = {}) {
         big.setAttribute('aria-label', t('View large', '查看大图')); tip(big, t('View large', '查看大图'), t('Open it over the whole window', '铺满窗口查看'), 'Space');
         if (row.kind === 'image') {
             const picture = el('img'); picture.alt = ''; picture.decoding = 'async'; picture.src = pictureURL(row);
+            mediaQueue().open(pictureURL(row), picture);
             picture.onload = () => {
                 row.size = {width: picture.naturalWidth, height: picture.naturalHeight};
                 frame.style.setProperty('--fv-ratio', String(picture.naturalWidth / picture.naturalHeight));
@@ -722,7 +728,7 @@ export function openLibrary(t, options = {}) {
             return;
         }
         player = el('video'); player.preload = 'metadata'; player.playsInline = true;
-        player.src = view(row.video);
+        player.src = view(row.video); mediaQueue().open(view(row.video), player);
         const g = row.geometry || {};
         if (g.width > 0 && g.height > 0) frame.style.setProperty('--fv-ratio', String(g.width / g.height));
         media.append(player, ...playerControls(player, t), big);
@@ -1058,6 +1064,9 @@ export function openLibrary(t, options = {}) {
             card.addEventListener('pointerenter', event => {
                 if (event.pointerType === 'touch' || selecting || layout === 'stage') return;
                 wait = setTimeout(() => {
+                    // Over a link the pointer only moves the video to the front of the queue; it plays here once it is in.
+                    const queue = mediaQueue();
+                    if (queue.enabled && !queue.loaded(view(row.video))) { queue.want(view(row.video), {kind: 'video', rank: -1e15 - performance.now(), bytes: row.bytes}); return; }
                     preview = el('video', null, 'fv-library-hover'); preview.muted = true; preview.loop = true; preview.playsInline = true; preview.preload = 'auto';
                     preview.src = view(row.video); preview.addEventListener('playing', () => { preview.dataset.on = 'true'; }, {once: true});
                     card.querySelector('.fv-library-picture')?.append(preview); preview.play().catch(() => {});
@@ -1095,7 +1104,7 @@ export function openLibrary(t, options = {}) {
         card.append(picture, el('span', ''), el('small', ''));
         card.setAttribute('aria-label', cardLabel(row));
         cardTip(card, row);
-        cards.set(key, card); thumbnails.observe(image);
+        cards.set(key, card); thumbnails.observe(image); originals.observe(card);
         return card;
     }
     // Lays the shelf out from the filter: cards are kept and moved, days get a heading while the order is by time.
@@ -1723,6 +1732,7 @@ export function openLibrary(t, options = {}) {
     };
     function leaveShelf(key) {
         const row = works.get(key);
+        if (cards.has(key)) originals.unobserve(cards.get(key));
         works.delete(key); if (row?.video) rows.delete(row.video);
         cards.get(key)?.remove(); cards.delete(key);
     }
@@ -1758,7 +1768,7 @@ export function openLibrary(t, options = {}) {
                 removed.add(key);
                 const row = works.get(key);
                 if (batch && row) batchContents.set(batch, [...(batchContents.get(batch) || []), {id: row.id, video: row.video, created_at: row.created_at}]);
-                window.dispatchEvent(new CustomEvent('freevideo-library-deleted', {detail: {video: row?.video}}));
+                window.dispatchEvent(new CustomEvent('freevideo-library-deleted', {detail: {video: row?.video, id: row?.id}}));
                 if (row) left.push(row);
                 if (disposed) continue;
                 leaveShelf(key);
@@ -1856,16 +1866,26 @@ export function openLibrary(t, options = {}) {
             thumbnails.unobserve(target);
             if (target.dataset.picture) {
                 const file = target.dataset.picture;
-                pictureThumb(file, `${target.dataset.src}&preview=${encodeURIComponent('jpeg;70')}`).then(({url, width, height}) => {
+                // A picture of the image history comes as the engine's small copy; any other is made small here.
+                const source = hasPictureThumbnail(file) ? pictureThumbnailURL(file) : `${target.dataset.src}&preview=${encodeURIComponent('jpeg;70')}`;
+                // Counted from now: the originals wait for it while it is fetched and drawn.
+                mediaQueue().thumbnail(target);
+                pictureThumb(file, source, target.dataset.src).then(({url, width, height}) => {
                     const row = works.get('image:' + file) || pictureRows.find(item => item.file === file);
                     if (row && width && !row.size) { row.size = {width, height}; labelCard(workKey(row)); if (selected === workKey(row)) geometry.textContent = pictureDimensions(row); }
                     target.src = url;
                 });
-            } else target.src = target.dataset.src;
+            } else { mediaQueue().thumbnail(target); target.src = target.dataset.src; }
             const key = target.closest('.fv-library-card')?.dataset.key;
             if (isVideo(key)) wantPrompt(works.get(key));
         }
     }, {root: collection, rootMargin: '160px'});
+    // Over a link, the originals of the cards on screen and near them load in the background after their thumbnails.
+    const originals = watchCards(mediaQueue(), collection, card => {
+        const row = works.get(card.dataset.key);
+        if (!row) return null;
+        return row.kind === 'image' ? {url: pictureURL(row), kind: 'image'} : {url: view(row.video), kind: 'video', bytes: row.bytes};
+    });
     let serverOffset = null;
     const PICTURE_TIME = /image-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})/;
     function restampPictures() {
@@ -1888,7 +1908,7 @@ export function openLibrary(t, options = {}) {
         works.set(key, row); rows.set(row.video, row);
     }
     function reset() {
-        thumbnails.disconnect(); grid.replaceChildren(); cards.clear(); works.clear(); rows.clear(); unread = 0; unreadable.textContent = '';
+        thumbnails.disconnect(); originals.disconnect(); grid.replaceChildren(); cards.clear(); works.clear(); rows.clear(); unread = 0; unreadable.textContent = '';
         next = null; everything = false; clearDetail(); dialog.dataset.detail = 'false'; drawTail();
     }
     async function loadPictures() {
@@ -2168,10 +2188,13 @@ export function openLibrary(t, options = {}) {
             media.addEventListener('error', () => { if (!disposed && viewing === key && layer.isConnected) { layer.replaceChildren(pictureProblem()); drawn(); } }, {once: true});
             if (!cover) media.dataset.loaded = 'true';
             layer.append(media); zoomable(stage, media);
+            // Opened: it goes before anything loading in the background.
+            mediaQueue().open(pictureURL(row), media);
         } else {
             media = el('video'); media.autoplay = true; media.loop = true; media.playsInline = true; media.muted = viewerMuted; media.preload = 'auto';
             // Its cover shows until the first frame arrives, so the stage is drawn as soon as the small cover is in.
             media.poster = cover || videoThumbnailURL(row); media.src = view(row.video);
+            mediaQueue().open(view(row.video), media);
             if (!cover) { const poster = new Image(); poster.onload = drawn; poster.src = media.poster; media.addEventListener('loadeddata', drawn, {once: true}); }
             media.addEventListener('volumechange', () => { viewerMuted = media.muted; });
             media.addEventListener('click', () => { if (media.paused) media.play().catch(() => {}); else media.pause(); });
@@ -2362,7 +2385,7 @@ export function openLibrary(t, options = {}) {
         const gone = new Set(event.detail?.files || []);
         if (disposed || !gone.size) return;
         pictureRows = pictureRows.filter(row => !gone.has(row.file));
-        for (const file of gone) { const key = workKey({kind: 'image', file}); works.delete(key); cards.get(key)?.remove(); cards.delete(key); picked.delete(key); }
+        for (const file of gone) { const key = workKey({kind: 'image', file}); if (cards.has(key)) originals.unobserve(cards.get(key)); mediaQueue().forget(view(file, 'input')); works.delete(key); cards.get(key)?.remove(); cards.delete(key); picked.delete(key); }
         render();
     };
     window.addEventListener('freevideo-pictures-deleted', picturesGone);
@@ -2442,7 +2465,7 @@ export function openLibrary(t, options = {}) {
     // Ends the room for good (not used by closing; kept for a page that wants the memory back).
     function destroy() {
         headerObserver.disconnect();
-        disposed = true; abort.abort(); listAbort?.abort(); thumbnails.disconnect(); releasePlayer(); closeViewer(); closeMenus();
+        disposed = true; abort.abort(); listAbort?.abort(); thumbnails.disconnect(); originals.disconnect(); releasePlayer(); closeViewer(); closeMenus();
         clearTimeout(undoTimer); clearTimeout(sizeTimer); clearTimeout(syncTimer); clearTimeout(trashTimer); clearTimeout(sayTimer); clearTimeout(searchTimer);
         metaOff(); meta.dispose(); pictureOff(); castRoom?.destroy(); host?.removeEventListener('close', hostClosed);
         window.removeEventListener('freevideo-view-leave', viewLeft); window.removeEventListener('freevideo-view', viewLeft); drawer.removeEventListener('change', drawerChanged);

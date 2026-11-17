@@ -75,6 +75,7 @@ import { resultEffort, effortName } from './sampling_effort.js';
 import { createPromptLibrary, rememberPrompt } from './prompt_library.js';
 import { createCompare, COMPARE_ICON } from './studio_compare.js';
 import { toast } from './notifications.js';
+import { mediaQueue } from './work_media.js';
 
 const languageOverride = typeof location !== 'undefined'
     ? new URLSearchParams(location.search).get('freevideo_lang') : null;
@@ -1890,6 +1891,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
         video.controlsList?.add?.('nodownload', 'noplaybackrate', 'noremoteplayback'); video.disablePictureInPicture = true; video.disableRemotePlayback = true;
         const cover = /^FreeVideo\/\d{4}-\d{2}-\d{2}\/[0-9a-f]{32}\/video\.mp4$/.test(r.video) && !r.preview ? videoThumbnailURL(r) : '';
         video.dataset.pending = 'true'; stageMedia.prepend(video); lastShown.set(node, r); rememberShown(r);
+        // The video on the stage goes before anything the page loads ahead in the background (work_media.js).
+        mediaQueue().open(video.getAttribute('src'), video);
         playerBar = attachPlayer(video, playerRow, {t});
         // A click on the picture plays or pauses it, as the play bar's key does.
         video.addEventListener('click', event => {

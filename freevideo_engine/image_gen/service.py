@@ -618,6 +618,9 @@ class Service:
                 except OSError:
                     pass
         names = sorted(named, reverse=True) + [name for _, name in sorted(older, reverse=True)]
+        # A picture removed some other way (by hand, by a cleanup) takes its small copy for the grids with it now.
+        from ..work_thumbnails import prune_pictures
+        prune_pictures(self.input_directory(), present=set(names))
         made = self.made_by(output)
         return dict(items=[dict(file='freevideo-image/' + name, name=name, **(dict(model=made[name]) if name in made else {}))
                            for name in names[:HISTORY_LIMIT]])
@@ -685,8 +688,12 @@ class Service:
             pass
         try:
             from .. import private_refs
+            input_root = self.input_directory()
+            from .. import work_thumbnails
             for name in names:
-                private_refs.release_owner('image:' + name.rpartition('/')[2], input_root=self.input_directory())
+                # What the engine made of the picture (its small copy for the grids) goes with what it held.
+                work_thumbnails.release('image:' + name.rpartition('/')[2], input_root)
+                private_refs.release_owner('image:' + name.rpartition('/')[2], input_root=input_root)
         except (OSError, ValueError):
             logging.warning('[FreeVideo] Could not release what a deleted picture held.', exc_info=True)
         # The failure reports kept in memory for the page drop the ones about these pictures.
@@ -2455,6 +2462,12 @@ def register():
                     logging.info('[FreeVideo] Removed %d pictures left by image requests that had ended.', removed)
             except Exception:
                 logging.warning('[FreeVideo] Could not remove pictures left by ended image requests.', exc_info=True)
+            try:
+                # Small copies of pictures that went while the engine was stopped do not stay (a listing also does this).
+                from ..work_thumbnails import prune_pictures
+                prune_pictures(service.input_directory())
+            except Exception:
+                logging.warning('[FreeVideo] Could not remove the small copies of removed pictures.', exc_info=True)
             time.sleep(6 * 3600)
     threading.Thread(target=clean_page_uploads, name='freevideo-image-page-uploads', daemon=True).start()
     from .. import video_warm

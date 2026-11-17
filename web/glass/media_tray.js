@@ -9,6 +9,7 @@
 // stylesheet link. What is moved: the tiles' container and the tool row into one box (the grid), the AI and audio keys
 // into the line under it, the remark into a line with its key, and the drop-down for new pictures into the title row.
 import './tray_pop.js';
+import { mediaQueue } from '../work_media.js';
 
 const CARD_KEYS = {'↑': 'fv-mt-up', '↓': 'fv-mt-down'};
 // How many saved works the works page lists (newest first, pictures and videos together).
@@ -226,6 +227,8 @@ async function pick(panel, item, key) {
 // square video), so when it would be enlarged the video's first frame is shown over it instead.
 function sharpen(key, item) {
     const picture = key.querySelector(':scope > img'); if (item.kind !== 'video' || !picture?.naturalWidth || key.querySelector(':scope > video')) return;
+    // Over a link a square does not download a whole video for a sharper picture, unless that video is already here.
+    const queue = mediaQueue(); if (queue.enabled && !queue.loaded(item.url)) return;
     const box = key.getBoundingClientRect(), dpr = Math.min(2, globalThis.devicePixelRatio || 1);
     if (!box.width || Math.max(box.width * dpr / picture.naturalWidth, box.height * dpr / picture.naturalHeight) <= 1.05) return;
     const frame = make('video'); frame.muted = true; frame.playsInline = true; frame.preload = 'auto'; frame.disablePictureInPicture = true;

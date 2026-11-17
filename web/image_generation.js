@@ -8,6 +8,8 @@ import {skinSelect} from './fv_select.js';
 import {about} from './request_assets.js';
 import {createImageLoras} from './image_lora.js';
 import {createOtherUsageNotice, otherUsageText} from './other_usage.js';
+// The page's background loading of works (work_media.js) waits while an upload runs.
+const uploadRunning = active => { try { globalThis.dispatchEvent?.(new CustomEvent('freevideo-upload', {detail: {active}})); } catch { /* no page */ } };
 
 // The folder of the input directory that holds the pictures a request sends (the engine's PAGE_FOLDER).
 export const PAGE_UPLOAD_FOLDER = 'freevideo-image-ref';
@@ -160,7 +162,8 @@ export function createImageGenClient(fetchImpl = globalThis.fetch.bind(globalThi
             body.append('image', new File([file], folder ? `${crypto.randomUUID()}.${ext}` : `freevideo-image-reference-${crypto.randomUUID()}.png`, {type: file.type || 'image/png'}));
             body.append('type', 'input'); body.append('overwrite', 'false');
             if (folder) body.append('subfolder', PAGE_UPLOAD_FOLDER);
-            const value = await request(p.upload, {method: 'POST', body});
+            uploadRunning(true);
+            let value; try { value = await request(p.upload, {method: 'POST', body}); } finally { uploadRunning(false); }
             if (!value[p.name] || /[/\\:]/.test(value[p.name]) || (folder ? value[p.subfolder] !== PAGE_UPLOAD_FOLDER : value[p.subfolder])) throw failure('invalid_media');
             return folder ? `${PAGE_UPLOAD_FOLDER}/${value[p.name]}` : value[p.name];
         },

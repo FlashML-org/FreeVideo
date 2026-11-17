@@ -19,6 +19,9 @@ export const worksPictureURL = file => {
     const at = file.lastIndexOf('/');
     return api.apiURL('/view?' + new URLSearchParams({filename: file.slice(at + 1), subfolder: at < 0 ? '' : file.slice(0, at), type: 'input'}));
 };
+// The tiles show the engine's small copy of a picture of the history (work_media.js); any other picture as itself.
+export const worksThumbnailURL = file => /^freevideo-image\/(?:image-\d{8}-\d{6}-\d{2}\.(?:png|jpg)|[0-9a-f]{32}\.png)$/.test(file)
+    ? api.apiURL('/freevideo/library/picture-thumbnail?' + new URLSearchParams({file})) : worksPictureURL(file);
 
 const announce = (name, files, extra = {}) => {
     if (files.length) window.dispatchEvent(new CustomEvent(name, {detail: {ids: files.slice(), paths: files.slice(), ...extra}}));

@@ -35,6 +35,7 @@ import { isHeld, worksClient } from './image_works.js';
 import { createWarmer } from './image_view_warm.js';
 import { openPictureViewer } from './image_view_viewer.js';
 import { LORA_MODEL, imageViewLora } from './image_view_lora.js';
+import { hasPictureThumbnail, mediaQueue, pictureThumbnailURL } from './work_media.js';
 
 export { IMAGE_MODELS, RATIOS };
 for (const name of ['./image_view.css']) {
@@ -112,6 +113,8 @@ export function createFakeImageClient({delay = 600, ready = {'minimax-h3-image':
 }
 
 const pictureURL = file => { const at = file.lastIndexOf('/'); return api.apiURL('/view?' + new URLSearchParams({filename: file.slice(at + 1), subfolder: at < 0 ? '' : file.slice(0, at), type: 'input'})); };
+// Tiles, the rail and the source line show a picture's small copy; the stage, the viewer and comparisons the picture.
+const thumbURL = file => hasPictureThumbnail(file) ? pictureThumbnailURL(file) : pictureURL(file);
 const SAMPLE_PROMPTS = {
     "jazz": "A stylish concert poster in a mid-century modern graphic style: a saxophone player drawn as a bold silhouette in deep navy against a warm mustard-yellow background, with abstract curved shapes in teal and coral. At the top, a large clean title reads \"MIDNIGHT JAZZ\". At the bottom, one smaller line reads \"FRIDAY 9 PM\". All text is spelled exactly as given, with no other words on the poster. Flat print texture, strong composition.",
     "window": "A realistic portrait photograph of a woman in her late twenties sitting by a tall window in a quiet old apartment, soft overcast daylight on one side of her face, loose dark hair tucked behind one ear, wearing a rust-coloured linen shirt, holding a white ceramic cup with both hands, calm thoughtful expression looking slightly away from the camera, natural skin texture with fine detail, muted warm colours, shallow depth of field, 85mm lens, one person, no text.",
@@ -448,7 +451,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         if (m.source) {
             const name = String(m.source).slice(String(m.source).lastIndexOf('/') + 1), there = rows.find(r => r.file === m.source || r.name === name);
             const line = el('div', 'fv-iv-info-row fv-iv-info-row-src'), go = el('button', 'fv-iv-info-src'); go.type = 'button';
-            if (there) { const img = el('img'); img.src = pictureURL(there.file); img.alt = ''; img.loading = 'lazy'; go.append(img); }
+            if (there) { const img = el('img'); img.src = thumbURL(there.file); img.alt = ''; img.loading = 'lazy'; go.append(img); }
             go.append(el('span', '', name));
             if (there) { tip(go, t('Open the source', '打开来源'), t('Show the work this picture was made from', '显示这张图的来源作品')); go.addEventListener('click', () => showFile(there.file)); }
             else { go.disabled = true; tip(go, t('Source', '来源'), t('The source is no longer in the works', '来源作品已不在作品里')); }
@@ -527,7 +530,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     paintSettings();
 
     // Right panel: the works.
-    const works = historyPanel({pictureURL,
+    const works = historyPanel({pictureURL, thumbURL, queue: mediaQueue(),
         onShow: file => showFile(file),
         onToggleFav: files => { const list = files || [...picked]; if (!list.length) return; const all = list.every(f => meta.isFav(f)); meta.setFav(list, !all); drawWorks(); render(); },
         onSelect: (files, add) => { if (!selecting) selecting = true; if (add) files.forEach(f => picked.add(f)); else files.forEach(f => picked.has(f) ? picked.delete(f) : picked.add(f)); drawWorks(); render(); },
@@ -1071,7 +1074,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             const url = pictureURL(shownFile);
             // A picture shows whole once decoded (never painted half-loaded); until then its frame holds a placeholder.
             if (picture.dataset.file !== shownFile) {
-                picture.dataset.file = shownFile; picture.dataset.loaded = 'false'; delete picture.dataset.missing; picture.src = url;
+                picture.dataset.file = shownFile; picture.dataset.loaded = 'false'; delete picture.dataset.missing; picture.src = url; mediaQueue().open(url, picture);
                 if (picture.complete && picture.naturalWidth) picture.dataset.loaded = 'true';
                 // A picture of unknown shape: its size is read from its first bytes (long before it has loaded), so the
                 // frame and the caption row take their final size then, and the view is ready with them.
@@ -1139,7 +1142,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             loading: !historyLoaded && !rows.length, holdSeconds: trash.holdMs / 1000, allFiles: new Set(rows.map(r => r.file))});
         const runThumb = running ? (() => { const b = el('button', 'fv-iv-rail-thumb fv-iv-rail-run'); b.type = 'button'; b.style.setProperty('--p', String(row?.percent || 0)); b.append(el('i', 'fv-iv-ring'));
             tip(b, t('Generating', '正在生成'), t('Show its progress', '查看进度')); b.addEventListener('click', () => returnToRun()); return b; })() : null;
-        railThumbs.replaceChildren(...(runThumb ? [runThumb] : []), ...live.slice(0, runThumb ? 5 : 6).map(r => { const b = el('button', 'fv-iv-rail-thumb'); b.type = 'button'; const i = el('img'); i.alt = ''; i.draggable = false; i.src = pictureURL(r.file); b.append(i); b.classList.toggle('fv-iv-current', r.file === shownFile); tip(b, t('Show', '显示'), t('Put it on the stage', '在中间显示')); b.addEventListener('click', () => showFile(r.file)); return b; }));
+        railThumbs.replaceChildren(...(runThumb ? [runThumb] : []), ...live.slice(0, runThumb ? 5 : 6).map(r => { const b = el('button', 'fv-iv-rail-thumb'); b.type = 'button'; const i = el('img'); i.alt = ''; i.draggable = false; i.src = thumbURL(r.file); b.append(i); b.classList.toggle('fv-iv-current', r.file === shownFile); tip(b, t('Show', '显示'), t('Put it on the stage', '在中间显示')); b.addEventListener('click', () => showFile(r.file)); return b; }));
     }
     function showFile(file) { if (!file) return; if (running && !browsing) leaveRun(); draft = false; draftPreview = null; shownFile = file; if (historyLoaded) queueMicrotask(rememberView); started = 0; if (!running) failure = null; compare = null; render(); drawWorks(); }
     // ← → step through the works shown (not while comparing); the works column follows without jumping.
