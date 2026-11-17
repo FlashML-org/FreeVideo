@@ -36,6 +36,12 @@ const WHO = '<Picture 1> is the original photo of this person and <Picture 2> is
 const WHO_AND_FRONT = '<Picture 1> is the original photo of this person, <Picture 2> is a close-up of the same person\'s face and '
     + '<Picture 3> is the full-body front view of this person.';
 const BODY_SAME = 'The body shape and appearance are the same as the person in <Picture 1>.';
+// With new clothes (described or from a picture) only the body comes from the photo; the clothes come from the new ones.
+const BODY_ONLY = 'The body shape, height and skin tone are the same as the person in <Picture 1>.';
+const SWAP = 'These clothes take the place of the clothes in <Picture 1>.';
+// With new clothes the side and back see the close-up (<Picture 1>) and the front (<Picture 2>), and the photo stays out:
+// its clothes would come back.
+const NEW_WHO = '<Picture 1> is a close-up of this person\'s face and <Picture 2> is the full-body front view of this person in the clothes to wear.';
 const PHOTO_END = 'A real photograph of one person, sharp focus.';
 export const PHOTO_PROMPTS = Object.freeze({
     // From the whole photo these words keep the likeness best with Qwen (the edit words that turn the head to the front
@@ -50,51 +56,133 @@ export const PHOTO_PROMPTS = Object.freeze({
         + '背景是干净的浅灰色，五官和皮肤纹理清晰，真实照片。',
     front: '{WHO} Turn this person into a full-body front photograph: standing and facing the camera, the whole body from the top '
         + `of the head to the feet, the arms relaxed at the sides, ${BACKDROP}. The face shape, eyes, eyebrows, nose, mouth, skin `
-        + `tone, age, hairstyle and hairline are the same as the face in <Picture 2>. ${BODY_SAME} {CLOTHES} ${PHOTO_END}`,
+        + `tone, age, hairstyle and hairline are the same as the face in <Picture 2>. {BODY} {CLOTHES} ${PHOTO_END}`,
     side: '{WHO} Turn this person into a full-body side view: the whole body turned 90 degrees to the left, the nose, chest and '
         + 'toes pointing to the left edge of the picture, one eye visible, the near shoulder in front of the far shoulder, the arms '
         + `relaxed, the whole body from the top of the head to the feet, ${BACKDROP}. The face, seen from the side, has the same `
         + 'shape, eyebrows, nose, lips, skin tone and age as the face in <Picture 2>, and the hairstyle and hairline are the same '
-        + `as in <Picture 2>. ${BODY_SAME} {CLOTHES} ${PHOTO_END}`,
+        + `as in <Picture 2>. {BODY} {CLOTHES} ${PHOTO_END}`,
     back: '{WHO} Turn this person into a full-body view from directly behind: the back of the head, the hair, the shoulders, the '
         + 'back, the back of the clothes and the heels face the camera, the head and the body point the same way, the arms '
         + `relaxed, the whole body from the top of the head to the feet, ${BACKDROP}. The hair colour, hairstyle and hairline are `
-        + `the same as in <Picture 2>. The body shape is the same as the person in <Picture 1>. {CLOTHES} ${PHOTO_END}`,
+        + `the same as in <Picture 2>. {BACKBODY} {CLOTHES} ${PHOTO_END}`,
 });
 // The close-up's model from the engine's model list: Qwen-Image 2.1 when ready, else H3 Image when ready, else none named.
 export function photoFaceModel(info) {
     const ready = id => Array.isArray(info?.models) && info.models.some(row => row?.id === id && row.ready === true);
     return ready(PHOTO_FACE_MODELS.qwen) ? PHOTO_FACE_MODELS.qwen : ready(PHOTO_FACE_MODELS.h3) ? PHOTO_FACE_MODELS.h3 : '';
 }
+// From an uploaded picture of any style (a drawing, a render, a photo): the same steps and words as from a photo, in the
+// picture's own style. The close-up has its own words (the photo's stay as measured); the front, side and back swap the
+// "real photograph" for the picture's style.
+const STYLE = 'The art style, line work, colours and shading are the same as in <Picture 1>.';
+export const IMAGE_PROMPTS = Object.freeze({
+    face: 'Image 1 shows the character. A tight head-and-shoulders portrait of this character: the head from the top of the hair '
+        + 'to the chin fills about 80% of the picture height and a little of the shoulders shows; the character faces the viewer at '
+        + 'eye level with a neutral expression. The face shape, eyes, nose, mouth, age, hairline, hairstyle, glasses and accessories '
+        + 'match image 1, and the art style, line work, colours and shading are the same as in image 1. On a plain light grey '
+        + 'backdrop with soft even light. One picture of one character.',
+    face_h3: '把<Picture 1>改成同一个角色的近景正面特写：画面从头顶到下巴，再带一点肩膀，角色正对画面，眼睛平视。'
+        + '脸型、眼睛、眉毛、鼻子、嘴巴、肤色、年龄、发型、发际线和表情都与<Picture 1>中的角色一致，画风、线条、色彩和明暗也与<Picture 1>一致。'
+        + '背景是干净的浅灰色，五官清晰。',
+});
+const inStyle = prompt => prompt.replace('a full-body front photograph', 'a full-body front view').replace(PHOTO_END, `${STYLE} One picture of one character, sharp focus.`);
+// From a description: the front first, from the words (wearing the clothes of a clothes picture, <Picture 1>, when one is
+// given); then the face close-up from the front; then the side and back from the close-up and the front, as from a photo
+// with new clothes. The style is the one the description gives, so these words name the framing and take the style from
+// the front.
+export const AI_PROMPTS = Object.freeze({
+    front: `{WHO}. {WEAR}One person stands alone and faces the camera: the whole body from the top of the head to the feet, the arms relaxed at the sides, ${BACKDROP}, sharp focus.`,
+    face: 'Image 1 shows the person. A tight head-and-shoulders portrait of this person: the head from the top of the hair to the '
+        + 'chin fills about 80% of the picture height and a little of the shoulders shows; the person faces the camera at eye level '
+        + 'with a neutral expression; the eyes, nose, lips and skin are sharp. The face shape, eyes, nose, mouth, age, hairline, '
+        + 'hairstyle, glasses, accessories and the clothes at the collar match image 1, and the style of the picture is the same as '
+        + 'image 1. On a plain light grey studio backdrop with soft even light. One picture of one person.',
+    face_h3: '把<Picture 1>中的人改成同一个人的近景正面特写：画面从头顶到下巴，再带一点肩膀，人物正对镜头，眼睛平视镜头。'
+        + '脸型、眼睛、眉毛、鼻子、嘴巴、肤色、年龄、发型、发际线、领口的衣服和画面风格都与<Picture 1>一致。背景是干净的浅灰色，五官清晰。',
+});
+// The side or back from the close-up and the front only: the words of PHOTO_PROMPTS, numbered for the two pictures (the
+// close-up becomes <Picture 1>, the front <Picture 2>). end: the last sentence, before the numbering.
+function fromCloseUpAndFront(name, clothes, end = PHOTO_END) {
+    return PHOTO_PROMPTS[name].replace('{WHO}', '').replace('{BODY}', '').replace('{BACKBODY}', '').replace('{CLOTHES}', clothes).replace(PHOTO_END, end)
+        .replace(/<Picture 2>/g, '<Picture 1>').replace(/<Picture 3>/g, '<Picture 2>').replace(/^ */, NEW_WHO + ' ').replace(/ {2,}/g, ' ');
+}
+// The words for repainting a close-up's collar and shoulders in the new clothes (image 1: the close-up; image 2: the clothes
+// picture). The clothes are shown, never named here: words that name trousers or shoes made the model draw a small whole
+// body under the head, so described clothes are first drawn as a clothes picture (CLOTHES_PROMPT).
+function dressWords(style = false) {
+    return 'Image 1 shows a person; image 2 shows the clothes to wear. A head-and-shoulders portrait of this person wearing the clothes '
+        + 'from image 2 at the collar and the shoulders; the face, the hair and the backdrop are the same as in image 1. '
+        + (style ? 'The style is the same as in image 1. One picture of one character.' : 'One photograph of one person.');
+}
+// Described clothes as a picture: a flat lay of every piece, which then dresses the close-up, the front, side and back.
+export const CLOTHES_PROMPT = 'A flat-lay product photograph seen from above on a plain light grey background: {OUTFIT}, every piece '
+    + 'laid out neatly side by side on its own, soft even light, sharp focus.';
 // plan: the engine's view list (for the sizes); outfit: words for the clothes; outfitImage: a clothes picture is given;
-// frontAsThird: the side and back also see the front (<Picture 3>) for the clothes; faceModel: photoFaceModel's answer.
-export function photoPlan(plan, outfit = '', {outfitImage = false, frontAsThird = true, faceModel = ''} = {}) {
+// frontAsThird: the side and back also see the front (<Picture 3>) for the clothes; faceModel: photoFaceModel's answer;
+// style: the picture is not a photo (an uploaded picture of any style), and the views keep its style.
+export function photoPlan(plan, outfit = '', {outfitImage = false, frontAsThird = true, faceModel = '', style = false} = {}) {
     outfit = String(outfit || '').trim().replace(/[.。]+$/, '');
     const size = name => { const view = plan.find(row => row.view === name) || plan.find(row => row.view === 'front') || {}; return {width: view.width || 832, height: view.height || 1472}; };
     const asPhoto = 'The clothes, shoes and accessories are the same as in <Picture 1>.';
-    const frontClothes = outfitImage ? `The clothes, shoes and accessories are the ones in <Picture 3>${outfit ? `, with these details: ${outfit}` : ''}.`
-        : outfit ? `The clothes are: ${outfit}.` : asPhoto;
-    const laterClothes = frontAsThird ? 'The clothes, shoes and accessories are the same as in <Picture 3>, the front view.'
-        : outfit ? `The clothes are: ${outfit}.` : asPhoto;
+    const changed = outfitImage || !!outfit, body = changed ? BODY_ONLY : BODY_SAME;
+    const frontClothes = outfitImage ? `This person wears the clothes, shoes and accessories shown in <Picture 3>${outfit ? `, with these details: ${outfit}` : ''}. ${SWAP}`
+        : outfit ? `This person wears: ${outfit}. ${SWAP}` : asPhoto;
+    const laterClothes = frontAsThird ? `The clothes, shoes and accessories are the same as in <Picture 3>, the front view${!outfitImage && outfit ? `: ${outfit}` : ''}.`
+        : outfit ? `This person wears: ${outfit}. ${SWAP}` : asPhoto;
     const viewModel = faceModel === PHOTO_FACE_MODELS.h3 ? {model: faceModel} : {};
-    const later = name => ({view: name, ...size(name), ...viewModel, refs: ['photo', 'face', ...(frontAsThird ? ['front'] : [])],
-        prompt: PHOTO_PROMPTS[name].replace('{WHO}', frontAsThird ? WHO_AND_FRONT : WHO).replace('{CLOTHES}', laterClothes)});
-    return [
+    const later = name => changed && frontAsThird ? {view: name, ...size(name), ...viewModel, refs: ['face', 'front'],
+        // the same words, numbered for the two pictures: the close-up becomes <Picture 1>, the front <Picture 2>
+        prompt: fromCloseUpAndFront(name, `The body shape, clothes, shoes and accessories are the same as in <Picture 3>, the front view${!outfitImage && outfit ? `: ${outfit}` : ''}.`)}
+        : {view: name, ...size(name), ...viewModel, refs: ['photo', 'face', ...(frontAsThird ? ['front'] : [])],
+            prompt: PHOTO_PROMPTS[name].replace('{WHO}', frontAsThird ? WHO_AND_FRONT : WHO).replace('{BODY}', body)
+                .replace('{BACKBODY}', 'The body shape is the same as the person in <Picture 1>.').replace('{CLOTHES}', laterClothes)};
+    const made = [
         {view: 'face', width: 1024, height: 1280, refs: ['photo'], ...(faceModel ? {model: faceModel} : {}),
-            prompt: faceModel === PHOTO_FACE_MODELS.h3 ? PHOTO_PROMPTS.face_h3 : PHOTO_PROMPTS.face},
+            prompt: (style ? IMAGE_PROMPTS : PHOTO_PROMPTS)[faceModel === PHOTO_FACE_MODELS.h3 ? 'face_h3' : 'face'],
+            // New clothes: the finished close-up is repainted below the chin and beside the neck only (a mask the page
+            // makes from the face box), so the face keeps its pixels. Masks are edited with Qwen-Image 2.1.
+            // Described clothes are drawn as a clothes picture first (the generator does it when it can repaint).
+            ...(outfitImage && faceModel !== PHOTO_FACE_MODELS.h3 ? {dress: {outfit: true, prompt: dressWords(style)}} : {})},
         {view: 'front', ...size('front'), ...viewModel, refs: ['photo', 'face', ...(outfitImage ? ['outfit'] : [])],
-            prompt: PHOTO_PROMPTS.front.replace('{WHO}', WHO + (outfitImage ? ' <Picture 3> shows the clothes to wear.' : '')).replace('{CLOTHES}', frontClothes)},
+            prompt: PHOTO_PROMPTS.front.replace('{WHO}', WHO + (outfitImage ? ' <Picture 3> shows the clothes to wear.' : '')).replace('{BODY}', body).replace('{CLOTHES}', frontClothes)},
+        later('side'),
+        later('back'),
+    ];
+    return style ? made.map(view => view.view === 'face' ? view : {...view, prompt: inStyle(view.prompt)}) : made;
+}
+
+// From a description: front, face close-up, side, back, in the order they are made. plan: the engine's view list (for the
+// front's size); outfitImage: a clothes picture is given; faceModel: photoFaceModel's answer (Qwen-Image 2.1 makes the
+// close-up when ready; with H3 Image the only one ready, every view names it).
+export function aiPlan(plan, description, {outfitImage = false, faceModel = ''} = {}) {
+    const who = String(description || '').trim().replace(/[.。]+$/, '');
+    const front = plan.find(row => row.view === 'front') || {}, size = {width: front.width || 832, height: front.height || 1472};
+    const h3 = faceModel === PHOTO_FACE_MODELS.h3, viewModel = h3 ? {model: faceModel} : {};
+    const later = name => ({view: name, ...size, ...viewModel, refs: ['face', 'front'],
+        prompt: fromCloseUpAndFront(name, 'The body shape, clothes, shoes and accessories are the same as in <Picture 3>, the front view.',
+            'The style of the picture is the same as in <Picture 3>. One picture of one person, sharp focus.')});
+    return [
+        {view: 'front', ...size, ...viewModel, refs: outfitImage ? ['outfit'] : [],
+            prompt: (outfitImage ? '<Picture 1> shows the clothes to wear. ' : '') + AI_PROMPTS.front.replace('{WHO}', who)
+                .replace('{WEAR}', outfitImage ? 'This person wears the clothes, shoes and accessories shown in <Picture 1>. ' : '')},
+        {view: 'face', width: 1024, height: 1280, refs: ['front'], ...(faceModel ? {model: faceModel} : {}), prompt: AI_PROMPTS[h3 ? 'face_h3' : 'face']},
         later('side'),
         later('back'),
     ];
 }
 
-// The five pictures of one description. No DOM: the page below draws its state.
-export function createCastGenerator({client, kind = 'character', views = null, frontAsThird = true, onChange = () => {}, beforeGenerate = async () => {}, onDiscard = () => {}, schedule = setTimeout, unschedule = clearTimeout}) {
+// The pictures of one set: the engine's views of a description (or a scene's three candidates), or a character's four
+// views made by the page's plan from a photo, a picture or a description. No DOM: the page below draws its state.
+// facing: async (made picture) => whether it shows a face toward the camera; a back that does is drawn once more.
+// dressTook: async (close-up, repainted, mask) => whether the repaint changed the clothes; one that did not is tried once more.
+export function createCastGenerator({client, kind = 'character', views = null, frontAsThird = true, dressMask = null, dressTook = null, facing = null, onChange = () => {}, beforeGenerate = async () => {}, onDiscard = () => {}, schedule = setTimeout, unschedule = clearTimeout}) {
     const scene = kind === 'setting' || kind === 'prop', names = views || (scene ? SCENE_CANDIDATES : CAST_VIEWS);
     const fresh = () => names.map(view => ({view, file: '', fraction: 0}));
     let state = {pictures: fresh(), running: false, current: -1, error: '', report_id: null, waiting: '', description: '', photo: '', outfit: ''};
-    let epoch = 0, timer = null, job = null, plan = null, seed = 0, disposed = false, loras, outfit = '';
+    let epoch = 0, timer = null, job = null, plan = null, seed = 0, disposed = false, loras, outfit = '', inputs = '', given = '';
+    // Described clothes on a photo or a picture: the clothes picture drawn from the words ({words, file}), or null.
+    let clothes = null;
     // From a photo with a small face: the face cut out and enlarged by the page, for the face close-up only.
     let closeUp = '';
     const seeds = [];
@@ -105,20 +193,31 @@ export function createCastGenerator({client, kind = 'character', views = null, f
     const cancelJob = id => Promise.resolve().then(() => client.cancel(id)).catch(() => {});
     const done = () => state.pictures.every(row => row.file);
 
-    async function runOne(index, alive) {
+    // over: the dress pass of a close-up ({file: the close-up, mask: the uploaded mask, again: the second try}).
+    async function runOne(index, alive, over = null) {
         const view = plan[index], front = state.pictures[0].original ? state.photo : state.pictures[0].file;
         const dress = view.outfit && state.outfit ? [state.outfit] : [];
         // From a photo: each view names the pictures it sees (the photo, the face close-up, the front, the clothes).
         const picked = name => { const at = names.indexOf(name), row = at >= 0 ? state.pictures[at] : null; return row?.original ? state.photo : row?.file || ''; };
         // The face close-up sees the face cut out of the photo where the page made one (a small face), else the photo.
         const roles = {photo: () => (view.view === 'face' && closeUp) || state.photo, face: () => overrides.face || picked('face'), front: () => overrides.front || picked('front'), outfit: () => state.outfit};
-        const images = view.refs ? view.refs.map(role => roles[role]?.() || '').filter(Boolean)
+        const images = over ? [over.file, ...(view.dress.outfit && state.outfit ? [state.outfit] : [])]
+            : view.refs ? view.refs.map(role => roles[role]?.() || '').filter(Boolean)
             : view.photo ? [state.photo, ...dress] : view.from_front ? [front, ...dress] : [];
         await beforeGenerate({kind: 'image', width: view.width, height: view.height, image_references: images.length});
         if (!alive()) return null;
-        const row = await client.generate({...(view.model ? {model: view.model} : {}), prompt: view.prompt, width: view.width, height: view.height, seed: seeds[index] ?? (scene ? seed + index : seed),
-            images, ...(view.view === 'back' && images.length === 1 ? {cast_view: 'back'} : {}),
+        // Every picture draws from a seed of its own. A view started from the same seed as the picture it is made from
+        // (at the same size, or one the engine scales the reference to) grows a mottled lattice over the backdrop and
+        // the clothes, and a repaint started from the close-up's own seed a scaly one over the neck.
+        const own = seeds[index] ?? seed + index;
+        const row = await client.generate({...(view.model ? {model: view.model} : {}), prompt: over ? view.dress.prompt : view.prompt, width: view.width, height: view.height, seed: over ? own + (over.again ? 2 : 1) * names.length + index + 1 : own,
+            images, ...(over ? {mask: over.mask} : {}), ...(view.view === 'back' && images.length === 1 && !over ? {cast_view: 'back'} : {}),
             ...(loras === undefined ? {} : {loras})});
+        return waitFor(row, alive, status => setPicture(index, {fraction: Math.max(state.pictures[index].fraction,
+            imageGenProgress(status.stage, status.fraction, view.from_front)), stage: status.stage || ''}));
+    }
+    // A sent request until its picture is made (the picture's name), or null when the run was stopped.
+    async function waitFor(row, alive, progress) {
         if (!row.job) throw Object.assign(new Error(row.error || 'generation_failed'), {code: row.error, report_id: row.report_id, memory: row.memory});
         if (!alive()) { await cancelJob(row.job); return null; }
         job = row.job;
@@ -135,25 +234,106 @@ export function createCastGenerator({client, kind = 'character', views = null, f
                 if (!status.file) throw new Error('generation_failed');
                 return status.file;
             }
-            setPicture(index, {fraction: Math.max(state.pictures[index].fraction,
-                imageGenProgress(status.stage, status.fraction, view.from_front)), stage: status.stage || ''});
+            progress(status);
             emit({waiting: status.waiting || ''});
         }
     }
+    // The clothes picture of described clothes, drawn before the first view (Qwen-Image 2.1, a seed of its own).
+    async function drawClothes(alive) {
+        const query = {kind: 'image', width: 1024, height: 1024, image_references: 0};
+        await beforeGenerate(query);
+        if (!alive()) return null;
+        const row = await client.generate({model: PHOTO_FACE_MODELS.qwen, prompt: CLOTHES_PROMPT.replace('{OUTFIT}', clothes.words), width: 1024, height: 1024,
+            seed: seed + 4 * names.length + 1, images: []});
+        const file = await waitFor(row, alive, () => {});
+        if (file !== null) job = null;
+        return file;
+    }
+    // The drawn clothes picture goes: the set starts again, or Generate all again draws it anew.
+    function dropClothes() {
+        if (clothes?.file) onDiscard(clothes.file);
+        clothes = null;
+        if (state.outfit !== given || state.extras?.length) emit({outfit: given, extras: []});
+    }
 
-    async function start(description, {loras: selectedLoras, photo = '', closeUp: face = '', outfit: wear = '', outfitImage = ''} = {}) {
+    // A close-up made for new clothes is repainted at the collar and the shoulders (the page's mask); a failed or skipped
+    // repaint keeps the close-up as made. null: the run was stopped.
+    async function dressed(index, file, alive) {
+        const view = plan[index];
+        if (!view.dress || !dressMask) return file;
+        let mask = '';
+        try { mask = await dressMask(file); } catch { mask = ''; }
+        if (!alive()) return null;
+        if (!mask) return file;
+        try {
+            let made = await runOne(index, alive, {file, mask});
+            if (made === null) return null;
+            job = null;
+            // A repaint that kept the old clothes (the same garment in another colour, at times) is tried once more with
+            // another seed; the second one stays.
+            let took = true;
+            if (dressTook) { try { took = await dressTook(file, made, mask); } catch { took = true; } }
+            if (!alive()) return null;
+            if (!took) {
+                try {
+                    const again = await runOne(index, alive, {file, mask, again: true});
+                    if (again === null) return null;
+                    job = null; onDiscard(made); made = again;
+                } catch { const id = job; job = null; if (id) void cancelJob(id); if (!alive()) return null; }
+            }
+            onDiscard(file);
+            return made;
+        } catch {
+            const id = job; job = null; if (id) void cancelJob(id);
+            return alive() ? file : null;
+        }
+    }
+
+    // A back view that came out facing the camera (the face found on it) is drawn once more from another seed; the second
+    // one stays whatever it shows, and a failed redraw keeps the first. null: the run was stopped.
+    async function turned(index, file, alive) {
+        if (plan[index].view !== 'back' || !facing) return file;
+        let face = false;
+        try { face = await facing(file); } catch { face = false; }
+        if (!alive()) return null;
+        if (!face) return file;
+        const before = seeds[index];
+        seeds[index] = randomSeed(); setPicture(index, {fraction: 0});
+        try {
+            const again = await runOne(index, alive);
+            if (again === null) return null;
+            job = null; onDiscard(file);
+            return again;
+        } catch {
+            const id = job; job = null; if (id) void cancelJob(id);
+            if (before === undefined) delete seeds[index]; else seeds[index] = before;
+            return alive() ? file : null;
+        }
+    }
+    // A made picture as it goes on the sheet: a close-up dressed in new clothes, a back facing the camera drawn again.
+    async function finished(index, made, alive) {
+        const file = await dressed(index, made, alive);
+        return file === null ? null : turned(index, file, alive);
+    }
+
+    // source: 'photo' or 'image' (made from the picture `photo`: photoPlan), 'ai' (made from the description: aiPlan); none:
+    // the engine's views of the description.
+    async function start(description, {loras: selectedLoras, source = '', photo = '', closeUp: face = '', outfit: wear = '', outfitImage = ''} = {}) {
         description = String(description || '').trim();
+        if (photo && !source) source = 'photo';
         if (photo && !description) description = PHOTO_WHO;
-        if (state.running || disposed || !description) return;
+        if (state.running || disposed || !description || (source && source !== 'ai' && !photo)) return;
         closeUp = photo ? face : '';
-        if (photo && (photo !== state.photo || wear !== outfit || outfitImage !== state.outfit)) { plan = null; emit({photo, outfit: outfitImage}); outfit = wear; for (const row of state.pictures) if (row.file && !row.original) onDiscard(row.file); emit({pictures: fresh(), description: ''}); }
+        // Another source, picture or clothes: the set starts again and the pictures made before go.
+        const asked = source ? JSON.stringify([source, photo, wear, outfitImage]) : '';
+        if (source && asked !== inputs) { inputs = asked; plan = null; dropClothes(); given = outfitImage; emit({photo, outfit: outfitImage}); outfit = wear; for (const row of state.pictures) if (row.file && !row.original) onDiscard(row.file); emit({pictures: fresh(), description: ''}); }
         // After a failure the same description goes on from the picture that failed.
         const resume = !!state.error && description === state.description && plan && !done()
             && JSON.stringify(selectedLoras) === JSON.stringify(loras);
         const current = ++epoch;
         const alive = () => current === epoch && !disposed;
         if (!resume) {
-            seed = randomSeed(); plan = null; seeds.length = 0; loras = structuredClone(selectedLoras);
+            seed = randomSeed(); plan = null; seeds.length = 0; dropClothes(); loras = structuredClone(selectedLoras);
             // Generating all again replaces every picture: the ones made before are let go (deleted by the caller).
             for (const row of state.pictures) if (row.file && !row.original) onDiscard(row.file);
         }
@@ -163,22 +343,35 @@ export function createCastGenerator({client, kind = 'character', views = null, f
             if (!plan) {
                 plan = await client.castViews(description, kind);
                 if (scene) plan = names.map(() => plan[0]);
-                if (state.photo) {
+                if (source) {
                     // The close-up's model from the engine's newest list (a model may have finished installing since the page opened).
                     let faceModel = '';
                     try { faceModel = photoFaceModel(await client.info?.()); } catch { /* none named: the engine's own choice */ }
                     if (!alive()) return;
-                    const made = photoPlan(plan, outfit, {outfitImage: !!state.outfit, frontAsThird, faceModel});
+                    // Described clothes, where the close-up can be repainted: drawn as a clothes picture first, then the set
+                    // is made as with a clothes picture, the words kept as details.
+                    const drawn = source !== 'ai' && !!outfit && !state.outfit && !!dressMask && faceModel === PHOTO_FACE_MODELS.qwen;
+                    if (drawn) clothes = {words: outfit, file: ''};
+                    const made = source === 'ai' ? aiPlan(plan, description, {outfitImage: !!state.outfit, faceModel})
+                        : photoPlan(plan, outfit, {outfitImage: !!state.outfit || drawn, frontAsThird, faceModel, style: source === 'image'});
                     plan = names.map(name => made.find(view => view.view === name)).filter(Boolean);
                 }
                 if (!alive()) return;
             }
+            if (clothes && !clothes.file) {
+                emit({current: 0});
+                const file = await drawClothes(alive);
+                if (file === null || !alive()) return;
+                clothes.file = file; emit({outfit: file, extras: [file]});
+            }
             for (let index = 0; index < plan.length; index++) {
                 if (state.pictures[index].file) continue;
                 emit({current: index});
-                const file = await runOne(index, alive);
-                if (file === null || !alive()) return;
+                const made = await runOne(index, alive);
+                if (made === null || !alive()) return;
                 job = null;
+                const file = await finished(index, made, alive);
+                if (file === null || !alive()) return;
                 setPicture(index, {file, fraction: 1});
             }
             emit({running: false, current: -1, waiting: ''});
@@ -194,7 +387,7 @@ export function createCastGenerator({client, kind = 'character', views = null, f
 
     function stop() {
         const id = job; job = null;
-        ++epoch; unschedule(timer); timer = null; plan = null;
+        ++epoch; unschedule(timer); timer = null; plan = null; clothes = null;
         // A stopped run is dropped whole: the next Generate starts again from the description.
         emit({running: false, current: -1, waiting: '', error: '', report_id: null, pictures: fresh()});
         return id ? cancelJob(id) : Promise.resolve();
@@ -214,9 +407,12 @@ export function createCastGenerator({client, kind = 'character', views = null, f
         setPicture(index, {file: '', fraction: 0, original: false});
         emit({running: true, current: index, error: '', report_id: null, waiting: ''});
         try {
-            const file = await runOne(index, alive);
+            const made = await runOne(index, alive);
+            if (made === null || !alive()) return;
+            job = null;
+            const file = await finished(index, made, alive);
             if (file === null || !alive()) return;
-            job = null; setPicture(index, {file, fraction: 1});
+            setPicture(index, {file, fraction: 1});
             if (before.file && !before.original) onDiscard(before.file);
             emit({running: false, current: -1, waiting: ''});
         } catch (error) {

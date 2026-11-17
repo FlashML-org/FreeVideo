@@ -1,23 +1,29 @@
-// "From a photo" page of the new-character dialog: one photo of a real person becomes a character sheet in the order of
-// the final picture, face close-up | front | side | back, keeping the person's face. The face close-up is made from the
-// photo first (Qwen-Image 2.1 when it is ready); the front, side and back are made from the photo and that close-up, the
-// side and back also from the front. Clothes stay as in the photo, follow a description, or follow a clothes picture.
-// Save puts the four views and one 1 × 4 sheet of them on the card.
+// The four views of a new character, from one of three sources, in the order of the final picture: face close-up | front |
+// side | back, and one 1 × 4 sheet of them.
+//   photo: a photo of a real person. The face close-up is made from the photo first (Qwen-Image 2.1 when it is ready); the
+//          front, side and back are made from the photo and that close-up, the side and back also from the front.
+//   image: any picture of a character (a drawing, a render, a photo): the same steps, in the picture's own style.
+//   ai:    a description. The front is made first (from the words, or wearing a clothes picture), then the face close-up
+//          from the front, then the side and back from the close-up and the front.
+// Clothes stay as in the picture, follow a description, or follow a clothes picture. Every finished view opens in the
+// image editor on click (the edit takes its place on the sheet and the card) and can be drawn again on its own.
+// Save puts the sheet, the four views and the source picture on the card.
 //
-// Privacy: everything stays on this computer. The photo and the clothes picture go to the local image engine only when
-// Generate is pressed. Views made here are hidden from the picture lists while they are drafts and after they belong to
-// a card (freevideo.cast.files); views replaced by drawing again, and every unsaved view when the dialog closes, the page
-// is left or the tab closes, are deleted at once (keepalive, so a closing tab still deletes them).
+// Privacy: everything stays on this computer. The pictures go to the local image engine only when Generate is pressed.
+// Views made here are hidden from the picture lists while they are drafts and after they belong to a card
+// (freevideo.cast.files); views replaced by drawing again, and every unsaved view when the dialog closes, the page is
+// left or the tab closes, are deleted at once (keepalive, so a closing tab still deletes them).
 import {createImageGenClient, imagePackUnavailableMessage, renderImageFailure, IMAGE_GEN_INFO_POLL_MS} from './image_generation.js';
 import {createCastGenerator} from './cast_generate.js';
-import {faceCloseUp} from './cast_face_crop.js';
+import {faceCloseUp, dressMaskFile, facesCamera, repaintTook} from './cast_face_crop.js';
 import {createOtherUsageNotice} from './other_usage.js';
 
-// Generation order: the face close-up first (from the photo alone), then the front, side and back from the photo and
-// that close-up. The order on screen and on the sheet is the same.
-const MAKE = Object.freeze(['face', 'front', 'side', 'back']);
+// Generation order per source; the order on screen and on the sheet is SHOW. The first view made is the one the others
+// are drawn from (the face from a picture; the front from a description).
+const MAKE = Object.freeze({photo: Object.freeze(['face', 'front', 'side', 'back']), image: Object.freeze(['face', 'front', 'side', 'back']),
+    ai: Object.freeze(['front', 'face', 'side', 'back'])});
 const SHOW = Object.freeze(['face', 'front', 'side', 'back']);
-const VIEW_TITLES = Object.freeze({front: ['Front', '正面'], side: ['Side', '侧面'], back: ['Back', '背面'], face: ['Face', '脸部']});
+const VIEW_TITLES = Object.freeze({front: ['Front', '正面'], side: ['Side', '侧面'], back: ['Back', '背面'], face: ['Face', '脸部特写']});
 // The sheet: the cast sheet's rules (equal height, light grey ground, 48 px gaps, each picture whole and centred), one
 // row of four, the face cell 1.4 times as wide as a full-body cell.
 const SHEET = Object.freeze({body: [736, 1302], face: [1030, 1302], gap: 48, ground: 'rgb(238 238 238)'});
@@ -52,17 +58,39 @@ export function photoClient(client, references = new Map(), purpose = () => '') 
     }};
 }
 
-export function mountCastPhoto({container, api, text, viewURL, onState = () => {}, fetchApi, client}) {
+// The words of each source: the picture slot, the main action's tip, what is missing before Generate, and the button that
+// redraws the rest after the first view changed.
+function wordsOf(source, tr) {
+    if (source === 'ai') return {
+        use: tr('Make the face close-up, front, side and back from the description', '按描述生成脸部特写、正面、侧面和背面'),
+        rest: [tr('Redraw the others to match', '按新正面重画其余三张'), tr('Make the face close-up, side and back again from the new front', '用新的正面重新生成脸部特写、侧面和背面')]};
+    const image = source === 'image';
+    return {
+        slot: image ? [tr('Picture of the character', '角色图片'), tr('Add a picture', '添加图片'), tr('Drop a picture of the character here, or choose one', '把角色图片拖到这里，或点击选择'),
+            tr('One clear picture of the character, in any style; the views keep its style', '一张清晰的角色图片，任何画风都可以，各视角保持原图风格')]
+            : [tr('Photo of the person', '人物照片'), tr('Add a photo', '添加照片'), tr('Drop a photo of the person here, or choose one', '把人物照片拖到这里，或点击选择'),
+                tr('One clear photo of the person; the face decides the likeness', '一张清晰的人物照片，长相以脸部为准')],
+        first: image ? tr('Add a picture first', '先添加图片') : tr('Add a photo first', '先添加照片'),
+        use: image ? tr('Make the four views from the picture, in its style', '用图片按原图风格生成四个视角') : tr('Make the four views from the photo', '用照片生成四个视角'),
+        keep: image ? tr('Dress the views as in the picture', '各视角保持图片里的服装') : tr('Dress the views as in the photo', '各视角保持照片里的服装'),
+        original: image ? [tr('Use the picture', '用原图'), tr('Put the picture itself in as the face close-up', '把原图作为脸部特写')]
+            : [tr('Use the photo', '用原照片'), tr('Put the photo itself in as the face close-up', '把原照片作为脸部特写')],
+        rest: [tr('Redraw the others to match', '按新脸重画其余三张'), tr('Make the front, side and back again from the new face', '用新的脸部特写重新生成正面、侧面和背面')]};
+}
+
+// source: 'photo' | 'image' | 'ai' (see the top of this file).
+export function mountCastPhoto({container, api, text, viewURL, onState = () => {}, fetchApi, client, source = 'photo'}) {
     const tr = text || (en => en);
     const fetcher = fetchApi || (api ? api.fetchApi.bind(api) : globalThis.fetch.bind(globalThis));
     client = client || createImageGenClient(fetcher);
+    const ai = source === 'ai', make = MAKE[source] || MAKE.photo, base = make[0], words = wordsOf(source, tr);
     // Deletes go out with keepalive, so the ones sent as the tab closes still reach the engine.
     const keeper = createImageGenClient((url, options = {}) => fetcher(url, options.method === 'POST' ? {...options, keepalive: true} : options));
     for (const name of ['./cast_generate.css', './cast_photo.css']) {
         const href = new URL(name, import.meta.url).href;
         if (!document.querySelector(`link[href="${href}"]`)) { const css = el('link'); css.rel = 'stylesheet'; css.href = href; document.head.append(css); }
     }
-    const root = el('div', 'fv-cg fv-cp'); root.dataset.mode = 'photo';
+    const root = el('div', 'fv-cg fv-cp'); root.dataset.mode = source;
     const body = el('div', 'fv-cg-body'), side = el('div', 'fv-cg-side');
 
     // A picture slot (the photo, the clothes picture): empty → choose or drop; filled → click edits it in the image
@@ -122,34 +150,57 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
             dispose: () => { if (record) { URL.revokeObjectURL(record.url); if (record.original) URL.revokeObjectURL(record.original.url); } }};
     }
 
-    const photoSlot = slot({label: tr('Photo of the person', '人物照片'), empty: [tr('Add a photo', '添加照片'), tr('Drop a photo of the person here, or choose one', '把人物照片拖到这里，或点击选择')],
-        use: tr('One clear photo of the person; the face decides the likeness', '一张清晰的人物照片，长相以脸部为准'), onChange: () => { photoRef = ''; render(); }});
-    photoSlot.element.classList.add('fv-cp-photo');
-    // Clothes: as in the photo, as described, or as in a clothes picture (with words for details if wanted).
+    // The source: a picture slot, or the description of the character.
+    const photoSlot = ai ? null : slot({label: words.slot[0], empty: [words.slot[1], words.slot[2]], use: words.slot[3], onChange: () => { photoRef = ''; render(); }});
+    photoSlot?.element.classList.add('fv-cp-photo');
+    const describe = ai ? el('textarea', 'fv-cg-text fv-cp-describe') : null;
+    if (describe) {
+        describe.placeholder = tr('Describe the character', '描述角色'); describe.setAttribute('aria-label', describe.placeholder); describe.maxLength = 1000;
+        describe.addEventListener('input', () => { if (attention) attention = ''; render(); });
+        // Enter is a new line; Ctrl/Cmd+Enter generates.
+        describe.addEventListener('keydown', event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !generator.state().running) { event.preventDefault(); void begin(); } });
+    }
+    // The LoRA picker of image generation, for a description (its trigger words go into the description).
+    let picker = null;
+    // Clothes: as in the picture, as described, or as in a clothes picture (with words for details if wanted). From a
+    // description the clothes are in the description, or in a clothes picture.
     const wear = el('div', 'fv-cp-wear'); wear.setAttribute('role', 'radiogroup'); wear.setAttribute('aria-label', tr('Clothes', '服装'));
-    const modes = [['keep', tr('Keep clothes', '保持服装'), tr('Dress the views as in the photo', '各视角保持照片里的服装')],
-        ['text', tr('Describe', '按描述更换'), tr('Dress the views as described', '各视角按描述更换服装')],
-        ['image', tr('Picture', '上传服装图'), tr('Dress the views in the clothes of a picture', '各视角换上服装图里的衣服')]];
+    const modes = ai ? [['text', tr('As described', '按描述'), tr('Dress the character as the description says', '按描述里的服装生成')],
+        ['image', tr('Picture', '上传服装图'), tr('Dress the character in the clothes of a picture', '换上服装图里的衣服')]]
+        : [['keep', tr('Keep clothes', '保持服装'), words.keep],
+            ['text', tr('Describe', '按描述更换'), tr('Dress the views as described', '各视角按描述更换服装')],
+            ['image', tr('Picture', '上传服装图'), tr('Dress the views in the clothes of a picture', '各视角换上服装图里的衣服')]];
+    wear.dataset.count = String(modes.length);
     const modeButtons = modes.map(([value, name, use]) => { const b = el('button', null, name); b.type = 'button'; b.setAttribute('role', 'radio'); b.dataset.value = value; tip(b, name, use); b.onclick = () => setWear(value); wear.append(b); return b; });
     const outfitSlot = slot({label: tr('Clothes picture', '服装图'), empty: [tr('Add a clothes picture', '添加服装图'), tr('Drop it here, or choose one', '拖到这里，或点击选择')],
         use: tr('A picture of the clothes to wear', '要换上的服装图片'), onChange: () => { outfitRef = ''; render(); }});
     outfitSlot.element.classList.add('fv-cp-outfit-slot');
-    const field = el('textarea', 'fv-cg-text fv-cp-outfit'); field.maxLength = 400; field.rows = 2;
-    field.setAttribute('aria-label', tr('Clothes', '服装'));
+    const field = ai ? null : el('textarea', 'fv-cg-text fv-cp-outfit');
+    if (field) { field.maxLength = 400; field.rows = 2; field.setAttribute('aria-label', tr('Clothes', '服装')); }
     const note = el('div', 'fv-cg-note'); note.setAttribute('role', 'status');
     const foot = el('div', 'fv-cg-foot'); foot.append(note);
-    // After a new face (drawn again, or the photo itself), the other three can follow it; never on their own.
-    const rest = el('button', 'fv-cp-tool fv-cp-rest', tr('Redraw the others to match', '按新脸重画其余三张')); rest.type = 'button'; rest.hidden = true;
-    tip(rest, tr('Redraw the others to match', '按新脸重画其余三张'), tr('Make the front, side and back again from the new face', '用新的脸部特写重新生成正面、侧面和背面'));
+    // After a new first view (the face from a picture, the front from a description: drawn again, edited, or the picture
+    // itself), the other three can follow it; never on their own.
+    const rest = el('button', 'fv-cp-tool fv-cp-rest', words.rest[0]); rest.type = 'button'; rest.hidden = true;
+    tip(rest, words.rest[0], words.rest[1]);
     let faceChanged = false;
     rest.onclick = async () => {
         faceChanged = false; render();
         // An edited face (and front) is uploaded once and stands in for the made one as the reference.
         for (const view of ['face', 'front']) if (edits[view] && !edits[view].ref) { try { edits[view].ref = await referenceOf({file: edits[view].file}); generator.setOverride(view, edits[view].ref); } catch { /* the made picture stays the reference */ } }
-        for (const view of ['front', 'side', 'back']) { if (disposed) return; if (view !== 'front' || !edits.front) await redraw(view); }
+        // The others in the order they are made; an edited face or front stays as edited.
+        for (const view of make.slice(1)) { if (disposed) return; if (!((view === 'face' || view === 'front') && edits[view])) await redraw(view); }
     };
     foot.append(rest);
-    side.append(photoSlot.element, wear, outfitSlot.element, field, foot);
+    if (ai) {
+        const row = el('div', 'fv-cg-row');
+        side.append(describe, row, wear, outfitSlot.element, foot);
+        import('./image_lora.js').then(({createImageLoras}) => {
+            if (disposed) return;
+            picker = createImageLoras({t: tr, fetchApi: fetcher, getPrompt: () => describe.value, setPrompt: words => { describe.value = words; }, onChange: () => render()});
+            row.append(picker.element); render();
+        }).catch(() => { /* no LoRA picker: the views are made without LoRAs */ });
+    } else side.append(photoSlot.element, wear, outfitSlot.element, field, foot);
     // The views, in the order of the sheet; the face cell is wider. A finished view opens in the image editor on click;
     // on hover it offers Draw again (and Use the photo on the face), and Restore after an edit.
     const grid = el('div', 'fv-cg-views');
@@ -164,10 +215,10 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
         const tools = el('div', 'fv-cp-cell-tools');
         const tool = (name, use, run) => { const b = el('button', 'fv-cp-tool', name); b.type = 'button'; tip(b, name, use); b.addEventListener('click', event => { event.stopPropagation(); run(); }); tools.append(b); return b; };
         const again = tool(tr('Draw again', '重画'), tr('Make this view again; the others stay', '重新生成这个视角，其余不变'), () => void redraw(view));
-        const usePhoto = view === 'face' ? tool(tr('Use the photo', '用原照片'), tr('Put the photo itself in as the face close-up', '把原照片作为脸部特写'), () => {
+        const usePhoto = view === 'face' && !ai ? tool(words.original[0], words.original[1], () => {
             if (!photoSlot.get()) return; dropEdit('face'); generator.useOriginal(ORIGINAL); faceChanged = true; render();
         }) : null;
-        const restore = tool(tr('Restore', '恢复原图'), tr('Put the picture back as it was made', '换回生成时的样子'), () => { dropEdit(view); if (view === 'face' || view === 'front') faceChanged = true; render(); });
+        const restore = tool(tr('Restore', '恢复原图'), tr('Put the picture back as it was made', '换回生成时的样子'), () => { dropEdit(view); if (leads(view)) faceChanged = true; render(); });
         cell.append(image, label, edited, percent, meter, tools); grid.append(cell);
         tip(cell, title, tr('Click to edit it in the image editor', '点击在图像编辑器中修改'));
         const open = () => { if (cell.dataset.state === 'done' && !generator.state().running) void editView(view); };
@@ -175,12 +226,15 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
         cell.addEventListener('keydown', event => { if ((event.key === 'Enter' || event.key === ' ') && event.target === cell) { event.preventDefault(); open(); } });
         return [view, {cell, image, percent, fill, title, edited, again, usePhoto, restore}];
     }));
-    const sourceOf = view => { const r = pictureOf(view) || {}; return r.file ? (r.original ? photoSlot.get()?.url || '' : viewURL(r.file)) : ''; };
+    // A change to these views is one the others can be redrawn from: the face and the front from a picture; the front
+    // from a description.
+    const leads = view => ai ? view === 'front' : view === 'face' || view === 'front';
+    const sourceOf = view => { const r = pictureOf(view) || {}; return r.file ? (r.original ? photoSlot?.get()?.url || '' : viewURL(r.file)) : ''; };
     const dropEdit = view => { const e = edits[view]; if (!e) return; URL.revokeObjectURL(e.url); delete edits[view]; generator.setOverride(view, ''); };
     async function redraw(view) {
         dropEdit(view);
-        await generator.redo(MAKE.indexOf(view));
-        if (view === 'face' && generator.state().pictures[0].file) { faceChanged = true; render(); }
+        await generator.redo(make.indexOf(view));
+        if (view === base && generator.state().pictures[0].file) { faceChanged = true; render(); }
     }
     // A view opens in the image editor; the edited picture takes its place on the card (marked, and Restore puts the
     // made one back). An edited face or front is what the others are redrawn from.
@@ -192,12 +246,12 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
                 role: 'reference', t: tr, resolve: url => url, upload: async blob => client.upload(blob), imageGenClient: client});
         } catch { attention = tr('This picture cannot be edited right now.', '这张图暂时无法编辑。'); render(); return; }
         if (!outcome || disposed) return;
-        if (outcome.restore) { dropEdit(view); if (view === 'face' || view === 'front') faceChanged = true; render(); return; }
+        if (outcome.restore) { dropEdit(view); if (leads(view)) faceChanged = true; render(); return; }
         if (!outcome.blob) return;
         dropEdit(view);
         const file = new File([outcome.blob], outcome.name || `${view}-edited.png`, {type: outcome.blob.type || 'image/png'});
         edits[view] = {file, url: URL.createObjectURL(file), edit: outcome.edit || null};
-        if (view === 'face' || view === 'front') faceChanged = true;
+        if (leads(view)) faceChanged = true;
         render();
     }
     body.append(side, grid); root.append(body); container.append(root);
@@ -205,7 +259,7 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
     // The main action lives in the dialog's own button row (the host places it): Generate, Stop, then Generate all again.
     const action = el('button', 'fv-cp-action'); action.type = 'button';
 
-    let photoRef = '', outfitRef = '', mode = 'keep', info = null, infoTimer = null, disposed = false, failureKey = null, attention = '', last = '';
+    let photoRef = '', outfitRef = '', mode = ai ? 'text' : 'keep', info = null, infoTimer = null, disposed = false, failureKey = null, attention = '', last = '';
     // references: what this dialog uploaded to the image engine (name → used by a generation).
     const made = new Set(), saved = new Set(), references = new Map();
     let cardSaved = false;
@@ -235,34 +289,48 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
     // Views as drafts when the engine offers them: the same generate call with the purpose.
     const draftClient = photoClient(client, references, () => drafts ? 'cast-draft' : '');
     const otherUsage = createOtherUsageNotice(side, tr, fetcher);
-    const generator = createCastGenerator({client: draftClient, kind: 'character', views: MAKE, beforeGenerate: query => otherUsage.check(query), onDiscard: discard,
+    // New clothes: the made close-up's collar and shoulders are repainted under a mask drawn from its face box.
+    // The masks drawn here (uploaded name → file), so a repaint can be checked against its own mask.
+    const masks = new Map();
+    const dressMask = async file => { const mask = await dressMaskFile({client, fetcher, name: file}); if (!mask) return ''; const name = await referenceOf({file: mask}); masks.set(name, mask); return name; };
+    const dressTook = (before, after, mask) => masks.has(mask) ? repaintTook({before: viewURL(before), after: viewURL(after), mask: masks.get(mask)}) : true;
+    // A back that came out facing the camera (face-box finds a face looking at it) is drawn once more.
+    const facing = file => facesCamera({client, fetcher, name: file});
+    const generator = createCastGenerator({client: draftClient, kind: 'character', views: make, dressMask, dressTook, facing, beforeGenerate: query => otherUsage.check(query), onDiscard: discard,
         onChange: state => {
-            const fresh = state.pictures.filter(r => r.file && !r.original && !made.has(r.file)).map(r => r.file);
+            // The views, and pictures made on the way (the clothes picture drawn from described clothes): hidden from the
+            // picture lists and deleted with the unsaved views.
+            const fresh = [...state.pictures.filter(r => r.file && !r.original).map(r => r.file), ...(state.extras || [])].filter(file => !made.has(file));
             for (const file of fresh) made.add(file);
             if (fresh.length && !drafts) markCastFiles(fresh.filter(file => /^freevideo-image\//.test(file)));
             render(state);
         }});
 
-    function setWear(value) { mode = value; render(); if (value === 'text') field.focus(); }
+    function setWear(value) { mode = value; render(); if (value === 'text' && field) field.focus(); }
     function missing() { return info && !info.installed && !info.ready; }
-    const pictureOf = view => generator.state().pictures[MAKE.indexOf(view)];
+    const pictureOf = view => generator.state().pictures[make.indexOf(view)];
     function render(state = generator.state()) {
         const running = state.running, isMissing = missing(), finished = generator.done() && !running;
         root.dataset.state = isMissing ? 'missing' : running ? 'running' : finished ? 'done' : state.error ? 'failed' : 'idle';
-        photoSlot.disable(running); outfitSlot.disable(running); for (const b of modeButtons) { b.disabled = running; b.setAttribute('aria-checked', String(b.dataset.value === mode)); }
+        photoSlot?.disable(running); outfitSlot.disable(running); for (const b of modeButtons) { b.disabled = running; b.setAttribute('aria-checked', String(b.dataset.value === mode)); }
+        if (describe) describe.readOnly = running;
+        if (picker) picker.element.inert = running;
         outfitSlot.element.hidden = mode !== 'image';
-        field.hidden = mode === 'keep'; field.readOnly = running;
-        field.placeholder = mode === 'image' ? tr('Details to add, if any (optional)', '可补充细节（选填）') : tr('Describe the clothes, e.g. a navy wool coat over a white shirt', '描述服装，例如：白衬衫外穿藏青色羊毛大衣');
+        if (field) {
+            field.hidden = mode === 'keep'; field.readOnly = running;
+            field.placeholder = mode === 'image' ? tr('Details to add, if any (optional)', '可补充细节（选填）') : tr('Describe the clothes, e.g. a navy wool coat over a white shirt', '描述服装，例如：白衬衫外穿藏青色羊毛大衣');
+        }
         // Shown or hidden by the dialog (only on this tab); missing image models hide it from here.
         action.dataset.missing = String(!!isMissing);
         action.textContent = running ? tr('Stop', '停止') : finished ? tr('Generate all again', '重新生成全部') : tr('Generate', '生成');
         action.dataset.primary = String(!running && !finished);
-        const why = !photoSlot.get() ? tr('Add a photo first', '先添加照片') : mode === 'image' && !outfitSlot.get() ? tr('Add a clothes picture first', '先添加服装图')
+        const why = ai ? (!describe.value.trim() ? tr('Describe the character first', '先描述角色') : mode === 'image' && !outfitSlot.get() ? tr('Add a clothes picture first', '先添加服装图') : '')
+            : !photoSlot.get() ? words.first : mode === 'image' && !outfitSlot.get() ? tr('Add a clothes picture first', '先添加服装图')
             : mode === 'text' && !field.value.trim() ? tr('Describe the clothes first', '先描述服装') : '';
         if (why && !running) { action.setAttribute('aria-disabled', 'true'); action.dataset.fvTipWhy = why; } else { action.removeAttribute('aria-disabled'); delete action.dataset.fvTipWhy; }
-        tip(action, action.textContent, running ? tr('Stop making the views', '停止生成') : tr('Make the four views from the photo', '用照片生成四个视角'));
+        tip(action, action.textContent, running ? tr('Stop making the views', '停止生成') : words.use);
         for (const view of SHOW) {
-            const c = cells[view], r = pictureOf(view) || {}, index = MAKE.indexOf(view), active = running && index === state.current && !r.file;
+            const c = cells[view], r = pictureOf(view) || {}, index = make.indexOf(view), active = running && index === state.current && !r.file;
             const src = r.file ? edits[view]?.url || sourceOf(view) : '';
             if (c.image.getAttribute('src') !== src) src ? c.image.src = src : c.image.removeAttribute('src');
             c.cell.dataset.state = r.file ? 'done' : active ? 'running' : 'empty'; c.cell.dataset.original = String(!!r.original);
@@ -284,11 +352,11 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
         note.hidden = !note.textContent && !note.firstChild; note.dataset.failed = String(!!state.error);
         rest.hidden = !faceChanged || running || !state.pictures.slice(1).some(row => row.file); rest.disabled = running;
         const count = state.pictures.filter(r => r.file).length, fraction = running && state.current >= 0 ? state.pictures[state.current]?.fraction || 0 : 0;
-        const progress = generator.done() ? 1 : (count + fraction) / MAKE.length;
+        const progress = generator.done() ? 1 : (count + fraction) / make.length;
         const summary = JSON.stringify([running, finished, Math.round(progress * 100)]);
         if (summary !== last) { last = summary; onState({busy: running, progress, done: finished}); }
     }
-    field.addEventListener('input', () => { if (attention) attention = ''; render(); });
+    field?.addEventListener('input', () => { if (attention) attention = ''; render(); });
     async function referenceOf(record) {
         return draftClient.upload(record.file);
     }
@@ -306,13 +374,16 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
         if (action.getAttribute('aria-disabled') === 'true') { attention = action.dataset.fvTipWhy || ''; render(); return; }
         attention = ''; render();
         try {
-            if (!photoRef) photoRef = await referenceOf(photoSlot.get());
-            await closeUpOf(photoRef);
+            if (!ai) { if (!photoRef) photoRef = await referenceOf(photoSlot.get()); await closeUpOf(photoRef); }
             if (mode === 'image' && !outfitRef) outfitRef = await referenceOf(outfitSlot.get());
         } catch (error) { attention = error.message || tr('Could not read this picture. Please choose another one.', '无法读取这张图片，请换一张。'); render(); return; }
         if (disposed) return;
         for (const name of [photoRef, closeUp.name, mode === 'image' ? outfitRef : '']) if (name && references.has(name)) references.set(name, true);
-        void generator.start('', {photo: photoRef, closeUp: closeUp.name, outfit: mode === 'keep' ? '' : field.value, outfitImage: mode === 'image' ? outfitRef : ''});
+        const outfitImage = mode === 'image' ? outfitRef : '';
+        if (ai) {
+            const selected = picker ? picker.value() : [];
+            void generator.start(describe.value, {source, outfitImage, ...(selected.length ? {loras: selected} : {})});
+        } else void generator.start('', {source, photo: photoRef, closeUp: closeUp.name, outfit: mode === 'keep' ? '' : field.value, outfitImage});
     }
     action.onclick = () => generator.state().running ? void generator.stop() : void begin();
     async function checkInfo() {
@@ -333,6 +404,7 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
     window.addEventListener('pagehide', leaving);
 
     async function picture(src) { const blob = await (await fetch(src)).blob(); return createImageBitmap(blob); }
+    const shownFile = view => { const r = pictureOf(view); return edits[view]?.file || (r.original ? photoSlot.get().file : r.file); };
     async function sheet() {
         const {body: [bw, bh], face: [fw], gap, ground} = SHEET;
         const width = fw + 3 * bw + 5 * gap, height = bh + 2 * gap;
@@ -350,27 +422,28 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
         return new File([blob], 'character-sheet.png', {type: 'image/png'});
     }
 
-    setWear('keep'); render(); void checkInfo();
+    setWear(mode); render(); void checkInfo();
     return {
         action,
-        // The sheet, the four views, and the photo itself unless it already is the front (the card keeps what it was made from).
+        // The sheet, the four views, and the source picture unless it already is one of them (the card keeps what it was
+        // made from). From a description there is no source picture.
         async getPictures() {
             const state = generator.state();
             if (!generator.done() || state.running) return [];
-            const views = SHOW.map(view => { const r = pictureOf(view); return {file: edits[view]?.file || (r.original ? photoSlot.get().file : r.file), label: view}; });
-            const extra = photoSlot.get() && !pictureOf('front').original ? [{file: photoSlot.get().file, label: 'other'}] : [];
+            const views = SHOW.map(view => ({file: shownFile(view), label: view}));
+            const extra = photoSlot?.get() && !SHOW.some(view => pictureOf(view)?.original) ? [{file: photoSlot.get().file, label: 'other'}] : [];
             return [{file: await sheet(), label: 'sheet'}, ...views, ...extra];
         },
         // The card keeps the made views it shows; a view replaced by its edit is let go like any unsaved one.
-        markSaved() { cardSaved = true; generator.state().pictures.forEach((r, at) => { if (r.file && !edits[MAKE[at]]) saved.add(r.file); }); },
+        markSaved() { cardSaved = true; generator.state().pictures.forEach((r, at) => { if (r.file && !edits[make[at]]) saved.add(r.file); }); },
         isBusy: () => generator.state().running,
         cancel: () => generator.stop(),
         destroy() {
-            disposed = true; clearTimeout(infoTimer); otherUsage.dispose(); window.removeEventListener('pagehide', leaving);
+            disposed = true; clearTimeout(infoTimer); otherUsage.dispose(); picker?.dispose(); window.removeEventListener('pagehide', leaving);
             // Cancel, close, Esc: the views made here and not saved are deleted.
             leaving();
             for (const view of Object.keys(edits)) dropEdit(view);
-            void generator.dispose(); photoSlot.dispose(); outfitSlot.dispose(); action.remove(); root.remove();
+            void generator.dispose(); photoSlot?.dispose(); outfitSlot.dispose(); action.remove(); root.remove();
         },
         element: root,
     };

@@ -64,3 +64,79 @@ export async function faceCloseUp({client, fetcher, name, file}) {
         } finally { bitmap.close?.(); }
     } catch { return null; }
 }
+
+// New clothes on a finished face close-up: the part to repaint (white = change), or null to leave the close-up as it is.
+// Everything from the level of the mouth down except the face: the face is an ellipse in its box, kept with a margin
+// wider than the engine's grown, feathered edge (24 + 16 px), so the face, the jaw and the chin keep their own pixels
+// while the neck, the collar and a hood or high collar beside the jaw are repainted. top: where the part starts, in
+// face-box heights below the box's top; margin: px kept around the face ellipse.
+export const DRESS_MASK = Object.freeze({top: .6, margin: 44});
+export function dressMask(width, height, faces) {
+    if (!(width > 0 && height > 0) || !Array.isArray(faces)) return null;
+    const usable = faces.filter(face => Array.isArray(face?.box) && face.box.length === 4 && face.box.every(Number.isFinite)
+        && face.box[2] > face.box[0] && face.box[3] > face.box[1]);
+    if (!usable.length) return null;
+    const area = face => (face.box[2] - face.box[0]) * (face.box[3] - face.box[1]);
+    const [x0, y0, x1, y1] = usable.reduce((best, face) => area(face) > area(best) ? face : best).box;
+    const keep = {cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, rx: (x1 - x0) / 2 + DRESS_MASK.margin, ry: (y1 - y0) / 2 + DRESS_MASK.margin};
+    const top = Math.round(y0 + DRESS_MASK.top * (y1 - y0));
+    // Nothing to repaint when the kept face reaches the bottom.
+    if (keep.cy + keep.ry > height - 32) return null;
+    return {top, keep: Object.fromEntries(Object.entries(keep).map(([k, v]) => [k, Math.round(v)]))};
+}
+
+// Whether a repaint changed the clothes: the share of the mask's pixels that changed by more than `change` grey levels, on
+// copies a quarter the size. Measured on 9 repaints: the 7 that put on the new clothes changed 0.46-0.67 of them, the 2 that
+// kept the old ones (a green hoodie to be white) 0.02 and 0.05.
+export const DRESS_TOOK = Object.freeze({change: 40, share: .15, scale: .25});
+export async function repaintTook({before, after, mask}) {
+    try {
+        const bitmaps = await Promise.all([before, after].map(async url => createImageBitmap(await (await fetch(url)).blob())).concat([createImageBitmap(mask)]));
+        try {
+            const width = Math.max(1, Math.round(bitmaps[0].width * DRESS_TOOK.scale)), height = Math.max(1, Math.round(bitmaps[0].height * DRESS_TOOK.scale));
+            const [a, b, m] = bitmaps.map(bitmap => { const g = new OffscreenCanvas(width, height).getContext('2d'); g.drawImage(bitmap, 0, 0, width, height); return g.getImageData(0, 0, width, height).data; });
+            let inside = 0, changed = 0;
+            for (let i = 0; i < m.length; i += 4) {
+                if (m[i] < 128) continue;
+                inside++;
+                if (Math.max(Math.abs(a[i] - b[i]), Math.abs(a[i + 1] - b[i + 1]), Math.abs(a[i + 2] - b[i + 2])) > DRESS_TOOK.change) changed++;
+            }
+            return !inside || changed / inside >= DRESS_TOOK.share;
+        } finally { for (const bitmap of bitmaps) bitmap.close?.(); }
+    } catch { return true; }
+}
+
+// The mask for dressMask's part as a PNG file of the close-up's size (white = change), or null.
+export async function dressMaskFile({client, fetcher, name}) {
+    try {
+        const found = await findFaces(client, fetcher, name);
+        const part = found && dressMask(found.width, found.height, found.faces);
+        if (!part) return null;
+        const canvas = new OffscreenCanvas(found.width, found.height), g = canvas.getContext('2d'), {cx, cy, rx, ry} = part.keep;
+        g.fillStyle = '#000'; g.fillRect(0, 0, found.width, found.height);
+        g.fillStyle = '#fff'; g.fillRect(0, part.top, found.width, found.height - part.top);
+        g.fillStyle = '#000'; g.beginPath(); g.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI); g.fill();
+        return new File([await canvas.convertToBlob({type: 'image/png'})], 'mask.png', {type: 'image/png'});
+    } catch { return null; }
+}
+
+// A face toward the camera in face-box's answer (a back view that came out facing the camera): found surely, both eyes well
+// apart for the box, and the nose between them. Measured on 76 back views made from photos and descriptions: the 5 that face
+// the camera pass (score 1.00, eyes 0.45-0.48 of the box width apart, the nose 0.04-0.07 eye distances off their middle)
+// and none of the 20 other finds do (the back of the head, curls, a print or a head turned to the side: score 0.60-0.98,
+// eyes 0.02-0.34 of the box apart, or the nose 0.15 or more off).
+export const FRONTAL = Object.freeze({score: .9, eyes: .35, nose: .3});
+export function frontalFace(faces) {
+    return Array.isArray(faces) && faces.some(face => {
+        const box = face?.box, marks = face?.landmarks;
+        if (!(face?.score >= FRONTAL.score) || !Array.isArray(box) || box.length !== 4 || !Array.isArray(marks) || marks.length < 3
+            || !marks.slice(0, 3).every(point => Array.isArray(point) && point.length >= 2 && point.every(Number.isFinite))) return false;
+        const [[ax, ay], [bx, by], [nx]] = marks, width = box[2] - box[0], apart = Math.hypot(bx - ax, by - ay);
+        return width > 0 && apart >= FRONTAL.eyes * width && Math.abs(nx - (ax + bx) / 2) <= FRONTAL.nose * apart;
+    });
+}
+
+// Whether the made picture `name` shows a face toward the camera; false where the engine cannot tell (no face-box).
+export async function facesCamera({client, fetcher, name}) {
+    try { const found = await findFaces(client, fetcher, name); return !!found && frontalFace(found.faces); } catch { return false; }
+}

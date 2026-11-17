@@ -13,7 +13,8 @@ async function mountGenerator(options) {
     } catch { return null; }
 }
 
-// "From a photo" (characters only): one photo becomes the five views, keeping the person's face.
+// A character's four views and their 1 x 4 sheet (cast_photo.js), from a photo, an uploaded picture or a description
+// (options.source: 'photo' | 'image' | 'ai').
 async function mountPhoto(options) {
     try {
         const {mountCastPhoto} = await import('./cast_photo.js');
@@ -121,7 +122,12 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
     function openDialog(id = null) {
         if (disposed || !available) return;
         current?.close();
-        let closed = false, loading = !!id, saving = false, revision, active = 'upload', photoMaker = null, photoState = {busy: false, done: false};
+        let closed = false, loading = !!id, saving = false, revision, active = 'upload';
+        // A character's views are made on three tabs: From a photo, Upload images (a new character: from one picture, in
+        // its style; editing a character: the card's own pictures, by hand) and Generate with AI. Each maker owns its
+        // Generate button in the button row; Save waits for its four views.
+        const makers = {}, makerStates = {};
+        const keyOf = tab => scene ? '' : tab === 'upload' ? (!id && makers.image ? 'image' : '') : makers[tab] ? tab : '';
         let moved = false;
         let generator = null, aiState = {busy: false, done: false}, deleteTimer = null, confirming = false, frontless = scene, beyond = [];
         const slots = Array(SLOTS).fill(null), slotUI = [];
@@ -137,6 +143,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         const tabs = el('div', 'fv-cast-tabs'); tabs.setAttribute('role', 'tablist');
         tabs.setAttribute('aria-label', text('Images', '图片'));
         const uploadTab = button('', text('Upload images', '上传图片'), () => select('upload'));
+        const views4 = !scene;
         const aiTab = button('', text('Generate with AI', 'AI 生成'), () => select('ai')); aiTab.hidden = tabs.hidden = true;
         const photoTab = button('', text('From a photo', '从照片生成'), () => select('photo')); photoTab.hidden = true;
         for (const tab of [photoTab, uploadTab, aiTab]) tab.setAttribute('role', 'tab');
@@ -144,6 +151,8 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         const uploadPane = el('div', 'fv-cast-upload'), views = el('div', 'fv-cast-views');
         const aiPane = el('div', 'fv-cast-generate'); aiPane.hidden = true;
         const photoPane = el('div', 'fv-cast-generate fv-cast-photo'); photoPane.hidden = true;
+        const imagePane = el('div', 'fv-cast-generate fv-cast-photo'); imagePane.hidden = true;
+        if (views4) aiPane.classList.add('fv-cast-photo');
         const status = el('div', 'fv-cast-message'); status.setAttribute('role', 'status'); status.hidden = true;
         const actions = el('div', 'fv-cast-actions');
         const remove = button('fv-cast-delete', word(text('Delete character', '删除角色'), text('Delete scene', '删除场景'), text('Delete prop', '删除道具')), () => deleteCard()); remove.hidden = !id;
@@ -155,11 +164,13 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         tipOf(remove, remove.textContent, word(text('Delete this character from the library', '从角色库删除这个角色'), text('Delete this scene from the library', '从角色库删除这个场景'), text('Delete this prop from the library', '从角色库删除这个道具')));
         tipOf(cancel, text('Cancel', '取消'), text('Close without saving', '不保存，关闭'));
         tipOf(save, text('Save', '保存'), text('Keep it in the library to reuse with @', '存进角色库，之后用 @ 引用'));
-        tipOf(uploadTab, text('Upload images', '上传图片'), text('Use pictures from this computer', '用电脑上的图片'));
-        tipOf(aiTab, text('Generate with AI', 'AI 生成'), text('Make the pictures from a description', '按描述生成图片'));
-        tipOf(photoTab, text('From a photo', '从照片生成'), text('Make the five views from one photo of the person', '用一张人物照片生成五个视角'));
+        tipOf(uploadTab, text('Upload images', '上传图片'), views4 && !id ? text('Make the four views from one picture, in its style', '用一张图片按原图风格生成脸部特写、正面、侧面和背面')
+            : text('Use pictures from this computer', '用电脑上的图片'));
+        tipOf(aiTab, text('Generate with AI', 'AI 生成'), views4 ? text('Make the face close-up, front, side and back from a description', '按描述生成脸部特写、正面、侧面和背面')
+            : text('Make the pictures from a description', '按描述生成图片'));
+        tipOf(photoTab, text('From a photo', '从照片生成'), text('Make the face close-up, front, side and back from one photo of the person', '用一张人物照片生成脸部特写、正面、侧面和背面'));
         const issue = issueButton(text, () => ({where: CAST_ISSUE, message: status.textContent})); issue.hidden = true;
-        dialog.append(top, name, tabs, photoPane, uploadPane, aiPane, status, issue, actions); tabs.append(photoTab, uploadTab, aiTab);
+        dialog.append(top, name, tabs, photoPane, uploadPane, imagePane, aiPane, status, issue, actions); tabs.append(photoTab, uploadTab, aiTab);
 
         // A refresh notice is plain secondary text; only failures are shown as errors.
         const message = (content, notice = false) => {
@@ -167,13 +178,15 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
             status.textContent = content; status.hidden = !content; status.classList.toggle('fv-cast-notice', notice);
             issue.hidden = !content || notice;
         };
-        const aiBusy = () => aiState.busy || !!generator?.isBusy() || photoState.busy || !!photoMaker?.isBusy();
+        const aiBusy = () => aiState.busy || !!generator?.isBusy() || Object.keys(makers).some(key => makerStates[key]?.busy || makers[key]?.isBusy());
+        const makerMissing = {photo: text('Generate the views from the photo first', '先用照片生成各视角'),
+            image: text('Generate the views from the picture first', '先用图片生成各视角'), ai: text('Generate the images first', '先生成角色图片')};
         // What is still missing before Save works ('' when nothing is); the button says so on hover and when pressed.
         let missing = '';
         const missingNow = () => !name.value.trim() ? text('Enter a name first', '先填写名字')
-            : aiBusy() ? word(text('Wait for the five pictures to finish', '等待五张图生成完成'), text('Wait for the pictures to finish', '等待图片生成完成'))
+            : aiBusy() ? word(text('Wait for the four pictures to finish', '等待四张图生成完成'), text('Wait for the pictures to finish', '等待图片生成完成'))
+            : keyOf(active) ? makerStates[keyOf(active)]?.done ? '' : makerMissing[keyOf(active)]
             : active === 'upload' || scene ? (frontless ? slots.some(Boolean) : slots[0]) ? '' : frontless ? text('Add an image first', '先添加图片') : text('Add a front image first', '先添加正面图片')
-            : active === 'photo' ? photoState.done ? '' : text('Generate the views from the photo first', '先用照片生成各视角')
             : aiState.done ? '' : word(text('Generate the images first', '先生成角色图片'), text('Generate the images first', '先生成场景图片'), text('Generate the images first', '先生成道具图片'));
         function sync() {
             const busy = loading || saving;
@@ -182,11 +195,10 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
             const before = missing;
             missing = busy ? '' : missingNow();
             save.disabled = busy;
-            // From a photo: the page's Generate / Stop / Generate all again stands in the button row; Save shows once the views are done.
-            if (photoMaker?.action) {
-                const photo = active === 'photo';
-                photoMaker.action.hidden = !photo; save.hidden = photo && !photoState.done;
-            }
+            // A maker's Generate / Stop / Generate all again stands in the button row; Save shows once its views are done.
+            const current = keyOf(active);
+            for (const [key, maker] of Object.entries(makers)) if (maker?.action) maker.action.hidden = key !== current;
+            save.hidden = !!current && !makerStates[current]?.done;
             if (missing) { save.setAttribute('aria-disabled', 'true'); save.title = missing; save.dataset.fvTipWhy = missing; }
             else { save.removeAttribute('aria-disabled'); save.removeAttribute('title'); delete save.dataset.fvTipWhy; }
             if (before && before !== missing && status.textContent === before) message('');
@@ -213,7 +225,8 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         }
         function select(tab) {
             active = tab;
-            uploadPane.hidden = tab !== 'upload'; aiPane.hidden = tab !== 'ai'; photoPane.hidden = tab !== 'photo';
+            const picture = keyOf(tab) === 'image';
+            uploadPane.hidden = tab !== 'upload' || picture; imagePane.hidden = !picture; aiPane.hidden = tab !== 'ai'; photoPane.hidden = tab !== 'photo';
             for (const [key, node] of [['photo', photoTab], ['upload', uploadTab], ['ai', aiTab]]) {
                 node.setAttribute('aria-selected', String(key === tab)); node.tabIndex = key === tab ? 0 : -1;
             }
@@ -319,11 +332,12 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
             saving = true; resetDelete(); message(''); slotUI.forEach((_, index) => mark(index)); sync();
             let pictures = [];
             try {
-                pictures = active === 'upload' || scene ? slots.filter(Boolean) : (await (active === 'photo' ? photoMaker : generator).getPictures()).map((picture, index) => ({
+                const maker = keyOf(active) ? makers[keyOf(active)] : null;
+                pictures = !maker && (active === 'upload' || scene) ? slots.filter(Boolean) : (await (maker || generator).getPictures()).map((picture, index) => ({
                     ...(typeof picture.file === 'string' ? {media: picture.file} : {file: picture.file}),
                     label: picture.label || (index ? 'other' : 'front'),
                 }));
-                const frontNeeded = !scene && (active === 'ai' || active === 'photo' || !frontless);
+                const frontNeeded = !scene && (!!maker || active === 'ai' || !frontless);
                 if (!pictures.length || pictures.length > SLOTS || (frontNeeded && !pictures.some(picture => picture.label === 'front'))) {
                     message(word(text('Choose one front image and up to 5 more angles', '选一张正面图片，再加最多 5 张其他角度的图片'),
                         text('Choose up to 3 images', '最多选 3 张图片'), text('Choose one image', '选一张图片')), true); return;
@@ -340,7 +354,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
                 const body = {name: name.value.trim(), images};
                 await value(await (id ? agentSend(api, 'PATCH', path(id), {revision, ...body})
                     : agentPost(api, '/freevideo/agent/cast', {kind, ...body})));
-                if (active === 'photo') photoMaker?.markSaved();
+                maker?.markSaved?.();
                 close(); await saved();
             } catch (error) {
                 const at = /^\/images\/(\d+)\/media$/.exec(error.field || '');
@@ -365,7 +379,8 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         function close() {
             if (closed) return;
             closed = true; clearTimeout(deleteTimer);
-            generator?.cancel(); generator?.destroy(); photoMaker?.cancel(); photoMaker?.destroy();
+            generator?.cancel(); generator?.destroy();
+            for (const maker of Object.values(makers)) { maker?.cancel(); maker?.destroy(); }
             for (let index = 0; index < SLOTS; index++) release(index);
             if (dialog.open) dialog.close(); dialog.remove();
             if (current?.element === dialog) current = null;
@@ -381,23 +396,28 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         if (id) load().catch(error => message(error.message));
         // A scene has one set of pictures: the chosen option takes the first place, where the Upload tab shows it.
         const pick = file => { if (closed || !scene) return; slots[0] = {media: file, label: 'other'}; paint(0); };
-        mountGenerator({container: aiPane, api, text, viewURL, kind, onPick: pick, onState: state => {
+        // Scenes and props: the description's candidates. Characters: the four views from each source.
+        if (scene) mountGenerator({container: aiPane, api, text, viewURL, kind, onPick: pick, onState: state => {
             if (closed) return;
             aiState = state; sync();
         }}).then(instance => {
             if (closed) { instance?.cancel(); instance?.destroy(); return; }
-            generator = instance; aiTab.hidden = !instance; tabs.hidden = !instance && photoTab.hidden; sync();
+            generator = instance; aiTab.hidden = !instance; tabs.hidden = !instance; sync();
         });
-        // A new character opens on "From a photo", the quickest way to a card of a real person.
-        if (!scene) mountPhoto({container: photoPane, api, text, viewURL, uploadOne, onState: state => {
-            if (closed) return;
-            photoState = state; sync();
-        }}).then(instance => {
-            if (closed) { instance?.cancel(); instance?.destroy(); return; }
-            photoMaker = instance; photoTab.hidden = !instance; tabs.hidden = !instance && aiTab.hidden;
-            if (instance?.action) actions.insertBefore(instance.action, save);
-            if (instance && !id && !loading && active === 'upload' && !slots.some(Boolean)) select('photo'); else sync();
-        });
+        else for (const [source, pane] of [['photo', photoPane], ...(id ? [] : [['image', imagePane]]), ['ai', aiPane]]) {
+            mountPhoto({container: pane, api, text, viewURL, uploadOne, source, onState: state => {
+                if (closed) return;
+                makerStates[source] = state; sync();
+            }}).then(instance => {
+                if (closed) { instance?.cancel(); instance?.destroy(); return; }
+                if (!instance) return;
+                makers[source] = instance;
+                if (instance.action) actions.insertBefore(instance.action, save);
+                photoTab.hidden = !makers.photo; aiTab.hidden = !makers.ai; tabs.hidden = photoTab.hidden && aiTab.hidden;
+                // A new character opens on "From a photo", the quickest way to a card of a real person.
+                if (source === 'photo' && !id && !loading && active === 'upload' && !slots.some(Boolean)) select('photo'); else select(active);
+            });
+        }
     }
 
     // The @ popup reports which characters the prompt currently mentions; they get an accent ring.
