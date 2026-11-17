@@ -20,7 +20,7 @@ import { issueButton } from './issue_button.js';
 import { skinSelect } from './fv_select.js';
 import { createPreviewScene } from './preview_scene.js?v=20261115-still';
 import { animateDetails, closeDialog } from './motion.js';
-import { openLibrary, videoThumbnailURL } from './library.js';
+import { openLibrary, setDefaultUpscale, videoThumbnailURL } from './library.js';
 import { createRecentVideos } from './studio_recent.js';
 import { createAgentActivity } from './agent_activity.js';
 import { createStudioQueue, randomSeed, turnNodeOn } from './studio_queue.js';
@@ -1460,6 +1460,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     seedFields.append(field(t('Seed', '种子'), seed), field(t('After generation', '生成后'), skinSelect(mode))); advanced.append(seedFields);
     const previewHead = el('div', null, 'fv-preview-head'); previewHead.append(el('strong', t('Preview', '预览')));
     const previewTools = el('div', null, 'fv-preview-tools');
+    // Creations opened from a notification, the palette or search finish a first-pass preview through this node too.
+    setDefaultUpscale(value => node.freevideoUpscaleResult(value));
     const worksButton = button('', () => {
         stage.querySelector('video')?.pause(); openLibrary(t, {upscale: value => node.freevideoUpscaleResult(value),
             extend: (saved, options) => openExtendEditor(saved, node, {studio: dialog, ...options}),

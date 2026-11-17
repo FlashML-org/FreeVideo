@@ -368,12 +368,16 @@ function libraryHost() {
     return front && views.includes(front) ? front : null;
 }
 
-// ``upscale`` queues the second pass of a first-pass preview (the studio's node).
+// ``upscale`` queues the second pass of a first-pass preview (the studio's node). A room opened from anywhere else
+// (a notification, the palette, search, a chat or autopilot job) carries none, so the studio registers its own as the default.
+let defaultUpscale = null;
+export function setDefaultUpscale(run) { defaultUpscale = typeof run === 'function' ? run : null; }
 // ``reuse`` is the creation panel's {now, apply}: given, Reuse settings fills that panel from a creation.
 export function openLibrary(t, options = {}) {
     if (parked?.dialog.isConnected !== false && parked && !parked.dialog.open) return parked.reopen(options);
     if (parked?.dialog.open) { parked.reopen(options); return; }
     let {upscale = null, selectedWork = null, extend = null, reuse = null, back: backLabel = null} = options;
+    const secondPassRunner = () => upscale || defaultUpscale;
     const dialog = el('dialog', null, 'fv-studio fv-library'); opened = dialog;
     let host = libraryHost();
     const hostClosed = () => { if (dialog.open) dialog.close(); };
@@ -823,7 +827,7 @@ export function openLibrary(t, options = {}) {
             links.replaceChildren(row.kind === 'image' ? pictureActions(row) : resultActions(row, t, {
                 extend: extendSaved,
                 reuse: row.preview ? null : reuseNow(),
-                secondPass: row.preview && upscale ? () => secondPass(row) : null,
+                secondPass: row.preview && secondPassRunner() ? () => secondPass(row) : null,
                 favorite: value => saveFavorite(row, value),
                 remove: () => remove(row)}));
             tipActions(links);
@@ -923,7 +927,7 @@ export function openLibrary(t, options = {}) {
     async function secondPass(row) {
         notice.textContent = '';
         try {
-            await upscale(row);
+            await secondPassRunner()(row);
             if (!disposed && selected === workKey(row)) notice.textContent = t('Queued. It appears in "Creations" when done.', '已加入队列，完成后在“作品”里。');
         } catch (error) {
             if (!disposed && selected === workKey(row)) fault(notice, t('Could not start the second pass: ', '无法继续二采：') + error.message, ['Second pass', '二采']);
@@ -1391,6 +1395,10 @@ export function openLibrary(t, options = {}) {
                 document.body.append(link); link.click(); link.remove();
             }});
             if (one.kind !== 'image') {
+                if (one.preview) items.push({id: 'second-pass', icon: 'history', label: ['Run second pass', '继续二采'],
+                    use: ['Finish the full-resolution video', '从预览继续生成全分辨率视频'],
+                    disabled: secondPassRunner() ? '' : ['Open the create view first, then run the second pass', '请先打开创作页，再继续二采'],
+                    run: () => secondPass(one).then(() => say(t('Queued. It appears in "Creations" when done.', '已加入队列，完成后在“作品”里。')), error => say(t('Could not start the second pass: ', '无法继续二采：') + error.message, true))});
                 items.push({id: 'reuse', icon: 'reuse', label: ['Reuse settings', '复用设置'],
                     disabled: one.preview ? ['A first-pass preview: finish it first', '这是一采预览，先继续二采'] : '',
                     run: () => reuseSaved(one)});
@@ -2088,10 +2096,10 @@ export function openLibrary(t, options = {}) {
         download.append(icon('download'), el('span', t('Download', '下载'))); tip(download, t('Download video', '下载视频'), t('Save the MP4 to this computer', '把视频文件保存到电脑'));
         const extendButton = viewerAction(t('Continue', '接着生成'), canExtend(row) ? t('Make a longer video from its end', '从结尾继续生成更长的视频') : t('This video cannot be continued', '这条视频不能接着生成'), icon('extend'), () => { closeViewer(); extendSaved(row); });
         extendButton.disabled = !canExtend(row);
-        const again = row.preview && upscale
+        const again = row.preview && secondPassRunner()
             ? viewerAction(t('Run second pass', '继续二采'), t('Finish the full-resolution video', '从预览继续生成全分辨率视频'), icon('reuse'), () => { closeViewer(); secondPass(row); })
             : viewerAction(t('Reuse settings', '复用设置'), row.preview ? t('A first-pass preview: finish it first', '这是一采预览，先继续二采') : t('Fill the creation panel with these settings', '把这次的设置填回创作面板'), icon('reuse'), () => { closeViewer(); reuseSaved(row); });
-        if (row.preview && !upscale) again.disabled = true;
+        if (row.preview && !secondPassRunner()) again.disabled = true;
         foot.append(download, extendButton, again, more);
         return foot;
     }
