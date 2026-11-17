@@ -156,6 +156,8 @@ test('main browser entry registers both views and preserves node hooks', async t
             // The video model is installed here, so the workspace opens on Create as before the Images view existed.
             .replace("import { videoModelState } from './video_model.js';", 'const videoModelState = async () => ({installed: true});')
             .replace("import { isLaunchVisit } from './launch_visit.js';", 'const isLaunchVisit = () => false;')
+            // Only a launcher visit opens the workspace; the test flips this to compare a plain tab with a launched one.
+            .replace('&& launchVisit;', '&& globalThis.__freevideoEntryTest.launchVisit;')
             .replace("import { openFreeVideoWorkflow } from './launcher.js';", 'const openFreeVideoWorkflow = (...args) => globalThis.__freevideoEntryTest.openFreeVideoWorkflow?.(...args);')
             .replace("import { imageGenerationSupported } from './image_generation.js';", 'const imageGenerationSupported = () => true;')
             .replace("import { mediaName, uploadMedia } from './media_upload.js';", 'const {mediaName, uploadMedia} = globalThis.__freevideoEntryTest;')
@@ -316,7 +318,10 @@ test('main browser entry registers both views and preserves node hooks', async t
         extension.afterConfigureGraph();
         assert.equal(opened.length, quiet, 'a tab restored with the page does not open the workspace on its own');
         assert.equal(restoreReleases, releasesBefore + 1, 'the page-load cover is released when nothing opens');
-        events.dispatchEvent(new Event('pointerdown'));
+        events.dispatchEvent(new Event('pointerdown')); events.dispatchEvent(new Event('keydown'));
+        extension.afterConfigureGraph(); for (let i = 0; i < 10; i++) await Promise.resolve();
+        assert.equal(opened.length, quiet, 'clicking or typing in a plain tab does not open the workspace');
+        dependencies.launchVisit = true;
         // With no remembered view the entry first asks whether the video model is installed, then opens Create.
         extension.afterConfigureGraph(); for (let i = 0; i < 10; i++) await Promise.resolve();
         assert.deepEqual(opened, [node, node]);

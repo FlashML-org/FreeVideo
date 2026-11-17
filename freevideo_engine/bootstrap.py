@@ -276,6 +276,21 @@ def environment_seeded(folder):
     return any(folder.glob('Lib/site-packages/pip')) or any(folder.glob('lib/python*/site-packages/pip'))
 
 
+def environment_python_orphaned(python, runner=None):
+    """True when an environment's Python file is there but the interpreter it forwards to is gone.
+
+    On Windows an environment's python.exe only forwards to the interpreter named in its
+    pyvenv.cfg; once that interpreter is deleted, moved or quarantined the launcher answers
+    "No Python at ..." with exit code 103. Only that answer counts: any other failure (access
+    denied, a scan in progress, a timeout) leaves the environment, and the gigabytes in it, alone."""
+    try:
+        check = subprocess_output.run_python([str(python), '-I', '-B', '-c', 'pass'], runner=runner,
+                                             capture_output=True, timeout=120)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return check.returncode == WINDOWS_NO_PYTHON_EXIT or ORPHANED_PYTHON_TEXT in (check.stderr or '')
+
+
 def environment_in_place(row, python_version):
     """An existing environment that only lacks ordinary packages: setup adds them beside the rest."""
     if not row.get('exists') or row.get('error'):
@@ -290,7 +305,10 @@ def environment_in_place(row, python_version):
     return bool(found) and found.group(1) == python_version
 
 
-def environment_allowance_gib(dependencies, *, mac, layout, python_version):
+ENVIRONMENT_MARGIN_GIB = 5
+
+
+def environment_allowance_gib(dependencies, *, mac, layout, python_version, linux=False):
     """Disk for the Python environments, by what setup will actually install."""
     ready = all(r['exists'] and not r['missing'] and not r['mismatched'] for r in dependencies.values())
     if mac:
@@ -304,7 +322,15 @@ def environment_allowance_gib(dependencies, *, mac, layout, python_version):
         # Windows PyTorch as a copy (cuDNN repair) is a 1.78 GiB wheel plus
         # about 4.5 GB installed; a Linux unified environment is 5.3 GiB in all.
         return 10
-    # New environments, or a new PyTorch stack or Python: downloaded afresh.
+    # New environments, or a new PyTorch stack or Python: downloaded afresh. A
+    # Linux unified environment measured 5.4 GiB installed (the package cache is
+    # hard linked to it, not a second copy) and about 7.5 GiB at its peak with
+    # tools and the largest wheel in flight; Windows PyTorch alone is a 1.78 GiB
+    # wheel plus about 4.5 GB installed. Two separate environments need twice.
+    # Only Linux, where the cache is hard linked, uses the measured figure.
+    if linux:
+        return 12 if layout == 'unified' else 24
+    # Windows copies PyTorch into each environment (the cache keeps its own copy): not yet measured down.
     return 30 if layout == 'unified' else 45
 
 
@@ -387,6 +413,9 @@ def inventory(gpu=None):
 WINDOWS_MIN_GIT = (2, 35)
 # Seconds to wait before creating an environment again after another program held a file.
 ENVIRONMENT_BUSY_WAITS = (3, 10, 30)
+# What Windows' Python launcher answers when the interpreter an environment points to is gone.
+WINDOWS_NO_PYTHON_EXIT = 103
+ORPHANED_PYTHON_TEXT = 'No Python at'
 
 
 def git_floor(system=None):
@@ -795,8 +824,10 @@ def plan(args, *, local_progress=None, stage=None):
     environments_ready = all(r['exists'] and not r['missing'] and not r['mismatched'] for r in dependencies.values())
     python_version = None if mac_target else bootstrap_versions(
         json.loads((PACKAGE / 'bootstrap_versions.json').read_text(encoding='utf-8')), system)['python']
-    environment_gib = environment_allowance_gib(dependencies, mac=mac_target, layout=layout, python_version=python_version)
-    extra = (0 if reuse_cache or prepared else 52) + environment_gib + 10
+    linux_target = not mac_target and not windows_target
+    environment_gib = environment_allowance_gib(dependencies, mac=mac_target, layout=layout, python_version=python_version,
+                                                linux=linux_target)
+    extra = (0 if reuse_cache or prepared else 52) + environment_gib + (ENVIRONMENT_MARGIN_GIB if linux_target else 10)
     frontend = None
     if getattr(args, 'frontend_root', None):
         frontend = dict(root=str(args.frontend_root.expanduser().resolve()),
@@ -809,7 +840,8 @@ def plan(args, *, local_progress=None, stage=None):
                       and getattr(args, 'model_downloader', 'auto') != 'xet'),
         environments_ready=environments_ready, frontend=frontend,
         keep_extreme=reviewed.get('disk_mode') == 'extreme',
-        frontend_gib=frontend_allowance_gib(root, frontend['root'], mac_target) if frontend else disk_space.frontend_gib(mac_target))
+        frontend_gib=frontend_allowance_gib(root, frontend['root'], mac_target, linux_target) if frontend else disk_space.frontend_gib(mac_target, linux_target),
+        cache=root / 'downloads' / 'uv-cache', cache_gib=environment_gib)
     extra = disk_plan['environment_cache_safety_gib']
     errors.extend(disk_plan['errors'])
     # A repair also reinstalls what is damaged in the ComfyUI environment the launcher made.
@@ -1343,7 +1375,9 @@ class Installer:
         # With changed files that check cannot run; the one after installing still does.
         self.int8_check_first = (value.get('prepared_format') == 'int8_convrot' and saved.get('ready') is True
                                  and self.system != 'Darwin' and self.pythons['engine'].is_file()
-                                 and not self.damaged_before)
+                                 and not self.damaged_before
+                                 # The environment's Python cannot start: the environment step repairs it first.
+                                 and not (self.system == 'Windows' and environment_python_orphaned(self.pythons['engine'])))
         if not self.int8_check_first:
             self.mark_unfinished()
         self.env = dict(os.environ, FREEVIDEO_HOME=str(self.root),
@@ -1704,7 +1738,9 @@ class Installer:
             pythons[name] = python
             writer = ('environment:' + name,)
             def environment(folder=venv, executable=python, label=name):
-                if executable.exists() and environment_seeded(folder):
+                orphaned = (self.system == 'Windows' and executable.exists()
+                            and environment_python_orphaned(executable))
+                if executable.exists() and environment_seeded(folder) and not orphaned:
                     return None
                 from .failure_details import environment_python_removed, file_in_use
                 for wait in (*ENVIRONMENT_BUSY_WAITS, None):
@@ -1712,7 +1748,8 @@ class Installer:
                     # The Python file came back (restored from quarantine) without
                     # the seed packages: keep it and add them. Without the file, the
                     # folder is a leftover that uv replaces.
-                    if executable.exists():
+                    # The file is there but the interpreter behind it is gone: the folder is a leftover too.
+                    if executable.exists() and not orphaned:
                         command.append('--allow-existing')
                     elif folder.exists():
                         command.append('--clear')

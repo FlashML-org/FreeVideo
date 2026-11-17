@@ -141,6 +141,13 @@ def media(image=False, *, local=False, clip=False, video=False, early=False, tim
         properties['voice_only'] = {'type': 'boolean', 'description':
             'A reference video used only for its voice: only its sound track is read, as an audio reference, and no '
             'picture is encoded. A clip without sound is refused. Not with early_steps.'}
+        properties['use'] = enum(('reference', 'original'), description=
+            'An audio file only. "reference" (the default) lets the audio guide the voice; "original" uses the audio '
+            'as the soundtrack as it is. The video is then as long as the selected audio and seconds is ignored; '
+            'one audio file at most, WAV, FLAC or M4A.')
+        properties['range'] = obj(dict(start_sample=number(0, integer=True), end_sample=number(1, integer=True)),
+                                  ('start_sample', 'end_sample'), description=
+            'With use "original" only: the part of the audio to use, in samples of the audio file. Omitted: all of it.')
     if clip:
         properties.pop('frame')
         properties.pop('edit')

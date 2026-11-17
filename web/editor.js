@@ -52,7 +52,6 @@ import {expandCast} from './cast_mention.js';
 import {problem as timedProblem, timedText} from './timed_prompt.js';
 import {tip, modKey} from './editor_tips.js';
 import {jobs} from './task_store.js';
-import {createStageLight} from './editor_ambient.js';
 import {openingChoice} from './editor_opening.js';
 import {CN} from './topbar_state.js';
 const editorStyles = Promise.all(['result_actions.css', 'editor.css', 'editor_expand.css', 'editor_tracks.css', 'editor_frame.css', 'editor_adjust.css', 'editor_adjust_picture.css', 'editor_preview_picture.css', 'editor_select.css', 'editor_menu.css', 'editor_text.css', 'editor_notes.css', 'editor_transport.css', 'glass/editor.css'].map(name => {
@@ -546,7 +545,6 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         try { releaseStamp(); await queue.flush(); } finally { if (!disposed) { saveAgain.disabled = false; updateSaveState(); } }
     }
     const player = createEditorPlayer(preview, transport, {state, sources: store.sources, api, t, error, readAudioSamples: panel.readAudioSamples || readSpeedAudioSamples, preservePreview: () => initializing, prepareAudio: () => !initializing, speech: createSpeechSpans(store.speech)});
-    const stageLight = createStageLight(element, {picture: preview});
     // Until the first video frame arrives the picture shows the part's thumbnail at its own size, then fades to the video.
     const poster = createPicturePoster(player.element, {state, sources: store.sources, sourceKey, mediaURL: value => mediaURL(api, value)});
     function selectionClips(selection = state.selection) {
@@ -2137,7 +2135,9 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         async switchView(view) {
             if (closing || disposed || view === 'editor') return;
             leaveTo = view;
-            if (await handle.close() !== false) await onView(view);
+            // A refusal answers false, so the switch stops waiting and the bar shows this view again at once.
+            if (await handle.close() === false) return false;
+            await onView(view);
         },
         async close() {
             if (handle.kept) return true;
@@ -2190,7 +2190,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             if (!element.isConnected || later) document.body.append(element);
             element.inert = false;
             if (!element.open) element.showModal();
-            viewChanged('editor'); stageLight.refresh?.();
+            viewChanged('editor'); globalThis.FreeVideoStageLight?.refresh();
             // The tab takes focus after the first frame: focusing now would lay the whole view out a second time before it shows.
             const given = document.activeElement;
             requestAnimationFrame(() => setTimeout(() => {
@@ -2214,7 +2214,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     window.addEventListener('freevideo-view', otherView); listeners.push(() => window.removeEventListener('freevideo-view', otherView));
     function teardown() {
         if (disposed) return;
-        releaseTakes(); rememberView(); disposed = true; handle.kept = false; stageLight.dispose(); poster.dispose(); music.dispose(); narration.dispose(); voice.dispose(); voiceInstall.dispose(); guide?.dispose(); transportControls.dispose(); toolbarMore.dispose(); player.dispose();
+        releaseTakes(); rememberView(); disposed = true; handle.kept = false; poster.dispose(); music.dispose(); narration.dispose(); voice.dispose(); voiceInstall.dispose(); guide?.dispose(); transportControls.dispose(); toolbarMore.dispose(); player.dispose();
         textTools.dispose(); adjust.dispose(); notes.dispose(); pictureEdit.dispose();
         audio.dispose(); stems?.dispose(); recording.dispose(); headerFit.dispose();
         listeners.splice(0).forEach(remove => remove());

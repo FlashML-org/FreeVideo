@@ -195,6 +195,51 @@ def display_launcher_error(value, *, zh=False, replacements=()):
     return text
 
 
+KERNEL_CHECKS_FAILED = 'GPU kernel checks did not find a working linear and attention path.'
+
+
+def kernel_check_lines(rows, limit=6, width=240):
+    """Why each failed GPU kernel check failed, one line each, after the error of a request that cannot start.
+
+    A report that arrives as pasted text holds only the error, not the saved checks, so
+    the last line of each failed check's own error stands in it.
+    """
+    rows = [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
+    if not rows:
+        return ''
+    lines = []
+    if not any(row.get('backend') == 'linear' and row.get('status') == 'complete' for row in rows):
+        lines.append('Required linear kernel did not pass.')
+    if not any(row.get('backend') not in (None, 'linear', 'linear-int8') and row.get('status') == 'complete' for row in rows):
+        lines.append('No attention backend passed.')
+    failed = [row for row in rows if row.get('status') != 'complete']
+    for row in failed[:limit]:
+        text = ''
+        for key in ('error', 'stderr_tail', 'stdout_tail'):
+            value = row.get(key)
+            value = [line.strip() for line in value.splitlines() if line.strip()] if isinstance(value, str) else []
+            if value:
+                text = value[-1]
+                break
+        lines.append('%s: %s' % (row.get('backend', 'unknown'), (text or str(row.get('status', 'unknown')))[:width]))
+    if len(failed) > limit:
+        lines.append('%d more failed checks are in the saved details.' % (len(failed) - limit))
+    return ''.join('\n' + line for line in lines)
+
+
+def with_kernel_check_lines(error, hardware):
+    """The error of failed GPU kernel checks followed by what each failed check reported; any other error as it is."""
+    if not str(error).startswith(KERNEL_CHECKS_FAILED):
+        return error
+    try:
+        from .kernel_capabilities import matching_receipt
+        receipt = matching_receipt(hardware)
+        lines = kernel_check_lines(receipt.get('kernel_probes') if receipt else None)
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        return error
+    return RuntimeError(str(error) + lines) if lines else error
+
+
 def setup_command_failure(label, log, exit_code, report=None):
     """Keep the complete failed step, with required GPU failures before metadata."""
     log = Path(log)
@@ -247,6 +292,10 @@ PYTHON_START_DENIED = r'Failed to run [^\n]*python[^\n]*\s+Caused by:[^\n]*(?:os
 # Leads the error of a step that needed an environment's Python file after it
 # disappeared, e.g. while security software was holding it in quarantine.
 ENVIRONMENT_PYTHON_REMOVED = 'The Python file of the FreeVideo environment is missing'
+
+
+# Windows' Python launcher, when an environment's python.exe cannot find the interpreter it forwards to.
+ORPHANED_PYTHON = r"No Python at "
 
 
 def environment_python_removed(args, pythons):
@@ -454,12 +503,19 @@ def model_mismatch_package(value, zh=False):
     return pack_title(paths[-1], zh) if paths else pack_title('models/encoder/', zh)
 
 
-# Shown instead of the missing-driver card when the system lists only AMD or Intel graphics.
+# Shown instead of the missing-driver card when the system lists no NVIDIA graphics card.
 UNSUPPORTED_VENDOR = (
-    ('FreeVideo supports NVIDIA graphics cards only',
-     'Installing a driver cannot change this. Use FreeVideo on a computer with an NVIDIA graphics card.'),
-    ('FreeVideo 只支持 NVIDIA 显卡',
-     '安装驱动无法改变这一点，请在装有 NVIDIA 显卡的电脑上使用 FreeVideo。'))
+    ('No NVIDIA graphics card was found',
+     'FreeVideo requires an NVIDIA RTX 30 series or newer graphics card.'),
+    ('未找到 NVIDIA 显卡',
+     'FreeVideo 需要 NVIDIA RTX 30 系列或更新的显卡。'))
+
+# The system lists an NVIDIA card but no driver answers.
+DRIVER_FOR_LISTED_CARD = (
+    ('No NVIDIA driver was found',
+     'Install the NVIDIA driver, version 580 or newer, restart the computer, then click "Retry installation".'),
+    ('未找到 NVIDIA 显卡驱动',
+     '请安装 580 或更新版本的 NVIDIA 显卡驱动，重启电脑后点击“重试安装”。'))
 
 
 # What each download source returned, as one short line per host and route on
@@ -664,7 +720,8 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
                     kind='comfy-startup')
     # A file Windows refused to load is no GPU result: the app-control guidance below applies, and the
     # code the engine adds to the message makes it recognisable in any system language.
-    if 'Failed step: kernels (' in summary and not re.search(APPLICATION_CONTROL, summary):
+    if ('Failed step: kernels (' in summary and not re.search(APPLICATION_CONTROL, summary)
+            and not re.search(ORPHANED_PYTHON, summary)):
         detail = summary[summary.index('Failed step: kernels ('):]
         detail = detail.partition('\nRetained step log:')[0]
         if zh:
@@ -876,6 +933,12 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
          ('Security software or another program is holding a file that setup needs. Wait a moment and click Retry installation; '
           'if it happens again, allow the FreeVideo folder in the security software.',
           '安全软件或其他程序正在占用安装所需的文件。请稍候后点“重试安装”；仍然失败时，请在安全软件中允许 FreeVideo 所在的文件夹。')),
+        # Windows' Python launcher: the environment's python.exe is there but the interpreter it forwards to is gone.
+        (ORPHANED_PYTHON, 'environment-python-orphaned',
+         ('The FreeVideo Python environment cannot start', 'FreeVideo 的 Python 环境无法启动'),
+         ('The Python program that the environment relies on is missing, possibly removed by security software or a cleanup tool. '
+          'Click "Retry installation": FreeVideo sets the environment up again.',
+          '运行环境所依赖的 Python 程序已经不在，可能被安全软件或清理工具删除。请点“重试安装”，FreeVideo 会重新建立运行环境。')),
         (ENVIRONMENT_PYTHON_REMOVED, 'environment-python-removed',
          ('A program file is missing', '缺少一个程序文件'),
          ('It may have been quarantined by security software. Restore the file or allow the FreeVideo folder, '

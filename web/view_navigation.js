@@ -3,7 +3,7 @@ import { app } from '../../scripts/app.js';
 import { wordmark } from './wordmark.js';
 import { createUpdateNotice } from './updates.js';
 import { openEditorView } from './editor_loader.js';
-import { installShell, noteView, hideCover, switchView, setViewResync } from './shell.js';
+import { installShell, noteView, hideCover, switchView, setViewResync, syncTabs } from './shell.js';
 import { installTooltips } from './tooltip.js';
 import './palette.js';
 import { isLaunchVisit } from './launch_visit.js';
@@ -103,7 +103,10 @@ export function viewSwitch(view, onStudio, onNodes, onEditor, onAutopilot, onIma
             if (id === view) return go();
             // The pressed tab lights at once, so the held picture of the old view already shows where it is going.
             for (const tab of group.querySelectorAll('[data-view]')) tab.setAttribute('aria-pressed', String(tab === button));
-            return switchView(id, go);
+            // A view that says no (the editor keeping unsaved work) stays in front, and so does its tab.
+            const result = switchView(id, go);
+            Promise.resolve(result).then(answer => { if (answer === false) syncTabs(); else keepFocusOnTab(id); }, () => syncTabs());
+            return result;
         };
         if (id === 'autopilot') {
             // Known to be on (or unknown after a failed check): shown from the first frame, so a view never opens with
@@ -118,6 +121,17 @@ export function viewSwitch(view, onStudio, onNodes, onEditor, onAutopilot, onIma
     // The header this group goes into becomes the shared top bar as soon as it is in the page (topbar.js).
     adoptWhenPlaced(group);
     return group;
+}
+
+// The view that was left hid what had focus; focus goes to the pressed tab of the bar now in front, so keys go on
+// from where the press was (never to the page itself). Focus the user already moved elsewhere stays.
+function keepFocusOnTab(id) {
+    const lost = () => { const at = document.activeElement; return !at || at === document.body || !at.checkVisibility?.(); };
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (!lost()) return;
+        const tab = [...document.querySelectorAll(`.fv-view-switch [data-view="${id}"][aria-pressed=true]`)].find(b => b.checkVisibility?.());
+        tab?.focus({preventScroll: true});
+    }));
 }
 
 // The entries on the right of the top bar: the same set, in the same order, in every view (the node view's bar too).

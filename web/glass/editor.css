@@ -171,13 +171,3 @@ dialog.fv-studio.fv-editor:not([open]){display:none!important}
 .fv-editor .fv-ed-project-row .fv-ed-notice{background:var(--fv-ctl-bg);border:1px solid var(--fv-line);box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none}
 .fv-editor .fv-ed-project-row .fv-ed-notice:has(.fv-issue-button){background:var(--fv-warn-soft);border-color:color-mix(in srgb,var(--fv-warn) 30%,transparent)}
 
-/* ── The stage light: a soft trace of the picture's colours behind the stage (a 64×40 canvas scaled up, never blurred live) ── */
-.fv-ed-ambient{position:absolute;inset:0;z-index:-1;pointer-events:none;overflow:hidden}
-.fv-ed-ambient canvas{position:absolute;inset:0;width:100%;height:100%;opacity:0;transition:opacity var(--fv-dur-3) var(--fv-ease-out)}
-.fv-ed-ambient canvas.fv-on{opacity:.55}
-.fv-ed-ambient::after{content:"";position:absolute;inset:0;background:radial-gradient(120% 90% at 50% 30%,rgb(6 8 12 / .3) 0%,rgb(6 8 12 / .74) 70%,rgb(6 8 12 / .9) 100%)}
-:root[data-theme=light] .fv-ed-ambient::after{background:radial-gradient(120% 90% at 50% 30%,rgb(244 246 249 / .42) 0%,rgb(240 242 246 / .74) 62%,rgb(236 239 244 / .9) 100%)}
-:root[data-theme=light] .fv-ed-ambient canvas.fv-on{opacity:.6}
-:is(:root[data-glass=solid],:root.lite) .fv-ed-ambient{display:none}
-@media(prefers-reduced-transparency:reduce){.fv-ed-ambient{display:none}}
-@media(prefers-reduced-motion:reduce){.fv-ed-ambient canvas{transition:none}}

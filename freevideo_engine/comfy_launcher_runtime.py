@@ -145,7 +145,7 @@ def disk_review(plan, engine, comfy, *, separate, new_comfy):
         disks[disk_space.disk_key(disk['paths'][0])] = dict(disk, paths=list(disk['paths']))
     extra = 0
     from .install_disk import frontend_gib
-    frontend_bytes = frontend_gib(engine, comfy, sys.platform == 'darwin') * 2**30
+    frontend_bytes = frontend_gib(engine, comfy, sys.platform == 'darwin', sys.platform.startswith('linux')) * 2**30
     for path, amount in ((engine, frontend_bytes if separate else 0), (comfy, SOURCE_DISK_BYTES if new_comfy else 0)):
         if not amount:
             continue

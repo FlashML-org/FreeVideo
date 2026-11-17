@@ -247,13 +247,13 @@ export function openTutorialBook({chapter = TUTORIAL_CHAPTERS[0].id, tab = 'chap
         if (c.example) {
             const tryButton = button('fv-book-btn', text.tryIt, [text.tryIt, text.tips.tryIt], icon('wand')); tryButton.dataset.kind = 'fill';
             tryButton.hidden = typeof window.freevideoHowTo?.tryIt !== 'function';
-            tryButton.onclick = () => { dialog.close(); window.freevideoHowTo?.tryIt(c.example, {chapter: id}); };
+            tryButton.onclick = () => { dialog.close(); window.freevideoHowTo?.tryIt?.(c.example, {chapter: id}); };
             acts.append(tryButton);
         }
         if (HOWTOS.has(id) && typeof window.freevideoHowTo?.start === 'function') {
             const walk = button('fv-book-btn', text.walk, [text.walk, text.tips.walk], icon('play')); walk.dataset.kind = 'fill';
             Promise.resolve(window.freevideoHowTo.available?.(id)).then(ok => { if (ok === false) walk.hidden = true; }).catch(() => {});
-            walk.onclick = () => { dialog.close(); window.freevideoHowTo.start(id); };
+            walk.onclick = () => { dialog.close(); window.freevideoHowTo?.start?.(id); };
             acts.append(walk);
         }
         inner.append(acts);
@@ -347,7 +347,7 @@ export function openTutorialBook({chapter = TUTORIAL_CHAPTERS[0].id, tab = 'chap
         pairBig.append(inputs, to, out);
         const strip = el('div', 'fv-book-strip'), acts = el('div', 'fv-book-acts');
         const usable = card.tryit && card.tryit.status !== 'pending-assets' && typeof window.freevideoHowTo?.tryIt === 'function';
-        if (usable) { const t = button('fv-book-btn', text.tryIt, [text.tryIt, text.tips.tryIt], icon('wand')); t.dataset.kind = 'primary'; t.onclick = () => { dialog.close(); window.freevideoHowTo.tryIt(card.id); }; acts.append(t); }
+        if (usable) { const t = button('fv-book-btn', text.tryIt, [text.tryIt, text.tips.tryIt], icon('wand')); t.dataset.kind = 'primary'; t.onclick = () => { dialog.close(); window.freevideoHowTo?.tryIt?.(card.id); }; acts.append(t); }
         if (card.goto?.length || card.target) {
             const g = button('fv-book-btn', text.goto, [text.goto, text.tips.goto], icon('target')); g.dataset.kind = usable ? 'fill' : 'primary';
             g.onclick = async () => { dialog.close(); const {showFeatureCard} = await import('./feature_tour.js'); await showFeatureCard(card.id); };
@@ -390,7 +390,10 @@ export function openTutorialBook({chapter = TUTORIAL_CHAPTERS[0].id, tab = 'chap
     current = {dialog, go};
     go({});
     dialog.showModal();
-    (state.tab === 'chapters' ? toc.querySelector('[aria-current=page]') : examplesTab)?.focus({preventScroll: true});
+    // On phones the contents are folded behind the list button (tutorial_book.css, 719px), so focus starts on that
+    // button: a hidden entry cannot hold focus, and it would fall to the page behind the book.
+    const folded = state.tab === 'chapters' && !state.tocOnly && matchMedia('(max-width: 719px)').matches;
+    (folded ? tocButton : state.tab === 'chapters' ? toc.querySelector('[aria-current=page]') : examplesTab)?.focus({preventScroll: true});
     toc.querySelector('[aria-current=page]')?.scrollIntoView({block: 'center'});
     return dialog;
 }

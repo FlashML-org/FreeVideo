@@ -153,6 +153,10 @@ let viewCache = readStore(VIEW_CACHE, null);
 // written to the browser's storage.
 let keptDraft = null;
 const enhancerNode = {id: 'image-view', properties: {}};
+// The prompt helper's record is keyed by the pictures themselves: each file the strip holds has a number for the page's
+// life, so a picture edited, swapped or put back is a different scene from the one rewritten before.
+const pictureIds = new WeakMap(); let pictureSerial = 0;
+const pictureId = file => { if (!pictureIds.has(file)) pictureIds.set(file, ++pictureSerial); return pictureIds.get(file); };
 const keepView = value => { viewCache = value; writeStore(VIEW_CACHE, value); };
 
 let current = null;
@@ -192,7 +196,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     // A picture's words: from this page's memory (made while it is open) or the engine's record of it; never the browser's store.
     const promptFor = file => promptOf[file] || sessionPrompts.get(file) || rows.find(r => r.file === file)?.prompt || '';
     // running: the job this page shows ({id} once the store has it); the job itself belongs to the store and outlives the page.
-    let ratioChosen = !!sizes.ratio, running = null, failure = null, lastReport = null, alive = true, shownFile = '', started = 0, selecting = false, unwatch = null;
+    let ratioChosen = !!sizes.ratio, running = null, failure = null, lastReport = null, alive = true, shownFile = '', started = 0, selecting = false, unwatch = null, asking = false;
     let pendingGenerate = false, fitted = null, undoNote = null, view = 'works', filter = 'all', query = '', sort = readStore('freevideo.imageView.sort', 'new');
     // compare: two or more works picked in the works column are compared on the stage ({files, total}); soloKey: the
     // selection whose compare was left for one picture (it comes back when the selection changes).
@@ -224,11 +228,9 @@ export function openImageView(node, {studio = null, client: given = null, poll =
 
     // ───── Layout ─────
     const body = el('div', 'fv-image-body fv-iv');
-    const ambient = el('div', 'fv-iv-ambient'), ambA = el('canvas'), ambB = el('canvas'); ambA.width = ambB.width = 64; ambA.height = ambB.height = 40; ambB.style.opacity = '0';
-    ambient.append(ambA, ambB, el('div', 'fv-iv-veil'));
     const left = el('aside', 'fv-iv-panel fv-iv-left fv-image-left fv-glass fv-g2'), stage = el('main', 'fv-iv-stage fv-image-stage'), column = el('aside', 'fv-iv-panel fv-iv-right fv-image-works-column fv-glass fv-g2');
     left.setAttribute('aria-label', t('Make a picture', '生成图片')); column.setAttribute('aria-label', t('Works', '作品'));
-    body.append(ambient, left, stage, column);
+    body.append(left, stage, column);
 
     // Left panel: head, the groups, the foot with the status slot and Generate.
     const leftHead = el('div', 'fv-iv-panel-head');
@@ -249,13 +251,30 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     const promptGroup = section('prompt', {title: t('Prompt', '描述'), iconName: 'prompt', fixed: true});
     const prompt = el('textarea', 'fv-image-prompt fv-iv-prompt'); prompt.rows = 3; prompt.maxLength = 2000;
     // Prompt help (the creation panel's own: switch, original and rewritten, rewrite again, back to the original,
-    // download and enable, errors) for a picture: the engine rewrites for a still image, told which image model.
-    // Mentions travel as <Picture N> and come back as the page writes them.
+    // download and enable, errors) for a picture: the engine rewrites in the chosen model's own style, with the
+    // reference pictures the model takes in view; they are uploaded only when a rewrite runs.
+    // Mentions travel as <Picture N> and come back as the page writes them; a rewrite with reference pictures names what
+    // it keeps from them <Subject N>, which the page writes "主体 N" / "Subject N".
     if (keptDraft?.prompt) prompt.value = keptDraft.prompt;
-    const enhancer = createPromptEnhancer({node: enhancerNode, input: prompt, api, t,
-        context: () => ({target: 'image', image_model: model.id}), setText: () => render(), issueButton,
-        prepare: text => text.replace(/@(?:图|Image) ?(\d+)/g, (_, n) => `<Picture ${n}>`),
-        restore: text => text.replace(/<Picture (\d+)>/g, (_, n) => mentionText(n))});
+    // The rewrite and the original are put in the box by the helper: the mention marks are drawn again over the new text.
+    let paintMentions = () => {};
+    const enhancer = createPromptEnhancer({node: enhancerNode, input: prompt, api, t, context: enhanceScene, setText: () => { render(); paintMentions(); }, issueButton,
+        resolve: async ({references: ids, ...scene}) => {
+            const media = [];
+            for (const id of ids) {
+                // A picture removed meanwhile makes this rewrite stale; it is dropped when the answer comes back.
+                const record = references.find(r => pictureId(r.file) === id);
+                if (record) media.push({file: await client.upload(record.file), role: 'reference'});
+            }
+            return {...scene, media};
+        },
+        // The rewrite names only the pictures sent with it, as the generation does.
+        prepare: text => {
+            const sent = references.slice(0, cap_(model)).length;
+            return mentionsToEngine(text, sent).replace(/(?:图\s?|Image\s)(\d+)/g, (all, n) => Number(n) >= 1 && Number(n) <= sent ? `<Picture ${n}>` : all)
+                .replace(/(?:主体\s?|Subject\s)(\d+)/g, (_, n) => `<Subject ${n}>`);
+        },
+        restore: text => text.replace(/<Picture (\d+)>/g, (_, n) => mentionText(n)).replace(/<Subject (\d+)>/g, (_, n) => subject(Number(n)))});
     let enhancerReady = false;
     const enhancerOff = () => false;
     enhancer.element.classList.add('fv-image-enhance');
@@ -264,7 +283,6 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         canGenerate: () => !running && modelState(info, model.id).state === 'ready' && (!!prompt.value.trim() || references.length > 0), onDraft: () => render()});
     enhancer.model.read().then(value => { enhancerReady = value?.ready === true; render(); fitSoon(); }).catch(() => {});
     const promptBar = el('div', 'fv-iv-prompt-bar');
-    const clearPrompt = button('fv-iv-text-btn', {iconName: 'x', label: t('Clear', '清空'), name: t('Clear prompt', '清空描述'), use: t('Empty the box to start over', '清空描述框重新写')});
     const promptCount = el('span', 'fv-iv-prompt-count');
     // The prompt's tool row also adds reference pictures; their strip sits under the box when there are any.
     const refAdd = button('fv-iv-text-btn fv-iv-ref-tool', {iconName: 'refs', label: t('References', '参考图')}); const refCount = el('span', 'fv-iv-ref-count'); refAdd.append(refCount);
@@ -275,9 +293,10 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     sketchAdd.addEventListener('click', () => void drawSketch());
     // Prompt enhancement is a key in this row beside References and Sketch, lit while on (no switch row of its own).
     enhancer.chip.classList.add('fv-iv-text-btn', 'fv-iv-enhance-tool'); enhancer.chip.querySelector('span')?.classList.add('fv-iv-btn-label');
-    promptBar.append(refAdd, sketchAdd, enhancer.chip, el('span', 'fv-iv-grow'), promptCount, clearPrompt, expand.element);
+    promptBar.append(refAdd, sketchAdd, enhancer.chip, el('span', 'fv-iv-grow'), promptCount, expand.element);
     // The row stays on one line inside the panel, Expand at the same inset as the box: when its words do not fit (a
-    // narrow panel, longer English words), its keys keep their icons only (their hover cards still name them).
+    // narrow panel, longer words), its keys keep their icons only (their hover cards still name them). Measured again
+    // whenever the row's own contents change (the count near the limit), not only when the panel is resized.
     const fitPromptBar = () => {
         if (!promptBar.isConnected) return;
         delete promptBar.dataset.compact;
@@ -287,7 +306,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     promptBarWatch?.observe(promptBar); document.fonts?.ready?.then(fitPromptBar).catch?.(() => {});
     // "@" in the box lists the reference pictures; a chosen one is written as its mention and stays bound to that picture.
     const mentions = promptMentions({prompt, host: dialog, pictures: () => references.map((r, at) => ({url: r.url, label: label(at + 1)})), onAdd: () => openRefMenu(refAdd)});
-    clearPrompt.addEventListener('click', () => { prompt.value = ''; prompt.dispatchEvent(new Event('input', {bubbles: true})); prompt.focus(); });
+    paintMentions = () => mentions.paint();
     promptGroup.body.append(enhancer.element, promptBar);
 
     // References.
@@ -634,6 +653,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
 
     const say = text => { note.textContent = text || ''; if (alive) paintSlot(); };
     const label = number => t(`Image ${number}`, `图 ${number}`);
+    const subject = number => t(`Subject ${number}`, `主体 ${number}`);
     // Each model row says how many pictures it takes; the strip holds as many as the most generous one.
     // Until the engine answers, each model's usual reference count, so the strip has its final height from the first frame.
     const USUAL_CAPS = {'minimax-h3-image': 16, 'qwen-image-2.1-turbo': 4};
@@ -678,11 +698,20 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     // The engine reads <Picture N>; the page writes "@图N" / "@Image N" (and older prompts "图 N"). A prompt that names none gets them
     // listed, all but the sketches: the words around the description name those.
     function engineText() {
-        const swapped = mentionsToEngine(prompt.value, references.length).replace(/(?:图\s?|Image\s)(\d+)/g, (_, n) => `<Picture ${n}>`);
+        const swapped = mentionsToEngine(prompt.value, references.length).replace(/(?:图\s?|Image\s)(\d+)/g, (_, n) => `<Picture ${n}>`)
+            .replace(/(?:主体\s?|Subject\s)(\d+)/g, (_, n) => `<Subject ${n}>`);
         const sketches = references.map((r, at) => r.sketch && at < cap_(model) ? at + 1 : 0).filter(Boolean);
         const others = references.map((_, at) => sketches.includes(at + 1) ? '' : `<Picture ${at + 1}>`).filter(Boolean);
         const listed = others.length && !/<Picture \d+>/.test(swapped) ? others.join(' ') + ' ' + swapped : swapped;
         return sketchPrompt(listed, sketches, model.id);
+    }
+    // What the rewrite sees: the model, the shape asked for (Image 1's own when it follows it), and the pictures sent.
+    function enhanceScene() {
+        const used = references.slice(0, cap_(model)), first = used[0];
+        const divisor = (a, b) => b ? divisor(b, a % b) : a, d = first?.width ? divisor(first.width, first.height) : 0;
+        const own = d && first.width / d < 10000 && first.height / d < 10000 ? `${first.width / d}:${first.height / d}` : 'adaptive';
+        const wanted = ratio === 'same' || (used.length && !ratioChosen) ? 'same' : ratio;
+        return {target: 'image', image_model: model.id, aspect: wanted === 'same' ? own : wanted, references: used.map(r => pictureId(r.file))};
     }
     // A reference opens in the image editor; the edited picture takes its place (marked), and the original is kept to put back.
     // The sketch canvas: the current frame, its long side at most 1536; a sketch opens again with its strokes.
@@ -926,7 +955,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             goLabel.textContent = t('Stop', '停止'); goSub.textContent = '';
             tip(go, t('Stop', '停止'), t('Cancel this picture; asks first', '取消这一张，会先确认'));
         } else if (s.state === 'downloading') {
-            goLabel.textContent = t(`Installing ${Math.floor(s.fraction * 100)}%`, `正在安装 ${Math.floor(s.fraction * 100)}%`);
+            goLabel.textContent = s.verifying ? t(`Verifying ${Math.floor(s.fraction * 100)}%`, `正在校验 ${Math.floor(s.fraction * 100)}%`) : t(`Installing ${Math.floor(s.fraction * 100)}%`, `正在安装 ${Math.floor(s.fraction * 100)}%`);
             goSub.textContent = pendingGenerate ? t('then generates', '完成后生成') : '';
             tip(go, pendingGenerate ? t('Generates when installed', '安装完自动生成') : t('Generate when installed', '安装完再生成'), pendingGenerate ? t('Press to not generate after it', '再按一次取消自动生成') : t('Press to generate as soon as it is installed', '按下后，安装完成即自动生成'));
         } else if (s.state === 'missing' || s.state === 'failed') {
@@ -976,8 +1005,9 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         prompt.setAttribute('aria-label', references.length ? t('What to make or change', '要画什么或要改什么') : t('Describe the picture', '描述画面'));
         // Said only near the limit.
         promptCount.textContent = prompt.value.length >= 1600 ? `${prompt.value.length} / 2000` : '';
-        // Its room is kept while empty, so typing the first letter moves nothing below it.
-        clearPrompt.hidden = !prompt.value; promptCount.hidden = prompt.value.length < 1600;
+        // The count shows only near the limit; the row is fitted again when it comes or goes.
+        const counted = promptCount.hidden; promptCount.hidden = prompt.value.length < 1600;
+        if (counted !== promptCount.hidden) fitPromptBar();
         if (tooMany) notice.dataset.keep = 'false';
         if (!tooMany && notice.dataset.keep !== 'true') notice.textContent = '';
         if (ratio === 'same' && !references.length) ratio = sizes.ratio && sizes.ratio !== 'same' ? sizes.ratio : '1:1';
@@ -1018,7 +1048,9 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         sceneHost.hidden = state !== 'running'; draftNote.hidden = state !== 'draft';
         // While running the caption keeps its room unseen, so a step picture and the finished one sit in the same place.
         // The caption row also waits for the picture's shape: it takes the frame's width, so it shows at its final one.
-        cap.dataset.hidden = String(state !== 'done' || (!meta.get(shownFile)?.width && !(picture.dataset.file === shownFile && picture.naturalWidth)));
+        // A work whose file is gone keeps its row (without the actions that need the picture), so it can still be deleted here.
+        const gone = picture.dataset.file === shownFile && picture.dataset.missing === 'true'; cap.dataset.missing = String(gone);
+        cap.dataset.hidden = String(state !== 'done' || (!gone && !meta.get(shownFile)?.width && !(picture.dataset.file === shownFile && picture.naturalWidth)));
         const row = runRow(), asked = row?.meta?.width ? row.meta : running ? size() : failure?.sent || null;
         const shown = meta.get(shownFile);
         const next = state === 'draft' ? draftPreview || size() : null;
@@ -1039,7 +1071,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             const url = pictureURL(shownFile);
             // A picture shows whole once decoded (never painted half-loaded); until then its frame holds a placeholder.
             if (picture.dataset.file !== shownFile) {
-                picture.dataset.file = shownFile; picture.dataset.loaded = 'false'; picture.src = url;
+                picture.dataset.file = shownFile; picture.dataset.loaded = 'false'; delete picture.dataset.missing; picture.src = url;
                 if (picture.complete && picture.naturalWidth) picture.dataset.loaded = 'true';
                 // A picture of unknown shape: its size is read from its first bytes (long before it has loaded), so the
                 // frame and the caption row take their final size then, and the view is ready with them.
@@ -1079,7 +1111,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         const file = picture.dataset.file, known = meta.get(file);
         if (file && picture.naturalWidth && (!known?.width || known.width * picture.naturalHeight !== known.height * picture.naturalWidth))
             meta.set(file, {width: picture.naturalWidth, height: picture.naturalHeight});
-        markReady('picture'); if (!alive) return; drawStage(); paintAmbient(picture);
+        markReady('picture'); if (!alive) return; drawStage();
     };
     // A click on the shown picture opens it large; ← → there step through the works and the stage follows.
     let viewer = null;
@@ -1088,16 +1120,9 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         viewer = openPictureViewer({host: body, url: pictureURL(shownFile), onClose: () => { viewer = null; },
             step: by => { const before = shownFile; step(by); return shownFile !== before ? pictureURL(shownFile) : ''; }});
     });
-    picture.onerror = () => { picture.dataset.loaded = 'true'; frame.dataset.loading = 'false'; markReady('picture'); };
+    // A picture that can no longer be read (its file gone) leaves a quiet empty frame, never the browser's broken-image mark.
+    picture.onerror = () => { picture.dataset.loaded = 'true'; picture.dataset.missing = 'true'; frame.dataset.loading = 'false'; markReady('picture'); if (alive) drawStage(); };
 
-    // The stage light: the shown picture, 64 × 40, stretched and faded behind everything.
-    let ambTurn = false;
-    function paintAmbient(source) {
-        try {
-            const target = ambTurn ? ambA : ambB, other = ambTurn ? ambB : ambA; ambTurn = !ambTurn;
-            target.getContext('2d').drawImage(source, 0, 0, 64, 40); target.style.opacity = '1'; other.style.opacity = '0';
-        } catch { /* a picture that cannot be read leaves the light as it was */ }
-    }
     function paintRunTile(fraction) {
         if (!running && browsing) browsing = false;
         for (const tile of body.querySelectorAll('.fv-iv-tile-run,.fv-iv-rail-run')) tile.style.setProperty('--p', String(fraction));
@@ -1187,8 +1212,24 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             if (!enhancerOff() && await enhancer.beforeGenerate() === false) { say(''); if (running === mine) running = null; level.hidden = true; render(); drawWorks(); return; }
             startJobSources();
             const loras = loraRow.value(model.id);
-            const {id} = await jobs.submit('image', {prompt: engineText(), ...sent, model: model.id, remember: true, images: names, ...(seed === undefined ? {} : {seed}), ...(loras.length ? {loras} : {})},
-                {view: 'image', client, meta: {text: prompt.value, withImages, tier: tierNow, width: sent.width, height: sent.height}});
+            let id;
+            // The engine makes one picture at a time: a second request waits its turn here and starts by itself; Stop cancels the wait.
+            for (;;) {
+                try {
+                    ({id} = await jobs.submit('image', {prompt: engineText(), ...sent, model: model.id, remember: true, images: names, ...(seed === undefined ? {} : {seed}), ...(loras.length ? {loras} : {})},
+                        {view: 'image', client, meta: {text: prompt.value, withImages, tier: tierNow, width: sent.width, height: sent.height}}));
+                    break;
+                } catch (error) {
+                    if (error.code !== 'busy') throw error;
+                    if (!alive || mine.cancelled || running !== mine) return;
+                    note.dataset.kind = 'busy';
+                    say(t('Another image is generating. This one starts when it finishes.', '前面有 1 张在生成，完成后自动开始。'));
+                    progressLine.textContent = t('Waiting', '等待开始');
+                    await new Promise(done => setTimeout(done, 2000));
+                    if (!alive || mine.cancelled || running !== mine) return;
+                }
+            }
+            say(''); note.dataset.kind = '';
             if (!alive || running !== mine) return;
             mine.id = id;
             if (mine.cancelled) { void jobs.cancel(id); return; }
@@ -1274,6 +1315,17 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             running = null; level.hidden = true; render(); drawWorks();
         }
     // ── end run ──
+        // The engine has not said which models this computer offers yet: ask first, so a request never names a model that is not here.
+        else if (!info?.models) {
+            if (asking) return;
+            // Another press while it waits is ignored; the bar shows the press was taken.
+            asking = true; level.hidden = false; level.dataset.counted = 'false'; level.style.setProperty('--fv-progress', '0');
+            try { settleModel(await client.info(), true); } catch { /* the request below gets the engine's own answer */ }
+            asking = false; level.hidden = true;
+            if (!alive) return;
+            render();
+            if (info?.models) go.onclick(); else void generate();
+        }
         // A model being installed: Generate says whether the picture follows the install.
         else if (loading()) { pendingGenerate = !pendingGenerate && (!!prompt.value.trim() || references.length > 0); if (!prompt.value.trim() && !references.length) { promptGroup.open(true); prompt.focus(); } render(); }
         // A model not installed: installs it, then generates.
@@ -1501,15 +1553,21 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     setTimeout(() => { dialog.dataset.fvReady = 'true'; }, 1500);
     markReady('start');
     // The first model to offer: the last used, or an installed one (H3 Image first). Both are always shown.
-    client.info().then(value => {
-        info = value;
+    // A model the engine lists no row for is not offered on this computer (H3 Image on a Mac) and is never kept.
+    function settleModel(value, keepChosen = false) {
+        info = value; const before = model;
         const ready = IMAGE_MODELS.filter(m => value.models?.find(r => r.id === m.id)?.ready);
-        const offered = IMAGE_MODELS.filter(m => value.models?.some(r => r.id === m.id));
+        const offered = IMAGE_MODELS.filter(m => value.models?.some(r => r.id === m.id && r.available !== false));
         if (value.models && !remembered() && ready.length) model = ready[0];
         if (value.models && offered.length && !offered.includes(model)) model = offered[0];
+        // A press that waited for this list keeps the size the user already chose, unless the model changed.
+        if (keepChosen && model === before) return;
         const limits = areaRange(model.id, ratioValue(shapeOf()));
         area = Math.min(limits.max, Math.max(limits.min, sizes[model.id] || RANGES[model.id].presets.standard));
         keepSize();
+    }
+    client.info().then(value => {
+        settleModel(value);
         const poller = setInterval(() => { if (!alive) return clearInterval(poller); if (IMAGE_MODELS.some(m => modelState(info, m.id).state === 'downloading')) client.info().then(v => { info = v; render(); }).catch(() => {}); }, 2000);
         if (alive) { render(); fitLeft(); if (historyLoaded) rememberView(); }
         markReady('info');

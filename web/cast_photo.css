@@ -1,4 +1,4 @@
-/* "From a photo": the photo and the clothes choice on the left; the four views on the right in the order of the sheet
+/* A character's four views (from a photo, a picture or a description): the source and the clothes choice on the left; the four views on the right in the order of the sheet
    (face, front, side, back), one row, the face cell 1.4 times as wide. Generate / Stop / Save live in the dialog's own
    button row. Uses cast_generate.css for the cells' progress. */
 .fv-cp{position:relative}
@@ -29,7 +29,8 @@
 .fv-cp .fv-cp-edited[hidden]{display:none}
 .fv-cp .fv-cp-slot:not(:hover,:focus-within) .fv-cp-slot-tools .fv-cp-tool{opacity:0}
 
-/* Clothes: three choices */
+/* Clothes: three choices (two from a description) */
+.fv-cp .fv-cp-wear[data-count="2"]{grid-template-columns:repeat(2,minmax(0,1fr))}
 .fv-cp .fv-cp-wear{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--fv-sp-2,2px);padding:var(--fv-sp-2,2px);border-radius:var(--fv-r-sm);background:var(--fv-ctl-bg,#ffffff0a)}
 .fv-cp .fv-cp-wear button{height:32px;min-height:32px;padding:0 var(--fv-sp-4,4px);border:0;border-radius:var(--fv-r-xs);background:transparent;color:var(--fv-fg2,#c9d0db);font:inherit;font-size:var(--fv-fs-1,12px);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .fv-cp .fv-cp-wear button[aria-checked=true]{background:rgb(var(--fv-tint,40 46 58) / .9);color:var(--fv-fg,#e8ecf3);font-weight:600}
@@ -85,3 +86,20 @@
 .fv-cp .fv-cg-view>.fv-cp-edited[hidden]{display:none}
 @media(hover:none){.fv-cp .fv-cp-cell-tools{opacity:1}}
 @media(prefers-reduced-motion:reduce){.fv-cp .fv-cp-cell-tools{transition:none}}
+
+/* From a description: the description fills the column; under it one row as wide as the description, the clothes choice
+   with the LoRA picker at its right end, the same height and corners. The LoRA list opens below the row, across its width. */
+.fv-cp[data-mode=ai] .fv-cp-describe{min-height:120px}
+.fv-cp .fv-cp-ai-row{position:relative;align-items:stretch}
+.fv-cp .fv-cp-ai-row>.fv-cp-wear{flex:1;min-width:0;grid-template-columns:repeat(2,minmax(max-content,1fr))}
+.fv-cp .fv-cp-ai-row>.fv-cp-wear button{padding:0 var(--fv-sp-10,10px)}
+.fv-cp .fv-cp-ai-row>.fv-ie-lora{flex:none;position:static}
+.fv-cp .fv-cp-ai-row>.fv-ie-lora>summary{height:36px;padding:0 var(--fv-sp-10,10px);border:0;background:var(--fv-ctl-bg,#ffffff0a);color:var(--fv-fg2,#c9d0db);font-size:var(--fv-fs-1,12px)}
+.fv-cp .fv-cp-ai-row>.fv-ie-lora>summary:hover,.fv-cp .fv-cp-ai-row>.fv-ie-lora[open]>summary{background:var(--fv-ctl-hover,#ffffff1a);color:var(--fv-fg,#e8ecf3)}
+.fv-cp .fv-cp-ai-row>.fv-ie-lora[data-active=true]>summary,.fv-cp .fv-cp-ai-row>.fv-ie-lora[open]>summary{color:var(--fv-fg,#e8ecf3)}
+.fv-cp .fv-cp-ai-row>.fv-ie-lora>.fv-ie-lora-panel{position:absolute;top:auto;bottom:calc(100% + 6px);left:0;right:0;z-index:5;width:auto;max-height:min(320px,50vh);overflow:auto;margin:0;padding:10px;border:1px solid var(--fv-border,#ffffff1f);border-radius:var(--fv-r-md);background:var(--fv-card,#1a2230);box-shadow:0 14px 40px rgba(0,0,0,.5)}
+/* Narrow: a view cell is too small for its name and the "Edited" badge side by side; the badge becomes a dot (it keeps its
+   words for screen readers). */
+@container (max-width:520px){
+  .fv-cp .fv-cg-view>.fv-cp-edited{width:8px;height:8px;padding:0;overflow:hidden;border-radius:50%;background:var(--fv-accent-fill,#1a7fe5);color:transparent;line-height:8px}
+}

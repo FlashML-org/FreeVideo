@@ -522,7 +522,8 @@ export function installShell({cover: wantCover = false} = {}) {
         tint.content = getComputedStyle(root).getPropertyValue('--fv-shell-bg').trim() || '#06080c'; document.head.append(tint);
     }
     setTimeout(quietSplash, 4000);
-    try { provisional = !!localStorage.getItem('freevideo.view'); } catch { provisional = false; }
+    // Only a launcher visit that will open a view is held back by the cover; the user's own ComfyUI is never painted over.
+    try { provisional = wantCover && !!localStorage.getItem('freevideo.view'); } catch { provisional = false; }
     if (provisional) { markSurface(); setTimeout(settleShell, 15000); }
     if (wantCover && !booting()) showCover();
     // Escape closes what floats inside a view, never the view itself: views are tabs. The browser's own handling would

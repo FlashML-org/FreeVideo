@@ -25,11 +25,6 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
 .fv-iv .fv-iv-icon{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .fv-iv .fv-iv-grow{flex:1;min-width:0}
 
-/* ── stage light: the shown picture, 64 × 40, stretched; never a live blur ── */
-.fv-iv .fv-iv-ambient{position:absolute;inset:0;overflow:hidden;z-index:0;pointer-events:none;opacity:.62}
-.fv-iv .fv-iv-ambient canvas{position:absolute;left:-4%;top:-4%;width:108%;height:108%;transition:opacity .45s var(--iv-ease)}
-.fv-iv .fv-iv-veil{position:absolute;inset:0;background:radial-gradient(120% 90% at 50% 38%,color-mix(in srgb,var(--fv-shell-bg) 25%,transparent) 0%,color-mix(in srgb,var(--fv-shell-bg) 72%,transparent) 72%,color-mix(in srgb,var(--fv-shell-bg) 88%,transparent) 100%)}
-
 /* ── panels: hug the window edges; the stage is symmetric about the window centre whatever they do ── */
 .fv-iv .fv-iv-panel{position:absolute;top:var(--iv-gut);bottom:calc(var(--iv-gut) + var(--iv-sbar));z-index:2;display:flex;flex-direction:column;min-width:0;border-radius:var(--fv-rad-dock,20px);overflow:hidden;
   transition:width var(--iv-dur) var(--iv-ease)}
@@ -54,6 +49,8 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
 .fv-iv .fv-iv-panel-title{margin:0;font-size:var(--fv-fs-3,16px);font-weight:600;color:var(--fv-fg);white-space:nowrap}
 .fv-iv .fv-iv-count{margin-left:8px;font-size:var(--fv-fs-1,12px);color:var(--fv-fg3)}
 .fv-iv .fv-iv-panel-scroll{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--fv-line2) transparent}
+/* The create column never scrolls sideways: its rows shrink, wrap or keep icons only. */
+.fv-iv .fv-iv-left .fv-iv-panel-scroll{overflow-x:hidden}
 .fv-iv .fv-iv-panel-foot{flex:none;padding:8px 16px 16px;border-top:1px solid var(--fv-line)}
 @media(min-width:721px){.fv-iv .fv-iv-panel-scroll>.fv-iv-gen-foot{position:sticky;bottom:0;z-index:2;border-top:0;padding-top:0;background:linear-gradient(transparent,rgb(var(--fv-tint) / var(--fv-a2)) 8px)}
 :is(:root[data-glass=solid],:root.lite) .fv-iv .fv-iv-panel-scroll>.fv-iv-gen-foot{background:rgb(var(--fv-solid2))}}
@@ -170,7 +167,7 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
   transition:box-shadow var(--fv-dur-1,160ms)}
 /* the shared focus ring (a11y.css) draws the caret field's edge */
 .fv-studio .fv-iv .fv-iv-prompt::placeholder{color:var(--fv-fg3)}
-.fv-iv .fv-iv-prompt-bar{display:flex;align-items:center;gap:4px;height:28px;margin-top:4px}
+.fv-iv .fv-iv-prompt-bar{display:flex;align-items:center;gap:4px;min-width:0;height:28px;margin-top:4px}
 .fv-iv .fv-iv-prompt-bar .fv-ed-expand{position:static;right:auto;bottom:auto;flex:none;width:28px;height:28px;min-width:28px;min-height:28px}
 /* Expand is one of the row's keys: the same clear ground, ink, corners and hover, press and focus as References,
    Sketch and Enhance (not the page colour the shared key brings, which reads as a dark square). */
@@ -444,6 +441,10 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
 .fv-iv .fv-iv-picture[data-loaded=false],.fv-iv .fv-iv-tile img[data-loaded=false]{opacity:0;animation:none}
 .fv-iv .fv-iv-tile img[data-loaded=true]{animation:fv-iv-in 120ms var(--iv-ease)}
 .fv-iv .fv-iv-tile.fv-iv-current:has(img[data-loaded=false])::after{display:none}
+/* a picture whose file is gone: a plain tile or frame in place of the browser's broken-image mark */
+.fv-iv img[data-missing=true]{visibility:hidden}
+.fv-iv .fv-iv-cap[data-missing=true] .fv-image-action,.fv-iv .fv-iv-cap[data-missing=true] .fv-iv-sep{display:none}
+.fv-iv .fv-iv-pic:has(.fv-iv-picture[data-missing=true]){background:rgb(var(--fv-tint))}
 @media(prefers-reduced-motion:reduce){.fv-iv .fv-iv-frame[data-loading=true] .fv-iv-pic,.fv-iv .fv-iv-tile:has(img[data-loaded=false]){animation:none}}
 /* the shown picture opens large on a click */
 .fv-iv .fv-iv-frame[data-state=done] .fv-iv-picture{cursor:zoom-in}
@@ -486,7 +487,6 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
 
 /* solid fallback: panels keep a visible edge so the layers still read apart */
 :is(:root[data-glass=solid],:root.lite) .fv-iv .fv-iv-panel{box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh1)}
-:is(:root[data-glass=solid],:root.lite) .fv-iv .fv-iv-ambient{opacity:.35}
 
 /* ── widths ── */
 @media(min-width:720px) and (max-width:1279px){
@@ -500,7 +500,6 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
 }
 @media(max-width:719px){
   .fv-iv{overflow:auto;display:flex;flex-direction:column;gap:12px;padding:8px 12px 0;--iv-gut:0px}
-  .fv-iv .fv-iv-ambient{position:fixed}
   .fv-iv .fv-iv-panel,.fv-iv .fv-iv-stage{position:relative;inset:auto;left:auto;right:auto;top:auto;bottom:auto;width:auto;flex:none}
   .fv-iv .fv-iv-panel[data-collapsed=true]>:not(.fv-iv-rail){opacity:1;pointer-events:auto;visibility:visible}
   .fv-iv .fv-iv-rail,.fv-iv .fv-iv-collapse,.fv-iv .fv-iv-show-works{display:none!important}

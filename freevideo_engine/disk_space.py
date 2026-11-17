@@ -310,9 +310,11 @@ def problem_messages(paths, data_paths=()):
     return messages
 
 
-def frontend_gib(mac):
-    """Space for a separate ComfyUI environment: 1.4 GB measured on a Mac, CUDA ones need far more."""
-    return 2 if mac else 12
+def frontend_gib(mac, linux=False):
+    """Space for a separate ComfyUI environment: 1.4 GB measured on a Mac. A CUDA one links the
+    same package cache as the engine environment on Linux, where it is hard linked, so only
+    ComfyUI's own packages are added; Windows copies PyTorch and keeps the larger figure."""
+    return 2 if mac else 6 if linux else 12
 
 
 def disks():

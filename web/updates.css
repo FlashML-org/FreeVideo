@@ -38,3 +38,4 @@
 .fv-release-notes .fv-release-foot{flex:none;display:flex;justify-content:flex-end;gap:var(--fv-sp-8,8px);padding:var(--fv-sp-16,16px) var(--fv-sp-24,24px);border-top:1px solid var(--fv-line,rgb(255 255 255 / .08))}
 .fv-release-notes .fv-release-foot button{height:var(--fv-ctl,32px);padding:0 var(--fv-sp-16,16px);border-radius:var(--fv-r-sm);background:var(--fv-ctl-bg,rgb(255 255 255 / .06));font-size:var(--fv-fs-2,13px)}
 .fv-release-notes .fv-release-foot button.fv-primary{background:var(--fv-accent-fill,#0d6dcc);color:#fff;font-weight:600}
+.fv-update-notice .fv-update-close{min-width:30px;padding:4px 8px;font-size:16px;line-height:1}

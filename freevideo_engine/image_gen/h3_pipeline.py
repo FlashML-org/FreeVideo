@@ -132,16 +132,74 @@ PICTURE_SHARE = int(2.2 * 2**30)
 RESIDENT_ENCODE_MIN_FREE = ENCODER_MIN_FREE + RESIDENT_CONTEXT + PICTURE_SHARE
 
 
-def resident_encode_decision(free_now):
-    """(use the resident encoder?, reason) from the free memory the driver reports."""
+def resident_encode_decision(free_now, placed=0):
+    """(use the resident encoder?, reason) from the free memory the driver reports, plus ``placed``: the bytes of the
+    encoder the resident worker already holds on the card (kept there after the last picture), which the encoding
+    uses where they are."""
     if free_now is None:
         return True, dict(reason='free memory unreadable; resident kept')
     parts = dict(free_gib=round(free_now / 2**30, 2), need_gib=round(RESIDENT_ENCODE_MIN_FREE / 2**30, 2),
                  encoder_gib=round(ENCODER_MIN_FREE / 2**30, 2), context_gib=round(RESIDENT_CONTEXT / 2**30, 2),
                  picture_gib=round(PICTURE_SHARE / 2**30, 2))
-    if free_now < RESIDENT_ENCODE_MIN_FREE:
+    if placed:
+        parts['placed_gib'] = round(placed / 2**30, 2)
+    if free_now + placed < RESIDENT_ENCODE_MIN_FREE:
         return False, dict(parts, reason='free memory below the resident encoder, its context and the picture share')
     return True, dict(parts, reason='free memory covers the resident encoder, its context and the picture share')
+
+
+# The text encoder's bytes on the card when all of it is there (15.2 GiB measured for the 32B encoder, rounded up):
+# what a keep decision counts for an encoder that is not on the card yet.
+ENCODER_CARD_ESTIMATE = 16 * 2**30
+# Room a kept encoder leaves beyond the picture's plan, for free memory that moves between the decision and the plan.
+ENCODER_KEEP_MARGIN = 2**30
+# The DiT's shape from the last load in this process, by file: the keep decision is made before the DiT loads.
+_SHAPES = {}
+
+
+def keep_encoder_decision(*, free_now, placed, shape, budget_cap, reserved, vae_held, width, height, sequence_rows,
+                          context=0, host_free=None):
+    """(keep the text encoder on the card after this picture's encoding?, facts).
+
+    The encoder stays only when the picture's planned placement (layers on the card, host mode, decoder tiling) is
+    the same with the encoder on the card as without it, so the picture is made exactly as it would be after the
+    encoder left; a saved conditioning is then used and the next encoding needs no load. ``free_now`` is the card's
+    free memory now, ``placed`` the encoder bytes on the card now, ``reserved`` what this process holds,
+    ``context`` the CUDA context this process has yet to create; ``budget_cap`` is the request's card limit."""
+    if free_now is None or shape is None:
+        return False, dict(reason='free memory or the picture model\'s shape unknown')
+    from .image_policy import plan_image
+    canvas_h, canvas_w = h3_dit.canvas_size(height, width)
+    encoder_bytes = placed or ENCODER_CARD_ESTIMATE
+
+    def placement(free):
+        budget = max(0, min(budget_cap, free + reserved) - vae_held)
+        plan = plan_image(gpu_budget_bytes=budget, host_available_bytes=host_free, width=canvas_w, height=canvas_h,
+                          shape=shape, sequence_rows=sequence_rows)
+        # What this picture runs with. Not part of it: the plan's own text-encoder layers (H3 encodes in the
+        # resident worker, never from this plan) and the DiT blocks left on the card after the picture
+        # (dit_kept_layers: a block fewer costs the next picture well under a second, against seconds of encoder load).
+        return (plan.dit_resident_layers, plan.vae_tiling, plan.vae_tile_size, plan.host_mode,
+                plan.feasible), plan.dit_kept_layers
+
+    released, released_after = placement(free_now + placed - context)
+    kept, kept_after = placement(free_now - (0 if placed else encoder_bytes) - context - ENCODER_KEEP_MARGIN)
+    facts = dict(free_gib=round(free_now / 2**30, 2), encoder_gib=round(encoder_bytes / 2**30, 2),
+                 placed=bool(placed), resident_layers_kept=kept[0], resident_layers_released=released[0],
+                 kept_after_kept=kept_after, kept_after_released=released_after)
+    if kept != released:
+        return False, dict(facts, reason='the picture would be placed differently with the encoder on the card')
+    return True, dict(facts, reason='the picture is placed the same with the encoder on the card')
+
+
+def placed_encoder_bytes(endpoint):
+    """Card bytes of the text encoder in the resident worker at ``endpoint``; 0 when it holds none there or cannot say."""
+    from ..resident_process import ENV, status
+    held = status({ENV: endpoint})
+    try:
+        return sum(int(row.get('gpu_bytes') or 0) for row in held.get('models') or [] if row.get('role') == 'encoder')
+    except (AttributeError, TypeError, ValueError):
+        return 0
 
 
 def _driver_free_bytes():
@@ -269,7 +327,7 @@ def _tensor_bytes(value):
 
 
 def _encode(prompt, *, encoder, comfy_root, comfy_python, model_paths, vram_gib, ram_gib, vision_images=(),
-            resident_endpoint=None):
+            resident_endpoint=None, release_gpu=True):
     """Run the shared text encoder in its own process and return the saved conditioning."""
     import os
     import sys
@@ -280,7 +338,8 @@ def _encode(prompt, *, encoder, comfy_root, comfy_python, model_paths, vram_gib,
     if resident_endpoint:
         os.environ[ENV] = resident_endpoint
     try:
-        return _encode_once(prompt, encoder, comfy_root, comfy_python, model_paths, vram_gib, ram_gib, vision_images)
+        return _encode_once(prompt, encoder, comfy_root, comfy_python, model_paths, vram_gib, ram_gib, vision_images,
+                            release_gpu=release_gpu)
     except BaseException as error:
         # The caller's classifier keeps only a code; the text of the failure goes to the worker's log.
         print('H3 encode failed: %s: %s' % (type(error).__name__, str(error)[-2000:]), file=sys.stderr, flush=True)
@@ -293,7 +352,8 @@ def _encode(prompt, *, encoder, comfy_root, comfy_python, model_paths, vram_gib,
                 os.environ[ENV] = previous
 
 
-def _encode_once(prompt, encoder, comfy_root, comfy_python, model_paths, vram_gib, ram_gib, vision_images=()):
+def _encode_once(prompt, encoder, comfy_root, comfy_python, model_paths, vram_gib, ram_gib, vision_images=(),
+                 release_gpu=True):
     from .. import encode as encode_command
     import sys
     with tempfile.TemporaryDirectory(prefix='freevideo-h3img-') as directory:
@@ -308,7 +368,9 @@ def _encode_once(prompt, encoder, comfy_root, comfy_python, model_paths, vram_gi
             prompt_file=prompt_file, out=out, encoder=encoder,
             comfy_root=Path(comfy_root) if comfy_root else None, model_paths=Path(model_paths) if model_paths else None,
             comfy_python=comfy_python or sys.executable, vram_gib=vram_gib, ram_gib=ram_gib, attention='auto',
-            gpu_reserve_gib=None, ram_reserve_gib=None, release_gpu=True, h3_image_references=pictures))
+            gpu_reserve_gib=None, ram_reserve_gib=None, release_gpu=release_gpu,
+            # A kept encoder gives back only the encoding's working memory, which the picture plans with.
+            empty_cache=not release_gpu, h3_image_references=pictures))
         return torch.load(out, map_location='cpu', weights_only=False)
 
 
@@ -400,24 +462,42 @@ def generate(prompt, width, height, seed, references=None, progress_cb=None, can
             enter('encode')
         raise ReferencesTooLarge('the references need more memory than this card has, even with every block streamed')
     shared_card = bool(resident_endpoint)
+    placed = 0
     if resident_endpoint:
         # The resident encoder worker keeps its own CUDA context (about 0.8 GiB) on the card for good and encoding needs
         # 5 GiB: a card with less free than that plus the picture process's share encodes in a short process, as before.
         free_now = _driver_free_bytes()
-        use_resident, why = resident_encode_decision(free_now)
+        placed = placed_encoder_bytes(resident_endpoint)
+        use_resident, why = resident_encode_decision(free_now, placed)
         stats['encode_resident_decision'] = why
         if not use_resident:
             stats['encode_resident'] = False
             resident_endpoint = None
+    # A card with room for both keeps the encoder: the planner places the picture the same either way.
+    keep_encoder = False
+    if resident_endpoint:
+        initialized = torch.cuda.is_initialized()
+        vae_held = _tensor_bytes(kept.items['vae'][1]) if kept is not None and 'vae' in kept.items else 0
+        keep_encoder, why = keep_encoder_decision(
+            free_now=free_now, placed=placed, shape=_SHAPES.get(str(dit_path)),
+            budget_cap=vram_gib * 2**30 - PICTURE_CONTEXT if vram_gib else float('inf'),
+            reserved=torch.cuda.memory_reserved() if initialized else 0, vae_held=vae_held, width=width, height=height,
+            sequence_rows=reference_sequence_rows(copies), context=0 if initialized else PICTURE_CONTEXT)
+        stats['encoder_keep'] = why
+    # An encoder left on the card that this picture does not keep leaves it only through an encoding: a saved
+    # conditioning would keep it there beside the picture model for the whole picture. With the encoder already on
+    # the card the encoding itself is short, and the model gets the card it would have had.
+    encoder_on_card = bool(resident_endpoint) and placed > 0 and not keep_encoder
     tick = time.perf_counter()
     from . import prompt_cache
     cond = prompt_cache.encode(
-        prompt, [vision for _, vision in copies], stats=stats, encoder=encoder,
+        prompt, [vision for _, vision in copies], stats=stats, encoder=encoder, use_saved=not encoder_on_card,
         cache=prompt_cache.open_cache(encoder=encoder, comfy_root=comfy_root, comfy_python=comfy_python or sys.executable,
                                       model_paths=model_paths),
         compute=lambda: _encode(prompt, encoder=encoder, comfy_root=comfy_root, model_paths=model_paths,
                                 comfy_python=comfy_python, vram_gib=vram_gib, ram_gib=ram_gib,
-                                vision_images=[vision for _, vision in copies], resident_endpoint=resident_endpoint))
+                                vision_images=[vision for _, vision in copies], resident_endpoint=resident_endpoint,
+                                release_gpu=not keep_encoder))
     stats['encode_s'] = round(time.perf_counter() - tick, 2)
     check()
     moments = []
@@ -502,6 +582,7 @@ def generate(prompt, width, height, seed, references=None, progress_cb=None, can
     # keeps their real sizes.
     shape = ImageShape(**{**shape.__dict__, 'steps': 6,
                           'dit_block_bytes': max(shape.dit_block_bytes, int(getattr(stack, 'layer_bytes', 0) or 0))})
+    _SHAPES[str(dit_path)] = shape
     plan = plan_image(gpu_budget_bytes=budget, width=canvas_w, height=canvas_h, shape=shape,
                       sequence_rows=reference_sequence_rows(copies))
     stack.set_resident(plan.dit_resident_layers if resident is None else resident)

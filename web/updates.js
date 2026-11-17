@@ -140,16 +140,23 @@ export function createUpdateNotice(cn) {
     link.title = t('After your task finishes, open the new FreeVideo.exe to update.', '当前任务完成后，打开新版 FreeVideo.exe 更新。');
     const dismiss = document.createElement('button'); dismiss.type = 'button';
     dismiss.textContent = t('Later', '稍后');
-    dismiss.onclick = () => {
+    const close = document.createElement('button'); close.type = 'button'; close.className = 'fv-update-close';
+    close.textContent = '×'; close.setAttribute('aria-label', t('Close', '关闭'));
+    // Closing only hides the notice for this opening (this tab); a later opening reminds again.
+    // Storage may be unavailable, and nothing is sent to the server.
+    const dismissNotice = () => {
         dismissed = identity(value?.available);
         failure = '';
         try { sessionStorage.setItem(storageKey, dismissed); } catch {}
         publish();
     };
+    dismiss.onclick = close.onclick = dismissNotice;
+    const onKey = event => { if (event.key === 'Escape' && !event.defaultPrevented && !document.querySelector?.('dialog[open]:not(.fv-studio)') && !element.hidden && !dismiss.hidden) dismissNotice(); };
+    document.addEventListener?.('keydown', onKey);
     const stop = document.createElement('button'); stop.type = 'button';
     stop.textContent = t('Cancel update', '取消更新');
     stop.onclick = () => { stop.disabled = true; void cancelUpdate().finally(() => { stop.disabled = false; }); };
-    element.append(label, details, apply, link, dismiss, stop);
+    element.append(label, details, apply, link, dismiss, stop, close);
     const render = () => {
         const launcher = value?.launcher, phase = launcher?.phase || '', candidate = value?.available;
         const mac = value?.channel === 'macos-preview', linux = value?.channel === 'linux-preview';
@@ -179,7 +186,7 @@ export function createUpdateNotice(cn) {
         } else if (failure) {
             text = t('Open the FreeVideo launcher to update, or download the new version.', '请在 FreeVideo 启动器中更新，或下载新版。');
             actions = true;
-        } else if (candidate) {
+        } else if (candidate && dismissed !== identity(candidate)) {
             text = t('FreeVideo update available', 'FreeVideo 有新版本') + ' · ' + displayVersion(candidate);
             if (launcher?.status === 'error' && launcher.error) text += ' · ' + t('last attempt failed', '上次更新未完成');
             actions = true;
@@ -198,10 +205,11 @@ export function createUpdateNotice(cn) {
         apply.hidden = !actions || !direct;
         link.hidden = !actions || direct;
         dismiss.hidden = !actions || dismissed === identity(candidate);
+        close.hidden = dismiss.hidden;
         stop.hidden = !(busy && phase === 'waiting' && !offline);
     };
     listeners.add(render); render();
-    return {element, dispose: () => { listeners.delete(render); closeNotes(); }};
+    return {element, dispose: () => { listeners.delete(render); document.removeEventListener?.('keydown', onKey); closeNotes(); }};
 }
 
 // The notes, newest first: the available update (with every version it skips), then the current version. Returns

@@ -1,41 +1,78 @@
 {
   "schema": 1,
-  "product_version": "0.6.0",
+  "product_version": "0.6.1",
   "en": {
-    "summary": "The new interface is friendlier, smoother and more modern, and privacy protection is stronger.",
+    "summary": "Fixes ComfyUI being taken over and image failures without explanation, and makes character creation and image generation better.",
     "changes": [
-      "New interface: friendlier, smoother and more modern. Every running and queued video and picture can be seen and managed from any page. Generation keeps running when you switch pages, and your half-written prompt and reference pictures stay in place. Earlier videos can serve as references, and first and last frames can be picked straight from your works. A light theme is also available.",
-      "Stronger privacy: deleting a work also deletes its uploaded pictures and prompts, and downloads and shares leave out the prompt by default.",
-      "Image generation with more control: LoRA is supported, and hand-drawn sketches give finer control over the result. A picture deleted by mistake can be recovered from Recently deleted.",
-      "Characters from a photo: one photo makes a character card with front, side and back views.",
-      "Editor: the microphone is turned off automatically when you leave the editor, what has been recorded is kept when you stop with Esc, and export defaults to the full video at high quality.",
-      "Works library: works can be viewed and played properly even in a narrow window.",
-      "More reliable Mac installation: fixes an issue that kept the installation from completing on some Macs.",
-      "More reliable generation: prompt enhancement fails less often on 12 GB graphics cards, and graphics cards with little memory generate pictures normally.",
-      "Download and launcher: a video that cannot be downloaded now says so, and the launcher starts normally even if its saved template is missing or damaged.",
-      "Built-in director and agent tools: the director's choices and shot joining are shown in the conversation, a job's queue position is reported, and more clients are supported.",
-      "ComfyUI console: each log line now appears once.",
-      "Tutorial: new chapters on closing the launcher, repairing model files and making pictures of different shapes on a canvas."
+      "ComfyUI is no longer taken over: only the FreeVideo launcher opens FreeVideo, and ComfyUI opened any other way stays as it is.",
+      "Image failures explain themselves: the reason and the next step are shown, with export report and open issue, and a new request now waits for the image in progress instead of failing.",
+      "Image view: the left panel is no longer cut off in Chinese, and the \"Clear\" button under the prompt is gone.",
+      "Calmer background: it no longer flickers while playing or switching and its colour is softer; the update notice can be closed and returns next time.",
+      "Better character creation: outfits from a description or a clothing picture are applied more reliably, including the face close-up; side and back views no longer show a grid; photo, uploaded picture and AI all give a face close-up, front, side and back view, each editable.",
+      "Faster pictures on graphics cards with more video memory.",
+      "Photos the right way up: phone photos used as references keep their orientation, and region edits at another size no longer fail.",
+      "Export report: saving over an existing file now works.",
+      "Compatibility: other CUDA or cuDNN copies on the system no longer load the wrong libraries; the launcher says clearly when no NVIDIA driver is found; Linux installs need less disk space.",
+      "Editing: undo still works after a generation, and unsaved changes are kept when switching views.",
+      "Model installs: verification shows \"Verifying\" with real progress.",
+      "Also: the creative panel's buttons wrap in narrow windows instead of scrolling out of sight, the quality slider follows the pointer more closely, and clothing options and LoRA share one row when creating a character."
     ]
   },
   "zh": {
-    "summary": "全新界面带来更友好、丝滑、现代的体验，隐私保护进一步加强。",
+    "summary": "修复了打开 ComfyUI 被接管、出图失败没有提示等问题，角色创建和出图更好用。",
     "changes": [
-      "全新界面：更友好、丝滑、现代的体验。在任何页面都能看到和管理所有正在生成、排队的视频和图片；切换页面不会中断生成，写到一半的描述和参考图都还在；以前生成的视频也可以直接用作参考，首尾帧可以从作品中直接选；支持浅色主题。",
-      "隐私保护加强：删除作品时一并删除相关的上传图片和提示词，下载和分享默认不含提示词。",
-      "图片生成更可控：支持 LoRA，并可以通过手绘草图更精细地控制生成；误删的图片可在“最近删除”中找回。",
-      "照片生成角色：支持用一张照片生成角色卡，包括正面、侧面和背面形象。",
-      "剪辑：离开剪辑页面时自动关闭麦克风，按 Esc 结束录制时已录内容会保留，导出默认选择完整视频和高画质。",
-      "作品库：窄窗口下也能正常查看和播放作品。",
-      "Mac 安装更稳定：修复部分 Mac 无法完成安装的问题。",
-      "生成更稳定：12 GB 显卡上的提示词增强更不容易失败，显存较小的显卡也能正常生成图片。",
-      "下载与启动：视频无法下载时会给出提示，保存的模板缺失或损坏时启动器也能正常启动。",
-      "内置导演与智能体工具：导演的选择和镜头拼接过程显示在对话中，智能体工具会报告任务的排队位置，并兼容更多客户端。",
-      "ComfyUI 控制台：每行日志只显示一次。",
-      "教程：新增关闭启动器、修复模型文件、在画布上做不同比例图片三章。"
+      "ComfyUI 不再被接管：只有从 FreeVideo 启动器打开才进入 FreeVideo，其他方式打开的 ComfyUI 保持原样。",
+      "出图失败说清原因：显示原因和下一步，可以导出报告、提交问题；有图片正在生成时，新的请求会排队，不再直接失败。",
+      "图像视图：中文界面下左栏不再被切掉，提示词下去掉了“清空”键。",
+      "背景更舒服：播放和切换时背景不再闪烁，颜色更柔和；更新提示可以关闭，下次打开再提醒。",
+      "角色创建更好用：按描述或服装图换衣更准，脸部特写也换上新衣服；侧面和背面不再有网格纹；照片、上传图片、AI 生成都能得到脸部特写、正面、侧面、背面，每张可单独编辑。",
+      "出图更快：显存较大的显卡上出图更快。",
+      "照片方向正确：手机拍的照片作参考时按正确方向使用；局部编辑换了尺寸也不再失败。",
+      "导出报告：覆盖已有的同名文件时也能正常保存。",
+      "兼容性：系统里装有其他 CUDA 或 cuDNN 时不再加载错误的库；找不到 NVIDIA 驱动时启动器给出明确提示；Linux 安装需要的磁盘空间更少。",
+      "剪辑：生成之后仍可撤销，切换视图时未保存的修改会保留。",
+      "模型安装：安装校验时显示“正在校验”和真实进度。",
+      "其他：窄窗口下创作面板的按钮会换行，不再滑出视野；质量滑块拖动更跟手；新建角色时服装选项和 LoRA 在同一行。"
     ]
   },
   "history": [
+    {
+      "product_version": "0.6.0",
+      "en": {
+        "summary": "The new interface is friendlier, smoother and more modern, and privacy protection is stronger.",
+        "changes": [
+          "New interface: friendlier, smoother and more modern. Every running and queued video and picture can be seen and managed from any page. Generation keeps running when you switch pages, and your half-written prompt and reference pictures stay in place. Earlier videos can serve as references, and first and last frames can be picked straight from your works. A light theme is also available.",
+          "Stronger privacy: deleting a work also deletes its uploaded pictures and prompts, and downloads and shares leave out the prompt by default.",
+          "Image generation with more control: LoRA is supported, and hand-drawn sketches give finer control over the result. A picture deleted by mistake can be recovered from Recently deleted.",
+          "Characters from a photo: one photo makes a character card with front, side and back views.",
+          "Editor: the microphone is turned off automatically when you leave the editor, what has been recorded is kept when you stop with Esc, and export defaults to the full video at high quality.",
+          "Works library: works can be viewed and played properly even in a narrow window.",
+          "More reliable Mac installation: fixes an issue that kept the installation from completing on some Macs.",
+          "More reliable generation: prompt enhancement fails less often on 12 GB graphics cards, and graphics cards with little memory generate pictures normally.",
+          "Download and launcher: a video that cannot be downloaded now says so, and the launcher starts normally even if its saved template is missing or damaged.",
+          "Built-in director and agent tools: the director's choices and shot joining are shown in the conversation, a job's queue position is reported, and more clients are supported.",
+          "ComfyUI console: each log line now appears once.",
+          "Tutorial: new chapters on closing the launcher, repairing model files and making pictures of different shapes on a canvas."
+        ]
+      },
+      "zh": {
+        "summary": "全新界面带来更友好、丝滑、现代的体验，隐私保护进一步加强。",
+        "changes": [
+          "全新界面：更友好、丝滑、现代的体验。在任何页面都能看到和管理所有正在生成、排队的视频和图片；切换页面不会中断生成，写到一半的描述和参考图都还在；以前生成的视频也可以直接用作参考，首尾帧可以从作品中直接选；支持浅色主题。",
+          "隐私保护加强：删除作品时一并删除相关的上传图片和提示词，下载和分享默认不含提示词。",
+          "图片生成更可控：支持 LoRA，并可以通过手绘草图更精细地控制生成；误删的图片可在“最近删除”中找回。",
+          "照片生成角色：支持用一张照片生成角色卡，包括正面、侧面和背面形象。",
+          "剪辑：离开剪辑页面时自动关闭麦克风，按 Esc 结束录制时已录内容会保留，导出默认选择完整视频和高画质。",
+          "作品库：窄窗口下也能正常查看和播放作品。",
+          "Mac 安装更稳定：修复部分 Mac 无法完成安装的问题。",
+          "生成更稳定：12 GB 显卡上的提示词增强更不容易失败，显存较小的显卡也能正常生成图片。",
+          "下载与启动：视频无法下载时会给出提示，保存的模板缺失或损坏时启动器也能正常启动。",
+          "内置导演与智能体工具：导演的选择和镜头拼接过程显示在对话中，智能体工具会报告任务的排队位置，并兼容更多客户端。",
+          "ComfyUI 控制台：每行日志只显示一次。",
+          "教程：新增关闭启动器、修复模型文件、在画布上做不同比例图片三章。"
+        ]
+      }
+    },
     {
       "product_version": "0.5.4",
       "en": {
@@ -214,43 +251,6 @@
           "设置：可清理已完成视频的工作文件。",
           "启动器：失败时只显示一张卡，写明下一步和能解决问题的按钮，技术详情折叠；CUDA 初始化失败会给出可操作的步骤，显卡驱动过旧时显示更新驱动的卡，更新失败时记录每个来源失败的原因。",
           "界面细节：勾选框统一大小；“轮数”输入框与“预留显存”输入框一样紧凑；素材卡不再显示模式标签；编辑角色时光标先落在名字上；AI 全自动卡片在自定义质量时显示“自定义”，进度只显示一个百分比；顶栏和视图标签在窄窗口里不再重叠，也不再横向滚动。"
-        ]
-      }
-    },
-    {
-      "product_version": "0.4.38",
-      "en": {
-        "summary": "Agent connections handle picture-only requests, long-video and download failures name their cause, the editor and tutorials are tidier, dropdowns, checkboxes and failure dialogs share one look, and an optional system status panel is added.",
-        "changes": [
-          "Agent: a request for one picture is handled as a single picture task, without video planning or a video. The activity list names picture, edit, music, track, sound, lines and dubbing jobs and shows their share, line count and time left, and keeps its scroll position.",
-          "Connection card: when FreeVideo on this computer cannot be reached, the card says so and the feedback report names the kind of failure. Report a problem buttons show that the form has opened and do not open it twice.",
-          "Launcher: a graphics card below the hardware floor shows the unsupported-card notice even when its driver is also old; on Windows, a component blocked by application control shows a card with how to allow it, and a folder that Windows does not let the account create shows a card asking for another folder; on Mac, a failed Git setup names the step and its cause; a newer ComfyUI front end no longer leaves a rejection when the launch workflow loads.",
-          "Long videos: when seam sounds were not kept before parts are joined, the error names the seams and the reason, and while the parts are joined the panel shows which part is being written.",
-          "Model download: after a pause for low free memory, an agreed re-download now proceeds with a streamed download instead of pausing again; a damaged verification record is treated as empty and rewritten.",
-          "Linux: machines with 8 GB of RAM and about 3.6 GiB free can now generate instead of being refused.",
-          "Music: generated music follows the written description over the style and mood, avoids an instrument it rules out, and a default prompt that asks for no background music gets no music.",
-          "Editor: with the lines panel open it takes at most 40% of the height and scrolls inside, the re-dub button stays visible, track names are no longer cut off, a second sound track can be removed from its row, the Creations list follows deletes, undos and new results, and the Media section lays characters, scenes and props in one row.",
-          "Tutorial and tour: new chapters for adding a spoken line, scenes and props, and changing part of a picture; a first-and-last-frame card first on the media tour; Take me there opens the right view before pointing at a control.",
-          "System status: a new optional setting shows graphics memory and temperature in the top bar, with a panel for the graphics card, memory, utilization, temperature and free disk space, and a two-step Stop now.",
-          "Waiting prompts: the image editor keeps its upload, font, object-finding and save status visible until each task finishes, a shared video export shows the frame reached and the time used, and an upload that never answers is cut off so the panels unlock and show the failure line.",
-          "Interface: dropdowns, checkboxes and settings rows share one style, advanced settings sit in one card of flat rows, the top-right entries form one tidy text group, failure dialogs and Autopilot failure messages show one reason line with the details folded, and close buttons and the tutorial layout are consistent."
-        ]
-      },
-      "zh": {
-        "summary": "Agent 连接能处理只要一张图的请求，长视频和下载失败时写明原因，剪辑与教程更整齐，下拉框、勾选框和失败对话框样式统一，并新增可选的运行状态面板。",
-        "changes": [
-          "Agent：只要一张图的请求作为单次图片任务处理，不做视频规划、不生成视频；活动列表为图片、编辑图片、配乐、音轨、声音、台词、配音任务命名，并显示份额、行数和剩余时间，轮询时保持滚动位置。",
-          "连接卡：连不上本机 FreeVideo 时，卡片给出提示，反馈报告写明故障类型；“提交问题”按钮点击后显示已打开，不会重复打开。",
-          "启动器：显卡低于硬件下限时，即使驱动也过旧，仍显示不支持的显卡提示；Windows 上，应用控制拦截运行组件时显示放行指引，所选文件夹不允许当前账户创建时提示改选其他文件夹；Mac 上，Git 准备失败时写明失败步骤和原因；加载启动工作流时，新版 ComfyUI 前端不再留下拒绝记录。",
-          "长视频：合并前接缝声音没有保住时，错误文字写出是哪几个接缝、什么原因；接合过程中，面板显示正在写第几段。",
-          "模型下载：因可用内存不足暂停后，已同意的重下现在改走流式下载，不再再次暂停；校验记录损坏时按空记录处理并重写。",
-          "Linux：内存 8 GB、可用约 3.6 GiB 的电脑现在能生成，不再被拒绝。",
-          "配乐：生成的配乐以所写描述为准，不再被风格和情绪盖过，会避开描述排除的乐器；默认提示词里写了“不要背景音乐”时不再生成配乐。",
-          "剪辑：打开台词面板时，面板最高占编辑器高度的 40%，列表在内部滚动，“重新配音”始终可见；轨道名不再被截断，存在声音 2 时可在其行里移除；创作列表随删除、撤销和新结果更新；创作面板素材区的角色、场景、道具排成一行。",
-          "教程与导览：新增“为一句话配音”“场景和道具”“局部改图”教程章节；素材导览先介绍首帧 + 尾帧；“带我去”先打开章节所在的视图，再指向控件。",
-          "运行状态：设置新增可选的“运行状态”，顶栏显示显存和温度，面板列出显卡、显存、使用率、温度和硬盘剩余空间，并提供两步确认的“立即停止”。",
-          "等待提示：图片编辑器的上传、字体、找出物体和保存提示显示到任务完成并显示已用时间；分享视频导出显示已到的帧和用时；一直没有回应的上传会被中止，各处面板解锁并显示失败提示。",
-          "界面：下拉框、勾选框和设置项样式统一，高级设置收进一张卡片逐行排列，右上角入口排成一组文字，失败对话框和 AI 全自动的失败消息只写一行原因并把详情折叠，关闭按钮和教程排版一致。"
         ]
       }
     }

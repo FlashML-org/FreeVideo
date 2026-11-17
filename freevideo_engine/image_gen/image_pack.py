@@ -31,6 +31,8 @@ from ..monitoring import save
 from ..failure_details import Redactor, image_pack_busy_lock, image_pack_error_code, redacted_launcher_error
 
 H3_TIERS = ('int8',)
+MOSS_GROUP = 'moss-image'
+MOSS_ONLY_COMPONENTS = ('transformer', 'tokenizer', 'scheduler', 'license')
 H3_GROUPS = ('h3-image-core', 'h3-text-encoder') + tuple('h3-image-dit-' + tier for tier in H3_TIERS)
 LEDGER = 'download-verified.json'
 OWNERSHIP = 'owned-files.json'
@@ -144,16 +146,19 @@ def validate_catalog(spec):
         # A group of its own holds only its own component; the image group holds neither.
         own = {group: spec['groups'].get(group, []) for group in ('segment', 'music', 'stems')}
         h3 = {group: spec['groups'].get(group, []) for group in H3_GROUPS}
-        found = image_rows + [row for found in own.values() for row in found] + [row for found in h3.values() for row in found]
-        if (not image_rows or len({r['file'] for r in found}) != len(found) or set(spec['groups']) - {'image', *own, *h3}
+        moss = spec['groups'].get(MOSS_GROUP, [])
+        found = image_rows + [row for found in own.values() for row in found] + [row for found in h3.values() for row in found] + moss
+        if (not image_rows or len({r['file'] for r in found}) != len(found) or set(spec['groups']) - {'image', *own, *h3, MOSS_GROUP}
                 or any(row['component'] in own for row in image_rows)
-                or any(row['component'] != group for group, found in own.items() for row in found)):
+                or any(row['component'] != group for group, found in own.items() for row in found)
+                or any(row['component'] in MOSS_ONLY_COMPONENTS for row in found if row not in moss)):
             raise PackError('invalid_catalog')
         for row in found:
             _relative(row['file'])
             if (type(row['bytes']) is not int or row['bytes'] <= 0
                     or not re.fullmatch('[0-9a-f]{64}', row['sha256'])
-                    or row['component'] not in ('dit', 'text_encoder', 'vae', 'text_encoder_config', 'processor', 'config', 'segment', 'music', 'stems')
+                    or row['component'] not in ('dit', 'text_encoder', 'vae', 'text_encoder_config', 'processor', 'config', 'segment', 'music', 'stems',
+                                            *MOSS_ONLY_COMPONENTS)
                     or row.get('shared', 'video-encoder') != 'video-encoder'):
                 raise PackError('invalid_catalog')
             ids = [s['id'] for s in row['sources']]
@@ -250,6 +255,34 @@ def _read(folder, name):
         return {}
 
 
+def _moved_stamp(ledger, path, row):
+    """Adopt the stamp of the same file recorded under another installation directory.
+
+    Stamps are keyed by absolute path and carry inode, device and change time, all of which a move,
+    a hard link or a copy that keeps modification times changes. A file at a new place whose size,
+    modification time and expected hash equal a verification stamp recorded for the same
+    relative name is the same file: it is stamped again here instead of being hashed again. Any
+    difference in size or modification time still means a full check.
+    """
+    name = str(path)
+    try:
+        if not path.is_file():
+            return False
+        info = path.stat()
+        if info.st_size != row['bytes'] or info.st_mtime_ns >= time.time_ns() - 10**9:
+            return False
+        suffix = '/' + row['file']
+        for key, prior in ledger.items():
+            if (key != name and isinstance(prior, dict) and key.replace('\\', '/').endswith(suffix)
+                    and prior.get('bytes') == row['bytes'] and prior.get('mtime_ns') == info.st_mtime_ns
+                    and prior.get('sha256') == row.get('sha256')):
+                ledger[name] = dict(provision.file_identity(path, row), method='relocated_unchanged_file')
+                return True
+    except OSError:
+        pass
+    return False
+
+
 def _intact(path, row, ledger):
     try:
         prior = ledger.get(str(path), {})
@@ -283,9 +316,12 @@ STEMS_NOTICE_TEXT = (b'Bandit Plus (cocktail-party separation model). Weights: W
                      b'https://github.com/kwatcharasupat/source-separation\n')
 H3_NOTICE_TEXT = (b'MiniMax-H3-Image is licensed under the MiniMax-H3-Image Community License Agreement, '
                   b'Copyright \xc2\xa9 2026 MiniMax. All Rights Reserved.\n')
+MOSS_NOTICE_TEXT = (b'MOSS-Image is licensed under the Apache License, Version 2.0 (the LICENSE file in this folder); '
+                    b'its VAE is the FLUX.2 small decoder, also Apache-2.0. The weights are published by the OpenMOSS Team.\n')
 NOTICES = {'image': ('NOTICE.txt', NOTICE_TEXT), 'h3-image': ('MINIMAX-H3-IMAGE-NOTICE.txt', H3_NOTICE_TEXT), 'segment': ('SAM2-NOTICE.txt', SEGMENT_NOTICE_TEXT),
            'music': ('MUSIC-NOTICE.txt', MUSIC_NOTICE_TEXT),
-           'stems': ('STEMS-NOTICE.txt', STEMS_NOTICE_TEXT)}
+           'stems': ('STEMS-NOTICE.txt', STEMS_NOTICE_TEXT),
+           'moss-image': ('MOSS-IMAGE-NOTICE.txt', MOSS_NOTICE_TEXT)}
 
 
 def _notice():
@@ -432,6 +468,8 @@ def status(root=None, *, group='image'):
     for row in rows(group=group):
         path = target(row, root)
         intact = _intact(path, row, ledger)
+        if not intact and row.get('sha256') and _moved_stamp(ledger, path, row):
+            intact = _intact(path, row, ledger)
         old = not intact and _stale(path, row, ledger)
         if old:
             stale.append(path)
@@ -592,8 +630,10 @@ def _verify(folder, root, progress, check, full=False, *, group='image'):
             nonlocal hashed
             hashed = True
             check()
-            progress(dict(phase='verify', done=done + current, total=total))
+            progress(dict(phase='verify', done=done + current, total=total, verify_done=done + current, verify_total=total))
         before = model_repair.identity(path)
+        if not full and row.get('sha256') and not _intact(path, row, ledger):
+            _moved_stamp(ledger, path, row)
         intact = provision.verified(path, row, ledger, mode='full' if full else 'auto', progress=checked)
         progress(dict(phase='diagnostic', diagnostic=dict(file=row['file'], verification='verified' if intact else
                                       'mismatch' if path.exists() else 'missing',
@@ -645,6 +685,9 @@ def _transfer(plan, row, path, progress, check, background=None, diagnostic=None
             details.update(verification='verified', method='sha256')
         elif value.get('reason') == 'integrity-mismatch':
             details.update(verification='mismatch', method='sha256')
+        if diagnostic and value.get('action') == 'verify-progress':
+            diagnostic(dict(phase='verify', verify_done=value.get('done_bytes'), verify_total=value.get('total_bytes')))
+            return prior_event(value) if prior_event else None
         if diagnostic:
             diagnostic(dict(phase='diagnostic', diagnostic=details))
             if value.get('action') == 'verifying':
@@ -889,6 +932,7 @@ class Installer:
             return
         with self.lock:
             if value.get('phase') == 'download':
+                value.update(verify_done=None, verify_total=None)
                 now, done = time.monotonic(), value['done']
                 if self.last_done is not None:
                     self.transferred += max(0, done - self.last_done)
@@ -1042,7 +1086,7 @@ def main(argv=None):
     download = commands.add_parser('download')
     download.add_argument('--background', action='store_true')
     download.add_argument('--group', default='image',
-                          type=lambda name: name if name in ('image', 'segment', 'music', 'stems') or (
+                          type=lambda name: name if name in ('image', 'segment', 'music', 'stems', MOSS_GROUP) or (
                               name.startswith('h3-image:') and name[9:] in H3_TIERS) else
                           parser.error('unknown group ' + name))
     download.add_argument('--root', type=Path)

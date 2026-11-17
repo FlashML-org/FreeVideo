@@ -535,6 +535,18 @@ class ModelBank:
         if ceiling is not None:
             self.decisions[-1]['device_ceiling_bytes'] = ceiling
 
+    def nonlocal_reserve(self):
+        """Windows non-local budget the encoder leaves free for the next stage.
+
+        A retained engine already planned the locked buffers sampling
+        allocates after its weights (attention readouts, the residual staging
+        buffer); weights the encoder pins must not take that room.
+        """
+        from .windows_gpu_memory import NONLOCAL_PIN_RESERVE
+        entry = self.entries.get('engine')
+        planned = getattr(entry['model'], 'nonlocal_reserve_bytes', None) if entry else None
+        return max(NONLOCAL_PIN_RESERVE, planned) if type(planned) is int else NONLOCAL_PIN_RESERVE
+
     def engine_on_gpu(self):
         entry = self.entries.get('engine')
         return entry is not None and not is_parked(entry['model'])
@@ -766,6 +778,7 @@ class ModelBank:
             gpu_capacity = owned_pool_capacity(torch)
         can_release_host = host_cache_release_supported(torch)
         return dict(reclaimable_gpu_bytes=torch.cuda.memory_reserved(),
+                    allocated_gpu_bytes=torch.cuda.memory_allocated(),
                     reclaimable_ram_bytes=(sum(host.values()) if can_release_host else 0) + parked,
                     reclaimable_commit_bytes=(sum(committed.values()) if can_release_host else 0) + parked,
                     retained_pinned_ram_bytes=sum(host.values()), parked_ram_bytes=parked,

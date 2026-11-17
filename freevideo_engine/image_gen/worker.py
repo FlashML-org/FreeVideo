@@ -74,6 +74,32 @@ def _flatten(image):
     return image.convert('RGB')
 
 
+ORIENTATION = 0x0112
+
+
+def _upright(image):
+    """The picture as it is shown: turned by its orientation tag, as H3 Image reads references and the page draws them.
+    Pictures without a tag (or tagged upright) come back as they are."""
+    from PIL import ImageOps
+    try:
+        if image.getexif().get(ORIENTATION, 1) not in (2, 3, 4, 5, 6, 7, 8):
+            return image
+        return ImageOps.exif_transpose(image)
+    except (OSError, ValueError, KeyError, TypeError, SyntaxError):
+        return image
+
+
+def load_references(stack, paths, *, edited_first=False):
+    """The reference pictures as the model reads them: upright, RGB, transparency on white. With edited_first (a mask
+    is drawn on the first one) that picture keeps its stored pixels, which the mask and the requested size are in."""
+    from PIL import Image
+    references = []
+    for index, path in enumerate(paths):
+        image = stack.enter_context(Image.open(path))
+        references.append(_flatten(image if edited_first and index == 0 else _upright(image)))
+    return references
+
+
 def next_request(inbox, wait, crowding=None):
     """The next row, or None when the pipe closed, `wait` seconds passed, or the card is crowded.
 
@@ -166,10 +192,7 @@ def serve(pack_dir, *, device='cuda', idle_seconds=45., stream=None, output=None
                     if hasattr(runner, 'last_plan'):
                         runner.last_plan = None
                     context.timing.enter('start')
-                    references = []
-                    for path in value.get('images', []):
-                        image = stack.enter_context(Image.open(path))
-                        references.append(_flatten(image))
+                    references = load_references(stack, value.get('images', []), edited_first=bool(value.get('mask')))
                     region = {}
                     if value.get('mask'):
                         region['edit_mask'] = stack.enter_context(Image.open(value['mask']))

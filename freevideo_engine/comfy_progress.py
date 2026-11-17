@@ -3,6 +3,7 @@ from copy import deepcopy
 from pathlib import Path
 import heapq
 import json
+import logging
 import os
 import threading
 import time
@@ -469,6 +470,27 @@ def register():
         # The phone page reads the preview style from the same poll that carries the pictures.
         style = preview_style()
         return web.json_response({'progress': STATE.snapshot(), 'preview_style': style['style'], 'preview_chosen': style['chosen']},
+                                 headers={'Cache-Control': 'no-store'})
+
+    @server.routes.get('/freevideo/jobs')
+    async def jobs(request):
+        from . import jobs_view, jobs_journal
+        import folder_paths
+        from pathlib import Path
+        def collect():
+            front = getattr(server, '_freevideo_front', None)
+            running, pending = front.current_queue() if front is not None else server.prompt_queue.get_current_queue()
+            try:
+                finished = jobs_journal.read(root=Path(folder_paths.get_output_directory()))
+            except Exception:
+                finished = []
+            return jobs_view.build(running, pending, STATE.snapshot(), finished)
+        try:
+            rows = await asyncio.to_thread(collect)
+        except Exception:
+            logging.getLogger(__name__).warning('The job list could not be built.', exc_info=True)
+            rows = []
+        return web.json_response({'stream_id': STATE.stream_id, 'sequence': STATE.sequence, 'jobs': rows},
                                  headers={'Cache-Control': 'no-store'})
 
     @server.routes.get('/freevideo/preview-style')

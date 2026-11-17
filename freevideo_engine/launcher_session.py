@@ -34,8 +34,9 @@ from .runtime_alias import checked_real_path
 # Background launcher release checks while the window stays open.
 CHECK_SECONDS = 30 * 60
 SETTLE_SECONDS = 60
-# "Later" hides one reminder for this long; a newer release reminds at once.
-SNOOZE_SECONDS = 4 * 3600
+# A dismissed update stays closed until the launcher is opened again (the state is in memory only);
+# a newer release reminds at once.
+SNOOZE_SECONDS = 365 * 24 * 3600
 QUEUE_POLL_SECONDS = 3
 RECEIPT_POLL_SECONDS = 5
 
@@ -1392,6 +1393,10 @@ class Session:
             value = state.get('error') or ''
             if (alias_failure(value) or (state is self.upgrade.state and state.get('status') == 'failed')) and value not in raw:
                 raw += ('\n' if raw else '') + value
+        if 'NVIDIA driver/nvidia-smi is missing.' in raw:
+            # Six reports said the driver was missing without saying whether a card was there.
+            from .display_adapters import adapters, report_line
+            raw += ('\n' if raw else '') + report_line(adapters())
         pack_report = self.image_pack_report()
         if pack_report:
             # The existing ZIP exporter retains launcher/error.txt in full.
@@ -1422,7 +1427,7 @@ class Session:
         def work():
             target = Path(output)
             # Collection never writes over a file; a confirmed replacement is built beside it and swapped in whole.
-            partial = target.with_name('.%s.%s.partial' % (target.name, uuid.uuid4().hex[:8])) if overwrite else target
+            partial = target.with_name('.%s.%s.partial.zip' % (target.name, uuid.uuid4().hex[:8])) if overwrite else target
             replacing = False
             try:
                 result = collect(root, root / 'machine.json', None, partial,
@@ -2668,8 +2673,13 @@ class Session:
             if line(zh, names):
                 failure['note'] = line(zh, names)
             if only_other_vendors(names):
+                # No NVIDIA card is listed: the card says what FreeVideo needs, and the note would repeat it.
                 from .failure_details import UNSUPPORTED_VENDOR
                 failure['title'], failure['action'] = UNSUPPORTED_VENDOR[1 if zh else 0]
+                failure.pop('note', None)
+            elif names:
+                from .failure_details import DRIVER_FOR_LISTED_CARD
+                failure['title'], failure['action'] = DRIVER_FOR_LISTED_CARD[1 if zh else 0]
         if failure.get('path'):
             # The local repair instruction needs the actual file location; copied details stay redacted.
             from .model_repair import MISMATCH_PATH

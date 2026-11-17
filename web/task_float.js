@@ -180,7 +180,7 @@ function reasonLong(row) {
     const code = row.failure?.code;
     if (code === 'engine_closed') return t('FreeVideo stopped answering while this was being made. Start FreeVideo again, then generate again.', '生成过程中 FreeVideo 停止了响应。重新启动 FreeVideo 后再生成一次。');
     if (code === 'engine_restarted' || row.status === 'interrupted') return t('FreeVideo restarted while this was being made, so it did not finish. Finished parts are in your works.', 'FreeVideo 在生成过程中重新启动，这次没有完成。已经完成的部分在作品里。');
-    if (row.kind === 'image') return imageGenError(code, null, t) || t('The picture did not finish.', '这张图没有完成。');
+    if (row.kind === 'image') return imageGenError(code, row.failure, t) || t('The picture did not finish.', '这张图没有完成。');
     return row.failure?.message || t('The video did not finish.', '这段视频没有完成。');
 }
 function line2(row) {

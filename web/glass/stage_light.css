@@ -3,39 +3,43 @@
    (data-fv-polish=off), glass off (data-glass=solid, .lite) and reduced transparency. theme.css sets the stage look's
    translucent fills.
 
-   1. The light: the work in front, small and stretched behind the view, strongest round the work and fading out
-      towards the window's edges (a mask, not a veil of the ground colour, so whatever the ground carries, such as the
-      look layer's own lights in the corners, still shows there). Create: .fv-look-light (stage_light.js). Images and
-      Edit draw their own (.fv-iv-ambient, .fv-ed-ambient), shown again here with the same falloff.
+   1. The light: two or three main colours of the chosen work, as one soft gradient behind the whole window of every
+      view (.fv-look-light, stage_light.js). No picture is drawn, so nothing of the work can be made out, and a
+      playing video does not move it.
    2. Glass on the windows that float over the work: the small windows of the tool row (Frame & size, Length, Quality,
       Media), the trays, the details sheet, the status panel and the notices. While the look layer (data-fv-lux) is on,
       it styles these itself. */
 
 /* ── 1. The light ─────────────────────────────────────────────────────────────────────────────────────────────── */
-/* The same falloff for the three views: about 38 % of the picture round the work, 14 % at three quarters of the way
-   out, 6 % at the edges (dark); a little less on the light theme. */
-:root{--fv-light-mask:radial-gradient(120% 90% at 50% 38%,rgb(0 0 0 / .75) 0%,rgb(0 0 0 / .28) 72%,rgb(0 0 0 / .12) 100%);--fv-light-op:.5}
-:root[data-theme=light]{--fv-light-op:.4}
+/* The chosen work's two or three main colours (stage_light.js writes them on <html>, already darkened or lightened for
+   the theme) as one soft gradient behind the whole window, top bar included: the same layer in every view, so a
+   switch never starts from the ground colour. A new work blends in once over 0.6 s; the first light of a visit fades
+   in. Registered colours, so the blend is a real colour transition (a browser without @property changes at once). */
+@property --fv-amb-1{syntax:'<color>';inherits:true;initial-value:transparent}
+@property --fv-amb-2{syntax:'<color>';inherits:true;initial-value:transparent}
+@property --fv-amb-3{syntax:'<color>';inherits:true;initial-value:transparent}
+:root{--fv-light-op:.92;transition:--fv-amb-1 .6s cubic-bezier(.4,0,.2,1),--fv-amb-2 .6s cubic-bezier(.4,0,.2,1),--fv-amb-3 .6s cubic-bezier(.4,0,.2,1)}
+:root[data-theme=light]{--fv-light-op:.9}
+:root{--fv-light-paint:
+    radial-gradient(75% 85% at 10% 10%,var(--fv-amb-1),transparent 78%),
+    radial-gradient(70% 80% at 92% 25%,var(--fv-amb-2),transparent 78%),
+    radial-gradient(95% 75% at 45% 108%,var(--fv-amb-3),transparent 78%),
+    linear-gradient(160deg,color-mix(in srgb,var(--fv-amb-1) 70%,transparent),color-mix(in srgb,var(--fv-amb-3) 60%,transparent))}
+:root[data-fv-light-instant]{transition:none}
 .fv-look-light{display:none}
-html:root:not([data-fv-polish=off]):not([data-fv-look=calm]):not([data-glass=solid]):not(.lite) dialog.fv-create>.fv-look-light{
-  display:block;position:absolute;inset:0;z-index:-1;overflow:hidden;pointer-events:none;contain:strict;opacity:var(--fv-light-op);
-  -webkit-mask-image:var(--fv-light-mask);mask-image:var(--fv-light-mask)}
-.fv-look-light canvas{position:absolute;left:-4%;top:-4%;width:108%;height:108%;opacity:0;filter:saturate(1.2);transition:opacity .6s cubic-bezier(.2,.8,.2,1)}
-.fv-look-light canvas.fv-on{opacity:1}
-/* The image view's and the editor's own light (their modules draw it; the calm material and the finishing layer had
-   hidden it): shown again, with the mask in place of their veils. */
-html:root:not([data-fv-polish=off]):not([data-fv-look=calm]):not([data-glass=solid]):not(.lite) .fv-iv .fv-iv-ambient{
-  display:block!important;opacity:var(--fv-light-op);-webkit-mask-image:var(--fv-light-mask);mask-image:var(--fv-light-mask)}
-html:root:not([data-fv-polish=off]):not([data-fv-look=calm]):not([data-glass=solid]):not(.lite) .fv-iv .fv-iv-veil{display:none!important}
-/* The image view draws the picture as it is (64 x 40, stretched); softened here so no shape of it can be made out. */
-html:root:not([data-fv-polish=off]):not([data-fv-look=calm]):not([data-glass=solid]):not(.lite) .fv-iv .fv-iv-ambient canvas{filter:blur(28px) saturate(1.15)}
-html:root:not([data-fv-polish=off]):not([data-fv-look=calm]):not([data-glass=solid]):not(.lite) .fv-editor .fv-ed-ambient{
-  display:block!important;opacity:calc(var(--fv-light-op) / .55);-webkit-mask-image:var(--fv-light-mask);mask-image:var(--fv-light-mask)}
-html:root:not([data-fv-polish=off]):not([data-fv-look=calm]):not([data-glass=solid]):not(.lite) .fv-editor .fv-ed-ambient::after{content:none}
-@media (prefers-reduced-transparency:reduce){
-  html:root .fv-look-light,html:root .fv-iv .fv-iv-ambient,html:root .fv-editor .fv-ed-ambient{display:none!important}
-}
-@media (prefers-reduced-motion:reduce){.fv-look-light canvas{transition:none}}
+html:root:not([data-fv-polish=off]):not([data-fv-look=calm]):not([data-glass=solid]):not(.lite) dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot)>.fv-look-light{
+  display:block;position:absolute;inset:0;z-index:-1;overflow:hidden;pointer-events:none;contain:strict;
+  opacity:0;transition:opacity .6s cubic-bezier(.4,0,.2,1);
+  background:var(--fv-light-paint)}
+html:root[data-fv-light=on]:not([data-fv-polish=off]):not([data-fv-look=calm]):not([data-glass=solid]):not(.lite) dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot)>.fv-look-light{opacity:var(--fv-light-op)}
+/* The page under the views carries the light too: between one view closing and the next being drawn, the page is what
+   shows, and it should not drop to its plain ground for that frame; its colour is the light's own, since a part of a
+   view not yet drawn shows the page colour. */
+@media not (prefers-reduced-transparency:reduce){
+html:root[data-fv-light=on]:not([data-fv-polish=off]):not([data-fv-look=calm]):not([data-glass=solid]):not(.lite){background-color:color-mix(in srgb,var(--fv-amb-1) 60%,var(--fv-amb-2));background-image:var(--fv-light-paint);background-attachment:fixed}}
+/* The views' former own lights (the stretched picture) are gone; their places stay empty if an old sheet names them. */
+@media (prefers-reduced-transparency:reduce){html:root .fv-look-light{display:none!important}}
+@media (prefers-reduced-motion:reduce){:root{transition:none}html:root dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot)>.fv-look-light{transition:none}}
 
 /* ── 2. Glass on the windows that float over the work (look layer off) ───────────────────────────────────────── */
 /* One frosted ground for every small window and sheet: the raised fill at 86 % (92 % light), blurred and a little

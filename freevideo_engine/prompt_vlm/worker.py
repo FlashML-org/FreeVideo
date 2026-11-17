@@ -1,5 +1,6 @@
 """One rewrite or ask job per process: model, CUDA context and private commit die together."""
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -190,14 +191,17 @@ def begin(stats):
     return torch, checkpoint
 
 
-def open_image(path):
+def open_image(path, ratio=False):
+    """The picture as the model sees it; with ratio, also its shape as W:H in lowest terms after EXIF
+    orientation and before the reduction."""
     from PIL import Image, ImageOps
     with Image.open(path) as source:
         if source.width * source.height > 50_000_000:
             raise ValueError('image_size')
         image = ImageOps.exif_transpose(source).convert('RGB')
+        shape = '%d:%d' % (image.width // math.gcd(*image.size), image.height // math.gcd(*image.size))
         image.thumbnail((768, 768))
-    return image
+    return (image, shape) if ratio else image
 
 
 def tokenize(processor, messages, max_pixels=512 * 32 * 32):
@@ -469,21 +473,27 @@ def run(folder, value, *, stats=None):
 
 
 def image(folder, value, stats):
-    """One expanded text-to-image caption; text leaves only via stdout."""
-    from .rules import IMAGE_OUTPUT_TOKENS, image_caption, image_instruction, image_user_text
+    """One rewritten picture prompt, with the reference pictures in view; text leaves only via stdout."""
+    from .rules import (IMAGE_INPUT_TOKENS, IMAGE_OUTPUT_TOKENS, image_caption, image_instruction, image_picture_text,
+                        image_style, image_tokens, image_user_text)
     limit = IMAGE_OUTPUT_TOKENS
-    stats.update(stage='imports', pid=os.getpid(), image_count=0, mode='image', answer_tokens=limit,
-                 dtype='bfloat16', attention='sdpa', kv_cache='dynamic', backend='transformers', accelerations=[],
-                 persistent_model=False)
+    stats.update(stage='imports', pid=os.getpid(), image_count=len(value['media']), mode='image', answer_tokens=limit,
+                 image_style=image_style(value), dtype='bfloat16', attention='sdpa', kv_cache='dynamic',
+                 backend='transformers', accelerations=[], persistent_model=False)
     torch, checkpoint = begin(stats)
     from transformers import AutoProcessor
     checkpoint('preprocess')
     preparing = time.monotonic()
     processor = AutoProcessor.from_pretrained(folder, local_files_only=True, trust_remote_code=False)
-    messages = [{'role': 'system', 'content': image_instruction(value)},
-                {'role': 'user', 'content': [{'type': 'text', 'text': image_user_text(value)}]}]
-    inputs = tokenize(processor, messages)
-    if inputs.input_ids.shape[-1] > 6500:
+    content = []
+    for row in value['media']:
+        picture, ratio = open_image(row['path'], ratio=True)
+        content.extend([{'type': 'text', 'text': image_picture_text(value, row, ratio)},
+                        {'type': 'image', 'image': picture}])
+    content.append({'type': 'text', 'text': image_user_text(value)})
+    messages = [{'role': 'system', 'content': image_instruction(value)}, {'role': 'user', 'content': content}]
+    inputs = tokenize(processor, messages, image_tokens(len(value['media'])) * 32 * 32)
+    if inputs.input_ids.shape[-1] > IMAGE_INPUT_TOKENS:
         raise ValueError('context_length')
     stats.update(input_tokens=int(inputs.input_ids.shape[-1]), preprocess_seconds=time.monotonic() - preparing)
     model, device = load_model(folder, torch, stats, checkpoint)

@@ -14,13 +14,15 @@ export const IMAGE_MODELS = Object.freeze([
 export function modelState(info, id) {
     if (!info) return {state: 'checking'};
     const row = info.models?.find(m => m.id === id);
-    if (!row) return {state: info.models ? 'unavailable' : 'checking'};
+    if (!row || row.available === false) return {state: info.models ? 'unavailable' : 'checking'};
     if (row.ready) return {state: 'ready', row};
     const install = row.install || {};
     const total = install.total || row.bytes_total || 0, done = install.done || row.bytes_done || 0;
-    const fraction = total > 0 ? Math.min(1, done / total) : 0;
+    const verifying = install.state === 'running' && install.phase === 'verify';
+    const fraction = verifying ? (install.verify_total > 0 ? Math.min(1, (install.verify_done || 0) / install.verify_total) : 0)
+        : total > 0 ? Math.min(1, done / total) : 0;
     if (row.downloading || install.state === 'running' || install.state === 'paused_for_generation')
-        return {state: 'downloading', row, total, done, fraction, paused: install.state === 'paused_for_generation', rate: install.bytes_per_second || 0};
+        return {state: 'downloading', row, total, done, fraction, verifying, paused: install.state === 'paused_for_generation', rate: install.bytes_per_second || 0};
     if (install.state === 'failed')
         return {state: 'failed', row, total, done, fraction, reason: t(install.message_en || '', install.message_zh || '') || install.reason || ''};
     return {state: 'missing', row, total, done, fraction, resume: done > 0};
@@ -36,7 +38,7 @@ export function downloadText(state) {
 export function statusLine(state) {
     switch (state.state) {
     case 'ready': return t('Installed', '已安装');
-    case 'downloading': return state.paused ? t('Paused', '已暂停') : `${Math.floor(state.fraction * 100)}%`;
+    case 'downloading': return state.paused ? t('Paused', '已暂停') : state.verifying ? t(`Verifying ${Math.floor(state.fraction * 100)}%`, `正在校验 ${Math.floor(state.fraction * 100)}%`) : `${Math.floor(state.fraction * 100)}%`;
     case 'failed': return t('Download failed', '下载失败');
     case 'missing': return downloadText(state);
     case 'unavailable': return t('Not on this computer', '这台电脑不支持');
@@ -51,13 +53,13 @@ function useOf(model, state) {
     return {
         ready: model.id === IMAGE_MODELS[0].id ? t('Large, detailed pictures, up to 16 references', '大尺寸、细节多，最多 16 张参考图') : t('Fast pictures, up to 4 references', '出图快，最多 4 张参考图'),
         missing: t(`Not installed: Generate installs it first, ${size}`, `未安装：点生成会先安装，${size}`),
-        downloading: state.paused ? t('Paused while a video generates; resumes after it', '视频生成中，下载已暂停，之后自动继续') : t(`Downloading ${Math.floor((state.fraction || 0) * 100)}%; usable when done`, `正在下载 ${Math.floor((state.fraction || 0) * 100)}%，完成后即可使用`),
+        downloading: state.paused ? t('Paused while a video generates; resumes after it', '视频生成中，下载已暂停，之后自动继续') : state.verifying ? t(`Verifying the files ${Math.floor(state.fraction * 100)}%; usable when done`, `正在校验文件 ${Math.floor(state.fraction * 100)}%，完成后即可使用`) : t(`Downloading ${Math.floor((state.fraction || 0) * 100)}%; usable when done`, `正在下载 ${Math.floor((state.fraction || 0) * 100)}%，完成后即可使用`),
         failed: state.reason || t('The download stopped; press Retry', '下载中断了，点重试'),
         unavailable: t('This model does not run on this computer', '这台电脑不能运行这个模型'),
         checking: t('Asking the engine', '正在询问引擎'),
     }[state.state];
 }
-const actionOf = state => state.state === 'missing' ? (state.resume ? t('Resume', '继续') : t('Install', '安装')) : state.state === 'failed' ? t('Retry', '重试') : state.state === 'downloading' ? t('Pause', '暂停') : '';
+const actionOf = state => state.state === 'missing' ? (state.resume ? t('Resume', '继续') : t('Install', '安装')) : state.state === 'failed' ? t('Retry', '重试') : state.state === 'downloading' && !state.verifying ? t('Pause', '暂停') : '';
 
 // The picker: one row for the chosen model; the list opens below it (above when there is no room), takes the
 // arrow keys, Home, End, Enter and Escape, and scrolls when there are more models than fit.

@@ -22,10 +22,7 @@ def request(value):
     if value.get('target', 'video') not in ('video', 'image'):
         raise ValueError('invalid_request')
     if value.get('target') == 'image':
-        # A text-to-image prompt: no length and no media.
-        if media:
-            raise ValueError('unsupported_media')
-        return dict(text=prompt, media=[], mode='image')
+        return image_request(value, prompt, media)
     if type(seconds) not in (float, int) or not math.isfinite(seconds) or not 1 <= seconds <= 60:
         raise ValueError('invalid_duration')
     if not isinstance(media, list) or len(media) > 8:
@@ -528,33 +525,120 @@ IMAGE_INPUT = 'input_text: {input text}\noutput_text:'
 IMAGE_OUTPUT_TOKENS = 1024
 
 
+# Each picture model gets the rewriting its own authors publish: MiniMax's caption expansion for H3 Image (its
+# edit variant when there are reference pictures), Qwen-Image's prompt polish for Qwen (its edit variant with
+# references). The pictures go in as <Picture N> in upload order, as the generation reads them.
+IMAGE_MODELS = {'minimax-h3-image': 16, 'qwen-image-2.1-turbo': 4}  # model: reference pictures it takes
+# The published instructions alone are 3.4k-7.7k tokens; 16 pictures at image_tokens(16) add 4.8k more.
+IMAGE_INPUT_TOKENS = 14000
+PROSE_PICTURE = re.compile(r'(?<![<\w])[Pp]icture (\d{1,2})(?![>\w])')
+RATIO = re.compile(r'([1-9]\d{0,3}):([1-9]\d{0,3})')
+
+
+def image_request(value, prompt, media):
+    model = value.get('image_model', 'minimax-h3-image')
+    aspect = value.get('aspect', 'adaptive')
+    if model not in IMAGE_MODELS or not isinstance(aspect, str) or not (aspect == 'adaptive' or RATIO.fullmatch(aspect)):
+        raise ValueError('invalid_request')
+    if not isinstance(media, list):
+        raise ValueError('unsupported_media')
+    if len(media) > IMAGE_MODELS[model]:
+        raise ValueError('too_many_images')
+    rows = []
+    for at, row in enumerate(media):
+        # Reference pictures only; number is the N of its <Picture N>, by default its place in the list.
+        if (not isinstance(row, dict) or not {'file', 'role'} <= set(row) <= {'file', 'role', 'kind', 'number'} or
+                not isinstance(row['file'], str) or row['role'] != 'reference' or row.get('kind', 'image') != 'image' or
+                type(row.get('number', 1)) is not int or not 1 <= row.get('number', 1) <= 99):
+            raise ValueError('unsupported_media')
+        rows.append(dict(file=row['file'], role='reference', kind='image', number=row.get('number', at + 1)))
+    if len({row['number'] for row in rows}) != len(rows):
+        raise ValueError('unsupported_media')
+    return dict(text=prompt, media=rows, mode='image', image_model=model, aspect=aspect)
+
+
+def image_style(value):
+    """Which published rewriting the request uses: h3, h3-edit, qwen-en, qwen-zh or qwen-edit."""
+    if value.get('image_model', 'minimax-h3-image') == 'minimax-h3-image':
+        return 'h3-edit' if value['media'] else 'h3'
+    if value['media']:
+        return 'qwen-edit'
+    return 'qwen-zh' if any('\u4e00' <= c <= '\u9fff' for c in value['text']) else 'qwen-en'
+
+
 def image_instruction(value):
-    from .h3_image_prompt import SYSTEM
-    return SYSTEM.strip()
+    """The system message: H3's own; Qwen's rewriting goes in the user message, as its authors send it."""
+    style = image_style(value)
+    if style == 'h3':
+        from .h3_image_prompt import SYSTEM
+        return SYSTEM.strip()
+    if style == 'h3-edit':
+        from .h3_image_edit_prompt import TASK
+        return TASK.rstrip()
+    # The system messages its two example scripts send with them.
+    return ('you are a helpful assistant, you should provide useful answers to users.' if style == 'qwen-edit'
+            else 'You are a helpful assistant.')
 
 
 def image_user_text(value):
-    from .h3_image_prompt import TASK
-    return TASK.replace(IMAGE_INPUT, IMAGE_RULE + '\n\n' + IMAGE_INPUT).replace('{input text}', value['text'])
+    """The text after the pictures (see image_picture_text), with the user's prompt."""
+    import json
+    style, text = image_style(value), value['text']
+    if style == 'h3':
+        from .h3_image_prompt import TASK
+        return TASK.replace(IMAGE_INPUT, IMAGE_RULE + '\n\n' + IMAGE_INPUT).replace('{input text}', text)
+    if style == 'h3-edit':
+        return (IMAGE_RULE + '\n\nUser Editing Instruction (JSON string): ' + json.dumps(text, ensure_ascii=False) +
+                '\nUser Aspect Ratio Selection: ' + value.get('aspect', 'adaptive'))
+    from . import qwen_image_prompt as qwen
+    system, line = dict(qwen_en=(qwen.SYSTEM_EN, qwen.INPUT_EN), qwen_zh=(qwen.SYSTEM_ZH, qwen.INPUT_ZH),
+                        qwen_edit=(qwen.EDIT, qwen.INPUT_EDIT))[style.replace('-', '_')]
+    return system + '\n\n' + IMAGE_RULE + line.replace('{input}', text.strip())
+
+
+def image_picture_text(value, row, ratio):
+    """The text part right before a reference picture. ratio is its W:H in lowest terms, or None."""
+    if image_style(value) == 'h3-edit':
+        return 'Reference Media\n%s\n%s' % (label(row), 'aspect_ratio ' + ratio if ratio else 'aspect_ratio unavailable')
+    return label(row)
 
 
 def image_caption(text, value):
-    """The expanded caption from the model's JSON reply; every quoted text the user wrote stays verbatim."""
-    try:
-        _, answer = parse_json(text)
-    except ValueError:
-        raise InvalidOutput('json', text, value) from None
-    return validate_image(answer.get('expanded_caption') if isinstance(answer, dict) else None, value)
+    """The rewritten prompt from the model's reply: H3's JSON, Qwen's edit JSON or Qwen's plain text."""
+    style = image_style(value)
+    if style in ('qwen-en', 'qwen-zh'):
+        caption = text
+    else:
+        try:
+            _, answer = parse_json(text)
+        except ValueError:
+            raise InvalidOutput('json', text, value) from None
+        caption = answer.get('Rewritten' if style == 'qwen-edit' else 'expanded_caption') if isinstance(answer, dict) else None
+    if style.startswith('qwen') and isinstance(caption, str):
+        # Qwen's rewriting writes one line and names pictures in prose ("picture 1"); the generation reads <Picture N>.
+        given = {row['number'] for row in value['media']}
+        caption = PROSE_PICTURE.sub(lambda m: '<Picture %s>' % m.group(1) if int(m.group(1)) in given else m.group(0),
+                                    caption.replace('\n', ' '))
+    return validate_image(caption, value)
 
 
 def validate_image(text, value):
-    """A caption is plain text that keeps every quoted text of the user's prompt verbatim."""
+    """A caption is plain text that keeps every quoted text and every <Picture N> of the user's prompt verbatim,
+    and names no picture it was not given."""
     if not isinstance(text, str) or not 1 <= len(text.strip()) <= 20000:
         raise InvalidOutput('type_or_length', text, value)
     for found in QUOTED.finditer(value['text']):
         words = next(each for each in found.groups() if each is not None).strip()
         if words and words not in text:
             raise InvalidOutput('missing_text', text, value)
+    required = required_labels(value)
+    for found in LABEL.finditer(text):
+        if found.group(0) not in required:
+            raise InvalidOutput('picture_index_out_of_range' if found.group(1) == 'Picture'
+                                else 'unsupported_audio_video_reference', text, value)
+    for each in LABEL.findall(value['text']):
+        if '<%s %s>' % each not in text:
+            raise InvalidOutput('missing_picture_reference', text, value)
     return text.strip()
 
 

@@ -84,9 +84,15 @@ def detected_line(zh):
 
 
 def only_other_vendors(names):
-    """True when the system lists an AMD or Intel adapter and no NVIDIA one; False when the lookup failed."""
-    return bool(names) and not any(NVIDIA_NAME.search(name) for name in names) \
-        and any(OTHER_VENDOR.search(name) for name in names)
+    """True when adapters are listed and none is NVIDIA; False when one is, none is listed or the lookup failed."""
+    return bool(names) and not any(NVIDIA_NAME.search(name) for name in names)
+
+
+def report_line(names):
+    """One line for the report: adapter model names only, or that the lookup failed."""
+    if names is None:
+        return 'Display adapters: not available'
+    return 'Display adapters: ' + ('; '.join(names) if names else 'none listed')
 
 
 def line(zh, names):

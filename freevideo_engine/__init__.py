@@ -17,5 +17,7 @@ else:
     _start_process()
     from .triton_compat import own_temporary_environment as _temporary_environment
     _temporary_environment()
+    from .library_path import isolate as _isolate_libraries
+    _isolate_libraries()
 if _build_version.is_file():
     __version__ = _build_version.read_text(encoding='utf-8').strip()

@@ -128,7 +128,7 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}, levels 
         names.append(b); return b;
     });
     element.append(header, warning, rail, names);
-    let selected = 0, disabled = false, pointer = null, draft = 0, currentSteps = 8, currentRefine = 3, twoPass = true, stepCache = null, upscale = 2, reason = '';
+    let selected = 0, disabled = false, pointer = null, draft = 0, previewed = -1, currentSteps = 8, currentRefine = 3, twoPass = true, stepCache = null, upscale = 2, reason = '';
     function paint(position) {
         element.style.setProperty('--fv-position', position / 3);
         const index = Math.round(position), tier = efforts[index];
@@ -141,6 +141,11 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}, levels 
         const box = rail.getBoundingClientRect();
         // The knob's center travels between 18 px from either end (4 px inset, 28 px knob).
         return Math.max(0, Math.min(3, (event.clientX - box.left - 18) / (box.width - 36) * 3));
+    }
+    // A drag tells the caller the level under the knob when it changes, not on every move.
+    function preview(position) {
+        const index = Math.round(position);
+        if (index !== previewed) { previewed = index; onPreview(efforts[index]); }
     }
     function commit(index) {
         selected = index; custom.hidden = true; delete element.dataset.custom;
@@ -158,11 +163,11 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}, levels 
         if (disabled || event.button !== 0 || pointer !== null) return;
         event.preventDefault(); rail.focus({preventScroll: true, focusVisible: false}); pointer = event.pointerId;
         rail.setPointerCapture(pointer); rail.dataset.dragging = 'true';
-        draft = position(event); paint(draft); onPreview(efforts[Math.round(draft)]);
+        previewed = -1; draft = position(event); paint(draft); preview(draft);
     };
     rail.onpointermove = event => {
         if (event.pointerId !== pointer) return;
-        draft = position(event); paint(draft); onPreview(efforts[Math.round(draft)]);
+        draft = position(event); paint(draft); preview(draft);
     };
     rail.onpointerup = event => {
         if (event.pointerId !== pointer) return;

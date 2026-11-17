@@ -39,7 +39,7 @@ def _count(manager, name):
     setattr(manager, field, getattr(manager, field, 0) + 1)
 
 
-def _windows_pin_limit(manager):
+def _windows_pin_limit(manager, memory=None):
     """Bound new registrations by free physical RAM and commit, not total RAM.
 
     Registered read-only maps can become resident only during the forward.
@@ -49,7 +49,7 @@ def _windows_pin_limit(manager):
     from .system import system_memory
     owned = max(0, int(manager.TOTAL_PINNED_MEMORY))
     try:
-        memory = system_memory()
+        memory = memory or system_memory()
         free = memory.get('physical_available_bytes', memory['available_bytes'])
         commit = memory.get('commit_available_bytes')
         if commit is not None:
@@ -60,8 +60,35 @@ def _windows_pin_limit(manager):
         return owned  # Registration is optional; keep pageable inference usable.
 
 
+def _nonlocal_pin_limit(torch, manager, reserve, memory=None):
+    """Absolute `TOTAL_PINNED_MEMORY` that keeps `reserve` bytes of the WDDM non-local budget free.
+
+    Page-locked memory counts against that budget, which Windows sets near half
+    of RAM however much RAM is free. Weights an idle engine still holds pinned
+    use it too, and a read-only registration that fills the remainder leaves
+    the next small device allocation to fail with a bare "CUDA error: out of
+    memory" while the card has gigabytes free. Registration is optional (the
+    native offload reads pageable weights), so stop short of the budget.
+    """
+    from .windows_gpu_memory import nonlocal_pin_capacity
+    owned = max(0, int(manager.TOTAL_PINNED_MEMORY))
+    capacity = nonlocal_pin_capacity(reserve)
+    if capacity is None:
+        # Without a DXGI reading, assume the Windows default of half of RAM.
+        try:
+            from .system import system_memory
+            total = (memory or system_memory()).get('total_bytes')
+            if not total:
+                return None
+            held = torch.cuda.memory.host_memory_stats()['allocated_bytes.current']
+        except (OSError, RuntimeError, KeyError, AttributeError, TypeError, ValueError):
+            return None
+        capacity = max(0, int(total) // 2 - int(held) - owned - reserve)
+    return owned + capacity
+
+
 @contextmanager
-def readonly_pinning(torch, manager):
+def readonly_pinning(torch, manager, *, nonlocal_reserve_bytes=None):
     """Adapt native pinning only while the isolated encoder is running.
 
     CUDA requires ReadOnly for read-only CPU mappings on platforms without
@@ -75,9 +102,34 @@ def readonly_pinning(torch, manager):
     unsupported = False
     support_checked = False
     flags = None
-    pin_limit = _windows_pin_limit(manager) if sys.platform == 'win32' else None
-    if pin_limit is not None:
+    pin_limit = None
+    if sys.platform == 'win32':
+        from .windows_gpu_memory import NONLOCAL_PIN_RESERVE
+        base_reserve = NONLOCAL_PIN_RESERVE if nonlocal_reserve_bytes is None else int(nonlocal_reserve_bytes)
+
+        def window(extra=0):
+            from .system import system_memory
+            try:
+                memory = system_memory()
+            except (OSError, RuntimeError, TypeError, KeyError, ValueError):
+                memory = None
+            limit = _windows_pin_limit(manager, memory)
+            bound = _nonlocal_pin_limit(torch, manager, base_reserve + extra, memory)
+            if bound is not None:
+                manager.FREEVIDEO_READONLY_PIN_NONLOCAL_LIMIT_BYTES = bound
+                limit = min(limit, bound)
+            return limit
+
+        pin_limit = window()
         manager.FREEVIDEO_READONLY_PIN_CAPACITY_BYTES = pin_limit
+
+        def refresh(extra=0):
+            # A retry after an allocation failure leaves more of the budget free.
+            nonlocal pin_limit
+            pin_limit = window(extra)
+            manager.FREEVIDEO_READONLY_PIN_CAPACITY_BYTES = pin_limit
+
+        manager.freevideo_refresh_pin_limit = refresh
 
     def clear_error(runtime):
         # Failed registration can also leave an asynchronous CUDA error. Use
@@ -167,3 +219,5 @@ def readonly_pinning(torch, manager):
         yield
     finally:
         manager.pin_memory = original
+        if hasattr(manager, 'freevideo_refresh_pin_limit'):
+            del manager.freevideo_refresh_pin_limit
