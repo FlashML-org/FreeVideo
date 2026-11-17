@@ -80,6 +80,8 @@ git clone https://github.com/FlashML-org/FreeVideo.git
 
 重启 ComfyUI，打开 **工作流 → 浏览模板 → FreeVideo → FreeVideo-All-in-One**，然后在 FreeVideo 的 **设置** 中完成安装。
 
+更新时，在 `custom_nodes/FreeVideo` 中运行 `git pull`（或在 ComfyUI-Manager 中更新该节点），然后重启 ComfyUI。
+
 ### Linux
 
 **桌面：** [下载 FreeVideo-Linux-x86_64.AppImage](https://github.com/FlashML-org/FreeVideo/releases/latest/download/FreeVideo-Linux-x86_64.AppImage)，加上可执行权限后打开，之后的步骤与 Windows 相同。
