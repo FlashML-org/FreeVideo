@@ -69,9 +69,10 @@ def validate(data, channels, patch=(1, 2, 2)):
     frames, rows, cols = video.shape[2], video.shape[3] // patch[1], video.shape[4] // patch[2]
     if mask.shape != (frames, rows, cols):
         raise ValueError(f'The video mask must be {(frames, rows, cols)}, not {mask.shape}')
-    if not mask.any():
-        raise ValueError('The video mask selects nothing')
     audio, audio_mask = data.get('audio'), data.get('audio_mask', 'keep')
+    # Redoing the sound alone leaves every picture token kept.
+    if not mask.any() and not (isinstance(audio_mask, str) and audio_mask == 'redo'):
+        raise ValueError('The video mask selects nothing')
     if audio is not None:
         if audio.ndim != 3 or audio.shape[:2] != (2, 32):
             raise ValueError('The original sound latent has the wrong shape')

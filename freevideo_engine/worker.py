@@ -145,6 +145,13 @@ def generate(request, resident=None):
                             else ANCHOR_ADALN_TASK if continuation.get('anchor') else ADALN_TASK))
             metrics['continuation'] = summary(continuation, hide_tail_frames=hide_tail_frames)
             metrics['audio_context'] = continuation['audio_context']
+        redo_sound = request.get('redo_audio')
+        if redo_sound is not None:
+            # New sound for a finished picture: one pass, nothing continued, no sound of its own to keep.
+            if (continuation is not None or original_audio is not None or request.get('resume')
+                    or request.get('sampling_plan', {}).get('enabled')):
+                raise ValueError('Making new sound for a video takes a single pass of its own')
+            metrics['redo_audio'] = dict(frames=request['geometry']['frames'])
         metrics['gpu_card'] = observed_card(torch)
         metrics['device_memory'] = device_memory_report(request['gpu_budget_bytes'], request.get('allocator_limit_bytes'),
             reserve_bytes=request.get('gpu_reserve_bytes', 0), capacity_trial=request.get('capacity_trial', False))
@@ -207,6 +214,17 @@ def generate(request, resident=None):
             continuation, metrics['continuation_encode'] = complete(
                 continuation, request['geometry'], manifest, request.get('sampling_plan'), resident=resident)
             request['continuation'] = continuation
+        redo_mask = None
+        if redo_sound is not None:
+            from . import redo_audio
+            from .paths import base_path
+            tick = time.perf_counter()
+            clip = redo_audio.read(redo_sound['video'], request['geometry'], Path(request['output']).parent)
+            if clip['frames'] != request['geometry']['frames']:
+                raise ValueError('The video does not match the requested length')
+            redo_mask = redo_audio.mask_data(redo_audio.encode(clip['clip'], redo_sound.get('base') or base_path()))
+            Path(clip['clip']).unlink(missing_ok=True)
+            metrics['redo_audio'].update(encode_seconds=time.perf_counter() - tick, source=clip['source'])
         if manifest.get('precision') not in ('fp8', 'int8', 'bf16'):
             raise ValueError('The Engine requires an official FP8 or int8 cache')
         options, decoder = request['engine_options'], request['decoder_options']
@@ -709,7 +727,8 @@ def generate(request, resident=None):
                         final_step_callback=None if decoder_cached else read_decoder_ahead,
                         step_callback=memory_diagnostics.complete, sampling_complete_callback=sampling_complete,
                         gpu_reserve_bytes=request.get('gpu_reserve_bytes', 0),
-                        budget_refresh=refresh_budget if live_budget is not None else None)
+                        budget_refresh=refresh_budget if live_budget is not None else None,
+                        **({'video_mask': redo_mask} if redo_mask is not None else {}))
             finally:
                 frame_preview.clear()
                 metrics['sampling_memory'] = memory_diagnostics.close()
@@ -768,15 +787,23 @@ def generate(request, resident=None):
                 continuation_data['audio_lead_in'] = value
                 # Older retained sampling tails predate the predecessor binding.
                 continuation_data['metadata']['source_id'] = continuation['source_id']
-        metrics.update(decode_to_file(latents, audio, request['output'], base=base, artifacts_dir=artifacts,
-                                     **({'hide_tail_frames': hide_tail_frames} if hide_tail_frames else {}),
-                                     **({'output_10bit': request['output_10bit']} if request.get('output_10bit') else {}),
-                                     **({'original_audio': original_audio} if original_audio is not None else {}),
-                                     **({'continuation': continuation} if continuation is not None else {}),
-                                     **({'audio_lead_in_callback': keep_audio_lead_in}
-                                        if continuation is not None and continuation_data is not None and original_audio is None else {}),
-                                     model_cache=resident, phase_callback=decode_phase, output_size=output_size,
-                                     ram_budget_bytes=request.get('ram_budget_bytes'), **decoder))
+        if redo_sound is not None:
+            from . import redo_audio
+            decode_phase('audio_decode')
+            sound = redo_audio.decode_sound(audio, base, request['geometry']['frames'])
+            decode_phase('mp4_save')
+            seconds = redo_audio.mux(redo_sound['video'], sound, request['output'], request['geometry']['frames'])
+            metrics['redo_audio'].update(samples=int(sound.shape[1]), picture_seconds=round(seconds, 3))
+        else:
+            metrics.update(decode_to_file(latents, audio, request['output'], base=base, artifacts_dir=artifacts,
+                                       **({'hide_tail_frames': hide_tail_frames} if hide_tail_frames else {}),
+                                       **({'output_10bit': request['output_10bit']} if request.get('output_10bit') else {}),
+                                       **({'original_audio': original_audio} if original_audio is not None else {}),
+                                       **({'continuation': continuation} if continuation is not None else {}),
+                                       **({'audio_lead_in_callback': keep_audio_lead_in}
+                                          if continuation is not None and continuation_data is not None and original_audio is None else {}),
+                                       model_cache=resident, phase_callback=decode_phase, output_size=output_size,
+                                       ram_budget_bytes=request.get('ram_budget_bytes'), **decoder))
         if continuable and continuation_data is not None:
             if continuation is not None:
                 # Every continuation of a film carries its first frame on, used or not: a later

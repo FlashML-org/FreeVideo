@@ -108,6 +108,8 @@ def main():
     generate.add_argument('--audio', type=Path, help='Audio file; may be combined with image/video references in --media')
     generate.add_argument('--audio-use', choices=('reference', 'original'),
                           help='Audio use (default: reference); with --media alone, applies to its single audio file')
+    generate.add_argument('--redo-sound', type=Path,
+                          help='Make new sound for an existing MP4 (absolute path); its picture is kept as it is')
     generate.add_argument('--continue-from', type=Path, help='Continue an existing MP4 using its absolute path')
     generate.add_argument('--first-frame-reference', action='store_true',
                           help='With --continue-from: also give the model the first frame of the whole film as a '
@@ -174,6 +176,11 @@ def main():
     args = parser.parse_args()
     if args.command == 'generate':
         from .continuation import validate_frames, validate_route
+        if args.redo_sound is not None:
+            if (args.continue_from is not None or args.refine_from or args.preview or args.audio is not None
+                    or args.media or args.hide_tail):
+                raise ValueError('--redo-sound cannot be combined with continuing, previewing, refining, hiding a tail or other media')
+            args.two_pass = False
         if args.continue_anchor is not None and args.continue_from is None:
             raise ValueError('--continue-anchor requires --continue-from')
         if args.continue_from is not None:
