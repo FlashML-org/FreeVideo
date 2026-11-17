@@ -448,9 +448,10 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
 @media(prefers-reduced-motion:reduce){.fv-iv .fv-iv-frame[data-loading=true] .fv-iv-pic,.fv-iv .fv-iv-tile:has(img[data-loaded=false]){animation:none}}
 /* the shown picture opens large on a click */
 .fv-iv .fv-iv-frame[data-state=done] .fv-iv-picture{cursor:zoom-in}
-.fv-image .fv-iv-viewer{position:fixed;inset:0;z-index:40;display:grid;place-items:center;padding:24px;box-sizing:border-box;background:rgb(0 0 0 / .92);opacity:0;transition:opacity 160ms ease;outline:none}
+.fv-image .fv-iv-viewer{position:fixed;inset:0;z-index:40;display:grid;grid-template:minmax(0,1fr)/minmax(0,1fr);place-items:center;padding:24px;box-sizing:border-box;background:rgb(0 0 0 / .92);opacity:0;transition:opacity 160ms ease;outline:none}
 .fv-image .fv-iv-viewer[data-shown=true]{opacity:1}
 .fv-image .fv-iv-viewer-img{max-width:100%;max-height:100%;object-fit:contain;display:block;-webkit-user-select:none;user-select:none}
+.fv-image .fv-iv-viewer{overflow:hidden}.fv-image .fv-iv-viewer-img{transform-origin:50% 50%}.fv-image .fv-iv-viewer[data-zoomed=true] .fv-iv-viewer-img{cursor:grab;touch-action:none}
 .fv-image .fv-iv-viewer .fv-iv-viewer-x{position:absolute;top:16px;right:16px;width:40px;height:40px;color:#fff;background:rgb(255 255 255 / .12)}
 .fv-image .fv-iv-viewer .fv-iv-viewer-x:hover{background:rgb(255 255 255 / .2)}
 @media(prefers-reduced-motion:reduce){.fv-image .fv-iv-viewer{transition:none}}

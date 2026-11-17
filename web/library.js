@@ -14,6 +14,7 @@ import { createMeta, createPictureBin, dayOf, inOrderPictures, matches, needsEve
 import { createMetaStore, promptOfRow } from './image_view_history.js';
 import { attach as attachPlayerBar } from './glass/player_bar.js';
 import { hasPictureThumbnail, mediaQueue, pictureThumbnailURL, watchCards } from './work_media.js';
+import { zoomable } from './picture_zoom.js';
 
 const style = document.createElement('link');
 style.rel = 'stylesheet'; style.href = new URL('./library.css', import.meta.url).href; document.head.append(style);
@@ -2056,23 +2057,8 @@ export function openLibrary(t, options = {}) {
         const node = button('', run, 'fv-library-viewer-action'); node.append(iconNode, el('span', name));
         tip(node, name, use); return node;
     }
-    // Wheel or double-click zooms a picture around the pointer; drag moves it while zoomed.
-    function zoomable(stage, image) {
-        let scale = 1, x = 0, y = 0, drag = null;
-        const apply = () => { image.style.transform = scale === 1 ? '' : `translate(${x}px, ${y}px) scale(${scale})`; stage.dataset.zoomed = String(scale > 1); };
-        const zoomAt = (next, cx, cy) => {
-            next = Math.max(1, Math.min(8, next));
-            const box = stage.getBoundingClientRect(), dx = cx - (box.left + box.width / 2), dy = cy - (box.top + box.height / 2);
-            x = dx - (dx - x) * next / scale; y = dy - (dy - y) * next / scale; scale = next;
-            if (scale === 1) x = y = 0;
-            apply();
-        };
-        stage.addEventListener('wheel', event => { event.preventDefault(); zoomAt(scale * Math.exp(-event.deltaY * .0015), event.clientX, event.clientY); }, {passive: false});
-        image.addEventListener('dblclick', event => zoomAt(scale > 1 ? 1 : 2.5, event.clientX, event.clientY));
-        image.addEventListener('pointerdown', event => { if (scale === 1) return; drag = {id: event.pointerId, x: event.clientX - x, y: event.clientY - y}; image.setPointerCapture(event.pointerId); });
-        image.addEventListener('pointermove', event => { if (drag?.id !== event.pointerId) return; x = event.clientX - drag.x; y = event.clientY - drag.y; apply(); });
-        image.addEventListener('pointerup', () => { drag = null; }); image.addEventListener('pointercancel', () => { drag = null; });
-    }
+    // The picture in the viewer zooms and moves (picture_zoom.js); the arrow keys move it while it is zoomed.
+    let zoomer = null;
     // The play bar under a stage video: the shared thin bar (glass/player_bar.js), as in the creation panel.
     function playBar(video) {
         const host = document.createDocumentFragment();
@@ -2188,7 +2174,7 @@ export function openLibrary(t, options = {}) {
             // A picture that cannot be read says so where it would be, with the feedback button, as in the details.
             media.addEventListener('error', () => { if (!disposed && viewing === key && layer.isConnected) { layer.replaceChildren(pictureProblem()); drawn(); } }, {once: true});
             if (!cover) media.dataset.loaded = 'true';
-            layer.append(media); zoomable(stage, media);
+            layer.append(media); zoomer = zoomable(stage, media);
             // Opened: it goes before anything loading in the background.
             mediaQueue().open(pictureURL(row), media);
         } else {
@@ -2348,7 +2334,13 @@ export function openLibrary(t, options = {}) {
             const video = viewer.querySelector('video');
             if (viewing === 'compare') { if (event.key === ' ' && !event.target.closest?.('button,input')) { event.preventDefault(); compareToggle?.(); } return; }
             const across = () => Math.max(1, getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length);
-            if (event.key === 'ArrowLeft') { event.preventDefault(); step(-1); }
+            // A zoomed picture: the arrows move it, a step of 80 px; at its own size they step through the works.
+            if (event.key.startsWith('Arrow') && zoomer?.zoomed() && !event.target.closest?.('input,textarea,[role=slider]')) {
+                event.preventDefault();
+                const by = event.shiftKey ? 240 : 80;
+                zoomer.pan({ArrowLeft: by, ArrowRight: -by}[event.key] || 0, {ArrowUp: by, ArrowDown: -by}[event.key] || 0);
+            }
+            else if (event.key === 'ArrowLeft') { event.preventDefault(); step(-1); }
             else if (event.key === 'ArrowRight') { event.preventDefault(); step(1); }
             else if ((event.key === 'ArrowUp' || event.key === 'ArrowDown') && !isFull()) { event.preventDefault(); step((event.key === 'ArrowUp' ? -1 : 1) * across()); }
             else if (event.key.toLowerCase() === 'f' && !event.metaKey && !event.ctrlKey) { event.preventDefault(); if (isFull()) exitFull(); else goFull(); }

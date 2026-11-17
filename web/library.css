@@ -488,7 +488,7 @@ dialog.fv-studio.fv-library::backdrop{background:var(--lib-page)}
 .fv-library-viewer-main .fv-library-viewer-stage>.fv-entering{opacity:0}
 .fv-library-viewer-main .fv-library-viewer-stage>.fv-leaving{z-index:0;transition:none}
 .fv-library-viewer-main .fv-library-viewer-stage>video{cursor:pointer}
-.fv-library-viewer-stage[data-zoomed=true]>img{cursor:grab}
+.fv-library-viewer-stage[data-zoomed=true] img.fv-full{cursor:grab;touch-action:none}
 .fv-library-viewer-top{position:absolute;top:0;left:0;right:0;height:56px;display:flex;align-items:center;gap:var(--fv-sp-4,4px);padding:0 var(--fv-sp-12,12px) 0 var(--fv-sp-24,24px)}
 .fv-library-viewer-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fv-fs-3,16px);font-weight:600;color:var(--fv-fg)}
 .fv-library-viewer-spec{flex:none;margin-right:var(--fv-sp-8,8px);margin-left:var(--fv-sp-16,16px);font-size:var(--fv-fs-2,13px);color:var(--fv-fg3);font-variant-numeric:tabular-nums;white-space:nowrap}
