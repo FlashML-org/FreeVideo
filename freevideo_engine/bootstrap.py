@@ -276,6 +276,21 @@ def environment_seeded(folder):
     return any(folder.glob('Lib/site-packages/pip')) or any(folder.glob('lib/python*/site-packages/pip'))
 
 
+def environment_python_orphaned(python, runner=None):
+    """True when an environment's Python file is there but the interpreter it forwards to is gone.
+
+    On Windows an environment's python.exe only forwards to the interpreter named in its
+    pyvenv.cfg; once that interpreter is deleted, moved or quarantined the launcher answers
+    "No Python at ..." with exit code 103. Only that answer counts: any other failure (access
+    denied, a scan in progress, a timeout) leaves the environment, and the gigabytes in it, alone."""
+    try:
+        check = subprocess_output.run_python([str(python), '-I', '-B', '-c', 'pass'], runner=runner,
+                                             capture_output=True, timeout=120)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return check.returncode == WINDOWS_NO_PYTHON_EXIT or ORPHANED_PYTHON_TEXT in (check.stderr or '')
+
+
 def environment_in_place(row, python_version):
     """An existing environment that only lacks ordinary packages: setup adds them beside the rest."""
     if not row.get('exists') or row.get('error'):
@@ -398,6 +413,9 @@ def inventory(gpu=None):
 WINDOWS_MIN_GIT = (2, 35)
 # Seconds to wait before creating an environment again after another program held a file.
 ENVIRONMENT_BUSY_WAITS = (3, 10, 30)
+# What Windows' Python launcher answers when the interpreter an environment points to is gone.
+WINDOWS_NO_PYTHON_EXIT = 103
+ORPHANED_PYTHON_TEXT = 'No Python at'
 
 
 def git_floor(system=None):
@@ -1357,7 +1375,9 @@ class Installer:
         # With changed files that check cannot run; the one after installing still does.
         self.int8_check_first = (value.get('prepared_format') == 'int8_convrot' and saved.get('ready') is True
                                  and self.system != 'Darwin' and self.pythons['engine'].is_file()
-                                 and not self.damaged_before)
+                                 and not self.damaged_before
+                                 # The environment's Python cannot start: the environment step repairs it first.
+                                 and not (self.system == 'Windows' and environment_python_orphaned(self.pythons['engine'])))
         if not self.int8_check_first:
             self.mark_unfinished()
         self.env = dict(os.environ, FREEVIDEO_HOME=str(self.root),
@@ -1718,7 +1738,9 @@ class Installer:
             pythons[name] = python
             writer = ('environment:' + name,)
             def environment(folder=venv, executable=python, label=name):
-                if executable.exists() and environment_seeded(folder):
+                orphaned = (self.system == 'Windows' and executable.exists()
+                            and environment_python_orphaned(executable))
+                if executable.exists() and environment_seeded(folder) and not orphaned:
                     return None
                 from .failure_details import environment_python_removed, file_in_use
                 for wait in (*ENVIRONMENT_BUSY_WAITS, None):
@@ -1726,7 +1748,8 @@ class Installer:
                     # The Python file came back (restored from quarantine) without
                     # the seed packages: keep it and add them. Without the file, the
                     # folder is a leftover that uv replaces.
-                    if executable.exists():
+                    # The file is there but the interpreter behind it is gone: the folder is a leftover too.
+                    if executable.exists() and not orphaned:
                         command.append('--allow-existing')
                     elif folder.exists():
                         command.append('--clear')

@@ -294,6 +294,10 @@ PYTHON_START_DENIED = r'Failed to run [^\n]*python[^\n]*\s+Caused by:[^\n]*(?:os
 ENVIRONMENT_PYTHON_REMOVED = 'The Python file of the FreeVideo environment is missing'
 
 
+# Windows' Python launcher, when an environment's python.exe cannot find the interpreter it forwards to.
+ORPHANED_PYTHON = r"No Python at "
+
+
 def environment_python_removed(args, pythons):
     """The line that opens a failed step's error when it used an environment Python that is gone, or ''."""
     used = {str(value) for value in args}
@@ -716,7 +720,8 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
                     kind='comfy-startup')
     # A file Windows refused to load is no GPU result: the app-control guidance below applies, and the
     # code the engine adds to the message makes it recognisable in any system language.
-    if 'Failed step: kernels (' in summary and not re.search(APPLICATION_CONTROL, summary):
+    if ('Failed step: kernels (' in summary and not re.search(APPLICATION_CONTROL, summary)
+            and not re.search(ORPHANED_PYTHON, summary)):
         detail = summary[summary.index('Failed step: kernels ('):]
         detail = detail.partition('\nRetained step log:')[0]
         if zh:
@@ -928,6 +933,12 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
          ('Security software or another program is holding a file that setup needs. Wait a moment and click Retry installation; '
           'if it happens again, allow the FreeVideo folder in the security software.',
           '安全软件或其他程序正在占用安装所需的文件。请稍候后点“重试安装”；仍然失败时，请在安全软件中允许 FreeVideo 所在的文件夹。')),
+        # Windows' Python launcher: the environment's python.exe is there but the interpreter it forwards to is gone.
+        (ORPHANED_PYTHON, 'environment-python-orphaned',
+         ('The FreeVideo Python environment cannot start', 'FreeVideo 的 Python 环境无法启动'),
+         ('The Python program that the environment relies on is missing, possibly removed by security software or a cleanup tool. '
+          'Click "Retry installation": FreeVideo sets the environment up again.',
+          '运行环境所依赖的 Python 程序已经不在，可能被安全软件或清理工具删除。请点“重试安装”，FreeVideo 会重新建立运行环境。')),
         (ENVIRONMENT_PYTHON_REMOVED, 'environment-python-removed',
          ('A program file is missing', '缺少一个程序文件'),
          ('It may have been quarantined by security software. Restore the file or allow the FreeVideo folder, '
