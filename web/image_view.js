@@ -283,7 +283,6 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         canGenerate: () => !running && modelState(info, model.id).state === 'ready' && (!!prompt.value.trim() || references.length > 0), onDraft: () => render()});
     enhancer.model.read().then(value => { enhancerReady = value?.ready === true; render(); fitSoon(); }).catch(() => {});
     const promptBar = el('div', 'fv-iv-prompt-bar');
-    const clearPrompt = button('fv-iv-text-btn', {iconName: 'x', label: t('Clear', '清空'), name: t('Clear prompt', '清空描述'), use: t('Empty the box to start over', '清空描述框重新写')});
     const promptCount = el('span', 'fv-iv-prompt-count');
     // The prompt's tool row also adds reference pictures; their strip sits under the box when there are any.
     const refAdd = button('fv-iv-text-btn fv-iv-ref-tool', {iconName: 'refs', label: t('References', '参考图')}); const refCount = el('span', 'fv-iv-ref-count'); refAdd.append(refCount);
@@ -294,9 +293,10 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     sketchAdd.addEventListener('click', () => void drawSketch());
     // Prompt enhancement is a key in this row beside References and Sketch, lit while on (no switch row of its own).
     enhancer.chip.classList.add('fv-iv-text-btn', 'fv-iv-enhance-tool'); enhancer.chip.querySelector('span')?.classList.add('fv-iv-btn-label');
-    promptBar.append(refAdd, sketchAdd, enhancer.chip, el('span', 'fv-iv-grow'), promptCount, clearPrompt, expand.element);
+    promptBar.append(refAdd, sketchAdd, enhancer.chip, el('span', 'fv-iv-grow'), promptCount, expand.element);
     // The row stays on one line inside the panel, Expand at the same inset as the box: when its words do not fit (a
-    // narrow panel, longer English words), its keys keep their icons only (their hover cards still name them).
+    // narrow panel, longer words), its keys keep their icons only (their hover cards still name them). Measured again
+    // whenever the row's own contents change (the count near the limit), not only when the panel is resized.
     const fitPromptBar = () => {
         if (!promptBar.isConnected) return;
         delete promptBar.dataset.compact;
@@ -307,7 +307,6 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     // "@" in the box lists the reference pictures; a chosen one is written as its mention and stays bound to that picture.
     const mentions = promptMentions({prompt, host: dialog, pictures: () => references.map((r, at) => ({url: r.url, label: label(at + 1)})), onAdd: () => openRefMenu(refAdd)});
     paintMentions = () => mentions.paint();
-    clearPrompt.addEventListener('click', () => { prompt.value = ''; prompt.dispatchEvent(new Event('input', {bubbles: true})); prompt.focus(); });
     promptGroup.body.append(enhancer.element, promptBar);
 
     // References.
@@ -1006,8 +1005,9 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         prompt.setAttribute('aria-label', references.length ? t('What to make or change', '要画什么或要改什么') : t('Describe the picture', '描述画面'));
         // Said only near the limit.
         promptCount.textContent = prompt.value.length >= 1600 ? `${prompt.value.length} / 2000` : '';
-        // Its room is kept while empty, so typing the first letter moves nothing below it.
-        clearPrompt.hidden = !prompt.value; promptCount.hidden = prompt.value.length < 1600;
+        // The count shows only near the limit; the row is fitted again when it comes or goes.
+        const counted = promptCount.hidden; promptCount.hidden = prompt.value.length < 1600;
+        if (counted !== promptCount.hidden) fitPromptBar();
         if (tooMany) notice.dataset.keep = 'false';
         if (!tooMany && notice.dataset.keep !== 'true') notice.textContent = '';
         if (ratio === 'same' && !references.length) ratio = sizes.ratio && sizes.ratio !== 'same' ? sizes.ratio : '1:1';

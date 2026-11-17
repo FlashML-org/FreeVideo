@@ -49,6 +49,8 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
 .fv-iv .fv-iv-panel-title{margin:0;font-size:var(--fv-fs-3,16px);font-weight:600;color:var(--fv-fg);white-space:nowrap}
 .fv-iv .fv-iv-count{margin-left:8px;font-size:var(--fv-fs-1,12px);color:var(--fv-fg3)}
 .fv-iv .fv-iv-panel-scroll{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--fv-line2) transparent}
+/* The create column never scrolls sideways: its rows shrink, wrap or keep icons only. */
+.fv-iv .fv-iv-left .fv-iv-panel-scroll{overflow-x:hidden}
 .fv-iv .fv-iv-panel-foot{flex:none;padding:8px 16px 16px;border-top:1px solid var(--fv-line)}
 @media(min-width:721px){.fv-iv .fv-iv-panel-scroll>.fv-iv-gen-foot{position:sticky;bottom:0;z-index:2;border-top:0;padding-top:0;background:linear-gradient(transparent,rgb(var(--fv-tint) / var(--fv-a2)) 8px)}
 :is(:root[data-glass=solid],:root.lite) .fv-iv .fv-iv-panel-scroll>.fv-iv-gen-foot{background:rgb(var(--fv-solid2))}}
@@ -165,7 +167,7 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
   transition:box-shadow var(--fv-dur-1,160ms)}
 /* the shared focus ring (a11y.css) draws the caret field's edge */
 .fv-studio .fv-iv .fv-iv-prompt::placeholder{color:var(--fv-fg3)}
-.fv-iv .fv-iv-prompt-bar{display:flex;align-items:center;gap:4px;height:28px;margin-top:4px}
+.fv-iv .fv-iv-prompt-bar{display:flex;align-items:center;gap:4px;min-width:0;height:28px;margin-top:4px}
 .fv-iv .fv-iv-prompt-bar .fv-ed-expand{position:static;right:auto;bottom:auto;flex:none;width:28px;height:28px;min-width:28px;min-height:28px}
 /* Expand is one of the row's keys: the same clear ground, ink, corners and hover, press and focus as References,
    Sketch and Enhance (not the page colour the shared key brings, which reads as a dark square). */
