@@ -24,7 +24,7 @@ from .loras import ERRORS as LORA_ERRORS, resolve_selection
 from ..download_settings import observed_speed
 from ..exit_diagnostics import clean_reading
 from ..monitoring import save
-from .failure import (Context, HOST_MESSAGE_ZH, host_memory_shortage, ERRORS, FailureError, MESSAGE_ZH, NO_REPORT, STAGES, UNIFIED_MESSAGE_ZH,
+from .failure import (Context, classify_exception, HOST_MESSAGE_ZH, host_memory_shortage, ERRORS, FailureError, MESSAGE_ZH, NO_REPORT, STAGES, UNIFIED_MESSAGE_ZH,
                       classify_exception)
 
 BODY_LIMIT = 64 * 1024
@@ -2095,6 +2095,7 @@ def register():
         header = request.headers.get('X-FreeVideo-Image', '')
         if not secrets.compare_digest(header.encode('utf-8'), token.encode('utf-8')):
             return web.json_response(dict(error='reload'), status=403)
+        value = None
         try:
             if request.content_length and request.content_length > BODY_LIMIT:
                 raise ValueError('invalid_request')
@@ -2164,3 +2165,16 @@ def register():
                 if code in MESSAGE_ZH:
                     result['message_zh'] = MESSAGE_ZH[code]
             return web.json_response(result, status=400)
+        except Exception as error:
+            # Any other fault still answers in JSON with a reason code, the stage and a report, so the page can show
+            # why it failed instead of failing to read a plain-text 500.
+            logging.getLogger(__name__).exception('image action failed')
+            try:
+                context = Context(request.match_info.get('action', ''), value if isinstance(value, dict) else {})
+                result = service.failed(classify_exception(error), context, error=error)
+            except Exception:
+                result = dict(phase='failed', error='generation_failed', report_id=None, stage='start')
+            result.setdefault('error', 'generation_failed')
+            if result['error'] in MESSAGE_ZH:
+                result.setdefault('message_zh', MESSAGE_ZH[result['error']])
+            return web.json_response(result, status=500)
