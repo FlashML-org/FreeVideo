@@ -153,6 +153,10 @@ let viewCache = readStore(VIEW_CACHE, null);
 // written to the browser's storage.
 let keptDraft = null;
 const enhancerNode = {id: 'image-view', properties: {}};
+// The prompt helper's record is keyed by the pictures themselves: each file the strip holds has a number for the page's
+// life, so a picture edited, swapped or put back is a different scene from the one rewritten before.
+const pictureIds = new WeakMap(); let pictureSerial = 0;
+const pictureId = file => { if (!pictureIds.has(file)) pictureIds.set(file, ++pictureSerial); return pictureIds.get(file); };
 const keepView = value => { viewCache = value; writeStore(VIEW_CACHE, value); };
 
 let current = null;
@@ -249,13 +253,30 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     const promptGroup = section('prompt', {title: t('Prompt', '描述'), iconName: 'prompt', fixed: true});
     const prompt = el('textarea', 'fv-image-prompt fv-iv-prompt'); prompt.rows = 3; prompt.maxLength = 2000;
     // Prompt help (the creation panel's own: switch, original and rewritten, rewrite again, back to the original,
-    // download and enable, errors) for a picture: the engine rewrites for a still image, told which image model.
-    // Mentions travel as <Picture N> and come back as the page writes them.
+    // download and enable, errors) for a picture: the engine rewrites in the chosen model's own style, with the
+    // reference pictures the model takes in view; they are uploaded only when a rewrite runs.
+    // Mentions travel as <Picture N> and come back as the page writes them; a rewrite with reference pictures names what
+    // it keeps from them <Subject N>, which the page writes "主体 N" / "Subject N".
     if (keptDraft?.prompt) prompt.value = keptDraft.prompt;
-    const enhancer = createPromptEnhancer({node: enhancerNode, input: prompt, api, t,
-        context: () => ({target: 'image', image_model: model.id}), setText: () => render(), issueButton,
-        prepare: text => text.replace(/@(?:图|Image) ?(\d+)/g, (_, n) => `<Picture ${n}>`),
-        restore: text => text.replace(/<Picture (\d+)>/g, (_, n) => mentionText(n))});
+    // The rewrite and the original are put in the box by the helper: the mention marks are drawn again over the new text.
+    let paintMentions = () => {};
+    const enhancer = createPromptEnhancer({node: enhancerNode, input: prompt, api, t, context: enhanceScene, setText: () => { render(); paintMentions(); }, issueButton,
+        resolve: async ({references: ids, ...scene}) => {
+            const media = [];
+            for (const id of ids) {
+                // A picture removed meanwhile makes this rewrite stale; it is dropped when the answer comes back.
+                const record = references.find(r => pictureId(r.file) === id);
+                if (record) media.push({file: await client.upload(record.file), role: 'reference'});
+            }
+            return {...scene, media};
+        },
+        // The rewrite names only the pictures sent with it, as the generation does.
+        prepare: text => {
+            const sent = references.slice(0, cap_(model)).length;
+            return mentionsToEngine(text, sent).replace(/(?:图\s?|Image\s)(\d+)/g, (all, n) => Number(n) >= 1 && Number(n) <= sent ? `<Picture ${n}>` : all)
+                .replace(/(?:主体\s?|Subject\s)(\d+)/g, (_, n) => `<Subject ${n}>`);
+        },
+        restore: text => text.replace(/<Picture (\d+)>/g, (_, n) => mentionText(n)).replace(/<Subject (\d+)>/g, (_, n) => subject(Number(n)))});
     let enhancerReady = false;
     const enhancerOff = () => false;
     enhancer.element.classList.add('fv-image-enhance');
@@ -287,6 +308,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     promptBarWatch?.observe(promptBar); document.fonts?.ready?.then(fitPromptBar).catch?.(() => {});
     // "@" in the box lists the reference pictures; a chosen one is written as its mention and stays bound to that picture.
     const mentions = promptMentions({prompt, host: dialog, pictures: () => references.map((r, at) => ({url: r.url, label: label(at + 1)})), onAdd: () => openRefMenu(refAdd)});
+    paintMentions = () => mentions.paint();
     clearPrompt.addEventListener('click', () => { prompt.value = ''; prompt.dispatchEvent(new Event('input', {bubbles: true})); prompt.focus(); });
     promptGroup.body.append(enhancer.element, promptBar);
 
@@ -634,6 +656,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
 
     const say = text => { note.textContent = text || ''; if (alive) paintSlot(); };
     const label = number => t(`Image ${number}`, `图 ${number}`);
+    const subject = number => t(`Subject ${number}`, `主体 ${number}`);
     // Each model row says how many pictures it takes; the strip holds as many as the most generous one.
     // Until the engine answers, each model's usual reference count, so the strip has its final height from the first frame.
     const USUAL_CAPS = {'minimax-h3-image': 16, 'qwen-image-2.1-turbo': 4};
@@ -678,11 +701,20 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     // The engine reads <Picture N>; the page writes "@图N" / "@Image N" (and older prompts "图 N"). A prompt that names none gets them
     // listed, all but the sketches: the words around the description name those.
     function engineText() {
-        const swapped = mentionsToEngine(prompt.value, references.length).replace(/(?:图\s?|Image\s)(\d+)/g, (_, n) => `<Picture ${n}>`);
+        const swapped = mentionsToEngine(prompt.value, references.length).replace(/(?:图\s?|Image\s)(\d+)/g, (_, n) => `<Picture ${n}>`)
+            .replace(/(?:主体\s?|Subject\s)(\d+)/g, (_, n) => `<Subject ${n}>`);
         const sketches = references.map((r, at) => r.sketch && at < cap_(model) ? at + 1 : 0).filter(Boolean);
         const others = references.map((_, at) => sketches.includes(at + 1) ? '' : `<Picture ${at + 1}>`).filter(Boolean);
         const listed = others.length && !/<Picture \d+>/.test(swapped) ? others.join(' ') + ' ' + swapped : swapped;
         return sketchPrompt(listed, sketches, model.id);
+    }
+    // What the rewrite sees: the model, the shape asked for (Image 1's own when it follows it), and the pictures sent.
+    function enhanceScene() {
+        const used = references.slice(0, cap_(model)), first = used[0];
+        const divisor = (a, b) => b ? divisor(b, a % b) : a, d = first?.width ? divisor(first.width, first.height) : 0;
+        const own = d && first.width / d < 10000 && first.height / d < 10000 ? `${first.width / d}:${first.height / d}` : 'adaptive';
+        const wanted = ratio === 'same' || (used.length && !ratioChosen) ? 'same' : ratio;
+        return {target: 'image', image_model: model.id, aspect: wanted === 'same' ? own : wanted, references: used.map(r => pictureId(r.file))};
     }
     // A reference opens in the image editor; the edited picture takes its place (marked), and the original is kept to put back.
     // The sketch canvas: the current frame, its long side at most 1536; a sketch opens again with its strokes.

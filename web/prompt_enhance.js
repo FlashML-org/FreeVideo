@@ -86,7 +86,7 @@ const PROMPT_LIMIT = 12000;
 // `prepare` turns the user's text into what the model reads (character mentions written out with their pictures);
 // `restore` turns the rewrite back into the user's terms (the mentions written as the user wrote them), and `display`
 // into what the box shows; the restored rewrite is kept for the request (see prompt_sections.js).
-export function createPromptEnhancer({node, input, editor, api, context, setText, t, starter = '', prepare = text => text, restore = text => text, display = text => text, onReport = () => {}, onChange = () => {}, issueButton = null}) {
+export function createPromptEnhancer({node, input, editor, api, context, setText, t, starter = '', prepare = text => text, resolve = async scene => scene, restore = text => text, display = text => text, onReport = () => {}, onChange = () => {}, issueButton = null}) {
     const saved = node.properties?.freevideo_prompt_versions;
     // Drafts saved before the starter became a placeholder hold it as the original.
     const versions = new PromptVersions(starter && saved?.original === starter ? {...saved, original: ''} : saved, input.value);
@@ -455,7 +455,10 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
                     throw new Error('cancelled');
                 }
                 if (!info.ready) clock.restart();
-                result = await poll('rewrite', {text, ...scene}, clock);
+                // resolve turns the scene into what the server reads (the image page uploads its pictures here).
+                const sent = await resolve(scene);
+                if (disposed || cancelling) throw new Error('cancelled');
+                result = await poll('rewrite', {text, ...sent}, clock);
             } finally { clock.stop(); }
             if (disposed || cancelling) throw new Error('cancelled');
             const restored = restore(result.text);
