@@ -7,3 +7,4 @@
 *.json text eol=lf
 *.yml text eol=lf
 constraints/*.txt text eol=lf
+freevideo_engine/licenses/*.txt text eol=lf
