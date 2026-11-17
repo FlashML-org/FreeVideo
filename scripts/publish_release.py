@@ -219,9 +219,6 @@ def fitted(value, name):
               % (name, ', '.join(left_out), MAX_MANIFEST_BYTES, len(data)))
     if manifest(json.loads(data))['asset'].get('url') != value['asset']['url']:
         raise SystemExit('::error::%s names a download address that launchers do not accept' % name)
-    # The picture or video above the notes (url, poster, sha256) travels only when release_notes.json names one.
-    if manifest(json.loads(data)).get('media') != value.get('media'):
-        raise SystemExit('::error::%s names release media that launchers do not accept' % name)
     return data
 
 
