@@ -92,6 +92,7 @@
 .fv-cp[data-mode=ai] .fv-cp-describe{min-height:120px}
 .fv-cp .fv-cp-ai-row{position:relative;align-items:stretch}
 .fv-cp .fv-cp-ai-row>.fv-cp-wear{flex:1;min-width:0;grid-template-columns:repeat(2,minmax(max-content,1fr))}
+.fv-cp .fv-cp-ai-row>.fv-cp-wear button{padding:0 var(--fv-sp-10,10px)}
 .fv-cp .fv-cp-ai-row>.fv-ie-lora{flex:none;position:static}
 .fv-cp .fv-cp-ai-row>.fv-ie-lora>summary{height:36px;padding:0 var(--fv-sp-10,10px);border:0;background:var(--fv-ctl-bg,#ffffff0a);color:var(--fv-fg2,#c9d0db);font-size:var(--fv-fs-1,12px)}
 .fv-cp .fv-cp-ai-row>.fv-ie-lora>summary:hover,.fv-cp .fv-cp-ai-row>.fv-ie-lora[open]>summary{background:var(--fv-ctl-hover,#ffffff1a);color:var(--fv-fg,#e8ecf3)}
