@@ -176,13 +176,13 @@ function stepLine(step) {
 let current = null, follow = null;
 
 /** Open the tutorial. chapter: an id in tutorial_book_content.js; tab: 'chapters' | 'examples'; example: a feature card id. */
-export function openTutorialBook({chapter = TUTORIAL_CHAPTERS[0].id, tab = 'chapters', example = null} = {}) {
+export function openTutorialBook({chapter = TUTORIAL_CHAPTERS[0].id, tab = 'chapters', example = null, note = ''} = {}) {
     if (chapter === 'separate-tracks') import('./sound_bubble.js').then(({markSoundBubbleSeen}) => markSoundBubbleSeen(), () => {});
     if (current?.dialog.isConnected) { current.go({tab, chapter, example}); return current.dialog; }
     styles();
     const lang = language(), text = COPY[lang], L = pair => Array.isArray(pair) ? pair[lang === 'zh' ? 1 : 0] : pair?.[lang] ?? '';
     const restore = document.activeElement;
-    const state = {tab, chapter: chapterOf(chapter) ? chapter : TUTORIAL_CHAPTERS[0].id, example, query: '', tocOnly: false, note: ''};
+    const state = {tab, chapter: chapterOf(chapter) ? chapter : TUTORIAL_CHAPTERS[0].id, example, query: '', tocOnly: false, note};
     const dialog = el('dialog', 'fv-book'); dialog.lang = lang === 'zh' ? 'zh-CN' : 'en';
     dialog.setAttribute('aria-labelledby', 'fv-book-title'); dialog.dataset.fvTipScope = '';
     // Head: name, the two pages (Chapters, Examples), contents (phones) and close.
@@ -291,11 +291,19 @@ export function openTutorialBook({chapter = TUTORIAL_CHAPTERS[0].id, tab = 'chap
         page.replaceChildren(inner);
         markRead(id);
     }
+    // Whether another view now lies over the book.
+    const covered = () => { const r = dialog.getBoundingClientRect(), hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !!hit && !dialog.contains(hit); };
     async function takeMeThere(c, id, go) {
         const {goToScene} = await import('./tour_goto.js');
         go.disabled = true; state.note = '';
         const result = await goToScene({view: c.view, ids: [id], select: c.select, beforeRing: () => dialog.close()});
         go.disabled = false;
+        if (!result.ok && dialog.isConnected && covered()) {
+            // The view opened over the book: bring the book back on top so its note is seen.
+            const note = text[{view: 'noView', hidden: 'noHidden'}[result.reason] || 'noTarget'], chapter = state.chapter;
+            dialog.addEventListener('close', () => openTutorialBook({chapter, note}), {once: true});
+            dialog.close(); return;
+        }
         if (!result.ok && dialog.isConnected) { state.note = text[{view: 'noView', hidden: 'noHidden'}[result.reason] || 'noTarget']; const note = page.querySelector('.fv-book-note'); if (note) { note.textContent = state.note; note.hidden = false; note.scrollIntoView({block: 'nearest'}); } }
     }
     function drawExamples() {
@@ -391,6 +399,7 @@ export function openTutorialBook({chapter = TUTORIAL_CHAPTERS[0].id, tab = 'chap
     current = {dialog, go};
     go({});
     dialog.showModal();
+    if (note) page.querySelector('.fv-book-note')?.scrollIntoView({block: 'nearest'});
     // On phones the contents are folded behind the list button (tutorial_book.css, 719px), so focus starts on that
     // button: a hidden entry cannot hold focus, and it would fall to the page behind the book.
     const folded = state.tab === 'chapters' && !state.tocOnly && matchMedia('(max-width: 719px)').matches;

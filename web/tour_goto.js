@@ -59,11 +59,18 @@ export async function goToScene({view = null, ids = [], select = null, beforeRin
     for (let i = 0; i < 30 && !ids.some(find); i++) await wait(100);
     if (!ids.some(find)) return {ok: false, reason: 'target'};
     if (select && !ids.some(reachable)) {
-        await wait(300);
-        const part = document.querySelector(select);
-        const box = part?.getBoundingClientRect();
-        if (box) for (const type of ['pointerdown', 'pointerup']) part.dispatchEvent(new PointerEvent(type, {bubbles: true, cancelable: true, pointerId: 1, isPrimary: true, button: 0, buttons: type === 'pointerdown' ? 1 : 0, clientX: box.left + box.width / 2, clientY: box.top + box.height / 2}));
-        for (let i = 0; i < 20 && !ids.some(reachable); i++) await wait(100);
+        // A view that just opened draws its parts a moment later, and can lay them out again once its project settles
+        // (the Edit view does both within about 1 s, and the second pass drops the selection): press the part once it is
+        // drawn, and again while the control has not appeared.
+        const press = part => {
+            const box = part.getBoundingClientRect();
+            for (const type of ['pointerdown', 'pointerup']) part.dispatchEvent(new PointerEvent(type, {bubbles: true, cancelable: true, pointerId: 1, isPrimary: true, button: 0, buttons: type === 'pointerdown' ? 1 : 0, clientX: box.left + box.width / 2, clientY: box.top + box.height / 2}));
+        };
+        for (let i = 0, since = Infinity; i < 40 && !ids.some(reachable); i++, since++) {
+            const part = document.querySelector(select);
+            if (visible(part) && since >= 4) { press(part); since = 0; }
+            await wait(100);
+        }
     }
     if (!ids.some(reachable)) return {ok: false, reason: 'hidden'};
     await beforeRing?.();
