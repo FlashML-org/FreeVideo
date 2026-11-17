@@ -350,7 +350,7 @@ export const TUTORIAL_CHAPTERS = [
     {
         id: 'refine',
         title: {zh: '先出预览，再继续二采', en: 'Preview first, then run the second pass'},
-        summary: {zh: '先出半分辨率预览，满意后再生成完整视频。', en: 'Make a half-resolution preview first, then the full video when it looks right.'},
+        summary: {zh: '先出低分辨率预览，满意后再生成完整视频。', en: 'Make a lower-resolution preview first, then the full video when it looks right.'},
         media: {
             type: 'image',
             src: {zh: 'refine-1.webp', en: 'refine-2.webp'},

@@ -1062,8 +1062,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const passControl = createPassMode({t, onChoose: mode => choosePassMode(mode), listen: listenDialogKey});
     const passMode = passControl.element;
     cleanup.push(passControl.dispose);
-    const previewPassHint = t('Stops at a half-resolution preview. Choose "Run second pass" in the result when it looks right; the video matches a direct run.',
-        '先出半分辨率预览，满意后在结果里点“继续二采”，成片与直接生成一致。');
+    const previewPassHint = t('Stops at a lower-resolution preview. Choose "Run second pass" in the result when it looks right; the video matches a direct run.',
+        '先出低分辨率预览，满意后在结果里点“继续二采”，成片与直接生成一致。');
     twoPassLabel.append(el('span', t('Two-pass', '二采')), twoPassStatus, passMode);
     let effortEstimate = {}, effortEstimateKey = '', effortEstimateTimer = null, effortEstimateRequest = null, lengthControl = null, chainController = null;
     // A level's step cache; custom steps and workflows without the input sample every step.
@@ -1124,7 +1124,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const passListeners = new Set();
     function syncPassMode() {
         const value = passState();
-        passControl.sync(value);
+        // The creative panel's tray keeps Off / On; a preview is chosen from the Generate key's menu.
+        passControl.sync({...value, mode: value.mode === 'preview' ? 'on' : value.mode, hidden: {...value.hidden, preview: true}});
         for (const listener of [...passListeners]) listener(value);
     }
     const sharedPass = {state: passState, choose: mode => choosePassMode(mode),
@@ -2090,7 +2091,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const paintEta = () => {
         const parts = (effort?.element?.querySelector('.fv-effort-estimate')?.textContent || '').trim().split(' · ').filter(Boolean);
         keySetup = parts.some(setupPart);
-        const estimate = keyShowsEta ? parts.filter(part => !setupPart(part)).join(' · ') : '';
+        // A preview has no estimate of its own (the figures are for the whole two-pass run), so the line stays empty rather than show the wrong time.
+        const estimate = keyShowsEta && !(previewFirst.checked && !previewFirst.disabled) ? parts.filter(part => !setupPart(part)).join(' · ') : '';
         if (keyEta.textContent !== estimate) keyEta.textContent = estimate;
         // Kept in place when empty (not hidden), so the label above it never moves.
         keyEta.dataset.empty = String(!estimate);
@@ -2102,7 +2104,26 @@ export function openStudio(node, {extendFrom = null} = {}) {
     };
     // The key has its two lines from the first frame, so its label is in place before anything else is known.
     paintKey(t('Generate video', '生成视频'), true);
-    runrow.append(generate, runOptions);
+    // Generate's second segment: the menu that says what the key makes, a video or a preview (the same choice as the
+    // two-pass state; a preview turns two-pass on).
+    const keyMore = el('details', null, 'fv-key-more');
+    const keyMoreToggle = el('summary'); keyMoreToggle.title = t('What to generate', '生成什么'); keyMoreToggle.setAttribute('aria-label', keyMoreToggle.title);
+    keyMoreToggle.append(el('span', null, 'fv-chevron'));
+    const keyMenu = el('div', null, 'fv-run-menu fv-key-menu');
+    const keyChoices = [['video', t('Generate video', '生成视频')], ['preview', t('Generate preview', '生成预览')]].map(([id, label]) => {
+        const b = button(label, () => { choosePassMode(id === 'preview' ? 'preview' : twoPass.checked ? 'on' : 'off'); keyMore.open = false; });
+        b.dataset.choice = id; keyMenu.append(b); return b;
+    });
+    keyMore.append(keyMoreToggle, keyMenu);
+    liftMenu(keyMore, keyMenu);
+    const syncKeyMore = () => {
+        const state = passState();
+        keyMore.hidden = runMode !== 'single' || videoMissing || Boolean(state.hidden.preview) || Boolean(extension.source);
+        for (const b of keyChoices) b.setAttribute('aria-pressed', String((b.dataset.choice === 'preview') === (state.mode === 'preview')));
+        keyChoices[1].disabled = state.disabled.preview && !(state.mode === 'preview');
+        if (keyMore.hidden) keyMore.open = false;
+    };
+    runrow.append(generate, runOptions, keyMore);
     runButtonReady = true;
     // An installation with MiniMax H3 Image alone: the main button adds the video model instead of generating.
     let videoMissing = false;
@@ -2237,6 +2258,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             : busy ? t('Add to queue', '加入队列')
             : previewFirst.checked && !previewFirst.disabled ? t('Generate preview', '生成预览') : t('Generate video', '生成视频'));
         paintKey(label, !submitting && !chainReason);
+        syncKeyMore();
         if (videoMissing) { paintKey(addVideoLabel(t), false); generate.disabled = false; }
         // The hover card names what the button does now (its own label), and when it is greyed, why and how to free it.
         const use = videoMissing ? t('Download the video model before generating', '下载视频模型后才能生成视频')
@@ -2612,9 +2634,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
         // The panel floats over the page; the stage stays as it is until a frame or size is pointed at or chosen.
         onClose: () => { if (!busy) { leaveNext(); fitPreview(); } },
         shapes: [...studioShapes(t).map(([id, label, r]) => ({id, label, ratio: r})), {id: 'input', label: t('Match image', '跟随图片'), ratio: null}],
-        // Standard and High; any other size (the earlier 0.5, 0.75 and 1.5 MP steps too) is typed as width × height.
-        // Named by their megapixels (1M, 2M), so they are not mistaken for the quality levels.
-        sizes: [{pixels: .98}, {pixels: 2}],
+        // Five steps, named by their megapixels (written out, so 0.75 is not read as 0.8M and 1.5 not as 2M); any
+        // other size is typed as width × height.
+        sizes: [{pixels: .5, label: '0.5M'}, {pixels: .75, label: '0.75M'}, {pixels: .98, label: '1M'}, {pixels: 1.5, label: '1.5M'}, {pixels: 2, label: '2M'}],
         sizeFor: (r, p) => { const [w, h] = canvasDimensions(p, r); return {width: w, height: h}; },
         custom: {minSide: 256, maxSide: 4096, snap: 32, lock: true},
         onChange: change => {

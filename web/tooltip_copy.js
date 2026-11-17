@@ -86,7 +86,7 @@ export const TIPS = {
     'studio.twoPass': {name: ['Two-pass acceleration', '二采加速'], use: ['Draft small, then refine: usually faster', '先小后精，通常更快']},
     'studio.twoPass.off': {name: ['Off', '关闭'], use: ['Make the full size in one go', '一次生成全分辨率']},
     'studio.twoPass.on': {name: ['On', '开启'], use: ['Draft small, then refine: usually faster', '先小后精，通常更快']},
-    'studio.twoPass.preview': {name: ['Preview first', '先预览'], use: ['Half-size preview; finish it if you like it', '先出半分辨率预览，满意再继续']},
+    'studio.twoPass.preview': {name: ['Generate preview', '生成预览'], use: ['Lower-resolution preview; finish it if you like it', '先出低分辨率预览，满意再继续']},
     'studio.replacePerson': {name: ['Replace person', '替换人物'], use: ['Put the person from your picture in the video', '把视频里的人换成你图里的人']},
     'studio.swapRemove': {name: ['Remove picture', '移除人物图'], use: ['Stop using this person picture', '不再使用这张人物图']},
     'studio.swapSound': {name: ['Keep source sound', '保留源视频声音'], use: ['The new video keeps the original sound', '新视频沿用原视频的声音']},

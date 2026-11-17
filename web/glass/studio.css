@@ -872,3 +872,25 @@ html body .fv-studio.fv-create .fvs-console :is(.fvs-console-prompt,.fv-section,
   .fv-studio.fv-create :is(.fvs-stagebar,.fvs-console .fv-prompt-tools){--fv-ctl:var(--fvs-row)}
   .fv-studio.fv-create .fvs-rail{--fv-ctl-l:var(--fvs-row)}
 }
+
+/* Generate key, second segment: a narrow ⌄ at the key's right end that chooses video or preview. It takes its 32 px from
+   the key's own width (the key's size does not change); its menu opens upward in the top layer (result_actions.js). */
+.fv-studio.fv-create .fvs-console .fv-runrow{position:relative}
+.fv-studio.fv-create .fvs-console .fv-runrow:has(>.fv-key-more:not([hidden]))>.fv-primary{padding-left:var(--fv-sp-4);padding-right:calc(32px + var(--fv-sp-4));letter-spacing:0}
+@media(min-width:761px){.fv-studio.fv-create .fvs-console .fv-runrow:has(>.fv-key-more:not([hidden]))>.fv-primary .fvs-key-label{font-size:13px;white-space:nowrap}}
+.fv-studio.fv-create .fvs-console .fv-key-more{position:absolute;top:0;right:0;width:32px;height:52px;z-index:1}
+.fv-studio.fv-create .fvs-console .fv-key-more[hidden]{display:none}
+.fv-studio.fv-create .fvs-console .fv-key-more>summary{display:flex;align-items:center;justify-content:center;width:100%;height:100%;list-style:none;cursor:pointer;color:#fff;
+  border-left:1px solid rgb(255 255 255 / .28);border-radius:0 var(--fv-rad-dock) var(--fv-rad-dock) 0}
+.fv-studio.fv-create .fvs-console .fv-key-more>summary::-webkit-details-marker{display:none}
+.fv-studio.fv-create .fvs-console .fv-key-more>summary:hover{background:rgb(255 255 255 / .14)}
+.fv-studio.fv-create .fvs-console .fv-key-more>summary:focus-visible{outline:2px solid #fff;outline-offset:-3px}
+.fv-studio.fv-create .fvs-console .fv-key-more .fv-chevron{width:6px;height:6px;margin-top:calc(-1 * var(--fv-sp-4))}
+.fv-key-menu{min-width:160px}
+.fv-key-menu>button[aria-pressed=true]::before{content:'✓';margin-right:var(--fv-sp-8)}
+.fv-key-menu>button[aria-pressed=false]::before{content:'';display:inline-block;width:1em;margin-right:var(--fv-sp-8)}
+@media(max-width:760px){.fv-studio.fv-create .fvs-console .fv-key-more{height:var(--fv-touch)}}
+@media(min-width:761px){
+  .fv-studio.fv-create .fvs-console .fv-runrow.fv-at-moved>.fv-key-more{height:calc(2 * var(--fvs-row) + var(--fv-sp-8))}
+  .fv-studio.fv-create .fvs-console .fv-runrow.fv-at-moved>.fv-key-more>summary{border-radius:0 var(--fv-rad-ctl) var(--fv-rad-ctl) 0}
+}

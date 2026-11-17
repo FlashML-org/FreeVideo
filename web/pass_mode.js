@@ -1,4 +1,4 @@
-// Two-pass sampling as three choices: off, on, or on and paused after a half-resolution first pass.
+// Two-pass sampling as three choices: off, on, or on and paused after a lower-resolution first pass.
 // The creative panel and the editor's generation bar show this one control over the same node settings.
 const plainListen = (target, type, handler) => {
     target.addEventListener(type, handler);
@@ -14,7 +14,7 @@ export function createPassMode({t, onChoose, listen = plainListen}) {
         option.type = 'button'; option.textContent = label; option.dataset.mode = mode; option.setAttribute('role', 'radio');
         option.dataset.fvTipName = label;
         option.dataset.fvTipUse = {off: t('Sample once at full size', '直接按成片尺寸采样一遍'), on: t('Draft small, then refine: usually faster', '先小后精，通常更快'),
-            preview: t('Stop at a half-size preview first', '先出半分辨率预览，满意再继续')}[mode];
+            preview: t('Stop at a lower-resolution preview first', '先出低分辨率预览，满意再继续')}[mode];
         option.onclick = () => onChoose(mode);
         return option;
     });
