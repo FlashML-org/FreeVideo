@@ -684,10 +684,9 @@ class Service:
         except (OSError, ValueError):
             pass
         try:
-            input_root = self.input_directory()
-            from ..paths import data_root
+            from .. import private_refs
             for name in names:
-                private_store.release('image:' + name, input_root=input_root, cache_root=data_root() / 'input-cache')
+                private_refs.release_owner('image:' + name.rpartition('/')[2], input_root=self.input_directory())
         except (OSError, ValueError):
             logging.warning('[FreeVideo] Could not release what a deleted picture held.', exc_info=True)
         # The failure reports kept in memory for the page drop the ones about these pictures.
@@ -2346,6 +2345,10 @@ class Service:
                     if not draft:
                         self.note_model(path, value.get('model') or image_model.QWEN)
                         self.note_record(path, getattr(context, 'work_record', None))
+                        receipts = row.get('receipts')
+                        from ..private_refs import hold
+                        hold('image:' + path.name, value.get('images') or (), input_root=self.input_directory(),
+                             receipts=[r for r in receipts if isinstance(r, str)] if isinstance(receipts, list) else ())
                     report_id = getattr(context, 'report_id', None)
                     if report_id:
                         done = context.report('succeeded', row=row, outcome='succeeded', worker_restarts=self.worker_restarts,

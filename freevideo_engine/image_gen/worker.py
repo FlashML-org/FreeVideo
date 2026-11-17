@@ -421,6 +421,12 @@ def serve(pack_dir, *, device='cuda', idle_seconds=45., stream=None, output=None
                         plan = dict(plan or {}, back_check=back_check)
                 result = dict(phase='result', path=value['path'], seconds=time.monotonic() - started, plan=plan)
                 try:
+                    from ..input_cache import used
+                    # The cached encodings this picture read or wrote: deleting the picture removes the ones only it used.
+                    result['receipts'] = used()[:64]
+                except Exception:
+                    pass
+                try:
                     result.update(attention_report(runner, context.redactor))
                 except Exception:
                     # Diagnostics must not turn a saved picture into an error.

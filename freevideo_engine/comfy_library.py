@@ -958,9 +958,12 @@ def _forget_works(root, facts):
         kept_receipts, kept_prompts = _kept_facts(root)
     except OSError:
         return
-    from . import private_store
+    from . import private_refs, private_store
     from .paths import data_root
     cache_root = data_root() / 'input-cache'
+    for fact in facts:
+        if re.fullmatch('[0-9a-f]{32}', fact['run'] or ''):
+            private_refs.release_owner('video:' + fact['run'])
     for receipt in {row for fact in facts for row in fact['receipts']} - kept_receipts:
         try:
             private_store.evict(cache_root, receipt)
