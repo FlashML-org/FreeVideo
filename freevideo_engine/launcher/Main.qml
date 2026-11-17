@@ -1819,9 +1819,19 @@ ApplicationWindow {
         // State changes also close it (an update started from the banner or a
         // page, or a task began); only a user dismissal counts as "Later".
         onClosed: { if (!s.busy && (s.update.remind || manualUpdate)) backend.dismissUpdate(); manualUpdate = false }
-        height: Math.min(updateContents.implicitHeight + padding*2 + updateActions.implicitHeight + 14, win.height-48)
+        onVisibleChanged: if (visible && s.update.engine) backend.wantReleaseMedia()
+        height: Math.min(updateContents.implicitHeight + padding*2 + updateActions.implicitHeight + 14 + (updateMedia.visible ? updateMedia.implicitHeight - padding + 6 : 0), win.height-48)
         contentItem: ColumnLayout {
             spacing: 14
+            // The update's picture or video on the window's top edge, above what changed.
+            FReleaseMedia {
+                id: updateMedia; objectName: "updateDialogMedia"
+                Layout.fillWidth: true; Layout.preferredHeight: implicitHeight
+                Layout.topMargin: -updateDialog.topPadding; Layout.leftMargin: -updateDialog.leftPadding
+                Layout.rightMargin: -updateDialog.rightPadding; Layout.bottomMargin: 6
+                media: s.update.candidate ? (s.update.media || {}).candidate || null : s.update.engine ? (s.update.media || {}).current || null : null
+                zh: s.zh; radius: theme.radiusLg; maxHeight: Math.round(win.height * 0.4)
+            }
             ScrollView {
             id: updateScroll; Layout.fillWidth: true; Layout.fillHeight: true; clip: true; contentWidth: availableWidth
             ColumnLayout {
@@ -1830,7 +1840,9 @@ ApplicationWindow {
             FText { objectName: "updateActionNotice"; visible: !!s.action_notice; text: s.action_notice || ""; color: theme.muted; Layout.fillWidth: true }
             RowLayout {
                 Layout.fillWidth: true
-                FText { text: s.update.candidate ? t("Update available", "有可用更新") : s.update.engine ? t("Engine update", "引擎更新") : t("Updates", "更新"); font.pixelSize: theme.section + 2; font.weight: Font.DemiBold; Layout.fillWidth: true }
+                // An update is named by its version in the notes below; the window has no title for it.
+                FText { visible: !s.update.candidate; text: s.update.engine ? t("Engine update", "引擎更新") : t("Updates", "更新"); font.pixelSize: theme.section + 2; font.weight: Font.DemiBold; Layout.fillWidth: true }
+                Item { visible: !!s.update.candidate; Layout.fillWidth: true }
                 FButton { objectName: "updateCloseButton"; text: "×"; flat: true; Accessible.name: t("Close", "关闭"); onClicked: { manualUpdate = false; backend.dismissUpdate() } }
             }
             FText { objectName: "updateDialogText"; text: s.update.phase === "waiting" ? t("A video is still generating. FreeVideo restarts and updates as soon as it finishes.", "还有视频正在生成，完成后会自动重启并更新。") : s.update.status === "ready" && s.update.candidate ? t("Downloaded. Restart to finish; models and settings are kept.", "下载完成，重启可完成更新，模型和设置都会保留。") : s.update.candidate && s.update.manual ? t("FreeVideo ", "FreeVideo ") + releaseVersion(s.update.candidate) + t(" is available (current ", " 已发布（当前 ") + releaseVersion(currentRelease) + t("). Download it and replace this version; models and settings are kept.", "）。下载新版后替换当前版本，模型和设置会保留。") : s.update.candidate ? t("FreeVideo ", "FreeVideo ") + releaseVersion(s.update.candidate) + t(" is available (current ", " 已发布（当前 ") + releaseVersion(currentRelease) + t("). Updating keeps your models and settings. FreeVideo restarts after the download; running videos finish first.", "）。更新会保留模型和设置，下载完成后自动重启；正在生成的视频会先完成。") : s.update.engine ? t("This launcher already includes engine ", "启动器已带有新版引擎 ") + releaseVersion(currentRelease) + t(" (installed: ", "（已安装 ") + engineVersion + (s.status === "open" ? t("). Updating takes about a minute, restarts ComfyUI once and keeps your models and settings.", "）。更新约需 1 分钟，会重启一次 ComfyUI，模型和设置都会保留。") : t("). Updating takes about a minute, then FreeVideo starts; models and settings are kept.", "）。更新约需 1 分钟，完成后自动启动，模型和设置都会保留。")) : s.update.status === "current" ? t("You're up to date.", "已是最新版本。") : s.update.status === "development" ? t("Running from source. Update with Git.", "当前从源码运行，请通过 Git 更新。") : s.update.status === "error" ? t("Could not check for updates.", "暂时无法检查更新。") : t("Checking the latest release…", "正在检查最新版本…"); color: theme.muted; Layout.fillWidth: true }
@@ -1838,10 +1850,11 @@ ApplicationWindow {
             FButton { objectName: "updateManualDownloadButton"; text: t("Download from the release page ↗", "去发布页手动下载 ↗"); flat: true; Layout.fillWidth: true; visible: s.update.status === "error" && !!s.update.release_page; onClicked: backend.link(s.update.release_page) }
             FButton { objectName: "updateDialogReport"; text: reportOpened(s.update.error, t("Update", "更新")) ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(s.update.error, t("Update", "更新")); flat: true; Layout.fillWidth: true; visible: s.update.status === "error" && !!s.update.error; onClicked: backend.reportProblem(s.update.error, t("Update", "更新")) }
             FMeter { Layout.fillWidth: true; visible: s.update.status === "downloading"; active: true; fraction: s.update.progress && s.update.progress.total ? s.update.progress.done/s.update.progress.total : -1 }
-            FReleaseNotes { objectName: "updateReleaseNotes"; visible: !!availableRelease; Layout.fillWidth: true; release: availableRelease; earlier: availableEarlier; zh: s.zh; heading: t("What's new", "更新内容") + " · " + releaseVersion(availableRelease) }
+            FReleaseNotes { objectName: "updateReleaseNotes"; visible: !!availableRelease; Layout.fillWidth: true; release: availableRelease; earlier: availableEarlier; zh: s.zh; heading: releaseVersion(availableRelease) }
             FButton { text: t("Version & release notes", "版本与更新说明"); flat: true; onClicked: releaseNotesOpen = true }
             }
             }
+            FScrollFade { objectName: "updateDialogFade"; view: updateScroll; barWidth: updateScroll.ScrollBar.vertical.visible ? updateScroll.ScrollBar.vertical.width : 0 }
             RowLayout {
                 id: updateActions; Layout.fillWidth: true
                 FButton { objectName: "updateLaterButton"; text: s.update.candidate || s.update.engine ? t("Later", "稍后更新") : t("Close", "关闭"); flat: true; onClicked: { manualUpdate = false; backend.dismissUpdate() } }
@@ -1920,18 +1933,30 @@ ApplicationWindow {
     }
 
     FPopup {
+        id: releaseNotesPopup
         objectName: "releaseNotesDialog"; visible: releaseNotesOpen; onClosed: releaseNotesOpen = false
+        // The newest version's picture or video comes when its notes are opened.
+        onVisibleChanged: if (visible) backend.wantReleaseMedia()
         width: Math.min(560, win.width - 40)
-        height: Math.min(releaseContents.implicitHeight + padding * 2 + 60, win.height - 48)
+        height: Math.min(releaseContents.implicitHeight + padding * 2 + 60 + (releaseMedia.visible ? releaseMedia.implicitHeight - padding + 6 : 0), win.height - 48)
         contentItem: ColumnLayout {
             spacing: 14
+            // On the window's top edge, as wide as the window: the update's media, else the current version's.
+            FReleaseMedia {
+                id: releaseMedia; objectName: "releaseNotesMedia"
+                Layout.fillWidth: true; Layout.preferredHeight: implicitHeight
+                Layout.topMargin: -releaseNotesPopup.topPadding; Layout.leftMargin: -releaseNotesPopup.leftPadding
+                Layout.rightMargin: -releaseNotesPopup.rightPadding; Layout.bottomMargin: 6
+                media: s.update.candidate ? (s.update.media || {}).candidate || null : (s.update.media || {}).current || null
+                zh: s.zh; radius: theme.radiusLg; maxHeight: Math.round(win.height * 0.4)
+            }
             ScrollView {
                 Layout.fillWidth: true; Layout.fillHeight: true
                 id: releaseScroll; clip: true; contentWidth: availableWidth
                 ColumnLayout {
                     id: releaseContents; width: releaseScroll.availableWidth; spacing: 18
                     FText { text: t("Version & release notes", "版本与更新说明"); font.pixelSize: theme.section + 2; font.weight: Font.DemiBold; Layout.fillWidth: true }
-                    FReleaseNotes { visible: !!s.update.candidate; Layout.fillWidth: true; release: s.update.candidate; earlier: s.update.candidate_earlier || []; zh: s.zh; heading: t("Available update", "可用更新") + " · " + releaseVersion(s.update.candidate) }
+                    FReleaseNotes { visible: !!s.update.candidate; Layout.fillWidth: true; release: s.update.candidate; earlier: s.update.candidate_earlier || []; zh: s.zh; heading: releaseVersion(s.update.candidate) }
                     FDivider { visible: !!s.update.candidate }
                     FReleaseNotes { objectName: "currentReleaseNotes"; Layout.fillWidth: true; release: currentRelease; zh: s.zh; heading: (separateVersions ? t("Launcher", "启动器") : t("Current version", "当前版本")) + " · " + releaseVersion(currentRelease) }
                     FText { objectName: "engineReleaseInfo"; visible: !!engineRelease.product_version || !!engineBuild
@@ -1941,6 +1966,7 @@ ApplicationWindow {
                             color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
                 }
             }
+            FScrollFade { objectName: "releaseNotesFade"; view: releaseScroll; barWidth: releaseScroll.ScrollBar.vertical.visible ? releaseScroll.ScrollBar.vertical.width : 0 }
             FButton { objectName: "closeReleaseNotesButton"; text: t("Close", "关闭"); onClicked: releaseNotesOpen = false }
         }
     }

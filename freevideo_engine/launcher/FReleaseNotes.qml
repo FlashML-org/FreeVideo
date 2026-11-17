@@ -9,7 +9,52 @@ ColumnLayout {
     property bool zh: false
     property string heading: ""
     readonly property var notes: release && release.release_notes ? release.release_notes[zh ? "zh" : "en"] : null
+    // Narrow windows put a change's label above its sentence instead of beside it.
+    readonly property bool stacked: width < 420
     spacing: 8
+
+    // "Topic: what changed" shows its topic as a short label before the sentence, as the app does; an item without a
+    // short topic stays one sentence after a bullet.
+    function topic(text) {
+        var match = /^([^:：\n]{1,40})(?:：|: )([\s\S]+)$/.exec(text || "")
+        if (!match)
+            return null
+        var name = match[1].trim(), wide = /[　-鿿＀-￯]/.test(name), sentence = match[2].trim()
+        // Standing alone, an English sentence starts with a capital letter; a first word with its own capitals (macOS) stays.
+        return name.length <= (wide ? 16 : 40) ? [name, sentence.replace(/^[a-z](?=[a-z]*(?![A-Za-z]))/, function(letter) { return letter.toUpperCase() })] : null
+    }
+    FontMetrics { id: tagFont; font.pixelSize: theme.micro }
+    // One label column per list, so every sentence starts at the same place.
+    function tagColumn(changes) {
+        var widest = 0
+        for (var i = 0; i < (changes || []).length; i++) {
+            var parts = topic(changes[i])
+            if (parts)
+                widest = Math.max(widest, tagFont.advanceWidth(parts[0]))
+        }
+        return widest ? Math.min(Math.ceil(widest) + 12, Math.round(width * 0.4)) : 0
+    }
+    // One change: its label (parts[0]) and sentence (parts[1]), or the whole text after a bullet.
+    component Change: GridLayout {
+        id: change
+        property string text
+        property var parts: null
+        property real column: 0
+        property bool stacked: false
+        columns: stacked || !parts ? 1 : 2; columnSpacing: 10; rowSpacing: 4
+        Item {
+            visible: !!change.parts
+            Layout.preferredWidth: change.stacked ? Math.min(tag.implicitWidth + 12, change.width) : change.column
+            Layout.preferredHeight: tag.implicitHeight + 2; Layout.alignment: Qt.AlignTop | Qt.AlignLeft; Layout.topMargin: 1
+            Rectangle { width: Math.min(parent.width, tag.implicitWidth + 12); height: parent.height; radius: theme.radiusXs; color: theme.raised }
+            Text {
+                id: tag; x: 6; y: 1; width: parent.width - 12
+                text: change.parts ? change.parts[0] : ""; color: theme.accent; font.pixelSize: theme.micro; elide: Text.ElideRight
+            }
+        }
+        FText { text: change.parts ? change.parts[1] : "• " + change.text; color: change.parts ? theme.text : theme.muted; Layout.fillWidth: true }
+    }
+
     FText { text: heading; font.weight: Font.DemiBold; font.pixelSize: theme.section; Layout.fillWidth: true }
     FText {
         text: release && release.development ? (zh ? "开发版本" : "Development version") : (zh ? "构建号：" : "Build: ") + (release && release.version || "—")
@@ -18,7 +63,11 @@ ColumnLayout {
     FText { text: notes ? notes.summary : (zh ? "此版本未附带更新说明。" : "No release notes were included with this version."); Layout.fillWidth: true }
     Repeater {
         model: notes ? notes.changes : []
-        delegate: FText { required property string modelData; text: "• " + modelData; color: theme.muted; Layout.fillWidth: true }
+        delegate: Change {
+            required property string modelData
+            text: modelData; parts: notesRoot.topic(modelData); stacked: notesRoot.stacked; Layout.fillWidth: true
+            column: notesRoot.tagColumn(notesRoot.notes ? notesRoot.notes.changes : [])
+        }
     }
     Repeater {
         model: earlier
@@ -31,7 +80,11 @@ ColumnLayout {
             FText { text: version.notes ? version.notes.summary : ""; Layout.fillWidth: true }
             Repeater {
                 model: version.notes ? version.notes.changes : []
-                delegate: FText { required property string modelData; text: "• " + modelData; color: theme.muted; Layout.fillWidth: true }
+                delegate: Change {
+                    required property string modelData
+                    text: modelData; parts: notesRoot.topic(modelData); stacked: notesRoot.stacked; Layout.fillWidth: true
+                    column: notesRoot.tagColumn(version.notes ? version.notes.changes : [])
+                }
             }
         }
     }

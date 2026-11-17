@@ -107,6 +107,10 @@ class Session:
     page = 'comfy'
     selected = installed_versions = engine_identity = bundled_identity = None
     release_details = None
+    # The picture or video above the release notes: verified copies in the launcher's folder. The update's file is
+    # fetched while it is on offer; the version in use's only once its notes are opened.
+    release_media = None
+    release_media_wanted = False
     adaln_thread = adaln_result = adaln_found = None
     adaln_polled = 0.
     lan_synced = 0.
@@ -1863,7 +1867,16 @@ class Session:
                or (view['engine'] and self.page == 'launcher'))
         view['remind'] = bool(key and due and self.update_snoozed.get(key, 0) <= time.monotonic()
                               and not self.update_intent and not view['phase'])
+        view['media'] = self.release_media_view(view)
         return view
+
+    def release_media_view(self, view):
+        """The cover and file of the update's and the current version's media, for the notes windows."""
+        from .release_media import Store, view as media_view
+        if self.release_media is None:
+            self.release_media = Store(launcher_root() / 'release-media')
+        return dict(candidate=media_view(self.release_media, view.get('candidate'), fetch=True),
+                    current=media_view(self.release_media, view.get('current_release'), fetch=self.release_media_wanted))
 
     def _write_bridge_status(self, force=False):
         if not self.bridge:
