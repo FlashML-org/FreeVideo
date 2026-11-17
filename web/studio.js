@@ -1535,10 +1535,12 @@ export function openStudio(node, {extendFrom = null} = {}) {
     progress.updateReport({report_id: node.freevideoReportId});
     cleanup.push(() => progress.dispose());
     cleanup.push(createPreviewScene(stage, progress.element, stageMedia));
-    // While a video is made the frame carries a quiet light (glass/studio.css): a soft band drifting across it and the
-    // made share rising from the bottom as a faint tint. CSS only (transform and opacity): nothing runs when idle.
+    // While a video is made, soft water rises from the bottom of the frame with the made share and its surface keeps
+    // rolling (glass/studio.css). CSS only (transform and translate): nothing runs when idle.
     const making = el('div', null, 'fvs-making'); making.setAttribute('aria-hidden', 'true');
-    making.append(el('i', null, 'fvs-making-level'), el('i', null, 'fvs-making-sweep'));
+    const level = el('i', null, 'fvs-making-level');
+    level.append(el('i', null, 'fvs-wave fvs-wave-back'), el('i', null, 'fvs-wave fvs-wave-mid'), el('i', null, 'fvs-wave fvs-wave-front'));
+    making.append(level);
     stage.append(making);
     const madeTrack = progress.element.querySelector('.fv-generation-track');
     const syncMade = () => {

@@ -585,24 +585,35 @@
 /* The progress over the picture is always light on its dark scene, in both themes. */
 .fv-studio.fv-create .fv-stage .fv-generation-progress{--fv-ink:#edf5ff;--fv-muted:#c3d3e3;--fv-fg:#edf5ff;--fv-fg2:#d0deeb;--fv-fg3:#bdd0e2;color:#edf5ff}
 .fv-studio.fv-create .fv-stage .fv-generation-progress :is(.fv-generation-label,.fv-generation-times,.fv-chain-position){color:#d0deeb}
-/* ── Making: the frame while a video is made (studio.js .fvs-making). A soft band of light drifts across it every
-   3.6 s and the made share rises from the bottom as a faint blue tint with a hairline on top; when the video is there
-   the light lifts off it and the video settles in (no bounce). Transform and opacity only; with reduced motion the
-   tint stays and nothing drifts. ── */
+/* ── Making: the frame while a video is made (studio.js .fvs-making). Soft water rises from the bottom with the made
+   share; its surface keeps rolling: three wave layers, each a sine edge drifting sideways at its own pace and
+   direction and breathing up and down a little, brightest at the crest and a steady faint tint below. No light
+   crosses the frame. When the video is there the water lifts off it and the video settles in (no bounce).
+   Transform and translate only. ── */
 .fv-studio.fv-create .fvs-making{position:absolute;inset:0;z-index:1;display:none;overflow:hidden;border-radius:inherit;pointer-events:none;
+  --fvs-water:27 148 252;--fvs-crest:.13;--fvs-body:.045;
   animation:fvs-making-in .4s cubic-bezier(.2,.8,.2,1) both;transition:opacity .5s cubic-bezier(.2,.8,.2,1)}
+:root[data-theme=light] .fv-studio.fv-create .fvs-making{--fvs-water:13 109 204;--fvs-crest:.11;--fvs-body:.04}
 .fv-studio.fv-create .fv-stage:has(.fv-generation-progress:not([hidden])) .fvs-making{display:block}
 .fv-studio.fv-create .fv-stage[data-revealing=true] .fvs-making{opacity:0}
 .fv-studio.fv-create .fvs-making-level{position:absolute;inset:0;transform:translateY(calc(100% - var(--fvs-made,0) * 100%));
-  border-top:1px solid rgb(27 148 252 / .5);background:linear-gradient(to bottom,rgb(27 148 252 / .09),rgb(27 148 252 / .025) 35%,transparent 80%);
-  transition:transform 1.2s cubic-bezier(.2,.8,.2,1)}
+  transition:transform 1.6s cubic-bezier(.33,1,.68,1)}
 /* A new run starts from the bottom at once (no draining from the last one's level). */
 .fv-studio.fv-create .fvs-making[data-instant=true] .fvs-making-level{transition:none}
-.fv-studio.fv-create .fvs-making-sweep{position:absolute;top:-10%;bottom:-10%;left:-45%;width:45%;
-  background:linear-gradient(90deg,transparent,rgb(255 255 255 / .045) 35%,rgb(255 255 255 / .075) 50%,rgb(255 255 255 / .045) 65%,transparent);
-  animation:fvs-making-sweep 3.6s cubic-bezier(.45,0,.55,1) infinite}
+/* One wave: twice the frame wide, its top edge a sine (--h high, one period every --p of its width), and it moves
+   by one period per cycle, so the loop never shows a seam. */
+.fv-studio.fv-create .fvs-wave{position:absolute;left:0;top:calc(-1 * var(--h));bottom:0;width:200%;will-change:transform;
+  background:linear-gradient(to bottom,rgb(var(--fvs-water) / var(--fvs-crest)),rgb(var(--fvs-water) / var(--fvs-body)) calc(var(--h) + 40px));
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 20' preserveAspectRatio='none'%3E%3Cpath d='M0 10C13-.5 37-.5 50 10S87 20.5 100 10V20H0Z'/%3E%3C/svg%3E") var(--x,0) 0/var(--p) var(--h) repeat-x,linear-gradient(#000 0 0) 0 var(--h)/100% 100% no-repeat;
+  mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 20' preserveAspectRatio='none'%3E%3Cpath d='M0 10C13-.5 37-.5 50 10S87 20.5 100 10V20H0Z'/%3E%3C/svg%3E") var(--x,0) 0/var(--p) var(--h) repeat-x,linear-gradient(#000 0 0) 0 var(--h)/100% 100% no-repeat;
+  animation:fvs-wave-left var(--t) linear infinite,fvs-wave-breathe var(--b) ease-in-out infinite alternate}
+.fv-studio.fv-create .fvs-wave-back{--h:26px;--p:50%;--x:30%;--t:15s;--b:4.2s;opacity:.75}
+.fv-studio.fv-create .fvs-wave-mid{--h:20px;--p:33.333%;--x:12%;--t:11s;--b:3.4s;animation-name:fvs-wave-right,fvs-wave-breathe;animation-delay:0s,-1.7s}
+.fv-studio.fv-create .fvs-wave-front{--h:15px;--p:25%;--x:0%;--t:8s;--b:2.8s;animation-delay:0s,-.9s}
 @keyframes fvs-making-in{from{opacity:0}to{opacity:1}}
-@keyframes fvs-making-sweep{from{transform:translateX(0) skewX(-14deg)}to{transform:translateX(330%) skewX(-14deg)}}
+@keyframes fvs-wave-left{from{transform:translateX(0)}to{transform:translateX(calc(-1 * var(--p)))}}
+@keyframes fvs-wave-right{from{transform:translateX(calc(-1 * var(--p)))}to{transform:translateX(0)}}
+@keyframes fvs-wave-breathe{from{translate:0 3px}to{translate:0 -3px}}
 /* The new video comes in from a hair larger and settles, while the light lifts off it. */
 .fv-studio.fv-create .fv-stage[data-revealing=true] .fv-stage-media>video:first-child{animation:fvs-reveal .55s cubic-bezier(.2,.8,.2,1) both}
 @keyframes fvs-reveal{from{opacity:0;transform:scale(1.02)}to{opacity:1;transform:none}}
@@ -615,7 +626,7 @@
 :root[data-theme=light] .fv-studio.fv-create .fv-stage .fv-generation-progress.fv-generation-compact{background:none}
 @media(prefers-reduced-motion:reduce){
   .fv-studio.fv-create .fvs-making{animation:none;transition:none}
-  .fv-studio.fv-create .fvs-making-sweep{display:none}
+  .fv-studio.fv-create .fvs-wave{animation-duration:calc(var(--t) * 4),var(--b);animation-play-state:running,paused}
   .fv-studio.fv-create .fvs-making-level{transition:none}
   .fv-studio.fv-create .fv-stage[data-revealing=true] .fv-stage-media>video:first-child{animation:none}
 }
