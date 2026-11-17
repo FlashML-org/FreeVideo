@@ -52,19 +52,25 @@ export function attach(video, host, {compact = false, t = words} = {}) {
     const sound = button('fv-player-sound', t('Sound', '声音'), t('Turn the sound on or off', '打开或关闭声音'), 'M', () => { video.muted = !video.muted; });
     bar.append(play, track, time, sound);
 
-    let frame = 0;
+    let frame = 0, shownTime = '', shownPercent = '', shownPlay = '', shownSound = '';
+    // Runs every frame while the video plays. Only the fill moves each frame; the time and the percentage are written
+    // when they change (once a second), because each new text node makes the page restyle the whole view around it.
     const draw = () => {
         const at = video.duration ? video.currentTime / video.duration : 0;
-        fill.style.transform = `scaleX(${at})`; track.setAttribute('aria-valuenow', String(Math.round(at * 100)));
-        if (!compact) time.textContent = `${clock(video.currentTime)} / ${clock(video.duration)}`;
+        fill.style.transform = `scaleX(${at})`;
+        const percent = String(Math.round(at * 100));
+        if (percent !== shownPercent) { shownPercent = percent; track.setAttribute('aria-valuenow', percent); }
+        const clockText = `${clock(video.currentTime)} / ${clock(video.duration)}`;
+        if (!compact && clockText !== shownTime) { shownTime = clockText; time.textContent = clockText; }
         // One loop only: a seek, a loop restart or a key press draws again while the loop is still pending.
         cancelAnimationFrame(frame);
         if (!video.paused && video.isConnected) frame = requestAnimationFrame(draw);
     };
     const sync = () => {
-        play.replaceChildren(glyph(video.paused ? 'play' : 'pause'));
+        const playGlyph = video.paused ? 'play' : 'pause', soundGlyph = video.muted ? 'muted' : 'sound';
+        if (playGlyph !== shownPlay) { shownPlay = playGlyph; play.replaceChildren(glyph(playGlyph)); }
         const name = video.paused ? t('Play', '播放') : t('Pause', '暂停'); play.setAttribute('aria-label', name); play.dataset.fvTipName = name;
-        sound.replaceChildren(glyph(video.muted ? 'muted' : 'sound'));
+        if (soundGlyph !== shownSound) { shownSound = soundGlyph; sound.replaceChildren(glyph(soundGlyph)); }
         const what = video.muted ? t('Sound on', '打开声音') : t('Sound off', '关闭声音'); sound.setAttribute('aria-label', what); sound.dataset.fvTipName = what;
     };
     const seek = event => { const box = track.getBoundingClientRect(); if (video.duration && box.width) video.currentTime = Math.max(0, Math.min(1, (event.clientX - box.left) / box.width)) * video.duration; draw(); };
