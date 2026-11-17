@@ -419,7 +419,10 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     }
     const content = record => JSON.stringify({...record, id: null, revision: 0});
     function failureKind(site, value) {
-        const code = value?.reason || value?.code || value?.name;
+        // A plain Error says nothing by its class; when its message is itself a short code (chain_missing) that is the reason.
+        // Any other message may hold a path or the user's words, so it is never copied.
+        const named = value?.name === 'Error' && /^[a-z][a-z0-9_]{2,39}$/.test(value?.message) ? value.message : value?.name;
+        const code = value?.reason || value?.code || named;
         return site + ':' + (String(code || '').replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 40) || 'unknown');
     }
     // `where` marks a failure: the notice then carries the "Report a problem" button and stays longer to be reached.
@@ -1871,7 +1874,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if (!found || generationBusy) return;
         secondPassFailed = null;
         try { await actions.secondPass(selection); }
-        catch (value) { if (!disposed) { secondPassFailed = found.clip.id; error(value); } }
+        catch (value) { if (!disposed) { secondPassFailed = found.clip.id; error(value, 'generate'); } }
         finally { if (!disposed) updateSecondPass(); }
     }
     actions.runSecondPass = runSecondPass;
