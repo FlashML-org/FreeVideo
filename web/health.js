@@ -389,6 +389,10 @@ function paints(element) {
         || alphaOf(style.backgroundColor) * Number(style.opacity) >= 0.9;
 }
 function coveredBy(bar) {
+    // An open ComfyUI dialog (Templates, Settings, a confirmation) turns pointer events off for the page behind it, and
+    // elementsFromPoint leaves such elements out: the toolbar would be missing from the stack and the first solid element
+    // under it, such as ComfyUI's workflow tabs, would be named as its cover. The toolbar is judged once the dialog is closed.
+    if (getComputedStyle(document.body).pointerEvents === 'none') return null;
     const box = (bar.querySelector('.fv-view-switch') || bar).getBoundingClientRect();
     const stack = document.elementsFromPoint(Math.min(innerWidth - 1, Math.max(0, box.left + box.width / 2)),
         Math.min(innerHeight - 1, Math.max(0, box.top + box.height / 2)));
