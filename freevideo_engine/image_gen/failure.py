@@ -10,13 +10,16 @@ import traceback
 
 from .. import __version__
 from ..disk_space import ran_out
+from .image_model import H3, QWEN
+
+MODEL_IDS = (H3, QWEN)
 from ..exit_diagnostics import clean_reading, clean_sample
 from ..diagnostic_resources import commit_exhausted
 from ..failure_details import Redactor
 from .loras import ERRORS as LORA_ERRORS, MESSAGE_ZH as LORA_MESSAGE_ZH
 
 
-ERRORS = frozenset(('no_memory', 'small_memory', 'busy_video', 'busy', 'pack_missing', 'model_unreadable',
+ERRORS = frozenset(('no_memory', 'small_memory', 'busy_video', 'busy', 'pack_missing', 'model_unavailable', 'model_unreadable',
                     'device_unavailable', 'worker_exit', 'timeout', 'cancelled', 'disk_full',
                     'invalid_request', 'invalid_media', 'invalid_points', 'segment_not_installed', 'generation_failed')) | LORA_ERRORS
 NO_REPORT = frozenset(('small_memory', 'busy', 'invalid_request', 'invalid_media', 'invalid_points', 'segment_not_installed', 'cancelled',
@@ -30,6 +33,7 @@ MESSAGE_ZH = {
     'busy_video': '视频正在生成，完成后再试。',
     'busy': '已有一张图在生成，请等它完成。',
     'pack_missing': '请先在启动器里下载“图像生成模型”。',
+    'model_unavailable': '这台电脑不支持所选的图片模型。请改用 Qwen-Image 2.1。',
     'model_unreadable': '图像生成模型的文件读不出来。在启动器里修复后再试。',
     'device_unavailable': '显卡暂时用不了，稍后再试。',
     'worker_exit': '图像生成意外停止了，请再试一次。',
@@ -271,6 +275,9 @@ class Context:
         if self.kind in ('generate', 'edit', 'cast'):
             self.kind = value.get('kind') if value.get('kind') in ('generate', 'edit', 'cast') else ('edit' if references else 'generate')
         self.request = dict(references=references)
+        # Which model was asked for: one of the two fixed ids, never free text.
+        if value.get('model') in MODEL_IDS:
+            self.request['model'] = value['model']
         for key in ('width', 'height', 'steps', 'seed'):
             item = value.get(key)
             if type(item) is int and -2**63 <= item < 2**64 and (key == 'seed' or item > 0):

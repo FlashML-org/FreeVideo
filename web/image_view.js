@@ -24,7 +24,7 @@ import { createPreviewScene } from './preview_scene.js?v=20261115-still';
 import { jobs, ACTIVE, IMAGE_BUSY } from './task_store.js';
 import { confirmStop, startJobSources } from './task_float.js';
 import { el, icon, t, cn, tip, button, section, readStore, writeStore, mod } from './image_view_ui.js';
-import { IMAGE_MODELS, modelPicker, modelState } from './image_view_models.js';
+import { IMAGE_MODELS, modelPicker, modelState, verifyText } from './image_view_models.js';
 import { RANGES, RATIOS, areaRange, estimateSeconds, machineLimit, presetAt, ratioValue, sizePicker, sizeFor, sizeText, megapixels } from './image_view_size.js';
 import { createMetaStore, createTrash, filterCounts, filterRows, groupRows, historyPanel, sessionPrompts } from './image_view_history.js';
 import { brokenMentions, mentionText, mentionsToEngine, promptMentions, renumberMentions, sketchPrompt } from './image_view_mentions.js';
@@ -194,6 +194,9 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     const sizes = readStore(SIZE_KEY, {}), fittedAreas = readStore(FIT_KEY, {}), panels = readStore(PANEL_KEY, {});
     // The engine's last answer stands in until the new one arrives, so the model row never changes its words on the way in.
     let info = viewCache?.info || null, model = IMAGE_MODELS.find(m => m.id === remembered()) || IMAGE_MODELS[0];
+    // A model the engine's list (even the cached one) does not offer is never the starting point: H3 Image on a Mac.
+    const offers = m => !!info?.models?.some(r => r.id === m.id && r.available !== false);
+    if (info?.models && !offers(model)) model = IMAGE_MODELS.find(offers) || model;
     let ratio = sizes.ratio || '1:1', area = sizes[model.id] || RANGES[model.id].presets.standard, locked = sizes.locked !== false, tier = 'standard';
     const promptOf = {};
     // A picture's words: from this page's memory (made while it is open) or the engine's record of it; never the browser's store.
@@ -894,7 +897,8 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         else if (s.state === 'failed') {
             kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', [t(`${model.short} download failed.`, `${model.short} 下载失败。`), s.reason].filter(Boolean).join(' '))];
         } else if (s.state === 'downloading') {
-            kind = 'info'; parts = [icon('down'), el('span', 'fv-iv-slot-tx', pendingGenerate ? t(`Installing ${model.short}; it generates when done`, `正在安装 ${model.short}，完成后自动生成`) : t(`Installing ${model.short}`, `正在安装 ${model.short}`))];
+            kind = 'info'; parts = [icon(s.unknown ? 'clock' : 'down'), el('span', 'fv-iv-slot-tx', s.verifying ? (pendingGenerate ? t(`Verifying ${model.short}; it generates when done`, `正在校验 ${model.short}，完成后自动生成`) : t(`Verifying ${model.short}`, `正在校验 ${model.short}`))
+                : pendingGenerate ? t(`Installing ${model.short}; it generates when done`, `正在安装 ${model.short}，完成后自动生成`) : t(`Installing ${model.short}`, `正在安装 ${model.short}`))];
         } else if (s.state === 'missing') {
             kind = 'info'; parts = [icon('cloud'), el('span', 'fv-iv-slot-tx', t(`${model.short} is not installed; Generate installs it first`, `${model.short} 未安装，点生成会先安装`))];
         } else if (sizeWarning()) { kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', sizeWarning())]; }
@@ -958,7 +962,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             goLabel.textContent = t('Stop', '停止'); goSub.textContent = '';
             tip(go, t('Stop', '停止'), t('Cancel this picture; asks first', '取消这一张，会先确认'));
         } else if (s.state === 'downloading') {
-            goLabel.textContent = s.verifying ? t(`Verifying ${Math.floor(s.fraction * 100)}%`, `正在校验 ${Math.floor(s.fraction * 100)}%`) : t(`Installing ${Math.floor(s.fraction * 100)}%`, `正在安装 ${Math.floor(s.fraction * 100)}%`);
+            goLabel.textContent = s.verifying ? verifyText(s) : t(`Installing ${Math.floor(s.fraction * 100)}%`, `正在安装 ${Math.floor(s.fraction * 100)}%`);
             goSub.textContent = pendingGenerate ? t('then generates', '完成后生成') : '';
             tip(go, pendingGenerate ? t('Generates when installed', '安装完自动生成') : t('Generate when installed', '安装完再生成'), pendingGenerate ? t('Press to not generate after it', '再按一次取消自动生成') : t('Press to generate as soon as it is installed', '按下后，安装完成即自动生成'));
         } else if (s.state === 'missing' || s.state === 'failed') {
@@ -1297,14 +1301,19 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     function renderFailure() {
         const asked = failure.sent || size();
         failure.sent = asked;
-        renderImageFailure(failHost, {...failure, info}, t, {retry: {
+        // A model this computer does not run: the way on is the other model, one press.
+        const other = failure.error === 'model_unavailable' ? IMAGE_MODELS.find(m => m.id !== model.id && offers(m)) : null;
+        renderImageFailure(failHost, {...failure, info}, t, {retry: other ? {
+            label: [`Use ${other.name}`, `改用 ${other.name}`],
+            onClick: () => { chooseModel(other); void generate(); }} : {
             label: failure.retryStandard ? ['Retry at Standard', '改用标准并重试'] : ['Retry', '重试'],
-            onClick: () => { if (failure.retryStandard) { area = RANGES[model.id].presets.standard; keepSize(); } void generate(); }}});
+            onClick: () => { if (failure.noList) { failure = null; render(); go.onclick(); return; } if (failure.retryStandard) { area = RANGES[model.id].presets.standard; keepSize(); } void generate(); }}});
         const head = el('div', 'fv-iv-fail-head'), mark = el('i', 'fv-iv-fail-icon'); mark.append(icon('warn'));
         head.append(mark, el('h3', '', failure.error === 'engine_closed' || failure.error === 'engine_restarted' ? t('The engine stopped', '引擎停止了') : t('The picture was not made', '这张没有生成出来')));
         failHost.prepend(head);
         const stage_ = STAGE_WORDS[failure.stage];
-        failHost.append(el('p', 'fv-iv-fail-facts', [model.short, sizeText(asked), stage_ ? t(`stopped at: ${stage_[0].toLowerCase()}`, `停在：${stage_[1]}`) : ''].filter(Boolean).join(' · ')));
+        // No request was made when the list could not be fetched: there is no model or size to name.
+        if (!failure.noList) failHost.append(el('p', 'fv-iv-fail-facts', [model.short, sizeText(asked), stage_ ? t(`stopped at: ${stage_[0].toLowerCase()}`, `停在：${stage_[1]}`) : ''].filter(Boolean).join(' · ')));
     }
     // ── run: tasks owns this block (job store) ──
     // Stop asks first; closing the page or switching views never stops the job.
@@ -1323,12 +1332,18 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             if (asking) return;
             // Another press while it waits is ignored; the bar shows the press was taken.
             asking = true; level.hidden = false; level.dataset.counted = 'false'; level.style.setProperty('--fv-progress', '0');
-            try { settleModel(await client.info(), true); } catch { /* the request below gets the engine's own answer */ }
+            let answered = true;
+            try { settleModel(await client.info(), true); } catch { answered = false; }
             asking = false; level.hidden = true;
             if (!alive) return;
             render();
-            if (info?.models) go.onclick(); else void generate();
+            if (info?.models) go.onclick();
+            // No answer: no request goes out, because it would name a model nobody has said is here.
+            else if (answered) void generate();
+            else { failure = {error: 'connection_lost', stage: 'start', noList: true}; renderFailure(); render(); drawWorks(); }
         }
+        // The model on show is not one this computer offers (a remembered H3 Image on a Mac): the press moves to the one it offers.
+        else if (!offers(model) && IMAGE_MODELS.some(offers)) { chooseModel(IMAGE_MODELS.find(offers)); go.onclick(); }
         // A model being installed: Generate says whether the picture follows the install.
         else if (loading()) { pendingGenerate = !pendingGenerate && (!!prompt.value.trim() || references.length > 0); if (!prompt.value.trim() && !references.length) { promptGroup.open(true); prompt.focus(); } render(); }
         // A model not installed: installs it, then generates.

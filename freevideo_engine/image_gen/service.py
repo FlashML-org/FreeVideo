@@ -296,6 +296,7 @@ class Service:
                      bytes_total=sum(r['bytes'] for r in h3_rows) if mac else h3_status.get('total_bytes', 0),
                      bytes=h3_status.get('bytes', 0), bytes_done=(h3_state or {}).get('done', 0),
                      bytes_needed=h3_status.get('remaining_bytes', 0),
+                     checking=bool(h3_status.get('checking')),
                      shared_bytes=sum(r['bytes'] for r in h3_rows if r.get('shared')),
                      blocked_by=active if active == image_model.QWEN and not h3_ready else None,
                      install=None if mac else queued if image_model.H3 in waiting else self.pack_row(self.h3_installer, h3_ready))]
@@ -305,6 +306,7 @@ class Service:
                          downloading=qwen_downloading and not h3_active,
                          bytes_total=sum(row['bytes'] for row in image_pack.catalog()['groups']['image']),
                          bytes_done=(qwen_state or {}).get('done', 0), bytes_needed=qwen_status.get('remaining_bytes', 0),
+                         checking=bool(qwen_status.get('checking')),
                          shared_bytes=0,
                          blocked_by=active if active == image_model.H3 and not qwen_ready else None,
                          install=queued if image_model.QWEN in waiting else qwen_state))
@@ -1168,6 +1170,9 @@ class Service:
         try:
             model = value.get('model') if isinstance(value, dict) else None
             h3 = model == image_model.H3
+            # A model this computer does not run (H3 Image on a Mac) is said so; its files are not looked for.
+            if h3 and sys.platform == 'darwin':
+                raise ValueError('model_unavailable')
             if not image_pack.ready(machine['model_root'], group=H3_GROUP if h3 else 'image'):
                 raise ValueError('pack_missing')
             if h3 and action != 'generate':
@@ -1576,7 +1581,9 @@ class Service:
                     video_busy = False
             if context.pack is None and context.machine.get('model_root'):
                 try:
-                    context.pack = image_pack.status(context.machine['model_root'])
+                    # The files of the model that was asked for, not always the default one's.
+                    asked = context.request.get('model')
+                    context.pack = image_pack.status(context.machine['model_root'], group=H3_GROUP) if asked == image_model.H3 else image_pack.status(context.machine['model_root'])
                 except Exception:
                     # A missing/broken pack must not prevent reporting the original error.
                     pass

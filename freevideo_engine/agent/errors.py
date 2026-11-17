@@ -154,6 +154,8 @@ IMAGE_REASONS = {
     'busy_video': ('A video is generating. Try again when it finishes.', '视频正在生成，完成后再试。'),
     'pack_missing': ('Download "Image generation models" in the launcher first.',
                      '请先在启动器里下载“图像生成模型”。'),
+    'model_unavailable': ('This computer does not support the chosen picture model. Use Qwen-Image 2.1.',
+                          '这台电脑不支持所选的图片模型。请改用 Qwen-Image 2.1。'),
     'model_unreadable': ('The image generation model files could not be read. Repair them in the launcher and try again.',
                          '图像生成模型的文件读不出来。在启动器里修复后再试。'),
     'device_unavailable': ('The graphics card is not available right now. Try again later.',
@@ -195,6 +197,7 @@ IMAGE_ERRORS = {
     'busy': 'Another picture is being generated; this picture is waiting for it.',
     'busy_video': 'A video is being generated; this picture is waiting for it.',
     'pack_missing': 'The image model is not installed on this computer; tell the user to install it in FreeVideo first and do not retry.',
+    'model_unavailable': 'This computer cannot run the chosen picture model (H3 Image on a Mac); submit again with model qwen-image-2.1-turbo or without a model.',
     'unknown_job': 'The image service no longer has this picture job.',
     'closed': 'The image service has shut down.',
     'image_unavailable': 'The image service is not loaded on this computer.',
@@ -213,6 +216,8 @@ for _code, _message in IMAGE_ERRORS.items():
         ERRORS[_code] = (503 if _code in ('pack_missing', 'closed', 'image_unavailable') else 422,
                         _code in ('busy_video', 'unknown_job', 'closed', 'image_unavailable', 'worker_exit'),
                         _message, 'Read the picture job before submitting a corrected request with a new ref.')
+ERRORS['model_unavailable'] = (422, False, IMAGE_ERRORS['model_unavailable'],
+                        'Submit the picture again with model qwen-image-2.1-turbo or without a model, using a new ref.')
 ERRORS['pack_missing'] = (503, False, IMAGE_ERRORS['pack_missing'],
                         'Tell the user to install the image model in FreeVideo first; do not retry.')
 
@@ -247,7 +252,7 @@ SESSION_GONE = ('This conversation does not exist; the user may have deleted it.
 def recovery(code, *, kind=None, stage='request', resumable=True):
     if kind == 'session' and code == 'not_found':
         return SESSION_GONE[1]
-    if kind == 'image' and code == 'pack_missing':
+    if kind == 'image' and code in ('pack_missing', 'model_unavailable'):
         return ERRORS[code][3]
     if kind == 'image' and code == 'disk_full':
         return 'Tell the user to free disk space, then submit the picture again with a new ref.'
@@ -304,6 +309,7 @@ FAILURE_REASONS_ZH = {
     'ram_space': '加载模型时系统内存不足',
     'model_missing': '需要的模型还没有安装好',
     'pack_missing': '图片模型还没有安装好',
+    'model_unavailable': '这台电脑不支持所选的图片模型',
     'not_ready': '生成所需的环境还没有安装好',
     'cancelled': '生成已被停止',
     'stopped_by_user': '生成已被停止',
@@ -357,6 +363,7 @@ FAILURE_REASONS_EN = {
     'ram_space': 'System memory ran out while loading the model',
     'model_missing': 'A required model is not installed yet',
     'pack_missing': 'The image model is not installed yet',
+    'model_unavailable': 'This computer does not support the chosen picture model',
     'not_ready': 'The generation environment is not installed yet',
     'cancelled': 'Generation was stopped',
     'stopped_by_user': 'Generation was stopped',
