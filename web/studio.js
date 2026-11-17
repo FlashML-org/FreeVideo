@@ -28,12 +28,12 @@ import { isNetworkTypeError, connectionLostText, wrappedFetchOnly } from './brow
 import { newEngineExit, engineExitText, watchEngineExit } from './engine_exit.js';
 import { attachReferencePicker, referenceItems, enhancementMedia, syncReferencePrompt, referenceInputs, mentionAt, handleNames, mediaRows } from './prompt_references.js';
 import { attachTermSuggest } from './prompt_terms.js';
-import { problem as timedProblem, timedText } from './timed_prompt.js';
+import { problem as timedProblem, timedText, parse as timedParse } from './timed_prompt.js';
 import { castInRows, expandCast, mentionHandle, mentionState, mentionedIds, restoreCast, withCharacter, MAX_PICTURES_EACH } from './cast_mention.js';
 import { attachMentionOverlay } from './cast_overlay.js';
 import { openCastLibrary } from './cast_source.js';
 import { uploadMedia } from './media_upload.js';
-import { reconcileLoraTriggers } from './lora_triggers.js';
+import { reconcileLoraTriggers, promptLines } from './lora_triggers.js';
 import { createVerdicts, describeVerdict, feedbackDraft } from './lora_check.js';
 import { continuationUpscale, createSamplingEffort, effortFor, effortsFrom, passSwitch, stepCacheOf, upscaleOf } from './sampling_effort.js';
 import { resultActions, previewBadge, icon, actionsUnavailable, liftMenu } from './result_actions.js';
@@ -2071,6 +2071,16 @@ export function openStudio(node, {extendFrom = null} = {}) {
     count.value = node.properties?.freevideo_batch_count ?? 4;
     count.setAttribute('aria-label', t('Number of videos', '生成数量'));
     const countField = field(t('Number of videos', '生成数量'), count); optionsPanel.append(countField);
+    // One prompt per line: each non-empty line of the description is its own video, so several ideas queue at once.
+    const perLine = el('input'); perLine.type = 'checkbox'; perLine.setAttribute('role', 'switch');
+    perLine.checked = node.properties?.freevideo_batch_lines === true;
+    const perLineField = el('label', null, 'fv-batch-lines');
+    perLineField.append(el('span', t('One prompt per line', '每行一条描述')), perLine); optionsPanel.append(perLineField);
+    const linesUsable = () => !linked(node, 'text') && !linked(node, 'conditioning');
+    const byLine = () => runMode === 'batch' && perLine.checked && linesUsable();
+    const lineTexts = () => promptLines(shown(value(node, 'text')), (node.properties?.[LORA_TRIGGERS] || []).map(row => row?.words));
+    prompt.addEventListener('input', () => { if (byLine()) updateRunButton(); });
+    perLine.onchange = () => { node.properties.freevideo_batch_lines = perLine.checked; rememberPromptDraft(api, node); updateRunButton(); };
     const modeHelp = el('p', '', 'fv-muted'); optionsPanel.append(modeHelp);
     count.oninput = () => {
         if (count.value && count.checkValidity()) {
@@ -2079,6 +2089,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         updateRunButton();
     };
     runOptions.append(optionsToggle, optionsPanel);
+    runOptions.addEventListener('toggle', () => { if (runOptions.open) updateRunButton(); });
     // The run-mode menu opens in the top layer above its button, so it never sits under the prompt's tools.
     liftMenu(runOptions, optionsPanel);
     const generate = button('', submitDraft, 'fv-primary');
@@ -2231,6 +2242,10 @@ export function openStudio(node, {extendFrom = null} = {}) {
             {stage: 'execution', node, graph: app.graph, ...(error.joining ? {progress: {phase: 'save'}} : {})});
         node.freevideoFailureReport = report; node.freevideoFailure = errorText(report);
     }
+    function lineLabel() {
+        const n = lineTexts().length;
+        return n ? t(n === 1 ? 'Add 1 video' : `Add ${n} videos`, `添加 ${n} 个视频`) : t('Add videos', '添加视频');
+    }
     function updateRunButton() {
         const submitting = capturing || queueState?.submitting;
         updateFirstFrame();
@@ -2253,7 +2268,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
             `正在添加 ${Math.min(queueState.batch.done + 1, queueState.batch.total)}/${queueState.batch.total}…`)
             : capturing ? t('Planning segments…', '正在规划分段…') : t('Adding…', '正在添加…');
         const label = submitting ? adding
-            : chainReason || (runMode === 'batch' ? t(`Add ${count.value || '…'} videos`, `添加 ${count.value || '…'} 个视频`)
+            : chainReason || (byLine() ? lineLabel()
+            : runMode === 'batch' ? t(`Add ${count.value || '…'} videos`, `添加 ${count.value || '…'} 个视频`)
             : runMode === 'loop' ? (queueState?.looping ? t('Looping', '循环中') : t('Start loop', '开始循环'))
             : busy ? t('Add to queue', '加入队列')
             : previewFirst.checked && !previewFirst.disabled ? t('Generate preview', '生成预览') : t('Generate video', '生成视频'));
@@ -2261,8 +2277,12 @@ export function openStudio(node, {extendFrom = null} = {}) {
         syncKeyMore();
         if (videoMissing) { paintKey(addVideoLabel(t), false); generate.disabled = false; }
         // The hover card names what the button does now (its own label), and when it is greyed, why and how to free it.
+        const lineUse = enhancer.element.dataset.enabled === 'true'
+            ? t('Each line is one video, sent as written without enhancement', '每行生成一个视频，按原文发送，不做描述增强')
+            : t('Each line of the description is one video', '描述的每一行生成一个视频');
         const use = videoMissing ? t('Download the video model before generating', '下载视频模型后才能生成视频')
             : generate.disabled ? ''
+            : byLine() ? lineUse
             : runMode === 'batch' ? t(...TIPS['studio.mode.batch'].use)
             : runMode === 'loop' ? t(...TIPS['studio.mode.loop'].use)
             : busy ? t('Starts when the current video finishes', '当前视频完成后自动开始')
@@ -2283,10 +2303,28 @@ export function openStudio(node, {extendFrom = null} = {}) {
         for (const b of modeButtons) b.setAttribute('aria-pressed', String(b.dataset.mode === runMode));
         optionsLabel.textContent = {single: t('Single', '单次'), batch: t('Batch', '批量'), loop: t('Loop', '循环')}[runMode] || '';
         for (const b of modeButtons) if (b.dataset.mode !== 'single') b.disabled = multiple;
-        countField.hidden = runMode !== 'batch'; count.disabled = runMode !== 'batch';
+        // Outside Batch both rows are greyed (the tray keeps them in place); with one prompt per line the lines set the number.
+        countField.hidden = runMode !== 'batch'; count.disabled = runMode !== 'batch' || byLine();
+        const countWhy = byLine() ? t('Set by the number of lines', '按描述的行数生成') : '';
+        if (count.title !== countWhy) count.title = countWhy;
+        // The greyed box shows how many videos the lines make; the saved number comes back when the switch is off.
+        if (byLine() || count.dataset.fvLines) {
+            const shownCount = byLine() ? String(lineTexts().length) : String(node.properties?.freevideo_batch_count ?? 4);
+            if (byLine()) count.dataset.fvLines = 'true'; else delete count.dataset.fvLines;
+            if (count.value !== shownCount) { count.value = shownCount; count.fvAtPaint?.(); }
+        }
+        perLineField.hidden = !linesUsable(); perLine.disabled = runMode !== 'batch';
+        const lineTip = {fvTipName: t('One prompt per line', '每行一条描述'), fvTipUse: lineUse,
+            fvTipWhy: perLine.disabled ? t('Choose Batch to use it', '选“批量”后可用') : ''};
+        for (const [key, text] of Object.entries(lineTip)) {
+            if (text) { if (perLineField.dataset[key] !== text) perLineField.dataset[key] = text; } else delete perLineField.dataset[key];
+        }
         modeHelp.hidden = runMode === 'single' && !multiple;
         modeHelp.textContent = multiple ? t('Videos made in parts cannot use batch or loop.', '分段视频不能批量或循环生成。') : runMode === 'loop'
             ? t('Same settings, a new seed each time. Stops when this page closes.', '用当前设置，每次换一个种子；关闭网页后停止。')
+            : byLine() ? (enhancer.element.dataset.enabled === 'true'
+                ? t('Each line of the description is one video, sent as written without enhancement.', '描述的每一行生成一个视频，按原文发送，不做描述增强。')
+                : t('Each line of the description is one video.', '描述的每一行生成一个视频。'))
             : t('Same settings, a new seed for each video.', '用当前设置，每个视频换一个种子。');
         // With one video per GPU each running row carries its own Cancel; "current" would be ambiguous.
         cancelCurrent.hidden = !chainController?.active && (!queueState?.running || Boolean(queueState?.running_all));
@@ -2445,6 +2483,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
             }
             invalid.focus(); invalid.reportValidity(); return;
         }
+        // One prompt per line with no lines: say what to write (generating without a prompt is not offered here).
+        if (byLine() && !lineTexts().length) { status.dataset.error = 'true'; status.textContent = t('Write one prompt per line, then add them.', '每行写一条描述后再添加。'); prompt.focus(); return; }
         if (!emptyAllowed && !extension.source && !prompt.disabled && !prompt.value.trim() && !untouched() && !swapState(mediaNode)) {
             showEmptyPrompt({t, anchor: runrow, field: prompt, onContinue: () => submitDraft({allowEmpty: true})}); return;
         }
@@ -2454,7 +2494,11 @@ export function openStudio(node, {extendFrom = null} = {}) {
         }
         const timedNote = !prompt.disabled && timedRun() ? timedProblem(prompt.value, Number(value(node, 'seconds')), t) : '';
         if (timedNote) { status.dataset.error = 'true'; status.textContent = timedNote; prompt.focus(); return; }
-        const chosenMode = runMode, batchCount = chosenMode === 'batch' ? Number(count.value) : 1;
+        const chosenMode = runMode, texts = byLine() ? lineTexts() : null;
+        const batchCount = texts ? texts.length : chosenMode === 'batch' ? Number(count.value) : 1;
+        if (texts && !texts.length) { status.dataset.error = 'true'; status.textContent = t('Write one prompt per line, then add them.', '每行写一条描述后再添加。'); prompt.focus(); return; }
+        if (texts && texts.length > 100) { status.dataset.error = 'true'; status.textContent = t(`At most 100 lines at a time; there are ${texts.length}.`, `一次最多 100 行，现在有 ${texts.length} 行。`); prompt.focus(); return; }
+        if (texts && timedParse(texts.join('\n'))[1].length) { status.dataset.error = 'true'; status.textContent = t('Timed lines cannot be split into separate videos. Turn off One prompt per line.', '带时间的台词不能拆成多个视频，请关闭“每行一条描述”。'); return; }
         const originalSeed = value(node, 'seed'), seedMode = mode.value;
         // A request that is not accepted leaves the node mode as the user had it; a retry turns it on again.
         // Once the server has taken a request it stays taken; only a request it never took is undone.
@@ -2464,7 +2508,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
             stopNote = ''; lastQueueError = null; failure.clear(); node.freevideoFailure = ''; node.freevideoFailureReport = null;
             capturing = true; updateRunButton(); status.dataset.error = 'false'; runOptions.open = false;
             lengthControl.freeze();
-            if ((!extension.source || prompt.value.trim()) && !swapState(mediaNode) && await enhancer.beforeGenerate() === false) return;
+            // Lines are sent as written: an enhanced rewrite would merge them into one description.
+            if (!texts && (!extension.source || prompt.value.trim()) && !swapState(mediaNode) && await enhancer.beforeGenerate() === false) return;
             if (disposed) return;
             if (selected === 'input' && !dimensionsLinked) await inputRatio(true);
             const lengthPlan = await lengthControl.ready();
@@ -2510,7 +2555,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
                 if (chain && chainController.waiting > waitingBefore) { status.dataset.error = 'false'; status.textContent = addedNote; return; }
                 if (!chain) { if (source) throw new Error(extendText(t, 'unavailable')); lengthControl.fallback(); if (!seconds.reportValidity()) return;
                     await queueController.start(snapshot, {count: batchCount, repeat: chosenMode === 'loop', seedIndex, onAccepted}); }
-            } else await queueController.start(snapshot, {count: batchCount, repeat: chosenMode === 'loop', seedIndex, onAccepted});
+            } else await queueController.start(snapshot, {count: batchCount, repeat: chosenMode === 'loop', seedIndex, onAccepted,
+                ...(texts ? {texts, textIndex: node.widgets.findIndex(w => w.name === 'text')} : {})});
             // Preserve draft changes made while the POST was in flight.
             if (chosenMode === 'single' && !linked(node, 'seed') && value(node, 'seed') === originalSeed) {
                 const max = Number.MAX_SAFE_INTEGER;

@@ -268,8 +268,13 @@ export function createStudioQueue(api, nodeId, {random = randomSeed, pollMs = 20
         }).finally(() => { refreshing = null; schedule(); });
         return refreshing;
     }
-    async function start(snapshot, {count = 1, repeat = false, seedIndex = -1, onAccepted = null} = {}) {
+    async function start(snapshot, {count = 1, repeat = false, seedIndex = -1, onAccepted = null, texts = null, textIndex = -1} = {}) {
         if (submitting) throw new Error('submitting');
+        // One prompt per line: one request for each line, each with its own text.
+        if (texts) {
+            if (repeat || !Array.isArray(texts) || texts.some(text => typeof text !== 'string' || !text)) throw new Error('invalid_texts');
+            count = texts.length;
+        }
         if (!Number.isInteger(count) || count < 1 || count > 100) throw new Error('invalid_count');
         if (repeat && loop?.active) throw new Error('loop_active');
         if (!snapshot.output?.[nodeId]) throw new Error('missing_node');
@@ -281,6 +286,12 @@ export function createStudioQueue(api, nodeId, {random = randomSeed, pollMs = 20
             // Several requests added one after another say how far they are; one request has no count to show.
             if (!repeat && count > 1) { batch = {done: 0, total: count}; publish(); }
             for (let i = 0; i < (repeat ? 1 : count); i++) {
+                if (texts) {
+                    session.snapshot.output[nodeId].inputs.text = texts[i];
+                    // The saved workflow keeps the line it was made from, so reopening the work shows that text.
+                    const saved = session.snapshot.workflow?.nodes?.find(row => String(row.id) === nodeId);
+                    if (saved && textIndex >= 0 && Array.isArray(saved.widgets_values)) saved.widgets_values[textIndex] = texts[i];
+                }
                 await submit(session, repeat || count > 1);
                 if (batch) { batch = {done: i + 1, total: count}; publish(); }
             }
