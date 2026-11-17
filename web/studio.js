@@ -53,7 +53,7 @@ import { createOtherUsageNotice } from './other_usage.js';
 import { openEditorView } from './editor_loader.js';
 import { frameShapes, frameSize } from './frame_sizes.js';
 // The creation panel's frames: the shared three, then the other common ratios (named by their ratio).
-const studioShapes = t => [...frameShapes(t), ...[[4, 3], [3, 4], [3, 2], [2, 3]].map(([a, b]) => [`${a}:${b}`, `${a}:${b}`, a / b])];
+const studioShapes = t => [...frameShapes(t), ...[[4, 3], [3, 4], [3, 2], [2, 3], [21, 9]].map(([a, b]) => [`${a}:${b}`, `${a}:${b}`, a / b])];
 import { createFirstRunGuide, createFirstStart } from './first_run_guide.js';
 import { SHOWCASE_SCENE } from './entry_showcase.js';
 import { registerTourWorkspace, triggerFeatureTour, offerVersionTour } from './feature_tour.js';
@@ -2608,7 +2608,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         shapes.dataset.custom = String(shapeIndex < 0);
         // An empty frame takes the chosen shape; a work on the stage keeps its own (the outline shows the new one).
         if (!busy && (nextShown || !stageMedia.querySelector('video, img'))) { previewSize(Number(w), Number(h)); if (nextShown) nextSize.textContent = `${w} × ${h}`; }
-        framePicker?.set({shape: selected, ratio: Number(w) / Number(h) || ratio, pixels: Number(mp.value), width: Number(w), height: Number(h), locked: shapeKept,
+        framePicker?.set({shape: selected, ratio: studioShapes(t).find(([id]) => id === selected)?.[2] || Number(w) / Number(h) || ratio, pixels: Number(mp.value), width: Number(w), height: Number(h), locked: shapeKept,
             unavailable: {input: mediaPicture() ? '' : t('Add a picture in Media first', '先在素材里添加图片')},
             disabled: dimensionsLinked || Boolean(extension.source)});
         refreshEffortEstimate();
