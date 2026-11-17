@@ -193,3 +193,8 @@ html[data-fv-shell=view] :is(.litecontextmenu,.p-tieredmenu-overlay,.p-menu-over
    nothing of one view can show through another while it fills in. */
 dialog.fv-studio[data-fv-surface=view]{background-color:var(--fv-bg,var(--fv-shell-bg))!important}
 dialog.fv-studio[data-fv-surface=view][data-fv-behind]{visibility:hidden}
+
+/* The compatibility view (Settings → 兼容界面): nothing slides or fades; states change at once. Busy indicators keep
+   moving, since a still spinner reads as a hang. Solid panels come from the [data-glass=solid] rules in each sheet. */
+:root:is([data-glass=solid],.lite) *,:root:is([data-glass=solid],.lite) *::before,:root:is([data-glass=solid],.lite) *::after{transition:none!important}
+:root:is([data-glass=solid],.lite)::view-transition-group(*),:root:is([data-glass=solid],.lite)::view-transition-old(*),:root:is([data-glass=solid],.lite)::view-transition-new(*){animation:none!important}

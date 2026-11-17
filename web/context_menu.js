@@ -17,7 +17,10 @@ export const t = (en, zh) => CN ? zh : en;
 // [en, zh] pairs, plain strings and functions returning either all read the same way.
 export const words = (value, cn = CN) => typeof value === 'function' ? words(value(), cn) : Array.isArray(value) ? String(value[cn ? 1 : 0] ?? value[0] ?? '') : String(value ?? '');
 export const MAC = /Mac|iPhone|iPad/.test(globalThis.navigator?.platform || globalThis.navigator?.userAgent || '');
-export const reducedMotion = () => globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+// The compatibility view (Settings → 兼容界面, stored as freevideo.glass = solid): solid panels, fewer animations,
+// and nothing plays until asked. It counts as reduced motion everywhere.
+export const compatView = () => globalThis.document?.documentElement?.dataset.glass === 'solid' || globalThis.document?.documentElement?.classList.contains('lite') === true;
+export const reducedMotion = () => compatView() || globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
 export const EASE = 'cubic-bezier(.2,.8,.2,1)';
 
 export function addSheet(name, base) {

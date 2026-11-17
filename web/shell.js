@@ -21,7 +21,8 @@ let view = 'nodes', nodesShown = false;
 // ComfyUI's frame hidden (no flash of it on a reload); a decision for the user's own workflow gives it back.
 let provisional = false;
 const listeners = new Set();
-const reduced = () => globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+// The compatibility view (Settings → 兼容界面) counts as reduced motion: views switch at once.
+const reduced = () => root.dataset.glass === 'solid' || root.classList.contains('lite') || globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
 
 export const currentView = () => view;
 export function onView(listener) { listeners.add(listener); return () => listeners.delete(listener); }
@@ -496,6 +497,8 @@ export function installShell({cover: wantCover = false} = {}) {
     if (globalThis.FreeVideoShell?.installed) return globalThis.FreeVideoShell;
     root.dataset.theme ||= 'dark';
     try { if (localStorage.getItem('freevideo.glass') === 'solid') root.dataset.glass = 'solid'; } catch { /* Glass stays on. */ }
+    // Says once, with a button to Settings, when the interface runs slowly here (ui_speed.js); never switches by itself.
+    import('./ui_speed.js').then(({watchSpeed}) => watchSpeed()).catch(() => {});
     try { if (localStorage.getItem('freevideo.material') === 'glass' || new URLSearchParams(location.search).get('freevideo_material') === 'glass') root.dataset.fvMaterial = 'glass'; } catch { /* Calm. */ }
     // The look over the material: "stage" (default: polish.css brings back restrained light and texture) or "calm".
     let look = 'stage';

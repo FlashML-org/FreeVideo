@@ -6,6 +6,7 @@ import {TUTORIAL_CHAPTERS} from './tutorial_book_content.js';
 import {FEATURE_TOUR, readyCards} from './feature_tour_content.js';
 import {SHOWCASE_TEXT, SHOWCASE_ASSET} from './entry_showcase.js';
 import {isolateDialogKeys, listenDialogKey, routeDialogKey} from './dialog_keys.js';
+import {reducedMotion} from './context_menu.js';
 
 const COPY = {
     zh: {book: '教程', chapters: '章节', examples: '示例', contents: '目录', close: '关闭', search: '搜索教程', steps: '步骤', limits: '注意',
@@ -123,7 +124,7 @@ function styles() {
 function figure(spec, lang, text) {
     if (!spec) return null;
     const fig = el('figure', 'fv-book-fig');
-    const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const still = reducedMotion();
     const media = (name, wave, playable = true) => {
         const box = el('div', 'fv-book-media'), img = el('img'); img.alt = ''; img.src = poster(name); img.decoding = 'async'; box.append(img);
         // A finished example plays as a few seconds' silent loop (the poster until it can; a still with reduced motion).
@@ -342,7 +343,7 @@ export function openTutorialBook({chapter = TUTORIAL_CHAPTERS[0].id, tab = 'chap
         const to = el('span', 'fv-book-to'); to.append(icon('arrow'));
         const out = el('div', 'fv-book-media'), video = el('video'); video.src = asset(card.clip.mp4); video.poster = asset(card.clip.poster); video.muted = true; video.loop = true; video.playsInline = true;
         video.setAttribute('aria-label', card.title[lang]);
-        if (!matchMedia('(prefers-reduced-motion: reduce)').matches) video.autoplay = true;
+        if (!reducedMotion()) video.autoplay = true;
         out.append(video);
         pairBig.append(inputs, to, out);
         const strip = el('div', 'fv-book-strip'), acts = el('div', 'fv-book-acts');

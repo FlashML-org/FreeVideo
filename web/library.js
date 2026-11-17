@@ -8,7 +8,7 @@ import { isNetworkTypeError, connectionLostText } from './browser_extension.js';
 import { issueButton } from './issue_button.js';
 import { applyTasks, toggledTask } from './task_groups.js';
 import { outputDownloadURL } from './output_download.js';
-import { attachContextMenu, openContextMenu, contextMenuOpen } from './context_menu.js';
+import { attachContextMenu, openContextMenu, contextMenuOpen, compatView, reducedMotion } from './context_menu.js';
 import { createMeta, createPictureBin, dayOf, inOrderPictures, matches, needsEverything, pictureRow, readView, saveView,
     sortRows, workKey, TAG_COLORS } from './library_meta.js';
 import { createMetaStore, promptOfRow } from './image_view_history.js';
@@ -1065,6 +1065,7 @@ export function openLibrary(t, options = {}) {
             let wait = 0, preview = null;
             card.addEventListener('pointerenter', event => {
                 if (event.pointerType === 'touch' || selecting || layout === 'stage') return;
+                if (compatView()) return; // The compatibility view plays nothing until asked.
                 wait = setTimeout(() => {
                     // Over a link the pointer only moves the video to the front of the queue; it plays here once it is in.
                     const queue = mediaQueue();
@@ -1233,7 +1234,7 @@ export function openLibrary(t, options = {}) {
     }
     // The shelf swaps by a cross-fade: the old cards stay until the new order is there.
     function transition(change) {
-        if (!document.startViewTransition || matchMedia('(prefers-reduced-motion: reduce)').matches || !dialog.isConnected) { change(); return; }
+        if (!document.startViewTransition || reducedMotion() || !dialog.isConnected) { change(); return; }
         grid.style.viewTransitionName = 'fv-library-shelf';
         const done = document.startViewTransition(change);
         done.finished.finally(() => { grid.style.viewTransitionName = ''; });
@@ -1572,7 +1573,7 @@ export function openLibrary(t, options = {}) {
             const cell = el('figure', null, 'fv-library-compare-cell');
             let media;
             if (row.kind === 'image') { media = el('img'); media.alt = ''; media.src = pictureURL(row); }
-            else { media = el('video'); media.muted = true; media.loop = true; media.playsInline = true; media.autoplay = true; media.preload = 'auto'; media.poster = coverOf(workKey(row)) || videoThumbnailURL(row); media.src = view(row.video); }
+            else { media = el('video'); media.muted = true; media.loop = true; media.playsInline = true; media.autoplay = !compatView(); media.preload = 'auto'; media.poster = coverOf(workKey(row)) || videoThumbnailURL(row); media.src = view(row.video); }
             cell.append(media, el('figcaption', viewerName(row))); stage.append(cell);
         }
         const top = el('div', null, 'fv-library-viewer-bar');
@@ -1581,7 +1582,7 @@ export function openLibrary(t, options = {}) {
         close.setAttribute('aria-label', t('Stop selecting', '退出多选')); tip(close, t('Stop selecting', '退出多选'), t('Back to one creation', '回到单个作品'), 'Esc');
         top.append(label, close);
         viewer.append(stage, top);
-        for (const media of stage.querySelectorAll('video')) media.play().catch(() => {});
+        if (!compatView()) for (const media of stage.querySelectorAll('video')) media.play().catch(() => {});
     }
     function setSelecting(value) {
         if (selecting === value || deleting) return;
@@ -2186,7 +2187,7 @@ export function openLibrary(t, options = {}) {
             // Opened: it goes before anything loading in the background.
             mediaQueue().open(pictureURL(row), media);
         } else {
-            media = el('video'); media.autoplay = true; media.loop = true; media.playsInline = true; media.muted = viewerMuted; media.preload = 'auto';
+            media = el('video'); media.autoplay = !compatView(); media.loop = true; media.playsInline = true; media.muted = viewerMuted; media.preload = 'auto';
             // Its cover shows until the first frame arrives, so the stage is drawn as soon as the small cover is in.
             media.poster = cover || videoThumbnailURL(row); media.src = view(row.video);
             mediaQueue().open(view(row.video), media);
@@ -2231,7 +2232,7 @@ export function openLibrary(t, options = {}) {
         viewer.replaceChildren(main, panel); viewer.hidden = false;
         toggleInfo(infoOpen);
         if (hadFocus) (isFull() ? close : full).focus({preventScroll: true});
-        if (row.kind !== 'image') media.play().catch(() => {});
+        if (row.kind !== 'image' && !compatView()) media.play().catch(() => {});
         wake();
     }
     // "View large" and Space: the stage when it shows something else, else full screen.
@@ -2299,7 +2300,7 @@ export function openLibrary(t, options = {}) {
         }
         stage.onclick = event => { if (event.target === stage) closeViewer(); };
         viewer.append(stage, facts, top); viewer.hidden = false; dialog.dataset.viewing = 'true';
-        if (videos.length) for (const video of videos) video.play().catch(() => {});
+        if (videos.length && !compatView()) for (const video of videos) video.play().catch(() => {});
         setTimeout(syncPlay, 300);
         close.focus({preventScroll: true});
     }
@@ -2459,7 +2460,7 @@ export function openLibrary(t, options = {}) {
             const row = [...works.values()].find(item => item.id === next.selectedWork || item.video === next.selectedWork);
             if (row) { select(workKey(row), false); cards.get(workKey(row))?.scrollIntoView({block: 'nearest'}); } else { selectedWork = next.selectedWork; }
         }
-        if (layout === 'stage') viewer.querySelector('.fv-layer:not(.fv-leaving) video')?.play().catch(() => {});
+        if (layout === 'stage' && !compatView()) viewer.querySelector('.fv-layer:not(.fv-leaving) video')?.play().catch(() => {});
         load(false); showUndo(); syncUndo();
         return dialog;
     }

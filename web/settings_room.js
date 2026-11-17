@@ -480,15 +480,15 @@ export async function openSetup(options) {
     const themeRow = row({iconName: 'moon', title: t('Theme', '主题'), sub: t('Applies at once to every view', '立即应用到所有视图'),
         end: [segmented(themeSelect, {label: t('Theme', '主题'), tips: {dark: t('Dark panels, best for pictures', '深色界面，适合看画面'), light: t('Light panels', '浅色界面')}})]});
     const solidSwitch = switchify(el('input')); solidSwitch.type = 'checkbox';
-    solidSwitch.setAttribute('aria-label', t('Light effects', '轻量效果'));
+    solidSwitch.setAttribute('aria-label', t('Compatibility view', '兼容界面'));
     const solidNow = () => document.documentElement.dataset.glass === 'solid' || document.documentElement.classList.contains('lite');
     solidSwitch.checked = solidNow();
     solidSwitch.onchange = async () => {
         try { (await import('./shell.js')).setGlass(!solidSwitch.checked); }
         catch { if (solidSwitch.checked) document.documentElement.dataset.glass = 'solid'; else delete document.documentElement.dataset.glass; }
     };
-    tip(solidSwitch, t('Light effects', '轻量效果'), t('Solid panels for laptops and older graphics', '用实体面板，适合笔记本和旧显卡'));
-    const solidRow = row({iconName: 'layers', title: t('Light effects', '轻量效果'), sub: t('Solid panels instead of glass, for laptops and older graphics', '用实体面板代替玻璃，适合笔记本和旧显卡'), end: [solidSwitch]});
+    tip(solidSwitch, t('Compatibility view', '兼容界面'), t('For older computers', '适合较旧的电脑'));
+    const solidRow = row({iconName: 'layers', title: t('Compatibility view', '兼容界面'), sub: t('Solid panels, fewer animations, no autoplay', '实体背景，减少动画，视频不自动播放'), end: [solidSwitch]});
     // The top bar's status capsule follows the same key (freevideo.monitor.shown): on only when set to "1"; never set
     // reads as off. Writing goes through setMonitorShown, whose event repaints the capsule in the same frame.
     const statusShown = () => { try { return localStorage.getItem('freevideo.monitor.shown') === '1'; } catch { return false; } };
