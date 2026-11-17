@@ -1548,7 +1548,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     function settleModel(value, keepChosen = false) {
         info = value; const before = model;
         const ready = IMAGE_MODELS.filter(m => value.models?.find(r => r.id === m.id)?.ready);
-        const offered = IMAGE_MODELS.filter(m => value.models?.some(r => r.id === m.id));
+        const offered = IMAGE_MODELS.filter(m => value.models?.some(r => r.id === m.id && r.available !== false));
         if (value.models && !remembered() && ready.length) model = ready[0];
         if (value.models && offered.length && !offered.includes(model)) model = offered[0];
         // A press that waited for this list keeps the size the user already chose, unless the model changed.

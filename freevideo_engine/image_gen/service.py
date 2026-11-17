@@ -12,6 +12,7 @@ from pathlib import Path
 import queue
 import re
 import secrets
+import shutil
 import subprocess
 import sys
 import threading
@@ -185,6 +186,9 @@ class Service:
         self.finished = OrderedDict()
         self.pack_installer = None
         self.h3_installer = None
+        # Model ids waiting for the other model's download to end; started one by one in memory only.
+        self.pack_queue = []
+        self.pack_drain = None
         self.segment_installer = None
         self.segment_worker = None
         self.segmenting = False
@@ -219,6 +223,7 @@ class Service:
                     segment=dict(ready=image_pack.ready(machine['model_root'], group='segment'),
                                  max_points=16, device='cpu',
                                  install=self.segment_installer.state() if self.segment_installer else None),
+                    disk_free_bytes=self.disk_free(machine['model_root']),
                     bytes_per_second=None if ready else observed_speed(engine_root), history_trash=True, history_save=True,
                     purposes=list(PURPOSES),
                     **({'unified_memory': True} if machine.get('device_backend') == 'mps' else {}))
@@ -226,23 +231,55 @@ class Service:
     def model_rows(self, machine, qwen_ready, qwen_downloading):
         """Both picture models for the page: installed, or being fetched with the bytes still to download."""
         root = machine['model_root']
-        h3_ready = sys.platform != 'darwin' and image_pack.ready(root, group=H3_GROUP)
-        h3_status = {} if h3_ready or sys.platform == 'darwin' else image_pack.status(root, group=H3_GROUP)
+        mac = sys.platform == 'darwin'
+        h3_ready = not mac and image_pack.ready(root, group=H3_GROUP)
+        h3_status = {} if h3_ready or mac else image_pack.status(root, group=H3_GROUP)
         installer = self.h3_installer
         h3_state = None if h3_ready or installer is None else installer.state()
         h3_active = h3_state is not None and h3_state['state'] in ('running', 'paused_for_generation')
         qwen_state = None if qwen_ready else self.pack_state(False)
-        rows = []
-        if sys.platform != 'darwin':
-            rows.append(dict(id=image_model.H3, label='MiniMax H3 Image', ready=h3_ready,
-                             downloading=h3_active, sizes=['standard', 'high'], max_images=H3_MAX_IMAGES,
-                             bytes_total=h3_status.get('total_bytes', 0), bytes=h3_status.get('bytes', 0),
-                             bytes_done=(h3_state or {}).get('done', 0), install=h3_state))
-        rows.append(dict(id=image_model.QWEN, label='Qwen-Image 2.1', ready=qwen_ready, max_images=MAX_IMAGES,
+        qwen_status = {} if qwen_ready else image_pack.status(root)
+        with self.mutex:
+            waiting = list(self.pack_queue)
+            active = self._active_pack()
+        h3_rows = image_pack.rows(group=H3_GROUP)
+        queued = dict(state='queued', done=0, total=0, bytes_per_second=0)
+        rows = [dict(id=image_model.H3, label='MiniMax H3 Image', available=not mac, ready=h3_ready,
+                     downloading=h3_active, sizes=['standard', 'high'], max_images=H3_MAX_IMAGES,
+                     bytes_total=sum(r['bytes'] for r in h3_rows) if mac else h3_status.get('total_bytes', 0),
+                     bytes=h3_status.get('bytes', 0), bytes_done=(h3_state or {}).get('done', 0),
+                     bytes_needed=h3_status.get('remaining_bytes', 0),
+                     shared_bytes=sum(r['bytes'] for r in h3_rows if r.get('shared')),
+                     blocked_by=active if active == image_model.QWEN and not h3_ready else None,
+                     install=None if mac else queued if image_model.H3 in waiting else self.pack_row(self.h3_installer, h3_ready))]
+        if mac:
+            rows[0]['unavailable_reason'] = 'platform'
+        rows.append(dict(id=image_model.QWEN, label='Qwen-Image 2.1', available=True, ready=qwen_ready, max_images=MAX_IMAGES,
                          downloading=qwen_downloading and not h3_active,
                          bytes_total=sum(row['bytes'] for row in image_pack.catalog()['groups']['image']),
-                         bytes_done=(qwen_state or {}).get('done', 0), install=qwen_state))
+                         bytes_done=(qwen_state or {}).get('done', 0), bytes_needed=qwen_status.get('remaining_bytes', 0),
+                         shared_bytes=0,
+                         blocked_by=active if active == image_model.H3 and not qwen_ready else None,
+                         install=queued if image_model.QWEN in waiting else qwen_state))
         return rows
+
+    def _active_pack(self):
+        """The image model this engine is downloading now (running or waiting for a video), or None."""
+        for model, installer in ((image_model.H3, self.h3_installer), (image_model.QWEN, self.pack_installer)):
+            if installer is not None and installer.state()['state'] in ('running', 'paused_for_generation'):
+                return model
+        return None
+
+    @staticmethod
+    def disk_free(root):
+        """Free bytes on the volume that holds the models, read from the nearest existing folder; None if unknown."""
+        path = Path(root)
+        try:
+            while not path.exists() and path != path.parent:
+                path = path.parent
+            return int(shutil.disk_usage(path).free)
+        except (OSError, ValueError):
+            return None
 
     @staticmethod
     def unified_total(machine):
@@ -280,8 +317,12 @@ class Service:
         return ['standard', 'high'] if total and total >= HIGH_SIZE_MIN_TOTAL else ['standard']
 
     def pack_state(self, ready):
-        """Progress of the download this page started, in both languages for a failure."""
-        installer = self.pack_installer
+        """Progress of the Qwen-Image download this page started, in both languages for a failure."""
+        return self.pack_row(self.pack_installer, ready)
+
+    @staticmethod
+    def pack_row(installer, ready):
+        """Progress of one picture-model download; a failure carries both languages and the report id."""
         if ready or installer is None:
             return None
         from ..failure_details import image_pack_failure
@@ -291,12 +332,51 @@ class Service:
         if value['state'] == 'failed':
             row.update(reason=value.get('reason'), message_en=image_pack_failure(value.get('reason'))['detail'],
                        message_zh=image_pack_failure(value.get('reason'), zh=True)['detail'])
+            if value.get('report_id'):
+                row['report_id'] = value['report_id']
         return row
 
-    def pack_action(self, action, *, group='image', model=None):
-        """Start or pause the image model download from the page; it yields to a running video.
+    def _pack_installer(self, model, root, engine_root):
+        attribute = 'h3_installer' if model == image_model.H3 else 'pack_installer'
+        installer = getattr(self, attribute)
+        if installer is None or installer.root != root or installer.engine_root != engine_root:
+            options = dict(group=H3_GROUP) if model == image_model.H3 else {}
+            installer = image_pack.Installer(root, engine_root=engine_root, busy=self.video_busy, **options)
+            setattr(self, attribute, installer)
+        return installer
 
-        `model` names the H3 Image pack (Qwen-Image is the default); the two are fetched one at a time."""
+    def _pack_ready(self, model, root):
+        return image_pack.ready(root, group=H3_GROUP) if model == image_model.H3 else image_pack.ready(root)
+
+    def _drain_packs(self):
+        """Start each waiting model once the other download has ended; the queue lives in memory only."""
+        while True:
+            time.sleep(1.)
+            with self.mutex:
+                if self.closed or not self.pack_queue:
+                    self.pack_drain = None
+                    return
+                if self._active_pack() is not None:
+                    continue
+                model = self.pack_queue[0]
+                try:
+                    engine_root, machine = self.installation()
+                    root = machine['model_root']
+                    if image_pack.downloading(root, engine_root):
+                        continue
+                    self.pack_queue.pop(0)
+                    if not self._pack_ready(model, root):
+                        self._pack_installer(model, root, engine_root).start('install', background=True)
+                except Exception:
+                    logging.getLogger(__name__).exception('queued image model install failed to start')
+                    if self.pack_queue and self.pack_queue[0] == model:
+                        self.pack_queue.pop(0)
+
+    def pack_action(self, action, *, group='image', model=None):
+        """Start or cancel an image model download from the page; it yields to a running video.
+
+        `model` names the H3 Image pack (Qwen-Image is the default). The two are fetched one at a time:
+        asking for the second while the first downloads queues it, and it starts when the first ends."""
         engine_root, machine = self.installation()
         root = machine['model_root']
         if model is not None and model not in image_model.MODELS:
@@ -306,18 +386,37 @@ class Service:
                 raise ValueError('invalid_request')
             group = H3_GROUP
         with self.mutex:
-            attribute = ('segment_installer' if group == 'segment' else 'h3_installer' if group == H3_GROUP
-                         else 'pack_installer')
-            installer = getattr(self, attribute)
+            if group == 'segment':
+                installer = self.segment_installer
+                if action == 'cancel':
+                    if installer is not None:
+                        installer.cancel()
+                elif not image_pack.ready(root, group=group) and not image_pack.downloading(root, engine_root):
+                    if installer is None or installer.root != root or installer.engine_root != engine_root:
+                        installer = image_pack.Installer(root, engine_root=engine_root, busy=self.video_busy, group=group)
+                        self.segment_installer = installer
+                    installer.start('install', background=True)
+                return self.info()
+            target = image_model.H3 if group == H3_GROUP else image_model.QWEN
             if action == 'cancel':
+                if model is None:
+                    target = self._active_pack() or (self.pack_queue[0] if self.pack_queue else image_model.QWEN)
+                if target in self.pack_queue:
+                    self.pack_queue.remove(target)
+                installer = self.h3_installer if target == image_model.H3 else self.pack_installer
                 if installer is not None:
                     installer.cancel()
-            elif not image_pack.ready(root, group=group) and not image_pack.downloading(root, engine_root):
-                if installer is None or installer.root != root or installer.engine_root != engine_root:
-                    options = dict(group=group) if group != 'image' else {}
-                    installer = image_pack.Installer(root, engine_root=engine_root, busy=self.video_busy, **options)
-                    setattr(self, attribute, installer)
-                installer.start('install', background=True)
+            elif target in self.pack_queue:
+                pass
+            elif not self._pack_ready(target, root):
+                other = image_model.QWEN if target == image_model.H3 else image_model.H3
+                if self._active_pack() == other:
+                    self.pack_queue.append(target)
+                    if self.pack_drain is None:
+                        self.pack_drain = threading.Thread(target=self._drain_packs, daemon=True)
+                        self.pack_drain.start()
+                elif not image_pack.downloading(root, engine_root):
+                    self._pack_installer(target, root, engine_root).start('install', background=True)
         return self.info()
 
     def media_path(self, name):

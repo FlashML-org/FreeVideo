@@ -14,7 +14,7 @@ export const IMAGE_MODELS = Object.freeze([
 export function modelState(info, id) {
     if (!info) return {state: 'checking'};
     const row = info.models?.find(m => m.id === id);
-    if (!row) return {state: info.models ? 'unavailable' : 'checking'};
+    if (!row || row.available === false) return {state: info.models ? 'unavailable' : 'checking'};
     if (row.ready) return {state: 'ready', row};
     const install = row.install || {};
     const total = install.total || row.bytes_total || 0, done = install.done || row.bytes_done || 0;
