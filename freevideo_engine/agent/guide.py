@@ -75,6 +75,7 @@ GUIDE = {
         'Tags are numbered per kind in reference order: <Picture 1>, <Picture 2>, <Video 1>, <Audio 1>. '
         'For keyframes the first frame is <Picture 1> and the last frame the next picture.',
         'A reference video marked voice_only is an audio reference: its sound is <Audio N> and it has no <Video N> tag.',
+        'An audio reference with use "original" (and an optional range in samples) is used as the soundtrack as it is: the video is as long as the selected audio (seconds may be left out and is ignored; continue_from, part_prompts and editor parts cannot be combined with it, and shot cuts are checked against the audio length), and only one audio file can be used this way. Without use it is a voice reference, as before.',
         'Name subjects <Subject 1>, <Subject 2> in subject_definitions and reuse those labels in every section.',
         'Clips are cut to the generated length (at most 15 s); the job result lists any cut.',
     ],

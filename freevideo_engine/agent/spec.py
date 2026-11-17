@@ -95,7 +95,27 @@ def media_item(value, path, *, image=False, frame_default=None, early=False, tim
         raise SpecError(errors)
     if 'file' in value and re.fullmatch(contract.CHAT_ATTACHMENT_NAME['pattern'], value['file']):
         value['file'] = 'freevideo/agent/assets/' + value['file']
+    if 'use' in value or 'range' in value:
+        audio_use(value, path)
     return value
+
+
+def audio_use(value, path):
+    """use/range belong to an audio file. An explicit "reference" is the same request as leaving it out."""
+    from ..comfy_assets import media_kind
+    from ..original_audio import AudioUseError, fields
+    source = value.get('file') or value.get('path')
+    try:
+        if not isinstance(source, str) or media_kind(source) != 'audio':
+            raise AudioUseError('audio_use_invalid')
+        options = fields(dict(kind='audio', **{k: value[k] for k in ('use', 'range') if k in value}))
+    except AudioUseError as error:
+        fail(path + ('/range' if error.code == 'audio_original_range' else '/use'), error.message_en)
+    except ValueError:
+        fail(path + '/use', 'use and range only go with an audio file')
+    for key in ('use', 'range'):
+        value.pop(key, None)
+    value.update(options)
 
 
 CUT = re.compile(r'\[Shot\s+\d+\]\s*At\s+(\d{1,2}):(\d{1,2}(?:\.\d+)?)')
@@ -177,6 +197,9 @@ def generation_media(value):
     result = {role: media_item(value[role], '/media/' + role, image=True) for role in FRAMES if value.get(role) is not None}
     if value.get('references'):
         result['references'] = [media_item(v, '/media/references/%d' % i, early=True) for i, v in enumerate(value['references'])]
+        if sum(item.get('use') == 'original' for item in result['references']) > 1:
+            from ..original_audio import MESSAGES
+            fail('/media/references', MESSAGES['audio_original_multiple'][0])
     if value.get('middle'):
         result['middle'] = [media_item(v, '/media/middle/%d' % i, image=True, timed=True) for i, v in enumerate(value['middle'])]
     return result

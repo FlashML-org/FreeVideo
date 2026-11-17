@@ -156,6 +156,41 @@ def continuation_problems(spec, prefix='', *, editor=None):
     return problems
 
 
+def original_audio_problems(spec, input_root, prefix='', *, editor=None):
+    """An audio file used as it is sets the video's length. Settings that depend on the length of the video
+    are refused with it; the length itself is read from the file (the spec's seconds is replaced, so every later
+    check, the plan and the saved length use it). A file that is not yet in the input folder is read when the job starts."""
+    if spec['kind'] != 'generate' or spec.get('refine_from'):
+        return []
+    rows = [row for row in spec['media'].get('references') or [] if row.get('use') == 'original']
+    if not rows:
+        return []
+    why = ' when an audio reference is used as it is (the video follows the audio)'
+    problems = []
+    if spec.get('continue_from'):
+        problems.append(schema.diagnostic(prefix + '/continue_from', 'absent' + why, None))
+    if spec.get('part_prompts'):
+        problems.append(schema.diagnostic(prefix + '/part_prompts', 'absent' + why, None))
+    if editor is not None:
+        problems.append(schema.diagnostic(prefix + '/media/references', 'a plain request, not an editor part' + why, None))
+    if problems or 'file' not in rows[0]:
+        return problems
+    from ..audio_use_request import selection
+    from ..original_audio import AudioUseError
+    value = dict(file=rows[0]['file'], use='original', **({'range': rows[0]['range']} if 'range' in rows[0] else {}))
+    try:
+        chosen = selection(value, str(input_root))
+    except AudioUseError as error:
+        return [schema.diagnostic(prefix + '/media/references', 'audio that can be used as it is (%s)' % error.message_en, None)]
+    except (ValueError, OSError):
+        return []
+    from ..geometry import geometry
+    spec['seconds'] = float(chosen['seconds'])
+    canvas = geometry(spec['width'], spec['height'], seconds=spec['seconds'])
+    spec['frames'], spec['output_seconds'] = specs.saved_length(canvas, spec)
+    return []
+
+
 def middle_problems(spec, prefix=''):
     """A middle picture must sit between the first and last frame of the video, on a frame of its own."""
     middle = spec['media'].get('middle') if spec['kind'] == 'generate' and not spec.get('refine_from') else None
@@ -953,6 +988,7 @@ class Jobs:
                 for dependency in normalized['depends_on']:
                     if dependency not in known:
                         problems.append(schema.diagnostic(prefix + '/after', 'existing jobs or earlier batch refs', dependency))
+                problems.extend(original_audio_problems(normalized, self.port.input_root, prefix, editor=editor))
                 problems.extend(continuation_problems(normalized, prefix, editor=editor))
                 problems.extend(parts_problems(normalized, self.port.chain_runner(), prefix, editor=editor,
                                                work=self.continued_work(normalized),
@@ -1829,7 +1865,7 @@ class Jobs:
                                            role='middle', seconds=item['at']))
                     for i, item in enumerate(spec['media'].get('references', []), 1):
                         asset = dict(file=self.media_file(row, item, 'reference-%02d' % i, target=target), role='reference')
-                        for key in ('early_steps', 'voice_only'):
+                        for key in ('early_steps', 'voice_only', 'use', 'range'):
                             if key in item:
                                 asset[key] = item[key]
                         assets.append(asset)
@@ -1860,6 +1896,7 @@ class Jobs:
                     # Each part plays its own description, with the same LoRA trigger words the whole prompt gets.
                     from ..lora_triggers import apply_triggers
                     payload['texts'] = [apply_triggers(text, spec.get('loras', [])) for text in spec['part_prompts']]
+                self.original_audio(payload, graph, node)
                 self.start_chain(row, payload=payload)
         work = asyncio.create_task(asyncio.to_thread(prepare))
         try:
@@ -1875,6 +1912,16 @@ class Jobs:
             def queued():
                 self.touch(row, status='queued', comfy=dict(prompt_id=prompt_id, node=node), queued_at=self.clock())
             await asyncio.to_thread(queued)
+
+    def original_audio(self, payload, graph, node):
+        """An audio file used as it is sets the video's length, as in the editor: bind it before the chain is made."""
+        from ..audio_use_request import graph_audio, prepare_chain
+        from ..original_audio import AudioUseError
+        try:
+            if graph_audio(graph, node):
+                payload.update(prepare_chain(payload, str(self.port.input_root)))
+        except AudioUseError as error:
+            raise JobError('invalid_media', error.message_en, details=dict(code=error.code))
 
     def start_chain(self, row, *, payload=None, resume=False):
         runner = self.require_runner()
