@@ -512,7 +512,8 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
             try { await running; }
             catch (error) {
                 if (versions.value.enabled && !versions.value.useOriginal) {
-                    if (error?.message === 'cancelled' || cancelling || disposed) return false;
+                    // Generation does not start, so say why, as when no rewrite was running.
+                    if (error?.message === 'cancelled' || cancelling || disposed) { if (!disposed) show(errorText({message: 'cancelled'})); return false; }
                     useOriginal(error); return;
                 }
             }
