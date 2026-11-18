@@ -1353,7 +1353,7 @@ class Session:
             def cause(t, error=error):
                 if isinstance(error, BrowserRefused):
                     return t("Couldn't open the browser. Click Copy address and open it in your browser.",
-                             '没能自动打开浏览器，请点“复制地址”，在浏览器里打开。')
+                             '未能自动打开浏览器。请点击“复制地址”，在浏览器中打开。')
                 return str(error)
             self.browser_error = self.phrase(lambda t: t('ComfyUI is ready. Open the browser again or copy its address.\n',
                                                          'ComfyUI 已就绪，请重试打开浏览器，或复制地址手动打开。\n') + cause(t))
