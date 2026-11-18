@@ -751,8 +751,10 @@ export function adoptHeader(header, {t = t0} = {}) {
     header.classList.add('fv-topbar'); header.dataset.fvBar = view;
     header.style.setProperty('--fv-tb-chevron', iconURL('chevron'));
     header.setAttribute('role', 'banner');
-    // The view's own entries leave the bar (their components stay alive until the view disposes them).
-    header.replaceChildren(brand, tabs, actions.element);
+    // The view's own entries leave the bar (their components stay alive until the view disposes them). The tabs stay
+    // in place, so a tab the view has already focused keeps the focus (moving a node out of the page drops it).
+    for (const child of [...header.children]) if (child !== tabs) child.remove();
+    header.prepend(brand); header.append(actions.element);
     delete header.dataset.fit; delete header.dataset.place;
     const fit = keepFit(header);
     const host = header.closest('dialog');
