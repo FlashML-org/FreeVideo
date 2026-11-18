@@ -33,6 +33,7 @@ import { COMPARE_MAX, compareView } from './image_view_compare.js';
 import { queuePanel } from './image_view_queue.js';
 import { isHeld, worksClient, saveToWorks } from './image_works.js';
 import { createWarmer } from './image_view_warm.js';
+import { preloadMode } from './preload_setting.js';
 import { openPictureViewer } from './image_view_viewer.js';
 import { LORA_MODEL, imageViewLora } from './image_view_lora.js';
 import { hasPictureThumbnail, mediaQueue, pictureThumbnailURL } from './work_media.js';
@@ -224,7 +225,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     else shownFile = rows[0]?.file || '';
     // The model made ready ahead (image_view_warm.js); only the model and the level go to the engine.
     const warmer = createWarmer({getToken: async () => info?.token || ''});
-    function warmUp(level) { if (alive && !running && modelState(info, model.id).state === 'ready') warmer.warm(model.id, level); }
+    function warmUp(level, beside = false) { if (alive && !running && modelState(info, model.id).state === 'ready') warmer.warm(model.id, level, {beside}); }
     const entry = () => info?.models?.find(m => m.id === model.id) || null;
     const missing = () => entry() ? entry().ready === false : false;
     const loading = () => modelState(info, model.id).state === 'downloading';
@@ -1359,9 +1360,11 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     };
     go.addEventListener('click', () => { if (drawer === 'left' && go.dataset.state === 'ready' && (prompt.value.trim() || references.length)) { drawer = ''; paintPanels(); } }, {capture: true});
     prompt.addEventListener('input', () => { growPrompt(); render(); });
-    // Getting the model ready before Generate is pressed (nothing of it shows): being here a few seconds or touching
-    // anything says "light"; a prompt being written, a model or shape chosen, or the pointer on Generate says "full".
-    const warmSoon = setTimeout(() => warmUp('light'), 3000);
+    // Getting the model ready before Generate is pressed (nothing of it shows): being here a few seconds loads the model
+    // where the card has free room for it (eager loading; the engine reads the files ahead where it would take the
+    // video models' room, and the conservative setting keeps it to that); touching anything says "light"; a prompt
+    // being written, a model or shape chosen, or the pointer on Generate says "full".
+    const warmSoon = setTimeout(() => preloadMode() === 'eager' ? warmUp('full', true) : warmUp('light'), 3000);
     let warmTyping = 0;
     prompt.addEventListener('input', () => { clearTimeout(warmTyping); warmTyping = setTimeout(() => { if (prompt.value.trim()) warmUp('full'); }, 500); });
     for (const type of ['pointerdown', 'keydown']) dialog.addEventListener(type, () => warmUp('light'), {capture: true, passive: true});

@@ -1277,12 +1277,23 @@ class Service:
         picture leaves it. ``mode`` 'eager' (the default) may start a model that is not loaded; 'conservative' only
         keeps ready a model this worker already holds. Never a job and never in the way of one: skipped while video
         or a picture is running or queued, while the card is being given to video, or when the plan says the model
-        does not fit. Nothing about a warm-up shows on the page until a picture is asked for."""
+        does not fit. Nothing about a warm-up shows on the page until a picture is asked for.
+
+        ``beside`` (the view was opened, nothing more): a full warm-up only into room that is free; where loading
+        the model would give back the video models the resident worker keeps, it reads the files ahead instead."""
         if (not isinstance(value, dict) or value.get('model') not in image_model.MODELS
-                or value.get('level', 'light') not in WARM_LEVELS or value.get('mode', 'eager') not in WARM_MODES):
+                or value.get('level', 'light') not in WARM_LEVELS or value.get('mode', 'eager') not in WARM_MODES
+                or not isinstance(value.get('beside', False), bool)):
             raise ValueError('invalid_request')
         model, level = value['model'], value.get('level', 'light')
         h3 = model == image_model.H3
+        if level == 'full' and value.get('beside'):
+            # Read before the mutex: it may ask the resident worker what it holds.
+            try:
+                if self.takes_video_room(self.installation()[1], model):
+                    level = 'light'
+            except (OSError, ValueError, RuntimeError):
+                level = 'light'
 
         def skipped(reason):
             return dict(warm='skipped', reason=reason)
@@ -1929,6 +1940,20 @@ class Service:
             env.pop(name, None)
         return env
 
+    def takes_video_room(self, machine, model):
+        """Whether loading ``model`` now would give back what the kept video worker holds, as a picture session does
+        when it starts: the worker holds more than H3 Image's shared text encoder (or the model is not H3 Image)
+        and the card has no room for both."""
+        from .. import resident_process
+        owner = resident_process.OWNER
+        if owner.active or owner.process is None or owner.process.poll() is not None or not owner.endpoint:
+            return bool(owner.active)
+        if model == image_model.H3 and self.h3_resident(machine):
+            held = resident_process.status({resident_process.ENV: str(owner.endpoint)})
+            if isinstance(held, dict) and all(row.get('role') == 'encoder' for row in held.get('models') or []):
+                return False
+        return not self.server_keeps_video(machine)
+
     def server_keeps_video(self, machine):
         """With co-residency, whether the video models in the resident worker stay while the picture is made: the
         card has room for the picture model's files and the picture's reserve beside everything on it now. Where it
@@ -2187,7 +2212,8 @@ class Service:
                     reason = self.end_reason or ('closed' if self.closed else ('crowded' if keep.CROWDED_LINE in session.tail else 'idle')
                                                  if session is not None and session.process.poll() == 0 else 'worker_exit')
                     self.end_reason = None
-                    server_mode.released('image', dict(action='released', reason=reason))
+                    # The model it held comes back when the release only made room (rewarm).
+                    server_mode.released('image', dict(action='released', reason=reason, held=self.loaded_model))
                     if started_resident and not resident_process.OWNER.active and not server_mode.coresident():
                         # The picture session started this worker only to hold the encoder between pictures
                         # (with co-residency it stays: it is the video worker too).
