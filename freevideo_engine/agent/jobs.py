@@ -780,7 +780,6 @@ class Jobs:
             if code == 'invalid_json' and row['kind'] in ('vlm', 'enhance'):
                 code = 'vlm_invalid_json'
             failure_reasons = errors.reasons(dict(error, code=code))
-            reason_zh, reason_en = failure_reasons['error_zh'], failure_reasons['error_en']
             if code != error.get('code') or not error.get('request_id') or row['kind'] == 'image':
                 error = errors.build(code, details=error.get('details'),
                     request=row.get('request_id'), action_required=code != 'cancelled',
@@ -788,9 +787,10 @@ class Jobs:
                     report_id=error.get('report_id'), memory=error.get('memory'), image_stage=error.get('stage'),
                     other_usage=error.get('other_usage'))
                 if row['kind'] == 'image':
-                    reason_zh, reason_en = error['error_zh'], error['error_en']
+                    failure_reasons = {k: error[k] for k in errors.REASON_KEYS if k in error}
         if error is not None:
-            error = dict(error, request_id=row.get('request_id') or error['request_id'], error_zh=reason_zh, error_en=reason_en)
+            error = {k: v for k, v in error.items() if k not in errors.REASON_KEYS}
+            error = dict(error, request_id=row.get('request_id') or error['request_id'], **failure_reasons)
             if row['kind'] != 'image' and isinstance(report_id, str) and re.fullmatch(r'[a-f0-9]{32}', report_id):
                 error['report_id'] = report_id
             if error.get('next'):

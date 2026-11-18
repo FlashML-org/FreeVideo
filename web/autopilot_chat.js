@@ -70,14 +70,21 @@ const WHITEBOX = {
     failure: ['Could not start: ', '无法开始生成：'],
 };
 const GENERIC_FAILURE_ZH = '没有完成';
+// The failures whose next step is the problem report (agent/errors.py FAILURE_NEXT_*).
+const UNEXPECTED_FAILURES = ['internal_error', 'generation_failed'];
+// The engine's next step for a reason, as the sentence after it.
+const withNext = (reason, next, zh) => next ? reason.replace(/[。.]$/, '') + (zh ? '。' : '. ') + next : reason;
 // Sends and failure cards use the same public reason, including the engine's Chinese mapping.
 function failureReason(value, t) {
     const error = value.error, reason = error?.error_zh || value.error_zh, reasonEn = error?.error_en || value.error_en;
     if (error?.code === 'session_full' && (!reason || reason === GENERIC_FAILURE_ZH))
         return t('This chat is full. Click "New chat".', '这个对话已满，请点“新对话”。');
+    // The next step belongs to the same object as the reason it follows.
+    const own = error?.error_zh ? error : value;
     // `message` is written for programs; people read the engine's own English reason. A refusal the engine
     // did not classify keeps its sentence, as before.
-    return t(reasonEn || error?.message || 'Did not finish', reason || GENERIC_FAILURE_ZH);
+    return t(withNext(reasonEn || error?.message || 'Did not finish', reasonEn && own.next_en),
+        withNext(reason || GENERIC_FAILURE_ZH, reason && own.next_zh, true));
 }
 
 // A failed job's one reason line. The engine's classified sentence (both languages) is for people; anything else is
@@ -1430,10 +1437,13 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                     // The shared failure style: one reason line, the fold row, then the secondary buttons.
                     const fold = failureFold(t);
                     if (retry) actions.append(...again());
-                    actions.append(diagnostic.report);
+                    // An unexpected failure says to report it if it happens again: the card carries that button.
+                    const issue = issueButton(t, () => ({where: CHAT_ISSUE, message: [reason.textContent, fold.querySelector('p').textContent].filter(Boolean).join('\n')}));
+                    actions.append(diagnostic.report, issue);
                     links.append(actions); item.replaceChildren(failHead, reason, fold, links);
                     tip(diagnostic.report, 'report', t);
                     apply = next => { current = next; put(reason, failureCardReason(next, t));
+                        issue.hidden = !UNEXPECTED_FAILURES.includes(next.error?.code);
                         put(failName, jobName(next, t)); put(failChip, statusText(next, t)); failChip.dataset.state = statusKey(next);
                         put(failWhen, localTime(next.finished_at || next.created_at, t)); failWhen.hidden = !failWhen.textContent;
                         const raw = [next.error?.code, next.error?.message, next.error?.request_id].filter(Boolean).join('\n');
