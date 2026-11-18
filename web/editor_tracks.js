@@ -462,11 +462,21 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         }
         renderEmptyHints();
     }
+    function handleShift(x) {
+        if (x + (content.offsetLeft || 0) >= 64) return 0;
+        const line = playhead.getBoundingClientRect?.(), grip = handle.getClientRects?.().length ? handle.getBoundingClientRect() : null;
+        if (!line || !grip) return Math.max(0, Math.min(14, 6 - x));
+        const now = parseFloat(playhead.style.getPropertyValue('--fv-ed-handle-shift')) || 0;
+        const reach = Math.max(0, line.left - (grip.left - now)), room = line.left - scroll.getBoundingClientRect().left;
+        return Math.max(0, Math.min(reach, Math.ceil(reach - room)));
+    }
     function renderPlayhead() {
         const x = pixels(state.playhead);
         playhead.style.left = `${x}px`;
-        // Near time zero the 28 px grip moves right so it stays clear of the heads; the drawn tab stays on the line.
-        playhead.style.setProperty?.('--fv-ed-handle-shift', `${Math.max(0, Math.min(14, 6 - x))}px`);
+        // Near time zero the grip moves right so it stays clear of the heads; the drawn tab stays on the line. How far the
+        // grip reaches left of the line is measured (14 px with a mouse; more with the touch grip or the narrow press rim,
+        // a11y.css), only near the start, against the room before time zero (the content's lead included).
+        playhead.style.setProperty?.('--fv-ed-handle-shift', `${handleShift(x)}px`);
         setAttr(handle, 'aria-label', `${t('Play position', '播放位置')}, ${clock(state.playhead)}`);
     }
     function renderRuler() {
