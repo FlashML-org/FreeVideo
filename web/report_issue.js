@@ -177,9 +177,10 @@ export function showReportTip(bar, anchor, t, {mode = 'invite', submit, onHide =
         anchor.dataset.fvTipUse = t('Save the report; sharing it gets this computer optimized', '保存诊断报告，提交可获专门优化');
         return null;
     }
-    // A report saved from a result says so in the shared notice under the top bar (it takes no room and its button is
-    // always reachable); the page under the result has too little height for a card between it and the console.
-    if (mode === 'downloaded' && underResult && bar.closest('.fv-result-links')) {
+    // A report saved from a result or from the status line under it says so in the shared notice under the top bar (it
+    // takes no room and its button is always reachable); the page under the result has too little height for a card
+    // between it and the console, which would cover it.
+    if (mode === 'downloaded' && underResult && bar.closest('.fv-result-links, .fv-status')) {
         onHide?.();
         import('./notifications.js').then(({toast}) => toast(t('Diagnostic report downloaded', '诊断报告已下载'), {tone: 'ok', action: {
             label: t('Go to feedback page', '前往反馈页面提交'), use: t('Open the feedback page to attach the report', '打开反馈页面，附上报告提交'),

@@ -520,15 +520,29 @@ function showToast(item, more) {
         if (ring && nextRing) nextRing.replaceWith(ring);
         old.replaceWith(next);
         if (toastHeld) next.classList.add('is-held');
+        stackLong(next); toastResized();
         return;
     }
     if (old) old.remove();
     toastItem = item; toastHeld = false; toastLeft = item.spec.ms;
     box.append(next);
+    stackLong(next);
     if (!reducedMotion() && next.animate) next.animate([{opacity: 0, transform: 'scaleX(.6)'}, {opacity: 1, transform: 'none'}], {duration: 200, easing: EASE});
     runTimer(item);
+    toastResized();
     if (item.spec.tone === 'fail') store().add({id: `toast:${Date.now()}`, type: 'toast', status: 'failed', title: item.spec.text, reason: item.spec.detail, at: Date.now()});
 }
+// On a phone strip a message that wraps beside its controls takes its own row (notifications.css, is-stacked).
+function stackLong(el) {
+    el.classList.remove('is-stacked');
+    const msg = el.querySelector('.fv-toast-msg');
+    if (!msg || !matchMedia('(max-width: 719px)').matches) return;
+    if (msg.offsetHeight > 1.5 * (parseFloat(getComputedStyle(msg).lineHeight) || 18)) el.classList.add('is-stacked');
+}
+// A view that keeps a slot for the strip (the studio on a phone) hears when the visible notice comes, goes or changes
+// height, and reads it from toastHeight().
+export function toastHeight() { return toastRegion?.querySelector('.fv-toast:not(.is-leaving)')?.offsetHeight || 0; }
+function toastResized() { dispatchEvent(new CustomEvent('freevideo-toast-resize', {detail: {height: toastHeight()}})); }
 function hideToast(item) {
     if (toastItem !== item) return;
     clearTimeout(toastTimer); toastItem = null; toastHeld = false;
@@ -536,6 +550,7 @@ function hideToast(item) {
     const done = () => {
         box?.remove();
         if (!toastItem && toastRegion && !toastRegion.querySelector('.fv-toast')) { try { toastRegion.hidePopover?.(); } catch { /* Already hidden. */ } toastRegion.remove(); }
+        toastResized();
     };
     if (!box) { done(); return; }
     box.classList.add('is-leaving');

@@ -114,7 +114,14 @@
 @media (max-width: 719px) {
   .fv-toasts[popover], .fv-toasts { top: auto; bottom: calc(var(--fv-bottombar-top, 96px) + var(--fv-sp-8, 8px)); left: var(--fv-sp-12, 12px); right: var(--fv-sp-12, 12px); width: auto; max-width: none; align-items: stretch; }
   .fv-toast { transform-origin: 50% 100%; }
-  .fv-toast-msg { flex: 1; }
+  /* A narrow strip shows the whole message, never cut short: it wraps between words, and when it would take more
+     than one line beside its controls (is-stacked, set by showToast) it gets its own row with the controls below it,
+     right-aligned. The strip grows to fit; a view that keeps a slot for it reads toastHeight(). */
+  .fv-toast { height: auto; min-height: var(--fv-ctl-l, 40px); padding-block: var(--fv-sp-4, 4px); border-radius: var(--fv-rad-dock, 20px); }
+  .fv-toast-msg { flex: 1; white-space: normal; overflow-wrap: break-word; text-overflow: clip; line-height: 18px; }
+  .fv-toast.is-stacked { flex-wrap: wrap; row-gap: var(--fv-sp-4, 4px); padding-top: var(--fv-sp-8, 8px); }
+  .fv-toast.is-stacked .fv-toast-msg { flex-basis: calc(100% - 16px - 2 * var(--fv-sp-8, 8px)); }
+  .fv-toast.is-stacked .fv-toast-act { margin-left: auto; }
   .fv-toast-msg small { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .fv-toast-life .fg { animation: none; } .fv-toast-act, .fv-toast-x { transition: none; } }

@@ -74,7 +74,7 @@ import { confirmStop, startJobSources } from './task_float.js';
 import { resultEffort, effortName } from './sampling_effort.js';
 import { createPromptLibrary, rememberPrompt } from './prompt_library.js';
 import { createCompare, COMPARE_ICON } from './studio_compare.js';
-import { toast } from './notifications.js';
+import { toast, toastHeight } from './notifications.js';
 import { mediaQueue } from './work_media.js';
 
 const languageOverride = typeof location !== 'undefined'
@@ -1613,6 +1613,11 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const STATUS_LINE = 24, phone = window.matchMedia?.('(max-width:760px)');
     // The play bar's row: 32 px, 44 on phones where its buttons are touch targets (glass/studio.css).
     const TOAST_SLOT = 56, playerRoom = () => (phone?.matches ? 44 : 32);
+    // A status line that takes more than its row on a phone (a failure that wraps, with its report button under it)
+    // lifts the picture by the difference, so it never runs into the toast slot.
+    // A notice that wraps to more lines than the slot holds widens the slot while it shows (8 px clear on each side).
+    const toastSlot = () => Math.max(TOAST_SLOT, toastHeight() + 16);
+    const statusRoom = () => Math.max(STATUS_LINE, output.querySelector(':scope > .fv-status')?.offsetHeight || 0);
     function fitPreview() {
         const style = getComputedStyle(output), gap = parseFloat(style.rowGap) || 0;
         const width = output.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
@@ -1622,7 +1627,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         // The play bar's row is left out while there is no video to play (glass/studio.css), and its room with it.
         const playerShown = getComputedStyle(playerRow).display !== 'none';
         const room = output.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom)
-            - (phone?.matches ? 88 + TOAST_SLOT + STATUS_LINE + 2 * gap : 40 + gap) - (playerShown ? playerRoom() + gap : 0);
+            - (phone?.matches ? 88 + toastSlot() + statusRoom() + 2 * gap : 40 + gap) - (playerShown ? playerRoom() + gap : 0);
         if (!(width > 0) || !(room > 0) || !Number.isFinite(previewRatio) || previewRatio <= 0) return;
         const height = Math.max(Math.min(room, 160), Math.min(room, width / previewRatio));
         const fittedWidth = Math.min(width, height * previewRatio), fittedHeight = fittedWidth / previewRatio;
@@ -1713,9 +1718,18 @@ export function openStudio(node, {extendFrom = null} = {}) {
     function fault(text) { status.dataset.error = 'true'; status.textContent = text; status.append(statusIssue); }
     const stats = el('div', null, 'fv-stats'), budget = el('div', '', 'fv-budget'), links = el('div', null, 'fv-result-links');
     // New text in the status line replaces the report card under the result.
-    const statusWatch = new MutationObserver(() => { if (!status.textContent.trim()) return; hideReportTip(links.querySelector('.fv-actions')); hideReportTip(status); });
+    let statusHeight = 0;
+    const statusWatch = new MutationObserver(() => {
+        // On a phone the picture makes room for the line's height (fitPreview); refit when that height changes.
+        if (phone?.matches && status.offsetHeight !== statusHeight) { statusHeight = status.offsetHeight; fitPreview(); }
+        if (!status.textContent.trim()) return; hideReportTip(links.querySelector('.fv-actions')); hideReportTip(status);
+    });
     statusWatch.observe(status, {childList: true, characterData: true, subtree: true});
     cleanup.push(() => statusWatch.disconnect());
+    let toastRoom = TOAST_SLOT;
+    const onToastResize = () => { if (phone?.matches && toastSlot() !== toastRoom) { toastRoom = toastSlot(); fitPreview(); } };
+    addEventListener('freevideo-toast-resize', onToastResize);
+    cleanup.push(() => removeEventListener('freevideo-toast-resize', onToastResize));
     stats.hidden = true;
     const metrics = [], metricLabels = [];
     for (const label of [t('Generation', '生成用时'), t('Total time', '总用时'), t('Peak VRAM', '最高显存'), t('Peak RAM', '最高内存')]) { const box = el('div', null, 'fv-stat'), n = el('strong', '—'), caption = el('span', label); box.append(n, caption); stats.append(box); metrics.push(n); metricLabels.push(caption); }
