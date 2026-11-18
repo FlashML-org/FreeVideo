@@ -2,37 +2,37 @@
   "schema": 1,
   "product_version": "0.6.2",
   "en": {
-    "summary": "ComfyUI is left alone, Creations are always in reach, deleting removes everything a work used, and creating is smoother.",
+    "summary": "ComfyUI opened by other means is no longer affected, the Creations entry is always shown, deleting a work also removes the data only it used, and more creation options are available.",
     "changes": [
-      "ComfyUI left alone: ComfyUI opened any way other than the launcher no longer shows FreeVideo notices or a FreeVideo backdrop first; only the launcher's visit opens FreeVideo.",
-      "Creations always in reach: a fixed Creations entry sits at the top right in every view, and the works strip no longer disappears on wide screens.",
-      "Deleting really deletes: deleting a work, edit, conversation, character or film also deletes the prompts, uploads, imports, voiceovers and stems only it used, its prompt no longer appears in the history or the search, and every AI picture is a work in the library.",
-      "The interface stays smooth while a video plays: playing a video in Create no longer makes the interface slower over time.",
-      "Second pass from the library: Run second pass is available from the card menu and the detail view and continues a Preview first result on the same settings.",
-      "More natural mannequin poses: the 3D mannequin in the image editor poses more naturally, with thicker line art strokes and prompts that describe the pose in plain words.",
-      "Zoomed pictures can be dragged to see any part: a zoomed picture pans in every direction and stops at its edges.",
-      "Smoother creating: a 21:9 frame preset and more shapes, five size steps for quick preview (0.5M–2M), and one prompt per line to make one work for each line.",
-      "Compatibility view: solid panels, fewer animations and no autoplay, with a one-time hint when the interface runs slowly.",
-      "Failures say why and what to do next: a generation process that ends unexpectedly, an editor save error, a failed second pass and a length the device cannot make each state the cause and the next step.",
-      "Fixes: a first part shown on its own is kept after a long video joins it; on a Mac the picture view uses only the models available on that computer, and says so clearly when the model list cannot be fetched or is being verified; and the launcher no longer hangs when the update window is very narrow.",
-      "Thumbnails first over a link: opening works over a link shows the thumbnails first, then loads the videos and pictures one at a time."
+      "ComfyUI no longer affected: ComfyUI opened other than from the launcher no longer shows FreeVideo notices or a FreeVideo backdrop; FreeVideo opens only from the launcher.",
+      "Creations entry always shown: every view has a Creations entry at the top right, and the works strip no longer hides on wide screens.",
+      "Deletion removes related data: deleting a work, edit, conversation, character or film also deletes the prompts, uploads, imports, voiceovers and stems used only by it, and its prompt no longer appears in the history or the search; every AI-generated picture is kept as a work in the library.",
+      "Smooth interface during playback: playing a video in Create no longer slows the interface over time.",
+      "Second pass from the library: Run second pass is available from the card menu and the detail view and continues a preview result with the same settings.",
+      "Improved mannequin poses: the 3D mannequin in the image editor poses more naturally, with thicker line art and prompts that describe the pose in plain language.",
+      "Panning zoomed pictures: a zoomed picture can be dragged in any direction and stops at its edges.",
+      "More creation options: a 21:9 frame preset and other shapes, five size steps for quick preview (0.5M–2M), and multi-line prompts that create one work per line.",
+      "Compatibility view: solid panels, fewer animations and no autoplay, with a one-time notice when the interface runs slowly.",
+      "Failures state the cause and the next step: an unexpectedly ended generation process, an editor save error, a failed second pass and a length the device cannot produce each state the cause and the next step.",
+      "Fixes: a first part shown on its own is kept after a long video is joined to it; on a Mac the picture view uses only the models available on that computer and states clearly when the model list cannot be fetched or is being verified; the launcher no longer stops responding when the update window is very narrow.",
+      "Thumbnails first over a link: when works are opened over a link, thumbnails are shown first, followed by the videos and pictures one at a time."
     ]
   },
   "zh": {
-    "summary": "ComfyUI 不再被打扰，作品库始终可见，删除就是真删，创作更顺手。",
+    "summary": "其他方式打开的 ComfyUI 不再受影响，作品库入口常驻，删除作品时一并删除其专用数据，并增加了创作选项。",
     "changes": [
-      "ComfyUI 不再被打扰：其他方式打开的 ComfyUI 不再弹出 FreeVideo 的提示，也不再先盖一层 FreeVideo 灰底；只有从启动器打开才进入 FreeVideo。",
-      "作品库始终可见：右上角固定有“作品库”入口，大屏下作品条不再消失。",
-      "删除就是真删：删除作品、剪辑、对话、角色或影片时，只有它用到的提示词、上传的文件、导入的素材、配音和分轨一并删除，历史提示词和搜索里也不再出现；每张 AI 图片都是作品库里的作品。",
-      "播放视频时界面不再越来越卡：在创作页播放视频时，界面保持流畅。",
-      "作品库里直接继续二采：作品卡片菜单和详情页都能“运行第二遍”，按同一组设置接着预览结果往下做。",
-      "人偶姿势更自然：图像编辑里的人偶姿势工具，姿势更自然，线稿笔划更粗，提示词用平实的话描述姿势。",
-      "图片放大后可以拖动查看局部：放大的图片可向任意方向拖动，到边缘即停。",
-      "创作更顺手：新增 21:9 等画幅，快速预览可选五档尺寸（0.5M–2M），一次输入多行描述，每行生成一条。",
-      "兼容界面模式：面板改为实心、动画减少、不自动播放，界面变慢时提示一次。",
-      "失败时说明原因和下一步：生成进程意外结束、剪辑保存出错、第二遍失败、做不出的时长，都会写明原因和下一步。",
-      "几处修复：长视频接上后，单独显示的第一段一采结果不再丢失；Mac 上图片视图只使用本机可用的模型，模型列表取不到或正在校验时会明确说明；更新窗口很窄时启动器不再卡死。",
-      "远程先出缩略图：通过链接查看作品时先出缩略图，再依次加载视频和图片。"
+      "不再影响 ComfyUI：从启动器以外的方式打开 ComfyUI 时，不再显示 FreeVideo 的提示和背景；仅从启动器打开时进入 FreeVideo。",
+      "作品库入口常驻：各视图右上角均提供“作品库”入口，宽屏下作品条不再隐藏。",
+      "删除时清除相关数据：删除作品、剪辑、对话、角色或影片时，仅由其使用的提示词、上传文件、导入素材、配音和分轨一并删除，历史提示词和搜索结果中也不再出现；所有 AI 生成的图片均作为作品保存在作品库中。",
+      "视频播放时界面保持流畅：在创作页播放视频时，界面不再随时间变慢。",
+      "作品库支持运行第二遍：作品卡片菜单和详情页均可“运行第二遍”，沿用同一组设置继续处理预览结果。",
+      "人偶姿势改进：图像编辑中的 3D 人偶姿势更自然，线稿笔画加粗，提示词以平实的语言描述姿势。",
+      "放大图片可拖动查看：放大后的图片可向任意方向拖动，到达边缘时停止。",
+      "创作选项增加：新增 21:9 等画幅；快速预览提供五档尺寸（0.5M–2M）；支持一次输入多行描述，每行生成一个作品。",
+      "兼容界面模式：面板改为实心，减少动画，不自动播放；界面运行变慢时提示一次。",
+      "失败时说明原因和处理方法：生成进程意外结束、剪辑保存出错、第二遍失败，以及设备无法生成所选时长时，均会说明原因和下一步操作。",
+      "问题修复：长视频拼接后，单独显示的第一段一采结果不再丢失；Mac 上图片视图仅使用本机可用的模型，无法获取模型列表或正在校验时会明确提示；更新窗口很窄时启动器不再停止响应。",
+      "远程查看时优先加载缩略图：通过链接查看作品时，先显示缩略图，再依次加载视频和图片。"
     ]
   },
   "history": [
