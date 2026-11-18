@@ -740,7 +740,8 @@ export const setPictureFit = (record, id, fit) => setPicture(record, id, {fit: p
 // The fewest frames a continuing part of `seconds` whole seconds asks for (chain_plan.part_frames): below
 // MIN_PART_FRAMES a continuing part is too short, below FULL_PART_FRAMES it is a short part.
 const partFrames = seconds => RULES.overlap + RULES.step * Math.ceil((FPS * seconds - (RULES.step - 1)) / RULES.step);
-export const MIN_PART_FRAMES = partFrames(RULES.followSeconds), FULL_PART_FRAMES = partFrames(RULES.fullSeconds);
+export const MIN_PART_FRAMES = partFrames(RULES.followSeconds);
+export const FULL_PART_FRAMES = partFrames(RULES.fullSeconds);
 // The last part of a video, one no other part continues, may be as short as lastSeconds.
 export const MIN_TAIL_FRAMES = partFrames(RULES.lastSeconds);
 // The most parts one video may have (chain_plan.parts_limit).
