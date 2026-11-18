@@ -703,27 +703,28 @@ def generate(prompt, width, height, seed, references=None, progress_cb=None, can
     torch.set_grad_enabled(False)
     device = torch.device('cuda')
     total = torch.cuda.get_device_properties(0).total_memory
-    budget = card_budget(vram_gib)
-    if shared_card:
-        # The resident video worker still holds its text encoder on the card after encoding: plan against what
-        # the card really has free plus what this process already holds, not against its whole size.
-        free, _ = torch.cuda.mem_get_info()
-        reserved = torch.cuda.memory_reserved()
-        budget = min(budget, int(free + reserved))
-        # A decoder kept from the previous picture is not part of the next denoise plan.
-        vae_held = 0
-        if kept is not None and 'vae' in kept.items:
-            vae_held = _tensor_bytes(kept.items['vae'][1])
-            budget -= vae_held
-        # budget = free at plan time + this process's cached memory (reserved) - the kept decoder
-        stats['budget_parts_gib'] = dict(free=round(free / 2**30, 2), reserved=round(reserved / 2**30, 2),
-                                         kept_vae=round(vae_held / 2**30, 2),
-                                         allocated=round(torch.cuda.memory_allocated() / 2**30, 2))
-        stats['budget_gib'] = round(budget / 2**30, 2)
-        if kept is not None:
-            kept.budget = budget
+    # Plan against what the card really has free plus what this process already holds, never against its whole size
+    # or the caller's limit alone: a resident video worker's text encoder, another program, or this process's own
+    # CUDA context may already hold part of it, and the planner fills whatever it is given with resident blocks.
+    free, _ = torch.cuda.mem_get_info()
+    reserved = torch.cuda.memory_reserved()
+    budget = min(card_budget(vram_gib), int(free + reserved))
+    # A decoder kept from the previous picture is not part of the next denoise plan.
+    vae_held = 0
+    if kept is not None and 'vae' in kept.items:
+        vae_held = _tensor_bytes(kept.items['vae'][1])
+        budget -= vae_held
+    # budget = min(limit, free at plan time + this process's cached memory (reserved)) - the kept decoder
+    stats['budget_parts_gib'] = dict(free=round(free / 2**30, 2), reserved=round(reserved / 2**30, 2),
+                                     kept_vae=round(vae_held / 2**30, 2),
+                                     allocated=round(torch.cuda.memory_allocated() / 2**30, 2))
+    stats['budget_gib'] = round(budget / 2**30, 2)
+    if kept is not None:
+        kept.budget = budget
     if vram_gib:
-        torch.cuda.set_per_process_memory_fraction(min(1.0, budget / total))
+        # The allocator limit is the caller's limit; the plan above already keeps inside the smaller budget, and a
+        # limit that also left out the kept decoder would count it twice.
+        torch.cuda.set_per_process_memory_fraction(min(1.0, card_budget(vram_gib) / total))
     canvas_h, canvas_w = h3_dit.canvas_size(height, width)
     if enter is not None:
         enter('load')
