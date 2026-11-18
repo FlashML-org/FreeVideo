@@ -661,8 +661,10 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
         emit({running: true, job: null, fraction: 0, stage: request.mode === 'edit' ? 'upload' : '', error: '', report_id: null, memory: '', waiting: '', fitted: null});
         const alive = () => current === epoch && !disposed;
         let sent = [], submitted = false;
+        // Every picture the page sends is noted as it arrives: a stop after one has gone up still removes it.
+        const uploaded = [], sender = {upload: async file => { const name = await client.upload(file); uploaded.push(name); return name; }};
         try {
-            const {context, images = [], mask} = await prepare(request, alive);
+            const {context, images = [], mask} = await prepare(request, alive, sender);
             sent = [...images, ...(mask ? [mask] : [])];
             if (!alive()) return;
             if (state.stage === 'upload') emit({stage: ''});
@@ -699,7 +701,8 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
         } finally {
             // Stopped, turned away or failed before the service took the request: its pictures go now (a job removes
             // its own when it ends).
-            if (!submitted && sent.length) Promise.resolve().then(() => client.discardUploads?.(sent)).catch(() => {});
+            const names = [...new Set([...uploaded, ...sent])];
+            if (!submitted && names.length) Promise.resolve().then(() => client.discardUploads?.(names)).catch(() => {});
         }
     }
     // The page was reloaded while a picture was being made: follow the same job and place its result.
