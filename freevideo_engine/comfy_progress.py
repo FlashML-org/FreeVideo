@@ -190,6 +190,8 @@ class ReportDownloads:
         self.roots = set()
         self.dispatches = {}
         self.lock = threading.Lock()
+        # One writer of report-ids.json at a time: a run being noted and a deleted work being forgotten.
+        self.index_lock = threading.Lock()
 
     def register(self, output):
         token = uuid.uuid4().hex
@@ -233,22 +235,72 @@ class ReportDownloads:
         if index is None:
             return
         try:
-            try:
-                rows = json.loads(index.read_text('utf-8'))
-            except (OSError, ValueError):
-                rows = {}
-            rows = {key: value for key, value in (rows if isinstance(rows, dict) else {}).items()
-                    if isinstance(value, str)}
-            self.roots.add(index.parent.parent)
-            rows[token] = output.relative_to(index.parent.parent).as_posix()
-            while len(rows) > 256:
-                del rows[next(iter(rows))]
-            index.parent.mkdir(parents=True, exist_ok=True)
-            temporary = index.with_name('report-ids.%s.tmp' % uuid.uuid4().hex)
-            temporary.write_text(json.dumps(rows), 'utf-8')
-            os.replace(temporary, index)
+            with self.index_lock:
+                try:
+                    rows = json.loads(index.read_text('utf-8'))
+                except (OSError, ValueError):
+                    rows = {}
+                rows = {key: value for key, value in (rows if isinstance(rows, dict) else {}).items()
+                        if isinstance(value, str)}
+                self.roots.add(index.parent.parent)
+                rows[token] = output.relative_to(index.parent.parent).as_posix()
+                while len(rows) > 256:
+                    del rows[next(iter(rows))]
+                index.parent.mkdir(parents=True, exist_ok=True)
+                self._write_index(index, rows)
         except Exception:
             pass  # Reports stay readable in this process; the index is only a convenience.
+
+    @staticmethod
+    def _write_index(index, rows):
+        temporary = index.with_name('report-ids.%s.tmp' % uuid.uuid4().hex)
+        temporary.write_text(json.dumps(rows), 'utf-8')
+        os.replace(temporary, index)
+
+    def forget(self, root, runs=None):
+        """A work deleted for good leaves no report number behind: drop the numbers of the given run folders (by
+        name) from this process and from <root>/.agent/report-ids.json. With runs=None (at start-up), drop the rows
+        whose run folder no longer exists, which deletions of an earlier version left. An index that cannot be read
+        is removed: it is only a convenience, and what it holds can no longer be checked."""
+        root = Path(root)
+        names = None if runs is None else {run for run in runs if isinstance(run, str) and run}
+        if names is not None and not names:
+            return
+        with self.lock:
+            for token in [token for token, output in self.runs.items() if names is not None and Path(output).parent.name in names]:
+                del self.runs[token]
+                self.dispatches.pop(token, None)
+        index = root / '.agent' / 'report-ids.json'
+        with self.index_lock:
+            try:
+                rows = json.loads(index.read_text('utf-8'))
+            except FileNotFoundError:
+                return
+            except (OSError, ValueError):
+                rows = None
+            try:
+                if not isinstance(rows, dict):
+                    index.unlink()
+                    return
+
+                def keep(relative):
+                    if not isinstance(relative, str) or not relative:
+                        return False
+                    path = Path(relative)
+                    if path.is_absolute() or '..' in path.parts:
+                        return False
+                    if names is not None:
+                        return not names.intersection(path.parts[:-1])
+                    return (root / path).parent.is_dir()
+                kept = {token: relative for token, relative in rows.items() if keep(relative)}
+                if kept == rows:
+                    return
+                if kept:
+                    self._write_index(index, kept)
+                else:
+                    index.unlink()
+            except OSError:
+                logging.getLogger(__name__).warning('[FreeVideo] Could not update the report index after a deletion.')
 
     @staticmethod
     def tokens(output_directory):

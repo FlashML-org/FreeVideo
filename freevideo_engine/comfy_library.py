@@ -960,6 +960,12 @@ def _forget_works(root, facts):
     if not facts:
         return
     try:
+        # The report number of each work, which named its run folder.
+        from .comfy_progress import REPORTS
+        REPORTS.forget(root, {fact['run'] for fact in facts})
+    except Exception:
+        logging.warning('[FreeVideo] Could not forget the report numbers of a deleted creation.', exc_info=True)
+    try:
         kept_receipts, kept_prompts = _kept_facts(root)
     except OSError:
         return
@@ -1511,6 +1517,12 @@ def register():
             finish_deleted(folder_paths.get_output_directory(), everything=True)
         except Exception:
             logging.warning('FreeVideo could not finish removing deleted creations.', exc_info=True)
+        try:
+            # Report numbers of works an earlier version deleted without forgetting them.
+            from .comfy_progress import REPORTS
+            REPORTS.forget(Path(folder_paths.get_output_directory()).resolve() / 'FreeVideo')
+        except Exception:
+            logging.warning('FreeVideo could not tidy the report index.', exc_info=True)
     threading.Thread(target=release, name='freevideo-release-decoded', daemon=True).start()
 
     @server.routes.get('/freevideo/sampling-estimate')
