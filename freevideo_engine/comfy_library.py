@@ -17,6 +17,7 @@ from .agent import enabled as agent_enabled
 from .comfy_assets import output_summary
 from .runtime_alias import is_junction, checked_real_path, AliasUnavailable
 from .long_paths import io_path, plain
+from .disk_space import file_reason
 from .system import windows
 
 _ID = re.compile(r'\d{4}-\d{2}-\d{2}/[0-9a-f]{32}')
@@ -1606,6 +1607,9 @@ def register():
             return web.json_response(rows, headers={'Cache-Control': 'no-store'})
         except ValueError as error:
             raise web.HTTPBadRequest(text=str(error)) from error
+        except OSError as error:
+            # The output folder is offline or not readable: say which, so the page can name the cause.
+            return web.json_response(dict(reason=file_reason(error, write=False)), status=500)
 
     @server.routes.get('/freevideo/library/prompt')
     async def prompt(request):
@@ -1707,7 +1711,12 @@ def register():
                                              queue=getattr(server, 'prompt_queue', None))
         except DeleteRefused as error:
             return web.json_response(dict(deleted=False, reason=error.reason, kept=error.kept[:20]), status=409)
-        except (OSError, ValueError, TypeError):
+        except FileNotFoundError:
+            raise web.HTTPNotFound(text='Saved video unavailable') from None
+        except OSError as error:
+            # Still there but could not be removed: another program holds it, or the folder is protected.
+            return web.json_response(dict(deleted=False, reason=file_reason(error, write=True)), status=500)
+        except (ValueError, TypeError):
             raise web.HTTPNotFound(text='Saved video unavailable') from None
         return web.json_response(dict(result, deleted=True))
 
@@ -1720,8 +1729,10 @@ def register():
                                              queue=getattr(server, 'prompt_queue', None),
                                              batch=body.get('batch') if isinstance(body, dict) else None,
                                              extend=body.get('extend') or () if isinstance(body, dict) else ())
-        except (DeleteRefused, OSError, ValueError, TypeError):
+        except (DeleteRefused, ValueError, TypeError):
             raise web.HTTPBadRequest(text='Invalid selection') from None
+        except OSError as error:
+            return web.json_response(dict(reason=file_reason(error, write=True)), status=500)
         return web.json_response(result)
 
     @server.routes.post('/freevideo/library/undo')

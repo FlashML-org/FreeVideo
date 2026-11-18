@@ -230,6 +230,21 @@ def ran_out(error):
     return False
 
 
+def file_reason(error, *, write):
+    """Why a file operation failed, as a short code the page turns into a sentence: disk_full, in_use (another
+    program holds the file open), not_writable or not_readable (permission, a read-only or missing folder)."""
+    if ran_out(error):
+        return 'disk_full'
+    seen = set()
+    while error is not None and id(error) not in seen:
+        seen.add(id(error))
+        if isinstance(error, OSError) and (getattr(error, 'winerror', None) in (32, 33)
+                                           or error.errno in (errno.EBUSY, getattr(errno, 'ETXTBSY', errno.EBUSY))):
+            return 'in_use'
+        error = error.__cause__ or (None if error.__suppress_context__ else error.__context__)
+    return 'not_writable' if write else 'not_readable'
+
+
 @plain_errors
 def disk_key(path):
     """Paths with the same key draw on the same free space."""
