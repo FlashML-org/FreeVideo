@@ -1812,11 +1812,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         onChange: () => syncHistory()});
     recent.element.classList.add('sgf-avoid');
     recent.element.prepend(worksButton); body.append(recent.element);
-    // Phones have no rail: Creations sits in the bar under the picture instead.
-    const worksPhone = button('', () => worksButton.click(), 'fvs-icon-button fvs-works-phone');
-    worksPhone.innerHTML = worksButton.querySelector('svg').outerHTML; worksPhone.setAttribute('aria-label', t('Creations', '作品库'));
-    tip(worksPhone, t('Creations', '作品库'), t('Open your works to sort and manage them', '打开作品库，筛选和管理'));
-    stageBar.start.prepend(worksPhone);
+    // Phones have no rail; Creations is the top bar's works entry, there at every width.
     function syncHistory() {
         stageBar.element.dataset.empty = String(!result?.video);
         stageBar.setHistory(recent.index(), recent.rows().length);

@@ -577,8 +577,6 @@
 .fv-studio.fv-create .fvs-tray .fv-effort-estimate{margin-left:0}
 /* An empty history (nothing made yet) keeps the rail small; it grows only after a generation, which the user started. */
 .fv-studio.fv-create .fv-recent.fvs-rail[data-empty=true]{height:fit-content}
-.fv-studio.fv-create .fvs-works-phone{display:none}
-@media(max-width:760px){.fv-studio.fv-create .fvs-works-phone{display:inline-grid}}
 .fv-studio.fv-create .fv-controls>.fvs-console-status{top:var(--fv-sp-2);bottom:auto;left:var(--fv-sp-20);right:var(--fv-sp-20)}
 /* The picture and its bar settle once, without animation, while the panel opens; later changes ease. */
 .fv-studio.fv-create[data-fv-loaded=false] :is(.fv-stage,.fv-preview-space,.fv-preview-column,.fv-recent.fvs-rail){transition:none!important}
@@ -777,7 +775,7 @@ html body :is(.fv-studio.fv-create .fvs-console,.fv-editor .fv-ed-genbar .fv-ed-
 .fv-studio.fv-create .fv-stage{transition:width .2s ease,height .2s ease,translate .2s ease}
 /* With the next generation's empty frame on the stage, the bar names it ("Next · 768 × 1344"); the work's details,
    history and actions are hidden until a work is shown again. */
-.fv-studio.fv-create .fvs-stagebar[data-next=true] :is(.fvs-info,.fvs-history,.fvs-compare-open,.fvs-works-phone,.fvs-stagebar-end){visibility:hidden}
+.fv-studio.fv-create .fvs-stagebar[data-next=true] :is(.fvs-info,.fvs-history,.fvs-compare-open,.fvs-stagebar-end){visibility:hidden}
 /* The duration's number edits in place (studio_console.js): a field as wide as the number it replaces, with the unit
    kept after it, so nothing beside the stepper moves; one frame, the field's own, and its focus line for the keyboard
    only (a click shows the field and the caret). */
@@ -797,7 +795,7 @@ html body .fv-studio.fv-create .fvs-stepper .fvs-step-input.fvs-step-input:is(:f
 .fv-studio.fv-create .fvs-stagebar[data-next=true] .fvs-stagebar-end{display:none}
 .fv-studio.fv-create .fvs-stagebar[data-next=true] .fvs-stagebar-start{justify-content:center}
 .fv-studio.fv-create .fvs-stagebar[data-next=true] .fvs-summary{flex:0 1 auto}
-.fv-studio.fv-create .fvs-stagebar[data-next=true] :is(.fvs-info,.fvs-history,.fvs-compare-open,.fvs-works-phone){display:none}
+.fv-studio.fv-create .fvs-stagebar[data-next=true] :is(.fvs-info,.fvs-history,.fvs-compare-open){display:none}
 /* Rail: two videos picked together compare on the stage. Each card has a small check (shown on hover, and on every card
    while picking); a picked card is outlined and numbered in the order picked. */
 .fv-studio.fv-create .fvs-rail .fv-recent-card{position:relative}
