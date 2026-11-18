@@ -378,7 +378,9 @@
 .fv-editor .fv-ed-save-state:is(button){height:24px;min-height:24px;border:0;cursor:pointer}
 .fv-ed-save-state[data-shown=false]{visibility:hidden}
 .fv-ed-project-row .fv-ed-export-box{margin-left:auto;height:100%}
-.fv-ed-project-row .fv-ed-name-menu{top:calc(100% - 4px);left:8px}
+/* Hangs under the name in the project row at every width (the phone rule above, fixed at 120 px, is for a name in the
+   scrolling header; with fixed, 100% here would be the window's height and the menu would open below the screen). */
+.fv-ed-project-row .fv-ed-name-menu{position:absolute;top:calc(100% - 4px);left:8px}
 /* Unsaved changes are said where the eyes are, with the way out, not as a line of small red words. */
 .fv-ed-save-warning-card{position:absolute;top:calc(100% + 4px);left:8px;z-index:9;display:flex;align-items:center;gap:12px;max-width:min(560px,calc(100% - 16px));padding:8px 8px 8px 16px;border:1px solid color-mix(in srgb,var(--fv-danger) 40%,var(--fv-border));border-radius:var(--fv-r-md);background:var(--fv-card);color:var(--fv-ink);font-size:13px;line-height:1.45;box-shadow:0 12px 32px -12px #000a}
 .fv-ed-save-warning-card[hidden]{display:none}
