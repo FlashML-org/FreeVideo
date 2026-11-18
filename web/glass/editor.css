@@ -1,6 +1,6 @@
 /* Edit view in the glass material (design-jia-glass, ed's work-ed). Loaded last by editor.js, so it only restyles.
-   Glass only on layers that float over the stage: the library and the inspector panes, the generate console, its tray,
-   menus, popovers and notices. The picture and the timeline stay solid and sharp. Solid fallback for
+   Glass only on the library and the inspector panes and the generate console. Layers that float over them (g3: the tray,
+   menus, popovers, notices, dialogs) are solid, so nothing behind them shows through. The picture and the timeline stay solid and sharp. Solid fallback for
    :root[data-glass=solid], .lite, prefers-reduced-transparency and browsers without backdrop-filter.
    Tokens come from theme.css (:root, shell); the editor maps its older names onto them, for both themes. */
 
@@ -11,8 +11,8 @@
   --fv-border:rgb(255 255 255 / .1);--fv-sheen:rgb(255 255 255 / .16);
   --fv-ink:var(--fv-fg);--fv-muted:var(--fv-fg3);
   --fv-accent:#3d9dff;--fv-accent-hover:#66b6ff;
-  --fv-ed-glass1:rgb(var(--fv-tint) / var(--fv-a1));--fv-ed-glass2:rgb(var(--fv-tint) / var(--fv-a2));--fv-ed-glass3:rgb(var(--fv-tint) / var(--fv-a3));
-  --fv-ed-blur1:blur(var(--fv-glass-blur1)) saturate(150%);--fv-ed-blur2:blur(var(--fv-glass-blur2)) saturate(165%);--fv-ed-blur3:blur(var(--fv-glass-blur3)) saturate(175%);
+  --fv-ed-glass1:rgb(var(--fv-tint) / var(--fv-a1));--fv-ed-glass2:rgb(var(--fv-tint) / var(--fv-a2));--fv-ed-glass3:rgb(var(--fv-solid3));
+  --fv-ed-blur1:blur(var(--fv-glass-blur1)) saturate(150%);--fv-ed-blur2:blur(var(--fv-glass-blur2)) saturate(165%);--fv-ed-blur3:none;
   --fv-ed-pic-sh:0 2px 6px rgb(0 0 0 / .35),0 30px 70px -24px rgb(0 0 0 / .7);
 }
 :root[data-theme=light] :is(.fv-studio.fv-editor,.fv-ed-layer){
@@ -95,8 +95,6 @@ dialog.fv-studio.fv-editor:not([open]){display:none!important}
   background:var(--fv-ed-glass3);border:1px solid var(--fv-edge);box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh3);color:var(--fv-fg);
   -webkit-backdrop-filter:var(--fv-ed-blur3);backdrop-filter:var(--fv-ed-blur3)}
 .fv-editor :is(.fv-ed-gen-tray>:not([hidden]),.fv-ed-notice,.fv-empty-prompt,.fv-ed-save-warning-card,.fv-ed-ref-notice){border-radius:var(--fv-r-lg)}
-/* The empty-description question stands over the picture's controls; nothing behind it may show through, in any mode. */
-.fv-editor .fv-ed-genbar>.fv-empty-prompt{background:rgb(var(--fv-solid3));-webkit-backdrop-filter:none;backdrop-filter:none}
 .fv-editor :is(.fv-ed-name-menu,.fv-ed-more-panel,.fv-ed-pass-menu,.fv-ed-ref-menu,.fv-ed-volume-popover){border-radius:var(--fv-r-lg);padding:4px}
 .fv-editor :is(.fv-ed-name-menu,.fv-ed-more-panel,.fv-ed-ref-menu) button{border-radius:var(--fv-r-md)}
 .fv-editor :is(.fv-ed-name-menu,.fv-ed-more-panel,.fv-ed-ref-menu) button:not(:disabled):is(:hover,:focus-visible){background:var(--fv-ctl-hover);outline:none}
