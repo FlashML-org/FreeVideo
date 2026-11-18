@@ -258,8 +258,12 @@ export const openingZoom = (width, record) => {
     const frames = duration(record), seconds = frames ? Math.min(90, Math.max(20, frames / FPS + 10)) : 90;
     return width / seconds;
 };
-// An export runs as long as the picture and sound; text after them is not exported.
-export const exportFrames = record => Math.max(0, ...record.tracks.filter(track => ['video', 'audio'].includes(track.kind)).flatMap(track => track.clips).map(end));
+// An export runs as long as the picture and sound; text after them is not exported, nor is a planned part that was
+// never sent (a draft with no media of its own, such as the next part made ready after a continued part finishes):
+// it has no picture yet. Parts on their way (queued, running) still count and export as black, as the dialog says.
+const planned = clip => clip.pending === 'draft' && !clip.source;
+export const exportFrames = record => Math.max(0, ...record.tracks.filter(track => ['video', 'audio'].includes(track.kind)).flatMap(track => track.clips)
+    .filter(clip => !planned(clip)).map(end));
 export const find = (record, id) => all(record).find(clip => clip.id === id) ?? null;
 // A failed replacement displays its original timeline while retaining receipts
 // for every block of the same resumable attempt, including subdivided blocks.

@@ -156,8 +156,11 @@ def _layout(project):
                         not _whole(splice.get(key)) for key in ('frames', 'audio_samples'))):
                     raise ExportError()
         tracks[raw['id']] = clips
-    # Picture and sound set the length; text after them is not exported.
-    frames = max((c['start'] + c['frames'] for clips in tracks.values() for c in clips), default=0)
+    # Picture and sound set the length; text after them is not exported, nor is a planned part that was never sent
+    # (a draft with no media of its own, such as the next part made ready after a continued part finishes): it has no
+    # picture yet. Parts on their way (queued, running) still count and export as black. Same rule as exportFrames.
+    frames = max((c['start'] + c['frames'] for clips in tracks.values() for c in clips
+                  if not (c.get('pending') == 'draft' and c.get('source') is None)), default=0)
     if not frames:
         raise ExportError()
     return width, height, frames, tracks
