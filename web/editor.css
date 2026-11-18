@@ -142,8 +142,8 @@
 .fv-editor .fv-ed-gen-failure{display:block;flex:1 0 100%;min-width:0}
 .fv-ed-failure-actions{justify-content:flex-start;width:100%}
 .fv-ed-failure-reason{flex:1 1 220px;min-width:0;color:var(--fv-warning);overflow-wrap:anywhere}
-/* While the failed block's card is open it already says this; the line keeps its place so the timeline does not move. */
-.fv-editor[data-hx-clippop] .fv-ed-gen-failure .fv-ed-failure-actions{visibility:hidden}
+/* While the failed block's card is open it already says this; the whole line, frame included, steps aside (the tray sits over the picture or heads the inspector, so the timeline does not move). */
+.fv-editor[data-hx-clippop] .fv-ed-gen-failure{display:none;opacity:0;translate:0 4px}
 .fv-ed-gen-failure .fv-report-tip{width:100%}
 .fv-ed-basic-progress[data-state=waiting] .fv-ed-basic-percent{font-weight:500;color:var(--fv-muted)}
 .fv-ed-description{flex:1;width:0}
