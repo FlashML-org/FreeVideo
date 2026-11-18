@@ -90,6 +90,7 @@ export function createExpandButton({t = en => en, textarea, onGenerate, canGener
         sync();
         if (disposed || element.disabled || dialog) return;
         dialog = el('dialog', 'fv-ed-expand-dialog');
+        dialog.dataset.fvOwnTab = ''; // Tab cycles its three controls below; a11y.js stands aside
         dialog.setAttribute('role', 'dialog'); dialog.setAttribute('aria-modal', 'true');
         dialog.setAttribute('aria-label', t('Description', '描述'));
         const head = el('div', 'fv-ed-expand-head'), title = el('strong', 'fv-ed-expand-title', t('Description', '描述'));

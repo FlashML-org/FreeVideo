@@ -722,9 +722,16 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
     const inMenu = target => menu.contains(target) || menuOrigin()?.contains(target);
     const leaveMenu = event => { if (menuState && !changingMenu && !inMenu(event.relatedTarget)) closeMenu(); };
     menu.addEventListener('focusout', leaveMenu);
+    // Where `keys` below moves focus on Tab itself (the narrow drawer; the open menu in the drawer, and its confirmation
+    // everywhere), the shared trap in a11y.js stands aside, so each press moves focus once.
+    function ownTab() {
+        const own = (node, on) => on ? node.setAttribute('data-fv-own-tab', '') : node.removeAttribute('data-fv-own-tab');
+        own(rail, narrow() && chats.getAttribute('aria-expanded') === 'true');
+        own(menu, !!menuState && (narrow() || menuState.stage === 'confirm'));
+    }
     function drawer(on, restore = false) {
         if (!on) closeMenu();
-        element.dataset.chatsOpen = String(on); chats.setAttribute('aria-expanded', String(on));
+        element.dataset.chatsOpen = String(on); chats.setAttribute('aria-expanded', String(on)); ownTab();
         if (on) sideDrawer(false);
         // Only the overlay needs to keep keyboard focus in its list.
         main.inert = on && narrow();
@@ -765,6 +772,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                 positionMenu();
                 if (focus) (confirming ? cancel : rename.hidden ? remove : rename).focus({preventScroll: true});
             }
+            ownTab();
         } finally { changingMenu = false; }
     }
     function closeMenu(restore = false) {
@@ -848,7 +856,9 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             // A search also finds the chat being read by its tasks' words; the line under the name then shows the one it found.
             const shot = query && row.id === state.session && !matches(query, row.title) ? shotWords.find(words => matches(query, words)) : null;
             if (shot) { markText(node.where, shot, query); node.where.dataset.state = 'found'; node.where.hidden = false; }
-            node.row.hidden = !matches(query, row.title) && !shot || undoing.has(row.id);
+            // A chat on its way out stays hidden until the server answers; without an undo window its confirmation
+            // stays open on the row until then.
+            node.row.hidden = !matches(query, row.title) && !shot || undoing.has(row.id) || deleting.has(row.id) && menuState?.session !== row.id;
             const group = row.running > 0 ? 'running' : dayGroup(row.updated_at);
             node.row.dataset.group = group;
             node.row.dataset.groupLabel = t(...GROUP_WORDS[group]);
@@ -1411,9 +1421,13 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                         {productVersion, fetchApi: (path, options) => api.fetchApi(path, options),
                             retry: retry ? {label: AGAIN.resend, onClick: () => retry?.()} : null});
                     item.replaceChildren(host);
-                    // The same fold row as a video failure card, between the reason and the buttons.
+                    // Without a diagnostic report the shared card folds the code, step and memory under its own Technical
+                    // details; the program's text and request id join that fold. With a report, the chat's fold (as on a
+                    // video failure card) sits between the reason and the buttons.
+                    const facts = card?.querySelector('.fv-image-failure-details');
                     const raw = [job.error?.code, job.error?.message, job.error?.request_id].filter(Boolean).join('\n');
-                    if (card && raw) card.querySelector('.fv-image-failure-reason').after(failureFold(t, raw));
+                    if (facts) for (const line of [job.error?.message, job.error?.request_id].filter(Boolean)) facts.append(el('div', null, line));
+                    else if (card && raw) card.querySelector('.fv-image-failure-reason').after(failureFold(t, raw));
                     if (retry && card) {
                         // In the chat it is the same outlined button as on a video failure card.
                         const again = card.querySelector('.fv-image-retry');

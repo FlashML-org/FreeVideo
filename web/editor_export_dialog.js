@@ -91,6 +91,7 @@ export async function openExportDialog({parent, state, sources, t = en => en, on
     try { saved = JSON.parse(localStorage.getItem(EXPORT_SETTINGS_KEY)); } catch { /* Private browsing or old data. */ }
     const value = settings(state.record, state.selection, saved, {remembered: true}), returnFocus = document.activeElement;
     const dialog = el('dialog', 'fv-ed-export-dialog');
+    dialog.dataset.fvOwnTab = ''; // Tab cycles its buttons below; a11y.js stands aside
     dialog.setAttribute('aria-label', t('Export', '导出'));
     const heading = el('h2', '', t('Export', '导出')), rows = el('div', 'fv-ed-export-rows');
     const notices = el('div', 'fv-ed-export-notices');

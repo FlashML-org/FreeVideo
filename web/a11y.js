@@ -131,6 +131,11 @@ function onTab(event) {
     const active = doc.activeElement;
     const layer = frontLayer(active);
     if (!layer) return;
+    // A container that moves focus on Tab by itself says so with data-fv-own-tab. Its handler runs after this
+    // window-level trap, so the trap leaves the press to it (one move per press, not two), unless a layer opened
+    // inside it is in front.
+    const owner = active?.closest?.('[data-fv-own-tab]');
+    if (owner && layer.contains(owner)) return;
     // Only FreeVideo's own layers; ComfyUI's dialogs keep their behaviour.
     if (!(layer.className && /(^|\s)(fv-|sgf)/.test(String(layer.className))) && !layer.closest('[class*="fv-"]:not(html)')) return;
     const stops = tabbables(layer);

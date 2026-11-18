@@ -234,7 +234,7 @@ export function openContextMenu(at, rawItems, {label = '', returnFocus = null, o
     const menuId = `fv-cm-${++serial}`;
     const root = document.createElement('div');
     root.className = 'fv-cm fv-glass fv-g3'; root.id = menuId; root.setAttribute('role', 'menu');
-    root.dataset.fvTipScope = ''; root.tabIndex = -1;
+    root.dataset.fvTipScope = ''; root.dataset.fvOwnTab = ''; root.tabIndex = -1; // Tab closes the menu (below); a11y.js stands aside
     if (label) root.setAttribute('aria-label', words(label));
     if (root.showPopover) root.popover = 'manual';
     const rows = items.map((item, index) => itemRow(item, index, menuId));
@@ -354,7 +354,7 @@ export function focusables(root) {
 export function createLayer({className, label, onKey = () => false, onClose = () => {}}) {
     const dialog = document.createElement('dialog');
     dialog.className = `fv-layer fv-glass fv-g3 ${className}`;
-    dialog.dataset.fvTipScope = ''; dialog.dataset.fvCommandLayer = '';
+    dialog.dataset.fvTipScope = ''; dialog.dataset.fvCommandLayer = ''; dialog.dataset.fvOwnTab = ''; // Tab is the layer's own (below)
     dialog.setAttribute('aria-label', words(label));
     let animation = null, release = null, invoker = null, state = 'closed';
     const keys = event => {
