@@ -7,22 +7,22 @@ html[data-fv-shell],html[data-fv-shell] body{background:var(--fv-shell-bg)!impor
 html[data-fv-shell=view] body{overflow:hidden}
 
 /* Full bleed: a view is the window, not a card on top of it. */
-dialog.fv-studio:is([data-fv-surface=view],.fv-image,.fv-editor,.fv-autopilot,.fv-library,:has(>.fv-header .fv-view-switch)){
+dialog.fv-studio:is([data-fv-surface=view],.fv-image,.fv-editor,.fv-autopilot,.fv-library,[data-hx-dvs]){
   position:fixed;inset:0;width:100vw;width:100dvw;height:100vh;height:100dvh;max-width:none;max-height:none;margin:0;
   border:0;border-radius:0;box-shadow:none;background:var(--fv-bg,var(--fv-shell-bg))}
 /* What is behind a view is the view before it or the node view; the shell ground covers the rest. */
-dialog.fv-studio:is([data-fv-surface=view],.fv-image,.fv-editor,.fv-autopilot,.fv-library,:has(>.fv-header .fv-view-switch))::backdrop{background:transparent;-webkit-backdrop-filter:none;backdrop-filter:none}
+dialog.fv-studio:is([data-fv-surface=view],.fv-image,.fv-editor,.fv-autopilot,.fv-library,[data-hx-dvs])::backdrop{background:transparent;-webkit-backdrop-filter:none;backdrop-filter:none}
 /* Small dialogs over a view keep a veil that covers the whole window. */
 html[data-fv-shell] dialog:not(.fv-studio,.fv-workspace-opening)::backdrop{inset:0}
 
 /* ── One top bar for every view ──────────────────────────────────────────────────────────────
    Same height, same three columns (logo · centred tabs · the same entries), same padding. */
-dialog.fv-studio .fv-header:has(>.fv-view-switch){box-sizing:border-box;height:var(--fv-header-h);min-height:var(--fv-header-h);
+dialog.fv-studio .fv-header[data-hx-vs]{box-sizing:border-box;height:var(--fv-header-h);min-height:var(--fv-header-h);
   grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);padding:0 var(--fv-gutter);
   padding-top:env(safe-area-inset-top,0px);column-gap:var(--fv-sp-16);border-bottom:1px solid var(--fv-line)}
-dialog.fv-studio .fv-header:has(>.fv-view-switch)>.fv-brand{justify-self:start;min-width:0}
-dialog.fv-studio .fv-header:has(>.fv-view-switch)>.fv-view-switch{justify-self:center;grid-column:2}
-dialog.fv-studio .fv-header:has(>.fv-view-switch)>.fv-header-actions{justify-self:end;grid-column:3;min-width:0}
+dialog.fv-studio .fv-header[data-hx-vs]>.fv-brand{justify-self:start;min-width:0}
+dialog.fv-studio .fv-header[data-hx-vs]>.fv-view-switch{justify-self:center;grid-column:2}
+dialog.fv-studio .fv-header[data-hx-vs]>.fv-header-actions{justify-self:end;grid-column:3;min-width:0}
 :is(dialog.fv-studio .fv-header,.fv-view-navigation) .fv-wordmark{width:auto;height:21px;max-width:none}
 
 /* The node view: the same bar across the top of the window instead of a floating card. */
@@ -85,7 +85,7 @@ html[data-fv-shell] .p-dialog-mask{background:rgb(6 8 12 / .72)!important}
 ::view-transition-new(fv-topbar){animation:none;opacity:0}
 /* A view opened on its own (not by a tab) fades in, opacity only so its top bar stays put; inside a switch it does not
    come in a second time. */
-dialog.fv-studio:is([data-fv-surface=view],.fv-image,.fv-editor,.fv-autopilot,:has(>.fv-header .fv-view-switch))[open]{animation:fv-view-enter var(--fv-dur-2) var(--fv-ease-out)}
+dialog.fv-studio:is([data-fv-surface=view],.fv-image,.fv-editor,.fv-autopilot,[data-hx-dvs])[open]{animation:fv-view-enter var(--fv-dur-2) var(--fv-ease-out)}
 dialog.fv-studio[data-fv-quiet][open]{animation:none!important}
 @keyframes fv-view-enter{from{opacity:0}to{opacity:1}}
 @media(prefers-reduced-motion:reduce){dialog.fv-studio[open]{animation:none!important}}

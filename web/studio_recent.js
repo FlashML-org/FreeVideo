@@ -1,5 +1,6 @@
 import { libraryPage, videoThumbnailURL } from './library.js';
 import { icon } from './result_actions.js';
+import { glyph } from './context_menu.js';
 import { applyTasks, toggledTask } from './task_groups.js';
 import { mediaQueue, mediaURL, watchCards } from './work_media.js';
 
@@ -207,6 +208,7 @@ export function createRecentVideos(t, {body, onSelect, onPick = () => {}, rail =
                 card.dataset.video = row.video;
                 cards.set(row.video, card); byVideo.set(row.video, row); list.append(card); thumbnails.observe(image); originals.observe(card);
             }
+            failMark = null;  // the list was rebuilt without it
             order = rows.map(row => row.video);
             if (!order.some(video => byVideo.get(video).task === unfolded)) unfolded = null;
             message.textContent = t('Videos you generate appear here.', '生成的视频会显示在这里。');
@@ -222,9 +224,32 @@ export function createRecentVideos(t, {body, onSelect, onPick = () => {}, rail =
                 message.textContent = error?.restart ? error.message
                     : t('Recent videos could not be loaded. FreeVideo tries again when the next video finishes.', '暂时无法读取最近作品，下一个视频生成完成后会自动再试。');
                 message.hidden = false; list.append(message);
+                if (rail) railFailed(error);
             }
             return [];
         }
+    }
+    // The rail is too narrow for the sentence: a picture-sized mark at the top of the list names the failure on hover and
+    // reads again on a press (disabled while it reads; it stays if the read fails again and goes once it works). A reply
+    // that asks for a restart has nothing to retry, so its mark is not a control, only the reason on hover.
+    let failMark = null;
+    function railFailed(error) {
+        const restart = Boolean(error?.restart);
+        if (!failMark || failMark.dataset.restart !== String(restart)) {
+            failMark?.remove();
+            failMark = el(restart ? 'span' : 'button', null, 'fv-recent-fail');
+            failMark.dataset.restart = String(restart);
+            if (restart) failMark.setAttribute('role', 'img');
+            else { failMark.type = 'button'; failMark.onclick = () => { failMark.disabled = true; refresh(); }; }
+            failMark.innerHTML = glyph('alert');  // the notices' own warning mark
+        }
+        const name = restart ? error.message : t('Recent videos could not be loaded', '无法读取最近作品');
+        const use = restart ? '' : t('Read the recent videos again', '重新读取最近作品');
+        failMark.setAttribute('aria-label', use ? `${name}. ${use}` : name);
+        failMark.dataset.fvTipName = name;
+        if (use) failMark.dataset.fvTipUse = use; else delete failMark.dataset.fvTipUse;
+        if (!restart) failMark.disabled = false;
+        list.prepend(failMark);
     }
     const completed = event => { if (event.detail?.value?.video) refresh(); };
     // A video deleted in Creations leaves this column at once; the next one moves up.

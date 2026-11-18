@@ -152,15 +152,15 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
 /* The switch is the Enhance key in the prompt's tool row (image_view.js); the bar keeps the versions, Rewrite and Cancel
    and shows only while one of them is there. */
 .fv-iv .fv-image-enhance .fv-enhance-bar>.fv-enhance-toggle{display:none}
-.fv-iv .fv-image-enhance .fv-enhance-bar:not(:has(>:not([hidden]):not(.fv-enhance-toggle))){display:none}
+.fv-iv .fv-image-enhance .fv-enhance-bar:not([data-hx-enh]){display:none}
 .fv-iv .fv-iv-prompt-bar .fv-iv-enhance-tool svg{flex:none}
 .fv-iv .fv-iv-prompt-bar .fv-iv-enhance-tool[aria-pressed=true]{color:var(--fv-accent-ink)}
 /* While the count shows (from 1600 characters) the row's keys keep their icons only (their hover cards name them), so
    the count, Clear and Expand fit on the row's one line. */
-.fv-iv .fv-iv-prompt-bar:is([data-compact=true],:has(.fv-iv-prompt-count:not([hidden]))) .fv-iv-text-btn .fv-iv-btn-label{display:none}
+.fv-iv .fv-iv-prompt-bar:is([data-compact=true],[data-hx-cnt]) .fv-iv-text-btn .fv-iv-btn-label{display:none}
 .fv-iv .fv-image-enhance .fv-iv-prompt:focus-visible{box-shadow:inset 0 0 0 1.5px var(--fv-accent-line)}
 /* the helper's status line (with its report button) only while the helper is on */
-.fv-iv .fv-image-enhance:not(:has(.fv-enhance-toggle input:checked)) .fv-enhance-status{display:none}
+.fv-iv .fv-image-enhance:not([data-hx-chk]) .fv-enhance-status{display:none}
 .fv-iv .fv-image-enhance[data-off=true] :is(.fv-enhance-bar,.fv-enhance-status,.fv-enhance-install){display:none}
 .fv-studio .fv-iv .fv-iv-prompt{display:block;width:100%;box-sizing:border-box;height:96px;min-height:96px;max-height:280px;resize:none;padding:12px 12px;border:0;border-radius:var(--fv-r-md);
   background:var(--iv-well);box-shadow:inset 0 0 0 1px var(--fv-line);color:var(--fv-fg);font:inherit;font-size:var(--fv-fs-3,16px);line-height:1.55;
@@ -186,7 +186,7 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
 .fv-iv .fv-iv-ref:hover{transform:scale(1.03)}
 .fv-studio .fv-iv .fv-image-reference-use{position:absolute;inset:0;width:100%;height:100%;min-height:0;padding:0;border:0;background:none;cursor:pointer}
 .fv-iv .fv-iv-ref img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
-.fv-iv .fv-iv-ref b{position:absolute;left:4px;bottom:4px;height:18px;padding:0 8px;border-radius:var(--fv-r-sm);display:flex;align-items:center;font-size:var(--fv-fs-1,12px);font-weight:600;color:#fff;background:rgb(0 0 0 / .55);white-space:nowrap}
+.fv-iv .fv-iv-ref b{position:absolute;left:2px;bottom:2px;box-sizing:border-box;min-width:16px;height:16px;padding:0 4px;border-radius:var(--fv-r-pill);display:flex;align-items:center;justify-content:center;font-size:var(--fv-fs-1,12px);font-weight:600;font-variant-numeric:tabular-nums;color:#fff;background:rgb(0 0 0 / .55);white-space:nowrap}
 .fv-studio .fv-iv .fv-image-reference-remove{position:absolute;right:2px;top:2px;width:20px;height:20px;min-height:0;padding:0;border:0;border-radius:var(--fv-r-pill);display:grid;place-items:center;color:#fff;background:rgb(0 0 0 / .55);opacity:0;cursor:pointer;transition:opacity var(--fv-dur-1,160ms)}
 .fv-studio .fv-iv .fv-image-reference-remove .fv-iv-icon{width:12px;height:12px}
 .fv-iv .fv-iv-ref:hover .fv-image-reference-remove,.fv-iv .fv-iv-ref:focus-within .fv-image-reference-remove{opacity:1}
@@ -248,10 +248,11 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
 .fv-iv .fv-iv-li-s{display:block;font-size:var(--fv-fs-1,12px);line-height:16px;color:var(--fv-fg3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:left}
 .fv-iv .fv-iv-li-end{display:flex;opacity:0;transition:opacity var(--fv-dur-1,160ms);padding-right:4px}
 .fv-iv .fv-iv-li:hover .fv-iv-li-end,.fv-iv .fv-iv-li:focus-within .fv-iv-li-end{opacity:1}
+@media(hover:none){.fv-iv .fv-iv-li-end{opacity:1}}
 .fv-iv .fv-iv-li-end .fv-iv-icon-btn{width:28px;height:28px;color:var(--fv-fg3)}
 .fv-iv .fv-iv-pin[aria-pressed=true]{background:transparent;color:#e9b43a!important}
 .fv-iv .fv-iv-pin[aria-pressed=true] .fv-iv-icon{fill:currentColor}
-.fv-iv .fv-iv-li:has(.fv-iv-pin[aria-pressed=true]) .fv-iv-li-end{opacity:1}
+.fv-iv .fv-iv-li[data-hx-pin] .fv-iv-li-end{opacity:1}
 .fv-iv .fv-iv-preset-save{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px}
 .fv-studio .fv-iv .fv-iv-preset-save input:not([type=checkbox]){flex:1;min-width:0;height:32px;padding:0 12px;border:0;border-radius:var(--fv-rad-ctl,12px);background:var(--fv-ctl-bg);box-shadow:inset 0 0 0 1px var(--fv-line);color:var(--fv-fg);font:inherit}
 .fv-studio .fv-iv .fv-iv-preset-save input:not([type=checkbox]):focus{box-shadow:inset 0 0 0 1.5px var(--fv-accent-line)}
@@ -265,6 +266,11 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
 .fv-iv .fv-iv-slot{display:flex;align-items:center;gap:8px;height:40px;padding:0 4px 0 8px;margin-bottom:8px;border-radius:var(--fv-rad-ctl,12px);font-size:var(--fv-fs-1,12px);color:var(--fv-fg3);overflow:hidden}
 .fv-iv .fv-iv-slot .fv-iv-icon{width:15px;height:15px}
 .fv-iv .fv-iv-slot-tx{flex:1;min-width:0;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:16px}
+.fv-iv .fv-iv-slot[data-whole]{height:auto;min-height:40px;padding-top:8px;padding-bottom:8px;align-items:flex-start}
+.fv-iv .fv-iv-slot[data-whole] .fv-iv-slot-tx{display:block;-webkit-line-clamp:unset;-webkit-user-select:text;user-select:text}
+.fv-iv .fv-iv-slot[data-kind=note]{background:rgb(var(--fv-solid3))}
+.fv-iv .fv-iv-folder-say,.fv-iv .fv-iv-folder-path{display:block}
+.fv-iv .fv-iv-folder-path{overflow-wrap:anywhere}
 .fv-iv .fv-iv-slot[data-kind=warn]{background:var(--fv-warn-soft);color:var(--fv-warn)}
 .fv-iv .fv-iv-slot[data-kind=info]{background:var(--fv-accent-soft);color:var(--fv-accent-ink)}
 .fv-iv .fv-iv-slot-act{height:28px;padding:0 12px;color:inherit;font-weight:600}
@@ -334,7 +340,7 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
 .fv-iv .fv-iv-fail-head{display:flex;align-items:center;gap:12px}
 .fv-iv .fv-iv-fail-head h3{margin:0;font-size:var(--fv-fs-3,16px);font-weight:600}
 .fv-iv .fv-iv-fail-icon{width:36px;height:36px;flex:none;border-radius:var(--fv-r-sm);display:grid;place-items:center;background:var(--fv-warn-soft);color:var(--fv-warn)}
-.fv-iv .fv-iv-fail .fv-result-links{display:grid;gap:12px}
+.fv-iv .fv-iv-fail .fv-result-links{display:grid;grid-template-columns:minmax(0,1fr);justify-content:stretch;gap:12px}
 .fv-iv .fv-iv-fail .fv-image-failure-reason{font-size:var(--fv-fs-2,13px);line-height:1.55;color:var(--fv-fg2);-webkit-user-select:text;user-select:text}
 .fv-iv .fv-iv-fail .fv-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-start}
 .fv-iv .fv-iv-fail-facts{margin:0;padding-top:8px;border-top:1px solid var(--fv-line);font-size:var(--fv-fs-1,12px);color:var(--fv-fg3)}
@@ -399,6 +405,7 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
 .fv-iv .fv-iv-cx{position:absolute;right:8px;top:8px;width:28px;height:28px;border-radius:var(--fv-r-pill);color:#fff;background:rgb(0 0 0 / .45);opacity:0}
 .fv-iv .fv-iv-cx:hover{color:#fff;background:rgb(0 0 0 / .65)}
 .fv-iv .fv-iv-cpane:hover .fv-iv-cx,.fv-iv .fv-iv-cx:focus-visible{opacity:1}
+@media(hover:none){.fv-iv .fv-iv-cx{opacity:1}}
 .fv-iv .fv-iv-cslider .fv-iv-cframe{cursor:ew-resize;touch-action:none}
 .fv-iv .fv-iv-cs-b{clip-path:inset(0 0 0 var(--cut,50%))}
 .fv-iv .fv-iv-cs-handle{position:absolute;top:0;bottom:0;left:var(--cut,50%);width:2px;margin-left:-1px;background:#fff;box-shadow:0 0 0 1px rgb(0 0 0 / .25);outline:none}
@@ -436,16 +443,16 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
 .fv-iv .fv-iv-tile img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;transition:transform var(--iv-dur) var(--iv-ease),border-radius var(--iv-dur) var(--iv-ease)}
 /* placeholders while a picture loads: a soft moving sheen on the frame or tile; the picture fades in whole */
 @keyframes fv-iv-sheen{from{background-position:100% 0}to{background-position:-100% 0}}
-.fv-iv .fv-iv-frame[data-loading=true] .fv-iv-pic,.fv-iv .fv-iv-tile:has(img[data-loaded=false]){
+.fv-iv .fv-iv-frame[data-loading=true] .fv-iv-pic,.fv-iv .fv-iv-tile[data-hx-unl]{
   background:linear-gradient(100deg,rgb(var(--fv-tint)) 30%,color-mix(in srgb,rgb(var(--fv-tint)) 88%,#fff) 50%,rgb(var(--fv-tint)) 70%) 0 0/200% 100%;animation:fv-iv-sheen 1.4s linear infinite}
 .fv-iv .fv-iv-picture[data-loaded=false],.fv-iv .fv-iv-tile img[data-loaded=false]{opacity:0;animation:none}
 .fv-iv .fv-iv-tile img[data-loaded=true]{animation:fv-iv-in 120ms var(--iv-ease)}
-.fv-iv .fv-iv-tile.fv-iv-current:has(img[data-loaded=false])::after{display:none}
+.fv-iv .fv-iv-tile.fv-iv-current[data-hx-unl]::after{display:none}
 /* a picture whose file is gone: a plain tile or frame in place of the browser's broken-image mark */
 .fv-iv img[data-missing=true]{visibility:hidden}
 .fv-iv .fv-iv-cap[data-missing=true] .fv-image-action,.fv-iv .fv-iv-cap[data-missing=true] .fv-iv-sep{display:none}
-.fv-iv .fv-iv-pic:has(.fv-iv-picture[data-missing=true]){background:rgb(var(--fv-tint))}
-@media(prefers-reduced-motion:reduce){.fv-iv .fv-iv-frame[data-loading=true] .fv-iv-pic,.fv-iv .fv-iv-tile:has(img[data-loaded=false]){animation:none}}
+.fv-iv .fv-iv-pic[data-hx-miss]{background:rgb(var(--fv-tint))}
+@media(prefers-reduced-motion:reduce){.fv-iv .fv-iv-frame[data-loading=true] .fv-iv-pic,.fv-iv .fv-iv-tile[data-hx-unl]{animation:none}}
 /* the shown picture opens large on a click */
 .fv-iv .fv-iv-frame[data-state=done] .fv-iv-picture{cursor:zoom-in}
 .fv-image .fv-iv-viewer{position:fixed;inset:0;z-index:40;display:grid;grid-template:minmax(0,1fr)/minmax(0,1fr);place-items:center;padding:24px;box-sizing:border-box;background:rgb(0 0 0 / .92);opacity:0;transition:opacity 160ms ease;outline:none}
@@ -584,7 +591,6 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
 .fv-iv .fv-iv-ref-sketch{position:absolute;left:2px;top:2px;max-width:calc(100% - 4px);height:16px;padding:0 4px;box-sizing:border-box;border-radius:var(--fv-r-xs);display:flex;align-items:center;
   font-style:normal;font-size:var(--fv-fs-1,12px);font-weight:600;line-height:16px;color:#1a1d24;background:rgb(255 255 255 / .9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
 .fv-iv .fv-iv-ref-count{color:var(--fv-fg3);font-weight:400;font-variant-numeric:tabular-nums}
-.fv-iv .fv-iv-ref b{font-size:var(--fv-fs-1,12px);height:16px;padding:0 4px;left:2px;bottom:2px}
 .fv-iv .fv-iv-sec[data-drop=true] .fv-iv-prompt{box-shadow:inset 0 0 0 2px var(--fv-accent-line)}
 /* glass that stays smooth: panels paint on their own, blur pauses while their content scrolls, the day bar is solid */
 .fv-iv .fv-iv-panel{contain:paint}
@@ -614,6 +620,19 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
   .fv-iv .fv-iv-left{contain:none}
   .fv-iv .fv-iv-canvas{height:min(calc(100vw - 24px + 104px),76vh)}
   .fv-iv .fv-iv-frame{width:min(100cqw,calc((100cqh - 104px) * var(--ar)));max-height:calc(100cqh - 104px)}
+}
+
+/* Tablets: the same finger sizes as phones, in the side-panel layout. Mouse sizes are unchanged. */
+@media(pointer:coarse){
+  .fv-iv :is(.fv-iv-icon-btn,.fv-iv-btn.fv-iv-icon-btn){min-width:var(--fv-touch);min-height:var(--fv-touch)}
+  .fv-iv :is(.fv-iv-text-btn,.fv-iv-chip,.fv-iv-link,.fv-iv-model-action){min-height:var(--fv-touch)}
+  .fv-iv .fv-iv-chip{min-width:var(--fv-touch)}
+  .fv-iv :is(.fv-iv-field,.fv-iv-search){height:var(--fv-touch)}
+  .fv-iv .fv-iv-seg>button{min-height:var(--fv-touch)}
+  .fv-iv .fv-iv-prompt-bar{height:auto}
+  .fv-iv .fv-iv-prompt-bar .fv-ed-expand{width:var(--fv-touch);height:var(--fv-touch);min-width:var(--fv-touch);min-height:var(--fv-touch)}
+  .fv-iv.fv-iv :is(.fv-iv-size,.fv-iv-lora) button.fvp-chip{height:var(--fv-touch)!important;min-height:var(--fv-touch)!important}
+  .fv-iv .fv-iv-cap .fv-iv-text-btn{min-width:var(--fv-touch)}
 }
 
 /* ── model: one dropdown row; the list floats over the page (fixed, so the panel never cuts it) ── */
@@ -710,3 +729,17 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
 .fvp-pop[data-kind=image-lora] .fv-ie-lora-actions>button:disabled{opacity:.4;cursor:default}
 .fvp-pop[data-kind=image-lora] .fv-ie-lora-note{margin:0;font-size:var(--fv-fs-1,12px);line-height:18px;color:var(--fv-fg3)}
 .fvp-pop[data-kind=image-lora] .fv-ie-lora-note:empty{display:none}
+
+/* ── tall window (portrait, wider than a phone; image_view.js sets data-tall): the works keep to the top in the layout
+   of one to four columns that gives each picture the most room; the settings float over them as an opaque drawer;
+   the works panel opens below them and takes the height they leave ── */
+.fv-iv[data-tall=true]{--iv-lw:320px;--iv-rw:320px}
+.fv-iv[data-tall=true][data-drawer=left]{--iv-lp:var(--iv-lw)}
+.fv-iv[data-tall=true] .fv-iv-panel{z-index:4}
+.fv-iv[data-tall=true][data-drawer=left] .fv-iv-left{background:rgb(var(--fv-solid2))!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important;box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh3)}
+.fv-iv[data-tall=true][data-below=true] .fv-iv-stage{bottom:calc(var(--iv-sbar) + var(--iv-below,332px))}
+.fv-iv[data-tall=true][data-below=true] .fv-iv-right{top:auto;left:var(--iv-side);right:var(--iv-side);width:auto;height:calc(var(--iv-below,332px) - var(--iv-gut))}
+.fv-iv[data-tall=true] .fv-iv-stage[data-state=blank] .fv-iv-frame-box{align-items:flex-start}
+.fv-iv[data-tall=true] .fv-iv-stage[data-state=blank] .fv-iv-frame{width:min(calc(100cqw - var(--iv-cover,0px)),calc((100cqh - 88px) * var(--iv-grid-ar,1)));aspect-ratio:var(--iv-grid-ar,1)}
+.fv-iv[data-tall=true] .fv-iv-samples{grid-template-columns:repeat(var(--iv-cols,2),minmax(0,1fr));grid-template-rows:repeat(var(--iv-rows,2),minmax(0,1fr))}
+.fv-iv[data-tall=true] .fv-iv-compare[data-mode=grid] .fv-iv-compare-panes{grid-template-columns:repeat(var(--iv-cols,2),var(--iv-tw,minmax(0,1fr)));grid-template-rows:repeat(var(--iv-rows,2),var(--iv-th,minmax(0,1fr)));justify-content:center;align-content:start}

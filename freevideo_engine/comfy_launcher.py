@@ -128,7 +128,9 @@ class Launcher:
         return widget
 
     def language(self):
+        from .launcher_copy import follow_language
         self.zh = not self.zh
+        self.browser_error = follow_language(self.browser_error, self.zh)
         for widget, en, zh in self.labels:
             if widget.winfo_exists():
                 widget.configure(text=self.t(en, zh))
@@ -509,14 +511,19 @@ class Launcher:
                                   urlencode(query), parsed.fragment))
         try:
             self.opened = bool(open_browser(address))
-            if not self.opened:
-                raise OSError(self.t('The system did not accept the browser request.', '系统未接受打开浏览器的请求。'))
+            refused = not self.opened
         except Exception as error:
             # Browser failures must not terminate the GUI poll loop or claim
             # the server failed. Keep the URL and a one-click manual retry.
-            self.opened = False
-            self.browser_error = self.t('ComfyUI is ready, but the browser did not open. Use Open browser or copy the address.\n',
-                'ComfyUI 已就绪，但浏览器未能打开。请点击“打开浏览器”，或复制地址手动打开。\n') + str(error)
+            self.opened, refused, detail = False, False, str(error)
+        if not self.opened:
+            from .launcher_copy import Phrase
+            # Both languages are kept so the message follows a language switch.
+            self.browser_error = Phrase.build(lambda t: t(
+                'ComfyUI is ready, but the browser did not open. Use Open browser or copy the address.\n',
+                'ComfyUI 已就绪，但浏览器未能打开。请点击“打开浏览器”，或复制地址手动打开。\n') + (
+                t('The system did not accept the browser request.', '系统未接受打开浏览器的请求。') if refused else detail),
+                self.zh)
         self.refresh()
 
     def copy_browser_address(self):

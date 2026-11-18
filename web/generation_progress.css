@@ -71,9 +71,9 @@
 .fv-studio .fv-stage[data-short=true] .fv-generation-progress.fv-generation-compact{padding:8px 16px}
 /* A narrow preview must grow for the extra persistent sentence, including a
    simultaneous retry hint. Return to the video's aspect ratio after it ends. */
-.fv-studio .fv-preview-space:has(.fv-generation-compatibility:not([hidden])){min-height:min-content;max-height:none}
-.fv-studio .fv-stage:has(.fv-generation-compatibility:not([hidden])){min-width:0;min-height:min-content}
-.fv-studio .fv-stage .fv-generation-progress.fv-generation-compact:has(.fv-generation-compatibility:not([hidden])){position:relative;inset:auto;transform:none;width:100%;min-width:0}
+.fv-studio .fv-preview-space[data-hx-compat]{min-height:min-content;max-height:none}
+.fv-studio .fv-stage[data-hx-compat]{min-width:0;min-height:min-content}
+.fv-studio .fv-stage .fv-generation-progress.fv-generation-compact[data-hx-compat]{position:relative;inset:auto;transform:none;width:100%;min-width:0}
 /* The small bar keeps its 160 px in the narrower box. */
 .fv-studio .fv-stage .fv-generation-compact .fv-generation-mini{max-width:100%}
 .fv-encoder-path{margin:6px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.6 ui-monospace,monospace;color:var(--fv-muted);user-select:text}

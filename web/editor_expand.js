@@ -2,9 +2,9 @@ import {isolateDialogKeys, listenDialogKey, routeDialogKey} from './dialog_keys.
 // The creative panel loads this file eagerly, so the hover-help writer is local (the timeline's tips module stays lazy).
 function setTip(element, {name, use, why = ''}) {
     for (const [attribute, value] of [['data-fv-tip-name', name], ['data-fv-tip-use', use], ['data-fv-tip-why', why]]) {
-        if (value) element.setAttribute(attribute, value); else element.removeAttribute(attribute);
+        if (value) { if (element.getAttribute(attribute) !== value) element.setAttribute(attribute, value); } else if (element.hasAttribute(attribute)) element.removeAttribute(attribute);
     }
-    element.title = '';
+    if (element.getAttribute('title') !== '') element.title = '';
 }
 
 let style;
@@ -90,6 +90,7 @@ export function createExpandButton({t = en => en, textarea, onGenerate, canGener
         sync();
         if (disposed || element.disabled || dialog) return;
         dialog = el('dialog', 'fv-ed-expand-dialog');
+        dialog.dataset.fvOwnTab = ''; // Tab cycles its three controls below; a11y.js stands aside
         dialog.setAttribute('role', 'dialog'); dialog.setAttribute('aria-modal', 'true');
         dialog.setAttribute('aria-label', t('Description', '描述'));
         const head = el('div', 'fv-ed-expand-head'), title = el('strong', 'fv-ed-expand-title', t('Description', '描述'));

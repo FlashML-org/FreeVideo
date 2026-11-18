@@ -2,6 +2,7 @@
 // (task_store.js); it never owns a job. Leaving a view does not stop anything; Stop asks first.
 // Every view is a modal <dialog> today, and everything outside the topmost modal is inert, so the window is a
 // manual popover that lives inside the topmost open modal dialog (or the body) and moves along as views change.
+import { isNetworkTypeError, connectionLostText } from './browser_extension.js';
 import { api } from '../../scripts/api.js';
 import { app } from '../../scripts/app.js';
 import { jobs, imageSource, progressSource, chainSource, queueSource, ACTIVE, FINAL } from './task_store.js';
@@ -842,7 +843,7 @@ export function installTaskFloat() {
         if (k === 'keep') { ask = null; drawSheet(); card.focus({preventScroll: true}); }
         else if (k === 'stop') {
             const id = ask; ask = null; drawSheet();
-            try { await jobs.cancel(id); } catch { ask = id; stopError = t('Could not stop. Try again.', '没有停止成功，请重试。'); draw(); }
+            try { await jobs.cancel(id); } catch (error) { ask = id; stopError = isNetworkTypeError(error) ? connectionLostText(t) : t('Could not stop. Try again.', '没有停止成功，请重试。'); draw(); }
         } else if (k === 'dismiss') { const id = failCard; failCard = null; if (id) jobs.dismiss(id); draw(); }
         else if (k === 'go') { const target = rows.find(r => r.id === button.dataset.id); if (target) { const visit = failCard === target.id; failCard = null; await expandTo(target, {visit}); } }
     });

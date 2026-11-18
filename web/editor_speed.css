@@ -17,7 +17,7 @@
 .fv-ed-speed-badges > span { flex-shrink:0; padding:1px 4px; border-radius:var(--fv-r-xs); font-size:10px; line-height:14px; color:var(--fv-ink); background:var(--fv-card); border:1px solid var(--fv-border); }
 
 .fv-ed-speed-label .fv-ed-adjust-number{flex:0 0 72px}
-.fv-ed-speed-badges:has(+.fv-ed-picture-badge),.fv-ed-clip:has(.fv-ed-picture-badge) .fv-ed-speed-badges{top:23px}
+.fv-ed-speed-badges[data-hx-pbn],.fv-ed-clip[data-hx-pbc] .fv-ed-speed-badges{top:23px}
 /* What was refused or changed, said under the speed; the reverse note shows while backward sound is silent in preview. */
 .fv-ed-speed-panel .fv-ed-speed-note{margin:-4px 0 0;font-size:12px;line-height:16px;color:var(--fv-warn,var(--fv-warning))}
 .fv-ed-speed-panel .fv-ed-speed-reverse-hint{margin:-4px 0 0;color:var(--fv-fg3,var(--fv-muted))}

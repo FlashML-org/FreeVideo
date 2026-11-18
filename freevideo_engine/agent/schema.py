@@ -626,7 +626,7 @@ def contracts(*, local=False):
     for suffix, method, body in (('', 'GET', None), ('/session', 'GET', None), ('/activity', 'GET', None),
             ('/activity/cancel', 'POST', obj({'id': JOB}, ('id',))), ('/activity/resume', 'POST', obj({'id': JOB}, ('id',))),
             ('/connect', 'GET', None),
-            ('/connect/reset', 'POST', EMPTY), ('/chat', 'GET', None), ('/chat/now', 'GET', None),
+            ('/connect/reset', 'POST', EMPTY), ('/connect/disconnect', 'POST', EMPTY), ('/chat', 'GET', None), ('/chat/now', 'GET', None),
             ('/chat/video', 'GET', None), ('/chat/list', 'GET', None), ('/chat/new', 'POST', EMPTY),
             ('/chat/delete', 'POST', obj({'session': SESSION, 'stop': {'type': 'boolean'}}, ('session',))),
             ('/chat/rename', 'POST', obj({'session': SESSION, 'title': {'type': 'string', 'maxLength': 60}}, ('session', 'title'))),
@@ -807,7 +807,8 @@ def cast_view():
         description=nullable(string(1000)), revision=number(1, integer=True),
         images=array(picture, 0, 6), candidates=array(picture, 0, 6),
         generating=nullable(generating), generated=nullable(generated),
-        generate_error=nullable(obj(dict(code=string(), job=JOB, message=string(), error_zh=string(), error_en=string()), ('code', 'job', 'message')))),
+        generate_error=nullable(obj(dict(code=string(), job=JOB, message=string(), error_zh=string(), error_en=string(),
+            next_zh=string(), next_en=string()), ('code', 'job', 'message')))),
         ('id', 'kind', 'name', 'revision', 'images', 'candidates', 'generating')), additionalProperties=True)
 
 
@@ -1731,7 +1732,7 @@ def openapi():
                 other_usage=nullable(obj(dict(vram_gib=number(0), ram_gib=number(0),
                     kinds={'type': 'array', 'items': enum(('gpu', 'ram'))}, signature=string()),
                     ('vram_gib', 'ram_gib', 'kinds', 'signature'))),
-                error_zh=string(), error_en=string()),
+                error_zh=string(), error_en=string(), next_zh=string(), next_en=string()),
                 ('code', 'message', 'details', 'retryable', 'request_id', 'docs'))}))
 
 

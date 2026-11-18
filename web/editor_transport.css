@@ -64,19 +64,19 @@
 .fv-studio.fv-editor .fv-ed-timeline-marker[aria-pressed=true]{filter:none;outline:none}
 .fv-studio.fv-editor .fv-ed-timeline-marker[aria-pressed=true]::after{box-shadow:0 0 0 2px var(--fv-fg);clip-path:none;border-radius:var(--fv-r-xs);transform:rotate(45deg) scale(.78)}
 .fv-studio.fv-editor .fv-ed-timeline-marker[data-blocked=true]::after{opacity:.45}
-/* Shortcut sheet: a glass card over the stage. */
+/* Shortcut sheet: a solid card over the stage. */
 .fv-studio.fv-editor .fv-ed-shortcut-sheet{border:1px solid var(--fv-edge,var(--fv-line));border-radius:var(--fv-rad-pop,16px);padding:16px;color:var(--fv-fg);
-  background:rgb(var(--fv-tint) / var(--fv-a3,.8));box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh3);-webkit-backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%);backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%)}
+  background:rgb(var(--fv-solid3));box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh3)}
 .fv-studio.fv-editor .fv-ed-shortcut-sheet caption{font-size:var(--fv-fs-3,16px);font-weight:600}
 .fv-studio.fv-editor .fv-ed-shortcut-sheet td{border-bottom-color:var(--fv-line);font-size:var(--fv-fs-1,12px)}
 .fv-studio.fv-editor .fv-ed-shortcut-sheet td:first-child{color:var(--fv-fg3);font-variant-numeric:tabular-nums}
 :is(:root[data-glass=solid],:root.lite) .fv-studio.fv-editor .fv-ed-shortcut-sheet{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--fv-solid3))}
 @media(prefers-reduced-transparency:reduce){.fv-studio.fv-editor .fv-ed-shortcut-sheet{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--fv-solid3))}}
 @media(prefers-reduced-motion:reduce){.fv-studio.fv-editor :is(.fv-ed-transport-center,.fv-ed-transport-tools,.fv-ed-toolbar,.fv-ed-track-zoom) button:active{transform:none}}
-/* Preview volume: a slim glass slider above its key; it never changes the export. */
+/* Preview volume: a slim solid slider above its key; it never changes the export. */
 .fv-studio.fv-editor .fv-ed-volume-box{position:relative;display:inline-grid}
 .fv-studio.fv-editor .fv-ed-volume-pop{position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);z-index:12;padding:12px 8px;border:1px solid var(--fv-edge,var(--fv-line));border-radius:var(--fv-r-lg);
-  background:rgb(var(--fv-tint) / var(--fv-a3,.8));box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh3);-webkit-backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%);backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%)}
+  background:rgb(var(--fv-solid3));box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh3)}
 .fv-studio.fv-editor .fv-ed-volume-slider{display:block;width:112px;height:24px;margin:0;accent-color:var(--fv-accent);cursor:pointer}
 .fv-studio.fv-editor .fv-ed-volume-pop[hidden]{display:none}
 :is(:root[data-glass=solid],:root.lite) .fv-studio.fv-editor .fv-ed-volume-pop{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--fv-solid3))}

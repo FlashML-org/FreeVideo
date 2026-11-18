@@ -1,6 +1,8 @@
 """Stream browser media to ComfyUI input without buffering a clip in RAM."""
 import asyncio
+import errno
 import json
+import logging
 import os
 from pathlib import Path, PurePosixPath, PureWindowsPath
 import shutil
@@ -91,6 +93,16 @@ async def receive(reader, input_directory, *, store_root=None):
     return result
 
 
+def failure_body(error):
+    """The JSON body and status for a failed upload. An OS error's raw text can hold the user's path, so the page gets a reason it can act on."""
+    if isinstance(error, OSError):
+        from .disk_space import ran_out
+        code = 'disk_full' if ran_out(error) else 'not_writable' if isinstance(error, PermissionError) or error.errno in (errno.EACCES, errno.EROFS) else 'failed'
+        logging.getLogger(__name__).warning('Media upload failed (%s, %s).', type(error).__name__, code, exc_info=error if code == 'failed' else None)
+        return {'error': 'Upload failed', 'code': code}, 507 if code == 'disk_full' else 400
+    return {'error': str(error), 'code': getattr(error, 'code', 'failed')}, 400
+
+
 def register():
     from aiohttp import web
     import folder_paths
@@ -104,7 +116,8 @@ def register():
         try:
             result = await receive(await request.multipart(), folder_paths.get_input_directory())
         except (OSError, ValueError) as error:
-            return web.json_response({'error': str(error), 'code': getattr(error, 'code', 'failed')}, status=400)
+            body, status = failure_body(error)
+            return web.json_response(body, status=status)
         return web.json_response(result)
 
     from .lora_triggers import get_trigger, set_trigger

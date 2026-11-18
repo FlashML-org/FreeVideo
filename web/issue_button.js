@@ -9,8 +9,8 @@ const ISSUE_FORM = 'https://github.com/FlashML-org/FreeVideo/issues/new';
 
 /**
  * Title, text and summary for the prefilled form. `where` is [English, Chinese] words for the place
- * ("Export", "导出"); `message` is the sentence the user sees; `facts` is an optional flat object of numbers and
- * states (never text or paths) that travels in the summary.
+ * ("Export", "导出"); `message` is the sentence the user sees; `facts` is an optional flat object of numbers,
+ * states and fixed code identifiers (never user text or paths) that travels in the summary.
  */
 export function issueDraft({where, message, kind = null, facts = null}, t = en => en) {
     const place = Array.isArray(where) ? where : [String(where || 'FreeVideo'), String(where || 'FreeVideo')];

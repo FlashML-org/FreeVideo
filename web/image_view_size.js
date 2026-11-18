@@ -1,17 +1,19 @@
 // Picture size: any area inside the model's range at the chosen shape, in steps of 32 pixels. "Standard" and
 // "High" are two quick points on the scale, not the only choices. The engine checks width and height, not tiers:
-// H3 Image takes 4 to 16 MP (each side 256 to 8192), Qwen-Image 2.1 takes each side 256 to 2048.
+// H3 Image takes 4 to 16 MP (each side 256 to 8192), Qwen-Image 2.1 and MOSS-Image take each side 256 to 2048.
 import { createFrameChip } from './glass/frame_picker.js';
 import { el, t, tip } from './image_view_ui.js';
 
 export const SNAP = 32;
 export const MP = 1e6;
-export const H3 = 'minimax-h3-image', QWEN = 'qwen-image-2.1-turbo';
+export const H3 = 'minimax-h3-image', QWEN = 'qwen-image-2.1-turbo', MOSS = 'moss-image-sft';
 export const RANGES = Object.freeze({
     [H3]: Object.freeze({minArea: 2048 * 2048, maxArea: 4096 * 4096, minSide: 256, maxSide: 8192, step: .5 * MP,
         presets: Object.freeze({standard: 2048 * 2048, high: 4096 * 4096})}),
     [QWEN]: Object.freeze({minArea: 0, maxArea: Infinity, minSide: 256, maxSide: 2048, step: .1 * MP,
         presets: Object.freeze({standard: 1024 * 1024, high: 1280 * 1280})}),
+    [MOSS]: Object.freeze({minArea: 0, maxArea: 2048 * 2048, minSide: 256, maxSide: 2048, step: .1 * MP,
+        presets: Object.freeze({standard: 1024 * 1024, high: 2048 * 2048})}),
 });
 export const RATIOS = Object.freeze(['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3']);
 const rangeOf = model => RANGES[model] || RANGES[QWEN];

@@ -5,6 +5,7 @@
 // The wire adapter, failure card, report and reference rules are the editor's own (image_generation.js);
 // a running picture belongs to the page-wide job store (task_store.js), so leaving the page never stops it.
 import { api } from '../../scripts/api.js';
+import { isNetworkTypeError, connectionLostText } from './browser_extension.js';
 import { closeDialog } from './motion.js';
 import { listenDialogKey, topDialog } from './dialog_keys.js';
 import { openEditorView } from './editor_loader.js';
@@ -33,6 +34,7 @@ import { COMPARE_MAX, compareView } from './image_view_compare.js';
 import { queuePanel } from './image_view_queue.js';
 import { isHeld, worksClient, saveToWorks } from './image_works.js';
 import { createWarmer } from './image_view_warm.js';
+import { preloadMode } from './preload_setting.js';
 import { openPictureViewer } from './image_view_viewer.js';
 import { LORA_MODEL, imageViewLora } from './image_view_lora.js';
 import { hasPictureThumbnail, mediaQueue, pictureThumbnailURL } from './work_media.js';
@@ -47,6 +49,7 @@ const remember = id => { try { localStorage.setItem(MODEL_KEY, id); } catch { /*
 
 // H3 Image is made for 4 to 16 MP; a smaller picture would still cost a 4 MP canvas, so its tiers start there.
 const H3_AREAS = Object.freeze({standard: 2048, high: 4096});
+const MOSS_AREAS = Object.freeze({standard: 1024, high: 2048});
 // The shape of a picture as a ratio, when it is one of the common ones; otherwise nothing is said.
 const SHAPES = [[1, 1], [16, 9], [9, 16], [4, 3], [3, 4], [3, 2], [2, 3], [21, 9], [9, 21]];
 export function shapeOf(width, height) {
@@ -58,18 +61,19 @@ const pictureShape = shapeOf;
 // A size with the ratio at about the tier's area, in steps of 32 (kept for callers of the two-tier page).
 export function imageSize(ratio, tier = 'standard', same = null, model = '') {
     const [w, h] = (ratio === 'same' && same ? [same.width, same.height] : ratio.split(':').map(Number));
-    const areas = model === 'minimax-h3-image' ? H3_AREAS : BLANK_CANVAS_AREAS;
+    const areas = model === 'minimax-h3-image' ? H3_AREAS : model === 'moss-image-sft' ? MOSS_AREAS : BLANK_CANVAS_AREAS;
     const side = areas[tier] || areas.standard;
     const scale = Math.sqrt(side * side / (w * h));
-    const round = value => Math.max(32, Math.round(value * scale / 32) * 32);
+    const step = model === 'moss-image-sft' ? 16 : 32;
+    const round = value => Math.max(model === 'moss-image-sft' ? 256 : 32, Math.min(model === 'moss-image-sft' ? 2048 : Infinity, Math.round(value * scale / step) * step));
     return {width: round(w), height: round(h)};
 }
 
 // Stands in for the engine until it answers (tests and the first skeleton): a flat picture after a short wait.
 // references: how many pictures each model row reports it takes, as the engine does. history: rows to start with.
 // install: per model, 'missing' | 'failed' | 'downloading' to start in that state. sizes: the engine's tier list.
-export function createFakeImageClient({delay = 600, ready = {'minimax-h3-image': true, 'qwen-image-2.1-turbo': true}, fail = null, steps = 0,
-    references = {'minimax-h3-image': 0, 'qwen-image-2.1-turbo': 4}, history = [], install = {}, sizes = ['standard', 'high'], fitted = null, bytes = 12.5e9, rate = 5e6} = {}) {
+export function createFakeImageClient({delay = 600, ready = {'minimax-h3-image': true, 'qwen-image-2.1-turbo': true, 'moss-image-sft': true}, fail = null, steps = 0,
+    references = {'minimax-h3-image': 0, 'qwen-image-2.1-turbo': 4, 'moss-image-sft': 0}, history = [], install = {}, sizes = ['standard', 'high'], fitted = null, bytes = 12.5e9, rate = 5e6} = {}) {
     const items = history.map(row => typeof row === 'string' ? {file: row, name: row.slice(row.lastIndexOf('/') + 1)} : row); let count = 0;
     const jobs = new Map(), state = {...ready}; const loading = new Map(), failed = new Set(Object.keys(install).filter(id => install[id] === 'failed'));
     for (const id of Object.keys(install)) { if (install[id] !== 'ready') state[id] = false; if (install[id] === 'downloading') loading.set(id, Date.now() - bytes / rate * .4); }
@@ -224,7 +228,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     else shownFile = rows[0]?.file || '';
     // The model made ready ahead (image_view_warm.js); only the model and the level go to the engine.
     const warmer = createWarmer({getToken: async () => info?.token || ''});
-    function warmUp(level) { if (alive && !running && modelState(info, model.id).state === 'ready') warmer.warm(model.id, level); }
+    function warmUp(level, beside = false) { if (alive && !running && modelState(info, model.id).state === 'ready') warmer.warm(model.id, level, {beside}); }
     const entry = () => info?.models?.find(m => m.id === model.id) || null;
     const missing = () => entry() ? entry().ready === false : false;
     const loading = () => modelState(info, model.id).state === 'downloading';
@@ -422,7 +426,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     const menuItem = (iconName, text, use, onClick, cls = '') => { const b = el('button', 'fv-iv-menu-item ' + cls); b.type = 'button'; b.setAttribute('role', 'menuitem'); b.append(icon(iconName), el('span', '', text)); tip(b, text, use); b.addEventListener('click', () => { more.hidden = true; onClick(); }); return b; };
     const copyPrompt = () => { const text = promptFor(shownFile); try { void navigator.clipboard?.writeText(text); } catch { /* the clipboard may be refused */ } };
     const usePromptItem = menuItem('prompt', t('Use prompt', '使用提示词'), t('Put its prompt back in the box', '把它的提示词填回描述框'), () => { const text = promptFor(shownFile); if (text) { prompt.value = text; prompt.dispatchEvent(new Event('input', {bubbles: true})); promptGroup.open(true); } });
-    more.append(menuItem('folder', t('Open folder', '打开文件夹'), t('Show the pictures on this computer', '在电脑上打开保存图片的文件夹'), () => void client.historyOpen?.()),
+    more.append(menuItem('folder', t('Open folder', '打开文件夹'), t('Show the pictures on this computer', '在电脑上打开保存图片的文件夹'), () => void openFolder()),
         menuItem('copy', t('Copy prompt', '复制提示词'), t('Copy the words this picture was made from', '复制这张图的提示词'), copyPrompt), usePromptItem,
         menuItem('trash', t('Delete', '删除'), t('Move to recently deleted; can be undone', '移到最近删除，可以撤销'), () => deleteFiles([shownFile]), 'fv-iv-danger'));
     const moreHost = el('span', 'fv-image-more-host fv-iv-more-host'); moreHost.append(moreButton, more);
@@ -432,7 +436,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     const copyInline = inlineBtn('copy', t('Copy prompt', '复制提示词'), t('Copy the words this picture was made from', '复制这张图的提示词'), copyPrompt);
     const useInline = inlineBtn('prompt', t('Use prompt', '使用提示词'), t('Put its prompt back in the box', '把它的提示词填回描述框'), () => usePromptItem.click());
     inline.append(copyInline, useInline,
-        inlineBtn('folder', t('Open folder', '打开文件夹'), t('Show the pictures on this computer', '在电脑上打开保存图片的文件夹'), () => void client.historyOpen?.()),
+        inlineBtn('folder', t('Open folder', '打开文件夹'), t('Show the pictures on this computer', '在电脑上打开保存图片的文件夹'), () => void openFolder()),
         inlineBtn('trash', t('Delete', '删除'), t('Move to recently deleted; can be undone', '移到最近删除，可以撤销'), () => deleteFiles([shownFile]), 'fv-iv-danger'));
     const capActions = el('div', 'fv-iv-cap-actions'); capActions.append(editThis, asReference, el('i', 'fv-iv-sep'), favBtn, save, inline, moreHost);
     cap.append(info_, capActions);
@@ -463,7 +467,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             const copy = button('fv-iv-text-btn', {iconName: 'copy', label: t('Copy prompt', '复制提示词'), name: t('Copy prompt', '复制提示词'), use: t('Copy the words this picture was made from', '复制这张图的提示词')});
             copy.addEventListener('click', copyPrompt);
             const reuse = button('fv-iv-text-btn', {iconName: 'prompt', label: t('Use prompt', '使用提示词'), name: t('Use prompt', '使用提示词'), use: t('Put its prompt back in the box', '把它的提示词填回描述框')});
-            reuse.addEventListener('click', () => { prompt.value = text; prompt.dispatchEvent(new Event('input', {bubbles: true})); promptGroup.open(true); if (narrowQuery.matches) setPanel('left', true); });
+            reuse.addEventListener('click', () => { prompt.value = text; prompt.dispatchEvent(new Event('input', {bubbles: true})); promptGroup.open(true); if (narrowQuery.matches || tallQuery.matches) setPanel('left', true); });
             acts.append(copy, reuse); parts.push(acts);
         }
         if (!shownFile) { const e = el('div', 'fv-iv-empty fv-iv-empty-small'); e.append(icon('info'), el('span', '', t('Pick a picture to see its facts', '选一张图片查看信息'))); parts.splice(0, parts.length, e); }
@@ -543,7 +547,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         onTrash: value => { view = value === false ? 'works' : view === 'trash' ? 'works' : 'trash'; drawWorks(); },
         onRestore: files => { restoreWorks(files); if (undoNote) undoNote.files = undoNote.files.filter(f => !files.includes(f)); if (!undoNote?.files.length) undoNote = null; drawWorks(); render(); },
         onPurge: () => { void trash.flush(); },
-        onOpenFolder: () => void client.historyOpen?.(),
+        onOpenFolder: () => void openFolder(),
         onCollapse: () => setPanel('right', false), onRun: () => returnToRun()});
     const rightRail = el('div', 'fv-iv-rail fv-iv-rail-right');
     const rightRailOpen = button('fv-iv-icon-btn', {iconName: 'panelR', name: t('Show works', '展开作品栏'), use: t('Your pictures, newest first', '你的图片，最新在前')});
@@ -613,8 +617,20 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     // Under 1280 wide both panels rest as rails and open as drawers over the stage, one at a time, so the picture
     // keeps the room; the stage still measures from the two rails, so it stays centred. Wide, they dock and fold.
     const narrowQuery = matchMedia('(min-width: 720px) and (max-width: 1279px)');
-    let drawer = '';
+    // A tall window (portrait, wider than a phone): the settings open as a drawer over the works, and the works panel
+    // opens below them, taking the height they leave (at least 320 px), so it never narrows them from the side.
+    const tallQuery = matchMedia('(orientation: portrait) and (min-width: 720px)');
+    let drawer = '', below = false;
     function paintPanels() {
+        if (tallQuery.matches) {
+            if (drawer === 'right') drawer = '';
+            left.dataset.collapsed = String(drawer !== 'left'); column.dataset.collapsed = String(!below);
+            body.dataset.tall = 'true'; body.dataset.below = String(below); body.dataset.narrow = 'true'; body.dataset.drawer = drawer;
+            body.dataset.left = 'rail'; body.dataset.right = 'rail';
+            paintCover(); fitTallSoon();
+            return;
+        }
+        delete body.dataset.tall; delete body.dataset.below;
         const narrow = narrowQuery.matches;
         const leftShown = narrow ? drawer === 'left' : panels.left !== false, rightShown = narrow ? drawer === 'right' : panels.right !== false;
         left.dataset.collapsed = String(!leftShown); column.dataset.collapsed = String(!rightShown);
@@ -626,20 +642,76 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     // windows) covers its left part, so the frame centres in the rest.
     function paintCover() {
         let cover = 0;
-        if (stage.dataset.state === 'draft' && body.dataset.drawer === 'left' && !matchMedia('(max-width: 719px)').matches) {
+        if (stage.dataset.state === 'draft' && body.dataset.drawer === 'left' && !tallQuery.matches && !matchMedia('(max-width: 719px)').matches) {
             const l = left.getBoundingClientRect(), c = canvasArea.getBoundingClientRect();
             cover = Math.max(0, Math.round(l.right + 12 - c.left));
         }
         shot.style.setProperty('--iv-cover', `${cover}px`);
     }
     function setPanel(side, open) {
-        if (narrowQuery.matches) drawer = open ? side : drawer === side ? '' : drawer;
+        if (tallQuery.matches && side === 'right') below = open;
+        else if (tallQuery.matches || narrowQuery.matches) drawer = open ? side : drawer === side ? '' : drawer;
         else { panels[side] = open; writeStore(PANEL_KEY, panels); }
         paintPanels(); if (open && side === 'left') fitSoon();
     }
     narrowQuery.addEventListener('change', () => { drawer = ''; paintPanels(); fitSoon(); });
-    // A drawer closes when the stage is touched.
+    tallQuery.addEventListener('change', () => { drawer = ''; below = false; paintPanels(); fitSoon(); });
+    // A drawer closes when the stage is touched; on a tall window, when anything outside it is.
     stage.addEventListener('pointerdown', () => { if (drawer) { drawer = ''; paintPanels(); } });
+    body.addEventListener('pointerdown', event => { if (tallQuery.matches && drawer === 'left' && !left.contains(event.target)) { drawer = ''; paintPanels(); } });
+    // The works grid on a tall window (the four samples, or three or four works compared): of one to four columns, the
+    // layout that gives each picture the most room in the width and height there are; it keeps to the top. With the
+    // works panel open below, the panel takes the height the grid leaves.
+    const TALL_PANEL = 320;
+    let tallFrame = 0;
+    function fitTallSoon() { cancelAnimationFrame(tallFrame); tallFrame = requestAnimationFrame(() => { tallFrame = 0; fitTall(); }); }
+    function bestGrid(n, ratio, width, height, gap) {
+        let best = null;
+        for (let cols = 1; cols <= Math.min(4, n); cols++) {
+            const rows = Math.ceil(n / cols);
+            const w = Math.min((width - (cols - 1) * gap) / cols, ((height - (rows - 1) * gap) / rows) * ratio);
+            if (w > 0 && (!best || w > best.w + 0.5)) best = {cols, rows, w: Math.floor(w), h: Math.floor(w / ratio)};
+        }
+        return best && {...best, height: best.rows * best.h + (best.rows - 1) * gap, width: best.cols * best.w + (best.cols - 1) * gap};
+    }
+    function fitTall() {
+        if (!alive) return;
+        const panes = comparer.element.querySelector('.fv-iv-compare-panes');
+        if (!tallQuery.matches) {
+            for (const target of [shot, panes]) for (const name of ['--iv-cols', '--iv-rows', '--iv-tw', '--iv-th', '--iv-grid-ar']) target?.style.removeProperty(name);
+            body.style.removeProperty('--iv-below');
+            return;
+        }
+        const now = parseFloat(body.style.getPropertyValue('--iv-below')) || TALL_PANEL + 12;
+        let used = 0, spare = 0;
+        if (stage.dataset.mode === 'compare' && comparer.element.dataset.mode === 'grid' && panes) {
+            const files = compare?.files || [], ratios = files.map(file => { const m = meta.get(file); return m?.width ? m.width / m.height : 0; }).filter(r => r > 0);
+            const ratio = ratios.length ? ratios.reduce((a, b) => a + b, 0) / ratios.length : 1;
+            const extra = below ? now - (TALL_PANEL + 12) : 0, height = panes.clientHeight + extra;
+            const g = bestGrid(files.length, ratio, panes.clientWidth, height, 12);
+            if (g) {
+                for (const [name, value] of [['--iv-cols', g.cols], ['--iv-rows', g.rows], ['--iv-tw', `${g.w}px`], ['--iv-th', `${g.h}px`]]) panes.style.setProperty(name, String(value));
+                used = 1; spare = height - g.height;
+            }
+        } else if (stage.dataset.state === 'blank') {
+            const pictures = [...grid.querySelectorAll('img')], first = pictures.find(i => i.naturalWidth);
+            const ratio = first ? first.naturalWidth / first.naturalHeight : 1;
+            const extra = below ? now - (TALL_PANEL + 12) : 0, height = canvasArea.clientHeight - 88 + extra;
+            const g = bestGrid(pictures.length, ratio, canvasArea.clientWidth, height, 12);
+            if (g) {
+                for (const [name, value] of [['--iv-cols', g.cols], ['--iv-rows', g.rows]]) shot.style.setProperty(name, String(value));
+                shot.style.setProperty('--iv-grid-ar', String(g.width / g.height));
+                used = 1; spare = height - g.height;
+            }
+        }
+        const want = below ? Math.round(TALL_PANEL + 12 + (used ? Math.max(0, spare) : 0)) : 0;
+        if (want) { if (Math.abs(want - now) > 1 || !body.style.getPropertyValue('--iv-below')) body.style.setProperty('--iv-below', `${want}px`); }
+        else body.style.removeProperty('--iv-below');
+    }
+    const tallWatch = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { if (tallQuery.matches) fitTallSoon(); }) : null;
+    tallWatch?.observe(body);
+    for (const image of grid.querySelectorAll('img')) image.addEventListener('load', () => { if (tallQuery.matches) fitTallSoon(); });
+    comparer.element.addEventListener('load', () => { if (tallQuery.matches) fitTallSoon(); }, true);
     leftCollapse.addEventListener('click', () => setPanel('left', false));
     railOpen.addEventListener('click', () => setPanel('left', true));
     rightRailOpen.addEventListener('click', () => setPanel('right', true));
@@ -655,11 +727,38 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     listenDialogKey(prompt, 'paste', event => { const files = [...(event.clipboardData?.files || [])].filter(f => f.type.startsWith('image/')); if (files.length) { event.preventDefault(); addFiles(files); } });
 
     const say = text => { note.textContent = text || ''; if (alive) paintSlot(); };
+    // Open folder: when the engine cannot show it (no desktop, or a remote engine: expected there, not a fault), the line
+    // above Generate says so as a plain note and gives the folder on a line of its own, so the click is never silent;
+    // opening it later clears that line. (The wording is the one the image history used before 0.6.0.)
+    let folderNote = null;
+    async function openFolder() {
+        let answer;
+        try { answer = await client.historyOpen?.(); } catch { answer = {opened: false}; }
+        if (!alive) return;
+        if (answer?.opened === false) {
+            const sentence = t('The folder could not be opened automatically. Open it in a file manager.', '无法自动打开该文件夹，请在文件管理器中手动打开');
+            const folder = typeof answer.folder === 'string' ? answer.folder : '';
+            folderNote = {sentence, folder, text: folder ? `${sentence} ${folder}` : sentence};
+            say(folderNote.text);
+        } else if (folderNote && note.textContent === folderNote.text) { folderNote = null; say(''); }
+    }
+    // The folder note's two lines. Its path breaks only where it does not fit (its spaces are shown unbreakable and
+    // copied as plain spaces, so a copied path still works).
+    function folderParts() {
+        const tx = el('span', 'fv-iv-slot-tx'); tx.append(el('span', 'fv-iv-folder-say', folderNote.sentence));
+        if (folderNote.folder) tx.append(el('span', 'fv-iv-folder-path', folderNote.folder.replace(/ /g, '\u00a0')));
+        tx.addEventListener('copy', event => {
+            const text = String(globalThis.getSelection?.() || '').replace(/\u00a0/g, ' ');
+            if (!text || !event.clipboardData) return;
+            event.clipboardData.setData('text/plain', text); event.preventDefault();
+        });
+        return [icon('info'), tx];
+    }
     const label = number => t(`Image ${number}`, `图 ${number}`);
     const subject = number => t(`Subject ${number}`, `主体 ${number}`);
     // Each model row says how many pictures it takes; the strip holds as many as the most generous one.
     // Until the engine answers, each model's usual reference count, so the strip has its final height from the first frame.
-    const USUAL_CAPS = {'minimax-h3-image': 16, 'qwen-image-2.1-turbo': 4};
+    const USUAL_CAPS = {'minimax-h3-image': 16, 'qwen-image-2.1-turbo': 4, 'moss-image-sft': 0};
     function cap_(m) { if (!info?.models) return USUAL_CAPS[m.id] || 0; const n = Number(info.models.find(r => r.id === m.id)?.max_images); return Number.isInteger(n) && n > 0 ? n : 0; }
     const most = () => Math.max(0, ...IMAGE_MODELS.map(cap_));
     const over = () => Math.max(0, references.length - cap_(model));
@@ -782,7 +881,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             tip(use, t('Edit', '编辑'), r.original ? t(`${label(at + 1)}, edited. Crop or retouch it again`, `${label(at + 1)}（已编辑）：继续裁剪或修图`) : t(`Crop or retouch ${label(at + 1)}; it stays in its place`, `裁剪或修图${label(at + 1)}，改完放回原位`));
             tip(x, t('Remove', '移除'), cell.dataset.over === 'true' ? t(`${model.short} takes ${cap_(model)}; remove this one`, `${model.short} 最多 ${cap_(model)} 张，请移除这张`) : t('Take this picture out', '去掉这张参考图'));
             x.append(icon('x'));
-            const i = el('img'); i.src = r.url; i.alt = ''; i.draggable = false; use.append(i, el('b', '', label(at + 1)));
+            const i = el('img'); i.src = r.url; i.alt = ''; i.draggable = false; use.append(i, el('b', '', String(at + 1)));
             use.onclick = () => void editReference(r);
             x.onclick = () => { notice.dataset.keep = 'false'; URL.revokeObjectURL(r.url); if (r.original) URL.revokeObjectURL(r.original.url); changeRefs(() => references.splice(references.indexOf(r), 1)); render(); };
             cell.append(use, x);
@@ -890,7 +989,8 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         // One fixed-height line above Generate: the most pressing thing there is to say.
         const s = modelState(info, model.id), tooMany = over() > 0;
         let kind = '', parts = [];
-        if (note.textContent) { kind = note.dataset.kind === 'busy' ? 'info' : 'warn'; parts = [icon(kind === 'info' ? 'clock' : 'warn'), el('span', 'fv-iv-slot-tx', note.textContent)]; }
+        if (note.textContent && folderNote && note.textContent === folderNote.text) { kind = 'note'; parts = folderParts(); }
+        else if (note.textContent) { kind = note.dataset.kind === 'busy' ? 'info' : 'warn'; parts = [icon(kind === 'info' ? 'clock' : 'warn'), el('span', 'fv-iv-slot-tx', note.textContent)]; }
         else if (tooMany) {
             kind = 'warn';
             parts = [icon('warn'), el('span', 'fv-iv-slot-tx', cap_(model) === 0 ? t(`${model.short} does not take reference pictures. Remove ${over()}.`, `${model.short} 暂不支持参考图，请移除 ${over()} 张。`) : t(`${model.short} takes at most ${cap_(model)}. Remove ${over()}.`, `${model.short} 最多 ${cap_(model)} 张，请移除 ${over()} 张。`))];
@@ -909,6 +1009,8 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         else if (fitted && fitted.file === shownFile) { kind = 'info'; parts = [icon('info'), el('span', 'fv-iv-slot-tx', fittedNote(fitted, t, !!info?.unified_memory))]; }
         else parts = running ? [el('span', 'fv-iv-slot-tx', t('Generating; you can leave this view', '正在生成，可以离开这个视图'))] : [];
         slot.dataset.kind = kind; slot.replaceChildren(...parts);
+        // A folder that could not be opened is read (and copied) in full: that line takes the height it needs.
+        slot.toggleAttribute('data-whole', kind === 'note');
         paintStatus();
     }
 
@@ -1115,6 +1217,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         }
         comparer.paint(compare);
         stage.dataset.mode = compare ? 'compare' : 'single';
+        if (tallQuery.matches) fitTallSoon();
         if (rightTab === 'info' && infoPop.dataset.file !== shownFile) { infoPop.dataset.file = shownFile; paintInfo(); }
         tabWorksN.textContent = '';
     }
@@ -1252,7 +1355,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             running = null; level.hidden = true; clearStep();
             // The worker is full: a state of the worker, shown in place, not a failed picture.
             if (IMAGE_BUSY.has(error.code)) { note.dataset.kind = 'busy'; say(imageGenError(error.code, info, t)); render(); drawWorks(); return; }
-            failure = {error: error.code || 'generation_failed', report_id: error.report_id, stage: error.stage, fitted: error.fitted, memory: error.memory, other_usage: error.other_usage, retryStandard: tierNow === 'high' && error.code === 'no_memory'};
+            failure = {error: error.code || 'generation_failed', report_id: error.report_id, stage: error.stage, step: error.step, fitted: error.fitted, memory: error.memory, other_usage: error.other_usage, retryStandard: tierNow === 'high' && error.code === 'no_memory'};
             renderFailure(); render(); drawWorks();
         } finally {
             // Pictures sent for a request that never became a job; a job's own go when it ends.
@@ -1295,7 +1398,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             failure = null; jobs.dismiss(row.id);
         } else if (row.status === 'failed' || row.status === 'interrupted') {
             const reason = row.failure || {};
-            failure = {error: reason.code || 'generation_failed', report_id: reason.report_id, stage: reason.stage, fitted: reason.fitted, memory: reason.memory, other_usage: reason.other_usage,
+            failure = {error: reason.code || 'generation_failed', report_id: reason.report_id, stage: reason.stage, step: reason.step, fitted: reason.fitted, memory: reason.memory, other_usage: reason.other_usage,
                 retryStandard: row.meta?.tier === 'high' && reason.code === 'no_memory'};
             renderFailure(); jobs.dismiss(row.id);
         } else jobs.dismiss(row.id);
@@ -1329,7 +1432,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             if (!await confirmStop(go, {kind: 'image', queued: jobs.get(mine.id)?.status === 'queued'})) return;
             if (running !== mine) return;
             mine.cancelled = true;
-            if (mine.id) { try { await jobs.cancel(mine.id); } catch { say(t('Could not stop. Try again.', '没有停止成功，请重试。')); } return; }
+            if (mine.id) { try { await jobs.cancel(mine.id); } catch (error) { say(isNetworkTypeError(error) ? connectionLostText(t) : t('Could not stop. Try again.', '没有停止成功，请重试。')); } return; }
             running = null; level.hidden = true; render(); drawWorks();
         }
     // ── end run ──
@@ -1359,9 +1462,11 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     };
     go.addEventListener('click', () => { if (drawer === 'left' && go.dataset.state === 'ready' && (prompt.value.trim() || references.length)) { drawer = ''; paintPanels(); } }, {capture: true});
     prompt.addEventListener('input', () => { growPrompt(); render(); });
-    // Getting the model ready before Generate is pressed (nothing of it shows): being here a few seconds or touching
-    // anything says "light"; a prompt being written, a model or shape chosen, or the pointer on Generate says "full".
-    const warmSoon = setTimeout(() => warmUp('light'), 3000);
+    // Getting the model ready before Generate is pressed (nothing of it shows): being here a few seconds loads the model
+    // where the card has free room for it (eager loading; the engine reads the files ahead where it would take the
+    // video models' room, and the conservative setting keeps it to that); touching anything says "light"; a prompt
+    // being written, a model or shape chosen, or the pointer on Generate says "full".
+    const warmSoon = setTimeout(() => preloadMode() === 'eager' ? warmUp('full', true) : warmUp('light'), 3000);
     let warmTyping = 0;
     prompt.addEventListener('input', () => { clearTimeout(warmTyping); warmTyping = setTimeout(() => { if (prompt.value.trim()) warmUp('full'); }, 500); });
     for (const type of ['pointerdown', 'keydown']) dialog.addEventListener(type, () => warmUp('light'), {capture: true, passive: true});

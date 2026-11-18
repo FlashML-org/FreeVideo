@@ -258,8 +258,12 @@ export const openingZoom = (width, record) => {
     const frames = duration(record), seconds = frames ? Math.min(90, Math.max(20, frames / FPS + 10)) : 90;
     return width / seconds;
 };
-// An export runs as long as the picture and sound; text after them is not exported.
-export const exportFrames = record => Math.max(0, ...record.tracks.filter(track => ['video', 'audio'].includes(track.kind)).flatMap(track => track.clips).map(end));
+// An export runs as long as the picture and sound; text after them is not exported, nor is a planned part that was
+// never sent (a draft with no media of its own, such as the next part made ready after a continued part finishes):
+// it has no picture yet. Parts on their way (queued, running) still count and export as black, as the dialog says.
+const planned = clip => clip.pending === 'draft' && !clip.source;
+export const exportFrames = record => Math.max(0, ...record.tracks.filter(track => ['video', 'audio'].includes(track.kind)).flatMap(track => track.clips)
+    .filter(clip => !planned(clip)).map(end));
 export const find = (record, id) => all(record).find(clip => clip.id === id) ?? null;
 // A failed replacement displays its original timeline while retaining receipts
 // for every block of the same resumable attempt, including subdivided blocks.
@@ -740,7 +744,8 @@ export const setPictureFit = (record, id, fit) => setPicture(record, id, {fit: p
 // The fewest frames a continuing part of `seconds` whole seconds asks for (chain_plan.part_frames): below
 // MIN_PART_FRAMES a continuing part is too short, below FULL_PART_FRAMES it is a short part.
 const partFrames = seconds => RULES.overlap + RULES.step * Math.ceil((FPS * seconds - (RULES.step - 1)) / RULES.step);
-export const MIN_PART_FRAMES = partFrames(RULES.followSeconds), FULL_PART_FRAMES = partFrames(RULES.fullSeconds);
+export const MIN_PART_FRAMES = partFrames(RULES.followSeconds);
+export const FULL_PART_FRAMES = partFrames(RULES.fullSeconds);
 // The last part of a video, one no other part continues, may be as short as lastSeconds.
 export const MIN_TAIL_FRAMES = partFrames(RULES.lastSeconds);
 // The most parts one video may have (chain_plan.parts_limit).

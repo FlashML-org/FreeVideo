@@ -21,6 +21,7 @@
 .fv-works-ref{left:var(--fv-sp-4,4px)}
 .fv-works-del{right:var(--fv-sp-4,4px)}
 .fv-works-tile:hover .fv-works-act,.fv-works-act:focus-visible,.fv-works-tile:focus-within .fv-works-act{opacity:1}
+@media(hover:none){.fv-works-act{opacity:1}}
 .fv-works-act:hover{background:rgb(0 0 0/.8)}
 .fv-works-tick{position:absolute;top:var(--fv-sp-4,4px);left:var(--fv-sp-4,4px);width:18px;height:18px;box-sizing:border-box;border:2px solid #fff;border-radius:var(--fv-r-xs,4px);background:rgb(0 0 0/.35);pointer-events:none;display:none}
 .fv-works-tile[data-selecting=true] .fv-works-tick{display:block}

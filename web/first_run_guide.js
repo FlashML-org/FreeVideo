@@ -393,7 +393,7 @@ export function createFirstRunGuide({dialog, api, cn, isBusy = () => false, grou
             picture.onerror = () => { media.remove(); follow(); }; picture.onload = follow; figure.append(picture); media.append(figure); content.unshift(media);
         }
         const target = found ? () => resolved(step) : null;
-        anchor = openAnchor({owner: dialog, target, level: touring ? 1 : 2, shapes: !found && step.image ? ['stand'] : ['text'], content, ghost: !!step.ghost && !touring,
+        anchor = openAnchor({owner: dialog, target, level: touring ? 1 : 2, shapes: !found && step.image ? ['stand'] : ['text'], ...(found && step.prefer ? {prefer: step.prefer} : {}), content, ghost: !!step.ghost && !touring,
             focus: true, label: title.id, outside: !touring,
             onClose: reason => {
                 if (reason === 'replace') return;

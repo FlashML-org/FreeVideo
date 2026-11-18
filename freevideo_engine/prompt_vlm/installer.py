@@ -78,4 +78,20 @@ class Installer:
         except Exception as error:
             known = {'disk_space', 'ram_space'}
             with self.lock:
-                self.value.update(state='failed', reason=str(error) if str(error) in known else 'download_failed')
+                self.value.update(state='failed', reason=str(error) if str(error) in known else failure_reason(error))
+
+
+def failure_reason(error):
+    """What stopped the download, in words the card can act on; anything else stays 'download_failed'."""
+    import errno
+    from ..network import DownloadError
+    text = str(error).lower()
+    if isinstance(error, OSError) and error.errno == errno.ENOSPC:
+        return 'disk_space'
+    if isinstance(error, PermissionError) or (isinstance(error, OSError) and error.errno in (errno.EROFS, errno.EACCES, errno.EIO)):
+        return 'write_failed'
+    if any(word in text for word in ('sha256', 'checksum', 'hash mismatch', 'digest')):
+        return 'verify_failed'
+    if isinstance(error, (DownloadError, ConnectionError, TimeoutError)) or any(word in text for word in ('timed out', 'connection', 'resolve')):
+        return 'network_failed'
+    return 'download_failed'

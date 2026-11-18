@@ -28,7 +28,7 @@ from .lan_auth import PasswordAuth, DEVICE_COOKIE, REMEMBER_SECONDS, LOGIN_DELAY
 
 PHONE_WEB = Path(__file__).resolve().parents[1] / 'web'
 PHONE_FILE = re.compile(r'[A-Za-z0-9_][A-Za-z0-9_.-]*\.(?:js|css)')
-PHONE_ASSETS = ('assets/freevideo.svg', 'assets/freevideo-light.svg')
+PHONE_ASSETS = ('assets/freevideo.svg', 'assets/freevideo-light.svg', 'glass/library.js', 'glass/library.css')
 PHONE_TYPES = {'.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml'}
 # Inline like the password page: installed packages only carry .js/.css/.svg under web/.
 PHONE_PAGE = (
@@ -77,7 +77,7 @@ def password_page(request, *, error='', retry_after=0, status=401):
 
 
 def phone_file(path, root=None):
-    """The page file /m/<name> stands for: .js/.css directly inside web/ and the two wordmark SVGs (/m/ itself is PHONE_PAGE)."""
+    """The page file /m/<name> stands for: .js/.css directly inside web/, the two wordmark SVGs and the glass skin phone.js loads (/m/ itself is PHONE_PAGE)."""
     root = (root or PHONE_WEB).resolve()
     name = path[len('/m/'):]
     if not (PHONE_FILE.fullmatch(name) or name in PHONE_ASSETS):
@@ -86,7 +86,7 @@ def phone_file(path, root=None):
         found = (root / name).resolve(strict=True)
     except (OSError, RuntimeError):
         return None
-    return found if found.parent in (root, root / 'assets') and found.is_file() else None
+    return found if found.parent in (root, root / 'assets', root / 'glass') and found.is_file() else None
 
 
 def same_origin(request):

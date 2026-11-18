@@ -27,7 +27,7 @@
 .fv-cast-slot{position:relative;min-width:0;min-height:0;aspect-ratio:3/4}
 .fv-cast-front{aspect-ratio:3/4}
 .fv-cast-dialog .fv-cast-choose{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;width:100%;height:100%;min-height:0;padding:0;border:1px dashed var(--fv-sheen);border-radius:var(--fv-r-sm,8px);background:var(--fv-raised);color:var(--fv-muted);overflow:hidden}
-.fv-cast-choose:has(img){border-style:solid}
+.fv-cast-choose[data-hx-img]{border-style:solid}
 .fv-cast-slot-plus{font-size:24px;line-height:1}
 /* A person is never cut: every picture of a character shows whole (contain, centred) on the slot's own ground. */
 .fv-cast-choose img{display:block;width:100%;height:100%;object-fit:contain;object-position:50% 50%;background:transparent}
@@ -69,7 +69,7 @@
 @media(min-width:681px){:root:root .fv-cast-library :is(.fv-cast-avatar,.fv-cast-add){flex-basis:40px;width:40px;height:40px;min-height:40px}}
 
 /* From a photo: the four views in one row need a wider dialog. */
-.fv-cast-dialog:has(.fv-cast-photo:not([hidden])){width:min(960px,calc(100vw - 32px))}
+.fv-cast-dialog[data-hx-photo]{width:min(960px,calc(100vw - 32px))}
 
 /* A character's sheet (four views in a row) takes a whole row of the small slots, at about its own shape, whole. */
 .fv-cast-dialog[data-kind=character] .fv-cast-views .fv-cast-slot[data-label=sheet]{grid-column:1 / -1;aspect-ratio:auto;min-height:96px}

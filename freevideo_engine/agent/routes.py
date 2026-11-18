@@ -44,6 +44,10 @@ MOVED = ('The user is now in another conversation, session %s. Post your words t
 MOVED_NEW = ' It starts afresh: do not carry requests over from the earlier conversation unless the user refers to them.'
 MOVED_BACK = (' It is one the user was in before, and the user means what was said there, not the conversation you just '
               'left. Its last lines are in "before"; all of it: GET /sessions/%s/events.')
+# The user disconnected the agent from the page: its waits end with this, and a later wait no longer listens.
+DISCONNECTED = ('The user disconnected you from FreeVideo in the app, so the conversation there no longer reaches you. '
+                'Stop waiting now: end your turn with one sentence saying FreeVideo was disconnected. Any other FreeVideo '
+                'call, or POST /connect/hello, connects you again; make one when the user asks you to.')
 # An agent that connects again finds the conversation where the user left it, and has greeted there once already.
 RESUMED = ('This conversation is already under way; its last lines are in "before". Do not introduce yourself again: '
            'say nothing until the user speaks, then carry on from there.')
@@ -319,6 +323,7 @@ def plan(port, value, jobs=None):
                               first_pass=passes.get('first'), second_pass=passes.get('second') if passes['enabled'] else None)
     if spec.get('sampling_note'):
         result['warnings'].append(spec['sampling_note'])
+    result['warnings'].extend(specs.ignored_settings(spec))
     if spec['seconds'] > 15:
         result['warnings'].append('Longer than 15 s is experimental')
     if spec['task'] == 'ref2va':
@@ -486,7 +491,9 @@ def register():
     body_key = web.AppKey('agent_body', dict)
     contracts = contract.contracts()
     page_sessions = {}
-    connection = dict(connected=False, client=None, via=None, last_seen_at=None)
+    # disconnected_at: when the user disconnected the agent from the page (until its next call that is not a wait);
+    # refused_at: when a call last came with a key that is not this installation's (an old one, after a reset).
+    connection = dict(connected=False, client=None, via=None, last_seen_at=None, disconnected_at=None, refused_at=None)
     refused_connects = set()
 
     def note_connect_refusal(code, request):
@@ -566,8 +573,12 @@ def register():
                     except (OSError, ValueError):
                         raise JobError('not_ready', 'Installation not ready') from None
                     if not given or not secrets.compare_digest(given.encode('utf-8'), token.encode('utf-8')):
+                        if given:
+                            connection['refused_at'] = time.time()
                         raise JobError('unauthorized', 'Token missing or incorrect')
-                    connection.update(connected=True, last_seen_at=time.time())
+                    # A wait after the user disconnected is not a new connection; any other call is.
+                    if not (connection['disconnected_at'] is not None and suffix == '/inbox'):
+                        connection.update(connected=True, last_seen_at=time.time(), disconnected_at=None)
                     connection['client'] = connection['client'] or request.headers.get('X-FreeVideo-Client', 'HTTP client')[:80]
                     connection['via'] = connection['via'] or 'http'
                     request['agent_client'] = request.headers.get('X-FreeVideo-Client', '')[:80] or 'HTTP client'
@@ -942,15 +953,34 @@ def register():
                 value.update(width=picture.get('width'), height=picture.get('height'))
         return value
 
-    def agent_state():
-        seen, now = connection['last_seen_at'], time.time()
+    def link_state(now=None):
+        """Whether an agent is connected and, when not, why: 'user' (disconnected from the page), 'refused' (its last
+        call came with a key that is not this installation's), 'quiet' (no call for ten minutes; quiet_s says how long)
+        or 'never' (none has called since FreeVideo started)."""
+        seen, now = connection['last_seen_at'], time.time() if now is None else now
         connected = seen is not None and 0 <= now - seen < 600
+        refused = connection['refused_at']
+        if connected:
+            reason = None
+        elif connection['disconnected_at'] is not None:
+            reason = 'user'
+        elif refused is not None and (seen is None or refused > seen):
+            reason = 'refused'
+        else:
+            reason = 'never' if seen is None else 'quiet'
+        return dict(connected=connected, reason=reason,
+                    quiet_s=int(now - seen) if reason == 'quiet' and now >= seen else None)
+
+    def agent_state():
+        now = time.time()
+        state = link_state(now)
         name = (connection['client'] or '').strip()
         # Programs report their own identifiers; the page shows the name a person knows.
         shown = ('Claude Code' if name.lower() in ('claude-code', 'claude code', 'claude') else
                  'Codex' if name.lower().startswith('codex') else name or None)
         # Every answer to the agent carries the user's unread words, so a recent call will hear them too.
-        return dict(connected=connected, name=shown, listening=connected and (chat['waiting'] > 0 or now - seen < 90))
+        return dict(state, name=shown,
+                    listening=state['connected'] and (chat['waiting'] > 0 or now - connection['last_seen_at'] < 90))
 
     def chat_name(said):
         """A job the agent left unnamed is called by what the user asked for: the first words after a colon."""
@@ -1586,6 +1616,20 @@ def register():
         prepare_token(root)
         return reply(dict(reset=True))
 
+    @routes.post('/freevideo/agent/connect/disconnect')
+    @guarded
+    async def disconnect(request):
+        # Only the page asks: the agent stops hearing the conversation and shows as not connected until it calls again.
+        if request.content_type != 'application/json':
+            return problem('unsupported_media_type', 'Send JSON', 415)
+        await body(request)
+        client = chat['client']
+        connection.update(connected=False, last_seen_at=None, disconnected_at=time.time())
+        store = work_sessions()
+        if store is not None and client:
+            store.wake(client)
+        return reply(dict(agent=agent_state()))
+
     @routes.get(PREFIX + '/connect')
     @guarded
     async def connect_guide(request):
@@ -1612,7 +1656,7 @@ def register():
         connection.update(connected=True, client=value['client'], via=value['via'], last_seen_at=time.time())
         chat['told'].pop(request['agent_client'], None)   # a newly connected agent has heard from no conversation yet
         unfinished = await asyncio.to_thread(jobs.productions.list, status='active', limit=5)
-        return reply(dict(connection, unfinished=unfinished))
+        return reply(dict({key: connection[key] for key in ('connected', 'client', 'via', 'last_seen_at')}, unfinished=unfinished))
 
     @routes.get(PREFIX + '/connect/status')
     @guarded
@@ -1621,7 +1665,7 @@ def register():
         from .editor_runtime import available
         seen = connection['last_seen_at']
         # editing: whether this installation can run project and image edits; the card says so when it cannot.
-        return reply(dict(connection, connected=seen is not None and 0 <= time.time() - seen < 600,
+        return reply(dict(client=connection['client'], via=connection['via'], connected=link_state()['connected'],
                           last_seen_at=iso(seen), editing=available()))
 
     @routes.get(PREFIX)
@@ -1674,7 +1718,8 @@ def register():
         def read():
             return [jobs.view(row) for row in rows]
         views = await asyncio.to_thread(read)
-        return reply(dict(job=views[0], jobs=views), 200 if replay else 201)
+        notes = list(dict.fromkeys(note for row in rows for note in specs.ignored_settings(row['spec'])))
+        return reply(dict(job=views[0], jobs=views, **({'warnings': notes} if notes else {})), 200 if replay else 201)
 
     @routes.get(PREFIX + '/jobs')
     @guarded
@@ -2182,6 +2227,16 @@ def register():
             request['agent_session'] = sid
         # Without a session of its own choosing, the agent listens wherever its user is.
         follow = store is not None and not request.headers.get('X-FreeVideo-Session', '').strip()
+        dropped = lambda: connection['disconnected_at'] is not None
+        def let_go():
+            return reply(dict(session=sid, inbox=[], disconnected=True, next=DISCONNECTED))
+        if dropped():
+            # Waited out as asked, so an agent that keeps calling does not spin; any other call connects it again.
+            deadline = time.monotonic() + min(50., float(request[query_key].get('wait', '0') or 0))
+            while dropped() and time.monotonic() < deadline:
+                await asyncio.sleep(min(1., deadline - time.monotonic()))
+            if dropped():
+                return let_go()
         def answer(value):
             told, chat['told'][client] = chat['told'].get(client), value['session']
             scenes = jobs.whitebox.open_for(value['session']) if value['inbox'] else []
@@ -2224,11 +2279,14 @@ def register():
                     await asyncio.sleep(min(left, 1.))
                 else:
                     await store.wait(sid, after=mark, seconds=min(left, 25.), by='user',
-                                     leave=(lambda here=sid: store.current_for(client) != here) if follow else None)
+                                     leave=(lambda here=sid: dropped() or store.current_for(client) != here) if follow else dropped)
+                if dropped():
+                    return let_go()
         finally:
             chat['waiting'] -= 1
-            # The agent was here for the whole wait, not only when it began.
-            connection['last_seen_at'] = time.time()
+            # The agent was here for the whole wait, not only when it began; not one the user disconnected.
+            if not dropped():
+                connection['last_seen_at'] = time.time()
 
     @routes.get(PREFIX + '/queue')
     @guarded

@@ -197,6 +197,20 @@ async function askUndoState(path, body) {
         return (await response.json()).batches || {};
     } catch { return null; }
 }
+// Shows the saved videos (or one video's folder) in this computer's file manager; the page says where they are when that fails.
+async function openVideoFolder(id) {
+    try {
+        const response = await api.fetchApi('/freevideo/library/open-folder', {method: 'POST', headers: {...jsonHeaders, 'X-FreeVideo-Library': '1'}, body: JSON.stringify(id ? {id} : {}), signal: AbortSignal.timeout(5000)});
+        if (response.status === 404) return {missing: true};
+        if (!response.ok) return null;
+        return await response.json();
+    } catch { return null; }
+}
+const videoFolderMessage = (t, answer, single = false) => !answer
+    ? t('Could not open the folder. Open it on the computer that runs FreeVideo.', '没能打开文件夹。请在运行 FreeVideo 的电脑上打开。')
+    : answer.missing ? t('The video file cannot be found. If you moved the file, refresh the page.', '找不到这条视频的文件。如果移动过文件，请刷新页面。')
+    : answer.opened === false && answer.folder
+        ? t(`Could not open the folder. ${single ? 'This video is' : 'The videos are'} in ${answer.folder}`, `没能打开文件夹。视频在 ${answer.folder}`) : '';
 // Keeps earlier batches of one click undoable while its next request runs, then gives them the normal time again.
 async function holdBatches(tokens, running) {
     const states = await askUndoState('/freevideo/library/hold', {batches: tokens, running});
@@ -251,7 +265,7 @@ export async function libraryPage(t, {limit = 24, before = null, favorite = null
     if (favorite !== null) query.set('favorite', String(favorite));
     const response = await api.fetchApi('/freevideo/library?' + query, {signal});
     if (response.status === 404) throw Object.assign(new Error(t('Restart FreeVideo after updating to open the creations.', '更新后重启 FreeVideo，可打开作品。')), {restart: true});
-    if (!response.ok) throw new Error(t('The creations could not be loaded. Try Refresh.', '作品暂时无法读取，请点击刷新。'));
+    if (!response.ok) throw new Error(t('The creations could not be loaded.', '作品暂时无法读取。'));
     return response.json();
 }
 
@@ -399,6 +413,12 @@ export function openLibrary(t, options = {}) {
     back.append(icon('back'), el('span', backText, 'fv-library-back-label'));
     const title = el('h2', t('Creations', '作品库'));
     const refresh = button(t('Refresh', '刷新'), () => load(false), 'fv-quiet');
+    // The recovery sits before the report button, in the same bordered style.
+    const retryRead = target => {
+        const retry = button(t('Retry', '重试'), () => load(false), 'fv-library-message-retry');
+        const report = target.querySelector(':scope > .fv-issue-button');
+        if (report) report.before(retry); else target.append(retry);
+    };
     const choose = button(t('Select', '选择'), () => setSelecting(!selecting), 'fv-quiet fv-library-choose');
     // Stage: the creation large in the middle, thumbnails on the right to switch it. Grid: the shelf for sorting and selecting.
     const LAYOUT_KEY = 'freevideo.library.layout';
@@ -494,7 +514,13 @@ export function openLibrary(t, options = {}) {
     }, 'fv-library-place fv-library-open-folder');
     openFolder.append(line('folder'), el('span', t('Picture folder', '图片文件夹'), 'fv-library-place-name'));
     tip(openFolder, t('Picture folder', '图片文件夹'), t('Show the pictures in the file manager', '在文件管理器里打开图片所在文件夹'));
-    bottom.append(placeTrash, openFolder);
+    const openVideoFolderButton = button('', async () => {
+        const answer = await openVideoFolder(); const text = videoFolderMessage(t, answer);
+        if (text) say(text, !answer || answer.missing, answer?.folder ? 20000 : 4000);  // a path stays long enough to be copied
+    }, 'fv-library-place fv-library-open-folder fv-library-open-video-folder');
+    openVideoFolderButton.append(line('folder'), el('span', t('Video folder', '视频文件夹'), 'fv-library-place-name'));
+    tip(openVideoFolderButton, t('Video folder', '视频文件夹'), t('Show the videos in the file manager', '在文件管理器里打开视频所在文件夹'));
+    bottom.append(placeTrash, openVideoFolderButton, openFolder);
 
     // --- The shelf: tool row, day groups, the dock for undo and the selection ---
     const collection = el('section', null, 'fv-library-collection'); collection.setAttribute('aria-label', t('Saved creations', '已保存的作品'));
@@ -1161,6 +1187,8 @@ export function openLibrary(t, options = {}) {
         message.textContent = loading && !works.size ? ''
             : gathering ? t('Reading all creations…', '正在读取全部作品…')
             : list.length ? '' : emptyText();
+        // The header's Refresh stays hidden (the shelf follows changes by itself), so a failed read carries its own retry.
+        if (!list.length && !trash && !loading && filter.kind === 'image' && picturesState === 'failed') retryRead(message);
         drawTail();
         fold(); syncSelection(false); syncCounts();
         clearTimeout(cacheTimer); cacheTimer = setTimeout(saveCache, 1000);
@@ -1185,7 +1213,7 @@ export function openLibrary(t, options = {}) {
         if (filter.tag) return t('No creation has this tag yet. Select creations and press Tag.', '还没有作品带这个标签。选中作品后点“标签”。');
         if (filter.period !== 'any' || filter.source || filter.preview || filter.agent) return t('Nothing matches these filters.', '没有符合筛选条件的作品。');
         if (filter.favorites) return t("No favorite creations. Click the heart in a creation's details to add one.", '暂无收藏的作品。点作品详情中的爱心图标收藏。');
-        if (filter.kind === 'image') return picturesState === 'failed' ? t('Pictures could not be read just now. Try Refresh.', '图片暂时无法读取，请点击刷新。') : t('Pictures made in the image view appear here.', '在图像视图里生成的图片会保存在这里。');
+        if (filter.kind === 'image') return picturesState === 'failed' ? t('Pictures could not be read just now.', '图片暂时无法读取。') : t('Pictures made in the image view appear here.', '在图像视图里生成的图片会保存在这里。');
         return t('Finished videos and pictures appear here.', '生成完成的视频和图片会保存在这里。');
     }
     function syncCounts() {
@@ -1421,8 +1449,12 @@ export function openLibrary(t, options = {}) {
                 run: async () => { try { await navigator.clipboard.writeText(promptOf); say(t('Prompt copied.', '已复制提示词。')); } catch { say(t('Could not copy.', '没能复制。'), true); } }});
         }
         if (one) items.push({id: 'folder', icon: 'folder', label: ['Show in folder', '在文件夹中显示'],
-            disabled: one.kind === 'image' ? '' : ['Use Copy path in the details to find the video file', '可用详情里的“复制路径”找到视频文件'],
             run: async () => {
+                if (one.kind !== 'image') {
+                    const answer = await openVideoFolder(one.id); const text = videoFolderMessage(t, answer, true);
+                    if (text) say(text, !answer || answer.missing, answer?.folder ? 20000 : 4000);
+                    return;
+                }
                 try { const answer = await (await pictures()).historyOpen(); if (answer && answer.opened === false && answer.folder) say(t(`The pictures are in ${answer.folder}`, `图片在 ${answer.folder}`)); }
                 catch { say(t('Could not open the folder.', '没能打开文件夹。'), true); }
             }});
@@ -1629,10 +1661,10 @@ export function openLibrary(t, options = {}) {
     let undoNote = null, undoFailure = '';
     // A short line in the dock (a favorite saved for many, a folder that could not open).
     let sayTimer = 0;
-    function say(text, warn = false) {
+    function say(text, warn = false, hold = 4000) {
         clearTimeout(sayTimer);
         undoNote = text; undoBar.dataset.warn = String(warn); showUndo();
-        sayTimer = setTimeout(() => { if (undoNote === text) { undoNote = null; showUndo(); } }, 4000);
+        sayTimer = setTimeout(() => { if (undoNote === text) { undoNote = null; showUndo(); } }, hold);
     }
     // Shows what can still be undone: every batch deleted within the undo time, from any
     // dialog, tab or page load, and the pictures this page holds. Without any, only the notes remain.
@@ -1855,8 +1887,11 @@ export function openLibrary(t, options = {}) {
         } else { undoFailure = ''; setSelecting(false); }
         render();
         showUndo();
-        // The delete button is gone; keep the keyboard inside the dialog.
-        if (!dialog.contains(document.activeElement)) choose.focus();
+        // The confirm button is gone; keep the keyboard inside the dialog, so Escape still walks back from here: on the
+        // bar's Delete while a part that failed is still selected (another try is one press away), on the dialog itself
+        // otherwise, as when it opened. (The header's Select button is hidden since selecting starts from the cards.)
+        if (!dialog.contains(document.activeElement) || document.activeElement.closest('[hidden]'))
+            (selecting && picked.size && !barDelete.hidden ? barDelete : dialog).focus({preventScroll: true});
     }
     // Asks the server about batches this page did not make or cannot vouch for (after a reload, or while a
     // request of an earlier page still runs), and again until every pending one is settled.
@@ -1993,7 +2028,10 @@ export function openLibrary(t, options = {}) {
             if (!disposed && round === loadRound && error.name !== 'AbortError') {
                 if (appendPage) tailState = 'failed';
                 else if (error.restart) message.textContent = error.message;
-                else fault(message, isNetworkTypeError(error) ? connectionLostText(t) : error.message);
+                else {
+                    fault(message, isNetworkTypeError(error) ? connectionLostText(t) : error.message); retryRead(message);
+                    for (const ghost of grid.querySelectorAll(':scope > .fv-library-ghost')) ghost.remove();
+                }
             }
         }
         finally {

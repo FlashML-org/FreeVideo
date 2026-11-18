@@ -181,6 +181,13 @@ ApplicationWindow {
         if (code === "active-variant-incomplete") return t("The faster model's files are incomplete, so the old model is kept.", "更快的模型文件不完整，旧模型保留。")
         return t("The model in use is not a standard FreeVideo model, so nothing was deleted.", "当前使用的模型不是标准安装的模型，为安全起见没有删除任何文件。")
     }
+    function upgradeCause(code, step) {
+        if (code === "disk") return t("There is not enough free disk space for the model files. Free some space first.", "磁盘可用空间不足，放不下模型文件。请先腾出空间。")
+        if (code === "network") return t("The model download lost its connection. Check the network first.", "模型下载时网络连接中断。请先检查网络。")
+        if (step === "switch") return t("The switch to the faster model did not finish.", "切换到更快的模型没有完成。")
+        if (step === "release") return t("The old model could not be removed.", "旧模型未能删除。")
+        return t("The model download did not finish.", "模型下载没有完成。")
+    }
     function upgradeReportText() {
         // A failed upgrade reports the whole failure, including the step log, not only the first line shown on the card.
         return upgrade.status === "failed" && upgrade.error ? upgrade.error : upgradeExplanation()
@@ -218,7 +225,7 @@ ApplicationWindow {
             return (u.released_bytes ? t("Freed ", "已释放 ") + bytes(u.released_bytes) + t(".", "。") : "")
                 + (lora ? t(" The old model stays for your fused LoRAs.", "旧模型为需要合并的 LoRA 保留。") : "")
         if (u.status === "failed")
-            return (u.blockers && u.blockers.length ? upgradeBlocker(u.blockers[0]) + t(" ", "") : u.error ? u.error.split("\n")[0] + "\n" : "")
+            return (u.blockers && u.blockers.length ? upgradeBlocker(u.blockers[0]) + t(" ", "") : upgradeCause(u.cause, u.step) + "\n")
                 + (u.step === "release" ? t("The faster model is in use; the old model files are kept for now.", "已在用更快的模型，旧模型文件暂时保留。")
                    : u.step === "switch" && !u.kept ? t("The previous model's files are all kept. Select \"Retry\" on the setup page to restore it.", "原来的模型文件都还在，在安装页点“重试”可恢复。")
                    : t("Your previous model is unchanged and still works. Select \"Try again\", or report a problem.", "原来的模型没有变化，可以继续使用。可以点“重试”，或提交问题。"))
@@ -507,6 +514,8 @@ ApplicationWindow {
                             FButton { objectName: "changeSource"; visible: s.failure.kind === "download" || s.failure.kind === "model-source"; text: t("Change source", "切换下载源"); onClicked: { settingsTab = "downloads"; settingsOpen = true } }
                             FButton { objectName: "changeAddress"; visible: s.failure.kind === "port-taken"; text: t("Change address", "更改地址"); onClicked: { settingsTab = "advanced"; settingsOpen = true } }
                             FButton { objectName: "repairCardButton"; primary: true; visible: !!s.repair_offered; text: t("Repair", "修复"); onClicked: backend.action("repair", false) }
+                            FButton { objectName: "openInstallFolder"; visible: s.failure.kind === "missing-file"; primary: true
+                                      text: t("Open install folder", "打开安装目录"); onClicked: backend.openInstallFolder() }
                             FButton { objectName: "latestLauncherLink"; visible: s.failure.kind === "older-launcher"; flat: true
                                       text: t("Download the latest ↗", "下载最新版 ↗"); onClicked: backend.link("https://github.com/FlashML-org/FreeVideo/releases/latest") }
                             FButton { objectName: "reportProblem"; visible: !diskFailure && !notAFault && s.failure.kind !== "port-taken" && s.failure.kind !== "comfy-restart" && s.failure.kind !== "comfy-folder" && s.failure.kind !== "engine-folder-denied"; text: reportOpened(s.error, s.failure.title || "") ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(s.error, s.failure.title || ""); onClicked: backend.reportProblem(s.error, s.failure.title || "") }
@@ -1848,9 +1857,14 @@ ApplicationWindow {
                 FButton { objectName: "updateCloseButton"; text: "×"; flat: true; Accessible.name: t("Close", "关闭"); onClicked: { manualUpdate = false; backend.dismissUpdate() } }
             }
             FText { objectName: "updateDialogText"; text: s.update.phase === "waiting" ? t("A video is still generating. FreeVideo restarts and updates as soon as it finishes.", "还有视频正在生成，完成后会自动重启并更新。") : s.update.status === "ready" && s.update.candidate ? t("Downloaded. Restart to finish; models and settings are kept.", "下载完成，重启可完成更新，模型和设置都会保留。") : s.update.candidate && s.update.manual ? t("FreeVideo ", "FreeVideo ") + releaseVersion(s.update.candidate) + t(" is available (current ", " 已发布（当前 ") + releaseVersion(currentRelease) + t("). Download it and replace this version; models and settings are kept.", "）。下载新版后替换当前版本，模型和设置会保留。") : s.update.candidate ? t("FreeVideo ", "FreeVideo ") + releaseVersion(s.update.candidate) + t(" is available (current ", " 已发布（当前 ") + releaseVersion(currentRelease) + t("). Updating keeps your models and settings. FreeVideo restarts after the download; running videos finish first.", "）。更新会保留模型和设置，下载完成后自动重启；正在生成的视频会先完成。") : s.update.engine ? t("This launcher already includes engine ", "启动器已带有新版引擎 ") + releaseVersion(currentRelease) + t(" (installed: ", "（已安装 ") + engineVersion + (s.status === "open" ? t("). Updating takes about a minute, restarts ComfyUI once and keeps your models and settings.", "）。更新约需 1 分钟，会重启一次 ComfyUI，模型和设置都会保留。") : t("). Updating takes about a minute, then FreeVideo starts; models and settings are kept.", "）。更新约需 1 分钟，完成后自动启动，模型和设置都会保留。")) : s.update.status === "current" ? t("You're up to date.", "已是最新版本。") : s.update.status === "development" ? t("Running from source. Update with Git.", "当前从源码运行，请通过 Git 更新。") : s.update.status === "error" ? t("Could not check for updates.", "暂时无法检查更新。") : t("Checking the latest release…", "正在检查最新版本…"); color: theme.muted; Layout.fillWidth: true }
-            FText { visible: !!s.update.error; text: s.update.error || ""; color: theme.danger; Layout.fillWidth: true; font.pixelSize: theme.micro }
-            FButton { objectName: "updateManualDownloadButton"; text: t("Download from the release page ↗", "去发布页手动下载 ↗"); flat: true; Layout.fillWidth: true; visible: s.update.status === "error" && !!s.update.release_page; onClicked: backend.link(s.update.release_page) }
-            FButton { objectName: "updateDialogReport"; text: reportOpened(s.update.error, t("Update", "更新")) ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(s.update.error, t("Update", "更新")); flat: true; Layout.fillWidth: true; visible: s.update.status === "error" && !!s.update.error; onClicked: backend.reportProblem(s.update.error, t("Update", "更新")) }
+            FText { objectName: "updateDialogError"; visible: !!s.update.error; text: s.update.error || ""; color: theme.danger; Layout.fillWidth: true; font.pixelSize: theme.micro }
+            // Under the reason, one row from its left edge; the buttons wrap only when the window is too narrow.
+            Flow {
+                objectName: "updateFailureActions"; Layout.fillWidth: true; spacing: 8
+                visible: s.update.status === "error" && (!!s.update.release_page || !!s.update.error)
+                FButton { objectName: "updateManualDownloadButton"; text: t("Download from the release page ↗", "去发布页手动下载 ↗"); flat: true; visible: s.update.status === "error" && !!s.update.release_page; onClicked: backend.link(s.update.release_page) }
+                FButton { objectName: "updateDialogReport"; text: reportOpened(s.update.error, t("Update", "更新")) ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(s.update.error, t("Update", "更新")); flat: true; visible: s.update.status === "error" && !!s.update.error; onClicked: backend.reportProblem(s.update.error, t("Update", "更新")) }
+            }
             FMeter { Layout.fillWidth: true; visible: s.update.status === "downloading"; active: true; fraction: s.update.progress && s.update.progress.total ? s.update.progress.done/s.update.progress.total : -1 }
             FReleaseNotes { objectName: "updateReleaseNotes"; visible: !!availableRelease; Layout.fillWidth: true; room: updateDialog.availableWidth; release: availableRelease; earlier: availableEarlier; zh: s.zh; heading: releaseVersion(availableRelease) }
             FButton { text: t("Version & release notes", "版本与更新说明"); flat: true; onClicked: releaseNotesOpen = true }

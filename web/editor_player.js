@@ -9,6 +9,7 @@ import {createAudioPreview, isOriginalSound} from './editor_audio.js';
 import {previewSpeed, speedAudioFrame, separateSpeedAudio} from './editor_speed.js';
 import {sourceFrame, percent} from './editor_speed_model.js';
 import {applyTip} from './editor_tracks_tips.js';
+import {setAttr, setData, setDisabled, setHidden, setText} from './dom_quiet.js';
 const el = (tag, cls) => { const e = document.createElement(tag); if (cls) e.className = cls; return e; };
 export function audioSeconds(clip, sourceFrame) {
     // The chain receipt counts samples at 32 kHz, even if the media is 48 kHz.
@@ -284,16 +285,16 @@ export function createEditorPlayer(host, transport, {state, sources, api, t, err
         // The total is what export writes (picture and sound); text past it is not exported.
         const record = state.record, position = state.playhead, total = model.exportFrames(record);
         const hasContent = record.tracks.some(track => track.clips.some(clip => clip.source || isText(clip)));
-        empty.hidden = hasContent || preview?.tagName === 'VIDEO'; frame.dataset.empty = String(!empty.hidden);
-        playButton.disabled = !total || !hasContent;
-        time.textContent = `${transportTime(position)} / ${transportTime(total)}`;
-        transport.dataset.rate = String(playing ? playback.rate : 0);
+        setHidden(empty, hasContent || preview?.tagName === 'VIDEO'); setData(frame, 'empty', !empty.hidden);
+        setDisabled(playButton, !total || !hasContent);
+        setText(time, `${transportTime(position)} / ${transportTime(total)}`);
+        setData(transport, 'rate', playing ? playback.rate : 0);
         if (playButton.dataset.playing !== String(playing)) {
             playButton.dataset.playing = String(playing);
             const glyph = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); glyph.setAttribute('viewBox', '0 0 16 16'); glyph.setAttribute('aria-hidden', 'true'); glyph.style.width = glyph.style.height = '16px';
             const path = document.createElementNS(glyph.namespaceURI, 'path'); path.setAttribute('d', playing ? 'M4 3h3v10H4zM9 3h3v10H9z' : 'm5 3 8 5-8 5z'); path.setAttribute('fill', 'currentColor'); glyph.append(path); playButton.replaceChildren(glyph);
         }
-        playButton.setAttribute('aria-label', playing ? t('Pause', '暂停') : t('Play', '播放'));
+        setAttr(playButton, 'aria-label', playing ? t('Pause', '暂停') : t('Play', '播放'));
         applyTip(playButton, playing ? 'pause' : 'play', t, {why: playButton.disabled ? t('Put a clip on the timeline first', '先在时间线上放一段素材') : ''});
         const shown = Math.min(position, Math.max(0, model.duration(record) - 1));
         const map = located(record, shown), videoRow = pictureEdit.previewRow(map.get('v1'), shown), clip = videoRow?.clip;
@@ -427,7 +428,7 @@ export function createEditorPlayer(host, transport, {state, sources, api, t, err
         raf = requestAnimationFrame(tick);
     }
     const pictureLayout = record => JSON.stringify([record.width, record.height, record.tracks, record.replacements]);
-    function clearPreview() { if (preview) { preview.onended = null; preview.pause(); preview.removeAttribute('src'); preview.load(); preview.remove(); preview = null; } previewSize = previewProject = null; closePreview.hidden = true; }
+    function clearPreview() { if (preview) { preview.onended = null; preview.pause(); preview.removeAttribute('src'); preview.load(); preview.remove(); preview = null; } previewSize = previewProject = null; setHidden(closePreview, true); }
     closePreview.onclick = () => { clearPreview(); render(); };
     function play() {
         if (disposed || playing || playButton.disabled) return;
@@ -508,6 +509,8 @@ export function createEditorPlayer(host, transport, {state, sources, api, t, err
             render(); return listening;
         },
         setTextRenderer(callback) { textRenderer = callback; },
+        // Leaving the edit view stops a source preview and lets its file go, as letting the editor go does.
+        stopPreview() { clearPreview(); render(); },
         previewVolume(id, value) { volumePreview.set(id, value); render(); },
         clearVolumePreview() { volumePreview.clear(); render(); },
         previewClipSource(id, source) { if (source) sourcePreview.set(id, source); else sourcePreview.delete(id); render(); },

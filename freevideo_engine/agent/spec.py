@@ -226,6 +226,16 @@ def task(media):
     return 'i2va' if 'first' in media else 'l2va' if 'last' in media else 't2va'
 
 
+def ignored_settings(spec):
+    """Settings the request names that this request does not use; the caller is told on submit and plan."""
+    notes = []
+    if spec.get('first_frame_reference') and any(
+            item.get('use') == 'original' for item in (spec.get('media') or {}).get('references') or []):
+        notes.append('first_frame_reference is ignored when an audio reference is used as it is: the first frame of '
+                     'the video is not locked to a picture.')
+    return notes
+
+
 def saved_length(canvas, spec):
     """Saved length: one generation keeps its aligned canvas; multiple blocks are joined to the planned
     whole seconds. A continuation saves only what it adds."""

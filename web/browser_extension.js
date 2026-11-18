@@ -50,6 +50,13 @@ export function isNetworkTypeError(error) {
 // One sentence for a dropped connection (engine closed, network lost); the raw
 // browser wording stays in the technical details.
 export function connectionLostText(t) { return t('Lost the connection to FreeVideo. Try again once it is back.', '与 FreeVideo 的连接已断开，恢复后请重试。'); }
+// The read right after a lost connection was refused at once, on the computer the page runs on: nothing is
+// listening there, so FreeVideo is not running. A read that timed out, or a page opened from another
+// address, says nothing about whether it is running and keeps the plain "lost the connection" wording.
+export function engineNotRunning(connection) {
+    return connection?.engine_answers_after === false && connection.probe_timed_out !== true && connection.page_address === 'this-computer';
+}
+export function engineNotRunningText(t) { return t('Start it again from the FreeVideo launcher.', '请从 FreeVideo 启动器重新启动。'); }
 // A read the engine did not answer: the status was a success but the body is a web page (a page shown while the
 // engine restarts, or one put in front of it by a proxy or tunnel), not JSON. It is raised as the same kind of
 // error as a lost connection, so retries, the delay between polls and the notice that clears itself apply

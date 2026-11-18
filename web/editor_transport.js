@@ -2,6 +2,7 @@ import * as model from './editor_model.js';
 import {applyTip, tipCopy} from './editor_tracks_tips.js';
 import {addMarker, hasMarker, moveMarker, removeMarker, selectedRange, shuttleRate, setSnapping,
     snappingEnabled, transportSnapPoints} from './editor_transport_model.js';
+import {setAttr, setData, setDisabled} from './dom_quiet.js';
 
 // Other editor features can register rows before the sheet opens.
 export const shortcuts = [];
@@ -144,24 +145,24 @@ export function createEditorTransport({element, preview, transport, toolbar, edi
     const selection = () => selectedRange(state.record, state.selection, model.duration(state.record));
     function refresh() {
         if (disposed) return;
-        loop.setAttribute('aria-pressed', String(clock.loop));
-        snapping.setAttribute('aria-pressed', String(snappingEnabled(state)));
-        const bounds = selection(); range.disabled = !bounds;
+        setAttr(loop, 'aria-pressed', clock.loop); setAttr(snapping, 'aria-pressed', snappingEnabled(state));
+        const bounds = selection(); setDisabled(range, !bounds);
         applyTip(range, 'playRange', t, {why: bounds ? '' : t('Select a clip or draw a range first', '先选中片段或画一段范围')});
-        range.setAttribute('aria-pressed', String(!!clock.range));
+        setAttr(range, 'aria-pressed', !!clock.range);
         const total = model.duration(state.record);
-        toStart.disabled = back.disabled = !total || state.playhead <= 0; toEnd.disabled = forward.disabled = !total || state.playhead >= total;
+        for (const button of [toStart, back]) setDisabled(button, !total || state.playhead <= 0);
+        for (const button of [toEnd, forward]) setDisabled(button, !total || state.playhead >= total);
         const empty = t('The timeline is empty', '时间线是空的');
         applyTip(toStart, 'start', t, {why: toStart.disabled ? (total ? t('Already at the start', '已经在开头') : empty) : ''});
         applyTip(back, 'previousFrame', t, {why: back.disabled ? (total ? t('Already at the start', '已经在开头') : empty) : ''});
         applyTip(forward, 'nextFrame', t, {why: forward.disabled ? (total ? t('Already at the end', '已经在结尾') : empty) : ''});
         applyTip(toEnd, 'end', t, {why: toEnd.disabled ? (total ? t('Already at the end', '已经在结尾') : empty) : ''});
         if (frame) {
-            frame.disabled = savingFrame || !model.exportFrames(state.record);
+            setDisabled(frame, savingFrame || !model.exportFrames(state.record));
             applyTip(frame, 'saveFrame', t, {why: savingFrame ? t('Saving this frame…', '正在保存这一帧…') : frame.disabled ? t('There is no picture to save yet', '还没有可以保存的画面') : ''});
         }
-        fullscreen.setAttribute('aria-pressed', String(document.fullscreenElement === fullHost));
-        transport.dataset.rate = String(player.playing ? clock.rate : 0);
+        setAttr(fullscreen, 'aria-pressed', document.fullscreenElement === fullHost);
+        setData(transport, 'rate', player.playing ? clock.rate : 0);
         if (layer && !drag) renderMarkers();
     }
     function renderMarkers() {

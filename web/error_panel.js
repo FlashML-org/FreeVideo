@@ -1,7 +1,7 @@
 // Shared by the Studio and graph view. Text only; never render exception HTML.
 import {readOtherUsage, otherUsageText} from './other_usage.js';
 import {pageRepair, repairAction, repairButton} from './repair_hint.js';
-import {detectBrowserExtension, browserExtensionAdvice, extensionSteps, isNetworkTypeError, connectionLostText} from './browser_extension.js';
+import {detectBrowserExtension, browserExtensionAdvice, extensionSteps, isNetworkTypeError, connectionLostText, engineNotRunning, engineNotRunningText} from './browser_extension.js';
 import {SAMPLING_EFFORTS, STEP_CACHES, UPSCALE_FACTORS, tableLevel} from './sampling_effort.js';
 import {failureIssue, failureStage} from './failure_issue.js';
 import {knownEngineExit} from './engine_exit.js';
@@ -556,7 +556,9 @@ export function adviceFor(report, t, value) {
         : failureAdvice(report.details, t, report.known_error ?? null);
     // A dropped connection reads as one sentence; the browser's own wording stays in the details.
     if (advice.kind === 'unknown' && isNetworkTypeError(value) && ['submission', 'queue'].includes(report.stage)) {
-        Object.assign(advice, {kind: 'connection', title: t('Lost the connection to FreeVideo', '与 FreeVideo 的连接已断开'), summary: connectionLostText(t), action: ''});
+        const stopped = engineNotRunning(report.connection);
+        Object.assign(advice, {kind: 'connection', title: stopped ? t('FreeVideo has stopped', 'FreeVideo 已停止运行') : t('Lost the connection to FreeVideo', '与 FreeVideo 的连接已断开'),
+            summary: stopped ? engineNotRunningText(t) : connectionLostText(t), action: ''});
     }
     if (report.stage === 'submission' && advice.kind === 'unknown') {
         advice.title = t('The task could not be submitted', '任务提交失败');
@@ -783,12 +785,12 @@ export function createErrorPanel(t, route = null) {
         // Every card says what happened and what to do next: a cause that could not be named says so and points at
         // the original error, and a card without advice ends with the way to try again or send the report.
         if (generated && advice.kind === 'unknown' && !explanation.textContent) {
-            explanation.textContent = t('The cause could not be identified automatically; the original error is under Technical details.', '没能自动判断原因，原始错误在“技术详情”里。');
+            explanation.textContent = t('The cause could not be identified automatically. The original error is in Technical details.', '未能自动识别原因，原始错误见“技术详情”。');
             explanation.hidden = false;
         }
         if (generated && !action.textContent) {
-            action.textContent = github.hidden ? t('Try again. If it fails again, export the report and send it to us.', '请重试。如果仍然失败，请导出报告发给我们。')
-                : t('Try again. If it fails again, choose "Report a problem" to send us the report.', '请重试。如果仍然失败，点“提交问题”把报告发给我们。');
+            action.textContent = github.hidden ? t('Try again. If it still fails, export the report and send it to us.', '请重试。仍然失败时，请导出报告并发给我们。')
+                : t('Try again. If it still fails, choose "Report a problem" to send us the report.', '请重试。仍然失败时，请点击“提交问题”发送报告。');
             action.hidden = false;
         }
         if (generated && typeof window !== 'undefined') loadIssueModules();

@@ -1,0 +1,97 @@
+/* ── Touch screens wider than a phone (tablets, touch laptops): every key the finger takes is at least 44 × 44 with a
+   16–20 px icon. The tool row grows 40 → 52 and the play row 40 → 48 (20 px in all); the picture keeps its place.
+   A mouse never matches this block, and phones (≤ 480 px) keep their own layout. ── */
+@media (pointer:coarse) and (min-width:481px){
+ /* Rows: play row 48, tool row 52. */
+ .fv-studio.fv-editor,.fv-studio.fv-editor:has(.fv-ed-genbar[data-voice=true]){grid-template-rows:auto var(--fv-ed-project-h) minmax(96px,1fr) 48px var(--fv-ed-generation-row) 52px var(--fv-ed-timeline-h)}
+ .fv-ed-notice-stack{bottom:calc(var(--fv-ed-timeline-h) + 52px + var(--fv-ed-generation-row) + 56px)}
+ .fv-ed-gen-tray{bottom:calc(100% + 56px)}
+
+ /* Tool row: undo, redo, split, delete, snapping and zoom stay; editor_toolbar_more.js moves the rest behind ⋯. */
+ .fv-studio.fv-editor .fv-ed-toolbar{height:52px;gap:8px}
+ .fv-studio.fv-editor .fv-ed-toolbar .fv-ed-tool-group{gap:0}
+ .fv-studio.fv-editor .fv-ed-toolbar .fv-ed-tool-group+.fv-ed-tool-group:before{margin-right:4px}
+ .fv-studio.fv-editor .fv-ed-toolbar>:is(.fv-ed-tool-group,.fv-ed-tool-group>.fv-ed-tool-group) button,
+ .fv-studio.fv-editor .fv-ed-toolbar>:is(.fv-ed-more,.fv-ed-snapping,.fv-ed-shortcuts,.fv-ed-adjust-toggle,.fv-ed-stems-button){height:44px;min-height:44px;min-width:44px}
+ .fv-studio.fv-editor .fv-ed-toolbar>:is(.fv-ed-tool-group,.fv-ed-tool-group>.fv-ed-tool-group) .fv-ed-icon,
+ .fv-studio.fv-editor .fv-ed-toolbar>:is(.fv-ed-more,.fv-ed-snapping,.fv-ed-shortcuts){width:44px;padding:0}
+ .fv-studio.fv-editor .fv-ed-toolbar :is(button>svg,.fv-ed-more svg){width:18px;height:18px}
+ /* Zoom: the slider alone (44 px tall, a 24 px knob) and Fit; the − and + keys leave. */
+ .fv-studio.fv-editor .fv-ed-toolbar .fv-ed-track-zoom{display:flex;align-items:center;height:44px;gap:4px}
+ .fv-studio.fv-editor .fv-ed-toolbar .fv-ed-track-zoom>button:not(.fv-ed-fit){display:none}
+ .fv-studio.fv-editor .fv-ed-toolbar .fv-ed-track-zoom .fv-ed-fit{height:44px;min-height:44px;min-width:44px;padding:0 10px}
+ .fv-studio.fv-editor .fv-ed-toolbar .fv-ed-zoom-slider{-webkit-appearance:none;appearance:none;width:112px;height:44px;margin:0;background:transparent;touch-action:none}
+ .fv-studio.fv-editor[data-adjust-available=true] .fv-ed-toolbar .fv-ed-zoom-slider{width:96px}
+ .fv-studio.fv-editor .fv-ed-toolbar .fv-ed-zoom-slider::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:var(--fv-line2,var(--fv-border))}
+ .fv-studio.fv-editor .fv-ed-toolbar .fv-ed-zoom-slider::-moz-range-track{height:4px;border-radius:2px;background:var(--fv-line2,var(--fv-border))}
+ .fv-studio.fv-editor .fv-ed-toolbar .fv-ed-zoom-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:24px;height:24px;margin-top:-10px;border:0;border-radius:50%;background:var(--fv-accent);box-shadow:0 1px 3px rgb(0 0 0 / .35)}
+ .fv-studio.fv-editor .fv-ed-toolbar .fv-ed-zoom-slider::-moz-range-thumb{width:24px;height:24px;border:0;border-radius:50%;background:var(--fv-accent);box-shadow:0 1px 3px rgb(0 0 0 / .35)}
+ /* The ⋯ menu: 44 px rows. */
+ .fv-studio.fv-editor .fv-ed-toolbar .fv-ed-more-panel{max-height:min(380px,60dvh)}
+ .fv-studio.fv-editor .fv-ed-toolbar .fv-ed-more-panel button{height:44px;min-height:44px;width:100%}
+
+ /* Play row: segment and frame steps 44 × 44, play 56 × 44, the right group 44 × 44; the time is unchanged. */
+ .fv-studio.fv-editor :is(.fv-ed-transport-center,.fv-ed-transport-tools) button{width:44px;height:44px;min-height:44px}
+ .fv-studio.fv-editor .fv-ed-transport-center .fv-ed-play{width:56px;height:44px}
+ .fv-studio.fv-editor .fv-ed-transport-center,.fv-studio.fv-editor .fv-ed-transport-tools{gap:0}
+}
+/* From 681 px the play row's side columns never get narrower than their keys (the tools take 220 px), and the play
+   group stays in its own column, so no two keys overlap in a 560 px row. */
+@media (pointer:coarse) and (min-width:681px){
+ .fv-studio.fv-editor .fv-ed-transport{grid-template-columns:minmax(max-content,1fr) auto minmax(max-content,1fr);padding:0 8px}
+ .fv-studio.fv-editor .fv-ed-transport-center{translate:none}
+}
+@media (pointer:coarse) and (min-width:481px){
+
+ /* Clip trim handles look the same; the grip around each is 24 px wide and the clip's full height
+ (The clip clips its content, so the grip reaches exactly from the clip's top to its foot.) */
+ .fv-studio.fv-editor .fv-ed-trim-handle::before{inset:-200px auto;width:24px}
+ .fv-studio.fv-editor .fv-ed-trim-start::before{left:-2px}
+ .fv-studio.fv-editor .fv-ed-trim-end::before{right:-2px}
+ /* The playhead's grip is 44 px wide and 40 px tall; its tab is drawn where it was. */
+ .fv-studio.fv-editor .fv-ed-playhead-handle{left:calc(-22px + var(--fv-ed-handle-shift,0px));top:-20px;width:44px;height:40px}
+ .fv-studio.fv-editor .fv-ed-playhead-handle::after{left:calc(15.5px - var(--fv-ed-handle-shift,0px));top:10px}
+
+ /* Generate bar: every control 44 px tall in the same 60 px row. */
+ .fv-studio.fv-editor .fv-ed-genbar .fv-ed-generate{height:44px;min-height:44px}
+ .fv-studio.fv-editor .fv-ed-genbar .fv-ed-pass-options>summary{height:44px;min-height:44px;width:44px}
+ .fv-studio.fv-editor .fv-ed-genbar .fv-ed-description-box .fv-ed-description{min-height:42px}
+ .fv-studio.fv-editor .fv-ed-genbar .fv-ed-description-box{padding-right:92px}
+ .fv-studio.fv-editor .fv-ed-genbar :is(.fv-ed-history-button,.fv-ed-expand){width:44px;height:44px;min-height:44px;bottom:-1px}
+ .fv-studio.fv-editor .fv-ed-genbar .fv-ed-expand{right:0}
+ .fv-studio.fv-editor .fv-ed-genbar .fv-ed-history-button{right:44px}
+ .fv-studio.fv-editor .fv-ed-genbar .fv-ed-duration input[type=number]{height:44px;min-height:44px}
+ .fv-studio.fv-editor .fv-ed-genbar :is(.fv-ed-ref-add,.fv-ed-ref-chip){width:44px;height:44px;min-height:44px}
+
+ /* Project row and the side panels: the name, Export, the tabs, search and import are 44 px tall. */
+ .fv-studio.fv-editor .fv-ed-project-row :is(.fv-ed-name,.fv-ed-export-main,.fv-ed-save-state),
+ .fv-studio.fv-editor .fv-ed-export-box>button{height:44px;min-height:44px}
+ .fv-studio.fv-editor .fv-ed-tabs{height:auto}
+ .fv-studio.fv-editor .fv-ed-tabs button{height:44px;min-height:44px}
+ .fv-studio.fv-editor :is(.fv-ed-search,.fv-ed-library-import){height:44px;min-height:44px}
+ /* A source preview's add and remove keys. */
+ .fv-studio.fv-editor :is(.fv-ed-source-add,.fv-ed-source-remove){width:44px;height:44px;min-height:44px}
+
+}
+/* From 1024 px the heads keep their three switches (mute, solo, lock), each 44 × 44, in a 240 px column, so a name like "Audio 2" stays whole. */
+@media (pointer:coarse) and (min-width:1024px){
+ .fv-studio.fv-editor .fv-ed-track-view.fv-ed-track-view{--fv-ed-head-width:240px}
+ .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-head{grid-template-columns:16px minmax(0,1fr) 132px;padding-right:2px}
+ .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-head>:is(.fv-ed-audio-track-controls,.fv-ed-text-track-controls){grid-template-columns:repeat(3,44px)}
+ .fv-studio.fv-editor .fv-ed-track-view :is(.fv-ed-audio-track-switch,.fv-ed-text-track-controls button){width:44px;min-width:44px;height:44px;min-height:44px}
+}
+/* Below 1024 px the heads work as on a phone: a 44 px column of track icons (the name is in the head's label);
+   a press shows that track's switches beside it (44 px keys). */
+@media (pointer:coarse) and (min-width:481px) and (max-width:1023px){
+ .fv-studio.fv-editor .fv-ed-track-view.fv-ed-track-view{--fv-ed-head-width:44px}
+ .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-head{display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer}
+ .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-head>svg{display:block;width:18px;height:18px;color:var(--fv-fg2)}
+ .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-head>span:first-of-type{display:none}
+ .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads>.fv-ed-add-audio{justify-content:center;padding:0}
+ .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads>.fv-ed-add-audio::before{margin:0}
+ .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads>.fv-ed-add-audio::after{display:none}
+ .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-head>[class$=-track-controls]{display:none}
+ .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-head[data-open=true]>[class$=-track-controls]{display:flex;position:absolute;left:calc(100% + 4px);top:50%;transform:translateY(-50%);gap:0;padding:2px;background:var(--fv-card);border:1px solid var(--fv-border);border-radius:var(--fv-r-sm)}
+ .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads:has(>[data-open=true]){z-index:9}
+ .fv-studio.fv-editor .fv-ed-track-view :is(.fv-ed-audio-track-switch,.fv-ed-text-track-controls button){width:44px;min-width:44px;height:44px;min-height:44px}
+}

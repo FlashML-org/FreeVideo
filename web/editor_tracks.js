@@ -17,6 +17,7 @@ import {renderSpeedBadge} from './editor_speed.js';
 import {speedEdited} from './editor_speed_model.js';
 import {MUSIC_TRACK, MAX_MUSIC_FRAMES} from './editor_music_model.js';
 import {applyTip, switchTip, setTip} from './editor_tracks_tips.js';
+import {setAttr, setData, setHidden, setText} from './dom_quiet.js';
 // A range drawn on the music track alone: music for that stretch.
 const musicRange = selection => selection?.kind === 'range' && selection.tracks?.length === 1 && selection.tracks[0] === MUSIC_TRACK;
 
@@ -272,6 +273,9 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         target.addEventListener(type, listener, options);
         listeners.push(() => target.removeEventListener(type, listener, options));
     }
+    // On a wider touch screen the sound and text rows are finger height (48 px); the picture row keeps its size.
+    const touchRows = typeof matchMedia === 'function' ? matchMedia('(pointer:coarse) and (min-width:1024px)') : null;
+    const laneHeight = () => touchRows?.matches ? 48 : 40;
     const locate = id => clips.get(id);
     const pairIds = id => {
         const clip = locate(id)?.clip;
@@ -458,12 +462,22 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         }
         renderEmptyHints();
     }
+    function handleShift(x) {
+        if (x + (content.offsetLeft || 0) >= 64) return 0;
+        const line = playhead.getBoundingClientRect?.(), grip = handle.getClientRects?.().length ? handle.getBoundingClientRect() : null;
+        if (!line || !grip) return Math.max(0, Math.min(14, 6 - x));
+        const now = parseFloat(playhead.style.getPropertyValue('--fv-ed-handle-shift')) || 0;
+        const reach = Math.max(0, line.left - (grip.left - now)), room = line.left - scroll.getBoundingClientRect().left;
+        return Math.max(0, Math.min(reach, Math.ceil(reach - room)));
+    }
     function renderPlayhead() {
         const x = pixels(state.playhead);
         playhead.style.left = `${x}px`;
-        // Near time zero the 28 px grip moves right so it stays clear of the heads; the drawn tab stays on the line.
-        playhead.style.setProperty?.('--fv-ed-handle-shift', `${Math.max(0, Math.min(14, 6 - x))}px`);
-        handle.setAttribute('aria-label', `${t('Play position', '播放位置')}, ${clock(state.playhead)}`);
+        // Near time zero the grip moves right so it stays clear of the heads; the drawn tab stays on the line. How far the
+        // grip reaches left of the line is measured (14 px with a mouse; more with the touch grip or the narrow press rim,
+        // a11y.css), only near the start, against the room before time zero (the content's lead included).
+        playhead.style.setProperty?.('--fv-ed-handle-shift', `${handleShift(x)}px`);
+        setAttr(handle, 'aria-label', `${t('Play position', '播放位置')}, ${clock(state.playhead)}`);
     }
     function renderRuler() {
         const {minor, major} = tickSpacing(state.zoom);
@@ -640,7 +654,7 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
             row.empty.hidden = track.clips.length > 0;
             // A picture track with any block description grows a strip for it under the pictures.
             const noted = !!actions.describedTrack?.(track); row.element.dataset.noted = String(noted);
-            row.top = top; row.height = track.kind === 'video' ? 64 + (noted ? 22 : 0) : 40;
+            row.top = top; row.height = track.kind === 'video' ? 64 + (noted ? 22 : 0) : laneHeight();
             row.element.style.top = row.head.style.top = `${top}px`;
             row.element.style.height = row.head.style.height = `${row.height}px`;
             row.element.setAttribute('aria-label', name);
@@ -741,7 +755,7 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
     // While the playhead is dragged, its time (to a tenth) rides above it on the ruler.
     function showTime() {
         const bounds = element.getBoundingClientRect(), x = content.getBoundingClientRect().left - bounds.left + pixels(state.playhead);
-        tooltip.textContent = preciseClock(state.playhead); tooltip.hidden = false; tooltip.dataset.time = 'true';
+        setText(tooltip, preciseClock(state.playhead)); setHidden(tooltip, false); setData(tooltip, 'time', 'true');
         tooltip.style.left = `${clamp(x + 10, 8, Math.max(8, bounds.width - 80))}px`; tooltip.style.top = '28px';
     }
     function showGuide(frame) { guide.hidden = frame == null; if (frame != null) guide.style.left = `${pixels(frame)}px`; }
@@ -1261,8 +1275,9 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
             const target = key === 'arrowup' ? ordered.findLast(point => point < state.playhead) : ordered.find(point => point > state.playhead);
             if (target != null) state.seek(target);
             if (range?.kind === 'range') layout();
-            const x = pixels(state.playhead);
-            if (x < scroll.scrollLeft) scroll.scrollLeft = x;
+            // Going left, the line keeps the lead before it in view (a jump to the start scrolls fully back to 0).
+            const x = scrolledX(state.playhead), lead = content.offsetLeft;
+            if (x - lead < scroll.scrollLeft) scroll.scrollLeft = Math.max(0, x - lead);
             else if (x > scroll.scrollLeft + scroll.clientWidth) scroll.scrollLeft = x - scroll.clientWidth;
         }
         else if (modifier && key === 'z') { event.preventDefault(); event.shiftKey ? state.redo() : state.undo(); }
@@ -1291,20 +1306,20 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
             const head = create('div', 'fv-ed-track-head'); head.dataset.track = 'a2'; head.dataset.preview = 'true';
             const name = t('Audio 2', '声音 2'); head.title = name; head.append(icon('audio'), create('span', '', name));
             row.setAttribute('aria-label', name);
-            row.style.top = head.style.top = `${top}px`; row.style.height = head.style.height = '40px';
+            row.style.top = head.style.top = `${top}px`; row.style.height = head.style.height = `${laneHeight()}px`;
             const oldName = first.head.title, oldTop = addAudio.style.top, oldHeight = content.style.height;
             sourcePreview.restore = () => {
                 first.head.title = oldName; first.head.querySelector('span').textContent = oldName;
                 addAudio.style.top = oldTop; setTrackHeight(parseFloat(oldHeight) - 34);
             };
             first.head.title = t('Audio 1', '声音 1'); first.head.querySelector('span').textContent = first.head.title;
-            addAudio.style.top = `${top + 46}px`; setTrackHeight(top + 40);
+            addAudio.style.top = `${top + laneHeight() + 6}px`; setTrackHeight(top + laneHeight());
             heads.insertBefore(head, addAudio); content.insertBefore(row, overlays); nodes.push(head, row);
         }
         for (const {track, clip} of added) {
             const node = create('div', 'fv-ed-gesture-preview fv-ed-source-placement'); node.dataset.track = track;
             const row = rows.get(track), top = row?.top ?? rows.get('a1').top + rows.get('a1').height + 6;
-            node.style.top = `${top}px`; node.style.height = `${row?.height ?? 40}px`;
+            node.style.top = `${top}px`; node.style.height = `${row?.height ?? laneHeight()}px`;
             position(node, clip.start, clip.frames); overlays.append(node); nodes.push(node);
         }
         return added;
@@ -1373,6 +1388,9 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         else attempt(t('Insert clip', '放入素材'), record => model.insertSource(record, {...payload, at, targetTrack}), {clearRange: true});
         showInsertion(null); showGuide(null); dropPoint = null; dropPreviewKey = ''; draggedSource = null;
     }
+    // Time zero sits a little in from the scrolling area's left edge (the content's margin, editor_tracks.css), so a
+    // frame's place in the scrolled area is its pixels plus that lead.
+    function scrolledX(frames) { return pixels(frames) + content.offsetLeft; }
     function zoom(value, anchor = scroll.clientWidth / 2) {
         const center = (scroll.scrollLeft + anchor) / state.zoom;
         state.setZoom(clamp(value, Number(slider.min), Number(slider.max)));
@@ -1465,6 +1483,7 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         else if (event.type === 'zoom') { if (gesture) stopPointer(null, true); layout(); }
     });
     const observer = new ResizeObserver(layout); observer.observe(scroll);
+    if (touchRows) on(touchRows, 'change', () => { if (!disposed) renderRecord(); });
     selectionBox.hidden = previewBox.hidden = guide.hidden = insertion.hidden = true;
     const audioControls = attachAudioTracks(element, {state, t, actions});
     // Track head switches are drawn by the audio and text modules on every change; each gets its name, use and state.

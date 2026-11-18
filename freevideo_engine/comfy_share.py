@@ -236,6 +236,10 @@ def register():
                     raise web.HTTPInsufficientStorage(text='disk_full') from None
                 if not isinstance(error, InterruptedError):
                     logging.warning('FreeVideo sharing export failed.', exc_info=error)
+                if isinstance(error, OSError) and not isinstance(error, InterruptedError):
+                    # A file problem, not an encoder one: name it (in_use, not_writable, not_readable) without the path.
+                    from .disk_space import file_reason
+                    raise web.HTTPInternalServerError(text=file_reason(error, write=not isinstance(error, FileNotFoundError))) from None
                 raise web.HTTPBadRequest(text='Sharing export could not complete') from None
 
     @server.routes.get('/freevideo/share/video')

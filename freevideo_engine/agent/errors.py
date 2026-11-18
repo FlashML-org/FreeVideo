@@ -296,6 +296,14 @@ def safe_details(value):
     return '[redacted]'
 
 
+# Picture-only codes: the people-facing sentence is the picture card's own (IMAGE_REASONS), word for word.
+IMAGE_ONLY = ('small_memory', 'busy_video', 'model_unreadable', 'device_unavailable')
+# Program-facing codes: only an Agent or a command-line client meets them, never a person as a task's failure.
+PROTOCOL_ONLY = ('forbidden', 'redirect_forbidden', 'method_not_allowed', 'unauthorized', 'no_token', 'invalid_json',
+                 'unsupported_media_type', 'idempotency_conflict', 'invalid_range', 'invalid_wait', 'invalid_resume',
+                 'invalid_library_id', 'invalid_capabilities_query')
+
+
 # One public sentence shared by conversation cards, HTTP and MCP. Backend text
 # is classified, never echoed: it can contain prompts, filenames or credentials.
 FAILURE_REASONS_ZH = {
@@ -349,8 +357,61 @@ FAILURE_REASONS_ZH = {
     'chain_too_long': '接续后的视频超过了支持的段数',
     'chain_short_parts': '有短于 10 秒的段时，接续后的视频超过了支持的段数',
     'chain_rejected': '生成服务无法使用这组参数',
-    'generation_failed': '生成没有完成',
-    'internal_error': '没有完成',
+    'generation_failed': '生成过程中出现了意外错误',
+    'internal_error': '处理过程中出现了意外错误',
+    'unreachable': 'FreeVideo 服务没有响应',
+    'session_full': '这个对话的消息已达到上限',
+    'page_session_required': '页面会话已失效',
+    'origin_forbidden': '这次操作来自其他网址，已被拒绝',
+    'local_only': '这项操作只能在运行 FreeVideo 的电脑上进行',
+    'page_required': '这项操作需要在浏览器中打开 FreeVideo 页面',
+    'unsupported_comfyui': '已安装的生成组件版本不受支持',
+    'busy': '另一项任务正在占用所需的资源',
+    'conflict': '这项操作与任务的当前状态冲突',
+    'no_video': '来源任务还没有生成完成的视频',
+    'invalid_edit': '图片编辑的设置有误',
+    'invalid_screenplay': '剧本中有不符合要求的内容',
+    'invalid_seed': '图片的随机种子超出了支持的范围',
+    'image_size': '图片超过了 5000 万像素的上限',
+    'unsupported_media': '读取画面的模型只能读取图片',
+    'unknown_shot': '找不到这个镜头',
+    'unknown_take': '这个镜头中找不到指定的那一条',
+    'take_not_ready': '这一条已过期或没有生成成功',
+    'chosen_by_user': '这个镜头已手动选定，不会自动更改',
+    'nothing_to_cancel': '没有可以取消的未完成任务',
+    'not_allowed': '这部短剧只能在页面上手动停止或继续',
+    'already_ended': '这部短剧已经结束',
+    'needs_confirmation': '这项操作需要先确认',
+    'declined_by_user': '这项操作已被拒绝',
+    'turn_abandoned': '这次请求已被放弃',
+    'managed_by_production': '这一条属于一部短剧，不能单独继续生成',
+    'stale_revision': '卡片在读取后已有改动',
+    'changed_by_user': '这部分内容已被手动修改',
+    'card_in_use': '有未完成的短剧正在使用这张卡片',
+    'already_generating': '这张卡片的参考图正在生成',
+    'project_changed': '项目在读取后已有改动',
+    'image_changed': '图片在读取后已有改动',
+    'clip_busy': '这次操作涉及的片段还在生成',
+    'clip_locked': '这次操作涉及的片段在已锁定的轨道上',
+    'layer_locked': '这次操作要修改已锁定的图层',
+    'audio_full': '这里没有空闲的声音轨',
+    'overlap': '这次操作会与不能移动的片段重叠',
+    'missing_glyphs': '项目中的文字含有内置字体无法显示的字符',
+    'clip_source_unusable': '有片段的源文件缺失，或在片段使用的范围内无法读取',
+    'shorten_unavailable': '这里暂时不能自动缩短台词',
+    'no_speech_model': '这台电脑上没有安装语音识别模型',
+    'speech_language': '语音识别模型不支持这段声音的语言',
+    'listen_failed': '识别台词时中途出错',
+    'music_download_failed': '配乐模型未能下载',
+    'music_failed': '生成配乐时中途出错',
+    'stems_download_failed': '声音分离模型未能下载',
+    'stems_failed': '分离声音时中途出错',
+    'sound_failed': '处理成片声音时中途出错',
+    'voice_failed': '更换人声时中途出错',
+    'voice_model_missing': '配音模型还没有安装好',
+    'no_speech': '所选范围内没有找到说话声',
+    # Image-only codes keep the sentences the picture card already shows.
+    **{code: IMAGE_REASONS[code][1] for code in IMAGE_ONLY},
 }
 FAILURE_REASONS_EN = {
     **LORA_MESSAGE_EN,
@@ -403,8 +464,116 @@ FAILURE_REASONS_EN = {
     'chain_too_long': 'The continued video has more parts than supported',
     'chain_short_parts': 'With a part shorter than 10 seconds, the continued video has more parts than supported',
     'chain_rejected': 'The generation service cannot use these settings',
-    'generation_failed': 'Generation did not finish',
-    'internal_error': 'Did not finish',
+    'generation_failed': 'An unexpected error stopped generation',
+    'internal_error': 'An unexpected error stopped this task',
+    'unreachable': 'The FreeVideo service did not respond',
+    'session_full': 'This chat has reached its message limit',
+    'page_session_required': 'The page session is no longer valid',
+    'origin_forbidden': 'This action came from a different web address and was refused',
+    'local_only': 'This action is available only on the computer running FreeVideo',
+    'page_required': 'This action needs the FreeVideo page open in a browser',
+    'unsupported_comfyui': 'The installed generation component version is not supported',
+    'busy': 'Another task is using the resources this one needs',
+    'conflict': 'This action conflicts with the current state of the task',
+    'no_video': 'The source task has no finished video yet',
+    'invalid_edit': 'The image edit settings are invalid',
+    'invalid_screenplay': 'The screenplay contains invalid content',
+    'invalid_seed': 'The picture seed is outside the supported range',
+    'image_size': 'The image exceeds the 50-megapixel limit',
+    'unsupported_media': 'The model that reads pictures can read only images',
+    'unknown_shot': 'This shot cannot be found',
+    'unknown_take': 'The chosen take cannot be found in this shot',
+    'take_not_ready': 'This take is out of date or did not succeed',
+    'chosen_by_user': 'This shot was chosen by hand and is not changed automatically',
+    'nothing_to_cancel': 'There is no unfinished task to cancel',
+    'not_allowed': 'This short film can be stopped or continued only by hand on the page',
+    'already_ended': 'This short film has already ended',
+    'needs_confirmation': 'This action needs approval first',
+    'declined_by_user': 'This action was declined',
+    'turn_abandoned': 'This request was abandoned',
+    'managed_by_production': 'This take belongs to a short film and cannot be continued on its own',
+    'stale_revision': 'The card has changed since it was read',
+    'changed_by_user': 'This part was changed by hand',
+    'card_in_use': 'An unfinished short film uses this card',
+    'already_generating': 'Reference pictures for this card are already being made',
+    'project_changed': 'The project has changed since it was read',
+    'image_changed': 'The image has changed since it was read',
+    'clip_busy': 'A clip in this action is still generating',
+    'clip_locked': 'A clip in this action is on a locked track',
+    'layer_locked': 'This action changes a locked layer',
+    'audio_full': 'There is no free sound track here',
+    'overlap': 'This action would overlap clips that cannot move',
+    'missing_glyphs': 'Text in the project contains characters the built-in fonts cannot display',
+    'clip_source_unusable': 'A clip\'s source file is missing, or cannot be read over the part the clip uses',
+    'shorten_unavailable': 'Lines cannot be shortened automatically here yet',
+    'no_speech_model': 'No speech recognition model is installed on this computer',
+    'speech_language': 'The speech recognition model does not support the language of this sound',
+    'listen_failed': 'An error stopped recognizing the lines',
+    'music_download_failed': 'The music model could not be downloaded',
+    'music_failed': 'An error stopped composing the music',
+    'stems_download_failed': 'The sound separation model could not be downloaded',
+    'stems_failed': 'An error stopped separating the sound',
+    'sound_failed': 'An error stopped finishing the sound of the cut',
+    'voice_failed': 'An error stopped changing the voice',
+    'voice_model_missing': 'The dubbing model is not installed yet',
+    'no_speech': 'No speech was found in the selection',
+    **{code: IMAGE_REASONS[code][0] for code in IMAGE_ONLY},
+}
+# What a person can do next, for the reasons above whose remedy is not just running the task again. Shown after the
+# reason only while the reason itself is the code's sentence (a more specific message keeps its own meaning).
+FAILURE_NEXT_ZH = {
+    'generation_failed': '再次出现时，请点击“提交问题”',
+    'internal_error': '再次出现时，请点击“提交问题”',
+    'unreachable': '确认 FreeVideo 已经启动后再试',
+    'session_full': '点击“新对话”后继续',
+    'page_session_required': '刷新页面后再操作一次',
+    'origin_forbidden': '在 FreeVideo 提供的页面中操作',
+    'unsupported_comfyui': '在启动器或设置中修复安装',
+    'busy': '等该任务完成后再试',
+    'no_video': '等来源视频生成完成后再试',
+    'image_size': '缩小图片后再试',
+    'managed_by_production': '重拍这个镜头，或继续这部短剧',
+    'already_generating': '等参考图生成完成后再试',
+    'clip_busy': '等片段生成完成后再试',
+    'clip_locked': '解锁该轨道后再试',
+    'layer_locked': '解锁该图层后再试',
+    'audio_full': '先挪开或删除这里的一段声音',
+    'overlap': '换一个位置，或先挪开挡住的片段',
+    'missing_glyphs': '修改这些文字后再导出',
+    'clip_source_unusable': '找回或替换源文件后再导出',
+    'shorten_unavailable': '手动改写较短的台词',
+    'no_speech_model': '请手动填写字幕',
+    'music_download_failed': '配乐模型需要约 20 GB 磁盘空间和网络连接，确认后再试',
+    'stems_download_failed': '检查网络连接后再试',
+    'voice_model_missing': '先安装配音模型',
+    'no_speech': '选择有人说话的一段声音',
+}
+FAILURE_NEXT_EN = {
+    'generation_failed': 'If it happens again, use "Report a problem"',
+    'internal_error': 'If it happens again, use "Report a problem"',
+    'unreachable': 'Make sure FreeVideo is running, then try again',
+    'session_full': 'Click "New chat" to continue',
+    'page_session_required': 'Reload the page and repeat the action',
+    'origin_forbidden': 'Use the page served by FreeVideo',
+    'unsupported_comfyui': 'Repair the installation in the launcher or in Settings',
+    'busy': 'Try again when that task finishes',
+    'no_video': 'Try again after the source video finishes',
+    'image_size': 'Make the image smaller, then try again',
+    'managed_by_production': 'Reshoot this shot, or continue the short film',
+    'already_generating': 'Try again when the reference pictures are finished',
+    'clip_busy': 'Try again when the clip finishes generating',
+    'clip_locked': 'Unlock the track, then try again',
+    'layer_locked': 'Unlock the layer, then try again',
+    'audio_full': 'Move or remove a sound clip here first',
+    'overlap': 'Choose another position, or move the clips in the way first',
+    'missing_glyphs': 'Change that text, then export again',
+    'clip_source_unusable': 'Restore or replace the source file, then export again',
+    'shorten_unavailable': 'Write a shorter line by hand',
+    'no_speech_model': 'Write the subtitles by hand',
+    'music_download_failed': 'The music model needs about 20 GB of free disk space and a network connection; check both, then try again',
+    'stems_download_failed': 'Check the network connection, then try again',
+    'voice_model_missing': 'Install the dubbing model first',
+    'no_speech': 'Choose a stretch of sound with someone speaking',
 }
 FAILURE_MESSAGES_ZH = {
     'The previous video is too short to continue; it needs to be at least 1.7 s long.': '接续的上一段视频太短，至少需要 1.7 秒',
@@ -447,13 +616,21 @@ def failure_reason_en(error):
     return FAILURE_REASONS_EN.get(error.get('code'), 'Did not finish')
 
 
+# The people-facing fields reasons() writes; next_zh/next_en only when the reason has a next step.
+REASON_KEYS = ('error_zh', 'error_en', 'next_zh', 'next_en')
+
+
 def reasons(error):
     from ..other_usage import fact, join
     result = dict(error_zh=failure_reason(error), error_en=failure_reason_en(error))
+    code = error.get('code')
+    step = code in FAILURE_NEXT_ZH and result['error_zh'] == FAILURE_REASONS_ZH.get(code)
     for key, zh in (('error_zh', True), ('error_en', False)):
         suffix = fact(error.get('other_usage'), zh=zh)
         if suffix and suffix not in result[key]:
             result[key] = join(result[key], suffix, zh=zh)
+    if step:
+        result.update(next_zh=FAILURE_NEXT_ZH[code], next_en=FAILURE_NEXT_EN[code])
     return result
 
 

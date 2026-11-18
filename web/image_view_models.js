@@ -8,6 +8,7 @@ import { el, icon, t, tip, button } from './image_view_ui.js';
 export const IMAGE_MODELS = Object.freeze([
     {id: 'minimax-h3-image', name: 'MiniMax H3 Image', short: 'H3 Image'},
     {id: 'qwen-image-2.1-turbo', name: 'Qwen-Image 2.1', short: 'Qwen-Image 2.1'},
+    {id: 'moss-image-sft', name: 'MOSS-Image', short: 'MOSS-Image'},
 ]);
 
 // One model row from the engine's info as a state the page can draw. `info` absent: still asking.
@@ -53,13 +54,18 @@ export function statusLine(state) {
 const ICON_OF = {ready: 'check', failed: 'warn', downloading: 'down', unavailable: 'info', missing: 'cloud', checking: 'clock'};
 const gbOf = state => state.total ? (state.total / 1e9).toFixed(1) : '';
 function useOf(model, state) {
-    const size = state.total ? t(`about ${gbOf(state)} GB, files shared with video are not downloaded again`, `约 ${gbOf(state)} GB，和视频共用的文件不重复下载`) : '';
+    const shared = model.id !== 'moss-image-sft';
+    const size = state.total ? shared ? t(`about ${gbOf(state)} GB, files shared with video are not downloaded again`, `约 ${gbOf(state)} GB，和视频共用的文件不重复下载`)
+        : t(`about ${gbOf(state)} GB`, `约 ${gbOf(state)} GB`) : '';
     return {
-        ready: model.id === IMAGE_MODELS[0].id ? t('Large, detailed pictures, up to 16 references', '大尺寸、细节多，最多 16 张参考图') : t('Fast pictures, up to 4 references', '出图快，最多 4 张参考图'),
-        missing: t(`Not installed: Generate installs it first, ${size}`, `未安装：点生成会先安装，${size}`),
+        ready: model.id === IMAGE_MODELS[0].id ? t('Large, detailed pictures, up to 16 references', '大尺寸、细节多，最多 16 张参考图')
+            : model.id === 'moss-image-sft' ? t('Pictures from a text prompt', '根据文字提示出图') : t('Fast pictures, up to 4 references', '出图快，最多 4 张参考图'),
+        missing: state.row?.blocked_by ? t('Not installed: another model is downloading; this one installs after it, or when you press Generate', '未安装：另一个模型正在下载，完成后才会安装这个，也可点生成')
+            : t(`Not installed: Generate installs it first, ${size}`, `未安装：点生成会先安装，${size}`),
         downloading: state.paused ? t('Paused while a video generates; resumes after it', '视频生成中，下载已暂停，之后自动继续') : state.verifying ? (state.unknown ? t('Verifying the files; usable when done', '正在校验文件，完成后可以使用') : t(`Verifying the files ${Math.floor(state.fraction * 100)}%; usable when done`, `正在校验文件 ${Math.floor(state.fraction * 100)}%，完成后即可使用`)) : t(`Downloading ${Math.floor((state.fraction || 0) * 100)}%; usable when done`, `正在下载 ${Math.floor((state.fraction || 0) * 100)}%，完成后即可使用`),
         failed: state.reason || t('The download stopped; press Retry', '下载中断了，点重试'),
-        unavailable: t('This model does not run on this computer', '这台电脑不能运行这个模型'),
+        unavailable: model.id === 'moss-image-sft' ? t('MOSS-Image needs an NVIDIA graphics card, which this computer does not have. Choose another model', 'MOSS-Image 需要 NVIDIA 显卡，这台电脑没有。请选别的模型')
+            : t('This model needs an NVIDIA graphics card, which this computer does not have. Choose another model', '这个模型需要 NVIDIA 显卡，这台电脑没有。请选别的模型'),
         checking: t('Asking the engine', '正在询问引擎'),
     }[state.state];
 }
@@ -126,7 +132,7 @@ export function modelPicker({host, onPick, onInstall, onPause}) {
         const model = IMAGE_MODELS.find(m => m.id === chosen) || IMAGE_MODELS[0], state = modelState(info, model.id);
         root.dataset.state = state.state;
         name.textContent = model.name;
-        status.replaceChildren(icon(state.unknown ? 'clock' : ICON_OF[state.state] || 'cloud'), el('span', '', pending && state.state === 'downloading' ? t(`${statusLine(state)} · then generates`, `${statusLine(state)} · 完成后生成`) : statusLine(state)));
+        status.replaceChildren(icon(state.unknown ? 'clock' : ICON_OF[state.state] || 'cloud'), el('span', '', statusLine(state)));
         // Closed, the row names the model only; it speaks when something needs doing (to download, downloading, failed).
         status.hidden = state.state === 'ready' || state.state === 'checking';
         tip(trigger, t('Model', '模型'), t(`${model.name}: ${useOf(model, state)}. Click to choose another`, `${model.name}：${useOf(model, state)}。点开换别的模型`));

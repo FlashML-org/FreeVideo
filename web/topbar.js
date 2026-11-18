@@ -16,6 +16,7 @@ import { createVersionInfo } from './updates.js';
 import { paletteButton, openCreations } from './palette.js';
 import { wordmark } from './wordmark.js';
 import { jobs, ACTIVE } from './task_store.js';
+import { isNetworkTypeError, connectionLostText } from './browser_extension.js';
 import { onNotices, mountNotices, markNoticesRead } from './notifications.js';
 import { CN, t0, words, capsuleState, capsuleWords, machineLine, machineFigures, isFailure, FIGURES_KEY, figuresShown } from './topbar_state.js';
 export { CN, words, capsuleState, machineLine };
@@ -308,6 +309,7 @@ function buildActivity(t) {
     const heading = (node, name, extra = null) => { const line = el('div', 'fv-tb-act-title'); line.append(el('span', '', name)); if (extra) line.append(extra); node.replaceChildren(line); };
     const VIEW = {studio: t('Studio', '创作面板'), image: t('Image', '图像视图'), editor: t('Edit', '剪辑视图'), autopilot: t('Autopilot', 'AI 全自动'), nodes: t('Nodes', '节点视图')};
     // 2 · Tasks: one row each; a press goes back to its picture; Stop (or Remove from queue) is confirmed first.
+    const stopLost = new Map(), LOST_MS = 8000;
     const taskRow = row => {
         const line = el('div', `fv-tb-job${row.status === 'running' ? ' is-run' : ''}${row.status === 'queued' ? ' is-wait' : ''}`);
         const go = el('button', 'fv-tb-job-go'); go.type = 'button';
@@ -316,7 +318,8 @@ function buildActivity(t) {
         const text = el('span', 'fv-tb-job-tx'), view = VIEW[row.view] || (row.kind === 'image' ? VIEW.image : VIEW.studio);
         // Title: the work's name; second line: the view on the left, the percentage and time left on the right.
         const sub = el('span', 'fv-tb-job-line');
-        sub.append(el('span', 'fv-tb-job-t2', view), el('span', `fv-tb-job-n${isFailure(row) ? ' is-warn' : ''}`, jobFigures(row, t)));
+        const lost = Date.now() - (stopLost.get(row.id) ?? -Infinity) < LOST_MS;
+        sub.append(el('span', `fv-tb-job-t2${lost ? ' is-warn' : ''}`, lost ? connectionLostText(t) : view), el('span', `fv-tb-job-n${isFailure(row) ? ' is-warn' : ''}`, jobFigures(row, t)));
         text.append(el('span', 'fv-tb-job-t1', jobTitle(row, t)), sub);
         go.append(thumb, text);
         tip(go, jobTitle(row, t).slice(0, 40), t('Go back to its picture', '回到它的生成画面'));
@@ -342,10 +345,13 @@ function buildActivity(t) {
             stop.setAttribute('aria-label', queued ? t('Remove from queue', '取消排队') : t('Stop', '停止'));
             tip(stop, queued ? t('Remove from queue', '取消排队') : t('Stop', '停止'), queued ? t('It will not be made', '这项不会再生成') : t('Stop this one; asks first', '停止这一项，会先确认'));
             stop.onclick = async event => {
-                event.stopPropagation();
+                event.stopPropagation(); stopLost.delete(row.id);
                 // The question sits in this panel, so answering it keeps the panel (and the rest of the list) open.
                 try { const {confirmStop} = await import('./task_float.js'); if (await confirmStop(stop, {kind: row.kind === 'image' ? 'image' : 'video', queued, host: box})) await jobs.cancel(row.id); }
-                catch { /* The row stays as it is. */ }
+                catch (error) {
+                    // The row stays as it is; a lost connection is named where its view label is.
+                    if (isNetworkTypeError(error)) { stopLost.set(row.id, Date.now()); drawTasks(); setTimeout(() => { if (isOpen()) drawTasks(); }, LOST_MS + 50); }
+                }
             };
             line.append(stop);
         }
@@ -610,7 +616,7 @@ export function decorateTabs(group, view, t = t0) {
     const back = event => {
         if (!group.isConnected) { globalThis.removeEventListener?.('freevideo-view', back); return; }
         if (event.detail?.view !== own) return;
-        for (const tab of group.querySelectorAll('[data-view]')) tab.setAttribute('aria-pressed', String(tab.dataset.view === own));
+        for (const tab of group.querySelectorAll('[data-view]')) { const next = String(tab.dataset.view === own); if (tab.getAttribute('aria-pressed') !== next) tab.setAttribute('aria-pressed', next); }
     };
     if (own) globalThis.addEventListener?.('freevideo-view', back);
     // The picker: at the phone level the pressed tab opens the list instead of re-opening its own view.
@@ -636,8 +642,9 @@ export function decorateTabs(group, view, t = t0) {
 function slide(group) {
     const pressed = group.querySelector('[data-view][aria-pressed=true]:not([hidden])');
     if (!pressed || !pressed.offsetWidth) return;
-    group.style.setProperty('--fv-tb-l', `${pressed.offsetLeft}px`);
-    group.style.setProperty('--fv-tb-r', `${pressed.offsetLeft + pressed.offsetWidth}px`);
+    const left = `${pressed.offsetLeft}px`, right = `${pressed.offsetLeft + pressed.offsetWidth}px`;
+    if (group.style.getPropertyValue('--fv-tb-l') !== left) group.style.setProperty('--fv-tb-l', left);
+    if (group.style.getPropertyValue('--fv-tb-r') !== right) group.style.setProperty('--fv-tb-r', right);
     // The first place is taken at once; only later moves slide (a new bar never animates in).
     if (!group.hasAttribute('data-fv-tb-ink')) { void getComputedStyle(group, '::before').clipPath; group.setAttribute('data-fv-tb-ink', ''); }
 }
@@ -744,8 +751,10 @@ export function adoptHeader(header, {t = t0} = {}) {
     header.classList.add('fv-topbar'); header.dataset.fvBar = view;
     header.style.setProperty('--fv-tb-chevron', iconURL('chevron'));
     header.setAttribute('role', 'banner');
-    // The view's own entries leave the bar (their components stay alive until the view disposes them).
-    header.replaceChildren(brand, tabs, actions.element);
+    // The view's own entries leave the bar (their components stay alive until the view disposes them). The tabs stay
+    // in place, so a tab the view has already focused keeps the focus (moving a node out of the page drops it).
+    for (const child of [...header.children]) if (child !== tabs) child.remove();
+    header.prepend(brand); header.append(actions.element);
     delete header.dataset.fit; delete header.dataset.place;
     const fit = keepFit(header);
     const host = header.closest('dialog');

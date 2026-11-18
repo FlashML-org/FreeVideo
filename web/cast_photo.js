@@ -74,6 +74,8 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
     const fetcher = fetchApi || (api ? api.fetchApi.bind(api) : globalThis.fetch.bind(globalThis));
     client = client || createImageGenClient(fetcher);
     const ai = source === 'ai', make = MAKE[source] || MAKE.photo, base = make[0], words = wordsOf(source, tr);
+    // "Upload images": every view can be a picture of the user's own; Generate then makes only the views still empty.
+    const canOwn = source === 'image';
     // Deletes go out with keepalive, so the ones sent as the tab closes still reach the engine.
     const keeper = createImageGenClient((url, options = {}) => fetcher(url, options.method === 'POST' ? {...options, keepalive: true} : options));
     for (const name of ['./cast_generate.css', './cast_photo.css']) {
@@ -195,7 +197,13 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
     // The views, in the order of the sheet; the face cell is wider. A finished view opens in the image editor on click;
     // on hover it offers Draw again (and Use the photo on the face), and Restore after an edit.
     const grid = el('div', 'fv-cg-views');
-    const edits = {};
+    // edits: view → the view as edited in the image editor. own: view → a picture the user put in for it
+    // ({file, url, ref}: ref is its upload to the engine, made only when a generation needs it).
+    const edits = {}, own = {};
+    const ownInput = el('input'); ownInput.type = 'file'; ownInput.accept = 'image/*'; ownInput.hidden = true;
+    let ownFor = '';
+    ownInput.onchange = () => { takeOwn(ownFor, ownInput.files); ownInput.value = ''; };
+    const choosing = view => { if (generator.state().running) return; ownFor = view; ownInput.click(); };
     const cells = Object.fromEntries(SHOW.map(view => {
         const cell = el('div', 'fv-cg-view'); cell.dataset.view = view; cell.tabIndex = 0; cell.setAttribute('role', 'button');
         const title = tr(...VIEW_TITLES[view]);
@@ -210,19 +218,53 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
             if (!photoSlot.get()) return; dropEdit('face'); generator.useOriginal(ORIGINAL); faceChanged = true; render();
         }) : null;
         const restore = tool(tr('Restore', '恢复原图'), tr('Put the picture back as it was made', '换回生成时的样子'), () => { dropEdit(view); if (leads(view)) faceChanged = true; render(); });
+        const mine = canOwn ? tool(tr('Add picture', '添加图片'), tr('Use a picture of your own for this view', '这个视角用自己的图片'), () => choosing(view)) : null;
+        const clear = canOwn ? tool(tr('Remove', '移除'), tr('Remove this picture. Generate makes this view.', '移除这张图片，生成时补上这个视角。'), () => dropOwn(view)) : null;
         cell.append(image, label, edited, percent, meter, tools); grid.append(cell);
-        tip(cell, title, tr('Click to edit it in the image editor', '点击在图像编辑器中修改'));
-        const open = () => { if (cell.dataset.state === 'done' && !generator.state().running) void editView(view); };
+        tip(cell, title, canOwn ? tr('Click or drop a picture', '点击或拖入图片') : tr('Click to edit it in the image editor', '点击在图像编辑器中修改'));
+        const open = () => { if (generator.state().running) return; if (cell.dataset.state === 'done') void editView(view); else if (canOwn && cell.dataset.state === 'empty') choosing(view); };
+        if (canOwn) {
+            cell.addEventListener('dragover', event => { event.preventDefault(); });
+            cell.addEventListener('drop', event => { event.preventDefault(); event.stopPropagation(); if (!generator.state().running) takeOwn(view, event.dataTransfer.files); });
+        }
         cell.addEventListener('click', open);
         cell.addEventListener('keydown', event => { if ((event.key === 'Enter' || event.key === ' ') && event.target === cell) { event.preventDefault(); open(); } });
-        return [view, {cell, image, percent, fill, title, edited, again, usePhoto, restore}];
+        return [view, {cell, image, percent, fill, title, edited, again, usePhoto, restore, mine, clear}];
     }));
     // A change to these views is one the others can be redrawn from: the face and the front from a picture; the front
     // from a description.
     const leads = view => ai ? view === 'front' : view === 'face' || view === 'front';
-    const sourceOf = view => { const r = pictureOf(view) || {}; return r.file ? (r.original ? photoSlot?.get()?.url || '' : viewURL(r.file)) : ''; };
+    const sourceOf = view => { if (own[view]) return own[view].url; const r = pictureOf(view) || {}; return r.file ? (r.original ? photoSlot?.get()?.url || '' : viewURL(r.file)) : ''; };
     const dropEdit = view => { const e = edits[view]; if (!e) return; URL.revokeObjectURL(e.url); delete edits[view]; generator.setOverride(view, ''); };
+    // A picture the user puts in for a view (choose or drop): it stands in the view; the others are made around it.
+    function takeOwn(view, files) {
+        const file = Array.from(files || []).find(f => /^image\//.test(f.type));
+        if (!view || !file || generator.state().running) return;
+        dropEdit(view); releaseOwn(view);
+        own[view] = {file, url: URL.createObjectURL(file), ref: ''};
+        generator.setOwn(make.indexOf(view), `own:${view}`);
+        // The views made before were made around the old one of these.
+        if (leads(view) && generator.state().pictures.some((row, at) => at !== make.indexOf(view) && row.file && !row.own)) faceChanged = true;
+        attention = ''; render();
+    }
+    function releaseOwn(view) { const o = own[view]; if (!o) return; URL.revokeObjectURL(o.url); delete own[view]; }
+    function dropOwn(view) {
+        if (!own[view] || generator.state().running) return;
+        dropEdit(view); releaseOwn(view); generator.setOwn(make.indexOf(view), ''); render();
+    }
+    // Before a generation uses them as references, the pictures the user put in are uploaded to the engine (once each,
+    // and let go with the other uploads when the dialog is left); a set made only of them never is.
+    async function ensureOwn() {
+        for (const view of SHOW) {
+            const o = own[view]; if (!o || o.ref) continue;
+            const ref = await referenceOf({file: o.file});
+            if (disposed || own[view] !== o) continue;
+            o.ref = ref; generator.setOwn(make.indexOf(view), ref);
+        }
+    }
     async function redraw(view) {
+        if (own[view]) return;
+        try { await ensureOwn(); } catch (error) { attention = error.message || tr('Could not read this picture. Please choose another one.', '无法读取这张图片，请换一张。'); render(); return; }
         dropEdit(view);
         await generator.redo(make.indexOf(view));
         if (view === base && generator.state().pictures[0].file) { faceChanged = true; render(); }
@@ -245,7 +287,7 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
         if (leads(view)) faceChanged = true;
         render();
     }
-    body.append(side, grid); root.append(body); container.append(root);
+    body.append(side, grid); root.append(body, ownInput); container.append(root);
 
     // The main action lives in the dialog's own button row (the host places it): Generate, Stop, then Generate all again.
     const action = el('button', 'fv-cp-action'); action.type = 'button';
@@ -299,10 +341,14 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
         }
         // Shown or hidden by the dialog (only on this tab); missing image models hide it from here.
         action.dataset.missing = String(!!isMissing);
-        action.textContent = running ? tr('Stop', '停止') : finished ? tr('Generate all again', '重新生成全部') : tr('Generate', '生成');
+        // Pictures of the user's own stay; Generate makes the other views, and with all four in there is nothing to make.
+        const ownCount = SHOW.filter(view => own[view]).length;
+        action.textContent = running ? tr('Stop', '停止') : finished ? (ownCount ? tr('Generate the rest again', '重新生成其余视角') : tr('Generate all again', '重新生成全部'))
+            : ownCount ? tr('Generate the rest', '生成其余视角') : tr('Generate', '生成');
+        action.classList.toggle('fv-cp-none', ownCount === SHOW.length);
         action.dataset.primary = String(!running && !finished);
         const why = ai ? (!describe.value.trim() ? tr('Describe the character first', '先描述角色') : mode === 'image' && !outfitSlot.get() ? tr('Add a clothes picture first', '先添加服装图') : '')
-            : !photoSlot.get() ? words.first : mode === 'image' && !outfitSlot.get() ? tr('Add a clothes picture first', '先添加服装图')
+            : !photoSlot.get() && !own.front && !own.face ? (ownCount ? tr('Add a source picture, or put in the front or face close-up.', '请添加来源图，或放入正面或脸部特写。') : words.first) : mode === 'image' && !outfitSlot.get() ? tr('Add a clothes picture first', '先添加服装图')
             : mode === 'text' && !field.value.trim() ? tr('Describe the clothes first', '先描述服装') : '';
         if (why && !running) { action.setAttribute('aria-disabled', 'true'); action.dataset.fvTipWhy = why; } else { action.removeAttribute('aria-disabled'); delete action.dataset.fvTipWhy; }
         tip(action, action.textContent, running ? tr('Stop making the views', '停止生成') : words.use);
@@ -310,13 +356,19 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
             const c = cells[view], r = pictureOf(view) || {}, index = make.indexOf(view), active = running && index === state.current && !r.file;
             const src = r.file ? edits[view]?.url || sourceOf(view) : '';
             if (c.image.getAttribute('src') !== src) src ? c.image.src = src : c.image.removeAttribute('src');
-            c.cell.dataset.state = r.file ? 'done' : active ? 'running' : 'empty'; c.cell.dataset.original = String(!!r.original);
+            c.cell.dataset.state = r.file ? 'done' : active ? 'running' : 'empty'; c.cell.dataset.original = String(!!r.original && !own[view]); c.cell.dataset.own = String(!!own[view]);
             c.cell.setAttribute('aria-label', c.title + (active ? ' ' + Math.floor(r.fraction * 100) + '%' : ''));
             c.percent.textContent = active && !state.waiting ? Math.floor(r.fraction * 100) + '%' : '';
             c.fill.style.width = (active ? r.fraction * 100 : 0) + '%';
-            c.edited.hidden = !edits[view]; c.restore.hidden = !edits[view]; c.again.hidden = !r.file && !(state.error && !running);
+            c.edited.hidden = !edits[view]; c.restore.hidden = !edits[view]; c.again.hidden = !!own[view] || (!r.file && !(state.error && !running));
             c.again.disabled = running || (index > 0 && !state.pictures[0].file);
             if (c.usePhoto) c.usePhoto.hidden = !photoSlot.get() || !!r.original || running;
+            if (c.mine) {
+                tip(c.cell, c.title, r.file ? tr('Click to edit it in the image editor, or drop a picture to replace it', '点击在图像编辑器中修改，或拖入图片替换') : tr('Click or drop a picture', '点击或拖入图片'));
+                const name = r.file ? tr('Replace', '更换') : tr('Add picture', '添加图片');
+                if (c.mine.textContent !== name) { c.mine.textContent = name; tip(c.mine, name, r.file ? tr('Use another picture of your own for this view', '这个视角换成自己的另一张图片') : tr('Use a picture of your own for this view', '这个视角用自己的图片')); }
+                c.mine.hidden = running; c.clear.hidden = running || !own[view];
+            }
         }
         if (state.error) {
             const key = `${state.error}:${state.report_id || ''}`;
@@ -327,7 +379,7 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
                 : running && state.waiting ? tr('Added to the queue. It starts when the previous one finishes.', '已加入队列，前面的完成后自动开始。') : attention;
         }
         note.hidden = !note.textContent && !note.firstChild; note.dataset.failed = String(!!state.error);
-        rest.hidden = !faceChanged || running || !state.pictures.slice(1).some(row => row.file); rest.disabled = running;
+        rest.hidden = !faceChanged || running || !state.pictures.slice(1).some(row => row.file && !row.own); rest.disabled = running;
         const count = state.pictures.filter(r => r.file).length, fraction = running && state.current >= 0 ? state.pictures[state.current]?.fraction || 0 : 0;
         const progress = generator.done() ? 1 : (count + fraction) / make.length;
         const summary = JSON.stringify([running, finished, Math.round(progress * 100)]);
@@ -340,9 +392,9 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
     // A small face in the photo: the close-up is made from it cut out and enlarged (cast_face_crop.js), uploaded once per
     // photo; '' keeps the whole photo.
     let closeUp = {photo: '', name: ''};
-    async function closeUpOf(photo) {
+    async function closeUpOf(photo, file) {
         if (closeUp.photo !== photo) {
-            const made = await faceCloseUp({client, fetcher, name: photo, file: photoSlot.get().file});
+            const made = await faceCloseUp({client, fetcher, name: photo, file});
             closeUp = {photo, name: made && !disposed ? await referenceOf(made).catch(() => '') : ''};
         }
         return closeUp.name;
@@ -350,17 +402,25 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
     async function begin() {
         if (action.getAttribute('aria-disabled') === 'true') { attention = action.dataset.fvTipWhy || ''; render(); return; }
         attention = ''; render();
+        let sourceRef = '';
         try {
-            if (!ai) { if (!photoRef) photoRef = await referenceOf(photoSlot.get()); await closeUpOf(photoRef); }
+            await ensureOwn();
+            if (!ai) {
+                // The picture the views are made from: the source picture, else the user's own front (or face close-up).
+                const from = photoSlot.get() ? null : own.front || own.face;
+                if (from) sourceRef = from.ref;
+                else { if (!photoRef) photoRef = await referenceOf(photoSlot.get()); sourceRef = photoRef; }
+                if (!own.face) await closeUpOf(sourceRef, (from || photoSlot.get()).file);
+            }
             if (mode === 'image' && !outfitRef) outfitRef = await referenceOf(outfitSlot.get());
         } catch (error) { attention = error.message || tr('Could not read this picture. Please choose another one.', '无法读取这张图片，请换一张。'); render(); return; }
         if (disposed) return;
-        for (const name of [photoRef, closeUp.name, mode === 'image' ? outfitRef : '']) if (name && references.has(name)) references.set(name, true);
+        for (const name of [sourceRef, own.face ? '' : closeUp.name, mode === 'image' ? outfitRef : '', ...SHOW.map(view => own[view]?.ref)]) if (name && references.has(name)) references.set(name, true);
         const outfitImage = mode === 'image' ? outfitRef : '';
         if (ai) {
             const selected = picker ? picker.value() : [];
             void generator.start(describe.value, {source, outfitImage, ...(selected.length ? {loras: selected} : {})});
-        } else void generator.start('', {source, photo: photoRef, closeUp: closeUp.name, outfit: mode === 'keep' ? '' : field.value, outfitImage});
+        } else void generator.start('', {source, photo: sourceRef, closeUp: own.face ? '' : closeUp.name, outfit: mode === 'keep' ? '' : field.value, outfitImage});
     }
     action.onclick = () => generator.state().running ? void generator.stop() : void begin();
     async function checkInfo() {
@@ -376,7 +436,7 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
     window.addEventListener('pagehide', leaving);
 
     async function picture(src) { const blob = await (await fetch(src)).blob(); return createImageBitmap(blob); }
-    const shownFile = view => { const r = pictureOf(view); return edits[view]?.file || (r.original ? photoSlot.get().file : r.file); };
+    const shownFile = view => { const r = pictureOf(view); return edits[view]?.file || own[view]?.file || (r.original ? photoSlot.get().file : r.file); };
     async function sheet() {
         const {body: [bw, bh], face: [fw], gap, ground} = SHEET;
         const width = fw + 3 * bw + 5 * gap, height = bh + 2 * gap;
@@ -385,7 +445,7 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
         let x = gap;
         for (const view of SHOW) {
             const r = pictureOf(view), cw = view === 'face' ? fw : bw;
-            const image = await picture(edits[view]?.url || (r.original ? photoSlot.get().url : viewURL(r.file)));
+            const image = await picture(edits[view]?.url || own[view]?.url || (r.original ? photoSlot.get().url : viewURL(r.file)));
             const k = Math.min(cw / image.width, bh / image.height), w = Math.round(image.width * k), h = Math.round(image.height * k);
             g.drawImage(image, x + Math.round((cw - w) / 2), gap + Math.round((bh - h) / 2), w, h); image.close?.();
             x += cw + gap;
@@ -403,11 +463,11 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
             const state = generator.state();
             if (!generator.done() || state.running) return [];
             const views = SHOW.map(view => ({file: shownFile(view), label: view}));
-            const extra = photoSlot?.get() && !SHOW.some(view => pictureOf(view)?.original) ? [{file: photoSlot.get().file, label: 'other'}] : [];
+            const extra = photoSlot?.get() && !SHOW.some(view => pictureOf(view)?.original && !own[view]) ? [{file: photoSlot.get().file, label: 'other'}] : [];
             return [{file: await sheet(), label: 'sheet'}, ...views, ...extra];
         },
         // The card keeps its own copy of the views it shows; the views stay in the library.
-        markSaved() { cardSaved = true; generator.state().pictures.forEach((r, at) => { if (r.file && !edits[make[at]]) saved.add(r.file); }); },
+        markSaved() { cardSaved = true; generator.state().pictures.forEach((r, at) => { if (r.file && !edits[make[at]] && !own[make[at]]) saved.add(r.file); }); },
         isBusy: () => generator.state().running,
         cancel: () => generator.stop(),
         destroy() {
@@ -415,6 +475,7 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
             // Cancel, close, Esc: the uploads go; the views stay in the library.
             leaving();
             for (const view of Object.keys(edits)) dropEdit(view);
+            for (const view of Object.keys(own)) releaseOwn(view);
             void generator.dispose(); photoSlot?.dispose(); outfitSlot.dispose(); action.remove(); root.remove();
         },
         element: root,

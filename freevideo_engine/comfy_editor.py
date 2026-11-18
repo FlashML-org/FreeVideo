@@ -1573,8 +1573,11 @@ def register():
                     return web.json_response(dict(error='Editor item unavailable'), status=404, headers=_HEADERS)
                 except OSError as error:
                     return web.json_response(dict(saved=False, retry=True, **_disk_full(error)), status=503, headers=_HEADERS)
-                except (ValueError, TypeError, KeyError, RecursionError):
-                    return web.json_response(dict(error='Invalid editor request'), status=400, headers=_HEADERS)
+                except (ValueError, TypeError, KeyError, RecursionError) as error:
+                    # A bad request is the caller's; a TypeError or KeyError may be this code's own bug, so the log keeps the trace.
+                    request_id = uuid.uuid4().hex[:12]
+                    _LOG.log(logging.WARNING if isinstance(error, ValueError) else logging.ERROR, 'Editor request rejected as invalid (%s %s, %s, request_id=%s).', method.upper(), path, type(error).__name__, request_id, exc_info=not isinstance(error, ValueError))
+                    return web.json_response(dict(error='Invalid editor request', **{'class': type(error).__name__}, request_id=request_id), status=400, headers=_HEADERS)
                 except Exception as error:
                     # An unexpected failure is never a 404: the page reads that as "this engine has no editor API".
                     request_id = uuid.uuid4().hex[:12]

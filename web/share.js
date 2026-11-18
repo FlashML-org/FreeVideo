@@ -6,6 +6,8 @@ import {shareLayout} from './share_layout.js';
 import {videoUnavailableText} from './studio_extend.js';
 import {issueButton} from './issue_button.js';
 import {exportKeepsWorkflow, workflowToggle} from './output_download.js';
+import {fileFailureText, responseFileReason} from './file_failure.js';
+import {isNetworkTypeError, connectionLostText} from './browser_extension.js';
 
 const css=document.createElement('link'); css.rel='stylesheet'; css.href=new URL('./share.css',import.meta.url).href; document.head.append(css);
 const el=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text)e.textContent=text;return e;};
@@ -179,13 +181,16 @@ export async function openShare(record,t){
                     body:JSON.stringify({id,template,rect:shape.rect,workflow:exportKeepsWorkflow()})});
                 if(response.status===409)throw Object.assign(new Error(t('Another export is running. Try again shortly.','已有分享视频正在导出，请稍后再试。')),{reportable:false});
                 if(response.status===507)throw Object.assign(new Error(t('Exporting the share video failed: the disk is full. Free some space, then export again.','导出分享视频时出错：磁盘空间不够，空出空间后再导出。')),{reportable:false});
-                if(!response.ok)throw new Error(t('Export could not complete. Try again.','分享视频导出未完成，请重试。'));
+                if(!response.ok){
+                    const known=fileFailureText(await responseFileReason(response),t);
+                    throw Object.assign(new Error(known?t('The share video could not be exported: ','分享视频导出未完成：')+known:t('Export could not complete. Try again.','分享视频导出未完成，请重试。')),{reportable:!known});
+                }
                 exported=await response.json();
             }
             if(disposed)return;
             const a=el('a');a.href=api.apiURL('/freevideo/share/video?'+new URLSearchParams(exported));a.download='';a.click();say('');
         }catch(error){if(!disposed){
-            say(error.name==='AbortError'?'':kind==='image'?t('Could not save the share image. Try again.','分享图没有保存成功，请重试。'):error.message,error.reportable!==false);
+            say(error.name==='AbortError'?'':isNetworkTypeError(error)?connectionLostText(t):kind==='image'?t('Could not save the share image. Try again.','分享图没有保存成功，请重试。'):error.message,error.reportable!==false&&!isNetworkTypeError(error));
         }}
         finally{clearInterval(watch);busy=false;if(!disposed){save.disabled=false;keep.input.disabled=false;cancel.hidden=true;delete dialog.dataset.busy;tabs.querySelectorAll('button').forEach(b=>b.disabled=false);}}
     }

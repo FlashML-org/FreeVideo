@@ -18,9 +18,9 @@ html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"]{--fv-tb-pad:calc(var(-
    bar is its top row; the toolbar has no padding or rule of its own. */
 html[data-fv-shell=nodes] body .fv-view-navigation{box-sizing:border-box;top:0!important;left:0!important;right:0!important;transform:none!important;width:auto!important;max-width:none;
   border:0;border-radius:0;box-shadow:none;cursor:default;touch-action:auto;animation:none;background:var(--fv-bg,var(--fv-shell-bg));z-index:var(--fv-z-view)}
-html[data-fv-shell=nodes] body .fv-view-navigation:has(>.fv-topbar){padding:0!important;height:auto!important;min-height:0!important;border-bottom:0!important}
+html[data-fv-shell=nodes] body .fv-view-navigation[data-hx-tb]{padding:0!important;height:auto!important;min-height:0!important;border-bottom:0!important}
 /* The node view's bar has a solid ground of its own: no blur behind it (only the tabs and capsule are glass). */
-html body .fv-view-navigation:has(>.fv-topbar){-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+html body .fv-view-navigation[data-hx-tb]{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
 html body .fv-view-navigation .fv-topbar.fv-topbar.fv-topbar{width:100%}
 
 /* Shared control look inside the bar */
@@ -207,6 +207,7 @@ html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"] .fv-tb-cap.is-warn.has
 .fv-tb-job-tx{flex:1;display:flex;flex-direction:column;align-items:stretch;gap:var(--fv-sp-2);min-width:0;text-align:left}
 .fv-tb-job-line{display:flex;align-items:baseline;gap:var(--fv-sp-8);min-width:0}
 .fv-tb-job-line .fv-tb-job-t2{flex:1;min-width:0}
+.fv-tb-job-t2.is-warn{color:var(--fv-warn);white-space:normal;text-wrap:pretty}
 .fv-tb-job-n{flex:none;margin-left:auto;font-size:var(--fv-fs-1);line-height:16px;color:var(--fv-fg2);text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
 .fv-tb-job-n.is-warn{color:var(--fv-warn)}
 .fv-tb-job-t1{font-size:var(--fv-fs-2);line-height:20px;font-weight:500;color:var(--fv-fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -269,8 +270,8 @@ html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-cap.is-bump .fv-tb-n{animation:f
 .fv-tb-pop.fv-tb-pop .fv-tb-search{margin-bottom:var(--fv-sp-4);background:var(--fv-ctl-bg);box-shadow:inset 0 0 0 1px var(--fv-line);color:var(--fv-fg3)}
 .fv-tb-pop.fv-tb-pop .fv-tb-search::after{content:attr(data-fv-field)}
 .fv-tb-pop.fv-tb-pop .fv-tb-search:hover{background:var(--fv-ctl-hover)}
-.fv-tb-pop .fv-version-info:has(.fv-version-dot)::after{content:attr(data-fv-new);margin-left:auto;padding:0 var(--fv-sp-8);height:20px;line-height:20px;border-radius:var(--fv-rad-pill);background:var(--fv-accent-soft);color:var(--fv-accent-ink);font-size:var(--fv-fs-1);font-weight:600}
-.fv-tb-pop .fv-version-info:has(.fv-version-dot) .fv-version-dot{display:none}
+.fv-tb-pop .fv-version-info[data-hx-vdot]::after{content:attr(data-fv-new);margin-left:auto;padding:0 var(--fv-sp-8);height:20px;line-height:20px;border-radius:var(--fv-rad-pill);background:var(--fv-accent-soft);color:var(--fv-accent-ink);font-size:var(--fv-fs-1);font-weight:600}
+.fv-tb-pop .fv-version-info[data-hx-vdot] .fv-version-dot{display:none}
 /* Menus come in with a fade and a 4 px rise, 200 ms, eased out; at once with reduced motion. */
 @keyframes fv-tb-pop-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 .fv-tb-pop:popover-open{animation:fv-tb-pop-in var(--fv-dur-2) var(--fv-ease-out)}
@@ -304,7 +305,13 @@ html body .fv-topbar.fv-topbar.fv-topbar.fv-tb-hinting>.fv-tb-right>:not(.fv-tb-
 /* A finger needs 44 px */
 @media(pointer:coarse){
   html body .fv-topbar.fv-topbar.fv-topbar :is(.fv-tb-link,.fv-tb-btn,.fv-tb-cap){height:var(--fv-touch);min-height:var(--fv-touch)}
-  html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-btn{width:var(--fv-touch)}}
+  html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-btn{width:var(--fv-touch)}
+  html body .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch{height:calc(var(--fv-touch) + var(--fv-sp-8))}
+  html body .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch>button{height:var(--fv-touch);min-height:var(--fv-touch);line-height:var(--fv-touch)}
+  /* the icon links keep their drawn width, so the bar folds as with a mouse; only the tap area grows to 44 */
+  html body .fv-topbar.fv-topbar.fv-topbar:is([data-fv-fit="1"],[data-fv-fit="2"]) .fv-tb-link::after{content:"";position:absolute;top:0;bottom:0;left:calc(50% - var(--fv-touch) / 2);right:calc(50% - var(--fv-touch) / 2)}
+  /* the last one stops at the bar's edge, so the fit check measures the same width as with a mouse */
+  html body .fv-topbar.fv-topbar.fv-topbar:is([data-fv-fit="1"],[data-fv-fit="2"]) .fv-tb-links>.fv-tb-link:last-child::after{right:0}}
 @media(prefers-reduced-motion:reduce){
   html body .fv-topbar.fv-topbar.fv-topbar *,html body .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch::before{transition:none!important}
   html body .fv-topbar.fv-topbar.fv-topbar :is(button,.fv-lan-trigger):active{scale:none}}

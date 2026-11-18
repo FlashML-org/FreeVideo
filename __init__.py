@@ -48,6 +48,13 @@ async def comfy_entrypoint():
     except Exception as error:
         import logging
         logging.warning('[FreeVideo] Opening screen not registered: %s', error)
+    try:
+        # The page's files once, compressed, then checked again instead of downloaded again on every visit.
+        from .freevideo_engine.web_cache import register as page_cache
+        page_cache()
+    except Exception as error:
+        import logging
+        logging.warning('[FreeVideo] Page file caching not registered: %s', error)
     from .freevideo_engine.comfy_launcher_api import register as launcher_routes
     launcher_routes()
     from .freevideo_engine.comfy_updates import register as update_routes

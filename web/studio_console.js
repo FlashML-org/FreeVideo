@@ -1,6 +1,8 @@
 // The creative panel's console: the prompt, one row of chips and Generate, with the settings in trays that open
 // above it, one at a time. It only moves the panel's existing controls into place; every control keeps its own
 // element, handlers and state, so nothing the panel did before is lost.
+import { lockMark } from './audio_original.js';
+import { showTipFor } from './tooltip.js';
 const SVG = {
     media: '<rect x="2" y="3" width="12" height="10" rx="2"/><circle cx="6" cy="6.8" r="1.2"/><path d="m2.5 11.5 3.2-3.2 2.3 2.3 1.8-1.8 3.7 3.7"/>',
     quality: '<path d="M2.5 12.5h2.2V9.5H2.5zM6.9 12.5h2.2V6.5H6.9zM11.3 12.5h2.2v-9h-2.2z"/>',
@@ -26,6 +28,9 @@ export function tip(element, name, use = '', key = '') {
     element.title = [name, use].filter(Boolean).join(' · ') + (key ? ` (${key})` : '');
     return element;
 }
+
+// The prompt's tallest height: 170 px, 120 px in a narrow window so Generate stays on the first screen.
+const promptMax = () => globalThis.matchMedia?.('(max-width:760px)').matches ? 120 : 170;
 
 // trays: [{id, title, element}] where element is a <details> (its summary is hidden; open is the tray's state)
 // or any element, which is then wrapped in one. chips: what each chip shows, read again on sync().
@@ -110,15 +115,28 @@ export function createConsole({t, body, controls, prompt, runbar, trays, chips, 
         for (const [id, item] of rows) item.chip?.setAttribute('aria-expanded', String(id === open));
         onTray(open, open ? rows.get(open).details : null);
     }
+    // The prompt grows with its text up to 170 px (120 px in a narrow window). Browsers that size a text box by its content (field-sizing) do it
+    // in CSS; the others get the same height here, so the box is never a fixed strip with a scroll bar inside it.
+    const sizesItself = Boolean(globalThis.CSS?.supports?.('field-sizing', 'content'));
+    function fitPrompt() {
+        if (sizesItself) return;
+        const area = box.querySelector('.fv-prompt-editor textarea'); if (!area || !area.offsetParent) return;
+        area.style.height = 'auto';
+        const edge = area.offsetHeight - area.clientHeight;
+        area.style.height = `${Math.min(area.scrollHeight + edge, promptMax())}px`;
+    }
+    box.addEventListener('input', event => { if (event.target?.matches?.('.fv-prompt-editor textarea')) fitPrompt(); });
+    if (!sizesItself && globalThis.ResizeObserver) new ResizeObserver(() => fitPrompt()).observe(box);
     function sync() {
+        fitPrompt();
         for (const spec of built) {
             if (!spec.read) continue;
             const value = spec.read() || {};
             if (spec.label && spec.label.textContent !== (value.label ?? '')) spec.label.textContent = value.label ?? '';
-            if (spec.extra) { spec.extra.textContent = value.extra ?? ''; spec.extra.hidden = !value.extra; }
+            if (spec.extra) { if (spec.extra.textContent !== (value.extra ?? '')) spec.extra.textContent = value.extra ?? ''; if (spec.extra.hidden !== !value.extra) spec.extra.hidden = !value.extra; }
             if (spec.chip) {
-                spec.chip.disabled = Boolean(value.disabled);
-                if (value.badge != null) spec.chip.dataset.badge = String(value.badge); else delete spec.chip.dataset.badge;
+                if (spec.chip.disabled !== Boolean(value.disabled)) spec.chip.disabled = Boolean(value.disabled);
+                if (value.badge != null) { if (spec.chip.dataset.badge !== String(value.badge)) spec.chip.dataset.badge = String(value.badge); } else if ('badge' in spec.chip.dataset) delete spec.chip.dataset.badge;
                 if (value.tip) tip(spec.chip, value.tip[0], value.tip[1], value.tip[2]);
             }
         }
@@ -139,7 +157,8 @@ export function createConsole({t, body, controls, prompt, runbar, trays, chips, 
 
 // The duration chip: minus, the seconds, plus. It edits the panel's own seconds field and lets that field's handlers run.
 // max: () => the longest length; + stops there (the field's own handlers bring a typed length back within it).
-export function durationStepper(t, seconds, {onOpen, max = () => Infinity}) {
+// What decides a locked duration: 'audio' (an audio clip used as is), 'linked' (a node is connected to it) or null.
+export function durationStepper(t, seconds, {onOpen, max = () => Infinity, lockedBy = () => null}) {
     const element = el('div', 'fvs-stepper'); element.setAttribute('role', 'group'); element.setAttribute('aria-label', t('Duration', '时长'));
     const minus = el('button', 'fvs-step'); minus.type = 'button'; minus.append(glyph('minus', 14));
     const plus = el('button', 'fvs-step'); plus.type = 'button'; plus.append(glyph('plus', 14));
@@ -163,6 +182,8 @@ export function durationStepper(t, seconds, {onOpen, max = () => Infinity}) {
     // The number is typed in a field as wide as the number it replaces, with the unit kept after it, so nothing beside
     // the stepper moves.
     value.onclick = event => {
+        // A length something else decides answers with the reason its hover gives, instead of doing nothing.
+        if (seconds.disabled && reason()) { showTipFor(value); return; }
         if (seconds.disabled || element.querySelector('.fvs-step-input')) return;
         const edit = el('span', 'fvs-step-edit'); edit.style.width = `${value.offsetWidth}px`;
         const input = el('input', 'fvs-step-input'); input.type = 'text'; input.inputMode = 'decimal';
@@ -173,8 +194,12 @@ export function durationStepper(t, seconds, {onOpen, max = () => Infinity}) {
         let done = false;
         const finish = apply => {
             if (done) return; done = true;
-            const n = Number(String(input.value).replace(',', '.'));
-            if (apply && Number.isFinite(n) && n > 0 && n !== Number(seconds.value)) {
+            const typed = String(input.value).trim(), n = Number(typed.replace(',', '.'));
+            // A cleared field leaves the duration empty (Generate then asks for it); the old length does not come back.
+            if (apply && !typed && seconds.value !== '') {
+                seconds.value = '';
+                seconds.dispatchEvent(new Event('input', {bubbles: true})); seconds.dispatchEvent(new Event('change', {bubbles: true}));
+            } else if (apply && Number.isFinite(n) && n > 0 && n !== Number(seconds.value)) {
                 seconds.value = String(n);
                 seconds.dispatchEvent(new Event('input', {bubbles: true})); seconds.dispatchEvent(new Event('change', {bubbles: true}));
             }
@@ -189,17 +214,41 @@ export function durationStepper(t, seconds, {onOpen, max = () => Infinity}) {
         value.replaceWith(edit); input.focus(); input.select();
     };
     void onOpen;
+    let shownNow = null, lockedNow = null, freeUse = null;
+    const reason = () => seconds.disabled ? lockedBy() : null;
+    const LOCKED_USE = {
+        audio: () => t('While the audio is set to "Use as is", the duration matches it.', '音频选“原样使用”时，时长与音频相同。'),
+        linked: () => t('Set by connected nodes', '由连接的节点决定'),
+    };
     function sync() {
-        const n = Number(seconds.value);
+        const n = seconds.value === '' ? NaN : Number(seconds.value);
         const shown = Number.isFinite(n) ? (Number.isInteger(n) ? String(n) : n.toFixed(n < 10 ? 2 : 1).replace(/0+$/, '').replace(/\.$/, '')) : '—';
         // The number and its unit apart, so a narrow row can show the number alone; the name says both.
-        const unit = el('span', 'fvs-step-unit', t('s', '秒')); value.replaceChildren(el('span', 'fvs-step-number', shown), unit);
-        value.setAttribute('aria-label', t(`${shown} s`, `${shown} 秒`));
-        minus.disabled = plus.disabled = seconds.disabled;
-        minus.disabled ||= n <= 2;
-        plus.disabled ||= n >= max();
+        const locked = reason();
+        if (shownNow !== shown || lockedNow !== locked || !value.firstChild) {
+            // The hover words the page set for a free length come back when the lock goes.
+            if (locked && !lockedNow) freeUse = value.dataset.fvTipUse ?? null;
+            if (!locked && lockedNow) { if (freeUse) value.dataset.fvTipUse = freeUse; else delete value.dataset.fvTipUse; }
+            if (locked) value.dataset.fvTipUse = LOCKED_USE[locked]?.() ?? '';
+            shownNow = shown; lockedNow = locked;
+            const unit = el('span', 'fvs-step-unit', t('s', '秒')), number = el('span', 'fvs-step-number', shown);
+            // The audio decides the length: its lock, the same as beside the old duration field, before the number.
+            // It sits inside the number (not a grid column of its own), so the button grows by the lock and 4 px only.
+            if (locked === 'audio') { const mark = lockMark(); mark.hidden = false; mark.classList.add('fvs-step-lock'); number.classList.add('fvs-step-locked'); number.prepend(mark); }
+            value.replaceChildren(number, unit);
+            value.setAttribute('aria-label', locked === 'audio' ? t(`${shown} s, set by the audio`, `${shown} 秒，由音频决定`)
+                : locked === 'linked' ? t(`${shown} s, set by connected nodes`, `${shown} 秒，由连接的节点决定`) : t(`${shown} s`, `${shown} 秒`));
+        }
+        // The page writes its own hover words for the length (how many parts it is made in) as it changes; while the
+        // length is locked those are kept for later and the reason stays.
+        if (locked) { const said = LOCKED_USE[locked]?.() ?? ''; if (value.dataset.fvTipUse !== said) { freeUse = value.dataset.fvTipUse ?? null; value.dataset.fvTipUse = said; } }
+        const lessOff = seconds.disabled || !(n > 2), moreOff = seconds.disabled || n >= max();
+        if (minus.disabled !== lessOff) minus.disabled = lessOff;
+        if (plus.disabled !== moreOff) plus.disabled = moreOff;
     }
     seconds.addEventListener('input', sync); seconds.addEventListener('change', sync);
+    // Locking and unlocking the field changes only its disabled state, which fires no event.
+    if (globalThis.MutationObserver) new MutationObserver(sync).observe(seconds, {attributes: true, attributeFilter: ['disabled']});
     sync();
     return {element, sync};
 }

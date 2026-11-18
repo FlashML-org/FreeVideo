@@ -47,7 +47,11 @@ ColumnLayout {
         columns: stacked || !parts ? 1 : 2; columnSpacing: 10; rowSpacing: 4
         Item {
             visible: !!change.parts
-            Layout.preferredWidth: change.stacked ? Math.min(tag.implicitWidth + 12, notesRoot.room) : change.column
+            // Stacked, a label is as wide as its words up to the width the notes have, and is cut short past it: the
+            // window's width (room) also holds the scroll bar's strip, so it would push the notes under the bar.
+            Layout.fillWidth: change.stacked
+            Layout.maximumWidth: change.stacked ? tag.implicitWidth + 12 : change.column
+            Layout.preferredWidth: change.stacked ? tag.implicitWidth + 12 : change.column
             Layout.preferredHeight: tag.implicitHeight + 2; Layout.alignment: Qt.AlignTop | Qt.AlignLeft; Layout.topMargin: 1
             Rectangle { width: Math.min(parent.width, tag.implicitWidth + 12); height: parent.height; radius: theme.radiusXs; color: theme.raised }
             Text {

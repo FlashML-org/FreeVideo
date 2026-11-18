@@ -512,8 +512,8 @@ def generate(request, resident=None):
                                 # host RAM evicted the second pass's own engine on
                                 # tight-RAM machines, which then reloaded every block.
                                 from .two_pass import UPSCALER_HOST_BYTES
-                                if need and resident is not None and not resident.ram_fits(UPSCALER_HOST_BYTES):
-                                    resident.make_room('latent_upscaler', need, ram_need=UPSCALER_HOST_BYTES)
+                                if need and resident is not None and not resident.ram_fits(UPSCALER_HOST_BYTES, bounded=True):
+                                    resident.make_room('latent_upscaler', need, ram_need=UPSCALER_HOST_BYTES, bounded_ram=True)
                                 torch.cuda.empty_cache()
                                 def upscale_available():
                                     free, _ = torch.cuda.mem_get_info()
@@ -554,7 +554,7 @@ def generate(request, resident=None):
                                         else:
                                             engine.close()
                                     if resident is not None:
-                                        resident.make_room('latent_upscaler', need, ram_need=UPSCALER_HOST_BYTES)
+                                        resident.make_room('latent_upscaler', need, ram_need=UPSCALER_HOST_BYTES, bounded_ram=True)
                                     import gc
                                     gc.collect()
                                     torch.cuda.empty_cache()

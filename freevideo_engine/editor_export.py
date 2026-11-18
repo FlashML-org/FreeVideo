@@ -156,8 +156,11 @@ def _layout(project):
                         not _whole(splice.get(key)) for key in ('frames', 'audio_samples'))):
                     raise ExportError()
         tracks[raw['id']] = clips
-    # Picture and sound set the length; text after them is not exported.
-    frames = max((c['start'] + c['frames'] for clips in tracks.values() for c in clips), default=0)
+    # Picture and sound set the length; text after them is not exported, nor is a planned part that was never sent
+    # (a draft with no media of its own, such as the next part made ready after a continued part finishes): it has no
+    # picture yet. Parts on their way (queued, running) still count and export as black. Same rule as exportFrames.
+    frames = max((c['start'] + c['frames'] for clips in tracks.values() for c in clips
+                  if not (c.get('pending') == 'draft' and c.get('source') is None)), default=0)
     if not frames:
         raise ExportError()
     return width, height, frames, tracks
@@ -1111,7 +1114,7 @@ class ExportQueue:
         return {**{key: job[key] for key in ('id', 'state', 'fraction', 'work', 'reason')},
                 'queued': job['state'] == 'running' and job['id'] in self.pending,
                 **job['options'].status(), 'path': job.get('path'), 'url': job.get('url'),
-                'project_id': job['project'].get('id'), 'revision': job['project'].get('revision')}
+                'class': job.get('error_class'), 'project_id': job['project'].get('id'), 'revision': job['project'].get('revision')}
 
     def submit(self, identity, revision=None, *, options=None):
         if not isinstance(identity, str) or not _PROJECT_ID.fullmatch(identity):
@@ -1226,7 +1229,7 @@ class ExportQueue:
                     if isinstance(error, ExportCancelled) or job['stop'].is_set():
                         job.update(state='cancelled', reason=None)
                     else:
-                        job.update(state='failed', reason=reason)
+                        job.update(state='failed', reason=reason, error_class=type(error).__name__ if reason == 'failed' else None)
 
 
 def register():

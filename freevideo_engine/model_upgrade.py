@@ -18,6 +18,7 @@ launcher closed before the release, or a file was in use), or an int8 download
 the GPU then failed to run - are offered for removal, and removed only on
 request.
 """
+import errno
 import json
 from pathlib import Path
 import shutil
@@ -30,6 +31,18 @@ GiB = 1 << 30
 MARGIN = 2 * GiB
 TARGET = 'int8_convrot'
 RETRY_SECONDS = 30
+
+
+def failure_cause(error):
+    """disk / network / '' for the page to explain; the raw text stays in `error` for the report."""
+    text = str(error).lower()
+    if (isinstance(error, OSError) and error.errno == errno.ENOSPC) or 'no space left' in text or 'not enough disk' in text:
+        return 'disk'
+    if isinstance(error, (ConnectionError, TimeoutError)) or any(k in text for k in (
+            'connection reset', 'connection refused', 'connection aborted', 'connection error', 'timed out',
+            'name or service not known', 'temporary failure in name resolution', 'network is unreachable')):
+        return 'network'
+    return ''
 
 
 @plain_errors
@@ -262,7 +275,7 @@ class ModelUpgrade:
                     raise RuntimeError(fetched.get('error') or 'The model download stopped; downloaded files are kept.')
                 self.state = dict(self.state, status='downloaded', phase='switch')
             except Exception as error:
-                self.state = dict(offered, status='failed', step='download', error=str(error))
+                self.state = dict(offered, status='failed', step='download', error=str(error), cause=failure_cause(error))
             finally:
                 self.runner = None
         return self._start(work)
@@ -283,7 +296,7 @@ class ModelUpgrade:
 
     def switch_failed(self, error, kept):
         """kept: machine.json still describes the previous model, which keeps working."""
-        self.state = dict(self.state, status='failed', step='switch', error=error, kept=kept, waiting=None)
+        self.state = dict(self.state, status='failed', step='switch', error=error, cause='', kept=kept, waiting=None)
 
     def release(self, root, expect=TARGET):
         """Remove the variants not in use once `expect` is in use and complete, waiting out running requests."""
@@ -311,7 +324,7 @@ class ModelUpgrade:
                     self.state = dict(self.state, waiting=True)
                     self.closing.wait(RETRY_SECONDS)
                 except Exception as error:
-                    self.state = dict(self.state, status='failed', step='release', error=str(error), waiting=False)
+                    self.state = dict(self.state, status='failed', step='release', error=str(error), cause=failure_cause(error), waiting=False)
                     return
         return self._start(work)
 

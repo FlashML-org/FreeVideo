@@ -364,6 +364,10 @@ PLACE_RULES = (
      ('This location cannot be used', '无法使用这个位置'),
      ('Windows does not let this account create folders in this location. Choose a folder in the user folder or on another drive.',
       'Windows 不允许当前账户在这个位置创建文件夹。请改选用户文件夹或其他硬盘上的文件夹。')),
+    (r'Missing or incomplete bundled file: ', 'missing-file',
+     ('The installation files are incomplete', '安装文件不完整'),
+     ('Extract the whole package again, and check that security software has not removed any files.',
+      '请重新完整解压安装包，并检查安全软件是否删掉了文件。')),
     (r'The installation folder is on a read-only disk', 'disk-read-only',
      ('This disk is read-only', '这块硬盘是只读的'),
      ('This Mac can read the disk but not write to it, as with NTFS disks. Choose a folder on another disk.',
@@ -456,6 +460,35 @@ ENVIRONMENT_FILES = 'Files are missing or changed in these ComfyUI environment p
 
 # Windows refused to load a file (Smart App Control or another application control policy).
 APPLICATION_CONTROL = r'WinError 4551|Application Control policy has blocked'
+
+
+# Error lines ComfyUI may end on, as a sentence for the card; any other line stays in the technical details.
+STARTUP_ERRORS = (
+    (r'CUDA (?:error: )?out of memory|OutOfMemoryError', ('Not enough video memory', '显存不足')),
+    (r'^MemoryError|paging file is too small|WinError 1455', ('Not enough memory', '内存不足')),
+    (r'ModuleNotFoundError|No module named|DLL load failed', ('A required component is missing', '缺少必需的组件')),
+    (r'PermissionError|Access is denied|WinError 5\b', ('Access was denied', '访问被拒绝')),
+)
+
+
+def _startup_cause(summary, zh):
+    """What ComfyUI said when it quit: the exit code, the custom node that last failed to load and, when it is a
+    known one, the last error as a sentence. The raw error line is not shown on the card."""
+    code = re.search(r'^Process exit code: (-?\d+)', summary, re.M)
+    errors = [line.strip() for line in summary.splitlines() if re.match(r'^[\w.]+(?:Error|Exception)\b', line.strip())]
+    known = next((sentence[zh] for pattern, sentence in STARTUP_ERRORS if errors and re.search(pattern, errors[-1])), '')
+    known = known.rstrip('.。')
+    # ComfyUI names a custom node it could not load in either of these lines.
+    nodes = re.findall(r'(?:Cannot import |\(IMPORT FAILED\): ).*?custom_nodes[\\/]([^\\/\r\n]+?)(?: module for custom nodes|\s*$)',
+                       summary, re.M)
+    node = nodes[-1].strip()[:80] if nodes else ''
+    if zh:
+        return ('ComfyUI 在启动时退出' + ('（退出码 %s）' % code.group(1) if code else '')
+                + ('，自定义节点“%s”未能加载' % node if node else '')
+                + ('，最后一条错误：%s。' % known if known else '。'))
+    return ('ComfyUI quit while starting' + (' (exit code %s)' % code.group(1) if code else '')
+            + ('. The custom node "%s" did not load' % node if node else '')
+            + ('. Last error: %s.' % known if known else '.'))
 
 
 def _stopped_on_missing_module(text):
@@ -591,6 +624,18 @@ def source_lines(lines, zh=False):
     return list(rows.values())[-SOURCE_CARD_LINES:]
 
 
+# Graphics card families that all predate compute capability 8.0 (Ampere), by the name the driver reports.
+BELOW_COMPUTE_FLOOR = re.compile(
+    r'\b(?:GeForce\s+)?(?:GT|GTS|GTX)\s*\d'            # GeForce 8 to GTX 16 series, including GT 730
+    r'|\bGeForce\s+(?:RTX\s*)?20[0-9]0\b'               # RTX 20 series (Turing)
+    r'|\bGeForce\s+(?:8|9|2|3)\d{2,3}\s*(?:GT|GS|M)?\b'  # older numbered GeForce cards
+    r'|\bTITAN\s*(?:X|V|Xp|RTX|Black|Z)?\b'
+    r'|\bQuadro\s+(?:RTX\s*)?[KMPT]?\d'
+    r'|\bTesla\s+[KMPVT]\d'
+    r'|\bGeForce\s+MX\s*(?:[1-4]\d0|550)\b'            # MX110 to MX550; the MX570 is Ampere and stays supported
+    r'|\bNVS\s*\d', re.I)
+
+
 def launcher_failure(value, *, zh=False, **options):
     """Short guidance; a download that failed on every source also lists what each source returned."""
     text, lines = _sources_block(str(value)) if value else ('', [])
@@ -608,7 +653,7 @@ def launcher_failure(value, *, zh=False, **options):
 
 
 def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_repair=False, repairs_comfy=False,
-                      unavailable='none', model_package=''):
+                      unavailable='none', model_package='', exception=None):
     """Short guidance for known failures; callers retain the full error separately.
 
     other_disk: the launcher can offer another disk with enough room (macOS).
@@ -616,6 +661,9 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
     can_repair: the launcher's Repair button can fix this installation.
     repairs_comfy: ComfyUI runs in the environment the launcher made, which Repair reinstalls.
     unavailable: why Repair is missing when it cannot run (a key of WITHOUT_REPAIR's rows).
+    exception: the launcher's record of the exception behind the message (diagnostic_resources.exception_details:
+        class names and errno, no text), when the message is that exception's str(); it tells an unexpected
+        failure from a message the launcher wrote itself.
     """
     if not value:
         return dict(title='', detail='', action='', kind='')
@@ -713,11 +761,12 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
     if text.startswith('ComfyUI could not start.') and not _stopped_on_application_control(summary):
         if can_repair and repairs_comfy and (_stopped_on_missing_module(summary) or ENVIRONMENT_FILES in summary):
             return dict(title=DEPENDENCIES[0][zh], detail='', action=DEPENDENCIES[1][zh], kind='dependencies')
+        action = ('完整日志在详情里；使用已有的 ComfyUI 时，请用原来的启动器检查。' if zh else
+                  'Open the details for the full log. For an existing ComfyUI, also check its original launcher.')
+        # The cause and the next step are one text, as for every card: the card and the settings page show the
+        # detail when the action is empty.
         return dict(title='ComfyUI 启动失败' if zh else 'ComfyUI could not start',
-                    detail='ComfyUI 启动时退出了。' if zh else 'ComfyUI quit while starting.',
-                    action='原因在详情里；使用已有的 ComfyUI 时，可以用原来的启动器检查。' if zh else
-                           'Open details for the exit code and plugin errors. For an existing ComfyUI, also check its original launcher.',
-                    kind='comfy-startup')
+                    detail=_startup_cause(summary, zh) + '\n' + action, action='', kind='comfy-startup')
     # A file Windows refused to load is no GPU result: the app-control guidance below applies, and the
     # code the engine adds to the message makes it recognisable in any system language.
     if ('Failed step: kernels (' in summary and not re.search(APPLICATION_CONTROL, summary)
@@ -732,9 +781,10 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
                                 '显卡加速检查没有通过。' if zh else 'The GPU acceleration check did not pass.')
         detail = detail.replace('Required path missing',
                                 '缺少必需的文件夹' if zh else 'A required folder is missing')
-        return dict(title='GPU 检查未通过' if zh else 'GPU validation failed', detail=detail,
-                    action='展开详情或导出报告，查看完整检查结果。' if zh else
-                           'Open the details or export the report for the complete results.', kind='kernels')
+        action = ('展开详情或导出报告，查看完整检查结果。' if zh else
+                  'Open the details or export the report for the complete results.')
+        return dict(title='GPU 检查未通过' if zh else 'GPU validation failed', detail=detail + '\n' + action,
+                    action='', kind='kernels')
     if 'Download list error: read' in text.splitlines():
         from .model_guidance import DOWNLOAD_COPY
         return dict(title=DOWNLOAD_COPY['error_read'][zh], detail='', action='', kind='download-list-read')
@@ -992,6 +1042,13 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
     if tools and tools.group(1).endswith((':', '：', '.', '。')):
         return dict(title=('缺少基础工具' if zh else 'Basic tools are missing'),
                     detail='\n'.join(part for part in tools.groups() if part), action='', kind='system-tools')
+    # A driver too old to report the compute capability leaves it unknown, and the update card would then be shown for a
+    # card no driver can help. When the card is named and belongs to a family below the floor, it is the unsupported card.
+    if 'CUDA_ARCH_UNSUPPORTED' not in text:
+        named = re.search(r'NVIDIA driver(?: [\w.]+)?(?: \(([^)]*)\))? is older than 580', text, re.I) \
+            or re.search(r'\[CUDA_CAPABILITY_UNKNOWN\] Could not determine the CUDA architecture of (.+?) \(SM', text)
+        if named and named.group(1) and BELOW_COMPUTE_FLOOR.search(named.group(1)):
+            text += '\n[CUDA_ARCH_UNSUPPORTED] %s (SMunknown; compute capability unknown; driver unknown)' % named.group(1)
     for pattern, kind, title, action in rules:
         if re.search(pattern, text, re.I):
             if kind in WITHOUT_REPAIR and not can_repair:
@@ -1016,6 +1073,10 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
                 if found:
                     model, capability = found.groups()
                     detail = ('检测到：%s，计算能力 %s' if zh else 'Detected: %s, compute capability %s') % (model, capability)
+                    return dict(title=title[zh], detail=detail + '\n' + action[zh], action='', kind=kind)
+                found = re.search(r'\[CUDA_ARCH_UNSUPPORTED\]\s+(.+?)\s+\(SMunknown;', text)
+                if found:
+                    detail = ('检测到：%s' if zh else 'Detected: %s') % found[1]
                     return dict(title=title[zh], detail=detail + '\n' + action[zh], action='', kind=kind)
             if kind == 'path-too-long':
                 # A dependency folder Git cannot read is named, above the same next step.
@@ -1052,22 +1113,103 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
         name = _step_name(step.group(1), zh)
         if name:
             title = ('“%s”这一步没有完成' if zh else 'The step "%s" did not finish') % name
-        detail = ''
-    # A message the launcher raised itself (a ValueError) is the next step already.
-    unexpected = 'Traceback' in text and not re.match(r'(?:[\w.]+\.)?ValueError:', causes[-1] if causes else '')
-    detail = lan_error(detail, zh)
-    if step or unexpected:
+        # The step's own line is internal. The last other error line is raw text, so it shows only
+        # when it has a known sentence in this language; otherwise it stays in the technical details.
+        other = [line for line in causes if not line.startswith(('Failed step:', 'Setup failed:'))]
+        raw = re.sub(r'^(?:[\w.]+(?:Error|Exception)|ERROR):?\s*', '', other[-1])[:200] if other else ''
+        detail = raw if raw and lan_error(raw, zh) != raw else ''
+    # A message the launcher raised itself (a ValueError, or its own RuntimeError/TimeoutError such as a cancellation)
+    # keeps its words. Anything else is unexpected: a traceback says so, and so does the launcher's record of the
+    # exception when the message is only its str().
+    types = [row.get('exception_type') for row in exception or () if isinstance(row, dict)]
+    own = re.match(r'(?:[\w.]+\.)?ValueError:', causes[-1] if causes else '') or (types[:1] == ['ValueError'])
+    if not own and exception:
+        own = _raised_by_freevideo(exception)
+    unexpected = not own and ('Traceback' in text or bool(types))
+    if not own and unexpected and not exception and _traceback_raised_by_freevideo(text, causes):
+        # A traceback of the launcher's own error keeps its words, with the next step, as before.
+        return dict(title=title, detail=(lan_error(detail, zh) + '\n' if detail else '') + UNKNOWN_NEXT_STEP[zh],
+                    action='', kind='unknown')
+    if step:
         # The launcher's failure card shows the action only when there is no detail, so the next
         # step goes under the detail rather than being hidden by it.
-        return dict(title=title, detail=(detail + '\n' if detail else '') + UNKNOWN_NEXT_STEP[zh], action='', kind='unknown')
-    return dict(title=title, detail=detail, action='', kind='unknown')
+        return dict(title=title, detail=(lan_error(detail, zh) + '\n' if detail else '') + UNKNOWN_NEXT_STEP[zh],
+                    action='', kind='unknown')
+    if unexpected:
+        # The raw error line (a path, "'python'") stays in the details; the card says what kind of problem it was.
+        cause, next_step = _plain_cause(text, exception)
+        return dict(title=title, detail=cause[zh] + '\n' + next_step[zh], action='', kind='unknown')
+    return dict(title=title, detail=lan_error(detail, zh), action='', kind='unknown')
 
 
 # comfy_setup.inspection_failed: the first line of a failed check.
 INSPECTION_SUMMARY = r'Setup inspection failed(?: \([^()\r\n]*(?:\([^()\r\n]*\)[^()\r\n]*)*\))?'
 CHECK_UNFINISHED = ('The check did not finish.', '这次检查没有完成。')
-UNKNOWN_NEXT_STEP = ('Try again. If it fails again, export the report, then use "Report a problem" and attach it.',
-                     '请重试。仍然失败时，请先导出报告，再点“提交问题”并附上报告。')
+# The way to send a failure to us, by the launcher's own button names (Main.qml: "Export report", "Report a problem").
+REPORT_STEP = ('If it fails again, select "Export report", then select "Report a problem" and attach the report.',
+               '仍然失败时，请先点击“导出报告”，再点击“提交问题”并附上报告。')
+UNKNOWN_NEXT_STEP = ('Try again. ' + REPORT_STEP[0], '请重试。' + REPORT_STEP[1])
+
+
+# Unexpected launcher errors in one sentence each, by the exception's class and errno (or the "[Errno n]" /
+# "[WinError n]" in its text), with the next step. Network first: a refused connection is also an OSError.
+_NETWORK_TYPES = {'ConnectionError', 'ConnectionRefusedError', 'ConnectionResetError', 'ConnectionAbortedError',
+                  'URLError', 'gaierror', 'timeout', 'RemoteDisconnected', 'SSLError', 'IncompleteRead'}
+# A TimeoutError is a network one only from a network module (or with a network errno, below); the launcher's own
+# deadlines raise it too.
+_NETWORK_MODULES = ('socket', 'ssl', 'http.', 'urllib.', 'requests.', 'urllib3.', 'freevideo_engine.network')
+# What the launcher raises with its own words (a cancellation, a refusal it explains); never with an OS error number.
+_OWN_TYPES = {'ValueError', 'RuntimeError', 'TimeoutError'}
+
+
+def _raised_by_freevideo(exception):
+    """The launcher's record says FreeVideo's own code raised this, in its own words: the first exception is one of
+    the types it raises itself, carries no OS error number, and its innermost frame (when known) is FreeVideo's."""
+    first = next((row for row in exception or () if isinstance(row, dict)), None)
+    if not first or first.get('exception_type') not in _OWN_TYPES or first.get('errno') is not None or first.get('winerror') is not None:
+        return False
+    frames = [frame for frame in first.get('frames') or () if isinstance(frame, dict)]
+    return not frames or str(frames[-1].get('module') or '').startswith('freevideo_engine')
+
+
+def _traceback_raised_by_freevideo(text, causes):
+    """The same for a traceback: its last line is one of those types and its innermost file is FreeVideo's."""
+    found = re.match(r'(?:[\w.]+\.)?(\w+):', causes[-1] if causes else '')
+    files = re.findall(r'^\s*File "([^"]+)"', text, re.M)
+    return bool(found and found.group(1) in _OWN_TYPES and files and 'freevideo_engine' in files[-1].replace('\\', '/'))
+_NETWORK_ERRNO = {101, 104, 110, 111, 113, 10050, 10051, 10053, 10054, 10060, 10061, 10065, 11001, 11002}
+_IN_USE_ERRNO, _IN_USE_WINERROR = {16, 26}, {32, 33}
+_MISSING_ERRNO, _MISSING_WINERROR = {2}, {2, 3}
+PLAIN_CAUSES = {
+    'network': (('FreeVideo could not reach the network.', 'FreeVideo 无法连接网络。'),
+                ('Check the network connection, then try again. ' + REPORT_STEP[0], '请检查网络连接后重试。' + REPORT_STEP[1])),
+    'in-use': (('Another program is using a file FreeVideo needs.', '有其他程序正在使用 FreeVideo 需要的文件。'),
+               ('Close programs that may be using FreeVideo\'s files, such as another FreeVideo window or a virus scan, '
+                'then try again. ' + REPORT_STEP[0],
+                '请关闭可能正在使用 FreeVideo 文件的程序，例如另一个 FreeVideo 窗口或病毒扫描，然后重试。' + REPORT_STEP[1])),
+    'missing': (('A file or folder FreeVideo needs is missing.', '缺少 FreeVideo 需要的文件或文件夹。'), UNKNOWN_NEXT_STEP),
+    'other': (('FreeVideo ran into an unexpected problem.', 'FreeVideo 遇到了意外问题。'), UNKNOWN_NEXT_STEP),
+}
+
+
+def _plain_cause(text, exception=None):
+    """(sentence, next step) pairs, (English, Chinese), for an unexpected launcher error."""
+    rows = [row for row in exception or () if isinstance(row, dict)]
+    types = {row.get('exception_type') for row in rows}
+    types.update(re.findall(r'^(?:[\w.]+\.)?(\w+(?:Error|Exception|timeout|gaierror)):', text, re.M))
+    errnos = {row.get('errno') for row in rows} | {int(n) for n in re.findall(r'\[Errno (\d+)\]', text)}
+    winerrors = {row.get('winerror') for row in rows} | {int(n) for n in re.findall(r'\[WinError (\d+)\]', text)}
+    modules = {str(frame.get('module') or '') for row in rows for frame in row.get('frames') or () if isinstance(frame, dict)}
+    network_frames = any(module.startswith(_NETWORK_MODULES) for module in modules)
+    if types & _NETWORK_TYPES or (errnos | winerrors) & _NETWORK_ERRNO or ('TimeoutError' in types and network_frames):
+        kind = 'network'
+    elif errnos & _IN_USE_ERRNO or winerrors & _IN_USE_WINERROR:
+        kind = 'in-use'
+    elif 'FileNotFoundError' in types or errnos & _MISSING_ERRNO or winerrors & _MISSING_WINERROR:
+        kind = 'missing'
+    else:
+        kind = 'other'
+    return PLAIN_CAUSES[kind]
 
 
 def _step_name(label, zh):

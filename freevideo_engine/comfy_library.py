@@ -17,6 +17,7 @@ from .agent import enabled as agent_enabled
 from .comfy_assets import output_summary
 from .runtime_alias import is_junction, checked_real_path, AliasUnavailable
 from .long_paths import io_path, plain
+from .disk_space import file_reason
 from .system import windows
 
 _ID = re.compile(r'\d{4}-\d{2}-\d{2}/[0-9a-f]{32}')
@@ -960,6 +961,12 @@ def _forget_works(root, facts):
     if not facts:
         return
     try:
+        # The report number of each work, which named its run folder.
+        from .comfy_progress import REPORTS
+        REPORTS.forget(root, {fact['run'] for fact in facts})
+    except Exception:
+        logging.warning('[FreeVideo] Could not forget the report numbers of a deleted creation.', exc_info=True)
+    try:
         kept_receipts, kept_prompts = _kept_facts(root)
     except OSError:
         return
@@ -1482,6 +1489,43 @@ def folder_sizes(output_directory, identities):
     return sizes
 
 
+def video_folder(output_directory, identity=None):
+    """The folder holding the saved videos, or one saved video's own folder when `identity` names it."""
+    root = Path(output_directory).resolve() / 'FreeVideo'
+    if identity is None:
+        folder = root
+    else:
+        if not isinstance(identity, str) or not _ID.fullmatch(identity):
+            raise ValueError('Invalid video identity')
+        folder = root / identity
+        if folder.is_symlink() or is_junction(folder):
+            raise ValueError('Invalid video identity')
+    if not folder.is_dir():
+        if identity is None and Path(output_directory).is_dir():
+            return Path(output_directory).resolve()  # nothing generated yet: show where videos will be saved
+        raise FileNotFoundError(str(folder))
+    return folder
+
+
+def show_folder(folder):
+    """Show a folder in this computer's file manager; False when that cannot be done."""
+    if windows():
+        failure = []
+
+        def show():
+            try:
+                os.startfile(str(folder))
+            except OSError as error:
+                failure.append(error)
+        # The shell can block for good without a desktop session (SSH, service); never wait on it here.
+        thread = threading.Thread(target=show, name='library-open-folder', daemon=True)
+        thread.start()
+        thread.join(2)
+        return thread.is_alive() is False and not failure
+    from .windows_ux import open_folder
+    return open_folder(folder)
+
+
 def register():
     from aiohttp import web
     import folder_paths
@@ -1511,6 +1555,12 @@ def register():
             finish_deleted(folder_paths.get_output_directory(), everything=True)
         except Exception:
             logging.warning('FreeVideo could not finish removing deleted creations.', exc_info=True)
+        try:
+            # Report numbers of works an earlier version deleted without forgetting them.
+            from .comfy_progress import REPORTS
+            REPORTS.forget(Path(folder_paths.get_output_directory()).resolve() / 'FreeVideo')
+        except Exception:
+            logging.warning('FreeVideo could not tidy the report index.', exc_info=True)
     threading.Thread(target=release, name='freevideo-release-decoded', daemon=True).start()
 
     @server.routes.get('/freevideo/sampling-estimate')
@@ -1594,6 +1644,9 @@ def register():
             return web.json_response(rows, headers={'Cache-Control': 'no-store'})
         except ValueError as error:
             raise web.HTTPBadRequest(text=str(error)) from error
+        except OSError as error:
+            # The output folder is offline or not readable: say which, so the page can name the cause.
+            return web.json_response(dict(reason=file_reason(error, write=False)), status=500)
 
     @server.routes.get('/freevideo/library/prompt')
     async def prompt(request):
@@ -1686,6 +1739,24 @@ def register():
             return web.Response(status=304, headers=headers)
         return web.Response(body=data, content_type='image/webp', headers=headers)
 
+    @server.routes.post('/freevideo/library/open-folder')
+    async def open_folder(request):
+        # It opens a window on the computer running FreeVideo, so only that computer may ask.
+        # The custom header keeps other websites from posting to it without the browser's pre-check.
+        if request.remote not in ('127.0.0.1', '::1') or request.headers.get('X-FreeVideo-Library') != '1':
+            raise web.HTTPForbidden(text='Open the folder on the computer that runs FreeVideo')
+        try:
+            body = await request.json()
+            identity = body.get('id') if isinstance(body, dict) else None
+            folder = await asyncio.to_thread(video_folder, folder_paths.get_output_directory(), identity)
+        except (ValueError, TypeError) as error:
+            raise web.HTTPBadRequest(text=str(error)) from error
+        except OSError:
+            raise web.HTTPNotFound(text='Saved video unavailable') from None
+        opened = await asyncio.to_thread(show_folder, folder)
+        return web.json_response(dict(opened=True) if opened else dict(opened=False, folder=str(folder)),
+                                 headers={'Cache-Control': 'no-store'})
+
     @server.routes.post('/freevideo/library/delete')
     async def delete(request):
         try:
@@ -1695,7 +1766,12 @@ def register():
                                              queue=getattr(server, 'prompt_queue', None))
         except DeleteRefused as error:
             return web.json_response(dict(deleted=False, reason=error.reason, kept=error.kept[:20]), status=409)
-        except (OSError, ValueError, TypeError):
+        except FileNotFoundError:
+            raise web.HTTPNotFound(text='Saved video unavailable') from None
+        except OSError as error:
+            # Still there but could not be removed: another program holds it, or the folder is protected.
+            return web.json_response(dict(deleted=False, reason=file_reason(error, write=True)), status=500)
+        except (ValueError, TypeError):
             raise web.HTTPNotFound(text='Saved video unavailable') from None
         return web.json_response(dict(result, deleted=True))
 
@@ -1708,8 +1784,10 @@ def register():
                                              queue=getattr(server, 'prompt_queue', None),
                                              batch=body.get('batch') if isinstance(body, dict) else None,
                                              extend=body.get('extend') or () if isinstance(body, dict) else ())
-        except (DeleteRefused, OSError, ValueError, TypeError):
+        except (DeleteRefused, ValueError, TypeError):
             raise web.HTTPBadRequest(text='Invalid selection') from None
+        except OSError as error:
+            return web.json_response(dict(reason=file_reason(error, write=True)), status=500)
         return web.json_response(result)
 
     @server.routes.post('/freevideo/library/undo')

@@ -177,9 +177,10 @@ export function showReportTip(bar, anchor, t, {mode = 'invite', submit, onHide =
         anchor.dataset.fvTipUse = t('Save the report; sharing it gets this computer optimized', '保存诊断报告，提交可获专门优化');
         return null;
     }
-    // A report saved from a result says so in the shared notice under the top bar (it takes no room and its button is
-    // always reachable); the page under the result has too little height for a card between it and the console.
-    if (mode === 'downloaded' && underResult && bar.closest('.fv-result-links')) {
+    // A report saved from a result or from the status line under it says so in the shared notice under the top bar (it
+    // takes no room and its button is always reachable); the page under the result has too little height for a card
+    // between it and the console, which would cover it.
+    if (mode === 'downloaded' && underResult && bar.closest('.fv-result-links, .fv-status')) {
         onHide?.();
         import('./notifications.js').then(({toast}) => toast(t('Diagnostic report downloaded', '诊断报告已下载'), {tone: 'ok', action: {
             label: t('Go to feedback page', '前往反馈页面提交'), use: t('Open the feedback page to attach the report', '打开反馈页面，附上报告提交'),
@@ -189,6 +190,21 @@ export function showReportTip(bar, anchor, t, {mode = 'invite', submit, onHide =
             }}})).catch(() => {});
         return null;
     }
+    // Chinese keeps each clause whole where it fits (keep-all in result_actions.css). Only a clause too long for a
+    // narrow line gets word boundaries (Intl.Segmenter), so it breaks between two words, never before its comma.
+    const words = text => {
+        if (typeof Intl?.Segmenter !== 'function') return [text];
+        const parts = [];
+        for (const run of text.split(/(?<=[，。、；：！？」])/)) {
+            if ((run.match(/[\u4e00-\u9fff]/g) || []).length <= 12) { parts.push(run); continue; }
+            let first = true;
+            for (const {segment} of new Intl.Segmenter('zh', {granularity: 'word'}).segment(run)) {
+                if (!first && /^[\u4e00-\u9fff]/.test(segment)) parts.push(document.createElement('wbr'));
+                parts.push(segment); first = false;
+            }
+        }
+        return parts;
+    };
     const tip = el('div', 'fv-report-tip'); tip.setAttribute('role', 'region');
     tip.setAttribute('aria-label', t('Send the diagnostic report', '提交诊断报告'));
     const card = el('div', 'fv-report-tip-card');
@@ -216,14 +232,14 @@ export function showReportTip(bar, anchor, t, {mode = 'invite', submit, onHide =
         tip.classList.add('fv-report-tip-sent'); anchor.classList.remove('fv-report-attention');
         mark.replaceChildren(glyph('done'));
         title.textContent = t('Last step', '最后一步');
-        lead.textContent = savedName?.endsWith('.zip')
+        lead.replaceChildren(...words(savedName?.endsWith('.zip')
             ? t(`The report is large, so it was saved as ${savedName}. Please drag it into "Diagnostic report", then select Submit new issue.`,
                 `报告较大，已保存为 ${savedName}。请将它拖入「诊断报告」，再点击 Submit new issue。`)
             : savedName
             ? t(`Please drag ${savedName} into "Diagnostic report", then select Submit new issue.`,
                 `请将 ${savedName} 拖入「诊断报告」，再点击 Submit new issue。`)
             : t('Please drag the downloaded report into "Diagnostic report", then select Submit new issue.',
-                '请将下载的诊断报告拖入「诊断报告」，再点击 Submit new issue。');
+                '请将下载的诊断报告拖入「诊断报告」，再点击 Submit new issue。')));
         const link = el('a', null, t("Page didn't open? Open the feedback page", '页面没有打开？点此前往反馈页面'));
         link.href = address; link.target = '_blank'; link.rel = 'noopener';
         note.replaceChildren(link);
@@ -240,8 +256,8 @@ export function showReportTip(bar, anchor, t, {mode = 'invite', submit, onHide =
     } else {
         title.textContent = t('Share a diagnostic report?', '欢迎提交诊断报告');
     }
-    lead.textContent = t("We'll optimize specifically for your setup, and it helps other users too.",
-        '我们会针对您的硬件配置进行专门优化，也能帮助其他用户。');
+    lead.replaceChildren(...words(t("We'll optimize specifically for your setup, and it helps other users too.",
+        '我们会针对您的硬件配置进行专门优化，也能帮助其他用户。')));
     note.append(glyph('lock', 'fv-report-tip-lock'), t('Hardware, settings and timings only. No prompts, images or videos.',
         '仅包含硬件信息、生成参数和耗时，不含提示词、参考图或视频。'));
     const send = el('button', 'fv-action fv-action-primary'); send.type = 'button';

@@ -164,7 +164,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         tipOf(remove, remove.textContent, word(text('Delete this character from the library', '从角色库删除这个角色'), text('Delete this scene from the library', '从角色库删除这个场景'), text('Delete this prop from the library', '从角色库删除这个道具')));
         tipOf(cancel, text('Cancel', '取消'), text('Close without saving', '不保存，关闭'));
         tipOf(save, text('Save', '保存'), text('Keep it in the library to reuse with @', '存进角色库，之后用 @ 引用'));
-        tipOf(uploadTab, text('Upload images', '上传图片'), views4 && !id ? text('Make the four views from one picture, in its style', '用一张图片按原图风格生成脸部特写、正面、侧面和背面')
+        tipOf(uploadTab, text('Upload images', '上传图片'), views4 && !id ? text('Add your own views. Empty views are made from one picture in its style.', '放入各视角图片，空着的视角按原图风格生成。')
             : text('Use pictures from this computer', '用电脑上的图片'));
         tipOf(aiTab, text('Generate with AI', 'AI 生成'), views4 ? text('Make the face close-up, front, side and back from a description', '按描述生成脸部特写、正面、侧面和背面')
             : text('Make the pictures from a description', '按描述生成图片'));
@@ -180,7 +180,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         };
         const aiBusy = () => aiState.busy || !!generator?.isBusy() || Object.keys(makers).some(key => makerStates[key]?.busy || makers[key]?.isBusy());
         const makerMissing = {photo: text('Generate the views from the photo first', '先用照片生成各视角'),
-            image: text('Generate the views from the picture first', '先用图片生成各视角'), ai: text('Generate the images first', '先生成角色图片')};
+            image: text('Generate the other views first, or add all four', '先生成其余视角，或放入全部四张图片'), ai: text('Generate the images first', '先生成角色图片')};
         // What is still missing before Save works ('' when nothing is); the button says so on hover and when pressed.
         let missing = '';
         const missingNow = () => !name.value.trim() ? text('Enter a name first', '先填写名字')

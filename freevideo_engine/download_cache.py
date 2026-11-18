@@ -17,11 +17,15 @@ def mount_type(path, mountinfo=Path('/proc/self/mountinfo')):
         return None
     target = Path(path).resolve()
     matches = []
-    for line in mountinfo.read_text(encoding='utf-8').splitlines():
-        before, after = line.split(' - ', 1)
-        mount = Path(re.sub(r'\\([0-7]{3})', lambda m: chr(int(m[1], 8)), before.split()[4]))
-        if target == mount or mount in target.parents:
-            matches.append((len(mount.parts), after.split()[0]))
+    try:
+        lines = mountinfo.read_text(encoding='utf-8').splitlines()
+        for line in lines:
+            before, after = line.split(' - ', 1)
+            mount = Path(re.sub(r'\\([0-7]{3})', lambda m: chr(int(m[1], 8)), before.split()[4]))
+            if target == mount or mount in target.parents:
+                matches.append((len(mount.parts), after.split()[0]))
+    except (OSError, ValueError, IndexError):
+        return None  # Sandboxed or restricted /proc: the mount type is advisory, so the download proceeds.
     return max(matches)[1] if matches else None
 
 

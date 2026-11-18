@@ -1,3 +1,4 @@
+import './has_mirror.js';
 import {createLanAccess} from './lan_access.js';
 import {createEditorText} from './editor_text.js';
 import {isNetworkTypeError, connectionLostText} from './browser_extension.js';
@@ -39,7 +40,7 @@ import {voiceTarget} from './editor_voice_model.js';
 import {MAX_MUSIC_TEXT as MUSIC_TEXT_LIMIT} from './editor_music_model.js';
 import {createProgressConnection} from './progress_connection.js';
 import {createSelectionActions, deletionStatus, isMultiple, isTyping, playheadIds, removableGaps, removeGaps} from './editor_select.js';
-import {isolateDialogKeys, topDialog} from './dialog_keys.js';
+import {isolateDialogKeys, routeDialogKey, topDialog} from './dialog_keys.js';
 import {createBlockNotes, describedTrack} from './editor_notes.js';
 import {createFirstRunGuide} from './first_run_guide.js';
 import {SHOWCASE_SCENE} from './entry_showcase.js';
@@ -54,7 +55,8 @@ import {tip, modKey} from './editor_tips.js';
 import {jobs} from './task_store.js';
 import {openingChoice} from './editor_opening.js';
 import {CN} from './topbar_state.js';
-const editorStyles = Promise.all(['result_actions.css', 'editor.css', 'editor_expand.css', 'editor_tracks.css', 'editor_frame.css', 'editor_adjust.css', 'editor_adjust_picture.css', 'editor_preview_picture.css', 'editor_select.css', 'editor_menu.css', 'editor_text.css', 'editor_notes.css', 'editor_transport.css', 'glass/editor.css'].map(name => {
+import {setDisabled} from './dom_quiet.js';
+const editorStyles = Promise.all(['result_actions.css', 'editor.css', 'editor_expand.css', 'editor_tracks.css', 'editor_frame.css', 'editor_adjust.css', 'editor_adjust_picture.css', 'editor_preview_picture.css', 'editor_select.css', 'editor_menu.css', 'editor_text.css', 'editor_notes.css', 'editor_transport.css', 'glass/editor.css', 'editor_touch.css'].map(name => {
     const style = document.createElement('link'); style.rel = 'stylesheet'; style.href = new URL(name, import.meta.url).href;
     const ready = 'sheet' in style ? new Promise(resolve => { style.onload = style.onerror = resolve; }) : Promise.resolve();
     document.head.append(style); return ready;
@@ -350,7 +352,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     let discardOnSwitch = false, leaveTo = null, initialSelection = null, offerInitial = null, extendEntry = null;
     let viewKey = null, viewReady = false;
     let library = null, closing = false, closePromise = null, exportSnapshot = null, lastSeed = null, projectEpoch = 0;
-    let stems = null, disposed = false, suppressSave = false, savedContent = '', initializing = true, tracks = null, genbar = null, adjustPanel = null, exportStatus = null, pointerEditing = false, deferredStamp = null;
+    let cleanupBar = null, stems = null, disposed = false, suppressSave = false, savedContent = '', initializing = true, tracks = null, genbar = null, adjustPanel = null, exportStatus = null, pointerEditing = false, deferredStamp = null;
     // Selects the clip and, when nothing follows it yet, adds one minimum draft. Returns false while the generation probe has not said yes.
     function enterClip(match, epoch, {select = true, settled = () => {}, fresh = false} = {}) {
         if (closing || disposed || epoch !== projectEpoch) return true;
@@ -422,7 +424,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         // A plain Error says nothing by its class; when its message is itself a short code (chain_missing) that is the reason.
         // Any other message may hold a path or the user's words, so it is never copied.
         const named = value?.name === 'Error' && /^[a-z][a-z0-9_]{2,39}$/.test(value?.message) ? value.message : value?.name;
-        const code = value?.reason || value?.code || named;
+        // A failed export names the exception class (a type name, never a message), so the report says what broke.
+        const code = (value?.reason === 'failed' && value?.class) || value?.reason || value?.code || named;
         return site + ':' + (String(code || '').replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 40) || 'unknown');
     }
     // `where` marks a failure: the notice then carries the "Report a problem" button and stays longer to be reached.
@@ -825,7 +828,11 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         }
         if (!value.node || !value.prompt?.[value.node]) throw new Error('missing_node');
         const inputs = value.prompt[value.node].inputs;
-        Object.assign(inputs, state.record.settings || {}, capability.generationSize || generationSize(state.record));
+        // With the creation panel's bar in the editor, its values are the request's (the edit's size is its starting point).
+        if (!panel.barActive) Object.assign(inputs, state.record.settings || {}, capability.generationSize || generationSize(state.record));
+        else if (bar?.overrides) for (const [name, setting] of Object.entries(bar.overrides())) if (name in inputs && !Array.isArray(inputs[name])) inputs[name] = setting;
+        // The first-frame reference is the work's own setting, the one the length limit is worked out from.
+        if (panel.barActive && 'first_frame_reference' in inputs && !Array.isArray(inputs.first_frame_reference)) inputs.first_frame_reference = state.record.settings?.first_frame_reference === true;
         // The media panel's pictures guide every part (the engine keeps only the references for a part that continues);
         // without a panel to show them they stay out of the request.
         if (!panel.references?.available()) delete inputs.media;
@@ -925,8 +932,19 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if (completed.size || (!active && previous?.state !== job.state) || (job.output && job.output !== previous?.output))
             library?.refresh({outputs: job.output ? [job.output] : [...completed]});
         if (!active) jobWatchers.delete(job.id);
+        if (job.state === 'done' && ['queued', 'running', 'cancelling'].includes(previous?.state)) offerNextPart(job);
         void startHeld();
         return active;
+    }
+    // A continued video that has just finished gets its next part ready at its end, as opening a work does, so the
+    // next part continues it too. Only while the viewer is still on that video and nothing else is being sent.
+    function offerNextPart(job) {
+        const ids = new Set((job.blocks || []).map(block => block.id));
+        const last = state.record.tracks[0].clips.filter(clip => ids.has(clip.id)).sort((a, b) => a.start - b.start).at(-1);
+        if (!last || !model.continuesBefore(state.record, last.id) || generationBusy || held.length) return;
+        const picked = state.selection;
+        if (picked && !(picked.kind === 'clip' && picked.ids.some(id => ids.has(id) || model.find(state.record, id)?.link && ids.has(model.find(state.record, id).link)))) return;
+        enterClip(clip => clip.id === last.id, projectEpoch, {select: false});
     }
     function watchJob(id) {
         if (disposed) return;
@@ -1161,7 +1179,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             if (closing || disposed) return;
             const cached = store.sources.get(sourceKey(source));
             if (!initializing || (!cached?.video && !cached?.audio)) await store.getSources([sourceKey(source)]);
-            if (!closing && !disposed) player.previewSource(source);
+            // A preview whose details arrive after leaving never starts in the hidden editor.
+            if (!closing && !disposed && !handle.kept) player.previewSource(source);
         },
         generationLimits: () => ({maxSeconds: capability.maxSeconds, maxFollowSeconds: capability.maxFollowSeconds}),
         generationAvailable: () => store.generationAvailable,
@@ -1197,7 +1216,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             if (loadMetadata) {
                 const epoch = projectEpoch;
                 return store.getSources([sourceKey(value.source)]).then(() => {
-                    if (!closing && !disposed && epoch === projectEpoch) return actions.insertSource(value);
+                    // Details that arrive after leaving never insert into the hidden edit.
+                    if (!closing && !disposed && !handle.kept && epoch === projectEpoch) return actions.insertSource(value);
                 });
             }
             const metadata = store.sources.get(sourceKey(value.source));
@@ -1470,7 +1490,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 }
                 const values = new Uint32Array(1);
                 if (globalThis.crypto?.getRandomValues) crypto.getRandomValues(values); else values[0] = Math.floor(Math.random() * 2 ** 32);
-                const seed = values[0] === lastSeed ? (values[0] + 1) >>> 0 : values[0]; lastSeed = seed;
+                const typed = panel.barActive ? bar?.overrides?.().seed : undefined; // a seed typed in the bar is the run's seed
+                const seed = Number.isSafeInteger(typed) && typed >= 0 ? typed : values[0] === lastSeed ? (values[0] + 1) >>> 0 : values[0]; lastSeed = seed;
                 // An @name in a description becomes <Subject N> and its definition, as in the creative panel; a part that
                 // continues carries only the pictures the engine keeps for it, and is numbered among them.
                 const castRows = panel.references?.available() ? panel.references.rows?.() ?? [] : [];
@@ -1769,7 +1790,64 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     actions.narration = narration;
     actions.music = {target: selection => music.target(selection), preset: selection => music.preset(selection), choose: value => music.choose(value),
         styles: music.styles, moods: music.moods, downloadBytes: music.downloadBytes};
+    let bar = null, barLabel = '', attachBar = null, detachBar = null, guideBack = [];
+    actions.onLabel = text => { barLabel = text; if (bar) queueMicrotask(() => bar.sync()); };
     genbar = createEditorGenbar(genHost, {state, t, actions, text: ''}); settleService();
+    // The creation panel's own bar (same chips, trays and rules) stands in for the description, size, duration and quality
+    // controls here; what the editor adds (music, narration, dubbing, downloads) stays in its own bar. Without a panel to
+    // borrow from, the editor's bar is shown as before.
+    if (panel.borrowBar) {
+        let observer = null, arranged = false, unlisten = null, echo = false, lent = false, home = '', arrangeNow = null; // the subscription below outlives one borrow, so what it reads is kept out here
+        attachBar = () => {
+        if (bar) return;
+        bar = panel.borrowBar({mount: genHost, onSeconds: value => { const field = genbar.duration; if (!field || field.element.hidden || field.input.disabled || !(value > 0)) return; field.input.value = String(Math.round(value)); field.commit(); }, label: () => barLabel || null, disabled: () => !genbar.canGenerate(),
+            submit: async options => { genbar.setText(bar.prompt.value); await genbar.press(options?.allowEmpty === true); }});
+        if (bar) {
+            genHost.classList.add('fv-ed-genbar-borrowed');
+            element.dataset.barBorrowed = 'true';
+            // The guide's editor steps ring the borrowed bar's prompt, media and Generate, not the editor's hidden ones.
+            guideBack = [['editor-describe', '[data-fv-guide="describe"]'], ['editor-refs', '.fvs-chip[data-chip="media"]'], ['editor-generate', '[data-fv-guide="generate"]']].flatMap(([mine, selector]) => {
+                const own = genHost.querySelector(`[data-fv-guide="${mine}"]`), lent = bar.shell.querySelector(selector);
+                if (!lent) return [];
+                const theirs = lent.dataset.fvGuide;
+                if (own) delete own.dataset.fvGuide;
+                lent.dataset.fvGuide = mine;
+                return [() => { if (theirs) lent.dataset.fvGuide = theirs; else delete lent.dataset.fvGuide; if (own) own.dataset.fvGuide = mine; }];
+            });
+            // The bar's height is the row's: the timeline below keeps what is left.
+            const fit = () => element.style.setProperty('--fv-ed-generation-row', `${Math.ceil(bar.shell.getBoundingClientRect().height) + 18}px`);
+            if (typeof ResizeObserver === 'function') { observer = new ResizeObserver(fit); observer.observe(bar.shell); }
+            fit();
+            // What the three ways in prefill and lock: a new part takes the edit's size and the selection's length; a part
+            // that continues keeps the size it continues; one made again keeps its size and length.
+            // The description each part keeps is bound in the editor's own box (hidden); the bar's box shows it and writes it back.
+            echo = false; lent = false;
+            const field = bar.prompt; home = field.value; // the panel's own text, given back when the bar is released
+            const onType = () => { if (!echo) genbar.type(field.value); }, onLeave = () => genbar.leave();
+            field.addEventListener('input', onType); field.addEventListener('blur', onLeave);
+            unlisten = () => { field.removeEventListener('input', onType); field.removeEventListener('blur', onLeave); if (lent) { field.value = home; field.dispatchEvent(new Event('input', {bubbles: true})); } };
+            const arrange = () => {
+                if (!bar) return;
+                const selection = state.selection, clips = selection?.kind === 'clip' ? selection.ids.map(id => model.find(state.record, id)).filter(Boolean) : [];
+                const edit = capability.generationSize || generationSize(state.record), again = clips.some(clip => clip.source);
+                const continuing = !again && clips.length > 0 && model.generationBefore(state.record, clips.map(clip => clip.id)).some(Boolean);
+                const range = selectionRange(), length = range ? range.frames / model.FPS : null; // the span, not a sum: a part's picture and sound are two linked clips over the same frames
+                echo = true;
+                if (clips.length) lent = true;
+                try { bar.apply({initial: {size: edit, ...(clips.length ? {text: genbar.shown()} : {}), ...(length ? {seconds: Number(length.toFixed(3))} : {})}, locked: again ? ['size', 'seconds'] : continuing ? ['size'] : []}); } finally { echo = false; }
+            };
+            arrangeNow = arrange; arrange(); if (!arranged) { arranged = true; state.subscribe(event => {
+                if (event.type === 'selection') arrangeNow?.();
+                // An undo or a description written elsewhere shows in the bar too, unless it is being typed in.
+                else if (event.type === 'record' && bar && state.selection?.kind === 'clip' && document.activeElement !== bar.prompt && bar.prompt.value !== genbar.shown()) { echo = true; lent = true; try { bar.apply({initial: {text: genbar.shown()}}); } finally { echo = false; } }
+            }); }
+        }
+        };
+        // Hidden, the editor gives the panel its bar back; shown again, it takes it once more.
+        detachBar = () => { observer?.disconnect(); observer = null; unlisten?.(); unlisten = null; for (const back of guideBack.splice(0)) back(); bar?.release(); bar = null; panel.barActive = false; genHost.classList.remove('fv-ed-genbar-borrowed'); delete element.dataset.barBorrowed; };
+        cleanupBar = detachBar;
+        attachBar();
+    }
     {
         // What the editor gives the bar is the video job's; a chosen piece of music being made shows its own instead.
         const update = genbar.update;
@@ -1803,7 +1881,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             if (inspector && notices.parentNode !== projectRow) projectRow.insertBefore(notices, exportBox);
             else if (!inspector && notices.parentNode !== element) element.append(notices);
         };
-        const passive = node => node.classList.contains('fv-request-assets') || node.classList.contains('fv-ed-gen-anchor') || node.classList.contains('fv-ed-ref-notice');
+        const passive = node => node.classList.contains('fv-request-assets') || node.classList.contains('fv-ed-ref-notice');
         const follow = () => {
             if (disposed || element.dataset.trayPlace !== 'inspector' || !adjust.narrow) return;
             const shown = [...tray.children].some(node => !node.hidden && !passive(node));
@@ -1894,7 +1972,9 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     editTools.append(secondPassButton);
     toolbar.append(adjust.toggleButton);
     const textTools = createEditorText({element, state, t, actions, adjust, player, toolbar, exportBox, tracksHost});
-    const toolbarMore = createToolbarMore({toolbar, t, keep: '.fv-ed-undo, .fv-ed-split, .fv-ed-delete, .fv-ed-adjust-toggle, .fv-ed-zoom, .fv-ed-stems-button, .fv-ed-second-pass'});
+    const toolbarMore = createToolbarMore({toolbar, t, keep: '.fv-ed-undo, .fv-ed-split, .fv-ed-delete, .fv-ed-adjust-toggle, .fv-ed-zoom, .fv-ed-stems-button, .fv-ed-second-pass',
+        touchKeep: '.fv-ed-undo, .fv-ed-redo, .fv-ed-split, .fv-ed-delete, .fv-ed-snapping, .fv-ed-adjust-toggle, .fv-ed-zoom, .fv-ed-stems-button, .fv-ed-second-pass',
+        touchWideKeep: '.fv-ed-record-toggle, .fv-ed-add-text'});
     actions.speech.ability().then(value => { if (!disposed) textTools.speech(value); }).catch(() => {});
     // The command palette (Ctrl/Cmd+K) offers this view's actions while it is open; a greyed one says why (the control's own reason).
     {
@@ -1951,7 +2031,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         });
     }
     function updateSplit() {
-        const ids = splitIds(), busy = ids.some(id => model.pair(state.record, id).some(isBusy)); split.disabled = !ids.length || busy;
+        const ids = splitIds(), busy = ids.some(id => model.pair(state.record, id).some(isBusy)); setDisabled(split, !ids.length || busy);
         tip(split, {name: t('Split', '剪开'), use: t('Cut the clip in two at the playhead', '在播放头处把片段分成两段'), key: `B / ${modKey}B`,
             why: !split.disabled ? '' : busy ? t('This part is generating', '这一段正在生成') : t('Put the playhead inside a clip first', '先把播放头放到片段中间')});
     }
@@ -2080,12 +2160,22 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         else if (mod && key === 'y' && !event.shiftKey) { event.preventDefault(); travel(false); }
     }
     listen('keydown', keyboard); listen('keyup', event => event.stopPropagation());
+    // The shell turns every Escape in a view into a cancel (shell.js), and for a real key press that cancel arrives before
+    // the editor's own key handling. One Escape does one thing: it closes a popup, or stops a drag, or deselects; the
+    // first to use it marks it taken for the rest of that key press, so a drag stopped by Escape adds no undo step.
+    let escapeTaken = false;
+    const tookEscape = () => { escapeTaken = true; setTimeout(() => { escapeTaken = false; }, 0); };
     listen('cancel', event => {
         if (event.target !== element) return;
         event.preventDefault();
-        if (topDialog() === element && !dismissPopup(event)) state.select(null, {history: true});
+        if (escapeTaken || topDialog() !== element) return;
+        if (dismissPopup(event) || tracks?.cancelGesture()) { tookEscape(); return; }
+        state.select(null, {history: true});
     });
     const stopKeys = isolateDialogKeys(element, (event, inside) => {
+        // FreeVideo's shared menus (a text box's Cut/Copy/Paste, and any menu opened over the editor) live inside this
+        // dialog and listen through dialog_keys: their arrows, Enter, Esc and Tab are theirs, with no editor shortcut.
+        if (inside && event.target.closest?.('.fv-cm[role=menu]')) { routeDialogKey(event, element); return; }
         if (guide?.handleKey(event)) return;
         if (event.type === 'keyup') {
             // The Space that played from a media card does not also press the card.
@@ -2095,9 +2185,10 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if (event.type !== 'keydown') return;
         if (event.isComposing || event.keyCode === 229) return;
         if (event.key.toLowerCase() === 'escape') {
-            if (dismissPopup(event)) return;
-            if (tracks?.cancelGesture()) { event.preventDefault(); return; }
-            if (document.fullscreenElement) { event.preventDefault(); document.exitFullscreen().catch(() => {}); return; }
+            if (escapeTaken) { event.preventDefault(); return; }
+            if (dismissPopup(event)) { tookEscape(); return; }
+            if (tracks?.cancelGesture()) { event.preventDefault(); tookEscape(); return; }
+            if (document.fullscreenElement) { event.preventDefault(); tookEscape(); document.exitFullscreen().catch(() => {}); return; }
         }
         if (recording.keyboard(event)) return;
         if (inside && event.target.closest?.('.fv-ed-refs')) {
@@ -2206,6 +2297,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             const later = [...document.querySelectorAll('dialog[open]')].some(dialog => dialog !== element && element.compareDocumentPosition(dialog) & Node.DOCUMENT_POSITION_FOLLOWING);
             if (!element.isConnected || later) document.body.append(element);
             element.inert = false;
+            attachBar?.();
             if (!element.open) element.showModal();
             viewChanged('editor'); globalThis.FreeVideoStageLight?.refresh();
             // The tab takes focus after the first frame: focusing now would lay the whole view out a second time before it shows.
@@ -2219,9 +2311,10 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     };
     function hide() {
         closing = false; closePromise = null; handle.kept = true;
-        player.pause(); lineStop?.();
+        player.pause(); player.stopPreview(); lineStop?.();
         // The microphone is let go with the view: an open record bar closes, and a take in progress lands as Stop would.
         recording.hide();
+        detachBar?.();
         if (element.open) element.close();
         element.inert = true;
         resumeCanvasPointer(); resumeCanvasPointer = () => {};
@@ -2234,6 +2327,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         releaseTakes(); rememberView(); disposed = true; handle.kept = false; poster.dispose(); music.dispose(); narration.dispose(); voice.dispose(); voiceInstall.dispose(); guide?.dispose(); transportControls.dispose(); toolbarMore.dispose(); player.dispose();
         textTools.dispose(); adjust.dispose(); notes.dispose(); pictureEdit.dispose();
         audio.dispose(); stems?.dispose(); recording.dispose(); headerFit.dispose();
+        cleanupBar?.();
         listeners.splice(0).forEach(remove => remove());
         for (const node of [element, ...element.querySelectorAll('*')]) for (const name of ['onclick', 'ondblclick', 'oninput', 'onchange', 'onkeydown', 'ondragstart']) node[name] = null;
         unsubscribe(); stopSources(); library?.dispose(); genbar.dispose(); tracks?.dispose(); stopExport?.();

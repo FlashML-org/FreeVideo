@@ -10,6 +10,7 @@
 // into the line under it, the remark into a line with its key, and the drop-down for new pictures into the title row.
 import './tray_pop.js';
 import { mediaQueue } from '../work_media.js';
+import {setHidden} from '../dom_quiet.js';
 
 const CARD_KEYS = {'↑': 'fv-mt-up', '↓': 'fv-mt-down'};
 // How many saved works the works page lists (newest first, pictures and videos together).
@@ -36,6 +37,9 @@ function markCard(card) {
     card.dataset.fvMtWide = String(Boolean(card.querySelector(':scope > :is(.fv-time,.fv-depth-only,.fv-sound,audio.fv-preview)')));
     const rows = [...card.children].filter(child => child.classList.contains('fv-row'));
     const controls = rows.length > 1 ? rows.at(-1) : null;
+    // Edited is a small mark on the picture; its words stay as the mark's name.
+    const edited = card.querySelector('.fv-edited');
+    if (edited && !edited.title) { edited.title = edited.textContent; edited.setAttribute('role', 'img'); edited.setAttribute('aria-label', edited.textContent); }
     if (!controls || controls.classList.contains('fv-mt-rest')) return;
     controls.classList.add('fv-mt-rest');
     const buttons = [...controls.querySelectorAll(':scope > button')], keys = document.createElement('div');
@@ -44,17 +48,17 @@ function markCard(card) {
     // The picture itself opens the editor (the panel's own handler on it); 'Original' joins the drop-down, so tiles stay one size.
     const original = card.dataset.kind === 'image' && buttons.length > 3 ? buttons.find((b, index) => index > 0 && b !== up && b !== down && b !== remove) : null;
     original?.classList.add('fv-mt-original');
-    // Moving earlier or later is in the tile's drop-down, under its uses; the two keys stay in the page for it to press.
-    if (select && (up || down) && !select.dataset.fvMt) {
+    // Moving earlier or later, and Remove, are in the tile's drop-down, under its uses; the two keys stay in the page for it to press.
+    if (select && (up || down || remove) && !select.dataset.fvMt) {
         select.dataset.fvMt = '1'; select.append(document.createElement('hr'));
-        for (const [key, value] of [[up, 'fv-mt-earlier'], [down, 'fv-mt-later'], [original, 'fv-mt-original']]) {
+        for (const [key, value] of [[up, 'fv-mt-earlier'], [down, 'fv-mt-later'], [original, 'fv-mt-original'], [remove, 'fv-mt-remove']]) {
             if (!key) continue;
-            const option = document.createElement('option'); option.value = value; option.textContent = key.title || key.textContent; option.disabled = key.disabled; select.append(option);
+            const option = document.createElement('option'); option.value = value; option.textContent = key === remove ? key.textContent : key.title || key.textContent; option.disabled = key.disabled; select.append(option);
         }
         const chosen = select.value;
         select.addEventListener('change', event => {
             if (!select.value.startsWith('fv-mt-')) return;
-            event.stopImmediatePropagation(); const key = {'fv-mt-earlier': up, 'fv-mt-later': down, 'fv-mt-original': original}[select.value]; select.value = chosen; key?.click();
+            event.stopImmediatePropagation(); const key = {'fv-mt-earlier': up, 'fv-mt-later': down, 'fv-mt-original': original, 'fv-mt-remove': remove}[select.value]; select.value = chosen; key?.click();
         }, true);
     }
     for (const button of [up, down, remove]) {
@@ -388,8 +392,8 @@ function markNow(panel) {
         card.querySelector('.fv-mt-held-note')?.remove();
         if (held) (card.querySelector('.fv-preview-wrap') || card).append(make('span', 'fv-mt-held-note', say(panel, 'Not used with frames', '不与首尾帧同用')));
     }
-    panel.fvMtMix.hidden = !blocked;
-    panel.fvMtRemark.hidden = Boolean(!note || note.hidden) && !blocked;
+    setHidden(panel.fvMtMix, !blocked);
+    setHidden(panel.fvMtRemark, Boolean(!note || note.hidden) && !blocked);
     if (tray && !tray.fvMtPaged) {
         tray.fvMtPaged = true; showPage(panel, 'media');
         // Placed by tray_pop.js: measured with the scrolling parts at their full height, then fitted to the window.

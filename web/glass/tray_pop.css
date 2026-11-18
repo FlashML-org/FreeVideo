@@ -29,10 +29,10 @@
 .fv-studio.fv-create .fvs-tray[data-fv-pop]>.fvs-tray-head>.fvs-tray-close{display:none!important}
 .fv-studio.fv-create .fvs-tray[data-fv-pop]>.fv-expand{margin:0;padding:0}
 /* A window is over the stage, not instead of it: the bar under the picture and the play bar stay as they are. */
-.fv-studio.fv-create .fv-body:has(.fvs-tray[data-fv-pop][open]) :is(.fvs-stagebar,.fvs-player){opacity:1;pointer-events:auto}
+.fv-studio.fv-create .fv-body[data-hx-pop] :is(.fvs-stagebar,.fvs-player){opacity:1;pointer-events:auto}
 /* While a window is open, no hover tip of the page behind it is drawn over it (as for the other windows); the window's
    own keys keep theirs while the pointer is in it. */
-:root:has(.fvs-tray[data-fv-pop][open]):not(:has(.fvs-tray[data-fv-pop][open]:hover)) .fv-tip{display:none!important}
+:root[data-hx-pop]:not([data-hx-pophover]) .fv-tip{display:none!important}
 
 /* ── LoRA: one row a model (drag grip, on/off, the model, its strength, remove), its trigger words under it; then the
    add key across the window, and Clear beside it once there are two or more. ── */

@@ -231,6 +231,7 @@ export function imageSource(store, {client, storage = null, poll = 500, now = st
                 if (status.fitted) patch.meta.fitted = status.fitted;
                 if (state === 'queued' && status.waiting) patch.meta.waiting = status.waiting;
                 if (state === 'failed') patch.failure = {code: status.error || 'generation_failed', report_id: status.report_id || null, stage: status.stage,
+                    ...(status.error ? {} : {step: 'status'}),
                     fitted: status.fitted || null, memory: status.memory, other_usage: status.other_usage, message_zh: status.message_zh};
                 store.upsert(patch);
                 if (FINAL.has(state)) { forget(id); clients.delete(id); return; }
@@ -253,8 +254,8 @@ export function imageSource(store, {client, storage = null, poll = 500, now = st
             };
             let reply;
             try { reply = await mine.generate(request); }
-            catch (error) { throw refuse(error?.code || 'generation_failed', error); }
-            if (!reply?.job) throw refuse(reply?.error || 'generation_failed', reply || {});
+            catch (error) { throw refuse(error?.code || 'generation_failed', error?.code ? error : error instanceof Error ? Object.assign(error, {step: 'submit'}) : {step: 'submit'}); }
+            if (!reply?.job) throw refuse(reply?.error || 'generation_failed', reply?.error ? reply : {...reply, step: 'submit'});
             keys[id] = {job: reply.job, model: request.model || null, withImages: Boolean(meta.withImages), created_at: store.get(id)?.created_at || now(), view};
             save();
             // Stopped while the request was on its way: the engine gets the cancel now that the job has a key.
@@ -282,7 +283,7 @@ export function imageSource(store, {client, storage = null, poll = 500, now = st
     store.addSource('image', source);
     return source;
 }
-const pick = value => value && typeof value === 'object' ? Object.fromEntries(['report_id', 'stage', 'fitted', 'memory', 'other_usage', 'message_zh']
+const pick = value => value && typeof value === 'object' ? Object.fromEntries(['report_id', 'stage', 'step', 'fitted', 'memory', 'other_usage', 'message_zh']
     .filter(key => value[key] !== undefined).map(key => [key, value[key]])) : {};
 
 // ---------- Videos: the progress stream the page already receives (freevideo.js turns it into window events) ----------

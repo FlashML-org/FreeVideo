@@ -12,12 +12,13 @@ let shown = null;
 export function dismissEmptyPrompt() { if (shown) shown.dismiss(); }
 
 // `anchor`: the control (or its row) the notice follows. `field`: the prompt box, which takes the focus back.
-// `onContinue` runs after the notice is gone.
-export function showEmptyPrompt({t, anchor, field = null, onContinue}) {
+// `onContinue` runs after the notice is gone. `text`: the sentence, when the box has its own name for the prompt.
+// `onGone`: called once the notice is removed, however it goes.
+export function showEmptyPrompt({t, anchor, field = null, onContinue, text = null, onGone = null}) {
     dismissEmptyPrompt();
     const doc = document;
     const box = doc.createElement('div'); box.className = 'fv-empty-prompt fv-actions'; box.setAttribute('role', 'status');
-    const sentence = doc.createElement('span'); sentence.textContent = t('The prompt is empty.', '提示词为空。');
+    const sentence = doc.createElement('span'); sentence.textContent = text ?? t('The prompt is empty.', '提示词为空。');
     const go = doc.createElement('button'); go.type = 'button'; go.className = 'fv-action fv-action-primary';
     const label = doc.createElement('span'); label.textContent = t('Generate anyway', '继续生成'); go.append(label);
     box.append(sentence, go);
@@ -25,6 +26,7 @@ export function showEmptyPrompt({t, anchor, field = null, onContinue}) {
         doc.removeEventListener('pointerdown', outside, true);
         field?.removeEventListener('input', dismiss);
         box.remove(); if (shown?.box === box) shown = null;
+        onGone?.();
     };
     const dismiss = () => gone();
     const outside = event => { if (!box.contains(event.target)) gone(); };

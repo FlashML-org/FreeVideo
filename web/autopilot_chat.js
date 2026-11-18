@@ -70,14 +70,21 @@ const WHITEBOX = {
     failure: ['Could not start: ', '无法开始生成：'],
 };
 const GENERIC_FAILURE_ZH = '没有完成';
+// The failures whose next step is the problem report (agent/errors.py FAILURE_NEXT_*).
+const UNEXPECTED_FAILURES = ['internal_error', 'generation_failed'];
+// The engine's next step for a reason, as the sentence after it.
+const withNext = (reason, next, zh) => next ? reason.replace(/[。.]$/, '') + (zh ? '。' : '. ') + next : reason;
 // Sends and failure cards use the same public reason, including the engine's Chinese mapping.
 function failureReason(value, t) {
     const error = value.error, reason = error?.error_zh || value.error_zh, reasonEn = error?.error_en || value.error_en;
     if (error?.code === 'session_full' && (!reason || reason === GENERIC_FAILURE_ZH))
         return t('This chat is full. Click "New chat".', '这个对话已满，请点“新对话”。');
+    // The next step belongs to the same object as the reason it follows.
+    const own = error?.error_zh ? error : value;
     // `message` is written for programs; people read the engine's own English reason. A refusal the engine
     // did not classify keeps its sentence, as before.
-    return t(reasonEn || error?.message || 'Did not finish', reason || GENERIC_FAILURE_ZH);
+    return t(withNext(reasonEn || error?.message || 'Did not finish', reasonEn && own.next_en),
+        withNext(reason || GENERIC_FAILURE_ZH, reason && own.next_zh, true));
 }
 
 // A failed job's one reason line. The engine's classified sentence (both languages) is for people; anything else is
@@ -715,9 +722,16 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
     const inMenu = target => menu.contains(target) || menuOrigin()?.contains(target);
     const leaveMenu = event => { if (menuState && !changingMenu && !inMenu(event.relatedTarget)) closeMenu(); };
     menu.addEventListener('focusout', leaveMenu);
+    // Where `keys` below moves focus on Tab itself (the narrow drawer; the open menu in the drawer, and its confirmation
+    // everywhere), the shared trap in a11y.js stands aside, so each press moves focus once.
+    function ownTab() {
+        const own = (node, on) => on ? node.setAttribute('data-fv-own-tab', '') : node.removeAttribute('data-fv-own-tab');
+        own(rail, narrow() && chats.getAttribute('aria-expanded') === 'true');
+        own(menu, !!menuState && (narrow() || menuState.stage === 'confirm'));
+    }
     function drawer(on, restore = false) {
         if (!on) closeMenu();
-        element.dataset.chatsOpen = String(on); chats.setAttribute('aria-expanded', String(on));
+        element.dataset.chatsOpen = String(on); chats.setAttribute('aria-expanded', String(on)); ownTab();
         if (on) sideDrawer(false);
         // Only the overlay needs to keep keyboard focus in its list.
         main.inert = on && narrow();
@@ -758,6 +772,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                 positionMenu();
                 if (focus) (confirming ? cancel : rename.hidden ? remove : rename).focus({preventScroll: true});
             }
+            ownTab();
         } finally { changingMenu = false; }
     }
     function closeMenu(restore = false) {
@@ -841,7 +856,9 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             // A search also finds the chat being read by its tasks' words; the line under the name then shows the one it found.
             const shot = query && row.id === state.session && !matches(query, row.title) ? shotWords.find(words => matches(query, words)) : null;
             if (shot) { markText(node.where, shot, query); node.where.dataset.state = 'found'; node.where.hidden = false; }
-            node.row.hidden = !matches(query, row.title) && !shot || undoing.has(row.id);
+            // A chat on its way out stays hidden until the server answers; without an undo window its confirmation
+            // stays open on the row until then.
+            node.row.hidden = !matches(query, row.title) && !shot || undoing.has(row.id) || deleting.has(row.id) && menuState?.session !== row.id;
             const group = row.running > 0 ? 'running' : dayGroup(row.updated_at);
             node.row.dataset.group = group;
             node.row.dataset.groupLabel = t(...GROUP_WORDS[group]);
@@ -1400,13 +1417,17 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                     // "Send again" leads the card's own action row; its label and state are set below with the others.
                     const host = el('div');
                     const card = renderImageFailure(host, {error: job.error?.code || 'generation_failed', report_id: job.error?.report_id,
-                        stage: job.error?.stage, memory: job.error?.memory}, t,
+                        stage: job.error?.stage, step: job.error?.step || (job.error?.code ? '' : 'agent_job'), memory: job.error?.memory}, t,
                         {productVersion, fetchApi: (path, options) => api.fetchApi(path, options),
                             retry: retry ? {label: AGAIN.resend, onClick: () => retry?.()} : null});
                     item.replaceChildren(host);
-                    // The same fold row as a video failure card, between the reason and the buttons.
+                    // Without a diagnostic report the shared card folds the code, step and memory under its own Technical
+                    // details; the program's text and request id join that fold. With a report, the chat's fold (as on a
+                    // video failure card) sits between the reason and the buttons.
+                    const facts = card?.querySelector('.fv-image-failure-details');
                     const raw = [job.error?.code, job.error?.message, job.error?.request_id].filter(Boolean).join('\n');
-                    if (card && raw) card.querySelector('.fv-image-failure-reason').after(failureFold(t, raw));
+                    if (facts) for (const line of [job.error?.message, job.error?.request_id].filter(Boolean)) facts.append(el('div', null, line));
+                    else if (card && raw) card.querySelector('.fv-image-failure-reason').after(failureFold(t, raw));
                     if (retry && card) {
                         // In the chat it is the same outlined button as on a video failure card.
                         const again = card.querySelector('.fv-image-retry');
@@ -1430,10 +1451,13 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                     // The shared failure style: one reason line, the fold row, then the secondary buttons.
                     const fold = failureFold(t);
                     if (retry) actions.append(...again());
-                    actions.append(diagnostic.report);
+                    // An unexpected failure says to report it if it happens again: the card carries that button.
+                    const issue = issueButton(t, () => ({where: CHAT_ISSUE, message: [reason.textContent, fold.querySelector('p').textContent].filter(Boolean).join('\n')}));
+                    actions.append(diagnostic.report, issue);
                     links.append(actions); item.replaceChildren(failHead, reason, fold, links);
                     tip(diagnostic.report, 'report', t);
                     apply = next => { current = next; put(reason, failureCardReason(next, t));
+                        issue.hidden = !UNEXPECTED_FAILURES.includes(next.error?.code);
                         put(failName, jobName(next, t)); put(failChip, statusText(next, t)); failChip.dataset.state = statusKey(next);
                         put(failWhen, localTime(next.finished_at || next.created_at, t)); failWhen.hidden = !failWhen.textContent;
                         const raw = [next.error?.code, next.error?.message, next.error?.request_id].filter(Boolean).join('\n');

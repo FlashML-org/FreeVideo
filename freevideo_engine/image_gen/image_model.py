@@ -12,12 +12,15 @@ from ..monitoring import save
 
 QWEN = 'qwen-image-2.1-turbo'
 H3 = 'minimax-h3-image'
-MODELS = (H3, QWEN)
+MOSS = 'moss-image-sft'
+MODELS = (H3, QWEN, MOSS)
 FILE = 'image-model.json'
 
 # Side of the square whose area each size tier asks for. H3 Image starts at 4 MP (2048 x 2048) and goes to 16 MP;
 # the same table as the picture page. Qwen keeps its own sizes.
 H3_AREAS = {'standard': 2048, 'high': 4096}
+# MOSS-Image: side of the square whose area each tier asks for (1 MP, 4 MP), in steps of 16.
+MOSS_AREAS = {'standard': 1024, 'high': 2048}
 RATIOS = {'1:1': (1, 1), '16:9': (16, 9), '9:16': (9, 16), '4:3': (4, 3), '3:4': (3, 4)}
 
 
@@ -50,6 +53,11 @@ def choose(info, remembered_model=None):
 
 def size(model, aspect, tier='standard'):
     """Width and height for an aspect at a tier: H3 Image at 4 or 16 MP in steps of 32, else None (Qwen's table)."""
+    if model == MOSS:
+        ratio_w, ratio_h = RATIOS[aspect]
+        side = MOSS_AREAS.get(tier, MOSS_AREAS['standard'])
+        scale = math.sqrt(side * side / (ratio_w * ratio_h))
+        return tuple(max(256, min(2048, round(value * scale / 16) * 16)) for value in (ratio_w, ratio_h))
     if model != H3:
         return None
     ratio_w, ratio_h = RATIOS[aspect]

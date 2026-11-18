@@ -31,6 +31,9 @@ export function musicBarStatus(job, t, clock = Date.now) {
     return {state: 'running', blocks: [], music: true, words: {stage, ...(time ? {time} : {})}};
 }
 
+// Reasons the sentence already explains and the user can act on; any other failure carries the report button.
+const KNOWN_FAILURES = new Set(['music_download_failed', 'disk_space', 'out_of_memory', 'unsupported', 'missing', 'cancelled']);
+
 // A failed piece's sentence on the bar's failure line.
 export function musicFailureText(reason, t) {
     return {
@@ -135,7 +138,7 @@ export function createEditorMusic({state, store, t, completeSources = async () =
         },
         failure(selection = state.selection) {
             const found = target(selection);
-            return found?.clip?.pending === 'failed' ? {id: found.clip.id, text: musicFailureText(found.clip.reason, t), report: false} : null;
+            return found?.clip?.pending === 'failed' ? {id: found.clip.id, text: musicFailureText(found.clip.reason, t), report: !KNOWN_FAILURES.has(found.clip.reason)} : null;
         },
         // Seconds the piece will take: this machine's pace from its last piece; unknown before the first.
         estimate(selection = state.selection) {

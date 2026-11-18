@@ -178,7 +178,7 @@
 .fvs-console-status :is(.fv-add-video-note,.fv-length-why){text-align:left;font-size:var(--fv-fs-1)}
 /* The add-video answer is said whole, after the status line: on a short line it wraps, the line grows and the band above
    the console grows with it (studio.js sets --fvs-band), so it never covers the console. Other notes keep the one line. */
-.fv-studio.fv-create .fvs-console-status:has(>:is(.fv-add-video-note,.fv-length-why):not([hidden])){height:auto;min-height:20px}
+.fv-studio.fv-create .fvs-console-status[data-hx-note]{height:auto;min-height:20px}
 .fv-studio.fv-create .fvs-console-status>:is(.fv-add-video-note,.fv-length-why){order:1;flex:0 1 auto;white-space:normal;text-overflow:clip}
 .fv-studio.fv-create .fv-controls[data-status=true]{padding-top:max(var(--fv-sp-24),calc(var(--fvs-band,20px) + var(--fv-sp-4)))}
 .fvs-console-status .fv-enhance-status{display:flex!important;align-items:center;gap:var(--fv-sp-8);padding:0;border:0;background:none;font-size:var(--fv-fs-1);line-height:20px}
@@ -205,7 +205,7 @@
 .fv-studio.fv-create .fvs-chips>.fv-enhance-bar{display:flex;align-items:center;flex:none;gap:var(--fv-sp-4);min-height:0;height:var(--fvs-row,36px);padding:0;border:0}
 .fv-studio.fv-create .fvs-chips>.fv-enhance-bar>.fv-enhance-toggle,.fv-studio.fv-create .fvs-chips>.fv-enhance-bar[data-enabled=false]:not([data-busy=true]){display:none}
 /* Nothing in it (an empty box has nothing to rewrite): no gap is left for it in the row. */
-.fv-studio.fv-create .fvs-chips>.fv-enhance-bar:not(:has(>:not([hidden]):not(.fv-enhance-toggle))){display:none}
+.fv-studio.fv-create .fvs-chips>.fv-enhance-bar:not([data-hx-enh]){display:none}
 .fv-studio.fv-create .fvs-chips>.fv-enhance-bar>.fv-quiet{min-height:var(--fv-ctl-s);height:var(--fv-ctl-s);padding:0 var(--fv-sp-8);font-size:var(--fv-fs-1);border-radius:var(--fv-rad-pill)}
 .fv-studio.fv-create .fvs-chips>.fv-enhance-bar>.fv-enhance-redo{width:var(--fv-ctl-s);padding:0}
 .fv-studio.fv-create .fvs-console .fv-enhance>:is(.fv-prompt-editor,textarea){order:1}
@@ -361,6 +361,12 @@
 .fv-studio.fv-create .fvs-rail[data-expanded=true] .fv-recent-card>small{display:block;align-self:start;font-size:var(--fv-fs-1);color:var(--fv-fg3)}
 .fv-studio.fv-create .fvs-rail .fv-library-message{margin:var(--fv-sp-8) var(--fv-sp-4);font-size:var(--fv-fs-1);color:var(--fv-fg3);text-align:center}
 .fv-studio.fv-create .fvs-rail:not([data-expanded=true]) .fv-library-message{display:none}
+/* A failed read: a mark the size of a thumbnail, on the thumbnails' own ground and corners; its words are the hover tip.
+   The restart mark (a span) is no control: no hand, no pressed or focus state. */
+.fv-studio.fv-create .fvs-rail .fv-recent-fail{display:flex;align-items:center;justify-content:center;flex:none;box-sizing:border-box;width:100%;height:48px;padding:0;margin:0;border:0;border-radius:var(--fv-rad-ctl);background:var(--fv-ctl-bg);color:var(--fv-warn);font:inherit;cursor:default}
+.fv-studio.fv-create .fvs-rail button.fv-recent-fail:not(:disabled){cursor:pointer}
+.fv-studio.fv-create .fvs-rail button.fv-recent-fail:hover:not(:disabled){background:var(--fv-ctl-hover)}
+.fv-studio.fv-create .fvs-rail button.fv-recent-fail:disabled{opacity:.6}
 
 /* Update bar: floats under the top bar instead of pushing the whole panel down. */
 .fv-studio.fv-create>.fv-update-notice{position:absolute;z-index:8;top:calc(var(--fv-header-h) + var(--fv-sp-8));left:50%;transform:translateX(-50%);max-width:calc(100% - 32px);
@@ -402,7 +408,8 @@
   .fv-studio.fv-create .fvs-console .fv-runbar{min-width:96px}
   .fv-studio.fv-create .fvs-console .fv-runrow>.fv-primary{min-height:var(--fv-touch);height:var(--fv-touch);padding:0 var(--fv-sp-12);font-size:var(--fv-fs-2);border-radius:var(--fv-rad-ctl)}
   .fv-studio.fv-create .fvs-chip .fvs-chip-extra{display:none}
-  .fv-studio.fv-create .fvs-console .fv-prompt-editor textarea{height:88px;min-height:88px}
+  .fv-studio.fv-create .fvs-console .fv-prompt-editor textarea{height:88px;min-height:88px;max-height:120px}
+  @supports (field-sizing:content){.fv-studio.fv-create .fvs-console .fv-prompt-editor textarea{field-sizing:content;height:auto}}
   .fv-studio.fv-create .fvs-console .fv-prompt-tools{flex-direction:column;height:auto}
   .fv-studio.fv-create .fvs-console .fv-prompt-tools>.fv-prompt-help{display:none}
   .fv-studio.fv-create .fvs-stagebar .fv-actions[data-layout=stage] .fv-action:not(.fv-action-primary):not(.fv-action-icon):not(.fv-more-item)>span:last-child{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
@@ -443,7 +450,7 @@
 .fv-studio.fv-create .fvs-console .fv-enhance-toggle input{margin:0}
 /* Keyboard focus is always visible: the prompt rings the console (an outline, so the material's own shadow, or none,
    stays as it is), the video rings itself. A press in the console only lights its edge (data-pointer, studio_console.js). */
-.fv-studio.fv-create .fvs-console:not([data-pointer]):has(textarea:focus-visible){border-color:var(--fv-accent-line);outline:2px solid var(--fv-accent-line);outline-offset:1px}
+.fv-studio.fv-create .fvs-console:not([data-pointer])[data-hx-focus]{border-color:var(--fv-accent-line);outline:2px solid var(--fv-accent-line);outline-offset:1px}
 .fv-studio.fv-create .fv-stage video:focus-visible{outline:2px solid var(--fv-accent-line);outline-offset:-2px}
 /* A picked work's video takes the stage in one step once its first frame is decoded (studio.js showResult): until then
    it waits unseen under the last clear picture, in the same cell; no fade, so nothing soft shows on the way. */
@@ -488,6 +495,7 @@
 .fvs-library-text.fvs-library-name{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
 .fv-studio.fv-create .fvs-library-remove{opacity:0;margin-right:var(--fv-sp-4)}
 .fvs-library-row:hover .fvs-library-remove,.fv-studio.fv-create .fvs-library-remove:focus-visible{opacity:1}
+@media(hover:none){.fv-studio.fv-create .fvs-library-remove{opacity:1}}
 .fvs-library-empty{margin:var(--fv-sp-16);color:var(--fv-fg3);font-size:var(--fv-fs-2);text-align:center}
 .fvs-library-foot:empty{display:none}
 .fvs-library-foot{padding:var(--fv-sp-8) var(--fv-sp-12) var(--fv-sp-12);border-top:1px solid var(--fv-line)}
@@ -575,8 +583,6 @@
 .fv-studio.fv-create .fvs-tray .fv-effort-estimate{margin-left:0}
 /* An empty history (nothing made yet) keeps the rail small; it grows only after a generation, which the user started. */
 .fv-studio.fv-create .fv-recent.fvs-rail[data-empty=true]{height:fit-content}
-.fv-studio.fv-create .fvs-works-phone{display:none}
-@media(max-width:760px){.fv-studio.fv-create .fvs-works-phone{display:inline-grid}}
 .fv-studio.fv-create .fv-controls>.fvs-console-status{top:var(--fv-sp-2);bottom:auto;left:var(--fv-sp-20);right:var(--fv-sp-20)}
 /* The picture and its bar settle once, without animation, while the panel opens; later changes ease. */
 .fv-studio.fv-create[data-fv-loaded=false] :is(.fv-stage,.fv-preview-space,.fv-preview-column,.fv-recent.fvs-rail){transition:none!important}
@@ -594,7 +600,7 @@
   --fvs-water:27 148 252;--fvs-crest:.13;--fvs-body:.045;
   animation:fvs-making-in .4s cubic-bezier(.2,.8,.2,1) both;transition:opacity .5s cubic-bezier(.2,.8,.2,1)}
 :root[data-theme=light] .fv-studio.fv-create .fvs-making{--fvs-water:13 109 204;--fvs-crest:.11;--fvs-body:.04}
-.fv-studio.fv-create .fv-stage:has(.fv-generation-progress:not([hidden])) .fvs-making{display:block}
+.fv-studio.fv-create .fv-stage[data-hx-prog] .fvs-making{display:block}
 .fv-studio.fv-create .fv-stage[data-revealing=true] .fvs-making{opacity:0}
 .fv-studio.fv-create .fvs-making-level{position:absolute;inset:0;transform:translateY(calc(100% - var(--fvs-made,0) * 100%));
   transition:transform 1.6s cubic-bezier(.33,1,.68,1)}
@@ -688,7 +694,7 @@
   /* Two lines when short, growing with the text up to five. */
   /* The description takes the row the enhancement switch had (the switch is a key in the chip row now): three lines
      when short, growing with the text up to six. */
-  .fv-studio.fv-create .fvs-console .fv-prompt-editor textarea{field-sizing:content;height:auto;min-height:calc(56px + var(--fvs-row) + var(--fv-sp-8));max-height:152px;padding:var(--fv-sp-4) 0;font-size:var(--fv-fs-3);line-height:24px}
+  .fv-studio.fv-create .fvs-console .fv-prompt-editor textarea{field-sizing:content;height:auto;min-height:calc(56px + var(--fvs-row) + var(--fv-sp-8));max-height:170px;padding:var(--fv-sp-4) 0;font-size:var(--fv-fs-3);line-height:24px}
   .fv-studio.fv-create .fvs-console .fv-prompt-tools{position:absolute;top:0;right:calc(-1 * (var(--fvs-key-w) + var(--fv-sp-16)));height:var(--fv-ctl);gap:var(--fv-sp-4)}
   /* Chips: one shape, one height, 8 px apart; icon-only chips are square. */
   .fv-studio.fv-create .fvs-chips{grid-column:1;grid-row:3;align-self:end;margin-left:0;gap:var(--fv-sp-8);min-height:var(--fvs-row)}
@@ -728,8 +734,8 @@
   .fvs-console-status>.fv-status{width:auto;min-height:0;line-height:20px;text-align:left;align-self:auto}
   .fvs-console-status .fv-status-issue{min-height:20px;height:20px;padding:0 var(--fv-sp-8)}
   /* With the add-video answer, the status that says what is missing and the answer read as one centred line. */
-  .fv-studio.fv-create .fvs-console-status:has(>:is(.fv-add-video-note,.fv-length-why):not([hidden])){justify-content:center}
-  .fv-studio.fv-create .fvs-console-status:has(>:is(.fv-add-video-note,.fv-length-why):not([hidden]))>.fv-status{width:auto;flex:0 1 auto;min-height:0;line-height:20px}
+  .fv-studio.fv-create .fvs-console-status[data-hx-note]{justify-content:center}
+  .fv-studio.fv-create .fvs-console-status[data-hx-note]>.fv-status{width:auto;flex:0 1 auto;min-height:0;line-height:20px}
   /* The history rail: centred on the picture and never taller than it; the selected card's ring has room. */
   .fv-studio.fv-create .fv-recent.fvs-rail{top:calc(var(--fvs-stage-top,16px) + var(--fvs-stage-h,600px) / 2);bottom:auto;height:auto;max-height:var(--fvs-stage-h,620px);margin-block:0;translate:0 -50%}
   .fv-studio.fv-create .fvs-rail .fv-recent-list{padding:var(--fv-sp-4)}
@@ -765,9 +771,9 @@ html body :is(.fv-studio.fv-create .fvs-console,.fv-editor .fv-ed-genbar .fv-ed-
 .fv-studio.fv-create .fvs-next-size{position:absolute;left:var(--fv-sp-12);top:var(--fv-sp-12);z-index:3;display:none;padding:var(--fv-sp-2) var(--fv-sp-8);border-radius:var(--fv-r-xs);
   background:rgb(var(--fv-solid1));color:var(--fv-fg2);font-size:var(--fv-fs-1);line-height:16px;font-variant-numeric:tabular-nums}
 /* The next frame's pixels are not written on it: the console's Frame & size key says them. */
-.fv-studio.fv-create .fv-stage[data-next=true]:not(:has(.fv-generation-progress:not([hidden]))) .fvs-next-size{display:none}
+.fv-studio.fv-create .fv-stage[data-next=true]:not([data-hx-prog]) .fvs-next-size{display:none}
 /* (An empty stage keeps its own icon and the line under it, empty-stage rule above, while a frame is pointed at.) */
-.fv-studio.fv-create .fv-stage[data-next=true]:not([data-empty=true]):not(:has(.fv-generation-progress:not([hidden])))::after{content:var(--fvs-empty-hint,'');position:absolute;left:var(--fv-sp-8);right:var(--fv-sp-8);top:50%;translate:0 -50%;
+.fv-studio.fv-create .fv-stage[data-next=true]:not([data-empty=true]):not([data-hx-prog])::after{content:var(--fvs-empty-hint,'');position:absolute;left:var(--fv-sp-8);right:var(--fv-sp-8);top:50%;translate:0 -50%;
   text-align:center;color:var(--fv-fg3);font-size:var(--fv-fs-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* A frame too narrow for the hint on one line shows none; the pixels badge shows only while the tray covers the bar. */
 .fv-studio.fv-create .fv-stage[data-next=true][data-narrow=true]::after{content:none}
@@ -775,7 +781,7 @@ html body :is(.fv-studio.fv-create .fvs-console,.fv-editor .fv-ed-genbar .fv-ed-
 .fv-studio.fv-create .fv-stage{transition:width .2s ease,height .2s ease,translate .2s ease}
 /* With the next generation's empty frame on the stage, the bar names it ("Next · 768 × 1344"); the work's details,
    history and actions are hidden until a work is shown again. */
-.fv-studio.fv-create .fvs-stagebar[data-next=true] :is(.fvs-info,.fvs-history,.fvs-compare-open,.fvs-works-phone,.fvs-stagebar-end){visibility:hidden}
+.fv-studio.fv-create .fvs-stagebar[data-next=true] :is(.fvs-info,.fvs-history,.fvs-compare-open,.fvs-stagebar-end){visibility:hidden}
 /* The duration's number edits in place (studio_console.js): a field as wide as the number it replaces, with the unit
    kept after it, so nothing beside the stepper moves; one frame, the field's own, and its focus line for the keyboard
    only (a click shows the field and the caret). */
@@ -788,6 +794,10 @@ html body .fv-studio.fv-create .fvs-stepper .fvs-step-input.fvs-step-input:is(:f
 /* The number and its unit side by side in the key. */
 .fv-studio.fv-create .fvs-stepper .fvs-step-value{grid-auto-flow:column}
 .fv-studio.fv-create .fvs-step-value .fvs-step-unit{margin-left:.25em}
+/* The audio decides the length: a 12 px lock before the number, in the unit's colour. */
+.fv-studio.fv-create .fvs-step-value .fvs-step-locked{display:inline-flex;align-items:center}
+.fv-studio.fv-create .fvs-step-value .fvs-step-lock{display:inline-block;flex:none;width:12px;height:12px;margin:0 4px 0 0;vertical-align:0;color:inherit}
+.fv-studio.fv-create .fvs-step-value .fvs-step-lock svg{display:block;width:12px;height:12px}
 @media(prefers-reduced-motion:reduce){.fv-studio.fv-create .fv-stage{transition:none}}
 /* The frame tray holds frame and size only: the duration's notes live with the duration in the console. */
 .fv-studio.fv-create .fvs-tray[data-tray=size] :is(.fv-length-hint,.fv-canvas-note,.fv-range){display:none}
@@ -795,7 +805,7 @@ html body .fv-studio.fv-create .fvs-stepper .fvs-step-input.fvs-step-input:is(:f
 .fv-studio.fv-create .fvs-stagebar[data-next=true] .fvs-stagebar-end{display:none}
 .fv-studio.fv-create .fvs-stagebar[data-next=true] .fvs-stagebar-start{justify-content:center}
 .fv-studio.fv-create .fvs-stagebar[data-next=true] .fvs-summary{flex:0 1 auto}
-.fv-studio.fv-create .fvs-stagebar[data-next=true] :is(.fvs-info,.fvs-history,.fvs-compare-open,.fvs-works-phone){display:none}
+.fv-studio.fv-create .fvs-stagebar[data-next=true] :is(.fvs-info,.fvs-history,.fvs-compare-open){display:none}
 /* Rail: two videos picked together compare on the stage. Each card has a small check (shown on hover, and on every card
    while picking); a picked card is outlined and numbered in the order picked. */
 .fv-studio.fv-create .fvs-rail .fv-recent-card{position:relative}
@@ -803,6 +813,7 @@ html body .fv-studio.fv-create .fvs-stepper .fvs-step-input.fvs-step-input:is(:f
   border:1.5px solid #fff;border-radius:var(--fv-r-pill);background:rgb(0 0 0 / .4);color:#fff;font-size:var(--fv-fs-1);font-weight:600;line-height:1;opacity:0;
   transition:opacity var(--fv-dur-1) var(--fv-ease-out);cursor:pointer}
 .fv-studio.fv-create .fvs-rail :is(.fv-recent-card:hover,.fv-recent-card:focus-visible) .fv-recent-check,.fv-studio.fv-create .fvs-rail[data-picking=true] .fv-recent-check{opacity:1}
+@media(hover:none){.fv-studio.fv-create .fvs-rail .fv-recent-card>span.fv-recent-check{opacity:1}}
 .fv-studio.fv-create .fvs-rail .fv-recent-card[data-picked] .fv-recent-check{border-color:var(--fv-accent-fill);background:var(--fv-accent-fill)}
 .fv-studio.fv-create .fvs-rail .fv-recent-card[data-picked="1"] .fv-recent-check::after{content:"1"}
 .fv-studio.fv-create .fvs-rail .fv-recent-card[data-picked="2"] .fv-recent-check::after{content:"2"}
@@ -849,10 +860,10 @@ html body .fv-studio.fv-create .fvs-console :is(.fvs-console-prompt,.fv-section,
 /* The play bar under the stage video: as wide as the picture, 8 px under it (the column's gap); hidden (its row kept)
    while the stage shows the next frame, a run's progress or a comparison; it steps back with the bar while a tray is open. */
 .fv-studio.fv-create .fvs-player{align-self:center;box-sizing:border-box;width:var(--fvs-stage-w,100%);max-width:100%;min-height:32px;transition:opacity var(--fv-dur-1) var(--fv-ease-out)}
-.fv-studio.fv-create .fv-preview-column:has(.fv-stage[data-comparing=true]) .fvs-player{visibility:hidden}
+.fv-studio.fv-create .fv-preview-column[data-hx-cmp] .fvs-player{visibility:hidden}
 /* No video to play (the next generation's empty frame, a video being made): the play bar's row goes and the picture
    takes its room (studio.js fitPreview), so no empty band sits between the picture and the console. */
-.fv-studio.fv-create .fv-preview-column:has(.fv-stage[data-next=true],.fv-stage .fv-generation-progress:not([hidden])) .fvs-player{display:none}
+.fv-studio.fv-create .fv-preview-column[data-hx-nextprog] .fvs-player{display:none}
 .fv-studio.fv-create .fv-body:not([data-tray=""]) .fvs-player{opacity:0;pointer-events:none}
 @media(prefers-reduced-motion:reduce){.fv-studio.fv-create .fvs-player{transition:none}}
 /* Phones: the play bar's buttons and track are 44 px touch targets (the row's room in fitPreview follows). */
@@ -876,8 +887,8 @@ html body .fv-studio.fv-create .fvs-console :is(.fvs-console-prompt,.fv-section,
 /* Generate key, second segment: a narrow ⌄ at the key's right end that chooses video or preview. It takes its 32 px from
    the key's own width (the key's size does not change); its menu opens upward in the top layer (result_actions.js). */
 .fv-studio.fv-create .fvs-console .fv-runrow{position:relative}
-.fv-studio.fv-create .fvs-console .fv-runrow:has(>.fv-key-more:not([hidden]))>.fv-primary{padding-left:var(--fv-sp-4);padding-right:calc(32px + var(--fv-sp-4));letter-spacing:0}
-@media(min-width:761px){.fv-studio.fv-create .fvs-console .fv-runrow:has(>.fv-key-more:not([hidden]))>.fv-primary .fvs-key-label{font-size:13px;white-space:nowrap}}
+.fv-studio.fv-create .fvs-console .fv-runrow[data-hx-more]>.fv-primary{padding-left:var(--fv-sp-4);padding-right:calc(32px + var(--fv-sp-4));letter-spacing:0}
+@media(min-width:761px){.fv-studio.fv-create .fvs-console .fv-runrow[data-hx-more]>.fv-primary .fvs-key-label{font-size:13px;white-space:nowrap}}
 .fv-studio.fv-create .fvs-console .fv-key-more{position:absolute;top:0;right:0;width:32px;height:52px;z-index:1}
 .fv-studio.fv-create .fvs-console .fv-key-more[hidden]{display:none}
 .fv-studio.fv-create .fvs-console .fv-key-more>summary{display:flex;align-items:center;justify-content:center;width:100%;height:100%;list-style:none;cursor:pointer;color:#fff;
@@ -890,7 +901,35 @@ html body .fv-studio.fv-create .fvs-console :is(.fvs-console-prompt,.fv-section,
 .fv-key-menu>button[aria-pressed=true]::before{content:'✓';margin-right:var(--fv-sp-8)}
 .fv-key-menu>button[aria-pressed=false]::before{content:'';display:inline-block;width:1em;margin-right:var(--fv-sp-8)}
 @media(max-width:760px){.fv-studio.fv-create .fvs-console .fv-key-more{height:var(--fv-touch)}}
+/* Tablets: the duration stepper and the menu beside Generate take a finger too (phones are covered above). */
+@media(pointer:coarse){
+  .fv-studio.fv-create :is(.fvs-step,.fvs-step-value){min-height:var(--fv-touch);height:var(--fv-touch)}
+  /* − and + keep their drawn width so the row wraps as with a mouse; the tap area reaches 44 */
+  .fv-studio.fv-create .fvs-step{position:relative}
+  .fv-studio.fv-create .fvs-step::after{content:"";position:absolute;top:0;bottom:0;left:calc(50% - var(--fv-touch) / 2);right:calc(50% - var(--fv-touch) / 2)}
+  .fv-studio.fv-create .fvs-stepper{height:var(--fv-touch)}
+  .fv-studio.fv-create .fvs-console .fv-key-more{width:var(--fv-touch)}
+  .fv-studio.fv-create .fvs-console .fv-runrow:has(>.fv-key-more:not([hidden]))>.fv-primary{padding-right:calc(var(--fv-touch) + var(--fv-sp-4))}}
 @media(min-width:761px){
   .fv-studio.fv-create .fvs-console .fv-runrow.fv-at-moved>.fv-key-more{height:calc(2 * var(--fvs-row) + var(--fv-sp-8))}
   .fv-studio.fv-create .fvs-console .fv-runrow.fv-at-moved>.fv-key-more>summary{border-radius:0 var(--fv-rad-ctl) var(--fv-rad-ctl) 0}
 }
+/* Tall windows (portrait, wider than a phone; studio.js sets data-tall): the picture takes the column less 48 px each
+   way, the works button's strip left out on the right. When it fills the width with 320 px or more under it
+   (data-grid), it keeps to the top and the recent works fill that room as a grid of the same cards, behind a 1 px line;
+   the works button steps aside. */
+.fv-studio.fv-create .fv-body[data-tall=true] .fv-preview-column.fv-preview-column{padding:var(--fv-sp-24) 122px var(--fv-sp-24) 48px;scrollbar-gutter:auto}
+.fv-studio.fv-create .fv-body[data-grid=true] .fv-preview-column.fv-preview-column{padding-inline:48px}
+.fv-studio.fv-create .fv-body[data-grid=true] .fv-recent.fvs-rail{top:var(--fvs-grid-top,50%);bottom:calc(var(--fvs-dock-h,200px) + var(--fv-sp-16));left:48px;right:48px;width:auto;height:auto;max-height:none;
+  margin:0;translate:none;padding:var(--fv-sp-16) 0 0;border:0;border-top:1px solid var(--fv-line);border-radius:0;background:none!important;box-shadow:none;
+  -webkit-backdrop-filter:none!important;backdrop-filter:none!important;transition:none}
+.fv-studio.fv-create .fv-body[data-grid=true] .fvs-rail :is(.fv-works-entry,.fv-recent-toggle,.fv-recent-head,.fv-library-message){display:none}
+.fv-studio.fv-create .fv-body[data-grid=true] .fvs-rail .fv-recent-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));grid-auto-rows:max-content;align-content:start;gap:var(--fv-sp-12);
+  max-height:none;padding:var(--fv-sp-2) var(--fv-sp-2) 32px;overflow-y:auto;scrollbar-width:thin;
+  -webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 32px),transparent);mask-image:linear-gradient(to bottom,#000 calc(100% - 32px),transparent)}
+/* The fade above keeps the row cut by the bottom edge from ending on a hard line; the last row scrolls clear of it. */
+/* Each row is as tall as its cards: the rail's cards keep min-height 0, which in this fixed-height, scrolling grid would
+   otherwise squeeze the rows into the visible height and stack the cards on one another. */
+.fv-studio.fv-create .fv-body[data-grid=true] .fvs-rail .fv-recent-card{display:block;min-height:auto;padding:0}
+.fv-studio.fv-create .fv-body[data-grid=true] .fvs-rail .fv-recent-card .fv-library-picture{height:auto;aspect-ratio:16/9}
+.fv-studio.fv-create .fv-body[data-grid=true] .fvs-rail .fv-recent-card>:is(span:not(.fv-recent-check),small){display:none}

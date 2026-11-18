@@ -1,6 +1,6 @@
 // ComfyUI owns execution. This controller only submits frozen workflows and
 // replenishes a loop after its previous request has actually completed.
-import {fetchQueueRead, readEngineJson, detectBrowserExtension, isNetworkTypeError, wrappedFetchOnly, addConnectionFacts} from './browser_extension.js';
+import {fetchQueueRead, readEngineJson, detectBrowserExtension, isNetworkTypeError, wrappedFetchOnly, addConnectionFacts, connectionFacts} from './browser_extension.js';
 import {clonePrompt} from './optional_inputs.js';
 import {isStaleProgress} from './progress_connection.js';
 const clone = clonePrompt;
@@ -249,15 +249,18 @@ export function createStudioQueue(api, nodeId, {random = randomSeed, pollMs = 20
         if (refreshing) { refreshAgain = true; return refreshing; }
         refreshing = (async () => {
             do { refreshAgain = false; await readQueue(); } while (refreshAgain && !disposed);
-        })().catch(error => {
+        })().catch(async error => {
             // Only a wrapped fetch is not proof of a blocking extension: it is counted as an outage like any other.
             const extension = detectBrowserExtension(error);
             if (!isNetworkTypeError(error) || error === submitError || (extension && !wrappedFetchOnly(extension))) { fail(error); throw error; }
             // A lost connection does not stop a loop at first: it only continues after a successful read.
-            outage = {failures: (outage?.failures || 0) + 1, since: outage?.since ?? Date.now()};
+            outage = {failures: (outage?.failures || 0) + 1, since: outage?.since ?? Date.now(), connection: outage?.connection};
             if (outage.failures < OUTAGE_POLLS) return;
             // The notice for a stopped loop stays as it is while the outage goes on.
             if (lastError?.loopStopped) throw error;
+            // The first notice of an outage asks once whether the engine answers now; every report of the outage carries it.
+            if (!outage.connection) outage.connection = await connectionFacts(api).catch(() => null);
+            if (typeof error === 'object' && outage.connection && !error.connection) error.connection = outage.connection;
             const lasted = Date.now() - outage.since, giveUp = lasted >= OUTAGE_LOOP_LIMIT_MS && loop?.active;
             const note = `Queue reads failed ${outage.failures} times in a row over ${Math.round(lasted / 1000)} s; `
                 + `online=${globalThis.navigator?.onLine}, page hidden=${globalThis.document?.hidden}.${giveUp ? ' The loop was stopped.' : ''}`;

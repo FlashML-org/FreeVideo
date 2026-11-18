@@ -181,6 +181,29 @@ def size_text(value, decimal_sizes=False):
     return '%.1f GiB' % (value / 2**30) if value >= 2**30 else '%d MiB' % (value // 2**20)
 
 
+class Phrase(str):
+    """Text shown in one interface language that keeps the other, so a message already
+    on screen can follow a language switch. Equal to, and used as, the shown text."""
+
+    def __new__(cls, en, zh, chinese):
+        text = super().__new__(cls, zh if chinese else en)
+        text.en, text.zh = en, zh
+        return text
+
+    @classmethod
+    def build(cls, make, chinese):
+        """make(t) builds the text with t(en, zh); it is built once per language."""
+        return cls(make(lambda en, zh: en), make(lambda en, zh: zh), chinese)
+
+    def follow(self, chinese):
+        return Phrase(self.en, self.zh, chinese)
+
+
+def follow_language(value, chinese):
+    """The value in the interface language now chosen; text that kept no other language is unchanged."""
+    return value.follow(chinese) if isinstance(value, Phrase) else value
+
+
 def source_name(value, zh=False):
     return SOURCES.get(value, (value, value))[bool(zh)]
 

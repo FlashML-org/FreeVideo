@@ -41,43 +41,63 @@
 .fv-studio.fv-autopilot .fv-header{grid-template-columns:minmax(0,1fr) auto minmax(0,1fr)}
 .fv-autopilot .fv-header>.fv-header-actions{justify-self:stretch;min-width:0;justify-content:flex-end;container:fv-autopilot-actions / inline-size}
 .fv-autopilot .fv-header .fv-header-actions>button{flex:none}
-.fv-header:has(.fv-autopilot-now:not([hidden])) .fv-autopilot-now{flex:0 1 auto;min-width:0}
-.fv-studio .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-autopilot-now-go{flex:0 1 auto;min-width:0;gap:4px;padding-left:8px}
-.fv-header:has(.fv-autopilot-now:not([hidden])) .fv-autopilot-now-go>:not(.fv-autopilot-now-name){flex:none}
-.fv-header:has(.fv-autopilot-now:not([hidden])) .fv-autopilot-now-name{flex:0 1 auto;min-width:0;white-space:nowrap}
+.fv-header[data-hx-now] .fv-autopilot-now{flex:0 1 auto;min-width:0}
+.fv-studio .fv-header[data-hx-now] .fv-autopilot-now-go{flex:0 1 auto;min-width:0;gap:4px;padding-left:8px}
+.fv-header[data-hx-now] .fv-autopilot-now-go>:not(.fv-autopilot-now-name){flex:none}
+.fv-header[data-hx-now] .fv-autopilot-now-name{flex:0 1 auto;min-width:0;white-space:nowrap}
 .fv-autopilot-now-go>em{overflow:hidden}
 /* Order: connection label, time left, phone, progress ring, feedback, tutorial; thresholds intentionally stay the
    same when feedback becomes an icon. */
-@container fv-autopilot-actions (width<619px){.fv-header:has(.fv-autopilot-now:not([hidden])) :lang(zh) .fv-autopilot-lamp{width:30px;height:30px;padding:0;justify-content:center}.fv-header:has(.fv-autopilot-now:not([hidden])) :lang(zh) .fv-autopilot-lamp>span{display:none}}
-@container fv-autopilot-actions (width<786px){.fv-header:has(.fv-autopilot-now:not([hidden])) :lang(en) .fv-autopilot-lamp{width:30px;height:30px;padding:0;justify-content:center}.fv-header:has(.fv-autopilot-now:not([hidden])) :lang(en) .fv-autopilot-lamp>span{display:none}}
+@container fv-autopilot-actions (width<619px){.fv-header[data-hx-now] :lang(zh) .fv-autopilot-lamp{width:30px;height:30px;padding:0;justify-content:center}.fv-header[data-hx-now] :lang(zh) .fv-autopilot-lamp>span{display:none}}
+@container fv-autopilot-actions (width<786px){.fv-header[data-hx-now] :lang(en) .fv-autopilot-lamp{width:30px;height:30px;padding:0;justify-content:center}.fv-header[data-hx-now] :lang(en) .fv-autopilot-lamp>span{display:none}}
 @container fv-autopilot-actions (width<565px){:lang(zh) .fv-autopilot-now-go>em{display:none}}
 @container fv-autopilot-actions (width<704px){:lang(en) .fv-autopilot-now-go>em{display:none}}
 @container fv-autopilot-actions (max-width:289px){:lang(zh) .fv-autopilot-now-go>span{display:none}}
 @container fv-autopilot-actions (max-width:330px){:lang(en) .fv-autopilot-now-go>span{display:none}}
-@container fv-autopilot-actions (width<483px){:lang(zh) .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-lan{display:none}}
+@container fv-autopilot-actions (width<483px){:lang(zh) .fv-header[data-hx-now] .fv-lan{display:none}}
 @container fv-autopilot-actions (width<433px){:lang(zh) .fv-autopilot-now-go>i{display:none}}
-@container fv-autopilot-actions (width<412px){:lang(zh) .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-feedback-entry:not(.fv-guide-entry){display:none}}
-@container fv-autopilot-actions (width<362px){:lang(zh) .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-guide-entry{display:none}}
-@container fv-autopilot-actions (width<601px){:lang(en) .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-lan{display:none}}
+@container fv-autopilot-actions (width<412px){:lang(zh) .fv-header[data-hx-now] .fv-feedback-entry:not(.fv-guide-entry){display:none}}
+@container fv-autopilot-actions (width<362px){:lang(zh) .fv-header[data-hx-now] .fv-guide-entry{display:none}}
+@container fv-autopilot-actions (width<601px){:lang(en) .fv-header[data-hx-now] .fv-lan{display:none}}
 @container fv-autopilot-actions (width<537px){:lang(en) .fv-autopilot-now-go>i{display:none}}
-@container fv-autopilot-actions (width<516px){:lang(en) .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-feedback-entry:not(.fv-guide-entry){display:none}}
-@container fv-autopilot-actions (width<431px){:lang(en) .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-guide-entry{display:none}}
-@container fv-autopilot-actions (max-width:260px){.fv-header:has(.fv-autopilot-now:not([hidden])) .fv-feedback-entry:not(.fv-guide-entry){display:none}}
+@container fv-autopilot-actions (width<516px){:lang(en) .fv-header[data-hx-now] .fv-feedback-entry:not(.fv-guide-entry){display:none}}
+@container fv-autopilot-actions (width<431px){:lang(en) .fv-header[data-hx-now] .fv-guide-entry{display:none}}
+@container fv-autopilot-actions (max-width:260px){.fv-header[data-hx-now] .fv-feedback-entry:not(.fv-guide-entry){display:none}}
 /* Then the version entry, so the running job keeps its percentage and Stop beside the dot and Settings. */
-@container fv-autopilot-actions (width<203px){:lang(zh) .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-version-info{display:none}}
-@container fv-autopilot-actions (width<256px){:lang(en) .fv-header:has(.fv-autopilot-now:not([hidden])) .fv-version-info{display:none}}
+@container fv-autopilot-actions (width<203px){:lang(zh) .fv-header[data-hx-now] .fv-version-info{display:none}}
+@container fv-autopilot-actions (width<256px){:lang(en) .fv-header[data-hx-now] .fv-version-info{display:none}}
 /* Without a job nothing but the entries share the column; they yield in the same order, by the width they need. */
-@container fv-autopilot-actions (width<480px){.fv-header:not(:has(.fv-autopilot-now:not([hidden]))) .fv-autopilot-lamp:lang(en){width:30px;height:30px;padding:0;justify-content:center}.fv-header:not(:has(.fv-autopilot-now:not([hidden]))) .fv-autopilot-lamp:lang(en)>span{display:none}}
-@container fv-autopilot-actions (width<398px){.fv-header:not(:has(.fv-autopilot-now:not([hidden]))) .fv-lan:lang(en){display:none}}
-@container fv-autopilot-actions (width<334px){.fv-header:not(:has(.fv-autopilot-now:not([hidden]))) .fv-feedback-entry:not(.fv-guide-entry):lang(en){display:none}}
-@container fv-autopilot-actions (width<249px){.fv-header:not(:has(.fv-autopilot-now:not([hidden]))) .fv-guide-entry:lang(en){display:none}}
-@container fv-autopilot-actions (width<176px){.fv-header:not(:has(.fv-autopilot-now:not([hidden]))) .fv-version-info:lang(en){display:none}}
-@container fv-autopilot-actions (width<335px){.fv-header:not(:has(.fv-autopilot-now:not([hidden]))) .fv-autopilot-lamp:lang(zh){width:30px;height:30px;padding:0;justify-content:center}.fv-header:not(:has(.fv-autopilot-now:not([hidden]))) .fv-autopilot-lamp:lang(zh)>span{display:none}}
-@container fv-autopilot-actions (width<281px){.fv-header:not(:has(.fv-autopilot-now:not([hidden]))) .fv-lan:lang(zh){display:none}}
-@container fv-autopilot-actions (width<231px){.fv-header:not(:has(.fv-autopilot-now:not([hidden]))) .fv-feedback-entry:not(.fv-guide-entry):lang(zh){display:none}}
-@container fv-autopilot-actions (width<181px){.fv-header:not(:has(.fv-autopilot-now:not([hidden]))) .fv-guide-entry:lang(zh){display:none}}
+@container fv-autopilot-actions (width<480px){.fv-header:not([data-hx-now]) .fv-autopilot-lamp:lang(en){width:30px;height:30px;padding:0;justify-content:center}.fv-header:not([data-hx-now]) .fv-autopilot-lamp:lang(en)>span{display:none}}
+@container fv-autopilot-actions (width<398px){.fv-header:not([data-hx-now]) .fv-lan:lang(en){display:none}}
+@container fv-autopilot-actions (width<334px){.fv-header:not([data-hx-now]) .fv-feedback-entry:not(.fv-guide-entry):lang(en){display:none}}
+@container fv-autopilot-actions (width<249px){.fv-header:not([data-hx-now]) .fv-guide-entry:lang(en){display:none}}
+@container fv-autopilot-actions (width<176px){.fv-header:not([data-hx-now]) .fv-version-info:lang(en){display:none}}
+@container fv-autopilot-actions (width<335px){.fv-header:not([data-hx-now]) .fv-autopilot-lamp:lang(zh){width:30px;height:30px;padding:0;justify-content:center}.fv-header:not([data-hx-now]) .fv-autopilot-lamp:lang(zh)>span{display:none}}
+@container fv-autopilot-actions (width<281px){.fv-header:not([data-hx-now]) .fv-lan:lang(zh){display:none}}
+@container fv-autopilot-actions (width<231px){.fv-header:not([data-hx-now]) .fv-feedback-entry:not(.fv-guide-entry):lang(zh){display:none}}
+@container fv-autopilot-actions (width<181px){.fv-header:not([data-hx-now]) .fv-guide-entry:lang(zh){display:none}}
 @media(max-width:1050px){.fv-autopilot-now-name{max-width:120px}}
 /* On two rows the actions keep the flexible column, so the entries above measure their real room. */
 .fv-studio.fv-autopilot .fv-header.fv-header[data-place=wrap]{grid-template-columns:auto minmax(0,1fr)}
 @media(max-width:480px){.fv-studio.fv-autopilot .fv-header{grid-template-columns:auto minmax(0,1fr)}.fv-autopilot-now{font-size:12px}.fv-autopilot-now-name{display:none}.fv-autopilot .fv-header-actions>.fv-quiet{flex:none;white-space:nowrap}.fv-studio .fv-autopilot-now-go{padding:4px 4px 4px 8px}.fv-studio .fv-autopilot-lamp{width:30px;height:30px;padding:0;justify-content:center}.fv-autopilot-lamp>span{display:none}.fv-agent-connect-body{padding:24px}}
 @media(prefers-reduced-motion:reduce){.fv-autopilot-line{transition:none}}
+/* The connection light's menu: disconnect and the steps while connected; why it is off and Reconnect when not. */
+.fv-autopilot .fv-autopilot-body{position:relative}
+.fv-agent-link-menu{box-sizing:border-box;position:absolute;z-index:6;display:grid;gap:2px;width:max-content;min-width:200px;max-width:min(320px,calc(100% - 16px));padding:8px;border:1px solid var(--fv-border);border-radius:var(--fv-r-md);background:var(--fv-raised);box-shadow:0 14px 36px #00000073;color:var(--fv-ink);animation:fv-agent-link-enter .16s ease}
+.fv-agent-link-menu[hidden],.fv-agent-link-menu [hidden]{display:none}
+.fv-agent-link-menu>p{margin:0;padding:4px 12px;font-size:13px;line-height:1.5;white-space:normal;overflow-wrap:anywhere}
+.fv-agent-link-menu>.fv-agent-link-next{padding-top:0;color:var(--fv-muted)}
+.fv-agent-link-menu>.fv-agent-link-error{color:var(--fv-danger)}
+.fv-studio .fv-agent-link-menu .fv-agent-link-item{justify-content:flex-start;width:100%;min-height:0;padding:8px 12px;border:0;border-radius:var(--fv-r-sm);background:none;color:var(--fv-ink);font-size:13px;text-align:start;white-space:nowrap}
+.fv-studio .fv-agent-link-menu .fv-agent-link-item:is(:hover,:focus-visible){background:var(--fv-hover);outline:none}
+.fv-studio .fv-agent-link-menu .fv-agent-link-danger{color:var(--fv-danger)}
+.fv-studio .fv-agent-link-menu .fv-agent-link-danger:is(:hover,:focus-visible){background:var(--fv-danger-subtle)}
+.fv-studio .fv-agent-link-menu .fv-agent-link-item:disabled{opacity:.6;cursor:default}
+.fv-studio .fv-agent-link-menu .fv-agent-link-main{justify-self:start;width:auto;margin:4px 12px 2px;padding:8px 16px;border:1px solid var(--fv-accent);background:var(--fv-accent);color:var(--fv-bg);font-weight:var(--fv-semibold)}
+.fv-studio .fv-agent-link-menu .fv-agent-link-main:is(:hover,:focus-visible){background:var(--fv-accent-hover);border-color:var(--fv-accent-hover);outline:none}
+.fv-studio .fv-agent-link-menu .fv-agent-link-main:focus-visible{box-shadow:0 0 0 2px var(--fv-bg),0 0 0 4px var(--fv-accent)}
+.fv-agent-link-menu>.fv-issue-button{justify-self:start;margin:4px 12px}
+.fv-autopilot .fv-agent-link-menu{border:0;border-radius:var(--fv-rad-pop,16px);background:rgb(var(--ap-tint,24 26 32) / var(--ap-a3,.92));box-shadow:inset 0 0 0 1px var(--ap-edge,var(--fv-border)),var(--ap-sh3,0 14px 36px #00000073);-webkit-backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%);backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%);color:var(--ap-fg,var(--fv-ink))}
+.fv-agent-connect-body>.fv-agent-connect-reason{margin-top:-8px;font-size:13px;line-height:1.5;color:var(--fv-muted)}
+@keyframes fv-agent-link-enter{from{opacity:0}}
+@media(prefers-reduced-motion:reduce){.fv-agent-link-menu{animation:none}}

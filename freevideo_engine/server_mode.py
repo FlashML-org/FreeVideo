@@ -12,7 +12,8 @@ Server mode (FREEVIDEO_SERVER_RESIDENT=1, Linux only; the desktop application ne
 model's text encoder and the configured picture model as the server starts, and bringing the picture model back
 after a video that needed its room.
 
-Every release or trim is recorded with its reason (``releases``), for the running status.
+Every release or trim is recorded with its reason (``releases``), for the running status. A model that only made
+room for another program, or the picture model for a video, comes back once the room is free again (``rewarm``).
 """
 import logging
 import os
@@ -97,7 +98,7 @@ RELEASES_KEPT = 10
 
 def on_release(callback):
     """Call ``callback(event)`` whenever the video or the picture models are released or trimmed; returns a function
-    that ends the subscription. ``event``: {'model': 'video' | 'image', 'action': 'released' | 'trimmed',
+    that ends the subscription. ``event``: {'model': 'video' | 'image', 'action': 'released' | 'trimmed' | 'reloaded',
     'reason': str, 'at': unix seconds}. Called on a background thread; it must not block, and what it raises is
     logged and dropped."""
     with _mutex:
@@ -122,6 +123,25 @@ def released(model, row):
     if model == 'image' and event['reason'] == 'video_start' and enabled():
         # Until the picture worker can stay through a video, it comes back once the video is done.
         threading.Thread(target=_after_video, name='freevideo-server-rewarm', daemon=True).start()
+    if event['action'] == 'released':
+        try:
+            from . import rewarm
+            rewarm.after_release(model, event['reason'], row.get('held'))
+        except Exception:
+            logging.warning('[FreeVideo] Could not wait to bring the %s model back', model, exc_info=True)
+    for callback in listeners:
+        try:
+            callback(dict(event))
+        except Exception:
+            logging.warning('[FreeVideo] A server release listener failed', exc_info=True)
+
+
+def reloaded(model, reason):
+    """``model`` was loaded again after a release for ``reason`` (by rewarm), recorded beside the releases."""
+    event = dict(model=model, action='reloaded', reason=str(reason or 'unknown'), at=time.time())
+    with _mutex:
+        _releases[:] = (_releases + [event])[-RELEASES_KEPT:]
+        listeners = list(_listeners)
     for callback in listeners:
         try:
             callback(dict(event))

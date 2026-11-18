@@ -11,7 +11,7 @@
 .fv-ed-track-view[data-vertical-overflow=true] .fv-ed-track-heads{clip-path:inset(0 -100vw 0 0)}
 .fv-ed-track-view[data-vertical-overflow=true] .fv-ed-track-heads::after{content:"";position:absolute;inset:0 0 auto;height:24px;background:var(--fv-bg)}
 .fv-ed-track-view[data-vertical-overflow=true] .fv-ed-track-heads>.fv-ed-track-head,.fv-ed-track-view[data-vertical-overflow=true] .fv-ed-track-heads>.fv-ed-add-audio{translate:0 var(--fv-ed-track-offset,0px)}
-.fv-ed-track-view:where(:has(.fv-ed-track-row[data-track=a2])){height:260px}
+.fv-ed-track-view:where([data-hx-a2]){height:260px}
 .fv-editor .fv-ed-track-heads,.fv-editor .fv-ed-track-scroll{bottom:0}
 .fv-ed-track-view .fv-ed-add-audio{position:absolute;left:0;width:100%;height:28px;padding:0 4px;border:0;border-radius:0;background:transparent;color:var(--fv-muted);font:400 13px/1.4 var(--fv-font,system-ui);text-align:center;white-space:nowrap;overflow:hidden;cursor:pointer}
 .fv-ed-track-view .fv-ed-add-audio:hover:not(:disabled){color:var(--fv-ink)}
@@ -173,6 +173,12 @@
 /* Selection, ranges, gaps, guides. */
 .fv-studio.fv-editor .fv-ed-selection{border-color:var(--fv-accent);border-radius:var(--fv-r-sm)}
 .fv-studio.fv-editor :is(.fv-ed-selection.fv-ed-range,.fv-ed-selection.fv-ed-planned-selection,.fv-ed-gesture-preview,.fv-ed-selection.fv-ed-gap){border:1.5px dashed var(--fv-accent);background:var(--fv-accent-soft);border-radius:var(--fv-r-sm)}
+/* A move or range that cannot go there keeps its dashed shape in red (border, fill, handles, label), over the blue
+   range above and the faint placeholder of glass/polish.css. */
+.fv-studio.fv-editor .fv-ed-track-view .fv-ed-selection.fv-ed-range-blocked{border-color:var(--fv-danger);background:color-mix(in srgb,var(--fv-danger) 8%,transparent)}
+.fv-studio.fv-editor .fv-ed-track-view .fv-ed-selection.fv-ed-range-blocked .fv-ed-range-border{border-color:var(--fv-danger)}
+.fv-studio.fv-editor .fv-ed-track-view .fv-ed-selection.fv-ed-range-blocked :is(.fv-ed-trim-handle,.fv-ed-boundary-handle){background:var(--fv-danger)}
+.fv-studio.fv-editor .fv-ed-track-view .fv-ed-selection.fv-ed-range-blocked .fv-ed-planned-label{color:var(--fv-danger)}
 .fv-studio.fv-editor .fv-ed-snap-line{width:1px;background:var(--fv-accent);box-shadow:0 0 0 .5px var(--fv-accent-line)}
 .fv-studio.fv-editor .fv-ed-snap-line::before{content:"";position:absolute;top:-8px;left:-4px;width:9px;height:9px;background:var(--fv-accent);clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%)}
 .fv-studio.fv-editor .fv-ed-insertion-line{background:var(--fv-fg)}
@@ -183,11 +189,11 @@
 .fv-studio.fv-editor .fv-ed-playhead-handle:hover::after{transform:scale(1.08)}
 .fv-studio.fv-editor .fv-ed-track-view[data-scrub=true] .fv-ed-playhead-handle::after{transform:scale(1.15)}
 @media(max-width:520px){.fv-studio.fv-editor .fv-ed-playhead-handle{left:calc(-14px + var(--fv-ed-handle-shift,0px))}}
-/* Floating bits over the timeline: glass (g3), solid where glass is off. */
+/* Floating bits over the timeline: solid, so the clips behind never show through. */
 .fv-studio.fv-editor :is(.fv-ed-drag-label,.fv-ed-group-label){padding:4px 8px;border:1px solid var(--fv-edge,var(--fv-line));border-radius:var(--fv-r-sm);color:var(--fv-fg);font-size:var(--fv-fs-1,12px);font-variant-numeric:tabular-nums;
-  background:rgb(var(--fv-tint) / var(--fv-a3,.8));box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh2);-webkit-backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%);backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%)}
+  background:rgb(var(--fv-solid3));box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh2)}
 .fv-studio.fv-editor .fv-ed-clip-popover{padding:12px;border:1px solid var(--fv-edge,var(--fv-line));border-radius:var(--fv-rad-ctl,12px);color:var(--fv-fg);
-  background:rgb(var(--fv-tint) / var(--fv-a3,.8));box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh3);-webkit-backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%);backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%)}
+  background:rgb(var(--fv-solid3));box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh3)}
 .fv-studio.fv-editor .fv-ed-clip-popover p{color:var(--fv-warn);font-size:var(--fv-fs-2,13px);line-height:20px}
 .fv-studio.fv-editor .fv-ed-clip-popover button{min-height:32px;padding:0 12px;border:0;border-radius:var(--fv-r-md);background:var(--fv-ctl-bg);color:var(--fv-fg)}
 .fv-studio.fv-editor .fv-ed-clip-popover button:hover{background:var(--fv-ctl-hover)}
@@ -217,6 +223,9 @@
 .fv-studio.fv-editor .fv-ed-track-view .fv-ed-audio-track-switch:hover{background:var(--fv-ctl-bg)}
 /* The heads have their final width from the first frame, before the switches are drawn (they no longer widen on arrival). */
 @media(min-width:521px){.fv-studio.fv-editor .fv-ed-track-view,.fv-studio.fv-editor .fv-ed-track-view[data-track-switches=true]{--fv-ed-head-width:184px}}
+/* Up to 520 px a head is the name alone, centred in the 64 px column (editor.css), without the icon: it keeps the
+   wide layout's type, but not its left alignment or the room it leaves for the icon, so "Subtitles" fits. */
+@media(max-width:520px){.fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-head{justify-content:center;padding:0 4px}}
 @media(max-width:480px){
   .fv-studio.fv-editor .fv-ed-add-audio{padding:0;font-size:0;margin:0 auto;display:grid;place-items:center}
   .fv-studio.fv-editor .fv-ed-add-audio::before{content:attr(data-sign);display:grid;place-items:center;width:28px;height:28px;font-size:16px;line-height:1;border:1px solid var(--fv-line2);border-radius:var(--fv-r-sm);color:var(--fv-fg2)}
@@ -229,6 +238,8 @@
 /* The timeline's own surface (glass/editor.css keeps only the outer .fv-ed-tracks surface): heads, the sticky ruler
    and the area under the rows share the solid timeline tone. */
 .fv-studio.fv-editor :is(.fv-ed-track-view,.fv-ed-track-heads,.fv-ed-track-view[data-vertical-overflow=true] .fv-ed-ruler,.fv-ed-track-view[data-vertical-overflow=true] .fv-ed-track-heads::after){background:var(--fv-ed-timeline,var(--fv-bg))}
+/* A pseudo-element is not allowed inside :is(), so the ruler corner above the heads gets its own rule. */
+.fv-studio.fv-editor .fv-ed-track-view[data-vertical-overflow=true] .fv-ed-track-heads::after{background:var(--fv-ed-timeline,var(--fv-bg))}
 /* Time zero sits 8 px in from the heads, so the playhead tab (and a clip's start handle) at the very start is whole,
    not cut by the edge of the scrolling area under the heads. Every position is measured from this content box. */
 .fv-studio.fv-editor .fv-ed-track-content{margin-left:8px}
@@ -287,5 +298,5 @@
 .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads>.fv-ed-add-audio[data-mode=remove]::after{display:none}
 .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads>.fv-ed-add-audio[data-mode=remove]::before{margin:0}
 .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads>.fv-ed-add-audio[data-mode=remove]:not([data-shown=true]):not(:hover){visibility:hidden}
-.fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads:has(>.fv-ed-track-head[data-track=a2]:hover)>.fv-ed-add-audio[data-mode=remove]{visibility:visible}
+.fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads[data-hx-a2hover]>.fv-ed-add-audio[data-mode=remove]{visibility:visible}
 @media(max-width:520px){.fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads>.fv-ed-add-audio[data-mode=remove]{left:calc(100% - 32px)}}

@@ -11,8 +11,9 @@ export function firstFrameRow(t, className) {
     row.dataset.fvTipName = t('First-frame reference', '首帧参考');
     row.dataset.fvTipUse = t('Each part starts from the first frame: less drift', '每段参照首帧，减小画面漂移');
     return {row, input, setDisabled(disabled) {
-        input.disabled = disabled;
-        input.title = '';
-        row.title = disabled ? '' : purpose;
+        if (input.disabled !== disabled) input.disabled = disabled;
+        if (input.title !== '') input.title = '';
+        const rowTitle = disabled ? '' : purpose;
+        if (row.title !== rowTitle) row.title = rowTitle;
     }};
 }

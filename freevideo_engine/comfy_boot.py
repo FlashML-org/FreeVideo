@@ -3,11 +3,11 @@
 ComfyUI serves its own index.html; FreeVideo's interface arrives later, as an extension. Without help, a visit that
 opens FreeVideo first shows ComfyUI's loading screen and only then FreeVideo. This module adds a small inline style
 and script at the very start of that page's <head>. When the visit opens FreeVideo (the launcher's
-``?freevideo=launch``, a refresh of such a tab, or a browser whose last FreeVideo view is not the node view), the
+``?freevideo=launch``, or a refresh of such a tab, unless its last view was the node view), the
 first frame is FreeVideo's ground with its top bar outline, and ComfyUI stays out of sight until FreeVideo's shell has
 put its first view in front (shell.js calls ``__freevideoBoot.done()``). If FreeVideo's scripts never load, ComfyUI is
-shown after 10 s with a short note, so nobody is left in front of an empty screen. Visits to the node view or to the
-user's own ComfyUI are not changed.
+shown after 10 s with a short note, so nobody is left in front of an empty screen. Any other way of opening ComfyUI
+(a bare address, another launcher) is not changed: only the FreeVideo launcher opens FreeVideo.
 """
 import logging
 import os

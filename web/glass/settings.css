@@ -169,8 +169,8 @@ dialog.fv-set .st-close{color:var(--fv-fg2)}
 dialog.fv-set .st-link{display:inline-flex;align-items:center;gap:var(--fv-sp-4);font-size:var(--fv-fs-1);font-weight:var(--fv-fw-2);color:var(--fv-accent-ink);text-decoration:none}
 dialog.fv-set .st-link:hover{text-decoration:underline;text-underline-offset:3px}
 /* The report button other modules make (issue_button.js) in this room's look. */
-dialog.fv-set .fv-issue-button{display:inline-flex;align-items:center;height:var(--fv-ctl-s);padding:0 var(--fv-sp-8);border-radius:var(--fv-rad-sm);background:var(--fv-ctl-bg);color:var(--fv-fg);font-size:var(--fv-fs-1);font-weight:var(--fv-fw-2);white-space:nowrap}
-dialog.fv-set .fv-issue-button:hover{background:var(--fv-ctl-hover)}
+dialog.fv-set :is(.fv-issue-button,.fv-release-retry){display:inline-flex;align-items:center;height:var(--fv-ctl-s);min-height:var(--fv-ctl-s);padding:0 var(--fv-sp-8);border-radius:var(--fv-rad-sm);background:var(--fv-ctl-bg);color:var(--fv-fg);font-size:var(--fv-fs-1);font-weight:var(--fv-fw-2);white-space:nowrap}
+dialog.fv-set :is(.fv-issue-button,.fv-release-retry):hover{background:var(--fv-ctl-hover)}
 
 /* ── Controls ── */
 /* switch: the native check box drawn as a switch */
@@ -371,7 +371,7 @@ dialog.fv-set .st-loop .fv-i{width:12px;height:12px}
 
 /* ── Version & updates ── */
 dialog.fv-set .st-update-card{padding:var(--fv-sp-12) var(--fv-sp-16)}
-dialog.fv-set .st-update-card:has(>.fv-update-notice[hidden]){display:none}
+dialog.fv-set .st-update-card[data-hx-un]{display:none}
 dialog.fv-set .fv-update-notice.st-update{display:flex;align-items:center;flex-wrap:wrap;gap:var(--fv-sp-8);margin:0;padding:0;border:0;border-radius:0;background:none;box-shadow:none;animation:none;min-height:var(--fv-ctl-l);font:inherit;font-size:var(--fv-fs-2);color:var(--fv-fg)}
 dialog.fv-set .fv-update-notice.st-update>span{flex:1;min-width:200px;font-weight:var(--fv-fw-3);white-space:normal}
 dialog.fv-set .fv-update-notice.st-update :is(button,a){display:inline-flex;align-items:center;height:var(--fv-ctl);min-height:0;padding:0 var(--fv-sp-12);border-radius:var(--fv-rad-ctl);background:var(--fv-ctl-bg);box-shadow:none;
@@ -389,7 +389,7 @@ dialog.fv-set .st-notes p{margin:var(--fv-sp-4) 0;color:var(--fv-fg2);max-inline
 dialog.fv-set .st-notes .fv-release-build{display:none}
 dialog.fv-set .st-notes ul{margin:var(--fv-sp-8) 0;padding-left:var(--fv-sp-20);color:var(--fv-fg2)}
 dialog.fv-set .st-notes li+li{margin-top:var(--fv-sp-4)}
-dialog.fv-set .st-notes .fv-release-empty{margin:var(--fv-sp-8) 0}
+dialog.fv-set .st-notes .fv-release-empty{margin:var(--fv-sp-8) 0;max-inline-size:none}
 
 /* ── Getting started: the how-to list under its row ── */
 dialog.fv-set .st-howtos{display:flex;flex-direction:column;gap:var(--fv-sp-2);padding:var(--fv-sp-4) var(--fv-sp-8) var(--fv-sp-8) 56px}
@@ -441,9 +441,9 @@ dialog.fv-set .st-mi[aria-checked=true] .ck{visibility:visible}
   dialog.fv-set .st-row.has-ic{grid-template-columns:var(--fv-sp-32) minmax(0,1fr)}
   dialog.fv-set .st-row>.st-re{grid-column:1 / -1;justify-content:flex-start;flex-wrap:wrap}
   dialog.fv-set .st-row.has-ic>.st-re{grid-column:2}
-  dialog.fv-set .st-row:has(>.st-re>input.st-sw:only-child){grid-template-columns:minmax(0,1fr) auto}
-  dialog.fv-set .st-row.has-ic:has(>.st-re>input.st-sw:only-child){grid-template-columns:var(--fv-sp-32) minmax(0,1fr) auto}
-  dialog.fv-set .st-row:has(>.st-re>input.st-sw:only-child)>.st-re{grid-column:auto}
+  dialog.fv-set .st-row[data-hx-sw]{grid-template-columns:minmax(0,1fr) auto}
+  dialog.fv-set .st-row.has-ic[data-hx-sw]{grid-template-columns:var(--fv-sp-32) minmax(0,1fr) auto}
+  dialog.fv-set .st-row[data-hx-sw]>.st-re{grid-column:auto}
   dialog.fv-set .st-mrow{height:auto;min-height:var(--fv-sp-64);padding:var(--fv-sp-12) var(--fv-sp-16)}
   dialog.fv-set .st-src{grid-template-columns:20px minmax(0,1fr)}
   dialog.fv-set .st-src .sp{grid-column:2;align-items:flex-start;min-width:0}
@@ -478,3 +478,5 @@ dialog.fv-set .st-search input:focus-visible{outline:none}
   dialog.fv-set .st-dock.l.is-wide .st-dh h2{display:block}
 }
 @media (max-width:719px){dialog.fv-set .st-facts3 dt{flex:none;white-space:nowrap}dialog.fv-set .st-facts3 dd{min-width:0}}
+/* Tablets: the search field takes a finger (buttons and switches already reach 44 through their ::after). */
+@media (pointer:coarse){dialog.fv-set .st-search{height:var(--fv-touch)}}

@@ -95,7 +95,7 @@
 .fv-whatsnew-bar[data-on=false]{opacity:0}
 .fv-whatsnew-bar[hidden]{display:none}
 .fv-whatsnew-bar i{display:block;height:100%;width:0;background:var(--fv-accent)}
-.fv-whatsnew-host:has(.fv-whatsnew-still){border-color:transparent;background:transparent}
+.fv-whatsnew-host[data-hx-still]{border-color:transparent;background:transparent}
 /* Glass sheet footer: the same buttons as Settings (quiet Close, filled next step); no band of another colour. */
 :root:root .fv-whatsnew .fv-whatsnew-foot{background:transparent;padding-top:var(--fv-sp-12,12px)}
 :root:root .fv-whatsnew .fv-whatsnew-foot::before{display:none}
@@ -118,7 +118,7 @@
 .fv-whatsnew-x:hover{background:var(--fv-ctl-hover);color:var(--fv-fg)}
 .fv-whatsnew-x svg,.fv-whatsnew-open svg{width:16px;height:16px;flex:none}
 :root:root .fv-whatsnew .fv-whatsnew-host{margin:0 var(--fv-sp-24,24px);border:0;border-radius:var(--fv-rad-pic,12px);overflow:hidden}
-:root:root .fv-whatsnew .fv-whatsnew-host:has(.fv-whatsnew-stage){box-shadow:inset 0 0 0 1px var(--fv-line,var(--fv-border))}
+:root:root .fv-whatsnew .fv-whatsnew-host[data-hx-wstage]{box-shadow:inset 0 0 0 1px var(--fv-line,var(--fv-border))}
 .fv-whatsnew-shot{position:relative;height:300px;background:#0b0e14}
 .fv-whatsnew-shot img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .fv-whatsnew-shot img.bg{filter:blur(28px) saturate(1.1);transform:scale(1.15);opacity:.7}

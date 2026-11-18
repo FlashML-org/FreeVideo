@@ -431,7 +431,7 @@ def register_routes(server, web, folder_paths, context):
             running, pending = [], []
         image = getattr(server, '_freevideo_image_gen', None)
         try:
-            image_busy = bool(image is not None and (image.busy() or image.queued is not None))
+            image_busy = bool(image is not None and (image.busy() or bool(image.pending)))
         except Exception:
             image_busy = False
         return bool(running or pending) or image_busy

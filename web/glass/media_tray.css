@@ -26,7 +26,7 @@
 /* While the tiles scroll, their lower edge fades, so a cut tile reads as more below. */
 .fvs-tray .fv-mt>.fv-mt-media[data-fv-mt-scroll=true]{-webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 24px),transparent);mask-image:linear-gradient(to bottom,#000 calc(100% - 24px),transparent)}
 /* A tile: the picture fills the square; along its foot, the box that turns it on or off and its use. */
-.fvs-tray .fv-mt .fv-card{position:relative;box-sizing:border-box;aspect-ratio:1;min-width:0;margin:0!important;padding:0!important;border:0;border-radius:var(--fv-r-sm);background:var(--fv-ctl-bg);box-shadow:none;overflow:hidden}
+.fvs-tray .fv-mt .fv-card{position:relative;container:fv-mt-card/inline-size;box-sizing:border-box;aspect-ratio:1;min-width:0;margin:0!important;padding:0!important;border:0;border-radius:var(--fv-r-sm);background:var(--fv-ctl-bg);box-shadow:none;overflow:hidden}
 .fvs-tray .fv-mt .fv-card[data-enabled=false] :is(.fv-preview-wrap,video.fv-preview){opacity:.45}
 .fvs-tray .fv-mt .fv-card .fv-preview-wrap{position:absolute;inset:0;display:block;margin:0!important;padding:0;border-radius:0;overflow:hidden;background:var(--fv-shell-bg)}
 .fvs-tray .fv-mt .fv-card :is(img,video).fv-preview{position:absolute;inset:0;display:block;width:100%!important;height:100%!important;max-height:none;margin:0!important;aspect-ratio:auto;object-fit:cover!important;object-position:50% 50%;border-radius:0;background:var(--fv-shell-bg)}
@@ -41,7 +41,9 @@
 .fvs-tray .fv-mt .fv-card>.fv-row:first-of-type select{width:100%!important;height:32px!important;min-height:32px!important;padding:0 var(--fv-sp-20) 0 var(--fv-sp-8)!important;border:0!important;border-radius:0!important;
   background:transparent!important;color:#fff!important;font-size:var(--fv-fs-1)!important;line-height:32px;box-shadow:none!important}
 .fvs-tray .fv-mt .fv-card>.fv-row:first-of-type select option{color:var(--fv-fg);background:rgb(var(--fv-solid3))}
-.fvs-tray .fv-mt .fv-card .fv-edited{position:absolute;top:var(--fv-sp-4);left:calc(var(--fv-sp-4) + 20px);z-index:1;padding:0 var(--fv-sp-4);border-radius:var(--fv-r-xs);background:var(--fv-on-pic);color:var(--fv-on-fill);font-size:var(--fv-fs-1);line-height:16px;pointer-events:none}
+/* Edited: a small pencil mark beside the use box; its words stay as the mark's name. */
+.fvs-tray .fv-mt .fv-card .fv-edited{position:absolute;top:var(--fv-sp-4);left:calc(var(--fv-sp-4) + 20px);z-index:1;box-sizing:border-box;width:16px;height:16px;padding:0;border-radius:var(--fv-r-xs);background:var(--fv-on-pic);color:var(--fv-on-fill);font-size:0;line-height:0;overflow:hidden;pointer-events:none}
+.fvs-tray .fv-mt .fv-card .fv-edited::before{content:"";position:absolute;inset:2px;background:currentColor;-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='black' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 10l.5-2.2L8 2.3l1.7 1.7-5.5 5.5z'/%3E%3C/svg%3E") center/12px no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='black' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 10l.5-2.2L8 2.3l1.7 1.7-5.5 5.5z'/%3E%3C/svg%3E") center/12px no-repeat}
 .fvs-tray .fv-mt .fv-card[data-fv-slot]>.fv-preview-wrap::before{content:none}
 /* A tile with more to set (a middle frame's time, a video's depth and sound, audio): three squares, the picture in the
    first, the settings beside it. */
@@ -64,13 +66,14 @@
 .fvs-tray .fv-mt .fv-card[data-fv-mt-wide=true]>.fv-mt-held-note{right:calc(66.6% + var(--fv-sp-4))}
 /* Audio has no picture: its use along the top, the player under it, both across the tile. */
 .fvs-tray .fv-mt .fv-card[data-kind=audio]{display:flex!important;flex-direction:column;gap:var(--fv-sp-4);padding:var(--fv-sp-4) var(--fv-sp-8) var(--fv-sp-8)!important}
-.fvs-tray .fv-mt .fv-card[data-kind=audio]>.fv-row:first-of-type{padding:0}
+.fvs-tray .fv-mt .fv-card[data-kind=audio]>.fv-row:first-of-type{padding:0 24px 0 0}
 .fvs-tray .fv-mt .fv-card[data-kind=audio]>audio.fv-preview{width:100%!important;margin:0!important}
 .fvs-tray .fv-mt .fv-card[data-kind=audio]>.fv-mt-held-note{position:static;translate:none;align-self:flex-start}
 /* Remove (and crop, for a frame of another shape): small keys on the picture's top corners, shown when the tile is
    pointed at or holds the focus; the crop key always, since it says the frame will be cropped. */
 .fvs-tray .fv-mt .fv-card>.fv-mt-keys{position:absolute;top:var(--fv-sp-4);right:var(--fv-sp-4);z-index:2;display:flex;gap:var(--fv-sp-4);pointer-events:none;opacity:0;transition:opacity .16s ease-out}
 .fvs-tray .fv-mt .fv-card:is(:hover,:focus-within)>.fv-mt-keys{opacity:1}
+@media(hover:none){.fvs-tray .fv-mt .fv-card>.fv-mt-keys{opacity:1}}
 .fvs-tray .fv-mt .fv-card>.fv-mt-keys>button,.fvs-tray .fv-mt .fv-card .fv-shape-note>button{pointer-events:auto;flex:none;display:flex!important;align-items:center;justify-content:center;gap:0!important;width:24px!important;height:24px!important;min-height:24px!important;padding:0!important;border:0!important;border-radius:var(--fv-r-xs)!important;background:var(--fv-on-pic)!important;color:var(--fv-on-fill)!important;font-size:0!important;line-height:0}
 .fvs-tray .fv-mt .fv-card>.fv-mt-keys>button::after,.fvs-tray .fv-mt .fv-card .fv-shape-note>button::after{content:"";position:absolute;inset:-4px}
 .fvs-tray .fv-mt .fv-card>.fv-mt-keys>button,.fvs-tray .fv-mt .fv-card .fv-shape-note>button{position:relative}
@@ -78,8 +81,10 @@
 .fvs-tray .fv-mt .fv-card>.fv-mt-keys>button:disabled{opacity:.4}
 .fvs-tray .fv-mt .fv-card>.fv-mt-keys>button::before,.fvs-tray .fv-mt .fv-card .fv-shape-note>button::before{content:"";width:14px;height:14px;background:currentColor;-webkit-mask:var(--fv-mt-icon) center/14px no-repeat;mask:var(--fv-mt-icon) center/14px no-repeat}
 .fvs-tray .fv-mt .fv-mt-remove{--fv-mt-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='m4.5 4.5 7 7m0-7-7 7'/%3E%3C/svg%3E")}
-.fvs-tray .fv-mt .fv-card>.fv-mt-keys>:is(.fv-mt-up,.fv-mt-down){display:none}
+.fvs-tray .fv-mt .fv-card>.fv-mt-keys>:is(.fv-mt-up,.fv-mt-down){display:none!important}
 .fvs-tray .fv-mt .fv-card.fv-mt-crop>.fv-mt-keys{right:calc(var(--fv-sp-8) + 24px)}
+/* A tile too narrow for the use box, the crop key and Remove side by side: Remove is in the tile's drop-down. */
+@container fv-mt-card (width < 100px){.fvs-tray .fv-mt .fv-card.fv-mt-crop>.fv-mt-keys>.fv-mt-remove{display:none!important}}
 .fvs-tray .fv-mt .fv-card .fv-shape-note{position:absolute;top:var(--fv-sp-4);right:var(--fv-sp-4);left:auto;z-index:2;display:block;margin:0!important;padding:0;border:0;background:none}
 .fvs-tray .fv-mt .fv-card .fv-shape-note>span{display:none}
 .fvs-tray .fv-mt .fv-card .fv-shape-note>button{--fv-mt-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 1.5v10h10M1.5 4.5h10v10'/%3E%3C/svg%3E")}
@@ -111,7 +116,7 @@
 .fvs-tray .fv-mt .fv-mt-slot-keys>button::before{content:"";width:16px;height:16px;background:currentColor;-webkit-mask:var(--fv-mt-icon) center/16px no-repeat;mask:var(--fv-mt-icon) center/16px no-repeat}
 .fvs-tray .fv-mt .fv-mt-computer{--fv-mt-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='2.75' width='12' height='8' rx='1.5'/%3E%3Cpath d='M6 13.25h4M8 10.75v2.5'/%3E%3C/svg%3E")}
 .fvs-tray .fv-mt .fv-mt-saved,.fvs-tray .fv-mt .fv-mt-browse{--fv-mt-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2.5' y='2.5' width='4.5' height='4.5' rx='1'/%3E%3Crect x='9' y='2.5' width='4.5' height='4.5' rx='1'/%3E%3Crect x='2.5' y='9' width='4.5' height='4.5' rx='1'/%3E%3Crect x='9' y='9' width='4.5' height='4.5' rx='1'/%3E%3C/svg%3E")}
-.fvs-tray .fv-mt .fv-mt-cards:has(>.fv-mt-slot-empty)>.fv-empty{display:none}
+.fvs-tray .fv-mt .fv-mt-cards[data-hx-es]>.fv-empty{display:none}
 /* Nothing can be added here (the list comes from connected inputs, or the panel has no node): one quiet line. */
 .fvs-tray .fv-mt :is(.fv-empty,.fv-connected-card){grid-column:1 / -1;display:grid;place-items:center;min-height:48px;margin:0;padding:var(--fv-sp-12);border:1px dashed var(--fv-line2);border-radius:var(--fv-r-sm);background:none;color:var(--fv-fg3);font-size:var(--fv-fs-2);line-height:20px;text-align:center}
 
@@ -172,7 +177,7 @@
 .fvs-tray .fv-mt>.fv-cast-libraries{order:5;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--fv-sp-8) var(--fv-sp-12);align-items:start;padding-top:var(--fv-sp-12);border-top:1px solid var(--fv-line)}
 /* Characters, scenes and props live with the Agent interface: where it is off they are not offered (as before), and
    their row, with its line, is not drawn at all (no empty strip). */
-.fvs-tray .fv-mt>.fv-cast-libraries:not(:has(>:not([hidden]))){display:none}
+.fvs-tray .fv-mt>.fv-cast-libraries:not([data-hx-kids]){display:none}
 .fvs-tray .fv-mt .fv-cast-library{display:flex;flex-wrap:wrap;align-items:center;align-content:start;justify-content:center;gap:var(--fv-sp-4);min-width:0;padding:0;margin:0;text-align:center}
 .fvs-tray .fv-mt .fv-cast-library[hidden]{display:none}
 .fvs-tray .fv-mt .fv-cast-heading{flex:0 0 100%;text-align:center;margin:0 0 var(--fv-sp-4);font-size:var(--fv-fs-1);line-height:16px;font-weight:var(--fv-fw-1,400);color:var(--fv-fg3)}

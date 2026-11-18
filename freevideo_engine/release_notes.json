@@ -1,41 +1,78 @@
 {
   "schema": 1,
-  "product_version": "0.6.2",
+  "product_version": "0.6.3",
   "en": {
-    "summary": "ComfyUI opened by other means is no longer affected, the Creations entry is always shown, deleting a work also removes the data only it used, and more creation options are available.",
+    "summary": "Image generation adds the MOSS-Image model, failures state the cause and the next step, touch and portrait screens are improved, and a number of problems are fixed.",
     "changes": [
-      "ComfyUI no longer affected: ComfyUI opened other than from the launcher no longer shows FreeVideo notices or a FreeVideo backdrop; FreeVideo opens only from the launcher.",
-      "Creations entry always shown: every view has a Creations entry at the top right, and the works strip no longer hides on wide screens.",
-      "Deletion removes related data: deleting a work, edit, conversation, character or film also deletes the prompts, uploads, imports, voiceovers and stems used only by it, and its prompt no longer appears in the history or the search; every AI-generated picture is kept as a work in the library.",
-      "Smooth interface during playback: playing a video in Create no longer slows the interface over time.",
-      "Second pass from the library: Run second pass is available from the card menu and the detail view and continues a preview result with the same settings.",
-      "Improved mannequin poses: the 3D mannequin in the image editor poses more naturally, with thicker line art and prompts that describe the pose in plain language.",
-      "Panning zoomed pictures: a zoomed picture can be dragged in any direction and stops at its edges.",
-      "More creation options: a 21:9 frame preset and other shapes, five size steps for quick preview (0.5M-2M), and multi-line prompts that create one work per line.",
-      "Compatibility view: solid panels, fewer animations and no autoplay, with a one-time notice when the interface runs slowly.",
-      "Failures state the cause and the next step: an unexpectedly ended generation process, an editor save error, a failed second pass and a length the device cannot produce each state the cause and the next step.",
-      "Fixes: a first part shown on its own is kept after a long video is joined to it; on a Mac the picture view uses only the models available on that computer and states clearly when the model list cannot be fetched or is being verified; the launcher no longer stops responding when the update window is very narrow.",
-      "Thumbnails first over a link: when works are opened over a link, thumbnails are shown first, followed by the videos and pictures one at a time."
+      "Image generation adds the MOSS-Image model, installed in one click, and better queueing and model loading: several pictures can wait in line and the status shows the place; models that made room for another program load again once the room is free; opening the image view loads the image model where it fits; when another program holds the graphics card, H3 Image plans against the memory actually free and no longer runs short at the first step; and the second-pass upscale no longer reloads the video model when memory suffices, so the wait is shorter.",
+      "Failures say why and what to do next: a launcher crash, an incomplete installation file, a failed model upgrade, an unfinished assistant task, a ComfyUI start failure, an unreadable folder or undeletable video in the library or when sharing, a prompt rewrite cancelled before generation, release notes that cannot be loaded, a tutorial example that cannot be filled in, and a stopped FreeVideo on this computer each state the cause and the next step instead of a raw error or no response. When an update fails, both buttons sit under the reason, and a full disk comes with the step to free space.",
+      "The computer stays awake while a video is made: Windows and Linux no longer go to sleep on their own during generation, except on battery.",
+      "Touch and portrait screen improvements: actions that a mouse reveals on hover are shown on touch screens; tall portrait windows use their full height; on touch screens wider than a phone the editor's and the image view's controls are larger and top-bar links and number steppers have larger tap areas; on a phone Creations in the top bar opens the works without a second entry under the picture; on a narrow screen Generate and Cancel stay whole and easy to tap; and the phone page no longer comes up blank when opened over the local network or a remote link.",
+      "The library opens the folder that holds the videos: a Video folder button, and Show in folder for every video; when the folder cannot be opened, the reason is stated.",
+      "The creation panel and the editor share one generation bar: the editor uses the same description, size, length and quality settings as the creation panel, prefilled for the work; the description box grows with its text; a cleared length, width or height stays empty, and Generate names the value to fill in and opens that field; the empty-description check sits right above Generate and the progress word is no longer cut short; with audio used as it is, a lock before the length says on hover or tap why it is fixed; and the creation panel no longer flickers at certain window widths.",
+      "Your own pictures for a new character: each of the four views takes a picture of your own, and Generate fills only the views still empty.",
+      "Image editor and library improvements: on a narrow screen every tool's options fit and the rest go under More; after a batch delete, Escape still leaves selecting and the next delete removes only the works picked then; a failed library read clears the loading placeholders and offers Retry before Report a problem; the recent-works strip on the creation page states the reason when it cannot be read and can be read again; in the image view a failure card keeps its reason line and buttons in place when reporting is unavailable, and every reference picture shows its number in full.",
+      "Assistant improvements: audio can be used as it is to continue a saved video, Tab stays inside the drawer and dialogs and a deleted chat stays gone, and the connection light opens a menu whose main action is Reconnect.",
+      "Deletion removes more related records: deleting a work also removes its report number from the report index, managed ComfyUI keeps no file names in its logs, with old run folders pruned, and stopping the image editor while reference pictures are uploading removes the ones already sent at once.",
+      "Fixes: after a continued part finishes, the next part is ready as on opening the work; the editor writes only what changes as the playhead moves; remote visits load faster; cards below the minimum show as unsupported; model download continues when the mount table is unreadable; the launcher reads the set card number by CUDA's rules and names it if unmatched; launcher notices change language with the interface; long labels in the update notes fit a narrow launcher window; editor exports leave out unsent planned parts; a second pass that fails to start shows its error in the tooltip and report.",
+      "Editor improvements: the top-bar tabs stay in place and keep focus when the editor opens; menus close with Escape and move with the arrow keys; on a narrow screen the Subtitles track name fits and the project menu opens below the name; jumping with the arrow keys keeps the playhead in view, and near 0 s the playhead handle no longer covers the track header; Escape stops a drag without adding an undo step; menus, floating panels, the Fill/Fit switch and a failed part's card are solid; and leaving the editor stops a media preview, and late previews or clips no longer land in the hidden editor."
     ]
   },
   "zh": {
-    "summary": "其他方式打开的 ComfyUI 不再受影响，作品库入口常驻，删除作品时一并删除其专用数据，并增加了创作选项。",
+    "summary": "图片生成新增 MOSS-Image 模型，失败时说明原因和下一步，触屏与竖屏显示改进，并修复了多项问题。",
     "changes": [
-      "不再影响 ComfyUI：从启动器以外的方式打开 ComfyUI 时，不再显示 FreeVideo 的提示和背景；仅从启动器打开时进入 FreeVideo。",
-      "作品库入口常驻：各视图右上角均提供“作品库”入口，宽屏下作品条不再隐藏。",
-      "删除时清除相关数据：删除作品、剪辑、对话、角色或影片时，仅由其使用的提示词、上传文件、导入素材、配音和分轨一并删除，历史提示词和搜索结果中也不再出现；所有 AI 生成的图片均作为作品保存在作品库中。",
-      "视频播放时界面保持流畅：在创作页播放视频时，界面不再随时间变慢。",
-      "作品库支持运行第二遍：作品卡片菜单和详情页均可“运行第二遍”，沿用同一组设置继续处理预览结果。",
-      "人偶姿势改进：图像编辑中的 3D 人偶姿势更自然，线稿笔画加粗，提示词以平实的语言描述姿势。",
-      "放大图片可拖动查看：放大后的图片可向任意方向拖动，到达边缘时停止。",
-      "创作选项增加：新增 21:9 等画幅；快速预览提供五档尺寸（0.5M–2M）；支持一次输入多行描述，每行生成一个作品。",
-      "兼容界面模式：面板改为实心，减少动画，不自动播放；界面运行变慢时提示一次。",
-      "失败时说明原因和处理方法：生成进程意外结束、剪辑保存出错、第二遍失败，以及设备无法生成所选时长时，均会说明原因和下一步操作。",
-      "问题修复：长视频拼接后，单独显示的第一段一采结果不再丢失；Mac 上图片视图仅使用本机可用的模型，无法获取模型列表或正在校验时会明确提示；更新窗口很窄时启动器不再停止响应。",
-      "远程查看时优先加载缩略图：通过链接查看作品时，先显示缩略图，再依次加载视频和图片。"
+      "图片生成新增 MOSS-Image 模型，可一键安装；排队与模型载入改进：可同时排队多张图片，状态显示排队位置；为其他程序让出显存的模型在空间恢复后重新载入；打开图像视图时，显存够用就载入图像模型；显卡被其他程序占用时，H3 Image 按实际空闲显存安排，不再在第一步显存不足；二采放大时，显存足够则不再重新载入视频模型，等待更短。",
+      "失败时说明原因和下一步：启动器意外退出、安装文件不完整、模型升级失败、助手任务未完成、ComfyUI 启动失败、作品库与分享中无法读取的文件夹或无法删除的视频、生成前被取消的提示词改写、更新说明读取不到、教程示例无法填入、本机上的 FreeVideo 已停止，都写明原因和下一步，不再显示原始错误行或没有反应。更新失败时，两个按钮排在原因下方；磁盘空间不足时提示清理后重试。",
+      "生成视频时电脑不再自行睡眠：Windows 与 Linux 在制作视频期间不会自动进入睡眠；使用电池时不启用。",
+      "触屏与竖屏显示改进：触屏上显示原本要鼠标悬停才出现的操作；竖屏窗口使用全部高度；比手机宽的触屏上，剪辑视图和图像视图的按键加大，顶栏链接和数值调节按钮的点按范围也加大，更易点中；手机上从顶栏的“作品库”进入作品，画面下方不再重复显示入口；窄屏下生成与取消按钮保持完整、易于点按；通过局域网或远程链接打开手机页时不再空白。",
+      "作品库可直接打开视频所在文件夹：新增“视频文件夹”按钮，每个视频都能“在文件夹中显示”；无法打开时说明原因。",
+      "创作面板与剪辑视图使用同一个生成栏：剪辑视图里的生成栏使用与创作面板相同的描述、尺寸、时长和质量设置，并按当前作品预填；描述框随文字增高；清空的时长、宽、高保持为空，点击生成时提示需填写的项并打开该项；描述为空时的确认提示显示在“生成”正上方，进度词不再被截断；音频原样使用时，时长前的锁形图标在悬停或点按时说明时长为何固定；创作面板在各种窗口宽度下都不再闪动。",
+      "新建角色时可上传自己的四个视角图片，生成只补还空着的视角。",
+      "图片编辑与作品库改进：窄屏下每个工具的选项都能完整显示，其余收入“更多”；批量删除后，按 Esc 仍可退出选择，下次删除只删除当时选中的作品；作品库读取失败时清除加载占位，并在“提交问题”前提供“重试”；创作页的最近作品栏读取失败时也说明原因，可重新读取；图像视图的失败卡在报告不可用时，原因行和按钮不再左移，参考图每张都完整显示编号。",
+      "AI 助手改进：音频可原样用于续接已保存的视频；Tab 键停留在抽屉和对话框内，已删除的对话不再出现；连接指示灯可打开菜单，主要操作为“重新连接”。",
+      "删除时清除更多相关记录：删除作品时，其报告编号也从报告索引中移除；受管理的 ComfyUI 日志不再记录文件名，旧的运行目录会被清理；图片编辑中途停止时，已上传的参考图立即从服务器删除。",
+      "问题修复：续接的一段生成完成后，下一段与打开作品时一样就绪；剪辑视图在播放头移动时只写入变化的内容；远程访问时页面加载更快；低于最低配置的显卡一律显示为不支持；模型下载在无法读取挂载表时仍可继续；启动器按 CUDA 的规则读取所设的显卡序号，对不上时说明所设的值；切换界面语言时，已显示的启动器提示一并换语言；启动器窗口较窄时，更新说明里的长标签不再超出窗口；剪辑导出时不再包含从未发送的计划段；二采未能开始时，提示与报告写明错误。",
+      "剪辑视图改进：打开剪辑视图时顶栏标签保持原位、焦点不丢失；菜单可用 Esc 关闭、用方向键切换选项；窄屏下轨道名“Subtitles”完整显示，项目菜单在名字下方打开；用方向键跳转时播放线保持在可见范围内，靠近 0 秒时播放头把手不盖住轨道头；拖动中按 Esc 停止拖动，不多出一步撤销；菜单与浮动面板、画面上的“铺满／完整显示”切换和失败段的说明卡改为实色；离开剪辑视图后素材预览不再出声，晚到的预览和素材不会写进隐藏的剪辑。"
     ]
   },
   "history": [
+    {
+      "product_version": "0.6.2",
+      "en": {
+        "summary": "ComfyUI opened by other means is no longer affected, the Creations entry is always shown, deleting a work also removes the data only it used, and more creation options are available.",
+        "changes": [
+          "ComfyUI no longer affected: ComfyUI opened other than from the launcher no longer shows FreeVideo notices or a FreeVideo backdrop; FreeVideo opens only from the launcher.",
+          "Creations entry always shown: every view has a Creations entry at the top right, and the works strip no longer hides on wide screens.",
+          "Deletion removes related data: deleting a work, edit, conversation, character or film also deletes the prompts, uploads, imports, voiceovers and stems used only by it, and its prompt no longer appears in the history or the search; every AI-generated picture is kept as a work in the library.",
+          "Smooth interface during playback: playing a video in Create no longer slows the interface over time.",
+          "Second pass from the library: Run second pass is available from the card menu and the detail view and continues a preview result with the same settings.",
+          "Improved mannequin poses: the 3D mannequin in the image editor poses more naturally, with thicker line art and prompts that describe the pose in plain language.",
+          "Panning zoomed pictures: a zoomed picture can be dragged in any direction and stops at its edges.",
+          "More creation options: a 21:9 frame preset and other shapes, five size steps for quick preview (0.5M-2M), and multi-line prompts that create one work per line.",
+          "Compatibility view: solid panels, fewer animations and no autoplay, with a one-time notice when the interface runs slowly.",
+          "Failures state the cause and the next step: an unexpectedly ended generation process, an editor save error, a failed second pass and a length the device cannot produce each state the cause and the next step.",
+          "Fixes: a first part shown on its own is kept after a long video is joined to it; on a Mac the picture view uses only the models available on that computer and states clearly when the model list cannot be fetched or is being verified; the launcher no longer stops responding when the update window is very narrow.",
+          "Thumbnails first over a link: when works are opened over a link, thumbnails are shown first, followed by the videos and pictures one at a time."
+        ]
+      },
+      "zh": {
+        "summary": "其他方式打开的 ComfyUI 不再受影响，作品库入口常驻，删除作品时一并删除其专用数据，并增加了创作选项。",
+        "changes": [
+          "不再影响 ComfyUI：从启动器以外的方式打开 ComfyUI 时，不再显示 FreeVideo 的提示和背景；仅从启动器打开时进入 FreeVideo。",
+          "作品库入口常驻：各视图右上角均提供“作品库”入口，宽屏下作品条不再隐藏。",
+          "删除时清除相关数据：删除作品、剪辑、对话、角色或影片时，仅由其使用的提示词、上传文件、导入素材、配音和分轨一并删除，历史提示词和搜索结果中也不再出现；所有 AI 生成的图片均作为作品保存在作品库中。",
+          "视频播放时界面保持流畅：在创作页播放视频时，界面不再随时间变慢。",
+          "作品库支持运行第二遍：作品卡片菜单和详情页均可“运行第二遍”，沿用同一组设置继续处理预览结果。",
+          "人偶姿势改进：图像编辑中的 3D 人偶姿势更自然，线稿笔画加粗，提示词以平实的语言描述姿势。",
+          "放大图片可拖动查看：放大后的图片可向任意方向拖动，到达边缘时停止。",
+          "创作选项增加：新增 21:9 等画幅；快速预览提供五档尺寸（0.5M–2M）；支持一次输入多行描述，每行生成一个作品。",
+          "兼容界面模式：面板改为实心，减少动画，不自动播放；界面运行变慢时提示一次。",
+          "失败时说明原因和处理方法：生成进程意外结束、剪辑保存出错、第二遍失败，以及设备无法生成所选时长时，均会说明原因和下一步操作。",
+          "问题修复：长视频拼接后，单独显示的第一段一采结果不再丢失；Mac 上图片视图仅使用本机可用的模型，无法获取模型列表或正在校验时会明确提示；更新窗口很窄时启动器不再停止响应。",
+          "远程查看时优先加载缩略图：通过链接查看作品时，先显示缩略图，再依次加载视频和图片。"
+        ]
+      }
+    },
     {
       "product_version": "0.6.1",
       "en": {
@@ -216,41 +253,6 @@
           "进度：视频生成中较长的无变化阶段，在阶段文字后显示真实计数，例如帧数、层数或文件数。",
           "生成：内存紧张时，文本编码器从慢速硬盘加载更快；只有分块变化时复用已加载的引擎。素材库角色的声音随其图片一起带入镜头，提示词增强会读取所连加载节点中的图片或视频。",
           "教程和提示：教程新增生成图片、中间帧和保存帧三章。只因“预留显存”导致的拒绝会指出该设置，连接卡片会给出应打开的 localhost 地址，长视频拼接失败时说明接缝记录是缺失还是无法读取。"
-        ]
-      }
-    },
-    {
-      "product_version": "0.5.1",
-      "en": {
-        "summary": "Installing only an image model works again, and the image view shows its pictures again. Uploads show progress, and the update notice, retry notice and reference Add menu are clearer.",
-        "changes": [
-          "Install: installing only an image model no longer fails at the verification step for lacking video model folders; the check for a video install is unchanged.",
-          "Image view: the large picture, the work thumbnails and the save link no longer return 404.",
-          "Uploads: while a file is uploaded or an edited image is saved, the media panel shows how much has been sent.",
-          "Update notice: it is a full-width bar, under the header in the studio and as the second row of the node toolbar.",
-          "Retry notice: when a run is retried, the notice says the run mode changes, and names less video memory or less memory by cause, instead of saying settings change.",
-          "Reference Add menu: it opens above when there is no room below, takes the full width on narrow windows and shows four columns at 400 px wide.",
-          "Studio: the mention list refreshes when a tour sample fills the prompt.",
-          "Tutorial and tour: video and audio references are added with Add, the same way as images, and the first-and-last-frame step no longer repeats Add.",
-          "Agent: the width and height descriptions state the nearest-multiple-of-32 rule, and whole-timeline write points to the editor operations for clip edits.",
-          "Image view: when there are many works, the thumbnails in the works column are shown in full instead of being squeezed into thin strips.",
-          "Image view: the large picture shows square, portrait and landscape pictures whole at every width."
-        ]
-      },
-      "zh": {
-        "summary": "只装图像模型的安装恢复正常，图像视图的图片重新显示；上传显示进度，更新提示、重试提示和参考图“添加”菜单更清楚。",
-        "changes": [
-          "安装：只安装图像模型时，安装不再在“验证安装”一步因缺少视频模型目录而失败；安装视频模型时的检查不变。",
-          "图像视图：大图、作品缩略图和保存链接不再 404。",
-          "上传：上传文件或保存编辑后的图片时，素材面板显示已发送的比例。",
-          "更新提示：改为通栏，创作面板里在标题下，节点视图里是工具条的第二行。",
-          "重试提示：运行自动重试时，提示写明换了一种运行方式，并按原因写“更省显存”或“更省内存”，不再写“调整设置”。",
-          "参考图“添加”菜单：下方没有位置时向上展开，窄窗口通宽，400 宽下为四列。",
-          "创作面板：示例图填入描述后，@ 提及列表同步刷新。",
-          "教程与导览：视频和音频参考与图片一样点“添加”，首尾帧一步不再重复“添加”。",
-          "Agent：宽高说明写明取最近的 32 的倍数；整条时间线写入指向剪辑操作，避免用它改片段。",
-          "图像视图：作品较多时，作品栏的缩略图完整显示，不再被压成一条条。",
-          "图像视图：大图完整显示方图、竖图和横图。"
         ]
       }
     }

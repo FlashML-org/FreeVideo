@@ -344,9 +344,46 @@ def digest(path, algorithm='sha256', git_blob=False):
     return h.hexdigest()
 
 
+def visible_device_selector(value):
+    # CUDA reads the first entry of the list. An empty variable (or entry) is no choice, so the first GPU is used.
+    return (value or '').split(',')[0].strip() or '0'
+
+
+def select_gpu(rows, selector, from_environment):
+    # Returns the rows ``selector`` names. --gpu keeps its exact meaning (index or full UUID); the environment
+    # variable follows CUDA: an index, a UUID, or a unique prefix of one (with or without "GPU-").
+    if not from_environment:
+        return [r for r in rows if r['index'] == selector or r['uuid'] == selector]
+    wanted = selector.lower()
+    exact = [r for r in rows if r['index'] == selector or r['uuid'].lower() == wanted]
+    if exact:
+        return exact
+    # A bare number is an index only: with no such index CUDA finds no device, even if a UUID begins with it.
+    if not wanted or wanted.isdigit():
+        return []
+    return [r for r in rows if any(r['uuid'].lower().startswith(p) for p in (wanted, 'gpu-' + wanted))]
+
+
+def selection_error(rows, selector, from_environment, matches):
+    listing = '; '.join('%s: %s (%s)' % (r['index'], r['name'], r['uuid']) for r in rows)
+    shown = ('CUDA_VISIBLE_DEVICES=%s' % selector) if from_environment else ('--gpu %s' % selector)
+    if selector.upper().startswith('MIG-'):
+        return ('%s names a MIG device, and MIG is not supported. Use the index or UUID of a whole GPU (nvidia-smi -L lists: %s), '
+                'then retry. Include the report if this repeats.' % (shown, listing))
+    if len(matches) > 1:
+        return ('%s matches %d GPUs (nvidia-smi -L lists: %s). Use a longer UUID prefix or an index, then retry. '
+                'Include the report if this repeats.' % (shown, len(matches), listing))
+    if from_environment:
+        return ('%s matches no GPU (nvidia-smi -L lists: %s). Set it to one index or UUID from the list, or remove the variable, '
+                'then retry. Include the report if this repeats.' % (shown, listing))
+    return ('Select one physical GPU by nvidia-smi index or full UUID with --gpu (nvidia-smi -L lists: %s). %s matches no GPU. '
+            'Include the report if this repeats.' % (listing, shown))
+
+
 def inventory(gpu=None):
     query = 'index,uuid,name,compute_cap,memory.total,memory.free,driver_version,pci.bus_id'
-    selector = gpu if gpu is not None else os.environ.get('CUDA_VISIBLE_DEVICES', '0').split(',')[0]
+    from_environment = gpu is None
+    selector = visible_device_selector(os.environ.get('CUDA_VISIBLE_DEVICES')) if from_environment else gpu
     detection = {}
     try:
         smi = nvidia_smi()
@@ -358,7 +395,7 @@ def inventory(gpu=None):
         # Unsupported numeric fields are also a failed observation, not proof
         # that the user has no GPU. Only the selected row has to be readable;
         # another GPU reporting N/A must not block an installation that worked.
-        matches = [r for r in rows if r['index'] == selector or r['uuid'] == selector]
+        matches = select_gpu(rows, selector, from_environment)
         if len(matches) == 1:
             row = matches[0]
             float(row['memory.total']), float(row['memory.free'])
@@ -383,7 +420,7 @@ def inventory(gpu=None):
         logging.getLogger(__name__).info('%s nvidia-smi: %s', cuda_inventory.WARNING, error)
     else:
         if len(matches) != 1:
-            raise ValueError('Select one physical GPU by nvidia-smi index or full UUID with --gpu. MIG is not supported.')
+            raise ValueError(selection_error(rows, selector, from_environment, matches))
         selected = matches[0]
     try:
         capability = tuple(map(int, selected['compute_cap'].split('.')))
@@ -576,15 +613,37 @@ def prepare_end(ui, success=True):
             ui.end(PREPARE_KEY, success=success)
 
 
+def read_state(path, warnings=None):
+    """The JSON record in an installation state file, or {} when there is none that can be used.
+
+    A file that is empty, cut short or not JSON (a power loss can leave a zero-filled one) is
+    ignored and named in ``warnings``, so one damaged record no longer ends every check; setup
+    keeps the former machine.json as machine.before.json. A file that cannot be read at all
+    (permissions, a locked disk) still raises, with its path in the error."""
+    path = Path(path)
+    if not path.is_file():
+        return {}
+    try:
+        value = json.loads(path.read_text(encoding='utf-8'))
+        if not isinstance(value, dict):
+            raise ValueError('not a JSON object')
+    except ValueError as error:
+        if warnings is not None:
+            warnings.append('%s in the installation folder could not be read (%s), so its saved settings were not used.'
+                            % (path.name, str(error)[:80]))
+        return {}
+    return value
+
+
 def plan(args, *, local_progress=None, stage=None):
     root = args.root.expanduser().resolve()
     warnings = []
-    saved = json.loads((root / 'machine.json').read_text(encoding='utf-8')) if (root / 'machine.json').is_file() else {}
+    saved = read_state(root / 'machine.json', warnings)
     storage = getattr(args, 'storage', None) or saved.get('storage', 'compact')
     layout = select_layout(getattr(args, 'environment', None), saved)
     # v0.2.0 stored the encoder directory only in its retained setup plan.
     prior_path = Path(saved['setup_run']) / 'plan.json' if saved.get('setup_run') else None
-    prior = json.loads(prior_path.read_text(encoding='utf-8')) if prior_path and prior_path.is_file() else {}
+    prior = read_state(prior_path, warnings) if prior_path else {}
     # Hardware detection is the default for fresh installs, updates and retries.
     # Saved benchmark caps must never silently follow a user onto a larger GPU.
     keep_limits = getattr(args, 'keep_resource_limits', False)
@@ -669,7 +728,8 @@ def plan(args, *, local_progress=None, stage=None):
         for name in ('machine.json', 'prepared-cache.json'):
             cache_record = root / name
             if cache_record.is_file():
-                record = json.loads(cache_record.read_text(encoding='utf-8'))
+                # machine.json was reported above when it was damaged; do not repeat it here.
+                record = read_state(cache_record, warnings if name != 'machine.json' else None)
                 candidate = record.get('cache')
                 if record.get('model_revision') == revision and candidate and cache_compatible(candidate, **cache_format):
                     if own and Path(candidate).resolve() == Path(own['cache']).resolve():
@@ -1354,12 +1414,12 @@ class Installer:
         self.runtime_fd = self.locks.enter_context(runtime_lock(lock_path, wait_seconds=3))
         self.run_dir = self.root / 'setup-runs' / (time.strftime('%Y%m%dT%H%M%SZ', time.gmtime()) + '-' + str(os.getpid()))
         self.run_dir.mkdir(parents=True, exist_ok=False)
-        save(self.run_dir / 'plan.json', value)
+        save(self.run_dir / 'plan.json', value, durable=True)
         previous = self.root / 'machine.json'
         saved = {}
         if previous.is_file():
             shutil.copyfile(previous, self.run_dir / 'machine.before.json')
-            saved = json.loads(previous.read_text(encoding='utf-8'))
+            saved = read_state(previous)
         self.saved = saved
         # Changed PyTorch files (runtime_libraries) stop torch from importing,
         # so no GPU check can pass until the torch step below reinstalls them.
@@ -1434,7 +1494,7 @@ class Installer:
             encoder_model_root=value.get('encoder_dir', saved.get('encoder_model_root')),
             wheel_cache=value.get('wheel_cache', saved.get('wheel_cache')),
             vram_gib=value.get('vram_gib', saved.get('vram_gib')),
-            ram_gib=value.get('ram_gib', saved.get('ram_gib'))))
+            ram_gib=value.get('ram_gib', saved.get('ram_gib'))), durable=True)
 
     def device_environment(self, env):
         from .triton_compat import environment
@@ -2458,7 +2518,7 @@ class Installer:
         self.monitor_thread.join(timeout=5)
         if self.monitor_thread.is_alive() or self.cancel.is_set():
             raise RuntimeError(self.state.get('resource_guard', 'Installation monitoring did not stop cleanly.'))
-        save(self.root / 'machine.json', configuration)
+        save(self.root / 'machine.json', configuration, durable=True)
         self.ui.phase('Setup complete', total, total)
         return configuration
 

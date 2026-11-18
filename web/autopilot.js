@@ -1,7 +1,7 @@
 import {createLanAccess} from './lan_access.js';
 // The Agent's own page, beside the studio and the editing view: the card that connects one, then the conversation with it.
 import { api } from '../../scripts/api.js';
-import { agentConnectCard, connectCardBack, connectionLabel } from './agent_connect.js';
+import { agentConnectCard, agentLinkMenu, connectCardBack, connectCardReason, connectionLabel } from './agent_connect.js';
 import { about, agentChat, jobName, readChatCache } from './autopilot_chat.js';
 import { createRequestAssets } from './request_assets.js';
 import { openEditorView } from './editor_loader.js';
@@ -14,6 +14,7 @@ import { agentTabReady, openImage, viewChanged, viewSwitch } from './view_naviga
 import { wordmark } from './wordmark.js';
 import { keepViewSwitchPlace } from './view_switch_place.js';
 import { tip } from './autopilot_tips.js';
+import { agentPost } from './agent_session.js';
 
 const languageOverride = typeof location !== 'undefined'
     ? new URLSearchParams(location.search).get('freevideo_lang') : null;
@@ -95,6 +96,7 @@ export function openAutopilotView(node, {studio = null, initialPrompt = '', init
         // can open the card again (how to connect, or connect another), with the way back to the chats.
         if (connected && !wasConnected) wantCard = false;
         wasConnected = connected;
+        linkMenu.update(last.agent);
         const ready = on === 'on' && last.known, talking = ready && (connected || last.any) && !wantCard;
         // The card gives way to the conversation: typing can start at once.
         const arrived = talking && chat.element.hidden && (card.element.contains(document.activeElement) || document.activeElement === lamp);
@@ -105,6 +107,7 @@ export function openAutopilotView(node, {studio = null, initialPrompt = '', init
         if (arrived) chat.input.focus();
         lamp.hidden = !ready; lamp.dataset.color = label.color; lampText.textContent = lamp.title = label.text; lamp.setAttribute('aria-label', label.text); lamp.disabled = !connected && !last.any;
         tip(lamp, connected ? 'connected' : 'disconnected', t, {title: false, why: lamp.disabled ? t('Connect an assistant first; the steps are in the middle', '先连接助手，步骤在中间的卡片里') : ''});
+        if (lamp.disabled || !ready) linkMenu.close();
         const job = talking ? last.current : null;
         phoneAccess.observe(job);
         now.hidden = !job; line.dataset.on = String(!!job);
@@ -121,6 +124,7 @@ export function openAutopilotView(node, {studio = null, initialPrompt = '', init
         }
         // Opened from a chat whose assistant has gone: the card offers the way back to the chats.
         connectCardBack(card, t, (connected || last.any) && wantCard ? () => { wantCard = false; show(); chat.input.focus(); } : null);
+        connectCardReason(card, t, last.known ? last.agent : {connected: true});
         card.sync();
         // The main block is whichever is in front: the connect card or the conversation's column. The first screen is
         // final once the interface has answered and, when it is on, the conversation has been read once.
@@ -131,7 +135,11 @@ export function openAutopilotView(node, {studio = null, initialPrompt = '', init
         if (front && on !== null && (on !== 'on' || last.known)) markReady();
     }
     function markReady() { clearTimeout(readyTimer); if (dialog.dataset.fvReady !== 'true') dialog.dataset.fvReady = 'true'; }
-    lamp.onclick = () => { wantCard = !wantCard; show(); };
+    // The light opens its menu (disconnect, reconnect, why it is off); with the card opened from it, it closes the card.
+    const linkMenu = agentLinkMenu(t, body, lamp, {disconnect: () => agentPost(api, '/freevideo/agent/connect/disconnect', {}),
+        steps: () => { wantCard = true; show(); card.focus(); },
+        changed: agent => { if (agent) { last = {...last, agent}; show(); } chat.refresh(); }});
+    lamp.onclick = () => { if (wantCard) { wantCard = false; show(); } else linkMenu.toggle(last.agent); };
     go.onclick = () => chat.scrollToJob(currentId);
     halt.onclick = () => chat.stopAll();
     body.append(card.element, chat.element);
@@ -153,7 +161,7 @@ export function openAutopilotView(node, {studio = null, initialPrompt = '', init
         dialog.inert = true;
         if (current === dialog) current = null;
         dialog.querySelectorAll('video,audio').forEach(media => media.pause());
-        card.stop();
+        linkMenu.close(); card.stop();
         const then = next; next = goBack; then();
     }
     // Any other view in front (the node view has no dialog of its own) keeps a closed Autopilot out of sight and out of reach.

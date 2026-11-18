@@ -14,6 +14,8 @@ const failures = () => ({
     unsupported: text('Choose an image, video or audio file', '请选择图片、视频或音频文件'),
     multiple: text('Upload one file at a time.', '一次只能上传一个文件。'),
     invalid: text('This file name cannot be used. Rename the file and try again.', '这个文件名不能使用，请改名后再试。'),
+    disk_full: text('The upload stopped: the disk is full. Free some space, then try again.', '上传中断：磁盘空间不足，请清理出空间后重试。'),
+    not_writable: text('The upload stopped: the input folder cannot be written to. Check its write permission, then try again.', '上传中断：输入文件夹无法写入，请检查它的写入权限后重试。'),
 });
 const generic = () => text('The upload did not finish. Try again.', '上传没有完成，请再试一次。');
 // A request that never answers is cut off, so the pickers unlock and the failure line shows: two minutes plus four seconds per MiB, so a slow link is not mistaken for a hang.
@@ -53,6 +55,6 @@ export async function uploadMedia(api, file, {onProgress = null, timeoutMs = upl
         result = await response.json();
     } catch { if (!response || response.ok) throw new Error(generic()); }
     finally { clearTimeout(timer); uploadRunning(false); }
-    if (!response.ok) throw new Error(found[result?.code] || generic());
+    if (!response.ok) throw Object.assign(new Error(found[result?.code] || generic()), {code: typeof result?.code === 'string' ? result.code : undefined});
     return result;
 }

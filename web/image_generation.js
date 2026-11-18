@@ -64,7 +64,7 @@ export function blankCanvasSize(ratio, sizes = null, tier = 'standard') {
 const failure = (code, info = {}) => Object.assign(new Error(code || 'generation_failed'), {
     code: code || 'generation_failed', report_id: info.report_id || null, stage: info.stage || '',
     fitted: info.fitted || null, memory: info.memory || '',
-    other_usage: info.other_usage || null,
+    other_usage: info.other_usage || null, step: info.step || '',
 });
 
 export function createImageGenClient(fetchImpl = globalThis.fetch.bind(globalThis)) {
@@ -74,7 +74,8 @@ export function createImageGenClient(fetchImpl = globalThis.fetch.bind(globalThi
         let response, value;
         try { response = await fetchImpl(path, options); } catch (error) { throw failure(error instanceof TypeError ? 'connection_lost' : 'engine_error', {stage: 'start'}); }
         try { value = await response.json(); } catch { throw failure('engine_error', {stage: 'start'}); }
-        if (!response.ok || value[p.error] && !value[p.phase] && !value.state) throw failure(value[p.error], value);
+        if (!response.ok || value[p.error] && !value[p.phase] && !value.state)
+            throw failure(value[p.error], value[p.error] ? value : {...value, step: `http_${response.status}`});
         return value;
     }
     async function post(action, value, retried = false) {
@@ -346,7 +347,7 @@ export function imageReportBar(card, report_id, t, {productVersion = () => null,
 
 // Shared by the editor and the other image entry points. Only the opaque report
 // ID goes in the request; raw service messages are never shown in the page.
-export function renderImageFailure(host, {error, report_id, stage, fitted, info, memory, other_usage} = {}, t,
+export function renderImageFailure(host, {error, report_id, stage, step, fitted, info, memory, other_usage} = {}, t,
     {productVersion = () => null, fetchApi = globalThis.fetch.bind(globalThis), retry = null, retried = Boolean(retry)} = {}) {
     // `retry` ({label: [en, zh], onClick}) puts the page's Retry first in the card's own action row;
     // `retried` alone says the caller shows a Retry of its own elsewhere.
@@ -372,7 +373,7 @@ export function renderImageFailure(host, {error, report_id, stage, fitted, info,
     let bar;
     if (report_id) ({bar} = imageReportBar(card, report_id, t, {productVersion, fetchApi}));
     else {
-        const facts = [[['Error code', '错误码'], error], [['Stage', '阶段'], stage], [['Memory', '内存'], memory]].filter(([, v]) => v);
+        const facts = [[['Error code', '错误码'], error], [['Stage', '阶段'], stage], [['Step', '步骤'], step], [['Memory', '内存'], memory]].filter(([, v]) => v);
         bar = doc.createElement('div'); bar.className = 'fv-actions';
         bar.append(issueButton(t, () => ({where: ['Image generation', '图像生成'], message: facts.map(([[en, zh], v]) => `${t(en, zh)}: ${v}`).join('\n')})));
         if (again) bar.prepend(again);
@@ -420,7 +421,7 @@ export async function uploadGenerationReference(renderer, client, context, alive
         await renderer.preload(context.doc);
         if (!alive()) throw failure('cancelled');
         const raster = renderer.layerImage(context.doc, context.layer, 1, true);
-        blob = await new Promise((resolve, reject) => raster.toBlob(b => b ? resolve(b) : reject(failure()), 'image/png'));
+        blob = await new Promise((resolve, reject) => raster.toBlob(b => b ? resolve(b) : reject(failure(undefined, {step: 'encode_reference'})), 'image/png'));
     } else blob = (await renderer.export(context.doc, 'image/png')).blob;
     if (!alive()) throw failure('cancelled');
     const file = new File([blob], `freevideo-image-reference-${crypto.randomUUID()}.png`, {type: 'image/png'});
@@ -441,7 +442,7 @@ export async function uploadGenerationMask(renderer, client, context, alive = ()
     let any = false;
     for (let i = 0; i < pixels.length; i += 4) if (pixels[i] >= 128) { any = true; break; }
     if (!any) return null;
-    const blob = await new Promise((resolve, reject) => mask.toBlob(b => b ? resolve(b) : reject(failure()), 'image/png'));
+    const blob = await new Promise((resolve, reject) => mask.toBlob(b => b ? resolve(b) : reject(failure(undefined, {step: 'encode_mask'})), 'image/png'));
     if (!alive()) throw failure('cancelled');
     return client.upload(new File([blob], `freevideo-image-mask-${crypto.randomUUID()}.png`, {type: 'image/png'}));
 }
@@ -462,7 +463,7 @@ export async function segmentAt(renderer, client, doc, layer, point, again = fal
     if (known?.look !== look) {
         await renderer.preload(doc);
         const raster = renderer.layerImage(doc, layer, 1, true);
-        const blob = await new Promise((resolve, reject) => raster.toBlob(b => b ? resolve(b) : reject(failure()), 'image/png'));
+        const blob = await new Promise((resolve, reject) => raster.toBlob(b => b ? resolve(b) : reject(failure(undefined, {step: 'encode_segment'})), 'image/png'));
         // The layer's previous look is not needed any more: its upload goes.
         if (known?.name) { segmentNames.delete(known.name); Promise.resolve().then(() => client.discardUploads?.([known.name])).catch(() => {}); }
         known = {look, name: await client.upload(new File([blob], `freevideo-image-reference-${crypto.randomUUID()}.png`, {type: 'image/png'})), width: raster.width, height: raster.height};
@@ -477,7 +478,7 @@ export async function segmentAt(renderer, client, doc, layer, point, again = fal
         segmentUploads.delete(layer); segmentNames.delete(known.name);
         return segmentAt(renderer, client, doc, layer, point, true);
     }
-    if (typeof value?.mask !== 'string') throw failure();
+    if (typeof value?.mask !== 'string') throw failure(undefined, {step: 'segment_result'});
     const image = await renderer.image(value.mask);
     renderer.images.get(value.mask).value = image;
     return value.mask;
@@ -561,8 +562,8 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
     let state = {info: null, checking: false, running: false, job: null, fraction: 0, remaining: null, stage: '', error: '', report_id: null,
         waiting: '', fitted: null};
     const emit = patch => { state = {...state, ...patch}; if (!disposed) onChange(state); };
-    const failed = error => error.code === 'cancelled' ? {error: '', report_id: null, stage: '', memory: ''}
-        : {error: error.code || 'generation_failed', report_id: error.report_id || null, stage: error.stage || '',
+    const failed = error => error.code === 'cancelled' ? {error: '', report_id: null, stage: '', memory: '', step: ''}
+        : {error: error.code || 'generation_failed', report_id: error.report_id || null, stage: error.stage || '', step: error.step || '',
             memory: error.memory || '', other_usage: error.other_usage || null, ...(error.fitted ? {fitted: error.fitted} : {})};
     const cancelJob = job => Promise.resolve().then(() => client.cancel(job)).catch(() => {});
     const forget = () => { try { store?.clear(); } catch { /* the job is only not resumed after a reload */ } };
@@ -615,7 +616,7 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
             }
             forget(); tasks.placed?.(row);
             if (row.status === 'cancelled') emit({running: false, job: null, stage: '', fraction: 0, waiting: '', stopping: false, error: '', report_id: null, memory: ''});
-            else { const reason = row.failure || {}; emit({running: false, job: null, waiting: '', stopping: false, ...failed({...reason, code: reason.code || 'generation_failed'})}); }
+            else { const reason = row.failure || {}; emit({running: false, job: null, waiting: '', stopping: false, ...failed({...reason, code: reason.code || 'generation_failed', step: reason.step || (reason.code ? '' : 'task_row')})}); }
         }, {id});
         // The row may have ended before subscribe returned.
         if (ended) { off(); off = null; }
@@ -634,7 +635,7 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
                     report_id: row.report_id || state.report_id,
                     fitted: row.fitted || state.fitted});
                 if (row.state === 'done') {
-                    if (!row.file) throw failure();
+                    if (!row.file) throw failure(undefined, {step: 'result_missing'});
                     await apply(row, context, alive);
                     if (alive()) { forget(); emit({running: false, job: null, fraction: 1, stage: '', waiting: ''}); }
                 } else if (row.state === 'error') throw failure(row.error, row);
@@ -660,8 +661,10 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
         emit({running: true, job: null, fraction: 0, stage: request.mode === 'edit' ? 'upload' : '', error: '', report_id: null, memory: '', waiting: '', fitted: null});
         const alive = () => current === epoch && !disposed;
         let sent = [], submitted = false;
+        // Every picture the page sends is noted as it arrives: a stop after one has gone up still removes it.
+        const uploaded = [], sender = {upload: async file => { const name = await client.upload(file); uploaded.push(name); return name; }};
         try {
-            const {context, images = [], mask} = await prepare(request, alive);
+            const {context, images = [], mask} = await prepare(request, alive, sender);
             sent = [...images, ...(mask ? [mask] : [])];
             if (!alive()) return;
             if (state.stage === 'upload') emit({stage: ''});
@@ -686,7 +689,7 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
             }
             const row = await client.generate(request_);
             const {job} = row;
-            if (!job) throw failure(row.error, row);
+            if (!job) throw failure(row.error, row.error ? row : {...row, step: 'submit'});
             submitted = true;
             if (row.fitted) emit({fitted: row.fitted});
             if (!alive()) { await cancelJob(job); return; }
@@ -698,7 +701,8 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
         } finally {
             // Stopped, turned away or failed before the service took the request: its pictures go now (a job removes
             // its own when it ends).
-            if (!submitted && sent.length) Promise.resolve().then(() => client.discardUploads?.(sent)).catch(() => {});
+            const names = [...new Set([...uploaded, ...sent])];
+            if (!submitted && names.length) Promise.resolve().then(() => client.discardUploads?.(names)).catch(() => {});
         }
     }
     // The page was reloaded while a picture was being made: follow the same job and place its result.
@@ -787,7 +791,7 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
         const k = Math.min(1, 2048 / Math.max(image.naturalWidth, image.naturalHeight));
         const canvas = el('canvas'); canvas.width = Math.max(1, Math.round(image.naturalWidth * k)); canvas.height = Math.max(1, Math.round(image.naturalHeight * k));
         canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
-        return new Promise((done, fail) => canvas.toBlob(b => b ? done(b) : fail(failure()), 'image/png'));
+        return new Promise((done, fail) => canvas.toBlob(b => b ? done(b) : fail(failure(undefined, {step: 'encode_editor'})), 'image/png'));
     }
     let store = null;
     try { if (resumeKey != null && globalThis.sessionStorage) store = imageJobStore(resumeKey); } catch { /* no storage */ }
