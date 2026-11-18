@@ -478,3 +478,5 @@ dialog.fv-set .st-search input:focus-visible{outline:none}
   dialog.fv-set .st-dock.l.is-wide .st-dh h2{display:block}
 }
 @media (max-width:719px){dialog.fv-set .st-facts3 dt{flex:none;white-space:nowrap}dialog.fv-set .st-facts3 dd{min-width:0}}
+/* Tablets: the search field takes a finger (buttons and switches already reach 44 through their ::after). */
+@media (pointer:coarse){dialog.fv-set .st-search{height:var(--fv-touch)}}

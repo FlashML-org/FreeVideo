@@ -891,6 +891,15 @@ html body .fv-studio.fv-create .fvs-console :is(.fvs-console-prompt,.fv-section,
 .fv-key-menu>button[aria-pressed=true]::before{content:'✓';margin-right:var(--fv-sp-8)}
 .fv-key-menu>button[aria-pressed=false]::before{content:'';display:inline-block;width:1em;margin-right:var(--fv-sp-8)}
 @media(max-width:760px){.fv-studio.fv-create .fvs-console .fv-key-more{height:var(--fv-touch)}}
+/* Tablets: the duration stepper and the menu beside Generate take a finger too (phones are covered above). */
+@media(pointer:coarse){
+  .fv-studio.fv-create :is(.fvs-step,.fvs-step-value){min-height:var(--fv-touch);height:var(--fv-touch)}
+  /* − and + keep their drawn width so the row wraps as with a mouse; the tap area reaches 44 */
+  .fv-studio.fv-create .fvs-step{position:relative}
+  .fv-studio.fv-create .fvs-step::after{content:"";position:absolute;top:0;bottom:0;left:calc(50% - var(--fv-touch) / 2);right:calc(50% - var(--fv-touch) / 2)}
+  .fv-studio.fv-create .fvs-stepper{height:var(--fv-touch)}
+  .fv-studio.fv-create .fvs-console .fv-key-more{width:var(--fv-touch)}
+  .fv-studio.fv-create .fvs-console .fv-runrow:has(>.fv-key-more:not([hidden]))>.fv-primary{padding-right:calc(var(--fv-touch) + var(--fv-sp-4))}}
 @media(min-width:761px){
   .fv-studio.fv-create .fvs-console .fv-runrow.fv-at-moved>.fv-key-more{height:calc(2 * var(--fvs-row) + var(--fv-sp-8))}
   .fv-studio.fv-create .fvs-console .fv-runrow.fv-at-moved>.fv-key-more>summary{border-radius:0 var(--fv-rad-ctl) var(--fv-rad-ctl) 0}

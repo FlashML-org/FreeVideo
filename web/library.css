@@ -622,3 +622,13 @@ dialog.fv-library .fv-library-picture>img[data-loaded=true]{opacity:1}
 
 /* A card is its picture and one line, its name. */
 .fv-library .fv-library-card>small{display:none}
+
+/* Tablets: every target takes a finger. */
+@media(pointer:coarse){
+  .fv-library .fv-library-tab{height:var(--fv-touch)}
+  .fv-library .fv-library-place{height:var(--fv-touch);min-height:var(--fv-touch)}
+  .fv-library-search{height:var(--fv-touch)}
+  .fv-library .fv-library-tool{height:var(--fv-touch);min-height:var(--fv-touch)}
+  .fv-library .fv-library-dense-button{width:var(--fv-touch)}}
+@media(pointer:coarse) and (min-width:681px) and (max-width:1180px){.fv-library .fv-library-place{width:var(--fv-touch)}}
+@media(pointer:coarse) and (max-width:1180px){.fv-library :is(.fv-library-sort-button,.fv-library-filter-button){width:var(--fv-touch)}}

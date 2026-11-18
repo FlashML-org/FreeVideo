@@ -304,7 +304,13 @@ html body .fv-topbar.fv-topbar.fv-topbar.fv-tb-hinting>.fv-tb-right>:not(.fv-tb-
 /* A finger needs 44 px */
 @media(pointer:coarse){
   html body .fv-topbar.fv-topbar.fv-topbar :is(.fv-tb-link,.fv-tb-btn,.fv-tb-cap){height:var(--fv-touch);min-height:var(--fv-touch)}
-  html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-btn{width:var(--fv-touch)}}
+  html body .fv-topbar.fv-topbar.fv-topbar .fv-tb-btn{width:var(--fv-touch)}
+  html body .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch{height:calc(var(--fv-touch) + var(--fv-sp-8))}
+  html body .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch>button{height:var(--fv-touch);min-height:var(--fv-touch);line-height:var(--fv-touch)}
+  /* the icon links keep their drawn width, so the bar folds as with a mouse; only the tap area grows to 44 */
+  html body .fv-topbar.fv-topbar.fv-topbar:is([data-fv-fit="1"],[data-fv-fit="2"]) .fv-tb-link::after{content:"";position:absolute;top:0;bottom:0;left:calc(50% - var(--fv-touch) / 2);right:calc(50% - var(--fv-touch) / 2)}
+  /* the last one stops at the bar's edge, so the fit check measures the same width as with a mouse */
+  html body .fv-topbar.fv-topbar.fv-topbar:is([data-fv-fit="1"],[data-fv-fit="2"]) .fv-tb-links>.fv-tb-link:last-child::after{right:0}}
 @media(prefers-reduced-motion:reduce){
   html body .fv-topbar.fv-topbar.fv-topbar *,html body .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch::before{transition:none!important}
   html body .fv-topbar.fv-topbar.fv-topbar :is(button,.fv-lan-trigger):active{scale:none}}
