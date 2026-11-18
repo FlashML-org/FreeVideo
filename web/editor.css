@@ -498,7 +498,7 @@
  .fv-editor .fv-ed-drawer-toggle{height:44px;min-height:44px}
  .fv-ed-toolbar{height:48px}
  .fv-editor .fv-ed-toolbar>.fv-ed-tool-group button,.fv-editor .fv-ed-toolbar>.fv-ed-more{width:44px;min-width:44px;height:44px;min-height:44px}
- .fv-editor .fv-ed-genbar .fv-ed-generate{height:44px;min-height:44px}
+ .fv-editor .fv-ed-genbar>button,.fv-editor .fv-ed-genbar .fv-ed-generate{height:44px;min-height:44px}
  .fv-ed-genbar .fv-ed-description-box .fv-ed-description{min-height:44px}
  .fv-studio .fv-ed-genbar .fv-ed-duration input[type=number]{height:44px;min-height:44px}
  .fv-editor .fv-ed-genbar :is(.fv-ed-ref-add,.fv-ed-pass-options>summary){width:44px;height:44px;min-height:44px}
