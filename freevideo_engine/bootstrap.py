@@ -576,15 +576,37 @@ def prepare_end(ui, success=True):
             ui.end(PREPARE_KEY, success=success)
 
 
+def read_state(path, warnings=None):
+    """The JSON record in an installation state file, or {} when there is none that can be used.
+
+    A file that is empty, cut short or not JSON (a power loss can leave a zero-filled one) is
+    ignored and named in ``warnings``, so one damaged record no longer ends every check; setup
+    keeps the former machine.json as machine.before.json. A file that cannot be read at all
+    (permissions, a locked disk) still raises, with its path in the error."""
+    path = Path(path)
+    if not path.is_file():
+        return {}
+    try:
+        value = json.loads(path.read_text(encoding='utf-8'))
+        if not isinstance(value, dict):
+            raise ValueError('not a JSON object')
+    except ValueError as error:
+        if warnings is not None:
+            warnings.append('%s in the installation folder could not be read (%s), so its saved settings were not used.'
+                            % (path.name, str(error)[:80]))
+        return {}
+    return value
+
+
 def plan(args, *, local_progress=None, stage=None):
     root = args.root.expanduser().resolve()
     warnings = []
-    saved = json.loads((root / 'machine.json').read_text(encoding='utf-8')) if (root / 'machine.json').is_file() else {}
+    saved = read_state(root / 'machine.json', warnings)
     storage = getattr(args, 'storage', None) or saved.get('storage', 'compact')
     layout = select_layout(getattr(args, 'environment', None), saved)
     # v0.2.0 stored the encoder directory only in its retained setup plan.
     prior_path = Path(saved['setup_run']) / 'plan.json' if saved.get('setup_run') else None
-    prior = json.loads(prior_path.read_text(encoding='utf-8')) if prior_path and prior_path.is_file() else {}
+    prior = read_state(prior_path, warnings) if prior_path else {}
     # Hardware detection is the default for fresh installs, updates and retries.
     # Saved benchmark caps must never silently follow a user onto a larger GPU.
     keep_limits = getattr(args, 'keep_resource_limits', False)
@@ -669,7 +691,8 @@ def plan(args, *, local_progress=None, stage=None):
         for name in ('machine.json', 'prepared-cache.json'):
             cache_record = root / name
             if cache_record.is_file():
-                record = json.loads(cache_record.read_text(encoding='utf-8'))
+                # machine.json was reported above when it was damaged; do not repeat it here.
+                record = read_state(cache_record, warnings if name != 'machine.json' else None)
                 candidate = record.get('cache')
                 if record.get('model_revision') == revision and candidate and cache_compatible(candidate, **cache_format):
                     if own and Path(candidate).resolve() == Path(own['cache']).resolve():
@@ -1354,12 +1377,12 @@ class Installer:
         self.runtime_fd = self.locks.enter_context(runtime_lock(lock_path, wait_seconds=3))
         self.run_dir = self.root / 'setup-runs' / (time.strftime('%Y%m%dT%H%M%SZ', time.gmtime()) + '-' + str(os.getpid()))
         self.run_dir.mkdir(parents=True, exist_ok=False)
-        save(self.run_dir / 'plan.json', value)
+        save(self.run_dir / 'plan.json', value, durable=True)
         previous = self.root / 'machine.json'
         saved = {}
         if previous.is_file():
             shutil.copyfile(previous, self.run_dir / 'machine.before.json')
-            saved = json.loads(previous.read_text(encoding='utf-8'))
+            saved = read_state(previous)
         self.saved = saved
         # Changed PyTorch files (runtime_libraries) stop torch from importing,
         # so no GPU check can pass until the torch step below reinstalls them.
@@ -1434,7 +1457,7 @@ class Installer:
             encoder_model_root=value.get('encoder_dir', saved.get('encoder_model_root')),
             wheel_cache=value.get('wheel_cache', saved.get('wheel_cache')),
             vram_gib=value.get('vram_gib', saved.get('vram_gib')),
-            ram_gib=value.get('ram_gib', saved.get('ram_gib'))))
+            ram_gib=value.get('ram_gib', saved.get('ram_gib'))), durable=True)
 
     def device_environment(self, env):
         from .triton_compat import environment
@@ -2458,7 +2481,7 @@ class Installer:
         self.monitor_thread.join(timeout=5)
         if self.monitor_thread.is_alive() or self.cancel.is_set():
             raise RuntimeError(self.state.get('resource_guard', 'Installation monitoring did not stop cleanly.'))
-        save(self.root / 'machine.json', configuration)
+        save(self.root / 'machine.json', configuration, durable=True)
         self.ui.phase('Setup complete', total, total)
         return configuration
 
