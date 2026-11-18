@@ -131,7 +131,8 @@
 }
 :is(.fv-note-row:hover, .fv-note-row:focus-within) .fv-note-x, .fv-note-x:focus-visible { opacity: 1; }
 .fv-note-x:hover { background: var(--fv-ctl-hover, rgb(255 255 255 / .11)); color: var(--fv-fg, #f3f5f8); }
-@media (hover: none) { .fv-note-x { opacity: 1; } }
+/* Touch: the key is always shown and presses across 40 px around its 24 px face. */
+@media (hover: none) { .fv-note-x { opacity: 1; position: relative; } .fv-note-x::after { content: ""; position: absolute; inset: -8px; } }
 .fv-notes-clear { width: auto !important; padding: 0 var(--fv-sp-8, 8px) !important; border-radius: var(--fv-rad-sm, 8px) !important; font: 500 var(--fv-fs-1, 12px)/1 var(--fv-font, system-ui, sans-serif); white-space: nowrap; }
 @media (prefers-reduced-motion: reduce) { .fv-note-x { transition: none; } }
 .fv-notes-none { padding: var(--fv-sp-12, 12px) var(--fv-sp-8, 8px); text-align: center; font-size: var(--fv-fs-1, 12px); color: var(--fv-fg3, #99a1ae); }

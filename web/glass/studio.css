@@ -488,6 +488,7 @@
 .fvs-library-text.fvs-library-name{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
 .fv-studio.fv-create .fvs-library-remove{opacity:0;margin-right:var(--fv-sp-4)}
 .fvs-library-row:hover .fvs-library-remove,.fv-studio.fv-create .fvs-library-remove:focus-visible{opacity:1}
+@media(hover:none){.fv-studio.fv-create .fvs-library-remove{opacity:1}}
 .fvs-library-empty{margin:var(--fv-sp-16);color:var(--fv-fg3);font-size:var(--fv-fs-2);text-align:center}
 .fvs-library-foot:empty{display:none}
 .fvs-library-foot{padding:var(--fv-sp-8) var(--fv-sp-12) var(--fv-sp-12);border-top:1px solid var(--fv-line)}
@@ -803,6 +804,7 @@ html body .fv-studio.fv-create .fvs-stepper .fvs-step-input.fvs-step-input:is(:f
   border:1.5px solid #fff;border-radius:var(--fv-r-pill);background:rgb(0 0 0 / .4);color:#fff;font-size:var(--fv-fs-1);font-weight:600;line-height:1;opacity:0;
   transition:opacity var(--fv-dur-1) var(--fv-ease-out);cursor:pointer}
 .fv-studio.fv-create .fvs-rail :is(.fv-recent-card:hover,.fv-recent-card:focus-visible) .fv-recent-check,.fv-studio.fv-create .fvs-rail[data-picking=true] .fv-recent-check{opacity:1}
+@media(hover:none){.fv-studio.fv-create .fvs-rail .fv-recent-card>span.fv-recent-check{opacity:1}}
 .fv-studio.fv-create .fvs-rail .fv-recent-card[data-picked] .fv-recent-check{border-color:var(--fv-accent-fill);background:var(--fv-accent-fill)}
 .fv-studio.fv-create .fvs-rail .fv-recent-card[data-picked="1"] .fv-recent-check::after{content:"1"}
 .fv-studio.fv-create .fvs-rail .fv-recent-card[data-picked="2"] .fv-recent-check::after{content:"2"}

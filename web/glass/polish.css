@@ -178,6 +178,7 @@ html:not([data-fv-polish="off"]) .fv-notes-list .fv-note-row:is(:hover,:focus-wi
 /* A notice's own close key: 24 px, shown when the row is pointed at or holds the focus. */
 html:not([data-fv-polish="off"]) .fv-note-x{display:grid;place-items:center;flex:none;width:24px;height:24px;min-height:0;margin:0;padding:0;border:0;border-radius:var(--fv-r-sm);background:none;box-shadow:none;color:var(--fv-fg3);opacity:0;cursor:pointer}
 html:not([data-fv-polish="off"]) :is(:is(.fv-note,.fv-note-row):is(:hover,:focus-within) .fv-note-x,.fv-note-x:focus-visible){opacity:1}
+@media(hover:none){html:not([data-fv-polish="off"]) .fv-note-x{opacity:1}}
 html:not([data-fv-polish="off"]) .fv-note-x:hover{background:var(--fv-ctl-hover);color:var(--fv-fg)}
 /* The computer's figures: one size; the number is the heavier part. */
 html:not([data-fv-polish="off"]) .fv-tb-pop .fv-tb-mem-v{font-size:var(--fv-fs-2);line-height:18px}

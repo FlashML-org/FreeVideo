@@ -64,13 +64,14 @@
 .fvs-tray .fv-mt .fv-card[data-fv-mt-wide=true]>.fv-mt-held-note{right:calc(66.6% + var(--fv-sp-4))}
 /* Audio has no picture: its use along the top, the player under it, both across the tile. */
 .fvs-tray .fv-mt .fv-card[data-kind=audio]{display:flex!important;flex-direction:column;gap:var(--fv-sp-4);padding:var(--fv-sp-4) var(--fv-sp-8) var(--fv-sp-8)!important}
-.fvs-tray .fv-mt .fv-card[data-kind=audio]>.fv-row:first-of-type{padding:0}
+.fvs-tray .fv-mt .fv-card[data-kind=audio]>.fv-row:first-of-type{padding:0 24px 0 0}
 .fvs-tray .fv-mt .fv-card[data-kind=audio]>audio.fv-preview{width:100%!important;margin:0!important}
 .fvs-tray .fv-mt .fv-card[data-kind=audio]>.fv-mt-held-note{position:static;translate:none;align-self:flex-start}
 /* Remove (and crop, for a frame of another shape): small keys on the picture's top corners, shown when the tile is
    pointed at or holds the focus; the crop key always, since it says the frame will be cropped. */
 .fvs-tray .fv-mt .fv-card>.fv-mt-keys{position:absolute;top:var(--fv-sp-4);right:var(--fv-sp-4);z-index:2;display:flex;gap:var(--fv-sp-4);pointer-events:none;opacity:0;transition:opacity .16s ease-out}
 .fvs-tray .fv-mt .fv-card:is(:hover,:focus-within)>.fv-mt-keys{opacity:1}
+@media(hover:none){.fvs-tray .fv-mt .fv-card>.fv-mt-keys{opacity:1}}
 .fvs-tray .fv-mt .fv-card>.fv-mt-keys>button,.fvs-tray .fv-mt .fv-card .fv-shape-note>button{pointer-events:auto;flex:none;display:flex!important;align-items:center;justify-content:center;gap:0!important;width:24px!important;height:24px!important;min-height:24px!important;padding:0!important;border:0!important;border-radius:var(--fv-r-xs)!important;background:var(--fv-on-pic)!important;color:var(--fv-on-fill)!important;font-size:0!important;line-height:0}
 .fvs-tray .fv-mt .fv-card>.fv-mt-keys>button::after,.fvs-tray .fv-mt .fv-card .fv-shape-note>button::after{content:"";position:absolute;inset:-4px}
 .fvs-tray .fv-mt .fv-card>.fv-mt-keys>button,.fvs-tray .fv-mt .fv-card .fv-shape-note>button{position:relative}
@@ -78,7 +79,7 @@
 .fvs-tray .fv-mt .fv-card>.fv-mt-keys>button:disabled{opacity:.4}
 .fvs-tray .fv-mt .fv-card>.fv-mt-keys>button::before,.fvs-tray .fv-mt .fv-card .fv-shape-note>button::before{content:"";width:14px;height:14px;background:currentColor;-webkit-mask:var(--fv-mt-icon) center/14px no-repeat;mask:var(--fv-mt-icon) center/14px no-repeat}
 .fvs-tray .fv-mt .fv-mt-remove{--fv-mt-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='m4.5 4.5 7 7m0-7-7 7'/%3E%3C/svg%3E")}
-.fvs-tray .fv-mt .fv-card>.fv-mt-keys>:is(.fv-mt-up,.fv-mt-down){display:none}
+.fvs-tray .fv-mt .fv-card>.fv-mt-keys>:is(.fv-mt-up,.fv-mt-down){display:none!important}
 .fvs-tray .fv-mt .fv-card.fv-mt-crop>.fv-mt-keys{right:calc(var(--fv-sp-8) + 24px)}
 .fvs-tray .fv-mt .fv-card .fv-shape-note{position:absolute;top:var(--fv-sp-4);right:var(--fv-sp-4);left:auto;z-index:2;display:block;margin:0!important;padding:0;border:0;background:none}
 .fvs-tray .fv-mt .fv-card .fv-shape-note>span{display:none}

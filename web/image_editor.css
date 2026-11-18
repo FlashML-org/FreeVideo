@@ -99,8 +99,9 @@ button.fv-ie-size:hover{background:var(--fv-hover);color:var(--fv-ink)}
 .fv-ie-gen-ref{position:relative;flex:none;width:28px;height:28px}
 .fv-ie-gen-ref>canvas,.fv-ie-gen-ref>img{display:block;width:28px;height:28px;border-radius:var(--fv-r-sm);object-fit:cover;background:var(--fv-raised)}
 .fv-ie-gen-ref>b{position:absolute;top:-4px;left:-4px;min-width:14px;height:14px;padding:0 3px;border-radius:var(--fv-r-sm);background:var(--fv-ink);color:var(--fv-card);font-size:10px;font-weight:var(--fv-semibold);line-height:14px;text-align:center;font-variant-numeric:tabular-nums}
-.fv-ie-gen-ref-remove{position:absolute;top:-5px;right:-5px;width:16px;height:16px;padding:0;border:0;border-radius:var(--fv-r-sm);background:var(--fv-ink);color:var(--fv-card);font-size:12px;line-height:16px;opacity:0;cursor:pointer}
+.fv-ie-gen-ref>.fv-ie-gen-ref-remove{position:absolute;top:-5px;right:-5px;width:16px;height:16px;padding:0;border:0;border-radius:var(--fv-r-sm);background:var(--fv-ink);color:var(--fv-card);font-size:12px;line-height:16px;opacity:0;cursor:pointer}
 .fv-ie-gen-ref:hover>.fv-ie-gen-ref-remove:not(:disabled),.fv-ie-gen-ref-remove:focus-visible{opacity:1}
+@media(hover:none){.fv-ie-gen-ref-remove:not(:disabled){opacity:1}}
 .fv-ie-gen-ref-add summary{width:28px;height:28px;border:1px dashed var(--fv-border);border-radius:var(--fv-r-sm)}
 .fv-ie-gen-ref-add summary[aria-disabled=true]{opacity:.4;cursor:default;pointer-events:none}
 .fv-ie-gen-ref-add .fv-ie-menu-list{top:calc(100% + 6px);right:auto;bottom:auto;left:0}

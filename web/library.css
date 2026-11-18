@@ -223,6 +223,7 @@ dialog.fv-studio.fv-library::backdrop{background:var(--lib-page)}
 .fv-library .fv-library-enlarge{position:absolute;top:var(--fv-sp-8,8px);right:var(--fv-sp-8,8px);display:grid;place-items:center;width:var(--fv-ctl,32px);height:var(--fv-ctl,32px);min-height:var(--fv-ctl,32px);padding:0;border:0;border-radius:var(--fv-r-sm);
   background:rgb(0 0 0 / .5);color:#fff;opacity:0;transition:opacity var(--fv-dur-1,160ms) var(--fv-ease-out);box-shadow:none}
 .fv-library-media:hover .fv-library-enlarge,.fv-library .fv-library-enlarge:focus-visible{opacity:1}
+@media(hover:none){.fv-library .fv-library-enlarge{opacity:1}}
 .fv-library .fv-library-media .fv-preview-badge{top:var(--fv-sp-8,8px);left:var(--fv-sp-8,8px)}
 .fv-library-caption{display:flex;flex-direction:column;align-items:flex-start;gap:var(--fv-sp-4,4px);font-size:var(--fv-fs-1,12px);color:var(--fv-fg3)}
 .fv-library-caption strong{font-size:var(--fv-fs-3,16px);font-weight:600;color:var(--fv-fg)}

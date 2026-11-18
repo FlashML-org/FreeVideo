@@ -248,6 +248,7 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
 .fv-iv .fv-iv-li-s{display:block;font-size:var(--fv-fs-1,12px);line-height:16px;color:var(--fv-fg3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:left}
 .fv-iv .fv-iv-li-end{display:flex;opacity:0;transition:opacity var(--fv-dur-1,160ms);padding-right:4px}
 .fv-iv .fv-iv-li:hover .fv-iv-li-end,.fv-iv .fv-iv-li:focus-within .fv-iv-li-end{opacity:1}
+@media(hover:none){.fv-iv .fv-iv-li-end{opacity:1}}
 .fv-iv .fv-iv-li-end .fv-iv-icon-btn{width:28px;height:28px;color:var(--fv-fg3)}
 .fv-iv .fv-iv-pin[aria-pressed=true]{background:transparent;color:#e9b43a!important}
 .fv-iv .fv-iv-pin[aria-pressed=true] .fv-iv-icon{fill:currentColor}
@@ -399,6 +400,7 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
 .fv-iv .fv-iv-cx{position:absolute;right:8px;top:8px;width:28px;height:28px;border-radius:var(--fv-r-pill);color:#fff;background:rgb(0 0 0 / .45);opacity:0}
 .fv-iv .fv-iv-cx:hover{color:#fff;background:rgb(0 0 0 / .65)}
 .fv-iv .fv-iv-cpane:hover .fv-iv-cx,.fv-iv .fv-iv-cx:focus-visible{opacity:1}
+@media(hover:none){.fv-iv .fv-iv-cx{opacity:1}}
 .fv-iv .fv-iv-cslider .fv-iv-cframe{cursor:ew-resize;touch-action:none}
 .fv-iv .fv-iv-cs-b{clip-path:inset(0 0 0 var(--cut,50%))}
 .fv-iv .fv-iv-cs-handle{position:absolute;top:0;bottom:0;left:var(--cut,50%);width:2px;margin-left:-1px;background:#fff;box-shadow:0 0 0 1px rgb(0 0 0 / .25);outline:none}
