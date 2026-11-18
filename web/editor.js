@@ -1830,7 +1830,9 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 if (!bar) return;
                 const selection = state.selection, clips = selection?.kind === 'clip' ? selection.ids.map(id => model.find(state.record, id)).filter(Boolean) : [];
                 const edit = capability.generationSize || generationSize(state.record), again = clips.some(clip => clip.source);
-                const continuing = !again && clips.length > 0 && model.generationBefore(state.record, clips.map(clip => clip.id)).some(Boolean);
+                // Parts that cannot be generated together (apart on the timeline) continue nothing: the bar shows their span unlocked.
+                const continuing = !again && clips.length > 0 && (() => { try { return model.generationBefore(state.record, clips.map(clip => clip.id)).some(Boolean); }
+                    catch (value) { if (value instanceof model.EditError) return false; throw value; } })();
                 const range = selectionRange(), length = range ? range.frames / model.FPS : null; // the span, not a sum: a part's picture and sound are two linked clips over the same frames
                 echo = true;
                 if (clips.length) lent = true;
