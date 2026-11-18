@@ -783,12 +783,12 @@ export function createErrorPanel(t, route = null) {
         // Every card says what happened and what to do next: a cause that could not be named says so and points at
         // the original error, and a card without advice ends with the way to try again or send the report.
         if (generated && advice.kind === 'unknown' && !explanation.textContent) {
-            explanation.textContent = t('The cause could not be identified automatically; the original error is under Technical details.', '没能自动判断原因，原始错误在“技术详情”里。');
+            explanation.textContent = t('The cause could not be identified automatically. The original error is in Technical details.', '未能自动识别原因，原始错误见“技术详情”。');
             explanation.hidden = false;
         }
         if (generated && !action.textContent) {
-            action.textContent = github.hidden ? t('Try again. If it fails again, export the report and send it to us.', '请重试。如果仍然失败，请导出报告发给我们。')
-                : t('Try again. If it fails again, choose "Report a problem" to send us the report.', '请重试。如果仍然失败，点“提交问题”把报告发给我们。');
+            action.textContent = github.hidden ? t('Try again. If it still fails, export the report and send it to us.', '请重试。仍然失败时，请导出报告并发给我们。')
+                : t('Try again. If it still fails, choose "Report a problem" to send us the report.', '请重试。仍然失败时，请点击“提交问题”发送报告。');
             action.hidden = false;
         }
         if (generated && typeof window !== 'undefined') loadIssueModules();
