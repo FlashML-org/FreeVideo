@@ -1489,6 +1489,43 @@ def folder_sizes(output_directory, identities):
     return sizes
 
 
+def video_folder(output_directory, identity=None):
+    """The folder holding the saved videos, or one saved video's own folder when `identity` names it."""
+    root = Path(output_directory).resolve() / 'FreeVideo'
+    if identity is None:
+        folder = root
+    else:
+        if not isinstance(identity, str) or not _ID.fullmatch(identity):
+            raise ValueError('Invalid video identity')
+        folder = root / identity
+        if folder.is_symlink() or is_junction(folder):
+            raise ValueError('Invalid video identity')
+    if not folder.is_dir():
+        if identity is None and Path(output_directory).is_dir():
+            return Path(output_directory).resolve()  # nothing generated yet: show where videos will be saved
+        raise FileNotFoundError(str(folder))
+    return folder
+
+
+def show_folder(folder):
+    """Show a folder in this computer's file manager; False when that cannot be done."""
+    if windows():
+        failure = []
+
+        def show():
+            try:
+                os.startfile(str(folder))
+            except OSError as error:
+                failure.append(error)
+        # The shell can block for good without a desktop session (SSH, service); never wait on it here.
+        thread = threading.Thread(target=show, name='library-open-folder', daemon=True)
+        thread.start()
+        thread.join(2)
+        return thread.is_alive() is False and not failure
+    from .windows_ux import open_folder
+    return open_folder(folder)
+
+
 def register():
     from aiohttp import web
     import folder_paths
@@ -1701,6 +1738,24 @@ def register():
         if request.headers.get('If-None-Match') == tag:
             return web.Response(status=304, headers=headers)
         return web.Response(body=data, content_type='image/webp', headers=headers)
+
+    @server.routes.post('/freevideo/library/open-folder')
+    async def open_folder(request):
+        # It opens a window on the computer running FreeVideo, so only that computer may ask.
+        # The custom header keeps other websites from posting to it without the browser's pre-check.
+        if request.remote not in ('127.0.0.1', '::1') or request.headers.get('X-FreeVideo-Library') != '1':
+            raise web.HTTPForbidden(text='Open the folder on the computer that runs FreeVideo')
+        try:
+            body = await request.json()
+            identity = body.get('id') if isinstance(body, dict) else None
+            folder = await asyncio.to_thread(video_folder, folder_paths.get_output_directory(), identity)
+        except (ValueError, TypeError) as error:
+            raise web.HTTPBadRequest(text=str(error)) from error
+        except OSError:
+            raise web.HTTPNotFound(text='Saved video unavailable') from None
+        opened = await asyncio.to_thread(show_folder, folder)
+        return web.json_response(dict(opened=True) if opened else dict(opened=False, folder=str(folder)),
+                                 headers={'Cache-Control': 'no-store'})
 
     @server.routes.post('/freevideo/library/delete')
     async def delete(request):

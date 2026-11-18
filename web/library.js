@@ -197,6 +197,20 @@ async function askUndoState(path, body) {
         return (await response.json()).batches || {};
     } catch { return null; }
 }
+// Shows the saved videos (or one video's folder) in this computer's file manager; the page says where they are when that fails.
+async function openVideoFolder(id) {
+    try {
+        const response = await api.fetchApi('/freevideo/library/open-folder', {method: 'POST', headers: {...jsonHeaders, 'X-FreeVideo-Library': '1'}, body: JSON.stringify(id ? {id} : {}), signal: AbortSignal.timeout(5000)});
+        if (response.status === 404) return {missing: true};
+        if (!response.ok) return null;
+        return await response.json();
+    } catch { return null; }
+}
+const videoFolderMessage = (t, answer, single = false) => !answer
+    ? t('Could not open the folder. Open it on the computer that runs FreeVideo.', '没能打开文件夹。请在运行 FreeVideo 的电脑上打开。')
+    : answer.missing ? t('The video file cannot be found. If you moved the file, refresh the page.', '找不到这条视频的文件。如果移动过文件，请刷新页面。')
+    : answer.opened === false && answer.folder
+        ? t(`Could not open the folder. ${single ? 'This video is' : 'The videos are'} in ${answer.folder}`, `没能打开文件夹。视频在 ${answer.folder}`) : '';
 // Keeps earlier batches of one click undoable while its next request runs, then gives them the normal time again.
 async function holdBatches(tokens, running) {
     const states = await askUndoState('/freevideo/library/hold', {batches: tokens, running});
@@ -494,7 +508,13 @@ export function openLibrary(t, options = {}) {
     }, 'fv-library-place fv-library-open-folder');
     openFolder.append(line('folder'), el('span', t('Picture folder', '图片文件夹'), 'fv-library-place-name'));
     tip(openFolder, t('Picture folder', '图片文件夹'), t('Show the pictures in the file manager', '在文件管理器里打开图片所在文件夹'));
-    bottom.append(placeTrash, openFolder);
+    const openVideoFolderButton = button('', async () => {
+        const answer = await openVideoFolder(); const text = videoFolderMessage(t, answer);
+        if (text) say(text, !answer || answer.missing, answer?.folder ? 20000 : 4000);  // a path stays long enough to be copied
+    }, 'fv-library-place fv-library-open-folder fv-library-open-video-folder');
+    openVideoFolderButton.append(line('folder'), el('span', t('Video folder', '视频文件夹'), 'fv-library-place-name'));
+    tip(openVideoFolderButton, t('Video folder', '视频文件夹'), t('Show the videos in the file manager', '在文件管理器里打开视频所在文件夹'));
+    bottom.append(placeTrash, openVideoFolderButton, openFolder);
 
     // --- The shelf: tool row, day groups, the dock for undo and the selection ---
     const collection = el('section', null, 'fv-library-collection'); collection.setAttribute('aria-label', t('Saved creations', '已保存的作品'));
@@ -1421,8 +1441,12 @@ export function openLibrary(t, options = {}) {
                 run: async () => { try { await navigator.clipboard.writeText(promptOf); say(t('Prompt copied.', '已复制提示词。')); } catch { say(t('Could not copy.', '没能复制。'), true); } }});
         }
         if (one) items.push({id: 'folder', icon: 'folder', label: ['Show in folder', '在文件夹中显示'],
-            disabled: one.kind === 'image' ? '' : ['Use Copy path in the details to find the video file', '可用详情里的“复制路径”找到视频文件'],
             run: async () => {
+                if (one.kind !== 'image') {
+                    const answer = await openVideoFolder(one.id); const text = videoFolderMessage(t, answer, true);
+                    if (text) say(text, !answer || answer.missing, answer?.folder ? 20000 : 4000);
+                    return;
+                }
                 try { const answer = await (await pictures()).historyOpen(); if (answer && answer.opened === false && answer.folder) say(t(`The pictures are in ${answer.folder}`, `图片在 ${answer.folder}`)); }
                 catch { say(t('Could not open the folder.', '没能打开文件夹。'), true); }
             }});
@@ -1629,10 +1653,10 @@ export function openLibrary(t, options = {}) {
     let undoNote = null, undoFailure = '';
     // A short line in the dock (a favorite saved for many, a folder that could not open).
     let sayTimer = 0;
-    function say(text, warn = false) {
+    function say(text, warn = false, hold = 4000) {
         clearTimeout(sayTimer);
         undoNote = text; undoBar.dataset.warn = String(warn); showUndo();
-        sayTimer = setTimeout(() => { if (undoNote === text) { undoNote = null; showUndo(); } }, 4000);
+        sayTimer = setTimeout(() => { if (undoNote === text) { undoNote = null; showUndo(); } }, hold);
     }
     // Shows what can still be undone: every batch deleted within the undo time, from any
     // dialog, tab or page load, and the pictures this page holds. Without any, only the notes remain.

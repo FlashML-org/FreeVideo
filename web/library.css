@@ -172,10 +172,10 @@ dialog.fv-studio.fv-library::backdrop{background:var(--lib-page)}
 .fv-library .fv-library-selection-actions .fv-library-danger,.fv-library .fv-library-danger{background:#c8353a;color:#fff;font-weight:600;padding:0 var(--fv-sp-16,16px)}
 .fv-library .fv-library-selection-actions .fv-library-danger:hover:not(:disabled){background:#d4434a;color:#fff}
 .fv-library .fv-library-undo{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:var(--fv-sp-4,4px) var(--fv-sp-12,12px);margin:0;min-height:40px;padding:var(--fv-sp-4,4px) var(--fv-sp-8,8px) var(--fv-sp-4,4px) var(--fv-sp-16,16px);
-  border-radius:var(--fv-r-pill);font-size:var(--fv-fs-2,13px);color:var(--fv-fg)}
+  border-radius:var(--fv-r-pill);font-size:var(--fv-fs-2,13px);color:var(--fv-fg);max-width:100%;box-sizing:border-box}
 .fv-library .fv-library-undo[data-warn=true]{color:var(--fv-warn)}
 .fv-library .fv-library-undo button{height:var(--fv-ctl,32px);min-height:var(--fv-ctl,32px);padding:0 var(--fv-sp-12,12px);border:0;border-radius:var(--fv-r-sm);background:var(--fv-accent-soft);color:var(--fv-accent-ink);font-size:var(--fv-fs-2,13px);font-weight:600}
-.fv-library .fv-library-skipped{font-size:var(--fv-fs-1,12px);color:var(--fv-fg3)}
+.fv-library .fv-library-skipped{font-size:var(--fv-fs-1,12px);color:var(--fv-fg3);min-width:0;overflow-wrap:anywhere}
 .fv-library-ring{--fv-left:1;width:16px;height:16px;border-radius:var(--fv-r-pill);background:conic-gradient(var(--fv-accent-ink) calc(var(--fv-left) * 360deg),var(--fv-line2) 0);
   -webkit-mask:radial-gradient(circle,transparent 4.5px,#000 5px);mask:radial-gradient(circle,transparent 4.5px,#000 5px);animation:fv-library-ring var(--fv-ms,10000ms) linear forwards}
 @property --fv-left{syntax:'<number>';inherits:false;initial-value:1}
