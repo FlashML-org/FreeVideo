@@ -11,7 +11,7 @@
       "Second pass from the library: Run second pass is available from the card menu and the detail view and continues a preview result with the same settings.",
       "Improved mannequin poses: the 3D mannequin in the image editor poses more naturally, with thicker line art and prompts that describe the pose in plain language.",
       "Panning zoomed pictures: a zoomed picture can be dragged in any direction and stops at its edges.",
-      "More creation options: a 21:9 frame preset and other shapes, five size steps for quick preview (0.5M–2M), and multi-line prompts that create one work per line.",
+      "More creation options: a 21:9 frame preset and other shapes, five size steps for quick preview (0.5M-2M), and multi-line prompts that create one work per line.",
       "Compatibility view: solid panels, fewer animations and no autoplay, with a one-time notice when the interface runs slowly.",
       "Failures state the cause and the next step: an unexpectedly ended generation process, an editor save error, a failed second pass and a length the device cannot produce each state the cause and the next step.",
       "Fixes: a first part shown on its own is kept after a long video is joined to it; on a Mac the picture view uses only the models available on that computer and states clearly when the model list cannot be fetched or is being verified; the launcher no longer stops responding when the update window is very narrow.",
