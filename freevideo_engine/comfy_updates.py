@@ -8,9 +8,12 @@ import re
 import threading
 import time
 
-from . import launcher_update
+from . import launcher_update, release_media
 from .paths import data_root
 from .release_notes import installed_details, public_details
+
+# How long a page waits for a release video before it keeps the cover.
+MEDIA_WAIT_SECONDS = 8
 
 
 def installed_build(package):
@@ -71,6 +74,7 @@ class UpdateStatus:
         self.lock = threading.Lock()
         self.thread = None
         self.failures = 0
+        self.media = None
 
     def launcher(self):
         if not self.bridge:
@@ -106,7 +110,20 @@ class UpdateStatus:
             if self.current or available:
                 state.update(status='available' if available else 'current', available=available)
             state['launcher'] = launcher
+        # The update's cover and video come ahead of the click that shows them.
+        available = release_media.entry((state.get('available') or {}).get('media'))
+        if client and available and self.media is not None:
+            for part in ('poster', 'media'):
+                self.media.start(available, part)
         return state
+
+    def media_file(self, release, part, seconds):
+        """The verified local cover or media file of 'available' or 'current'; None while absent."""
+        if self.media is None or part not in release_media.PARTS:
+            return None
+        key = dict(available='available', current='current_release').get(release)
+        value = release_media.entry((self.snapshot().get(key) or {}).get('media')) if key else None
+        return self.media.get(value, part, seconds) if value else None
 
     def _check(self):
         try:
@@ -145,12 +162,27 @@ def register():
     from .launcher_bridge import ENV, request as ask_launcher
     bridge = os.environ.get(ENV) or None
     status = UpdateStatus(installed_build(Path(__file__).parent), bridge=bridge)
+    status.media = release_media.Store(data_root() / 'release-media')
     server._freevideo_updates = status
 
     @server.routes.get('/freevideo/updates')
     async def updates(request):
         value = status.snapshot(client=request.query.get('client') == '1')
         return web.json_response(value, headers={'Cache-Control': 'no-store'})
+
+    @server.routes.get('/freevideo/updates/media')
+    async def media(request):
+        # The picture or video above the release notes, verified and kept on this computer.
+        # The page shows the cover until this answers; any failure leaves the cover.
+        import asyncio
+        release, part = request.query.get('release'), request.query.get('part')
+        path = await asyncio.get_running_loop().run_in_executor(
+            None, status.media_file, release, part, MEDIA_WAIT_SECONDS)
+        if path is None:
+            return web.Response(status=404, headers={'Cache-Control': 'no-store'})
+        return web.FileResponse(path, headers={
+            'Content-Type': release_media.TYPES.get(path.suffix.lower(), 'application/octet-stream'),
+            'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff'})
 
     @server.routes.post('/freevideo/updates/apply')
     async def apply(request):

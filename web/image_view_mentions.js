@@ -72,6 +72,61 @@ export function sketchPrompt(text, numbers, model) {
         + 'The whole picture is a real scene, its ground, its surroundings and its light from edge to edge.';
     return desc ? `${real} ${desc}${/[\u3400-\u9fff]$/.test(desc) ? '。' : '.'}` : real;
 }
+// A sketch with mannequins (the sketch editor's pose tool) is line art of people in a pose, seen from a camera. Its words
+// were settled over nine rounds on the team engine (Qwen-Image 2.1, two seeds, twenty pictures: every pose matched and
+// every picture was in a real place, also when the description named none): the description first, then which way each
+// person faces and how much of them the frame holds (`words`, written by the pose tool from the scene), then what the
+// line art stands for, then real people in a real place. All affirmative; no clothes are added (the description names
+// them). A description that names a look of its own (cartoon, watercolour, ...) keeps that look instead of a photograph.
+// `n`: the line art's place (1-based) among the pictures; `words`: {facing, framing, angle}.
+const POSE_SKETCH = n => `<Picture ${n}>是姿势草图，线条人偶表示人物的动作：头、躯干、手臂和腿的位置与朝向，人物在画面中的位置和大小，以及镜头角度，都与<Picture ${n}>一致。`;
+const POSE_REAL = '画面中是真实的人，脸是完整自然的真人面孔，体型和身体比例自然，长相、发型和衣着按文字描述和场景来画。'
+    + '照片在真实的地点拍摄：人物周围是与描述相符的真实环境，前景和背景都有具体的景物，画面有空间纵深，环境细节丰富，光线自然，写实摄影。'
+    + '构图随意自然，像广角镜头随手抓拍的一张写实照片：人物神态放松，视线看向画面外侧方，衣料有自然的褶皱，衣角和发丝被环境风轻轻带动，带一点动作中的轻微动态，光线是侧逆光或暖色的自然环境光。';
+// A description that is empty or names only the person (no place) leaves the place open: one of a few plain settings is
+// named, by the seed, so pictures do not all land in the same street. A description with a place is left alone.
+const POSE_PLACES = ['白天的城市街道，路面干净，两旁有树和店铺', '公园里的林荫小路，草地和树木在背后', '海边的木栈道，远处是海面和天空', '车站的站台，列车和立柱在背后', '咖啡馆的露台，桌椅和绿植在身旁', '开阔的广场，远处有楼房和行人'];
+const PLACE_WORDS = /家|沙发|床|雪|草|沙|水|窗|屋顶|街|路|巷|城|市|园|山|海|湖|河|岸|滩|林|森|田|野|原|漠|岛|桥|楼|厦|房|屋|室|厅|厨|院|店|馆|场|站|台|港|港口|车|机|校|教|堂|庙|寺|塔|宫|殿|景|环境|背景|地点|户外|室内|天空|夜晚|街景|\b(?:street|road|city|town|park|garden|beach|sea|ocean|lake|river|forest|mountain|field|desert|island|bridge|building|room|house|kitchen|cafe|caf[eé]|shop|store|station|airport|school|church|temple|stage|studio|office|indoors?|outdoors?|background|scene|sky|night|rooftop|alley|square|market|gym|pool)\b/i;
+const placeFor = (desc, seed) => (desc.length <= 40 && !PLACE_WORDS.test(desc.replace(/<Picture \d+>/g, '')) && !(/[a-z]/i.test(desc) && !/[\u3400-\u9fff]/.test(desc))
+    ? POSE_PLACES[Math.abs(Math.floor(Number(seed) || 0)) % POSE_PLACES.length] : '');
+const POSE_STYLED = '人物的长相、发型和衣着按文字描述来画，画面的风格按文字描述，背景是与描述相符的完整场景。';
+// Who the mannequins are: a description that names no man or woman gets one sentence naming each mannequin's body, left
+// to right ("画面中从左到右依次是一位女性、一位男性"; one person: "画面中是一位女性"), in English after an English description.
+// A description that names a sex, or a number of people other than the mannequins', is left to say it alone.
+const GENDER_WORDS = /[男女她爸妈哥姐弟妹妻叔姨媳]|他(?!们)|爷爷|奶奶|大爷|老爷|丈夫|夫妇|夫人|新郎|新娘|姑娘|婆婆|老婆|外婆|先生|太太|小姐|王子|公主|\b(?:m[ae]n|wom[ae]n|male|female|girls?|boys?|lad(?:y|ies)|gentlem[ae]n|guys?|gals?|he|him|his|she|hers?|husbands?|wi(?:fe|ves)|mothers?|fathers?|mom|mum|dad|sons?|daughters?|brothers?|sisters?|brides?|grooms?|kings?|queens?|princes?|princess(?:es)?|actress(?:es)?|waitress(?:es)?|aunts?|uncles?|grandmas?|grandpas?)\b/i;
+const CN_DIGITS = {一: 1, 两: 2, 二: 2, 俩: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10};
+const EN_DIGITS = {one: 1, a: 1, an: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10};
+const PEOPLE_CN = '人|朋友|孩子|小孩|学生|同学|伙伴|舞者|运动员|士兵|游客|路人|老人|年轻人|青年|人物';
+const PEOPLE_EN = 'people|persons?|friends?|kids?|children|child|students?|dancers?|players?|soldiers?|tourists?|figures?|teens?|teenagers?|adults?|someone|somebody|individuals?';
+// The number of people the description names (null: none named).
+export function namedPeople(text) {
+    let total = null;
+    const add = k => { total = (total || 0) + k; };
+    for (const m of text.matchAll(new RegExp(`(\\d+|[一两二俩三四五六七八九十])\\s*(?:(?:个|名)\\s*(?:${PEOPLE_CN})|位|人)`, 'g'))) add(Number(m[1]) || CN_DIGITS[m[1]]);
+    for (const m of text.matchAll(/(?:一对|情侣|双人)/g)) add(2);
+    for (const m of text.matchAll(new RegExp(`\\b(\\d+|one|an?|two|three|four|five|six|seven|eight|nine|ten)\\s+(?:\\w+\\s+)?(?:${PEOPLE_EN})\\b`, 'gi'))) add(Number(m[1]) || EN_DIGITS[m[1].toLowerCase()]);
+    for (const m of text.matchAll(/\b(?:a couple|a pair)\b/gi)) add(2);
+    return total;
+}
+export function genderSentence(text, genders) {
+    if (!Array.isArray(genders) || !genders.length || genders.some(g => g !== 'male' && g !== 'female')) return '';
+    const named = namedPeople(text);
+    if (GENDER_WORDS.test(text) || (named !== null && named !== genders.length)) return '';
+    if (/[a-z]/i.test(text) && !/[\u3400-\u9fff]/.test(text)) {
+        const list = genders.map(g => (g === 'male' ? 'a man' : 'a woman'));
+        return list.length === 1 ? `The picture shows ${list[0]}.` : `From left to right, the picture shows ${list.slice(0, -1).join(', ')} and ${list.at(-1)}.`;
+    }
+    const list = genders.map(g => (g === 'male' ? '一位男性' : '一位女性'));
+    return list.length === 1 ? `画面中是${list[0]}。` : `画面中从左到右依次是${list.join('、')}。`;
+}
+export function posePrompt(text, n, words, seed) {
+    const desc = String(text || '').replace(SKETCH_LEAD, '').trim().replace(/[。.\s]+$/, '');
+    const lead = [words?.facing, words?.framing, words?.angle].filter(w => typeof w === 'string' && w.trim()).join('，');
+    const close = /[\u3400-\u9fff]$/.test(desc) ? '。' : '. ';
+    const who = genderSentence(desc.replace(/<Picture \d+>/g, ''), words?.genders);
+    const place = desc && STYLE_WORDS.test(desc) ? '' : placeFor(desc, seed);
+    return `${desc ? desc + close : ''}${who ? who + (who.endsWith('.') ? ' ' : '') : ''}${lead ? lead + '。' : ''}${place ? `场景是${place}。` : ''}${POSE_SKETCH(n)}${words?.arms ? words.arms + '。' : ''}${desc && STYLE_WORDS.test(desc) ? POSE_STYLED : POSE_REAL}`;
+}
 export const brokenMentions = (text, count) => [...text.matchAll(TOKEN)].filter(([, n]) => n === '?' || Number(n) < 1 || Number(n) > count).length;
 export const hasMentions = text => new RegExp(TOKEN.source).test(text);
 

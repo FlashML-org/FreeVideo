@@ -191,10 +191,12 @@ async function openCompatibilitySheet() {
         button(panel, t('Close', '关闭'), () => panel.close(), true).focus();
     }
 }
-export async function notifyCompatibility() {
+// inFront: the notice waits until FreeVideo is in front (a launcher visit or an open FreeVideo view).
+export async function notifyCompatibility({inFront = () => true} = {}) {
     try {
         const request=await client(), value=await request('check');
         if (!value.available || !value.notice) return;
+        while (!inFront()) await new Promise(resolve => setTimeout(resolve, 2000));
         const panel = dialog(t('Compatibility enabled', '已开启兼容性设置'));
         const message = element('p', value.recovery_disabled
             ? t('Generation is slowed automatically for stability; you can change this in Settings.', '为了稳定，生成已自动放慢；可在设置里调整。')

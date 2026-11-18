@@ -677,6 +677,7 @@ class Cast:
             self.records.pop(card['id'], None)
             self.deleted[card['id']] = slim
             self._released(files, immediate=True)
+            self.jobs.forget_children_of('cast', card['id'])  # its finished shots keep no prompts or pictures either
             self.changed.notify_all()
             return result
 

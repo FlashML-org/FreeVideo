@@ -6,6 +6,7 @@ import {TUTORIAL_CHAPTERS} from './tutorial_book_content.js';
 import {FEATURE_TOUR, readyCards} from './feature_tour_content.js';
 import {SHOWCASE_TEXT, SHOWCASE_ASSET} from './entry_showcase.js';
 import {isolateDialogKeys, listenDialogKey, routeDialogKey} from './dialog_keys.js';
+import {reducedMotion} from './context_menu.js';
 
 const COPY = {
     zh: {book: '教程', chapters: '章节', examples: '示例', contents: '目录', close: '关闭', search: '搜索教程', steps: '步骤', limits: '注意',
@@ -123,7 +124,7 @@ function styles() {
 function figure(spec, lang, text) {
     if (!spec) return null;
     const fig = el('figure', 'fv-book-fig');
-    const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const still = reducedMotion();
     const media = (name, wave, playable = true) => {
         const box = el('div', 'fv-book-media'), img = el('img'); img.alt = ''; img.src = poster(name); img.decoding = 'async'; box.append(img);
         // A finished example plays as a few seconds' silent loop (the poster until it can; a still with reduced motion).
@@ -175,13 +176,13 @@ function stepLine(step) {
 let current = null, follow = null;
 
 /** Open the tutorial. chapter: an id in tutorial_book_content.js; tab: 'chapters' | 'examples'; example: a feature card id. */
-export function openTutorialBook({chapter = TUTORIAL_CHAPTERS[0].id, tab = 'chapters', example = null} = {}) {
+export function openTutorialBook({chapter = TUTORIAL_CHAPTERS[0].id, tab = 'chapters', example = null, note = ''} = {}) {
     if (chapter === 'separate-tracks') import('./sound_bubble.js').then(({markSoundBubbleSeen}) => markSoundBubbleSeen(), () => {});
     if (current?.dialog.isConnected) { current.go({tab, chapter, example}); return current.dialog; }
     styles();
     const lang = language(), text = COPY[lang], L = pair => Array.isArray(pair) ? pair[lang === 'zh' ? 1 : 0] : pair?.[lang] ?? '';
     const restore = document.activeElement;
-    const state = {tab, chapter: chapterOf(chapter) ? chapter : TUTORIAL_CHAPTERS[0].id, example, query: '', tocOnly: false, note: ''};
+    const state = {tab, chapter: chapterOf(chapter) ? chapter : TUTORIAL_CHAPTERS[0].id, example, query: '', tocOnly: false, note};
     const dialog = el('dialog', 'fv-book'); dialog.lang = lang === 'zh' ? 'zh-CN' : 'en';
     dialog.setAttribute('aria-labelledby', 'fv-book-title'); dialog.dataset.fvTipScope = '';
     // Head: name, the two pages (Chapters, Examples), contents (phones) and close.
@@ -290,11 +291,19 @@ export function openTutorialBook({chapter = TUTORIAL_CHAPTERS[0].id, tab = 'chap
         page.replaceChildren(inner);
         markRead(id);
     }
+    // Whether another view now lies over the book.
+    const covered = () => { const r = dialog.getBoundingClientRect(), hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !!hit && !dialog.contains(hit); };
     async function takeMeThere(c, id, go) {
         const {goToScene} = await import('./tour_goto.js');
         go.disabled = true; state.note = '';
         const result = await goToScene({view: c.view, ids: [id], select: c.select, beforeRing: () => dialog.close()});
         go.disabled = false;
+        if (!result.ok && dialog.isConnected && covered()) {
+            // The view opened over the book: bring the book back on top so its note is seen.
+            const note = text[{view: 'noView', hidden: 'noHidden'}[result.reason] || 'noTarget'], chapter = state.chapter;
+            dialog.addEventListener('close', () => openTutorialBook({chapter, note}), {once: true});
+            dialog.close(); return;
+        }
         if (!result.ok && dialog.isConnected) { state.note = text[{view: 'noView', hidden: 'noHidden'}[result.reason] || 'noTarget']; const note = page.querySelector('.fv-book-note'); if (note) { note.textContent = state.note; note.hidden = false; note.scrollIntoView({block: 'nearest'}); } }
     }
     function drawExamples() {
@@ -342,7 +351,7 @@ export function openTutorialBook({chapter = TUTORIAL_CHAPTERS[0].id, tab = 'chap
         const to = el('span', 'fv-book-to'); to.append(icon('arrow'));
         const out = el('div', 'fv-book-media'), video = el('video'); video.src = asset(card.clip.mp4); video.poster = asset(card.clip.poster); video.muted = true; video.loop = true; video.playsInline = true;
         video.setAttribute('aria-label', card.title[lang]);
-        if (!matchMedia('(prefers-reduced-motion: reduce)').matches) video.autoplay = true;
+        if (!reducedMotion()) video.autoplay = true;
         out.append(video);
         pairBig.append(inputs, to, out);
         const strip = el('div', 'fv-book-strip'), acts = el('div', 'fv-book-acts');
@@ -390,6 +399,7 @@ export function openTutorialBook({chapter = TUTORIAL_CHAPTERS[0].id, tab = 'chap
     current = {dialog, go};
     go({});
     dialog.showModal();
+    if (note) page.querySelector('.fv-book-note')?.scrollIntoView({block: 'nearest'});
     // On phones the contents are folded behind the list button (tutorial_book.css, 719px), so focus starts on that
     // button: a hidden entry cannot hold focus, and it would fall to the page behind the book.
     const folded = state.tab === 'chapters' && !state.tocOnly && matchMedia('(max-width: 719px)').matches;

@@ -11,7 +11,7 @@ import {issueButton} from './issue_button.js';
 import * as model from './editor_model.js';
 import {discardEmptyEdit, hiddenEmptyEdit, deleteEditText} from './editor_lifecycle.js';
 import {createEditorState} from './editor_state.js';
-import {createEditorStore, sourceKey, mediaURL} from './editor_store.js';
+import {createEditorStore, sourceKey, mediaURL, isReportableSaveFailure} from './editor_store.js';
 import {createPicturePoster} from './editor_poster.js';
 import {generationSize, continuedSize} from './editor_generation.js';
 import {uploadMedia} from './media_upload.js';
@@ -419,7 +419,10 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     }
     const content = record => JSON.stringify({...record, id: null, revision: 0});
     function failureKind(site, value) {
-        const code = value?.reason || value?.code || value?.name;
+        // A plain Error says nothing by its class; when its message is itself a short code (chain_missing) that is the reason.
+        // Any other message may hold a path or the user's words, so it is never copied.
+        const named = value?.name === 'Error' && /^[a-z][a-z0-9_]{2,39}$/.test(value?.message) ? value.message : value?.name;
+        const code = value?.reason || value?.code || named;
         return site + ':' + (String(code || '').replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 40) || 'unknown');
     }
     // `where` marks a failure: the notice then carries the "Report a problem" button and stays longer to be reached.
@@ -509,6 +512,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     store.generationReady();
     // Media details from the cache draw at once and are read again from the server (marked as stand-ins).
     if (fromCache?.sources && Object.keys(fromCache.sources).length) try { store.cache(Object.fromEntries(Object.entries(fromCache.sources).map(([key, value]) => [key, {...value, _fallback: true}]))); } catch { /* Read again later. */ }
+    let saveFailureShown = false;
     const queue = store.createSaveQueue({get record() { return state.record; },
         adopt(value) {
             if (pointerEditing) { deferredStamp = value; return; }
@@ -518,8 +522,14 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             if (held.length) rememberView();
         },
     }, {onStatus: () => {
-        if (!queue.dirty) { discardOnSwitch = false; leaveTo = null; saveWarning.hidden = true; }
+        if (!queue.dirty) { discardOnSwitch = false; leaveTo = null; saveWarning.hidden = true; saveFailureShown = false; }
         updateSaveState();
+    }, onFailed: error => {
+        // An unexpected engine error says so once, with the way to report it; retries after it stay quiet.
+        if (!isReportableSaveFailure(error) || saveFailureShown) return;
+        saveFailureShown = true;
+        notify(t('Saving changes failed because of an unexpected error. Your changes stay in this page and are saved again automatically.', '保存改动时出现意外错误。改动仍在这个页面里，会自动再次保存。'),
+            EDITOR_ISSUE, failureKind('save', {reason: saveReason(error)}));
     }});
     // Whether the edit is saved, beside its name only when it needs attention: a failed save (which offers to save
     // again from there), changes left unsaved, or saving that takes longer than 2 s. A saved edit shows nothing; the
@@ -1104,10 +1114,17 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     function confirmDelete() {
         const words = deleteEditText(t, state.record.name);
         menu.replaceChildren();
-        menu.append(el('p', 'fv-ed-delete-question', words.confirm));
+        const question = el('p', 'fv-ed-delete-question', words.confirm);
+        menu.append(question);
         const remove = button(words.remove, deleteCurrentProject, 'fv-ed-delete-confirm');
         const cancel = button(words.cancel, showMenu);
         menu.append(remove, cancel); cancel.focus();
+        // What goes with it is listed as soon as the server answers; the question stays usable meanwhile.
+        const id = state.record.id;
+        if (id) void store.residue(id).then(found => {
+            const line = words.also(found);
+            if (line && question.isConnected && state.record.id === id) question.textContent = words.confirm + ' ' + line;
+        });
     }
     async function showMenu() {
         menu.replaceChildren(); menu.hidden = false; title.setAttribute('aria-expanded', 'true');
@@ -1864,7 +1881,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if (!found || generationBusy) return;
         secondPassFailed = null;
         try { await actions.secondPass(selection); }
-        catch (value) { if (!disposed) { secondPassFailed = found.clip.id; error(value); } }
+        catch (value) { if (!disposed) { secondPassFailed = found.clip.id; error(value, 'generate'); } }
         finally { if (!disposed) updateSecondPass(); }
     }
     actions.runSecondPass = runSecondPass;

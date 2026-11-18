@@ -83,6 +83,9 @@ function markRunMode(tray, dialog) {
     section.append(segments);
     // The count row stays in place (greyed unless Batch), so the section keeps its height when the mode changes.
     if (count) { section.append(row(count)); count.classList.add('fv-at-keep'); stepper(tray, count.querySelector('input'), {why: say(tray, 'Choose Batch to set the number', '选“批量”后可设数量')}); }
+    // One prompt per line (Batch only) sits under the count; greyed outside Batch, like the count.
+    const lines = menu.querySelector(':scope > label.fv-batch-lines');
+    if (lines) section.append(row(lines));
     // The mode's standing sentence is in the keys' hover cards; the line stays in the page for screen readers.
     if (help) { help.classList.add('fv-at-said'); section.append(help); }
     dialog.querySelector('.fv-runrow')?.classList.add('fv-at-moved');

@@ -58,3 +58,14 @@ export function reconcileLoraTriggers(prompt, records, rows, wordsByName) {
     }
     return {prompt: [...prefix, ...(prompt ? [prompt] : [])].join(', '), records: next};
 }
+
+// One prompt per line: each non-empty line becomes its own prompt. A LoRA's trigger
+// phrase is written once in the box (usually at the start of the first line), but every
+// line is generated with that LoRA, so a line without the phrase gets it in front.
+export function promptLines(text, phrases = []) {
+    const words = [...new Set(phrases.map(phrase => String(phrase ?? '').trim()).filter(Boolean))];
+    return String(text ?? '').split(/\r?\n/).map(line => line.trim()).filter(Boolean).map(line => {
+        const missing = words.filter(phrase => phraseIndex(line, phrase, true) < 0);
+        return [...missing, line].join(', ');
+    });
+}

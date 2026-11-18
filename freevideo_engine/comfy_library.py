@@ -326,7 +326,9 @@ def prompt_seed(output_directory, identity):
     return seed if type(seed) is int and 0 <= seed < 2**64 else None
 
 
-def thumbnail(output_directory, identity):
+def thumbnail(output_directory, identity, *, cached=False):
+    """The JPEG thumbnail of a saved video: its first frame, made once and kept beside it. ``cached`` returns None
+    instead of decoding."""
     path = _video(output_directory, identity)
     saved = path.with_suffix('.thumbnail.jpg')
     root = Path(output_directory).resolve() / 'FreeVideo'
@@ -336,11 +338,14 @@ def thumbnail(output_directory, identity):
     check_sidecar(path.with_suffix('.request.json'))
     check_sidecar(saved)
     _report(path)
-    if saved.is_file() and saved.stat().st_mtime_ns >= path.stat().st_mtime_ns:
+    info = path.stat()
+    if saved.is_file() and saved.stat().st_mtime_ns >= info.st_mtime_ns:
         with os.fdopen(os.open(saved, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_BINARY', 0)), 'rb') as stream:
             data = stream.read(512 * 1024 + 1)
         if data.startswith(b'\xff\xd8') and len(data) <= 512 * 1024:
             return data
+    if cached:
+        return None
     # CPU decoding only. Grid thumbnails must not take CUDA memory from a
     # generation, and we only decode the first frame of each requested video.
     import av
@@ -958,9 +963,12 @@ def _forget_works(root, facts):
         kept_receipts, kept_prompts = _kept_facts(root)
     except OSError:
         return
-    from . import private_store
+    from . import private_refs, private_store
     from .paths import data_root
     cache_root = data_root() / 'input-cache'
+    for fact in facts:
+        if re.fullmatch('[0-9a-f]{32}', fact['run'] or ''):
+            private_refs.release_owner('video:' + fact['run'])
     for receipt in {row for fact in facts for row in fact['receipts']} - kept_receipts:
         try:
             private_store.evict(cache_root, receipt)
@@ -969,6 +977,8 @@ def _forget_works(root, facts):
     private_store.forget_prompts({fact['prompt'] for fact in facts if fact['prompt']} - kept_prompts)
     ids = {fact['prompt_id'] for fact in facts if fact['prompt_id']}
     runs = {fact['run'] for fact in facts if re.fullmatch('[0-9a-f]{32}', fact['run'] or '')}
+    from .comfy_chain import discard_chains
+    discard_chains(runs)  # a long video's chain record and its seam sound go with it
     try:
         from server import PromptServer
         server = PromptServer.instance
@@ -1198,6 +1208,10 @@ def delete_videos(output_directory, identities, *, queue=None, batch=None, exten
     finish_deleted(output_directory)
     cache, moved, skipped = {}, [], []
     from .monitoring import save
+    from .comfy_chain import segment_identities
+    # A long video's hidden part videos leave with it, in the same undo batch; one that is not ours to delete
+    # (in use, not FreeVideo's) is skipped as any other.
+    identities = list(dict.fromkeys([*identities, *segment_identities(identities)]))
     token = batch or '%d-%s' % (time.time_ns(), os.urandom(3).hex())
     manifest = root / '.deleted' / (_MANIFEST + token + '.json')
     _claim(token, manifest)
@@ -1627,18 +1641,50 @@ def register():
 
     @server.routes.get('/freevideo/library/thumbnail')
     async def preview(request):
-        async with thumbnails:
-            try:
-                data = await asyncio.to_thread(thumbnail, folder_paths.get_output_directory(), request.query.get('id'))
-            except Exception:
-                # The full video remains playable if its thumbnail is missing.
-                raise web.HTTPNotFound(text='Thumbnail unavailable') from None
-        # Checked again on every use, so a deleted creation's picture is not kept by the browser.
+        output, identity = folder_paths.get_output_directory(), request.query.get('id')
+        try:
+            # A thumbnail made before is sent at once; only making one waits for the others being made.
+            data = await asyncio.to_thread(thumbnail, output, identity, cached=True)
+            if data is None:
+                async with thumbnails:
+                    data = await asyncio.to_thread(thumbnail, output, identity)
+        except Exception:
+            # The full video remains playable if its thumbnail is missing.
+            raise web.HTTPNotFound(text='Thumbnail unavailable', headers={'Cache-Control': 'no-store'}) from None
         tag = '"%s"' % hashlib.sha256(data).hexdigest()[:32]
+        # Checked again on every use (an unchanged one answers 304 with no body), so no browser, on this computer or
+        # another, keeps showing a deleted creation's picture.
         headers = {'Cache-Control': 'private, no-cache', 'ETag': tag}
         if request.headers.get('If-None-Match') == tag:
             return web.Response(status=304, headers=headers)
         return web.Response(body=data, content_type='image/jpeg', headers=headers)
+
+    picture_thumbnails = asyncio.Semaphore(2)
+
+    @server.routes.get('/freevideo/library/picture-thumbnail')
+    async def picture_preview(request):
+        from .work_thumbnails import PICTURE, cached_picture, picture_thumbnail, release
+        folder, file = folder_paths.get_input_directory(), request.query.get('file')
+        try:
+            found = await asyncio.to_thread(cached_picture, folder, file)
+            if found is None:
+                async with picture_thumbnails:
+                    found = await asyncio.to_thread(picture_thumbnail, folder, file)
+        except Exception:
+            # Asked for a picture that is gone: its small copy goes too. The grid shows the picture itself otherwise.
+            leaf = file.rpartition('/')[2] if isinstance(file, str) else ''
+            if PICTURE.fullmatch(leaf) and file == 'freevideo-image/' + leaf:
+                await asyncio.to_thread(lambda: os.path.lexists(Path(folder) / 'freevideo-image' / leaf) or release('image:' + leaf, folder))
+            raise web.HTTPNotFound(text='Thumbnail unavailable', headers={'Cache-Control': 'no-store'}) from None
+        data, tag, size = found
+        # Checked again on every use, as a video's thumbnail is: a deleted picture's small copy stays in no browser.
+        headers = {'Cache-Control': 'private, no-cache', 'ETag': tag}
+        if size:
+            # The picture's own size, for the library's labels, without loading the picture.
+            headers.update({'X-Picture-Width': str(size[0]), 'X-Picture-Height': str(size[1])})
+        if request.headers.get('If-None-Match') == tag:
+            return web.Response(status=304, headers=headers)
+        return web.Response(body=data, content_type='image/webp', headers=headers)
 
     @server.routes.post('/freevideo/library/delete')
     async def delete(request):

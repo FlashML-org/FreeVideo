@@ -173,9 +173,10 @@ def plan_image(*, gpu_budget_bytes, host_available_bytes=None, width=1024, heigh
     (8 times per image); of those, the ones the other stages leave room for stay
     on the card between requests, the rest are filled again on the next first
     step. Text-encoder layers, read once per request, come last and only when
-    every block stays. ``host_available_bytes`` is what the host can lock or
-    hold now (``offload.live_pin_capacity``); None means it was not read and
-    the plan assumes it fits.
+    every block stays. ``host_available_bytes`` is the physical memory the
+    host has available now, read before the weights are loaded (not the lock
+    capacity, which also subtracts the working headroom); None means it was
+    not read, or a kept model already holds its copy, and the plan assumes it fits.
     """
     shape = shape or ImageShape()
     margin = int(max(MIN_MARGIN, MARGIN_FRACTION * gpu_budget_bytes))

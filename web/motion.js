@@ -1,4 +1,4 @@
-const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+const reduceMotion = () => document.documentElement.dataset.glass === 'solid' || document.documentElement.classList.contains('lite') || matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // A view (full-window dialog) fades out over the view beneath it, opacity only, so the shared top bar stays still;
 // smaller dialogs also sink a little. Inside a view switch the shell's cross-fade has already taken the picture:

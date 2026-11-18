@@ -480,9 +480,9 @@ def set_setting(key, value, *, root=None):
 
 
 def deletion_enabled(root=None):
-    """Whether a scan removes what it finds; until then it only lists it."""
+    """Whether a scan removes what it finds. It does unless Settings turned it off (sweep_delete false)."""
     value = _read(store_root(root) / 'settings.json') or {}
-    return value.get('sweep_delete') is True
+    return value.get('sweep_delete') is not False
 
 
 def candidates(input_root, *, now=None, grey=None):

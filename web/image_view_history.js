@@ -157,7 +157,9 @@ const FILTER_WORDS = {all: ['All', '全部'], fav: ['Favourites', '收藏'], tod
 const SORT_WORDS = {new: ['Newest first', '最新在前'], old: ['Oldest first', '最早在前'], fav: ['Favourites first', '收藏在前']};
 
 // The column itself. `paint(state)` redraws; tiles are kept by file so pictures never reload on a redraw.
-export function historyPanel({pictureURL, onShow, onToggleFav, onSelect, onSelectMode, onSelectAll, onDelete, onFilter, onQuery, onSort,
+// thumbURL: a picture's small copy for the tiles (the picture itself without one). queue: the page's background
+// queue (media_queue.js), which loads the pictures on screen after their tiles over a link.
+export function historyPanel({pictureURL, thumbURL = pictureURL, queue = null, onShow, onToggleFav, onSelect, onSelectMode, onSelectAll, onDelete, onFilter, onQuery, onSort,
     onTrash, onRestore, onPurge, onOpenFolder, onCollapse, onRun = () => {}}) {
     const root = el('div', 'fv-iv-works');
     // Head: title and count, search, sort, select, fold.
@@ -213,6 +215,19 @@ export function historyPanel({pictureURL, onShow, onToggleFav, onSelect, onSelec
     folderLink.addEventListener('click', () => onOpenFolder());
 
     const tiles = new Map(); let lastClicked = null; let order = [];
+    // A tile's small picture is asked for when the tile comes within about a screen of the visible part of the list (as
+    // the browser's lazy loading did), so a long history does not load at once; over a link the pictures themselves then
+    // follow in the background, nearest first.
+    const nearby = typeof IntersectionObserver === 'function' ? new IntersectionObserver(entries => {
+        for (const {target, isIntersecting} of entries) if (isIntersecting) { nearby.unobserve(target); showTile(target); }
+    }, {root: body, rootMargin: '800px 0px'}) : null;
+    const originals = queue ? queue.watch(body, tile => tile.dataset.file ? {url: pictureURL(tile.dataset.file), kind: 'image'} : null,
+        {order: tile => { const at = order.indexOf(tile.dataset.file); return at < 0 ? 1e5 : at; }}) : null;
+    function showTile(image) {
+        if (image.getAttribute('src')) return;
+        queue?.thumbnail(image);
+        image.src = image.dataset.src; if (image.complete && image.naturalWidth) image.dataset.loaded = 'true';
+    }
     const blockCache = new Map();
     // Children made exactly `nodes`, in order, with the fewest moves; a node already in place is not touched.
     const reconcile = (parent, nodes) => {
@@ -231,7 +246,8 @@ export function historyPanel({pictureURL, onShow, onToggleFav, onSelect, onSelec
         const image = el('img'); image.alt = ''; image.loading = 'lazy'; image.decoding = 'async'; image.draggable = false;
         // Shown whole once loaded; until then the tile is a placeholder (and shows no "selected" ring on nothing).
         image.dataset.loaded = 'false'; image.addEventListener('load', () => { image.dataset.loaded = 'true'; }); image.addEventListener('error', () => { image.dataset.loaded = 'true'; image.dataset.missing = 'true'; });
-        image.src = pictureURL(row.file); if (image.complete && image.naturalWidth) image.dataset.loaded = 'true';
+        image.dataset.src = thumbURL(row.file);
+        if (nearby) nearby.observe(image); else showTile(image);
         open.append(image);
         const check = el('button', 'fv-iv-tile-check'); check.type = 'button'; check.append(icon('check'));
         tip(check, t('Select', '选择'), t('Add to the selection; Shift picks a run', '加入多选；按住 Shift 连选'));
@@ -242,7 +258,7 @@ export function historyPanel({pictureURL, onShow, onToggleFav, onSelect, onSelec
             lastClicked = row.file; onShow(row.file);
         });
         check.addEventListener('click', event => { event.stopPropagation(); pickTile(row.file, event.shiftKey); });
-        tiles.set(row.file, tile); return tile;
+        tiles.set(row.file, tile); originals?.observe(tile); return tile;
     }
     function pickTile(file, range) {
         if (range && lastClicked && order.includes(lastClicked)) {
@@ -315,7 +331,7 @@ export function historyPanel({pictureURL, onShow, onToggleFav, onSelect, onSelec
             }
             for (const k of [...blockCache.keys()]) if (!seen.has(k)) blockCache.delete(k);
             reconcile(grid, blocks);
-            for (const [file, tile] of tiles) if (!order.includes(file) && !state.allFiles.has(file)) tiles.delete(file), tile.remove();
+            for (const [file, tile] of tiles) if (!order.includes(file) && !state.allFiles.has(file)) originals?.unobserve(tile), tiles.delete(file), tile.remove();
             empty.hidden = state.rows.length > 0 || !!state.running || !!state.loading;
             empty.replaceChildren(icon(state.total ? 'search' : 'asref'), el('span', '', state.total ? t('Nothing matches', '没有符合条件的图片') : t('Pictures you make appear here', '生成的图片会出现在这里')));
         } else {

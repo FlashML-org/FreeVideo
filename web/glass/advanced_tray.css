@@ -120,3 +120,12 @@ html .fv-studio.fv-create .fvs-tray.fv-at .fv-at-seed>input:is(:focus,:focus-vis
 .fv-studio.fv-create .fvs-tray.fv-at[data-fv-pop]>.fvs-tray-head{position:absolute;top:var(--fv-sp-8);right:var(--fv-sp-8);min-height:0;margin:0}
 .fv-studio.fv-create .fvs-tray.fv-at[data-fv-pop]>.fvs-tray-head>.fvs-tray-title{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .fv-studio.fv-create .fvs-tray.fv-at[data-fv-pop]>.fvs-tray-head>.fv-at-reset{height:32px!important;margin:0!important}
+
+/* One prompt per line: a switch at the row's right edge, like the settings switches. */
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-row.fv-batch-lines{display:flex;align-items:center;justify-content:space-between;gap:var(--fv-sp-16,16px);min-height:var(--fv-at-h,32px);margin:0;padding:0;cursor:pointer}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-batch-lines input[role=switch]{appearance:none;-webkit-appearance:none;position:relative;flex:none;box-sizing:border-box;width:40px;height:24px;min-height:24px;margin:0;padding:0;border:0;border-radius:var(--fv-r-pill);background:var(--fv-line2);cursor:pointer;transition:background-color var(--fv-dur-1,160ms) var(--fv-ease-out,cubic-bezier(.2,.8,.2,1))}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-batch-lines input[role=switch]::before{content:'';position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:var(--fv-r-pill);background:#fff;box-shadow:0 1px 3px rgb(0 0 0 / .3);transition:transform var(--fv-dur-1,160ms) var(--fv-ease-out,cubic-bezier(.2,.8,.2,1))}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-batch-lines input[role=switch]:checked{background:var(--fv-accent-fill)}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-batch-lines input[role=switch]:checked::before{transform:translateX(16px)}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-batch-lines:has(input:disabled){cursor:default}.fv-studio.fv-create .fvs-tray.fv-at .fv-batch-lines:has(input:disabled)>span:first-child{color:var(--fv-fg3)!important}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-batch-lines input[role=switch]:disabled{opacity:.45;cursor:default}

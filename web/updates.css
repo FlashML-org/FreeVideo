@@ -39,3 +39,88 @@
 .fv-release-notes .fv-release-foot button{height:var(--fv-ctl,32px);padding:0 var(--fv-sp-16,16px);border-radius:var(--fv-r-sm);background:var(--fv-ctl-bg,rgb(255 255 255 / .06));font-size:var(--fv-fs-2,13px)}
 .fv-release-notes .fv-release-foot button.fv-primary{background:var(--fv-accent-fill,#0d6dcc);color:#fff;font-weight:600}
 .fv-update-notice .fv-update-close{min-width:30px;padding:4px 8px;font-size:16px;line-height:1}
+
+/* ── The picture or video above a version's notes (release.media): 16:9, the cover first, the file over it once it
+   plays; the cover only when the file is slow, offline or altered; nothing without media. Opaque everywhere. ── */
+.fv-release-top[hidden],.fv-release-media[hidden]{display:none!important}
+.fv-release-media{position:relative;margin:0;aspect-ratio:16/9;overflow:hidden;background:var(--fv-ctl-bg,#26272b);contain:paint;-webkit-user-select:none;user-select:none}
+.fv-release-media.is-clickable{cursor:pointer}
+.fv-release-media>img,.fv-release-media>video{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:cover;-webkit-user-drag:none}
+.fv-release-media>.fv-release-motion{opacity:0;transition:opacity var(--fv-dur-2,200ms) var(--fv-ease-out,cubic-bezier(.2,.8,.2,1))}
+.fv-release-media[data-state=media]>.fv-release-motion{opacity:1}
+.fv-release-media .fv-release-sound{position:absolute;right:var(--fv-sp-12,12px);bottom:var(--fv-sp-12,12px);display:grid;place-items:center;width:32px;height:32px;min-height:0;padding:0;
+  border:0;border-radius:var(--fv-r-pill,999px)!important;background:#141518;color:#f3f5f8;box-shadow:0 1px 3px rgb(0 0 0 / .35);cursor:pointer;transition:background-color var(--fv-dur-1,120ms) ease-out}
+.fv-release-media .fv-release-sound:hover{background:#2a2c31}
+.fv-release-media .fv-release-sound[hidden]{display:none}
+.fv-release-media .fv-release-sound svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.fv-release-media .fv-release-sound:focus-visible{outline:2px solid var(--fv-accent-line,#66b6ff);outline-offset:2px}
+@media(prefers-reduced-motion:reduce){.fv-release-media>.fv-release-motion,.fv-release-media .fv-release-sound{transition:none}}
+
+/* The update bar: the update's cover before its text; it opens the update window, like "What's new". */
+.fv-update-notice .fv-update-thumb{flex:none;display:block;width:64px;height:36px;border-radius:var(--fv-r-sm,6px);object-fit:cover;background:#000;cursor:pointer;-webkit-user-drag:none}
+.fv-update-notice .fv-update-thumb[hidden]{display:none}
+/* Settings › Version & updates shows the full picture under the bar. */
+dialog.fv-set .fv-update-notice.st-update .fv-update-thumb{display:none!important}
+/* In the creative view the bar floats under the top bar: opaque, and a card rather than a pill when it holds the cover. */
+:root .fv-studio.fv-create>.fv-update-notice{background:rgb(var(--fv-solid3));-webkit-backdrop-filter:none;backdrop-filter:none}
+:root .fv-studio.fv-create>.fv-update-notice.has-thumb{border-radius:var(--fv-r-md,12px);padding:var(--fv-sp-8,8px) var(--fv-sp-16,16px) var(--fv-sp-8,8px) var(--fv-sp-8,8px)}
+/* Narrow windows: the cover and the text share the first row, the buttons the second; the floating bar spans the
+   window less its margins instead of shrinking to half of it, and the toolbar's row stays inside the window. */
+@media(max-width:680px){
+  .fv-update-bar.has-thumb>span{flex:1 1 calc(100% - 64px - var(--fv-sp-16,16px))}
+  :root .fv-studio.fv-create>.fv-update-notice{left:var(--fv-sp-16,16px);right:var(--fv-sp-16,16px);transform:none;max-width:none;border-radius:var(--fv-r-md,12px)}
+}
+@media(max-width:480px){.fv-view-navigation .fv-update-bar{margin-left:-12px;margin-right:-12px}}
+
+/* The update window (from the bar, or Version & updates when Settings cannot open): the picture edge to edge on top,
+   the version and its full notes below (they scroll), Later and Update now (or Close) at the bottom. Opaque. */
+:root:root dialog.fv-release-notes.fv-release-rich{width:min(560px,calc(100vw - 32px));max-height:calc(100dvh - 32px);padding:0;overflow:hidden;
+  background:rgb(var(--fv-solid3));-webkit-backdrop-filter:none;backdrop-filter:none;font-size:var(--fv-fs-2,13px);line-height:1.55}
+.fv-release-rich[open]{display:flex;flex-direction:column}
+.fv-release-rich>.fv-release-top{flex:none}
+.fv-release-rich .fv-release-media{max-height:42dvh;width:100%;border-radius:0}
+.fv-release-notes.fv-release-rich .fv-release-body{flex:1;min-height:0;container-type:inline-size;padding:var(--fv-sp-24,24px) var(--fv-sp-24,24px) var(--fv-sp-8,8px)}
+.fv-release-rich:has(>.fv-release-top>.fv-release-media:not([hidden])) .fv-release-body{padding-top:var(--fv-sp-20,20px)}
+/* More notes below: the last lines fade out at the edge rather than showing a line of text cut in half. */
+.fv-release-notes.fv-release-rich .fv-release-body[data-more=true]{-webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 64px),transparent calc(100% - 16px));mask-image:linear-gradient(to bottom,#000 calc(100% - 64px),transparent calc(100% - 16px))}
+.fv-release-rich .fv-release-ver{display:flex;align-items:baseline;flex-wrap:wrap;gap:var(--fv-sp-4,4px) var(--fv-sp-12,12px);margin:0 0 var(--fv-sp-8,8px);font-size:inherit;font-weight:400;line-height:1.3}
+.fv-release-rich .fv-release-ver b{font-size:var(--fv-fs-4,20px);font-weight:var(--fv-fw-3,600);color:var(--fv-fg);font-feature-settings:var(--fv-num,normal)}
+.fv-release-rich .fv-release-summary{margin:0 0 var(--fv-sp-12,12px);color:var(--fv-fg2);text-wrap:pretty}
+/* One column of labels for the whole list, so every sentence starts at the same place. */
+.fv-release-rich .fv-release-list{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:minmax(0,max-content) minmax(0,1fr);gap:var(--fv-sp-12,12px)}
+.fv-release-rich .fv-release-list li{grid-column:1/-1;display:grid;grid-template-columns:subgrid;align-items:baseline;margin:0;color:var(--fv-fg)}
+.fv-release-rich .fv-release-list li:not(:has(.fv-release-tag))>.fv-release-text{grid-column:1/-1}
+.fv-release-rich .fv-release-tag{justify-self:start;max-width:11em;padding:1px var(--fv-sp-8,8px);border-radius:var(--fv-rad-xs,4px);background:var(--fv-ctl-bg);color:var(--fv-accent-ink);font-size:var(--fv-fs-1,12px);line-height:18px;text-wrap:balance;overflow-wrap:anywhere}
+.fv-release-rich .fv-release-text{min-width:0;text-wrap:pretty}
+.fv-release-rich .fv-release-earlier{margin:var(--fv-sp-24,24px) 0 var(--fv-sp-8,8px);font-size:var(--fv-fs-2,13px);font-weight:var(--fv-fw-3,600);color:var(--fv-fg)}
+.fv-release-rich .fv-release-current{margin:var(--fv-sp-16,16px) 0 0;padding-top:var(--fv-sp-12,12px);border-top:1px solid var(--fv-line,rgb(255 255 255 / .08));color:var(--fv-fg3);font-size:var(--fv-fs-1,12px)}
+@container (max-width:420px){
+  .fv-release-rich .fv-release-list{grid-template-columns:minmax(0,1fr)}
+  .fv-release-rich .fv-release-list li{display:block}
+  .fv-release-rich .fv-release-tag{display:inline-block;max-width:none;margin:0 var(--fv-sp-8,8px) var(--fv-sp-2,2px) 0;vertical-align:1px}
+}
+.fv-release-notes.fv-release-rich .fv-release-foot{border-top:0;padding:var(--fv-sp-16,16px) var(--fv-sp-24,24px) var(--fv-sp-20,20px);gap:var(--fv-sp-8,8px)}
+.fv-release-notes.fv-release-rich .fv-release-foot :is(button,a){display:inline-flex;align-items:center;justify-content:center;height:36px;padding:0 var(--fv-sp-20,20px);border:0;
+  border-radius:var(--fv-r-sm,8px);background:var(--fv-ctl-bg);color:var(--fv-fg);font:inherit;font-size:var(--fv-fs-2,13px);text-decoration:none;white-space:nowrap;cursor:pointer}
+.fv-release-notes.fv-release-rich .fv-release-foot :is(button,a):hover{background:var(--fv-ctl-hover)}
+.fv-release-notes.fv-release-rich .fv-release-foot :is(button,a)[hidden]{display:none}
+:root:root .fv-release-notes.fv-release-rich .fv-release-foot .fv-primary{background:var(--fv-accent-fill);color:var(--fv-on-fill,#fff);font-weight:var(--fv-fw-3,600)}
+:root:root .fv-release-notes.fv-release-rich .fv-release-foot .fv-primary:hover{background:var(--fv-accent-hover,#1679dd)}
+@media(max-width:480px){.fv-release-notes.fv-release-rich .fv-release-body{padding-left:var(--fv-sp-16,16px);padding-right:var(--fv-sp-16,16px)}
+  .fv-release-notes.fv-release-rich .fv-release-foot{padding:var(--fv-sp-12,12px) var(--fv-sp-16,16px) var(--fv-sp-16,16px)}}
+
+/* Settings › Version & updates: the newest version's picture at the top of the notes card. */
+.fv-release-body>.fv-release-top{margin:var(--fv-sp-8,8px) 0 var(--fv-sp-4,4px)}
+.fv-release-body>.fv-release-top .fv-release-media{border-radius:var(--fv-r-md,12px)}
+/* Its notes read as the update window's: a label and one sentence per change, the labels in one column. */
+dialog.fv-set .st-notes.fv-release-body{container-type:inline-size}
+dialog.fv-set .st-notes ul.fv-release-list{list-style:none;margin:var(--fv-sp-8,8px) 0 var(--fv-sp-4,4px);padding:0;display:grid;grid-template-columns:minmax(0,max-content) minmax(0,1fr);gap:var(--fv-sp-8,8px) var(--fv-sp-12,12px);color:var(--fv-fg)}
+dialog.fv-set .st-notes ul.fv-release-list li{grid-column:1/-1;display:grid;grid-template-columns:subgrid;align-items:baseline;margin:0}
+dialog.fv-set .st-notes ul.fv-release-list li:not(:has(.fv-release-tag))>.fv-release-text{grid-column:1/-1}
+dialog.fv-set .st-notes .fv-release-tag{justify-self:start;max-width:11em;padding:1px var(--fv-sp-8,8px);border-radius:var(--fv-rad-xs,4px);background:var(--fv-ctl-bg);color:var(--fv-accent-ink);font-size:var(--fv-fs-1,12px);line-height:18px;text-wrap:balance;overflow-wrap:anywhere}
+dialog.fv-set .st-notes .fv-release-text{min-width:0;text-wrap:pretty}
+@container (max-width:420px){
+  dialog.fv-set .st-notes ul.fv-release-list{grid-template-columns:minmax(0,1fr)}
+  dialog.fv-set .st-notes ul.fv-release-list li{display:block}
+  dialog.fv-set .st-notes .fv-release-tag{display:inline-block;max-width:none;margin:0 var(--fv-sp-8,8px) var(--fv-sp-2,2px) 0;vertical-align:1px}
+}

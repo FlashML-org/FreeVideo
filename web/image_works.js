@@ -19,6 +19,9 @@ export const worksPictureURL = file => {
     const at = file.lastIndexOf('/');
     return api.apiURL('/view?' + new URLSearchParams({filename: file.slice(at + 1), subfolder: at < 0 ? '' : file.slice(0, at), type: 'input'}));
 };
+// The tiles show the engine's small copy of a picture of the history (work_media.js); any other picture as itself.
+export const worksThumbnailURL = file => /^freevideo-image\/(?:image-\d{8}-\d{6}-\d{2}\.(?:png|jpg)|[0-9a-f]{32}\.png)$/.test(file)
+    ? api.apiURL('/freevideo/library/picture-thumbnail?' + new URLSearchParams({file})) : worksPictureURL(file);
 
 const announce = (name, files, extra = {}) => {
     if (files.length) window.dispatchEvent(new CustomEvent(name, {detail: {ids: files.slice(), paths: files.slice(), ...extra}}));
@@ -26,20 +29,22 @@ const announce = (name, files, extra = {}) => {
 
 // The pictures the engine has, newest first by its own clock (it names each file by that clock and sorts by name).
 // Pictures waiting out their undo window are left out, as everywhere else.
-// Pictures drawn for a cast card from a photo are not works either (cast_photo.js keeps their names in this browser).
-const castFiles = () => { try { return new Set(JSON.parse(localStorage.getItem('freevideo.cast.files') || '[]')); } catch { return new Set(); } };
+// Every picture the engine made is a work: a card's views and the editor's pictures too.
 export async function listWorks() {
-    const rows = await worksClient().history(), cast = castFiles();
-    return rows.filter(row => !trash().has(row.file) && !cast.has(row.file));
+    const rows = await worksClient().history();
+    return rows.filter(row => !trash().has(row.file));
 }
 
 // One bin for the page, so a picture deleted in one editor and listed in the next stays out of the list.
 let bin = null;
 const listeners = new Set();
+// Pictures the engine would not delete because a character card keeps them: file → the cards' names.
+const cardsKeeping = new Map();
 function trash() {
     if (bin) return bin;
     bin = createTrash({client: worksClient(), holdMs: UNDO_MS, onChange: (answer, list) => {
         if (answer) {
+            for (const f of answer.failed || []) if (f.reason === 'card' && Array.isArray(f.cards)) cardsKeeping.set(f.file, f.cards.filter(Boolean));
             const kept = new Set((answer.failed || []).filter(f => f.reason !== 'missing').map(f => f.file));
             const gone = (list || []).filter(f => !kept.has(f));
             if (gone.length) {
@@ -85,12 +90,9 @@ export const isHeld = file => !!bin?.has(file);
 export function followWorks(apply) {
     const removed = event => apply(event.detail?.paths || event.detail?.ids || [], []);
     const restored = event => apply([], event.detail?.paths || event.detail?.ids || []);
-    const cast = event => { if (event.type !== 'storage' || event.key === 'freevideo.cast.files') apply([], []); };
     window.addEventListener('freevideo-works-removed', removed);
     window.addEventListener('freevideo-works-restored', restored);
-    window.addEventListener('freevideo-cast-files', cast); window.addEventListener('storage', cast);
-    return () => { window.removeEventListener('freevideo-works-removed', removed); window.removeEventListener('freevideo-works-restored', restored);
-        window.removeEventListener('freevideo-cast-files', cast); window.removeEventListener('storage', cast); };
+    return () => { window.removeEventListener('freevideo-works-removed', removed); window.removeEventListener('freevideo-works-restored', restored); };
 }
 
 // Where a picture came from, kept with the browser's record of each work (the image view's info reads the same record):
@@ -102,66 +104,11 @@ function remember(file, patch) {
 if (typeof window !== 'undefined') window.addEventListener('freevideo-job-done', event => {
     const row = event.detail?.job;
     if (row?.kind !== 'image' || row.status !== 'done' || !row.result?.file) return;
-    // A picture made in the editor is a draft until the edit is saved: hidden from every works list at once (before
-    // any list reads the engine again), deleted when the editor is left without saving.
-    if (row.meta?.draft) markDrafts([row.result.file]);
     if (row.meta?.source) setTimeout(() => remember(row.result.file, {source: row.meta.source, edit: row.meta.edit || 'edit'}), 0);
 });
 
-// ── Drafts: pictures the editor's AI made that are not works (yet) ──
-// The engine writes every picture it makes into the works folder; a draft is kept out of the works lists through the
-// shared list of pictures that are not works (the one cast_photo.js keeps for a card's views, which the works library,
-// the image view and the works picker all leave out), and deleted when its editor is left without saving it. A draft that
-// is part of a saved edit (a layer of an edit the page keeps) stays hidden and is never swept; one no editor took back
-// within the time a job is kept is swept.
-const DRAFTS_KEY = 'freevideo.imageEditor.drafts', HIDDEN_KEY = 'freevideo.cast.files', DRAFT_KEEP_MS = 30 * 60 * 1000;
-const readJSON = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key) || 'null') ?? fallback; } catch { return fallback; } };
-const writeJSON = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* kept for this page only */ } };
-function hide(files, on) {
-    const list = new Set(readJSON(HIDDEN_KEY, []));
-    for (const file of files) { if (on) list.add(file); else list.delete(file); }
-    writeJSON(HIDDEN_KEY, [...list].slice(-2000));
-    window.dispatchEvent(new CustomEvent('freevideo-cast-files'));
-}
-export function markDrafts(files) {
-    const list = files.filter(Boolean); if (!list.length) return;
-    const drafts = readJSON(DRAFTS_KEY, {});
-    for (const file of list) drafts[file] = {...(drafts[file] || {}), at: drafts[file]?.at || Date.now()};
-    writeJSON(DRAFTS_KEY, drafts); hide(list, true);
-}
-export const isDraft = file => !!readJSON(DRAFTS_KEY, {})[file];
-// Part of a saved edit that the page keeps: stays out of the works, never swept.
-export function keepDrafts(files) {
-    const drafts = readJSON(DRAFTS_KEY, {});
-    for (const file of files) if (drafts[file]) drafts[file].kept = true;
-    writeJSON(DRAFTS_KEY, drafts);
-}
-// Deletes drafts for good (the engine's delete, no undo: they never were works) with anything filed for them.
-export async function discardDrafts(files) {
-    const drafts = readJSON(DRAFTS_KEY, {}), list = files.filter(file => drafts[file]);
-    if (!list.length) return [];
-    for (const file of list) delete drafts[file];
-    writeJSON(DRAFTS_KEY, drafts);
-    let failed = [];
-    try { failed = (await worksClient().historyDeleteMany(list)).failed?.filter(f => f.reason !== 'missing').map(f => f.file) || []; } catch { failed = list; }
-    const gone = list.filter(file => !failed.includes(file));
-    if (gone.length) {
-        void removeSavedImages(api, gone).catch(() => {});
-        try { createMetaStore().forget(gone); } catch { /* nothing kept */ }
-        announce('freevideo-works-removed', gone, {undoable: false});
-        hide(gone, false);
-    }
-    // One the engine kept (in use) stays a draft and is tried again by the next sweep.
-    if (failed.length) { const again = readJSON(DRAFTS_KEY, {}); for (const file of failed) again[file] = {at: 0}; writeJSON(DRAFTS_KEY, again); }
-    return gone;
-}
-// Drafts no editor took back within the time a job is kept, and not part of a saved edit, are deleted.
-export function sweepDrafts(now = Date.now()) {
-    const drafts = readJSON(DRAFTS_KEY, {});
-    const old = Object.entries(drafts).filter(([, d]) => !d.kept && now - (d.at || 0) > DRAFT_KEEP_MS).map(([file]) => file);
-    return old.length ? discardDrafts(old) : Promise.resolve([]);
-}
-if (typeof window !== 'undefined') setTimeout(() => { void sweepDrafts().catch(() => {}); }, 15000);
+// The hide-list and the draft list that earlier versions kept in this browser are gone: every picture is a work.
+try { localStorage.removeItem('freevideo.cast.files'); localStorage.removeItem('freevideo.imageEditor.drafts'); } catch { /* nothing to clear */ }
 
 // An edit saved in the editor joins the works: uploaded, then filed by the engine under its own name and clock, with
 // the picture it came from. Null when the engine does not offer it yet (the caller keeps the picture as before).
@@ -193,7 +140,15 @@ export function deleteWithUndo(files, t) {
             action: {label: t('Undo', '撤销'), use: t('Put the pictures back', '把图片放回去'), run: () => { undone = true; handle.undo(); }}});
         const result = await handle.done;
         note.close();
-        if (!undone && result.kept.length) toast(t(`${result.kept.length} could not be deleted.`, `有 ${result.kept.length} 张没能删除。`), {tone: 'warn'});
+        const named = result.kept.flatMap(file => cardsKeeping.get(file) || []);
+        const inCards = result.kept.filter(file => cardsKeeping.has(file)), others = result.kept.length - inCards.length;
+        if (!undone && inCards.length) {
+            const cards = [...new Set(named)].join(', ');
+            toast(cards ? t(`Used by the character card ${cards}. Remove the picture from the card, or delete the card, then delete it here.`, `这张图正被角色卡 ${cards} 使用。先从角色卡中移除这张图，或删除角色卡后再删。`)
+                : t('Used by a character card. Remove the picture from the card, or delete the card, then delete it here.', '这张图正被角色卡使用。先从角色卡中移除这张图，或删除角色卡后再删。'), {tone: 'warn'});
+            for (const file of inCards) cardsKeeping.delete(file);
+        }
+        if (!undone && others > 0) toast(t(`${others} could not be deleted.`, `有 ${others} 张没能删除。`), {tone: 'warn'});
     })();
     return handle;
 }

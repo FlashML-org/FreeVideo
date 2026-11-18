@@ -16,7 +16,7 @@ import { startWhiteboxWorker } from './whitebox_worker.js';
 import { startDoneNotify, askDesktopPermission, DESKTOP_SETTING } from './done_notify.js';
 import { installNavigation, refreshNavigation, preferredView, collapseWorkspaces, openImage } from './view_navigation.js';
 import { videoModelState } from './video_model.js';
-import { isLaunchVisit } from './launch_visit.js';
+import { isLaunchVisit, freeVideoInFront } from './launch_visit.js';
 import { openFreeVideoWorkflow } from './launcher.js';
 import { agentInterfaceState } from './agent_connect.js';
 import { attachReferencePicker, referenceItems, syncReferencePrompt, referenceInputs, mediaRows, mediaNodeOf } from './prompt_references.js';
@@ -617,7 +617,10 @@ function mediaPanel(node, mount = null) {
             // Loaded when asked (both modules are already in the page): the entry's static imports stay as they were.
             const pictures = import('./image_library.js').then(({imageCards}) => imageCards(api)).then(cards => cards.filter(card => card.thumbnail?.file).slice(0, limit).map(card => {
                 const url = viewURL(card.thumbnail.file);
-                return {id: card.id, name: card.name, kind: 'image', file: card.thumbnail.file, url, thumb: url, at: Date.parse(card.updated_at) || 0};
+                // The square shows the engine's small copy of a picture of the history; any other picture as itself.
+                const thumb = /^freevideo-image\/(?:image-\d{8}-\d{6}-\d{2}\.(?:png|jpg)|[0-9a-f]{32}\.png)$/.test(card.thumbnail.file)
+                    ? api.apiURL('/freevideo/library/picture-thumbnail?' + new URLSearchParams({file: card.thumbnail.file})) : url;
+                return {id: card.id, name: card.name, kind: 'image', file: card.thumbnail.file, url, thumb, at: Date.parse(card.updated_at) || 0};
             })).catch(() => []);
             // The library's pages hold 1–48 creations (a larger page is refused).
             const videos = import('./library.js').then(async ({libraryPage, videoThumbnailURL}) => ((await libraryPage(text, {limit: Math.min(48, Math.max(1, limit))})).items || [])
@@ -915,6 +918,7 @@ const isGenerate = node => node?.comfyClass === 'FreeVideoGenerate' || node?.typ
 const isFreeVideoNode = id => /^FreeVideo/.test(String(app.graph?.getNodeById(id)?.comfyClass || app.graph?.getNodeById(id)?.type || ''));
 // Only the FreeVideo launcher brings a workspace over a page; any other way of opening ComfyUI leaves it as it is.
 const launchVisit = isLaunchVisit(globalThis.location?.search, globalThis.sessionStorage);
+const inFront = freeVideoInFront(launchVisit);
 
 let menuFailure;
 async function openFromMenu() {
@@ -952,7 +956,7 @@ app.registerExtension({
     async setup() {
         // One failing part must not take the others down; health.js shows what failed.
         for (const [where, start] of [['progress', () => progressConnection.start()], ['navigation', () => installNavigation(showStudio, agentInterfaceState(api), {openWorkflow: openFreeVideoWorkflow, recheck: () => agentInterfaceState(api)})],
-            ['updates', startUpdateChecks], ['whatsnew', () => startWhatsNew({api, cn, productVersion})], ['done-notify', () => startDoneNotify({api, text, desktop: desktopNoticeEnabled, isFreeVideoNode,
+            ['updates', startUpdateChecks], ['whatsnew', () => startWhatsNew({api, cn, productVersion, inFront})], ['done-notify', () => startDoneNotify({api, text, desktop: desktopNoticeEnabled, isFreeVideoNode,
                 isFreeVideoWorkflow: () => (app.graph?._nodes || []).some(isGenerate)})],
             ['whitebox', () => startWhiteboxWorker({api})]]) {
             try { start(); } catch (error) { health({type: 'error', where, error}); }
@@ -960,7 +964,7 @@ app.registerExtension({
         window.addEventListener('pagehide', () => savePromptDraft(api, true));
         void savePromptDraft(api); // Retry this tab's outbox after an interrupted save.
         window.FreeVideoUI = {...window.FreeVideoUI, ready: true};
-        await notifyCompatibility();
+        void notifyCompatibility({inFront});
     },
     async beforeRegisterNodeDef(nodeType, nodeData) {
         if (cn && String(nodeData.name).startsWith('FreeVideo')) {
@@ -1049,7 +1053,7 @@ app.registerExtension({
                         ['seconds', '时长（秒）'],
                         ['seed', '种子'],
                         ['force_regenerate', '重新生成', '跳过已保存结果的缓存。'],
-                        ['preview', '先出预览', '先出半分辨率预览，满意后在结果里点“继续二采”，成片与直接生成一致。'],
+                        ['preview', '先出预览', '先出低分辨率预览，满意后在结果里点“继续二采”，成片与直接生成一致。'],
                         ['refine_from', '继续二采', '从这个预览继续生成全分辨率视频。'],
                         ['continue_from', '接着生成'],
                         ['frames', '帧数'],

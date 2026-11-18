@@ -1,0 +1,29 @@
+/* The sketch editor's pose tool: the overlay over the sheet (the part under the pointer, the selected part, its rings)
+   and the small windows of the options row (Pose, Props, Camera), attached under their buttons. */
+.fv-pose-overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:auto;touch-action:none}
+.fv-pose-overlay[hidden]{display:none}
+.fv-ie-stage[data-pose=true]{cursor:default}
+.fv-ie-stage[data-pose=true][data-pose-hover=true]{cursor:grab}
+.fv-ie-stage[data-pose=true][data-pose-drag=true]{cursor:grabbing}
+
+.fv-ie-options .fv-pose-add{display:inline-flex;align-items:center;gap:4px;padding-left:9px;padding-right:11px}
+.fv-ie-options .fv-pose-add svg{flex:none;color:var(--fv-muted)}
+.fv-ie-options .fv-pose-pop-button{display:inline-flex;align-items:center;gap:6px;padding-right:9px}
+.fv-ie-options .fv-pose-pop-button svg{flex:none;color:var(--fv-muted);transition:transform .16s cubic-bezier(.2,.8,.2,1)}
+.fv-ie-options .fv-pose-pop-button[aria-expanded=true]{background:var(--fv-selected);border-color:var(--fv-accent-dim);color:var(--fv-accent)}
+.fv-ie-options .fv-pose-pop-button[aria-expanded=true] svg{color:currentColor;transform:rotate(180deg)}
+
+.fv-pose-pop{position:fixed;z-index:20;display:flex;flex-direction:column;gap:12px;width:max-content;max-width:calc(100vw - 16px);
+  padding:12px;border:1px solid var(--fv-border);border-radius:var(--fv-r-md);background:var(--fv-card);color:var(--fv-ink);
+  box-shadow:0 14px 40px rgba(0,0,0,.42);user-select:none;animation:fv-pose-pop .16s cubic-bezier(.2,.8,.2,1)}
+@keyframes fv-pose-pop{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+.fv-pose-group{display:flex;flex-direction:column;gap:8px}
+.fv-pose-group h4{margin:0;color:var(--fv-muted);font-size:var(--fv-micro);font-weight:var(--fv-medium);letter-spacing:0}
+/* Equal columns as wide as the longest name; the last chip of a short row spans the rest, so no corner is left empty. */
+.fv-pose-chips{--per:3;display:grid;grid-template-columns:repeat(var(--per),1fr);gap:6px}
+.fv-pose-chip{min-height:30px;padding:4px 10px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);background:var(--fv-raised);color:var(--fv-ink);
+  font:inherit;font-size:var(--fv-small,13px);white-space:nowrap;cursor:pointer;transition:background-color .12s ease-out,border-color .12s ease-out}
+.fv-pose-chip:hover{background:var(--fv-hover)}
+.fv-pose-chip:focus-visible{outline:2px solid var(--fv-accent);outline-offset:1px}
+.fv-pose-chip[aria-pressed=true]{background:var(--fv-selected);border-color:var(--fv-accent-dim);color:var(--fv-accent)}
+@media (prefers-reduced-motion:reduce){.fv-pose-pop{animation:none}.fv-ie-options .fv-pose-pop-button svg,.fv-pose-chip{transition:none}}

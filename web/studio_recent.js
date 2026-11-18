@@ -1,6 +1,7 @@
 import { libraryPage, videoThumbnailURL } from './library.js';
 import { icon } from './result_actions.js';
 import { applyTasks, toggledTask } from './task_groups.js';
+import { mediaQueue, mediaURL, watchCards } from './work_media.js';
 
 const KEY = 'fv-studio-recent-rail';
 const el = (tag, text, cls) => {
@@ -117,11 +118,18 @@ export function createRecentVideos(t, {body, onSelect, onPick = () => {}, rail =
     const resized = () => { if (open) place(); };
     wide.addEventListener('change', layout);
     window.addEventListener('resize', resized);
+    const queue = mediaQueue();
     const thumbnails = new IntersectionObserver(entries => {
         for (const {target, isIntersecting} of entries) if (isIntersecting) {
-            target.src = target.dataset.src; thumbnails.unobserve(target); nameCard(target.dataset.video);
+            queue.thumbnail(target); target.src = target.dataset.src; thumbnails.unobserve(target); nameCard(target.dataset.video);
         }
     }, {root: list, rootMargin: '80px'});
+    // Over a link, the videos of the cards on screen and near them load in the background after their thumbnails, so
+    // the one picked next plays at once.
+    const originals = watchCards(queue, list, card => {
+        const row = byVideo.get(card.dataset.video);
+        return row ? {url: mediaURL(row.video, 'output'), kind: 'video', bytes: row.bytes} : null;
+    });
     // A card is named by its video's size and length; works show no date or time.
     const names = new Map(), unnamed = t('Video', '视频');
     const cardLabel = video => names.get(video) || unnamed;
@@ -159,7 +167,7 @@ export function createRecentVideos(t, {body, onSelect, onPick = () => {}, rail =
         try {
             const data = await libraryPage(t, {limit: 24, signal: controller.signal});
             if (disposed || controller.signal.aborted) return [];
-            thumbnails.disconnect(); cards.clear(); byVideo.clear(); list.replaceChildren();
+            thumbnails.disconnect(); originals.disconnect(); cards.clear(); byVideo.clear(); list.replaceChildren();
             // The library API returns newest first, with the same preview metadata.
             const rows = (data.items || []).filter(row => row?.video).slice(0, 24);
             for (const row of rows) {
@@ -196,7 +204,8 @@ export function createRecentVideos(t, {body, onSelect, onPick = () => {}, rail =
                 image.dataset.video = row.video;
                 for (const type of ['pointerenter', 'focus']) card.addEventListener(type, () => nameCard(row.video));
                 card.append(picture, check);
-                cards.set(row.video, card); byVideo.set(row.video, row); list.append(card); thumbnails.observe(image);
+                card.dataset.video = row.video;
+                cards.set(row.video, card); byVideo.set(row.video, row); list.append(card); thumbnails.observe(image); originals.observe(card);
             }
             order = rows.map(row => row.video);
             if (!order.some(video => byVideo.get(video).task === unfolded)) unfolded = null;
@@ -230,7 +239,7 @@ export function createRecentVideos(t, {body, onSelect, onPick = () => {}, rail =
         // The videos in list order (newest first) and the place of the one shown, for the history buttons.
         rows: () => order.map(video => byVideo.get(video)), index: () => order.indexOf(selected),
         dispose() {
-        disposed = true; request?.abort(); thumbnails.disconnect();
+        disposed = true; request?.abort(); thumbnails.disconnect(); originals.disconnect();
         document.removeEventListener('pointerdown', outside, true);
         wide.removeEventListener('change', layout); window.removeEventListener('resize', resized);
         clearTimeout(resizeTimer); body.classList.remove('fv-recent-resizing');

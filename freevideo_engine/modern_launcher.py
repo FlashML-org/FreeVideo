@@ -31,6 +31,23 @@ def theme():
         heightSm=32, height=36, heightLg=44, mono=b.MONO)
 
 
+def multimedia_available():
+    """Whether a release video can play in the notes; otherwise they show its cover (a GIF or WebP still moves).
+
+    Qt Multimedia must be present, and the window drawn by a graphics API: VideoOutput draws nothing in the
+    software renderer, which the launcher uses to keep the GPU free, so there the cover is shown instead of a
+    still picture with a speaker."""
+    try:
+        from PySide6.QtQuick import QQuickWindow
+        if QQuickWindow.sceneGraphBackend() == 'software':
+            return False
+        import PySide6.QtMultimedia  # noqa: F401  (also loads its system libraries)
+        from PySide6.QtCore import QLibraryInfo
+        return (Path(QLibraryInfo.path(QLibraryInfo.LibraryPath.QmlImportsPath)) / 'QtMultimedia').is_dir()
+    except Exception:  # Missing module or library: the cover stays.
+        return False
+
+
 def launcher_icon():
     from PySide6.QtGui import QIcon
     if sys.platform == 'darwin' and getattr(sys, 'frozen', False):
@@ -369,9 +386,8 @@ def create_ui(session, *, show=True, instance=None):
                 'ZIP (*.zip)')
             if path:
                 # The dialog asked before replacing the name it returned; a name we extend was never asked about.
-                confirmed = path.lower().endswith('.zip')
-                if not confirmed:
-                    path += '.zip'
+                from .launcher_session import report_target
+                path, confirmed = report_target(path)
                 self.invoke(session.export_report, path, confirmed)
 
         @Slot(str)
@@ -385,6 +401,15 @@ def create_ui(session, *, show=True, instance=None):
                 self.invoke(open_text, value, **(dict(engine=engine) if engine else {}))
             else:
                 self.invoke(open_browser, value)
+
+        @Slot()
+        def wantReleaseMedia(self):
+            # The notes window opened: the current version's picture or video may come now. The window calls this while
+            # it is being shown, so the new state follows on the next turn rather than inside that change.
+            if session.release_media_wanted:
+                return
+            session.release_media_wanted = True
+            QTimer.singleShot(0, self.refresh)
 
         @Slot(str, str)
         def reportProblem(self, error, title):
@@ -557,6 +582,7 @@ def create_ui(session, *, show=True, instance=None):
     engine.rootContext().setContextProperty('initialState', bridge.value)
     engine.rootContext().setContextProperty('cloudLinks', cloud_models())
     engine.rootContext().setContextProperty('theme', theme())
+    engine.rootContext().setContextProperty('multimedia', multimedia_available())
     engine.load(QUrl.fromLocalFile(str(Path(__file__).parent / 'launcher/Main.qml')))
     if not engine.rootObjects():
         bridge.timer.stop()

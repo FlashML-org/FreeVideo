@@ -17,24 +17,25 @@ import { openStudio, showNodes } from './studio.js';
 import { openAutopilot, viewChanged, viewSwitch } from './view_navigation.js';
 import { wordmark } from './wordmark.js';
 import { keepViewSwitchPlace } from './view_switch_place.js';
-import { openReferenceMenu, removeSavedImages, saveGeneratedImage } from './image_library.js';
+import { openReferenceMenu, removeSavedImages } from './image_library.js';
 import { BLANK_CANVAS_AREAS, createImageGenClient, fittedNote, imageGenError, imageRemainingText, imageReportBar, renderImageFailure } from './image_generation.js';
 import { duration } from './generation_progress.js';
 import { createPreviewScene } from './preview_scene.js?v=20261115-still';
 import { jobs, ACTIVE, IMAGE_BUSY } from './task_store.js';
 import { confirmStop, startJobSources } from './task_float.js';
 import { el, icon, t, cn, tip, button, section, readStore, writeStore, mod } from './image_view_ui.js';
-import { IMAGE_MODELS, modelPicker, modelState } from './image_view_models.js';
+import { IMAGE_MODELS, modelPicker, modelState, verifyText } from './image_view_models.js';
 import { RANGES, RATIOS, areaRange, estimateSeconds, machineLimit, presetAt, ratioValue, sizePicker, sizeFor, sizeText, megapixels } from './image_view_size.js';
 import { createMetaStore, createTrash, filterCounts, filterRows, groupRows, historyPanel, sessionPrompts } from './image_view_history.js';
-import { brokenMentions, mentionText, mentionsToEngine, promptMentions, renumberMentions, sketchPrompt } from './image_view_mentions.js';
+import { brokenMentions, mentionText, mentionsToEngine, posePrompt, promptMentions, renumberMentions, sketchPrompt } from './image_view_mentions.js';
 import { HISTORY_KEY, forgetDeletedPrompts, promptLibrary, rememberPrompt } from './image_view_prompts.js';
 import { COMPARE_MAX, compareView } from './image_view_compare.js';
 import { queuePanel } from './image_view_queue.js';
-import { isHeld, worksClient } from './image_works.js';
+import { isHeld, worksClient, saveToWorks } from './image_works.js';
 import { createWarmer } from './image_view_warm.js';
 import { openPictureViewer } from './image_view_viewer.js';
 import { LORA_MODEL, imageViewLora } from './image_view_lora.js';
+import { hasPictureThumbnail, mediaQueue, pictureThumbnailURL } from './work_media.js';
 
 export { IMAGE_MODELS, RATIOS };
 for (const name of ['./image_view.css']) {
@@ -112,6 +113,8 @@ export function createFakeImageClient({delay = 600, ready = {'minimax-h3-image':
 }
 
 const pictureURL = file => { const at = file.lastIndexOf('/'); return api.apiURL('/view?' + new URLSearchParams({filename: file.slice(at + 1), subfolder: at < 0 ? '' : file.slice(0, at), type: 'input'})); };
+// Tiles, the rail and the source line show a picture's small copy; the stage, the viewer and comparisons the picture.
+const thumbURL = file => hasPictureThumbnail(file) ? pictureThumbnailURL(file) : pictureURL(file);
 const SAMPLE_PROMPTS = {
     "jazz": "A stylish concert poster in a mid-century modern graphic style: a saxophone player drawn as a bold silhouette in deep navy against a warm mustard-yellow background, with abstract curved shapes in teal and coral. At the top, a large clean title reads \"MIDNIGHT JAZZ\". At the bottom, one smaller line reads \"FRIDAY 9 PM\". All text is spelled exactly as given, with no other words on the poster. Flat print texture, strong composition.",
     "window": "A realistic portrait photograph of a woman in her late twenties sitting by a tall window in a quiet old apartment, soft overcast daylight on one side of her face, loose dark hair tucked behind one ear, wearing a rust-coloured linen shirt, holding a white ceramic cup with both hands, calm thoughtful expression looking slightly away from the camera, natural skin texture with fine detail, muted warm colours, shallow depth of field, 85mm lens, one person, no text.",
@@ -191,6 +194,9 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     const sizes = readStore(SIZE_KEY, {}), fittedAreas = readStore(FIT_KEY, {}), panels = readStore(PANEL_KEY, {});
     // The engine's last answer stands in until the new one arrives, so the model row never changes its words on the way in.
     let info = viewCache?.info || null, model = IMAGE_MODELS.find(m => m.id === remembered()) || IMAGE_MODELS[0];
+    // A model the engine's list (even the cached one) does not offer is never the starting point: H3 Image on a Mac.
+    const offers = m => !!info?.models?.some(r => r.id === m.id && r.available !== false);
+    if (info?.models && !offers(model)) model = IMAGE_MODELS.find(offers) || model;
     let ratio = sizes.ratio || '1:1', area = sizes[model.id] || RANGES[model.id].presets.standard, locked = sizes.locked !== false, tier = 'standard';
     const promptOf = {};
     // A picture's words: from this page's memory (made while it is open) or the engine's record of it; never the browser's store.
@@ -214,11 +220,8 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         if ((readyParts.history || rows.length > 0) && pictureReady) dialog.dataset.fvReady = 'true';
     }
     meta.reload();
-    // Pictures made for a character card (its drafts and its views) are not works: cast_photo.js keeps their names.
-    const readCast = () => { try { return new Set(JSON.parse(localStorage.getItem('freevideo.cast.files') || '[]')); } catch { return new Set(); } };
-    let castHidden = readCast();
-    if (viewCache?.shownFile && rows.some(r => r.file === viewCache.shownFile) && !castHidden.has(viewCache.shownFile)) shownFile = viewCache.shownFile;
-    else shownFile = rows.find(r => !castHidden.has(r.file))?.file || '';
+    if (viewCache?.shownFile && rows.some(r => r.file === viewCache.shownFile)) shownFile = viewCache.shownFile;
+    else shownFile = rows[0]?.file || '';
     // The model made ready ahead (image_view_warm.js); only the model and the level go to the engine.
     const warmer = createWarmer({getToken: async () => info?.token || ''});
     function warmUp(level) { if (alive && !running && modelState(info, model.id).state === 'ready') warmer.warm(model.id, level); }
@@ -448,7 +451,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         if (m.source) {
             const name = String(m.source).slice(String(m.source).lastIndexOf('/') + 1), there = rows.find(r => r.file === m.source || r.name === name);
             const line = el('div', 'fv-iv-info-row fv-iv-info-row-src'), go = el('button', 'fv-iv-info-src'); go.type = 'button';
-            if (there) { const img = el('img'); img.src = pictureURL(there.file); img.alt = ''; img.loading = 'lazy'; go.append(img); }
+            if (there) { const img = el('img'); img.src = thumbURL(there.file); img.alt = ''; img.loading = 'lazy'; go.append(img); }
             go.append(el('span', '', name));
             if (there) { tip(go, t('Open the source', '打开来源'), t('Show the work this picture was made from', '显示这张图的来源作品')); go.addEventListener('click', () => showFile(there.file)); }
             else { go.disabled = true; tip(go, t('Source', '来源'), t('The source is no longer in the works', '来源作品已不在作品里')); }
@@ -527,7 +530,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     paintSettings();
 
     // Right panel: the works.
-    const works = historyPanel({pictureURL,
+    const works = historyPanel({pictureURL, thumbURL, queue: mediaQueue(),
         onShow: file => showFile(file),
         onToggleFav: files => { const list = files || [...picked]; if (!list.length) return; const all = list.every(f => meta.isFav(f)); meta.setFav(list, !all); drawWorks(); render(); },
         onSelect: (files, add) => { if (!selecting) selecting = true; if (add) files.forEach(f => picked.add(f)); else files.forEach(f => picked.has(f) ? picked.delete(f) : picked.add(f)); drawWorks(); render(); },
@@ -591,7 +594,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     // A picture is out of the works while it waits out an undo window: this page's, the picture editor's, or one
     // announced by another surface (the works library).
     const elsewhere = new Set();
-    const isGone = file => trash.has(file) || elsewhere.has(file) || isHeld(file) || castHidden.has(file);
+    const isGone = file => trash.has(file) || elsewhere.has(file) || isHeld(file);
     const trash = createTrash({client: deleter, onChange: (answer, list) => {
         if (answer) {
             // A file the engine no longer has is gone, not kept.
@@ -697,9 +700,15 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     }
     // The engine reads <Picture N>; the page writes "@图N" / "@Image N" (and older prompts "图 N"). A prompt that names none gets them
     // listed, all but the sketches: the words around the description name those.
-    function engineText() {
+    function engineText(seed) {
         const swapped = mentionsToEngine(prompt.value, references.length).replace(/(?:图\s?|Image\s)(\d+)/g, (_, n) => `<Picture ${n}>`)
             .replace(/(?:主体\s?|Subject\s)(\d+)/g, (_, n) => `<Subject ${n}>`);
+        // A sketch with mannequins takes the pose words (the other pictures listed in front when the text names none).
+        const poseAt = references.findIndex((r, at) => r.sketch && r.pose && at < cap_(model));
+        if (poseAt >= 0) {
+            const rest = references.map((_, at) => at === poseAt || at >= cap_(model) ? '' : `<Picture ${at + 1}>`).filter(Boolean);
+            return posePrompt(rest.length && !/<Picture \d+>/.test(swapped) ? rest.join(' ') + ' ' + swapped : swapped, poseAt + 1, references[poseAt].pose, seed);
+        }
         const sketches = references.map((r, at) => r.sketch && at < cap_(model) ? at + 1 : 0).filter(Boolean);
         const others = references.map((_, at) => sketches.includes(at + 1) ? '' : `<Picture ${at + 1}>`).filter(Boolean);
         const listed = others.length && !/<Picture \d+>/.test(swapped) ? others.join(' ') + ' ' + swapped : swapped;
@@ -729,13 +738,14 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         const file = new File([outcome.blob], 'sketch.png', {type: outcome.blob.type || 'image/png'});
         if (record) {
             if (!references.includes(record)) return;
-            URL.revokeObjectURL(record.url); Object.assign(record, {file, url: URL.createObjectURL(file), width: outcome.width, height: outcome.height, edit: outcome.edit || null}); render(); return;
+            URL.revokeObjectURL(record.url); Object.assign(record, {file, url: URL.createObjectURL(file), width: outcome.width, height: outcome.height, edit: outcome.edit || null, pose: outcome.pose || null}); render(); return;
         }
-        const fresh = {file, url: URL.createObjectURL(file), width: outcome.width, height: outcome.height, edit: outcome.edit || null, sketch: true};
+        const fresh = {file, url: URL.createObjectURL(file), width: outcome.width, height: outcome.height, edit: outcome.edit || null, sketch: true, pose: outcome.pose || null};
         changeRefs(() => references.unshift(fresh));
-        // A sketch is made into a picture with H3 Image when it is there (the user may still choose the other model).
-        const h3 = IMAGE_MODELS.find(m => m.id === 'minimax-h3-image');
-        if (h3 && model.id !== h3.id && modelState(info, h3.id).state === 'ready') chooseModel(h3);
+        // A sketch is made into a picture with H3 Image when it is there; a sketch with mannequins with Qwen-Image 2.1, on
+        // which its words were settled (the user may still choose the other model).
+        const best = IMAGE_MODELS.find(m => m.id === (fresh.pose ? 'qwen-image-2.1-turbo' : 'minimax-h3-image'));
+        if (best && model.id !== best.id && modelState(info, best.id).state === 'ready') chooseModel(best);
         // The box is left to say what the sketch shows (its placeholder asks for that while it is empty); the words around
         // the description already say the sketch gives the layout.
         promptGroup.open(true); render(); prompt.focus({preventScroll: true});
@@ -891,7 +901,8 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         else if (s.state === 'failed') {
             kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', [t(`${model.short} download failed.`, `${model.short} 下载失败。`), s.reason].filter(Boolean).join(' '))];
         } else if (s.state === 'downloading') {
-            kind = 'info'; parts = [icon('down'), el('span', 'fv-iv-slot-tx', pendingGenerate ? t(`Installing ${model.short}; it generates when done`, `正在安装 ${model.short}，完成后自动生成`) : t(`Installing ${model.short}`, `正在安装 ${model.short}`))];
+            kind = 'info'; parts = [icon(s.unknown ? 'clock' : 'down'), el('span', 'fv-iv-slot-tx', s.verifying ? (pendingGenerate ? t(`Verifying ${model.short}; it generates when done`, `正在校验 ${model.short}，完成后自动生成`) : t(`Verifying ${model.short}`, `正在校验 ${model.short}`))
+                : pendingGenerate ? t(`Installing ${model.short}; it generates when done`, `正在安装 ${model.short}，完成后自动生成`) : t(`Installing ${model.short}`, `正在安装 ${model.short}`))];
         } else if (s.state === 'missing') {
             kind = 'info'; parts = [icon('cloud'), el('span', 'fv-iv-slot-tx', t(`${model.short} is not installed; Generate installs it first`, `${model.short} 未安装，点生成会先安装`))];
         } else if (sizeWarning()) { kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', sizeWarning())]; }
@@ -955,7 +966,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             goLabel.textContent = t('Stop', '停止'); goSub.textContent = '';
             tip(go, t('Stop', '停止'), t('Cancel this picture; asks first', '取消这一张，会先确认'));
         } else if (s.state === 'downloading') {
-            goLabel.textContent = s.verifying ? t(`Verifying ${Math.floor(s.fraction * 100)}%`, `正在校验 ${Math.floor(s.fraction * 100)}%`) : t(`Installing ${Math.floor(s.fraction * 100)}%`, `正在安装 ${Math.floor(s.fraction * 100)}%`);
+            goLabel.textContent = s.verifying ? verifyText(s) : t(`Installing ${Math.floor(s.fraction * 100)}%`, `正在安装 ${Math.floor(s.fraction * 100)}%`);
             goSub.textContent = pendingGenerate ? t('then generates', '完成后生成') : '';
             tip(go, pendingGenerate ? t('Generates when installed', '安装完自动生成') : t('Generate when installed', '安装完再生成'), pendingGenerate ? t('Press to not generate after it', '再按一次取消自动生成') : t('Press to generate as soon as it is installed', '按下后，安装完成即自动生成'));
         } else if (s.state === 'missing' || s.state === 'failed') {
@@ -1000,8 +1011,10 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         const tooMany = over() > 0, busy = !!running;
         // No words inside the empty box (the group says what it is for), except beside a sketch: what it shows is known only
         // from the words (a stick figure is a person when the words say so), so the empty box asks for them.
-        prompt.placeholder = references.some((r, at) => r.sketch && at < cap_(model))
-            ? t('Write what the sketch shows, for example: a person raising both hands', '写下草图画的是什么，例如：一个人举起双手') : '';
+        prompt.placeholder = references.some((r, at) => r.sketch && r.pose && at < cap_(model))
+            ? t('Describe the people, their clothes and the place, for example: a young woman in a beige trench coat on a pier at dusk', '写下人物、衣着和地点，例如：穿米色风衣的年轻女性，站在黄昏的海边栈桥上')
+            : references.some((r, at) => r.sketch && at < cap_(model))
+                ? t('Write what the sketch shows, for example: a person raising both hands', '写下草图画的是什么，例如：一个人举起双手') : '';
         prompt.setAttribute('aria-label', references.length ? t('What to make or change', '要画什么或要改什么') : t('Describe the picture', '描述画面'));
         // Said only near the limit.
         promptCount.textContent = prompt.value.length >= 1600 ? `${prompt.value.length} / 2000` : '';
@@ -1071,7 +1084,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             const url = pictureURL(shownFile);
             // A picture shows whole once decoded (never painted half-loaded); until then its frame holds a placeholder.
             if (picture.dataset.file !== shownFile) {
-                picture.dataset.file = shownFile; picture.dataset.loaded = 'false'; delete picture.dataset.missing; picture.src = url;
+                picture.dataset.file = shownFile; picture.dataset.loaded = 'false'; delete picture.dataset.missing; picture.src = url; mediaQueue().open(url, picture);
                 if (picture.complete && picture.naturalWidth) picture.dataset.loaded = 'true';
                 // A picture of unknown shape: its size is read from its first bytes (long before it has loaded), so the
                 // frame and the caption row take their final size then, and the view is ready with them.
@@ -1139,7 +1152,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             loading: !historyLoaded && !rows.length, holdSeconds: trash.holdMs / 1000, allFiles: new Set(rows.map(r => r.file))});
         const runThumb = running ? (() => { const b = el('button', 'fv-iv-rail-thumb fv-iv-rail-run'); b.type = 'button'; b.style.setProperty('--p', String(row?.percent || 0)); b.append(el('i', 'fv-iv-ring'));
             tip(b, t('Generating', '正在生成'), t('Show its progress', '查看进度')); b.addEventListener('click', () => returnToRun()); return b; })() : null;
-        railThumbs.replaceChildren(...(runThumb ? [runThumb] : []), ...live.slice(0, runThumb ? 5 : 6).map(r => { const b = el('button', 'fv-iv-rail-thumb'); b.type = 'button'; const i = el('img'); i.alt = ''; i.draggable = false; i.src = pictureURL(r.file); b.append(i); b.classList.toggle('fv-iv-current', r.file === shownFile); tip(b, t('Show', '显示'), t('Put it on the stage', '在中间显示')); b.addEventListener('click', () => showFile(r.file)); return b; }));
+        railThumbs.replaceChildren(...(runThumb ? [runThumb] : []), ...live.slice(0, runThumb ? 5 : 6).map(r => { const b = el('button', 'fv-iv-rail-thumb'); b.type = 'button'; const i = el('img'); i.alt = ''; i.draggable = false; i.src = thumbURL(r.file); b.append(i); b.classList.toggle('fv-iv-current', r.file === shownFile); tip(b, t('Show', '显示'), t('Put it on the stage', '在中间显示')); b.addEventListener('click', () => showFile(r.file)); return b; }));
     }
     function showFile(file) { if (!file) return; if (running && !browsing) leaveRun(); draft = false; draftPreview = null; shownFile = file; if (historyLoaded) queueMicrotask(rememberView); started = 0; if (!running) failure = null; compare = null; render(); drawWorks(); }
     // ← → step through the works shown (not while comparing); the works column follows without jumping.
@@ -1216,7 +1229,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             // The engine makes one picture at a time: a second request waits its turn here and starts by itself; Stop cancels the wait.
             for (;;) {
                 try {
-                    ({id} = await jobs.submit('image', {prompt: engineText(), ...sent, model: model.id, remember: true, images: names, ...(seed === undefined ? {} : {seed}), ...(loras.length ? {loras} : {})},
+                    ({id} = await jobs.submit('image', {prompt: engineText(seed ?? Math.floor(Math.random() * 1e9)), ...sent, model: model.id, remember: true, images: names, ...(seed === undefined ? {} : {seed}), ...(loras.length ? {loras} : {})},
                         {view: 'image', client, meta: {text: prompt.value, withImages, tier: tierNow, width: sent.width, height: sent.height}}));
                     break;
                 } catch (error) {
@@ -1294,14 +1307,19 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     function renderFailure() {
         const asked = failure.sent || size();
         failure.sent = asked;
-        renderImageFailure(failHost, {...failure, info}, t, {retry: {
+        // A model this computer does not run: the way on is the other model, one press.
+        const other = failure.error === 'model_unavailable' ? IMAGE_MODELS.find(m => m.id !== model.id && offers(m)) : null;
+        renderImageFailure(failHost, {...failure, info}, t, {retry: other ? {
+            label: [`Use ${other.name}`, `改用 ${other.name}`],
+            onClick: () => { chooseModel(other); void generate(); }} : {
             label: failure.retryStandard ? ['Retry at Standard', '改用标准并重试'] : ['Retry', '重试'],
-            onClick: () => { if (failure.retryStandard) { area = RANGES[model.id].presets.standard; keepSize(); } void generate(); }}});
+            onClick: () => { if (failure.noList) { failure = null; render(); go.onclick(); return; } if (failure.retryStandard) { area = RANGES[model.id].presets.standard; keepSize(); } void generate(); }}});
         const head = el('div', 'fv-iv-fail-head'), mark = el('i', 'fv-iv-fail-icon'); mark.append(icon('warn'));
         head.append(mark, el('h3', '', failure.error === 'engine_closed' || failure.error === 'engine_restarted' ? t('The engine stopped', '引擎停止了') : t('The picture was not made', '这张没有生成出来')));
         failHost.prepend(head);
         const stage_ = STAGE_WORDS[failure.stage];
-        failHost.append(el('p', 'fv-iv-fail-facts', [model.short, sizeText(asked), stage_ ? t(`stopped at: ${stage_[0].toLowerCase()}`, `停在：${stage_[1]}`) : ''].filter(Boolean).join(' · ')));
+        // No request was made when the list could not be fetched: there is no model or size to name.
+        if (!failure.noList) failHost.append(el('p', 'fv-iv-fail-facts', [model.short, sizeText(asked), stage_ ? t(`stopped at: ${stage_[0].toLowerCase()}`, `停在：${stage_[1]}`) : ''].filter(Boolean).join(' · ')));
     }
     // ── run: tasks owns this block (job store) ──
     // Stop asks first; closing the page or switching views never stops the job.
@@ -1320,12 +1338,18 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             if (asking) return;
             // Another press while it waits is ignored; the bar shows the press was taken.
             asking = true; level.hidden = false; level.dataset.counted = 'false'; level.style.setProperty('--fv-progress', '0');
-            try { settleModel(await client.info(), true); } catch { /* the request below gets the engine's own answer */ }
+            let answered = true;
+            try { settleModel(await client.info(), true); } catch { answered = false; }
             asking = false; level.hidden = true;
             if (!alive) return;
             render();
-            if (info?.models) go.onclick(); else void generate();
+            if (info?.models) go.onclick();
+            // No answer: no request goes out, because it would name a model nobody has said is here.
+            else if (answered) void generate();
+            else { failure = {error: 'connection_lost', stage: 'start', noList: true}; renderFailure(); render(); drawWorks(); }
         }
+        // The model on show is not one this computer offers (a remembered H3 Image on a Mac): the press moves to the one it offers.
+        else if (!offers(model) && IMAGE_MODELS.some(offers)) { chooseModel(IMAGE_MODELS.find(offers)); go.onclick(); }
         // A model being installed: Generate says whether the picture follows the install.
         else if (loading()) { pendingGenerate = !pendingGenerate && (!!prompt.value.trim() || references.length > 0); if (!prompt.value.trim() && !references.length) { promptGroup.open(true); prompt.focus(); } render(); }
         // A model not installed: installs it, then generates.
@@ -1367,7 +1391,8 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         try {
             const edited = new File([outcome.blob], outcome.name || 'edited.png', {type: outcome.blob.type || 'image/png'});
             const name = await client.upload(edited);
-            void saveGeneratedImage(api, {url: pictureURL(name), file: name, prompt: promptFor(file)}).catch(() => {});
+            // The edited picture is one work of the library (one copy, no card of its own); the upload above only serves as the reference.
+            void saveToWorks(outcome.blob, {name: outcome.name || 'edited.png', source: file, client}).catch(() => {});
             const record = {file: edited, url: URL.createObjectURL(edited), width: outcome.width, height: outcome.height};
             if (references.length >= most()) URL.revokeObjectURL(record.url); else { changeRefs(() => references.unshift(record)); promptGroup.open(true); }
             render();
@@ -1401,7 +1426,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     const fileOf = path => { const name = String(path).slice(String(path).lastIndexOf('/') + 1); return rows.find(r => r.file === path || r.name === name)?.file || null; };
     // Works deleted for good (here or anywhere): their words leave the prompt history unless still in use.
     const forgetPrompts = () => { void forgetDeletedPrompts().then(n => { if (n && alive) library.paint(); }); };
-    const onWorksGone = event => { if (alive && event.detail?.undoable === false) forgetPrompts(); };
+    const onWorksGone = event => { if (alive && event.detail?.undoable === false) { forgetPrompts(); setTimeout(forgetPrompts, 5000); } };
     window.addEventListener('freevideo-works-removed', onWorksGone);
     forgetPrompts();
     const onWorksRemoved = event => {
@@ -1420,14 +1445,6 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         if (unknown) void loadWorks(); else { drawWorks(); render(); }
     };
     window.addEventListener('freevideo-works-removed', onWorksRemoved); window.addEventListener('freevideo-works-restored', onWorksRestored);
-    // A picture filed as a character card's (here or in another tab) leaves the works.
-    const onCastFiles = event => {
-        if (!alive || (event.type === 'storage' && event.key !== 'freevideo.cast.files')) return;
-        castHidden = readCast();
-        if (shownFile && castHidden.has(shownFile) && !running) shownFile = visible()[0]?.file || '';
-        drawWorks(); render();
-    };
-    window.addEventListener('freevideo-cast-files', onCastFiles); window.addEventListener('storage', onCastFiles);
     // Leaving the page ends this page's undo window: the pictures are deleted as asked, not left on disk.
     const onPageHide = () => { void trash.flush(); };
     window.addEventListener('pagehide', onPageHide);
@@ -1486,7 +1503,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         window.removeEventListener('freevideo-job-done', onJobDone); window.removeEventListener('freevideo-open-work', onOpenWork); window.removeEventListener('freevideo-task-stage-open', onStageOpen); fitWatch?.disconnect(); cancelAnimationFrame(fitFrame); sizer.dispose(); mentions.dispose();
         clearTimeout(warmSoon); clearTimeout(warmTyping); if (!running) warmer.cancel(model.id); viewer?.close();
         window.removeEventListener('freevideo-works-removed', onWorksRemoved); window.removeEventListener('freevideo-works-restored', onWorksRestored); window.removeEventListener('pagehide', onPageHide); window.removeEventListener('freevideo-works-added', onWorksAdded);
-        window.removeEventListener('freevideo-cast-files', onCastFiles); window.removeEventListener('storage', onCastFiles); window.removeEventListener('freevideo-works-removed', onWorksGone);
+        window.removeEventListener('freevideo-works-removed', onWorksGone);
         // Kept for the next time the view opens on this page (the pictures as files; their addresses are made again).
         keptDraft = {prompt: prompt.value, caret: prompt.selectionStart ?? prompt.value.length,
             references: references.map(({url, original, ...rest}) => ({...rest, ...(original ? {original: {file: original.file, width: original.width, height: original.height}} : {})}))};

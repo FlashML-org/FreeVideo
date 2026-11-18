@@ -39,7 +39,7 @@ BOOT_HTML = (
     '<script id="freevideo-boot">(function(){'
     'var d=document,r=d.documentElement,on=false,bg="#141518";'
     'try{var q=new URLSearchParams(location.search),v=localStorage.getItem("freevideo.view");'
-    'on=(q.get("freevideo")==="launch"||sessionStorage.getItem("freevideo.launched")==="1"||!!v)&&v!=="nodes";'
+    'on=(q.get("freevideo")==="launch"||sessionStorage.getItem("freevideo.launched")==="1")&&v!=="nodes";'
     'bg=localStorage.getItem("comfy-splash-bg")||bg}'
     'catch(e){on=/[?&]freevideo=launch(&|$)/.test(location.search)}'
     'if(!on)return;'

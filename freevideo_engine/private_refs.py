@@ -135,7 +135,7 @@ def released(output_root):
     return found
 
 
-def run_sweep(*, input_root, output_root=None, user_root=None, queue=None, extra=(), root=None):
+def run_sweep(*, input_root, output_root=None, user_root=None, queue=None, extra=(), root=None, now=None):
     """One scan of earlier files; nothing is removed when any record cannot be read."""
     from . import private_store
     try:
@@ -144,16 +144,27 @@ def run_sweep(*, input_root, output_root=None, user_root=None, queue=None, extra
         logging.warning('[FreeVideo] Private file cleanup skipped: a record could not be read (%s).',
                         type(error).__name__)
         return None
-    summary = private_store.sweep(input_root, referenced, root=root, released=released(output_root))
+    summary = private_store.sweep(input_root, referenced, root=root, now=now, released=released(output_root))
     if output_root is not None:
-        # Folders of requests that ended without a video are listed; they go when the user cleans up in Settings.
+        # Folders of requests that ended without a video: listed when cleanup only lists, removed otherwise.
         from .comfy_library import failed_runs
-        runs = failed_runs(output_root)
+        runs = failed_runs(output_root, now=now)
         if runs:
-            summary['items'] += [dict(path='FreeVideo/' + identity, kind='run', bytes=size, status='would-remove')
-                                 for identity, size in runs]
-            summary['files'] += len(runs)
-            summary['bytes'] += sum(size for _, size in runs)
+            # The folder of a request that ended without a video holds its prompt and upload copies; it goes with the
+            # rest once the days a failure report can be sent are over.
+            from .comfy_library import remove_failed_run
+            for identity, size in runs:
+                status = 'would-remove'
+                if not summary['dry_run']:
+                    try:
+                        status = 'removed' if remove_failed_run(output_root, identity) else 'kept'
+                    except Exception:
+                        logging.warning('[FreeVideo] Could not remove a request folder.', exc_info=True)
+                        status = 'kept'
+                summary['items'].append(dict(path='FreeVideo/' + identity, kind='run', bytes=size, status=status))
+                if status in ('removed', 'would-remove'):
+                    summary['files'] += 1
+                    summary['bytes'] += size
             try:
                 private_store._write(private_store.store_root(root) / 'sweep-log.json', summary)
             except OSError:
@@ -472,6 +483,100 @@ def user_directory():
         return folder_paths.get_user_directory()
     except (ImportError, AttributeError):
         return None
+
+
+def input_directory():
+    """ComfyUI's input folder, or None outside ComfyUI."""
+    try:
+        import folder_paths
+        return folder_paths.get_input_directory()
+    except (ImportError, AttributeError):
+        return None
+
+
+def refs_in(values, input_root):
+    """The input-relative names, in FreeVideo's own naming, of the files under ``input_root`` that ``values`` (paths,
+    or records holding paths) point at. Anything else is left out."""
+    from . import private_store
+    if input_root is None:
+        return []
+    try:
+        base = Path(os.path.realpath(input_root))
+    except OSError:
+        return []
+    found = []
+
+    def walk(value):
+        if isinstance(value, str):
+            try:
+                relative = Path(os.path.realpath(value)).relative_to(base).as_posix() if os.path.isabs(value) else value
+            except (ValueError, OSError):
+                return
+            if private_store.classify(relative):
+                found.append(relative)
+        elif isinstance(value, dict):
+            for item in value.values():
+                walk(item)
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                walk(item)
+    walk(values)
+    return list(dict.fromkeys(found))
+
+
+def hold(owner_id, values=(), *, receipts=(), input_root=None):
+    """Record that ``owner_id`` (video:<run>, image:<file>) uses the FreeVideo input files ``values`` point at and the
+    input-cache ``receipts`` its run wrote or read, so deleting it can remove them. Never raises."""
+    from . import private_store
+    try:
+        root = input_root if input_root is not None else input_directory()
+        refs = refs_in(values, root)
+        derived = [row for row in receipts if private_store._derived_ok(row)]
+        if refs or derived:
+            private_store.hold(owner_id, refs=refs, derived=derived)
+    except Exception:
+        logging.warning('[FreeVideo] Could not note the files a request uses.', exc_info=True)
+
+
+def release_owner(owner_id, context=None, *, input_root=None):
+    """The user deleted what ``owner_id`` made: remove the input files and cached encodings only it used. A file any
+    record, queued job or open page still names stays. When a record cannot be read nothing is released."""
+    from . import private_store
+    from .paths import data_root
+    try:
+        held = private_store.owner(owner_id)
+        if not held['refs'] and not held['derived']:
+            return None
+        context = dict(context if context is not None else default_context())
+        if input_root is not None:
+            context['input_root'] = input_root
+        try:
+            # Records and pages only: release itself leaves what another owner holds, and this owner is the one going.
+            keep = scan(output_root=context.get('output_root'), user_root=context.get('user_root'),
+                        queue=context.get('queue'), extra=context.get('extra', ()), roots=context.get('roots', ()))
+            keep |= private_store.pinned()
+        except OSError:
+            logging.warning('[FreeVideo] Kept the files of a deleted work: a record could not be read.')
+            return None
+        return private_store.release(owner_id, input_root=context['input_root'], cache_root=data_root() / 'input-cache',
+                                     keep=keep)
+    except Exception:
+        logging.warning('[FreeVideo] Could not release what a deleted work held.', exc_info=True)
+        return None
+
+
+def default_context():
+    """run_sweep's arguments for the running ComfyUI."""
+    import folder_paths
+    try:
+        from server import PromptServer
+        server = PromptServer.instance
+    except (ImportError, AttributeError):
+        server = None
+    image = getattr(server, '_freevideo_image_gen', None)
+    return dict(input_root=folder_paths.get_input_directory(), output_root=folder_paths.get_output_directory(),
+                user_root=folder_paths.get_user_directory(), queue=getattr(server, 'prompt_queue', None),
+                extra=image.held_tokens() if image is not None and hasattr(image, 'held_tokens') else ())
 
 
 def release_tokens(context, tokens):

@@ -156,7 +156,7 @@ export function openWorksPicker({anchor, t: tr = t, host = anchor.closest('dialo
     // Tiles are kept by file, so a redraw (a delete, Select) never reloads a picture.
     function draw() {
         if (closed) return;
-        const {worksPictureURL} = cached;
+        const {worksThumbnailURL} = cached;
         count.textContent = rows.length ? String(rows.length) : '';
         empty.textContent = cached.failed ? tr('The works could not be read. Try again.', '没能读取作品，请再试一次。') : tr('No pictures yet', '还没有图片');
         empty.hidden = !!rows.length || !cached.loaded;
@@ -165,7 +165,7 @@ export function openWorksPicker({anchor, t: tr = t, host = anchor.closest('dialo
         for (const [file, part] of tiles) if (!keep.has(file)) { part.item.remove(); tiles.delete(file); }
         rows.forEach((row, index) => {
             let part = tiles.get(row.file);
-            if (!part) { part = tile(row); part.img.src = worksPictureURL(row.file); tiles.set(row.file, part); }
+            if (!part) { part = tile(row); part.img.src = worksThumbnailURL(row.file); tiles.set(row.file, part); }
             const on = chosen.has(row.file);
             part.item.dataset.selecting = String(selecting); part.item.dataset.on = String(on);
             part.ref.hidden = !reference; part.del.hidden = selecting;
@@ -193,9 +193,9 @@ export function openWorksPicker({anchor, t: tr = t, host = anchor.closest('dialo
         place();
     }
     const folder = el('div', 'fv-works-note'); folder.hidden = true; box.insertBefore(folder, foot);
-    const cached = {loaded: false, failed: false, worksPictureURL: () => ''};
+    const cached = {loaded: false, failed: false, worksThumbnailURL: () => ''};
     async function load() {
-        const module = await works; cached.worksPictureURL = module.worksPictureURL;
+        const module = await works; cached.worksThumbnailURL = module.worksThumbnailURL;
         try { rows = await module.listWorks(); cached.failed = false; } catch { rows = []; cached.failed = true; }
         cached.loaded = true; draw();
     }

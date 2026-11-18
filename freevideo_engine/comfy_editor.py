@@ -643,8 +643,180 @@ def project_session(root, identity, session, release=False):
             _SESSIONS.setdefault(key, {})[session] = now + _SESSION_SECONDS
 
 
+# Made inside an edit (not in the creations list): music, voice lines, separated stems and sound effects.
+_MADE_FOLDERS = {'freevideo-music': 'music', 'freevideo-voice': 'voice', 'freevideo-stems': 'stems', 'freevideo-sound': 'sound'}
+CACHE_LIMITS = {'thumbnails': 256 * 1024**2, 'reverse': 4 * 1024**3, 'waveforms': 64 * 1024**2, 'beats': 64 * 1024**2}
+_CACHE_INDEX = '.editor/cache-index.json'
+_CACHE_QUIET = 600  # a cache file touched in the last ten minutes may be in use and is not trimmed
+
+
+def _made_unit(key):
+    """What deleting this source key would remove: an import, or the folder (or file) a made clip lives in."""
+    kind, value = key.split(':', 1)
+    if kind == 'import':
+        return ('imports', value)
+    if kind != 'generated':
+        return None
+    parts = value.split('/')
+    category = _MADE_FOLDERS.get(parts[0])
+    if category is None or len(parts) < 2:
+        return None
+    # Music is one file; voice, stems and sound keep a job folder with the lines, the stems and the script text.
+    return (category, '/'.join(parts[:2] if len(parts) > 2 else parts))
+
+
+def _unit_path(root, unit):
+    category, value = unit
+    if category == 'imports':
+        return _import_path(root, value).parent
+    return _safe(root, value)
+
+
+def _remove_unit(root, unit):
+    target = _unit_path(root, unit)
+    if unit[0] == 'imports':
+        try:
+            if _read_import(root, unit[1])['state'] == 'preparing':
+                raise DeleteRefused('import_in_use')
+        except (OSError, ValueError, KeyError, TypeError):
+            pass  # A damaged record can still be removed.
+    if target.is_dir():
+        shutil.rmtree(target)
+    elif target.exists():
+        target.unlink()
+
+
+def _others_use(root, identity):
+    """Source keys that any other saved edit still uses. Raises when an edit cannot be read: then nothing is released."""
+    used = set()
+    for _, other, record, _ in _projects(root, strict=True):
+        if other != identity:
+            used.update(references(record))
+    return used
+
+
+def project_residue(root, identity):
+    """What deleting this edit also deletes: the units no other edit uses, as {kind: [names]}."""
+    with _STATE:
+        record = _read_project(root, identity)
+        try:
+            used = _others_use(root, identity)
+        except ValueError:
+            return dict(imports=[], music=[], voice=[], stems=[], sound=[], unsure=True)
+        found = dict(imports=[], music=[], voice=[], stems=[], sound=[])
+        seen = set()
+        for key in references(record):
+            unit = _made_unit(key)
+            if unit is None or unit in seen or key in used:
+                continue
+            seen.add(unit)
+            if any(other != key and _made_unit(other) == unit for other in used):
+                continue
+            if not _unit_path(root, unit).exists():
+                continue
+            name = unit[1]
+            if unit[0] == 'imports':
+                try:
+                    name = _read_import(root, unit[1])['name']
+                except (OSError, ValueError, KeyError, TypeError):
+                    pass
+            found[unit[0]].append(name)
+        return found
+
+
+def _cache_index_path(root):
+    return _safe(root, 'FreeVideo/' + _CACHE_INDEX)
+
+
+def _read_cache_index(root):
+    """The owner index; None when it exists but cannot be read (it is then left alone, never replaced by a one-entry copy)."""
+    try:
+        value = _read_json(_cache_index_path(root), 8 * 1024 * 1024)
+        return value if isinstance(value, dict) else None
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError, TypeError):
+        return None
+
+
+def _remember_cache(root, relative, key):
+    with _STATE:
+        index = _read_cache_index(root)
+        if index is None or index.get(relative) == key:
+            return
+        index[relative] = key
+        try:
+            path = _cache_index_path(root)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            _write(path, index)
+        except OSError:
+            pass  # The caches still work on a read-only output disk; they are then trimmed by the size limit only.
+
+
+def forget_caches(root, keys):
+    """Delete the thumbnails, reversed copies and analyses made for these source keys."""
+    keys = set(keys)
+    if not keys:
+        return 0
+    removed = 0
+    with _STATE:
+        index = _read_cache_index(root)
+        if index is None:
+            return 0
+        for relative, key in list(index.items()):
+            if key not in keys:
+                continue
+            try:
+                for path in _safe(root, 'FreeVideo/.editor/' + relative).parent.glob(PurePosixPath(relative).stem + '.*'):
+                    if path.is_file() and not path.is_symlink():
+                        path.unlink()
+                        removed += 1
+            except (OSError, ValueError):
+                _LOG.warning('Editor cache cleanup failed; continuing.')
+            del index[relative]
+        try:
+            _write(_cache_index_path(root), index)
+        except OSError:
+            pass
+    return removed
+
+
+def trim_caches(root, now=None):
+    """Keep each cache category under its size limit by removing the least recently written files first."""
+    now = time.time() if now is None else now
+    trimmed = []
+    with _STATE:
+        for category, limit in CACHE_LIMITS.items():
+            try:
+                folder = _editor_path(root, category)
+                files = [(p.stat().st_mtime, p.stat().st_size, p) for p in folder.iterdir() if p.is_file() and not p.is_symlink()] if folder.is_dir() else []
+            except (OSError, ValueError):
+                continue
+            total = sum(size for _, size, _ in files)
+            for mtime, size, path in sorted(files, key=lambda row: row[0]):
+                if total <= limit:
+                    break
+                if now - mtime < _CACHE_QUIET:
+                    continue
+                try:
+                    path.unlink()
+                    total -= size
+                    trimmed.append(category + '/' + path.stem)
+                except OSError:
+                    pass
+        index = _read_cache_index(root) if trimmed else None
+        if index and any(name in index for name in trimmed):
+            for name in trimmed:
+                index.pop(name, None)  # A trimmed file no longer needs its owner entry.
+            try:
+                _write(_cache_index_path(root), index)
+            except OSError:
+                pass
+
+
 def delete_project(root, identity, session=None):
-    """Delete only this edit's retained directory, never its source media."""
+    """Delete this edit's retained directory and what only it used: imports, music, voice, stems, sound and their caches.
+    Creations from the list stay; they are deleted there."""
     with _STATE:
         path = _project_path(root, identity)
         if session is not None and (not isinstance(session, str) or not re.fullmatch(r'[0-9a-f]{32}', session)):
@@ -670,8 +842,34 @@ def delete_project(root, identity, session=None):
                     raise DeleteRefused('generation_active')
         # _project_path rejects links in the owned path. rmtree does not follow
         # links inside it, and the state lock excludes publication by save().
+        residue = []
+        if path.exists():
+            try:
+                used = _others_use(root, identity)
+                for source in references(record):
+                    if source in used:
+                        continue
+                    unit = _made_unit(source)
+                    if unit is None or any(_made_unit(other) == unit for other in used):
+                        residue.append((source, None))
+                    else:
+                        residue.append((source, unit))
+            except ValueError:
+                residue = []  # An unreadable edit might still use it: nothing else is removed.
         shutil.rmtree(path.parent)
         _SESSIONS.pop(key, None)
+        gone = []
+        for source, unit in residue:
+            if unit is not None and unit not in gone:
+                gone.append(unit)
+                try:
+                    _remove_unit(root, unit)
+                except (OSError, ValueError, DeleteRefused):
+                    _LOG.warning('Editor retained media cleanup failed; continuing.')
+                    continue
+                if unit[0] == 'imports':
+                    _FAILED_IMPORTS.pop((str(Path(root).resolve()), unit[1]), None)
+        forget_caches(root, [source for source, _ in residue])
 
 
 def load_by_work(root, work):
@@ -923,6 +1121,7 @@ def delete_import(root, identity, confirm=False):
         # _import_path rejects links in the owned path; rmtree does not follow links inside it.
         shutil.rmtree(folder)
         _FAILED_IMPORTS.pop((str(Path(root).resolve()), identity), None)
+        forget_caches(root, ['import:' + identity])
 
 
 def _display_name(value):
@@ -1194,6 +1393,7 @@ class ImportManager:
 def _cache(root, category, key, path, extra=''):
     info = path.stat()
     stamp = hashlib.sha256(f'v1:{key}:{info.st_size}:{info.st_mtime_ns}:{extra}'.encode()).hexdigest()
+    _remember_cache(root, category + '/' + stamp, key)
     return _editor_path(root, category + '/' + stamp)
 
 
@@ -1211,6 +1411,7 @@ def thumbnail(root, key):
             stream = reader.streams.video[0]
             stream.thread_count = 1
             _poster(next(reader.decode(stream)).to_image(), cached)
+        trim_caches(root)
     return cached
 
 
@@ -1374,8 +1575,11 @@ def register():
                     return web.json_response(dict(saved=False, retry=True, **_disk_full(error)), status=503, headers=_HEADERS)
                 except (ValueError, TypeError, KeyError, RecursionError):
                     return web.json_response(dict(error='Invalid editor request'), status=400, headers=_HEADERS)
-                except Exception:
-                    return web.json_response(dict(error='Editor media unavailable'), status=404, headers=_HEADERS)
+                except Exception as error:
+                    # An unexpected failure is never a 404: the page reads that as "this engine has no editor API".
+                    request_id = uuid.uuid4().hex[:12]
+                    _LOG.exception('Editor request %s failed (%s %s, request_id=%s).', type(error).__name__, method.upper(), path, request_id)
+                    return web.json_response({'error': 'internal', 'class': type(error).__name__, 'request_id': request_id}, status=500, headers=_HEADERS)
             getattr(server.routes, method)(path)(guarded)
             return guarded
         return decorate
@@ -1408,6 +1612,11 @@ def register():
             # A missing staging directory is a retryable write error, not 404.
             return web.json_response(dict(saved=False, retry=True, **_disk_full(error)), status=503, headers=_HEADERS)
         return web.json_response(dict(project=result), headers=_HEADERS)
+
+    @endpoint('get', '/freevideo/editor/project/residue')
+    async def project_leftovers(request):
+        found = await asyncio.to_thread(project_residue, root(), request.query.get('id'))
+        return web.json_response(dict(residue=found), headers=_HEADERS)
 
     @endpoint('post', '/freevideo/editor/project/delete')
     async def remove_project(request):

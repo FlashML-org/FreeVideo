@@ -544,6 +544,39 @@ class _ReceiptWrites:
                 self.registered = False
 
 
+# A finished Agent task keeps what it asked for (prompts, lines, pictures, answers) only this long.
+RECORD_RETENTION = 30 * 24 * 3600
+_KEPT = ('id', 'kind', 'status', 'created_at', 'updated_at', 'started_at', 'finished_at', 'depends_on', 'parent', 'take')
+
+
+def forget_record(row):
+    """A finished task cut down to what is needed to know it ran: id, kind, status, times, the task it hangs under,
+    a short failure code, and the work number (run folder) or picture file it made. Everything it was asked or
+    answered - prompts, labels, lines, questions, pictures, local paths - is gone. Pure: ``row`` is not changed."""
+    value = {key: deepcopy(row[key]) for key in _KEPT if key in row}
+    value['spec'] = {}
+    value['work_deleted'] = True
+    error = row.get('error')
+    if isinstance(error, dict) and isinstance(error.get('code'), str):
+        value['error'] = dict(code=error['code'][:64])
+    result, kept = row.get('result'), {}
+    if isinstance(result, dict):
+        for key in ('run', 'work'):
+            if isinstance(result.get(key), str):
+                kept[key] = result[key]
+        for key in ('video', 'image'):
+            item = result.get(key)
+            if isinstance(item, dict) and isinstance(item.get('file'), str) and not re.match(r'^(?:/|[A-Za-z]:|\\\\)', item['file']):
+                kept[key] = dict(file=item['file'])
+            elif isinstance(item, str) and not re.match(r'^(?:/|[A-Za-z]:|\\\\)', item):
+                kept[key] = item
+        if isinstance(result.get('file'), str) and not re.match(r'^(?:/|[A-Za-z]:|\\\\)', result['file']):
+            kept['file'] = result['file']
+    if kept:
+        value['result'] = kept
+    return value
+
+
 class Jobs:
     def __init__(self, port, directory, *, clock=now):
         self.port = port
@@ -674,6 +707,7 @@ class Jobs:
                     row['spec'].setdefault('single_max_frames', None)
                 self.jobs[row['id']] = row
         self.unreadable = len(unreadable_batches) + len(unreadable_ids - self.jobs.keys())
+        self.purge_records()
         for row in self.jobs.values():
             if (row['kind'] != 'generate' or row['spec'].get('refine_from')
                     or row['status'] in DONE and not row.get('resume_pending')
@@ -830,6 +864,65 @@ class Jobs:
             except (OSError, ValueError, TypeError):
                 logging.getLogger(__name__).warning('Could not update a batch file for a deletion')
 
+    def purge_records(self, retention=RECORD_RETENTION):
+        """Finished tasks older than the retention are cut down to forget_record's whitelist; running and waiting
+        ones, and ones a film still names, are never touched. Returns the ids changed."""
+        now = self.clock()
+        stale = [identity for identity, row in self.jobs.items()
+                 if row['status'] in DONE and not row.get('resume_pending') and not row.get('work_deleted')
+                 and type(row.get('finished_at', row.get('updated_at'))) in (int, float)
+                 and row.get('finished_at', row.get('updated_at')) <= now - retention]
+        return self.forget_rows(stale)
+
+    def forget_rows(self, identities):
+        """Cut the given finished tasks down to forget_record's whitelist, in memory, in their files and in their
+        batch receipts. Active tasks are skipped."""
+        changed = []
+        with self.lock:
+            for identity in identities:
+                row = self.jobs.get(identity)
+                if row is None or row['status'] not in DONE or row.get('resume_pending'):
+                    continue
+                kept = forget_record(row)
+                kept.update({key: value for key, value in row.items() if key.startswith('_')})
+                row.clear()
+                row.update(kept)
+                changed.append(identity)
+                try:
+                    self.save(row)
+                except OSError:
+                    logging.getLogger(__name__).warning('Could not update a finished task for forgetting')
+            if changed:
+                wanted = set(changed)
+                self._rewrite_batches(lambda row: forget_record(row) if row.get('id') in wanted else row)
+        return changed
+
+    def forget_children_of(self, parent_key, parent_value):
+        """After a card is deleted: forget its finished tasks (those whose parent names it)."""
+        with self.lock:
+            return self.forget_rows([identity for identity, row in self.jobs.items()
+                                     if isinstance(row.get('parent'), dict) and row['parent'].get(parent_key) == parent_value])
+
+    def session_folders(self, sid):
+        """Folders under input/freevideo/agent that a conversation's own jobs made or named: each job's folder, the
+        upload and media-tool folders in its specs and results, and its image-editing sessions."""
+        from .sessions import FOLDER_NAMED
+        found = set()
+        with self.lock:
+            for identity, row in self.jobs.items():
+                if row.get('session') == sid and row['status'] in DONE and not row.get('resume_pending'):
+                    found.add('freevideo/agent/' + identity)
+                    found.update(FOLDER_NAMED.findall(json.dumps(row, default=str)))
+        return found
+
+    def text_outside_session(self, sid):
+        """What every other conversation's jobs, every film and every character card say, to tell whether a folder is
+        still named once this conversation is gone."""
+        with self.lock:
+            rows = [row for row in self.jobs.values() if row.get('session') != sid or row['status'] not in DONE]
+            return json.dumps([rows, list(self.productions.records.values()),
+                               [record['card'] for record in self.cast.records.values()]], default=str)
+
     def forget_session(self, sid):
         """After its conversation is deleted: remove the finished jobs that ran in it, unless a film still names them.
         Returns their ids."""
@@ -850,51 +943,17 @@ class Jobs:
         return sorted(gone)
 
     def forget_works(self, names):
-        """Blank the prompt and reference pictures of finished jobs whose result names a work deleted for good (a run
+        """Cut down to the whitelist (forget_record) the finished jobs whose result names a work deleted for good (a run
         id or a picture's file name); the job stays as a record that it ran. Returns the ids changed."""
         names = [name for name in names if isinstance(name, str) and len(name) >= 8]
         if not names:
             return []
 
-        def blank(row):
-            spec = row.get('spec') if isinstance(row.get('spec'), dict) else None
-            if spec is None:
-                return False
-            changed = False
-            for key in self.PROMPT_FIELDS:
-                if isinstance(spec.get(key), str) and spec[key]:
-                    spec[key] = ''
-                    changed = True
-            for key in self.MEDIA_FIELDS:
-                value = spec.get(key)
-                if value:
-                    spec[key] = {} if isinstance(value, dict) else [] if isinstance(value, list) else None
-                    changed = True
-            if changed:
-                row['work_deleted'] = True
-            return changed
-
-        changed = []
         with self.lock:
-            for identity, row in self.jobs.items():
-                if row['status'] not in DONE or row.get('work_deleted'):
-                    continue
-                text = json.dumps(row.get('result'), default=str)
-                if any(name in text for name in names) and blank(row):
-                    changed.append(identity)
-                    try:
-                        self.save(row)
-                    except OSError:
-                        logging.getLogger(__name__).warning('Could not update a job for a deleted work')
-            if changed:
-                wanted = set(changed)
-
-                def redact(row):
-                    if row.get('id') in wanted:
-                        blank(row)
-                    return row
-                self._rewrite_batches(redact)
-        return changed
+            hit = [identity for identity, row in self.jobs.items()
+                   if row['status'] in DONE and not row.get('work_deleted')
+                   and any(name in json.dumps(row.get('result'), default=str) for name in names)]
+            return self.forget_rows(hit)
 
     def save_batch(self, rows):
         self.retry_pending()

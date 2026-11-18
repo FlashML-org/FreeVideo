@@ -1025,6 +1025,7 @@ export class Renderer {
     // A layer as composited: edits, adjustments, mask; text and shapes drawn.
     layerImage(doc, layer, scale, exact = false) {
         if (layer.kind === 'text') return this.text(layer, scale);
+        if (layer.kind === 'pose') return this.pose(layer, scale, exact);
         if (layer.kind === 'shape') {
             // A shape with a mask (the eraser went over it) is drawn, then masked, at the same size.
             const drawn = this.shape(layer, scale);
@@ -1178,6 +1179,17 @@ export class Renderer {
         });
         this.layers.set(key, {look, canvas: c});
         return c;
+    }
+    // The sketch's mannequins: line art drawn by the pose tool (posePainter, set while the tool is loaded) at the layer's
+    // size; clear until then. The saved picture asks for the fine drawing (exact).
+    pose(layer, scale, exact = false) {
+        const w = Math.max(1, Math.round(layer.nw * scale)), h = Math.max(1, Math.round(layer.nh * scale));
+        const key = `${layer.id}@${exact && scale < 1 ? `${scale}!` : scale}#pose`, look = JSON.stringify([layer.pose, w, h, exact, !!this.posePainter]);
+        const cached = this.layers.get(key);
+        if (cached?.look === look) return cached.canvas;
+        const out = this.posePainter ? this.posePainter(layer.pose, w, h, exact, cached?.canvas) : canvas(w, h);
+        this.layers.set(key, {look, canvas: out});
+        return out;
     }
     shape(layer, scale) {
         const key = `${layer.id}@${scale}#shape`, look = JSON.stringify([layer.shape, layer.nw, layer.nh]);

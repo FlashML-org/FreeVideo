@@ -8,6 +8,8 @@ import {skinSelect} from './fv_select.js';
 import {about} from './request_assets.js';
 import {createImageLoras} from './image_lora.js';
 import {createOtherUsageNotice, otherUsageText} from './other_usage.js';
+// The page's background loading of works (work_media.js) waits while an upload runs.
+const uploadRunning = active => { try { globalThis.dispatchEvent?.(new CustomEvent('freevideo-upload', {detail: {active}})); } catch { /* no page */ } };
 
 // The folder of the input directory that holds the pictures a request sends (the engine's PAGE_FOLDER).
 export const PAGE_UPLOAD_FOLDER = 'freevideo-image-ref';
@@ -137,7 +139,18 @@ export function createImageGenClient(fetchImpl = globalThis.fetch.bind(globalThi
         segmentInstall: () => post('segment-install', {}),
         segmentCancel: () => post('segment-cancel', {}),
         // Every picture generated on this machine, newest first; the engine keeps them in a folder.
-        async history(model) { return (await post('history', model ? {model} : {})).items || []; },
+        // Every picture, page by page (the engine has no cap; an older engine answers all of them in the first page).
+        async history(model) {
+            const items = [];
+            for (let offset = 0; offset < 100000;) {
+                const page = await post('history', {...(model ? {model} : {}), offset, limit: 200});
+                const rows = page.items || [];
+                items.push(...rows);
+                if (page.more !== true || !rows.length) break;
+                offset += rows.length;
+            }
+            return items;
+        },
         async historyDelete(file) { return (await post('history-delete', {file})).items || []; },
         async historyDeleteMany(files) { const answer = await post('history-delete-many', {files}); return {items: answer.items || [], failed: answer.failed || []}; },
         historyOpen: () => post('history-open', {}),
@@ -160,7 +173,8 @@ export function createImageGenClient(fetchImpl = globalThis.fetch.bind(globalThi
             body.append('image', new File([file], folder ? `${crypto.randomUUID()}.${ext}` : `freevideo-image-reference-${crypto.randomUUID()}.png`, {type: file.type || 'image/png'}));
             body.append('type', 'input'); body.append('overwrite', 'false');
             if (folder) body.append('subfolder', PAGE_UPLOAD_FOLDER);
-            const value = await request(p.upload, {method: 'POST', body});
+            uploadRunning(true);
+            let value; try { value = await request(p.upload, {method: 'POST', body}); } finally { uploadRunning(false); }
             if (!value[p.name] || /[/\\:]/.test(value[p.name]) || (folder ? value[p.subfolder] !== PAGE_UPLOAD_FOLDER : value[p.subfolder])) throw failure('invalid_media');
             return folder ? `${PAGE_UPLOAD_FOLDER}/${value[p.name]}` : value[p.name];
         },
@@ -211,6 +225,7 @@ export function imageGenError(code, info, t) {
             '显存不足，最小尺寸也无法生成。请关闭其他占用显卡的程序后重试。'],
         busy_video: ['A video is generating. Try again when it finishes.', '视频正在生成，完成后再试。'],
         busy: ['An image is already being generated. Try again when it finishes.', '已有一张图在生成，完成后再试。'],
+        model_unavailable: ['This computer does not support the chosen picture model. Use Qwen-Image 2.1.', '这台电脑不支持所选的图片模型。请改用 Qwen-Image 2.1。'],
         model_unreadable: ['The image generation model files could not be read. Repair them in the launcher and try again.',
             '图像生成模型的文件读不出来。在启动器里修复后再试。'],
         device_unavailable: ['The graphics card is not available right now. Try again later.', '显卡暂时用不了，稍后再试。'],
@@ -655,7 +670,8 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
             if (!alive()) return;
             const request_ = {prompt: request.prompt, width: context.width, height: context.height, images, mask,
                 ...(request.seed === undefined ? {} : {seed: request.seed}),
-                ...(request.loras === undefined ? {} : {loras: request.loras})};
+                ...(request.loras === undefined ? {} : {loras: request.loras}),
+                ...(tasks?.purpose ? {purpose: tasks.purpose} : {})};
             if (tasks) {
                 tasks.startJobSources?.();
                 const {id} = await tasks.jobs.submit('image', request_, {view: tasks.view || 'image-editor',

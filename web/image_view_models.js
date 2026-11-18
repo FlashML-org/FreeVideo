@@ -16,6 +16,8 @@ export function modelState(info, id) {
     const row = info.models?.find(m => m.id === id);
     if (!row || row.available === false) return {state: info.models ? 'unavailable' : 'checking'};
     if (row.ready) return {state: 'ready', row};
+    // The engine is re-checking files that are already there: they are being verified, not missing.
+    if (row.checking && !row.install?.state) return {state: 'downloading', row, total: row.bytes_total || 0, done: 0, fraction: 0, verifying: true, unknown: true, paused: false, rate: 0};
     const install = row.install || {};
     const total = install.total || row.bytes_total || 0, done = install.done || row.bytes_done || 0;
     const verifying = install.state === 'running' && install.phase === 'verify';
@@ -29,6 +31,8 @@ export function modelState(info, id) {
 }
 
 const gb = bytes => (bytes / 1e9).toFixed(1);
+// Checking files already on disk: a percentage only when the engine reports one.
+export const verifyText = state => state.unknown ? t('Verifying', '正在校验') : t(`Verifying ${Math.floor(state.fraction * 100)}%`, `正在校验 ${Math.floor(state.fraction * 100)}%`);
 // The size to download, said once: files the video models already have are not fetched again.
 export function downloadText(state) {
     if (!state.total) return t('Download needed', '需下载');
@@ -38,7 +42,7 @@ export function downloadText(state) {
 export function statusLine(state) {
     switch (state.state) {
     case 'ready': return t('Installed', '已安装');
-    case 'downloading': return state.paused ? t('Paused', '已暂停') : state.verifying ? t(`Verifying ${Math.floor(state.fraction * 100)}%`, `正在校验 ${Math.floor(state.fraction * 100)}%`) : `${Math.floor(state.fraction * 100)}%`;
+    case 'downloading': return state.paused ? t('Paused', '已暂停') : state.verifying ? verifyText(state) : `${Math.floor(state.fraction * 100)}%`;
     case 'failed': return t('Download failed', '下载失败');
     case 'missing': return downloadText(state);
     case 'unavailable': return t('Not on this computer', '这台电脑不支持');
@@ -53,7 +57,7 @@ function useOf(model, state) {
     return {
         ready: model.id === IMAGE_MODELS[0].id ? t('Large, detailed pictures, up to 16 references', '大尺寸、细节多，最多 16 张参考图') : t('Fast pictures, up to 4 references', '出图快，最多 4 张参考图'),
         missing: t(`Not installed: Generate installs it first, ${size}`, `未安装：点生成会先安装，${size}`),
-        downloading: state.paused ? t('Paused while a video generates; resumes after it', '视频生成中，下载已暂停，之后自动继续') : state.verifying ? t(`Verifying the files ${Math.floor(state.fraction * 100)}%; usable when done`, `正在校验文件 ${Math.floor(state.fraction * 100)}%，完成后即可使用`) : t(`Downloading ${Math.floor((state.fraction || 0) * 100)}%; usable when done`, `正在下载 ${Math.floor((state.fraction || 0) * 100)}%，完成后即可使用`),
+        downloading: state.paused ? t('Paused while a video generates; resumes after it', '视频生成中，下载已暂停，之后自动继续') : state.verifying ? (state.unknown ? t('Verifying the files; usable when done', '正在校验文件，完成后可以使用') : t(`Verifying the files ${Math.floor(state.fraction * 100)}%; usable when done`, `正在校验文件 ${Math.floor(state.fraction * 100)}%，完成后即可使用`)) : t(`Downloading ${Math.floor((state.fraction || 0) * 100)}%; usable when done`, `正在下载 ${Math.floor((state.fraction || 0) * 100)}%，完成后即可使用`),
         failed: state.reason || t('The download stopped; press Retry', '下载中断了，点重试'),
         unavailable: t('This model does not run on this computer', '这台电脑不能运行这个模型'),
         checking: t('Asking the engine', '正在询问引擎'),
@@ -122,7 +126,7 @@ export function modelPicker({host, onPick, onInstall, onPause}) {
         const model = IMAGE_MODELS.find(m => m.id === chosen) || IMAGE_MODELS[0], state = modelState(info, model.id);
         root.dataset.state = state.state;
         name.textContent = model.name;
-        status.replaceChildren(icon(ICON_OF[state.state] || 'cloud'), el('span', '', pending && state.state === 'downloading' ? t(`${statusLine(state)} · then generates`, `${statusLine(state)} · 完成后生成`) : statusLine(state)));
+        status.replaceChildren(icon(state.unknown ? 'clock' : ICON_OF[state.state] || 'cloud'), el('span', '', pending && state.state === 'downloading' ? t(`${statusLine(state)} · then generates`, `${statusLine(state)} · 完成后生成`) : statusLine(state)));
         // Closed, the row names the model only; it speaks when something needs doing (to download, downloading, failed).
         status.hidden = state.state === 'ready' || state.state === 'checking';
         tip(trigger, t('Model', '模型'), t(`${model.name}: ${useOf(model, state)}. Click to choose another`, `${model.name}：${useOf(model, state)}。点开换别的模型`));

@@ -16,7 +16,7 @@ const launchVisit = query.get('freevideo') === 'launch';
 export const MODULES = ['audio_original.js', 'chat_data.js', 'phone_model.js', 'phone.js', 'lan_access.js', 'monitor_panel.js', 'qrcodegen.js', 'agent_activity.js', 'agent_confirm_settings.js', 'private_pin.js', 'private_settings.js', 'agent_connect.js', 'agent_session.js', 'autopilot.js', 'autopilot_chat.js', 'chat_attachments.js', 'autopilot_conversations.js', 'browser_extension.js', 'caret_rect.js', 'chain_support.js', 'chain_rules.js', 'timed_prompt.js', 'capability_view.js', 'cast_generate.js', 'cast_mention.js', 'cast_overlay.js', 'cast_source.js', 'compatibility.js', 'entry_showcase.js', 'engine_exit.js', 'error_panel.js', 'first_run_guide.js', 'fonts.js', 'freevideo.js', 'generation_progress.js',
     'editor.js', 'editor_actions.js', 'editor_lifecycle.js', 'editor_adjust.js', 'editor_adjust_picture.js', 'editor_picture_fields.js', 'editor_picture_session.js', 'editor_preview_picture.js', 'editor_entry.js', 'editor_expand.js', 'editor_export_dialog.js', 'editor_first_frame.js', 'editor_media_references.js', 'editor_references.js', 'middle_frames.js', 'editor_genbar.js', 'editor_duration.js', 'editor_geometry.js', 'editor_library.js', 'editor_menu.js', 'editor_stems.js', 'editor_record.js', 'editor_record_model.js', 'editor_voice.js', 'editor_voice_install.js', 'editor_voice_model.js', 'editor_voice_store.js', 'editor_model.js', 'editor_frame.js', 'editor_player.js', 'editor_room.js', 'editor_select.js', 'editor_state.js', 'editor_store.js', 'editor_tracks.js', 'editor_generation.js', 'editor_transport.js', 'editor_transport_model.js', 'editor_audio.js', 'editor_audio_model.js', 'editor_audio_notes.js', 'editor_audio_replace.js', 'editor_audio_rules.js', 'editor_music.js', 'editor_music_model.js', 'editor_speed.js', 'editor_speed_model.js', 'editor_failure.js', 'editor_header_fit.js', 'studio_header_fit.js',
     'editor_loader.js', 'editor_text_coverage.js', 'editor_text.js', 'editor_toolbar_more.js', 'editor_text_model.js', 'editor_text_layout.js', 'editor_notes.js', 'editor_icons.js', 'dialog_keys.js', 'done_notify.js', 'failure_issue.js', 'feedback.js', 'frame_sizes.js', 'health.js', 'image_commands.js', 'image_editor.js', 'image_editor_engine.js', 'image_generation.js', 'image_lora.js', 'image_view.js', 'launch_visit.js', 'launcher.js', 'length_plan.js', 'lora_triggers.js', 'lora_check.js', 'library.js', 'motion.js', 'native_errors.js', 'translate_guard.js', 'output_download.js', 'port_notice.js', 'preview_scene.js',
-    'progress_connection.js', 'prompt_draft.js', 'prompt_enhance.js', 'prompt_references.js', 'prompt_sections.js', 'prompt_terms.js', 'request_assets.js', 'repair_hint.js', 'report_issue.js', 'issue_button.js', 'studio_recent.js', 'task_groups.js',
+    'progress_connection.js', 'prompt_draft.js', 'prompt_enhance.js', 'prompt_references.js', 'prompt_sections.js', 'prompt_terms.js', 'request_assets.js', 'repair_hint.js', 'report_issue.js', 'issue_button.js', 'studio_recent.js', 'media_queue.js', 'work_media.js', 'task_groups.js',
     'result_actions.js', 'result_reuse.js', 'sampling_effort.js', 'pass_mode.js','setup.js', 'share.js', 'share_layout.js', 'studio.js', 'studio_chain.js', 'studio_extend.js', 'studio_length.js', 'first_frame_row.js', 'replace_person.js', 'replace_state.js', 'optional_inputs.js', 'other_usage.js', 'studio_queue.js', 'studio_size.js',
     'toolbar_position.js', 'updates.js', 'video_model.js', 'view_navigation.js', 'whatsnew.js', 'whatsnew_pages.js', 'whatsnew_peaks.js', 'wordmark.js', 'workspace_restore.js', 'cast_library.js', 'media_upload.js', 'whitebox_encode.js', 'whitebox_mp4.js', 'whitebox_recording.js', 'whitebox_render.js', 'whitebox_scenes.js', 'whitebox_worker.js',
     'empty_prompt_notice.js', 'feature_tour.js', 'feature_tour_content.js', 'howto.js', 'swap_lora.js', 'sound_bubble.js', 'tour_goto.js', 'tour_try.js', 'tutorial_book.js', 'tutorial_book_content.js',
@@ -25,12 +25,12 @@ export const MODULES = ['audio_original.js', 'chat_data.js', 'phone_model.js', '
     'editor_tracks_tips.js',
     'task_store.js', 'task_float.js',
     'image_view_ui.js', 'image_view_size.js', 'image_view_models.js', 'image_view_history.js', 'image_view_prompts.js', 'image_view_compare.js', 'image_view_queue.js', 'image_view_mentions.js', 'image_view_warm.js', 'image_view_viewer.js', 'image_view_lora.js',
-    'palette.js', 'global_search.js', 'notifications.js', 'shortcuts.js', 'context_menu.js',
+    'palette.js', 'picture_zoom.js', 'global_search.js', 'notifications.js', 'shortcuts.js', 'context_menu.js',
     'studio_console.js', 'studio_stage.js', 'prompt_library.js',
     'autopilot_panels.js', 'autopilot_tips.js', 'autopilot_history.js', 'a11y.js', 'topbar.js', 'view_switch_place.js', 'view_navigation_fit.js', 'editor_tips.js', 'editor_narration.js', 'editor_narration_model.js', 'editor_beats_model.js', 'empty_frame.js', 'studio_compare.js', 'image_library.js', 'fv_select.js', 'preview_style.js',
     'feature_tour_layer.js', 'settings_room.js', 'settings_kit.js', 'settings_words.js',
-    'image_works.js', 'cast_photo.js', 'editor_opening.js', 'editor_poster.js', 'topbar_state.js', 'preload_setting.js',
-    'private_pin.js', 'private_settings.js', 'private_offers.js'];
+    'image_works.js', 'cast_photo.js', 'editor_opening.js', 'editor_poster.js', 'topbar_state.js', 'preload_setting.js', 'private_offers.js', 'cast_face_crop.js', 'context_fallback.js', 'studio_warm.js',
+    'pose_body.js', 'pose_props.js', 'pose_stage.js', 'pose_tool.js', 'release_media.js', 'ui_speed.js'];
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 let visibleAt = 0;
 async function waitForVisible() {
@@ -389,6 +389,10 @@ function paints(element) {
         || alphaOf(style.backgroundColor) * Number(style.opacity) >= 0.9;
 }
 function coveredBy(bar) {
+    // An open ComfyUI dialog (Templates, Settings, a confirmation) turns pointer events off for the page behind it, and
+    // elementsFromPoint leaves such elements out: the toolbar would be missing from the stack and the first solid element
+    // under it, such as ComfyUI's workflow tabs, would be named as its cover. The toolbar is judged once the dialog is closed.
+    if (getComputedStyle(document.body).pointerEvents === 'none') return null;
     const box = (bar.querySelector('.fv-view-switch') || bar).getBoundingClientRect();
     const stack = document.elementsFromPoint(Math.min(innerWidth - 1, Math.max(0, box.left + box.width / 2)),
         Math.min(innerHeight - 1, Math.max(0, box.top + box.height / 2)));

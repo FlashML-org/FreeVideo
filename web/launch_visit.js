@@ -9,3 +9,7 @@ export function isLaunchVisit(search, storage) {
         return launched || storage?.getItem(MARK) === '1';
     } catch { return launched; }
 }
+
+// FreeVideo's own pop-ups (what's new, the compatibility notice) come up only where FreeVideo is in front: a launcher
+// visit, or a FreeVideo view the user opened. On the user's own ComfyUI they wait for that.
+export const freeVideoInFront = launched => () => launched || !!globalThis.document?.querySelector?.('dialog.fv-studio[open]');

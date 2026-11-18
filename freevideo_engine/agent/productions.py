@@ -800,6 +800,38 @@ class Productions:
                 if not self._waiters.get(identity, True):
                     del self._waiters[identity]
 
+    def delete(self, identity, *, by='user', ref=None, client=None):
+        """Remove a finished or cancelled film: its record (script, shots, prompts) and the finished jobs of its takes,
+        cut down to the whitelist. Only the user may; a film still being made is refused. The works stay in the library."""
+        if by != 'user':
+            raise JobError('not_allowed', 'Only the user may delete a film')
+        with self.changed:
+            record = self._record(identity)
+            if record['state']['status'] not in ('finished', 'cancelled'):
+                raise JobError('conflict', 'This film is still being made')
+            children = [key for key, row in self.jobs.jobs.items()
+                        if (row.get('parent') or {}).get('production') == identity]
+            if any(self.jobs.jobs[key]['status'] not in DONE for key in children):
+                raise JobError('conflict', 'This film still has work running')
+            path = self.directory / (identity + '.json')
+            path.unlink(missing_ok=True)
+            self.records.pop(identity, None)
+            self.jobs.forget_rows(children)
+            self.changed.notify_all()
+            return dict(id=identity, deleted=True)
+
+    def delete_session(self, sid):
+        """After a conversation is deleted: its finished films go too. Returns their ids."""
+        with self.changed:
+            gone = [identity for identity, record in self.records.items()
+                    if record.get('session') == sid and record['state']['status'] in ('finished', 'cancelled')]
+            for identity in gone:
+                try:
+                    self.delete(identity)
+                except JobError:
+                    pass
+        return gone
+
     def list(self, *, status='all', limit=50):
         with self.changed:
             rows = sorted(self.records.values(), key=lambda r: (r['state']['updated_at'], r['state']['id']), reverse=True)

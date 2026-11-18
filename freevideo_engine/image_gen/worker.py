@@ -1,7 +1,7 @@
 """Persistent ImageRunner owner; stdin/stdout contain one JSON object per line."""
 import argparse
 import base64
-from contextlib import ExitStack, redirect_stdout
+from contextlib import ExitStack, contextmanager, redirect_stdout
 import json
 import os
 from pathlib import Path
@@ -53,6 +53,10 @@ class Inbox:
                             else:
                                 self.busy = True
                                 self.cancel.clear()
+                                self.rows.put(value)
+                        elif action in ('warm', 'unwarm'):
+                            # A warm-up during a picture has nothing left to prepare.
+                            if not self.busy:
                                 self.rows.put(value)
                         else:
                             raise ValueError('invalid_request')
@@ -121,12 +125,148 @@ def next_request(inbox, wait, crowding=None):
                 return None
 
 
-def hold(runner):
+def latest(inbox, value):
+    """The row to handle now: a picture that waits behind warm-ups goes first and those warm-ups are dropped;
+    of several warm-ups only the last counts, except that a light one never replaces a full one. None when the
+    pipe closed."""
+    rows = [value]
+    while True:
+        try:
+            rows.append(inbox.rows.get_nowait())
+        except queue.Empty:
+            break
+    if any(row is None for row in rows):
+        return None
+    picked = next((row for row in rows if row.get('action') == 'generate'), rows[-1])
+    if picked.get('action') == 'warm' and picked.get('level') != 'full':
+        # A light warm-up after a full one for the same model (with no leaving in between) does not undo it.
+        for row in reversed(rows):
+            if row.get('action') == 'unwarm':
+                break
+            if row.get('action') == 'warm' and row.get('level') == 'full' and row.get('model') == picked.get('model'):
+                return row
+    return picked
+
+
+def warm_up(runner, value, should_stop, send):
+    """Prepare for the picture the page is setting up: read the model files ahead into the OS file cache and, for a
+    full warm-up of a runner that can (H3 Image), load the model as a picture leaves it. Stops once
+    ``should_stop()`` is true. No prompt is part of a warm-up."""
+    facts = dict(phase='warmed', model=value.get('model'), level=value.get('level'))
+    files = value.get('files') or []
+    if files and not should_stop():
+        from ..encoder_prewarm import available_memory, plan, prefetch
+        cancelled = threading.Event()
+        sizes = sum(os.path.getsize(item) for item in files)
+        available, complete = available_memory()
+        read = prefetch(files, plan(sizes, available, complete=complete, partial=True), cancelled, busy=should_stop)
+        facts['read'] = read.get('state')
+    if value.get('level') == 'full' and runner is not None and hasattr(runner, 'prepare') and not should_stop():
+        facts['prepared'] = runner.prepare(value.get('h3'), should_stop)
+    send(**facts)
+
+
+def hold(runner, idle_seconds=keep.IDLE_SECONDS):
     """Start the long idle wait: hand back the allocator's cached memory, then watch the card."""
     torch = sys.modules.get('torch')
     if torch is not None:
         torch.cuda.empty_cache()
-    return keep.Crowding(lambda: keep.card_free_bytes(runner.device))
+    return keep.Crowding(lambda: keep.card_free_bytes(runner.device), limit=keep.limit(runner.device),
+                         others=lambda: keep.card_other_use(runner.device), host=keep.host_available_bytes,
+                         host_least=getattr(runner, 'host_least_bytes', keep.HOST_LEAST_BYTES), host_after=idle_seconds)
+
+
+def drop(runner):
+    """Close the runner and hand its memory back; returns None for the caller's variable."""
+    runner.close()
+    import gc
+    gc.collect()
+    torch = sys.modules.get('torch')
+    if torch is not None and torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    return None
+
+
+# The process the server's whole process tree starts from, in server mode (see server_mode); None on the desktop.
+SERVER_ROOT = None
+# In server mode the worker takes the installation's GPU lease itself, for each picture and each model load, and holds
+# nothing between them: a video then starts beside the kept picture model. None: the service holds the lease for the
+# worker's whole life (the desktop).
+LOCK_PATH = None
+# How long a picture waits for the lease another job holds (the service sends none while a video runs).
+LEASE_WAIT_SECONDS = 30.
+
+
+@contextmanager
+def lease():
+    """The GPU lease for one piece of work in server mode (its descriptor is what the text encoding hands on); on the
+    desktop the service already holds it and this does nothing."""
+    if LOCK_PATH is None:
+        yield None
+        return
+    from ..locking import LOCK_ENV, runtime_lock
+    with runtime_lock(LOCK_PATH, inherit=False, wait_seconds=LEASE_WAIT_SECONDS) as descriptor:
+        os.environ[LOCK_ENV] = str(descriptor)
+        try:
+            yield descriptor
+        finally:
+            os.environ.pop(LOCK_ENV, None)
+
+
+def server_hold(runner, root):
+    """The watch of a server-mode wait: card memory taken by programs outside the server's process tree (the video
+    worker is in it), or host memory below the least the worker keeps. None when the card's use per program cannot
+    be read, so the caller falls back to the desktop wait."""
+    def others():
+        use = keep.card_other_use(runner.device)
+        if use is None:
+            return None
+        try:
+            from ..background_room import family
+            ours = family(root)
+        except OSError:
+            return None
+        return {pid: size for pid, size in use.items() if pid not in ours}
+
+    if others() is None:
+        return None
+    torch = sys.modules.get('torch')
+    if torch is not None:
+        torch.cuda.empty_cache()
+    # The whole-card reading is left out: the video worker in the same tree takes and gives back card memory.
+    return keep.Crowding(lambda: None, others=others, host=keep.host_available_bytes, host_limit=float('inf'),
+                         host_least=getattr(runner, 'host_least_bytes', keep.HOST_LEAST_BYTES))
+
+
+def idle_wait(runner, requested, idle_seconds, *, at_least=0.):
+    """(seconds, crowding) for the next wait: the long wait a kept model may have (``keep.wait_seconds``), at least
+    ``at_least`` while the page is warming, and a watch that ends any wait longer than the idle time once another
+    program needs the card or host memory. A warm-up never shortens the wait a picture left. In server mode the
+    worker waits until the server stops or a program outside it needs the card or host memory."""
+    if SERVER_ROOT is not None:
+        from ..server_mode import WAIT_SECONDS
+        if runner is None:
+            return WAIT_SECONDS, None
+        try:
+            crowding = server_hold(runner, SERVER_ROOT)
+        except Exception as error:
+            print('image worker server hold failed: %s' % type(error).__name__, file=sys.stderr, flush=True)
+            crowding = None
+        if crowding is not None:
+            return WAIT_SECONDS, crowding
+    if runner is None:
+        # Nothing is held on the card, so there is nothing to watch: a light warm-up still keeps the worker for the
+        # rest of the page's warm-up (H3 Image places its encoder meanwhile, then asks for the full warm-up).
+        return max(idle_seconds, at_least), None
+    wait = max(keep.wait_seconds(requested, runner, idle_seconds), at_least, idle_seconds)
+    if wait <= idle_seconds:
+        return idle_seconds, None
+    try:
+        return wait, hold(runner, idle_seconds)
+    except Exception as error:
+        # A hold that cannot start is the normal short wait.
+        print('image worker hold failed: %s' % type(error).__name__, file=sys.stderr, flush=True)
+        return idle_seconds, None
 
 
 def load_runner(pack_dir, device, *, progress=None):
@@ -140,7 +280,11 @@ def load_h3_runner(pack_dir, device, *, progress=None):
     return H3Runner(pack_dir, device=device, progress=progress)
 
 
-def serve(pack_dir, *, device='cuda', idle_seconds=45., stream=None, output=None, factory=None, h3_factory=None):
+def serve(pack_dir, *, device='cuda', idle_seconds=45., stream=None, output=None, factory=None, h3_factory=None,
+          server_root=None, lock_path=None):
+    global SERVER_ROOT, LOCK_PATH
+    SERVER_ROOT = server_root
+    LOCK_PATH = lock_path
     stream = sys.stdin if stream is None else stream
     output = sys.stdout if output is None else output
     factory = factory or load_runner
@@ -160,9 +304,43 @@ def serve(pack_dir, *, device='cuda', idle_seconds=45., stream=None, output=None
     wait, crowding = idle_seconds, None
     try:
         while not inbox.closed.is_set():
+            # When the wait now starting ends; a warm-up keeps at least what is left of it.
+            until = time.monotonic() + wait
             value = next_request(inbox, wait, crowding)
+            if value is None and crowding is not None and not inbox.closed.is_set() and time.monotonic() < until:
+                # Another program needed the room: the service records this reason instead of an idle end.
+                print(keep.CROWDED_LINE, file=sys.stderr, flush=True)
+            if value is not None and value.get('action') in ('warm', 'unwarm'):
+                value = latest(inbox, value)
             if value is None or inbox.closed.is_set():
                 break
+            if value.get('action') == 'unwarm':
+                # The page was left: the wait a picture would have left, from now on.
+                wait, crowding = idle_wait(runner, value.get('keep_seconds'), idle_seconds)
+                continue
+            if value.get('action') == 'warm':
+                model = value.get('model') or 'qwen-image-2.1-turbo'
+                should_stop = lambda: not inbox.rows.empty() or inbox.closed.is_set()
+                load = value.get('level') == 'full'
+                with ExitStack() as held, redirect_stdout(sys.stderr):
+                    try:
+                        if load:
+                            held.enter_context(lease())
+                        # A light warm-up only reads files ahead: it neither loads nor drops a model.
+                        if load and runner is not None and runner_model != model:
+                            runner = drop(runner)
+                        if load and runner is None:
+                            # No progress rows: nothing on the page is waiting for this.
+                            runner = (h3_factory if model == 'minimax-h3-image' else factory)(pack_dir, device)
+                            runner_model = model
+                        warm_up(runner, value, should_stop, send)
+                    except Exception as error:
+                        print('image worker warm-up failed: %s' % type(error).__name__, file=sys.stderr, flush=True)
+                        if runner is not None and not getattr(runner, 'at_boundary', lambda: True)():
+                            runner = drop(runner)
+                wait, crowding = idle_wait(runner, value.get('keep_seconds'), idle_seconds,
+                                           at_least=max(keep.WARM_SECONDS, until - time.monotonic()))
+                continue
             started = time.monotonic()
             context = Context('generate', value)
             result = None
@@ -171,6 +349,7 @@ def serve(pack_dir, *, device='cuda', idle_seconds=45., stream=None, output=None
                 with ExitStack() as stack, redirect_stdout(sys.stderr):
                     if inbox.cancel.is_set():
                         raise InterruptedError('cancelled')
+                    stack.enter_context(lease())
                     def progress(stage, fraction):
                         context.timing.enter(stage)
                         send(phase='progress', stage=stage, fraction=fraction)
@@ -178,13 +357,7 @@ def serve(pack_dir, *, device='cuda', idle_seconds=45., stream=None, output=None
                     model = value.get('model') or 'qwen-image-2.1-turbo'
                     if runner is not None and runner_model != model:
                         # One model's weights at a time on the card.
-                        runner.close()
-                        runner = None
-                        import gc
-                        gc.collect()
-                        torch = sys.modules.get('torch')
-                        if torch is not None and torch.cuda.is_available():
-                            torch.cuda.empty_cache()
+                        runner = drop(runner)
                     if runner is None:
                         context.timing.enter('load')
                         runner = (h3_factory if model == 'minimax-h3-image' else factory)(pack_dir, device, progress=progress)
@@ -248,6 +421,12 @@ def serve(pack_dir, *, device='cuda', idle_seconds=45., stream=None, output=None
                         plan = dict(plan or {}, back_check=back_check)
                 result = dict(phase='result', path=value['path'], seconds=time.monotonic() - started, plan=plan)
                 try:
+                    from ..input_cache import used
+                    # The cached encodings this picture read or wrote: deleting the picture removes the ones only it used.
+                    result['receipts'] = used()[:64]
+                except Exception:
+                    pass
+                try:
                     result.update(attention_report(runner, context.redactor))
                 except Exception:
                     # Diagnostics must not turn a saved picture into an error.
@@ -299,14 +478,7 @@ def serve(pack_dir, *, device='cuda', idle_seconds=45., stream=None, output=None
                 except Exception as error:
                     print('image worker prepare failed: %s' % type(error).__name__, file=sys.stderr, flush=True)
             if result is not None and result.get('phase') == 'result' and runner is not None:
-                wait = keep.wait_seconds(value.get('keep_seconds'), runner, idle_seconds)
-                if wait > idle_seconds:
-                    try:
-                        crowding = hold(runner)
-                    except Exception as error:
-                        # The picture is already sent; a hold that cannot start is the normal short wait.
-                        print('image worker hold failed: %s' % type(error).__name__, file=sys.stderr, flush=True)
-                        wait = idle_seconds
+                wait, crowding = idle_wait(runner, value.get('keep_seconds'), idle_seconds)
     finally:
         inbox.closed.set()
         inbox.cancel.set()
@@ -333,7 +505,15 @@ def main():
     parser.add_argument('pack_dir', type=Path)
     parser.add_argument('--device', default='cuda')
     parser.add_argument('--idle-seconds', type=float, default=45.)
+    parser.add_argument('--server-root', type=int, default=None,
+                        help='server mode: the process the server starts from (its tree is not "another program")')
+    parser.add_argument('--lock-path', type=Path, default=None,
+                        help='server mode: the GPU lease file the worker takes for each picture and model load')
     args = parser.parse_args()
+    if args.server_root is not None and args.server_root <= 0:
+        parser.error('--server-root must be a process id')
+    if args.lock_path is not None and args.server_root is None:
+        parser.error('--lock-path belongs to server mode')
     if not 0 < args.idle_seconds < float('inf'):
         parser.error('--idle-seconds must be positive and finite')
     # A native crash (access violation, driver fault) leaves no Python error: the crash
@@ -352,7 +532,8 @@ def main():
             stream = private_stdin()
         except OSError as error:
             print('private stdin unavailable, reading stdin directly: %s' % error, file=sys.stderr, flush=True)
-    serve(args.pack_dir, device=args.device, idle_seconds=args.idle_seconds, stream=stream)
+    serve(args.pack_dir, device=args.device, idle_seconds=args.idle_seconds, stream=stream,
+          server_root=args.server_root, lock_path=args.lock_path)
     return 0
 
 

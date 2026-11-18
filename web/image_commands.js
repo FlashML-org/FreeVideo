@@ -1,7 +1,7 @@
 // Immutable document commands shared by the editor and DOM-free hosts.
 // Names and text metrics belong to the caller; rendering stays in the engine.
 import {BLENDS, uid, emptyAdjust, orientedSize, orientMatrix, canvasRect, paintLayer, rasterKinds,
-    resizeDocument, scaleSelection} from './image_editor_engine.js';
+    resizeDocument, scaleSelection, documentBounds} from './image_editor_engine.js';
 
 export class ImageEditError extends Error {
     constructor(code, message) { super(message); this.name = 'ImageEditError'; this.code = code; }
@@ -55,6 +55,22 @@ export function insertLayer(doc, layer) {
     return {...doc, layers, active: layer.id};
 }
 export function addPaintLayer(doc, name) { return insertLayer(doc, paintLayer(doc, name)); }
+// The sketch's mannequins (pose tool): one layer over the whole canvas, right above the paper or the picture, so every
+// stroke and shape stays on top of it. `pose` is the scene as plain JSON (pose_stage.js); the layer has no pixels of its own.
+export function addPoseLayer(doc, {name, pose}) {
+    if (!pose || typeof pose !== 'object') fail('unsupported', 'A pose scene is required');
+    const b = documentBounds(doc);
+    const layer = {id: uid('l'), kind: 'pose', name, visible: true, locked: false, opacity: 1, blend: 'source-over',
+        cx: b.x + b.w / 2, cy: b.y + b.h / 2, w: b.w, h: b.h, rotation: 0, flipX: false, flipY: false,
+        nw: Math.round(b.w), nh: Math.round(b.h), ops: [], mask: null, adjust: emptyAdjust(), pose};
+    const layers = [...doc.layers]; layers.splice(Math.min(1, layers.length), 0, layer);
+    return {...doc, layers};
+}
+export function updatePose(doc, id, pose) {
+    const layer = layerOf(doc, id);
+    if (layer.kind !== 'pose' || !pose || typeof pose !== 'object') fail('unsupported', 'A pose layer and scene are required');
+    return replace(doc, id, {pose});
+}
 function upright(doc, w, h, angle = 0) {
     return {w, h, rotation: (doc.flipX !== doc.flipY ? -angle : angle) - doc.rotate, flipX: doc.flipX, flipY: doc.flipY};
 }

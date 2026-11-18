@@ -5,10 +5,17 @@ const clockDefault = {now: () => Date.now(), setTimeout: (fn, ms) => setTimeout(
 const copy = value => structuredClone(value);
 const memoryProjects = new Map();
 const errorFor = response => Object.assign(new Error('editor_request'), {status: response.status});
+// Whether a 404 came from the editor itself (a JSON error) rather than from an engine that has no editor API.
+// A save the engine answered with its own failure (500, or a 404 that names an error) is worth a failure card; a bare 404 is an engine without the route.
+export const isReportableSaveFailure = error => error?.status === 500 || error?.status === 404;
+
+async function answersInJson(response) {
+    try { const body = await response.clone().json(); return !!body && typeof body === 'object' && typeof body.error === 'string'; } catch { return false; }
+}
 // A failed save keeps the server's reason so the page can say what went wrong.
 async function saveFailure(response) {
     let body = null; try { body = await response.json(); } catch {}
-    return Object.assign(errorFor(response), body && typeof body === 'object' ? {reason: body.reason, response: body} : {});
+    return Object.assign(errorFor(response), body && typeof body === 'object' ? {reason: body.reason || (body.error === 'internal' ? body.class : undefined), response: body} : {});
 }
 const post = value => ({method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(value)});
 export const sourceKey = source => source ? `${source.kind}:${source.id}` : null;
@@ -92,7 +99,9 @@ export function createSaveQueue({write, read, onSaved = () => {}, onConflict = (
                 if (memory) { attempt = null; onSaved(body, true, localKey); return; }
                 const response = await write(body, createOperation, attempt.operation);
                 if (disposed) return;
-                if (response.status === 404) {
+                // Only a missing route (an engine without the editor API) keeps changes in the page; an engine that answers with its own
+                // JSON error, such as the 500 for an unexpected failure, is a failed save: it is kept and retried, never hidden.
+                if (response.status === 404 && !await answersInJson(response)) {
                     attempt = null; memory = true;
                     if (!memoryNoticed) { memoryNoticed = true; onMemory(); }
                     onSaved(body, true, localKey); return;
@@ -257,6 +266,11 @@ export function createEditorStore(api, {t = en => en, notify = () => {}, onGener
         sources, cache,
         activateProject,
         get uploading() { return uploads.size > 0; },
+        // What deleting this edit also removes (media only it uses). Empty when the server cannot say.
+        async residue(id) {
+            try { return (await json('/freevideo/editor/project/residue?' + new URLSearchParams({id})))?.residue || {}; }
+            catch { return {}; }
+        },
         async deleteProject(id) {
             // A lease that could not be renewed must not stop the delete: the server checks the leases itself.
             await sessionWrites.catch(() => {});
@@ -353,7 +367,7 @@ export function createEditorStore(api, {t = en => en, notify = () => {}, onGener
             }
         }, load: id => load({id}), byWork: work => load({work}),
         async projects() { return counted(await json('/freevideo/editor/projects', undefined, {items: []})); },
-        createSaveQueue(state, {onStatus = () => {}} = {}) {
+        createSaveQueue(state, {onStatus = () => {}, onFailed = () => {}} = {}) {
             const queue = createSaveQueue({clock, session, onStatus, initial: state.record, getRecord: () => state.record, copySuffix: t(' (copy)', '（副本）'), write: (record, create, operation) => { const options = post({project: record, operation, ...(create ? {create} : {})}); return request('/freevideo/editor/project', {...options, keepalive: new TextEncoder().encode(options.body).length < 60000}); },
                 read: id => store.load(id),
                 onSaved: (record, memory, local) => {
@@ -367,7 +381,7 @@ export function createEditorStore(api, {t = en => en, notify = () => {}, onGener
                 onCopied: () => notice('conflict', 'This edit changed elsewhere. Your changes here were saved as a copy.', '这条剪辑在别处改过，这里的改动已存为副本'),
                 onMemory: () => notice('memory', 'Changes are kept in this page for now. Update and restart to save them.', '改动暂存在这个页面里，更新并重启后会保存。'),
                 // Automatic retries stay quiet; switching away while unsaved warns in editor.js.
-                onError: () => {}});
+                onError: error => onFailed(error)});
             const reset = queue.reset;
             queue.reset = record => { const entry = recovered; recovered = null; reset(record, entry); };
             return queue;
@@ -444,6 +458,9 @@ export function createEditorStore(api, {t = en => en, notify = () => {}, onGener
         watchImports(fn) { return watch(() => store.imports(), items => { fn(items); return true; }); },
         upload(file, progress = () => {}) {
             if (disposed) return Promise.reject(new Error('editor_closed'));
+            // The page's background loading of works (work_media.js) waits while an upload runs.
+            const running = active => { try { globalThis.dispatchEvent?.(new CustomEvent('freevideo-upload', {detail: {active}})); } catch { /* no page */ } };
+            running(true);
             return new Promise((resolve, reject) => {
                 const xhr = new XMLHttpRequest();
                 const release = () => { uploads.delete(upload); xhr.onload = xhr.onerror = null; xhr.upload.onprogress = null; };
@@ -461,7 +478,7 @@ export function createEditorStore(api, {t = en => en, notify = () => {}, onGener
                 };
                 xhr.onerror = () => { release(); reject(new Error('import_failed')); };
                 try { xhr.send(file); } catch (error) { release(); reject(error); }
-            });
+            }).finally(() => running(false));
         },
         capabilities(options, onReady = () => {}) {
             capabilityPoll?.dispose();

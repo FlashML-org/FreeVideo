@@ -1538,6 +1538,9 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                 if extra.get('media'):
                     media_path = run / 'media.json'
                     save(media_path, extra['media'])
+                    # The input files this work reads, so deleting the work can remove them with it.
+                    from .private_refs import hold
+                    hold('video:' + run.name, extra['media'])
                     command += ['--media', str(media_path)]
             state['command'] = command
             # The progress area names reference media only when the request has them.

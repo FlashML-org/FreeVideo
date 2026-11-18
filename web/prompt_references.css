@@ -30,4 +30,6 @@
 .fv-mention-mirror{position:absolute;box-sizing:border-box;overflow:hidden;pointer-events:none;white-space:pre-wrap;overflow-wrap:break-word;word-break:normal;color:var(--fv-ink,#eee);z-index:1}
 .fv-mention-mirror[hidden]{display:none}
 .fv-mention{color:var(--fv-accent,#6cb4ff)}
-.fv-studio textarea.fv-mention-live{color:transparent;caret-color:var(--fv-ink,#eee)}
+/* The prompt's own glyphs stay transparent under the mention copy (cast_overlay.js). The create console sets the prompt's
+   colour with a longer selector (glass/studio.css), so the rule names that place too, one class more specific. */
+.fv-studio textarea.fv-mention-live,.fv-studio.fv-create .fvs-console .fv-prompt-editor textarea.fv-mention-live{color:transparent;caret-color:var(--fv-ink,#eee)}

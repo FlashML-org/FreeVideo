@@ -211,17 +211,96 @@ class IdleEncoder:
         return True
 
 
+def watch(endpoint, worker_request, environment, descriptor, result_path, cancelled, ram_budget_bytes, result, memory,
+          *, started=None, held=None, stop=None):
+    """Run one weights-only request in the resident worker under ``descriptor`` and watch it until it ends; the
+    worker is appended to ``held`` as soon as it exists, so the caller can stop it. ``stop`` (an event) cancels it
+    like the cancel file. Returns its metrics."""
+    from .resident_process import RemoteProcess
+    from .system import inference_headroom, inference_memory_sample, windows
+    worker = RemoteProcess(endpoint,
+        [sys.executable, '-B', '-m', 'freevideo_engine.encode_worker', '--request', str(worker_request)],
+        environment, descriptor, result_path.with_name(result_path.stem+'-worker.log'),
+        required_capabilities=('encoder-weight-preload',))
+    if held is not None:
+        held.append(worker)
+    if started is not None:
+        started(worker.pid)
+    cancel_started = None
+    while worker.poll() is None:
+        sample = memory.sample(worker.pid)
+        used = inference_memory_sample(sample)
+        if used is None or used > ram_budget_bytes or inference_headroom(sample) < (2 if windows() else 1)*2**30:
+            cancelled.touch(exist_ok=True)
+            result.update(state='released', reason='Live RAM pressure interrupted speculative loading')
+        if stop is not None and stop.is_set() and not cancelled.exists():
+            cancelled.touch(exist_ok=True)
+            result.update(state='released', reason='Another task took the card')
+        if cancelled.exists():
+            cancel_started = cancel_started or time.monotonic()
+            if time.monotonic()-cancel_started > YIELD_SECONDS:
+                raise PreloadCancelled('Preload did not yield promptly; stop the worker before foreground work')
+        try:
+            worker.wait(timeout=.1)
+        except subprocess.TimeoutExpired:
+            pass
+    loaded = json.loads(result_path.read_text(encoding='utf-8')) if result_path.is_file() else {}
+    if worker.returncode or not loaded.get('success'):
+        from .adaptive import WorkerExit
+        raise WorkerExit(worker.returncode, result_path.with_name(result_path.stem+'-worker.log'))
+    return loaded
+
+
+def place_now(endpoint, encoding, *, descriptor, environment, directory, gpu_budget_bytes, ram_budget_bytes,
+              allocator, limits=None, stop=None):
+    """Place the encoder on the card for a picture that is being set up, under the caller's lease, and wait for it.
+
+    ``encoding`` names the encoder recipe only (encoder, comfy_root, model_paths): no prompt or picture is sent.
+    ``stop`` (set when a picture is asked for, or a video or another task takes the card) and live RAM pressure
+    cancel it: a speculative placement does not page in its weights ahead and can take longer than the picture's own
+    load of the encoder, so a picture never waits for it."""
+    from .ram import ProcessMemory
+    from .resident_process import ENV
+    directory = Path(directory)
+    result_path, cancelled = directory/'encoder-place.json', directory/'encoder-place.cancel'
+    worker_request = directory/'encoder-place-worker.json'
+    for path in (result_path, cancelled):
+        path.unlink(missing_ok=True)
+    result = dict(state='skipped', scope='Idle GPU encoder weights; no prompt encoding')
+    save(worker_request, dict({k: encoding[k] for k in ('encoder', 'comfy_root', 'model_paths') if k in encoding},
+                              idle_preload=True, cancel=str(cancelled), metrics=str(result_path),
+                              idle_resources=dict(limits or {}, automatic=True), gpu_budget_gb=gpu_budget_bytes/1e9,
+                              ram_budget_bytes=int(ram_budget_bytes)))
+    environment = dict(environment, **{ENV: str(endpoint)}, PYTORCH_ALLOC_CONF=allocator, PYTORCH_CUDA_ALLOC_CONF=allocator)
+    memory, held = ProcessMemory(), []
+    if stop is not None and stop.is_set():
+        return dict(result, reason='Another task took the card')
+    try:
+        result.update(watch(endpoint, worker_request, environment, descriptor, result_path, cancelled,
+                            ram_budget_bytes, result, memory, held=held, stop=stop), resources=memory.result())
+    except BaseException as error:
+        if held:
+            try:
+                held[0].stop_request(grace=.5)
+            except BaseException:
+                pass
+        result.update(state='failed', reason=str(error)[-500:], error_type=type(error).__name__)
+        if not isinstance(error, Exception):
+            raise
+    return result
+
+
 def run(request):
     from .adaptive import classify_failure
     from .locking import runtime_lock
     from .resource_history import ResourceHistory
-    from .resident_process import ENV, RemoteProcess
+    from .resident_process import ENV
     from .ram import ProcessMemory
-    from .system import inference_headroom, inference_memory_sample, windows
 
     result_path = Path(request['metrics'])
     cancelled = Path(request['cancel'])
     worker = None
+    held = []
     attempt = None
     history = None
     result = dict(state='skipped', scope='Idle GPU encoder weights; no prompt encoding')
@@ -267,34 +346,15 @@ def run(request):
                 dict(encoder=encoding['encoder'], operation='idle-preload'),
                 measured['geometry'], purpose='encoding',
                 evidence=dict(reason='Saved video returned; speculative weights only', previous=measured['id']))
-            worker = RemoteProcess(request['endpoint'],
-                [sys.executable, '-B', '-m', 'freevideo_engine.encode_worker', '--request', str(worker_request)],
-                environment, descriptor, result_path.with_name(result_path.stem+'-worker.log'),
-                required_capabilities=('encoder-weight-preload',))
-            history.attach_worker(attempt, worker.pid, phase='idle-encoder-load')
-            cancel_started = None
-            while worker.poll() is None:
-                sample = memory.sample(worker.pid)
-                used = inference_memory_sample(sample)
-                if used is None or used > encoding['ram_budget_bytes'] or inference_headroom(sample) < (2 if windows() else 1)*2**30:
-                    cancelled.touch(exist_ok=True)
-                    result.update(state='released', reason='Live RAM pressure interrupted speculative loading')
-                if cancelled.exists():
-                    cancel_started = cancel_started or time.monotonic()
-                    if time.monotonic()-cancel_started > YIELD_SECONDS:
-                        raise PreloadCancelled('Preload did not yield promptly; stop the worker before foreground work')
-                try:
-                    worker.wait(timeout=.1)
-                except subprocess.TimeoutExpired:
-                    pass
-            loaded = json.loads(result_path.read_text(encoding='utf-8')) if result_path.is_file() else {}
-            if worker.returncode or not loaded.get('success'):
-                from .adaptive import WorkerExit
-                raise WorkerExit(worker.returncode, result_path.with_name(result_path.stem+'-worker.log'))
+            loaded = watch(request['endpoint'], worker_request, environment, descriptor, result_path, cancelled,
+                           encoding['ram_budget_bytes'], result, memory,
+                           started=lambda pid: history.attach_worker(attempt, pid, phase='idle-encoder-load'), held=held)
+            worker = held[0]
             result.update(loaded, resources=memory.result())
             history.finish(attempt, 'cancelled' if result.get('state') in ('cancelled', 'released') else 'success', details=result)
             attempt = None
     except BaseException as error:
+        worker = worker or (held[0] if held else None)
         if worker is not None:
             try:
                 worker.stop_request(grace=.5)

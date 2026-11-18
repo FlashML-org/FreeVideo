@@ -426,10 +426,15 @@ export function failureAdvice(value, t, known = knownError(value)) {
             ['These settings need more memory than the device can provide.', '这组设置需要的内存超过设备上限。'],
             ['Choose a lower resolution or a shorter duration and retry.', '请降低分辨率或缩短时长后重试。']);
     // The start-of-request check does not depend on the settings, so lowering them is no advice here.
-    if (/Native generation needs at least .* unified memory/i.test(text))
+    if (/Native generation needs at least .* unified memory/i.test(text)) {
+        // The engine states what it saw ("2.2 GiB of 8.0 GiB is available and 4.0 GiB is required"); an older report has no numbers.
+        const seen = /(\d+(?:\.\d)?) GiB of (\d+(?:\.\d)?) GiB is available and (\d+(?:\.\d)?) GiB is required/.exec(text);
         return row('unified-memory', ['Not enough unified memory', '统一内存不足'],
-            ['This Mac does not have enough free memory right now to start this generation.', '这台 Mac 当前可用的内存不足以开始这次生成。'],
+            seen ? [`This Mac has ${seen[1]}\u00a0GiB of ${seen[2]}\u00a0GiB memory available. A generation needs at least ${seen[3]}\u00a0GiB to start.`,
+                    `这台 Mac 共 ${seen[2]}\u00a0GiB 内存，当前可用 ${seen[1]}\u00a0GiB，开始生成至少需要 ${seen[3]}\u00a0GiB。`]
+                : ['This Mac does not have enough free memory right now to start this generation.', '这台 Mac 当前可用的内存不足以开始这次生成。'],
             ['Close other memory-heavy applications and retry. Export the report if it still fails.', '请关闭其他占用内存较多的程序后重试。仍然失败时，请导出报告。']);
+    }
     if (/MPS backend out of memory|MPS (?:generation|encoding|decoding) reached|No unified-memory allowance/i.test(text))
         return row('unified-memory', ['Not enough unified memory', '统一内存不足'],
             ['Generation needed more memory than was available.', '生成所需内存超过当时可用量。'],
@@ -487,6 +492,20 @@ export function failureAdvice(value, t, known = knownError(value)) {
         return row('executors', ['Generation stopped unexpectedly', '生成意外中断'],
             ['', ''],
             ['Restart FreeVideo and generate again.', '请重启 FreeVideo 后重新生成。']);
+    // The generation process ended without a Python error: it crashed or was ended from outside. The code
+    // names which (freevideo_engine/failure_details.py generation_failure prints "(exit N)"); the number stays in the details.
+    const exit = /FreeVideo generation failed \(exit (-?\d+)\)/.exec(text);
+    if (exit) {
+        const code = Number(exit[1]);
+        const killed = code === 137 || code === -9 || code === 3221225786;
+        return row('process-exit', ['Generation stopped unexpectedly', '生成意外中断'],
+            killed ? ['The generation was ended by another program.', '生成已被其他程序结束。']
+                   : ['FreeVideo closed unexpectedly while generating.', '生成过程中 FreeVideo 意外关闭。'],
+            killed ? ['Close cleaner or memory-limiting programs and generate again. Export the report if it still fails.',
+                      '请关闭清理类或限制内存的软件后重新生成。仍然失败时，请导出报告。']
+                   : ['Generate again. If it stops at the same step, export the report and send it to us.',
+                      '请重新生成。若仍停在同一步，请导出报告并发给我们。']);
+    }
     return row('unknown', ['Generation stopped', '生成已停止'],
         ['', ''], ['', '']);
 }

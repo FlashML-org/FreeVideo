@@ -2,6 +2,7 @@ import {FEATURE_TOUR, readyCards, tourKey, unseenCards} from './feature_tour_con
 import {readGuideRecord, saveGuideRecord, guideRecord, CARDS_OFF} from './first_run_guide.js';
 import './glass/library.js';
 import {openAnchor, anchorOpen, closeAnchor} from './feature_tour_layer.js';
+import {reducedMotion} from './context_menu.js';
 
 export const TOUR_TEXT = {
     en: {examples: 'Feature examples', use: 'Use example', next: 'Next', goto: 'Take me there', noView: 'Could not open the Edit view. Choose "Edit" at the top.', noTarget: 'This item is not available here. Follow the steps above.', noHidden: 'The timeline has no clip with sound yet. Import or generate one first.', book: 'Read the tutorial', done: 'Done', close: 'Close', gotIt: 'Got it',
@@ -234,7 +235,7 @@ function cardMedia(card, videos, lang, text, reduced) {
  * it does not take focus, and closing it counts as seen. Returns false when nothing could be shown.
  */
 function openAnchorCard({api, cn, loaded, owner, automatic = true, badge = ''}) {
-    const lang = cn ? 'zh' : 'en', text = CARD_TEXT[lang], reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const lang = cn ? 'zh' : 'en', text = CARD_TEXT[lang], reduced = reducedMotion();
     const scope = owner?.isConnected ? owner : document;
     let index = 0, media = null, layer = null, finished = false;
     const stopAll = () => { media?.stop?.(); for (const {videos} of loaded) for (const video of videos) video.pause(); };

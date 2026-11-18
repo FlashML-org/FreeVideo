@@ -20,7 +20,7 @@ import { issueButton } from './issue_button.js';
 import { skinSelect } from './fv_select.js';
 import { createPreviewScene } from './preview_scene.js?v=20261115-still';
 import { animateDetails, closeDialog } from './motion.js';
-import { openLibrary, videoThumbnailURL } from './library.js';
+import { openLibrary, setDefaultUpscale, videoThumbnailURL } from './library.js';
 import { createRecentVideos } from './studio_recent.js';
 import { createAgentActivity } from './agent_activity.js';
 import { createStudioQueue, randomSeed, turnNodeOn } from './studio_queue.js';
@@ -28,12 +28,12 @@ import { isNetworkTypeError, connectionLostText, wrappedFetchOnly } from './brow
 import { newEngineExit, engineExitText, watchEngineExit } from './engine_exit.js';
 import { attachReferencePicker, referenceItems, enhancementMedia, syncReferencePrompt, referenceInputs, mentionAt, handleNames, mediaRows } from './prompt_references.js';
 import { attachTermSuggest } from './prompt_terms.js';
-import { problem as timedProblem, timedText } from './timed_prompt.js';
+import { problem as timedProblem, timedText, parse as timedParse } from './timed_prompt.js';
 import { castInRows, expandCast, mentionHandle, mentionState, mentionedIds, restoreCast, withCharacter, MAX_PICTURES_EACH } from './cast_mention.js';
 import { attachMentionOverlay } from './cast_overlay.js';
 import { openCastLibrary } from './cast_source.js';
 import { uploadMedia } from './media_upload.js';
-import { reconcileLoraTriggers } from './lora_triggers.js';
+import { reconcileLoraTriggers, promptLines } from './lora_triggers.js';
 import { createVerdicts, describeVerdict, feedbackDraft } from './lora_check.js';
 import { continuationUpscale, createSamplingEffort, effortFor, effortsFrom, passSwitch, stepCacheOf, upscaleOf } from './sampling_effort.js';
 import { resultActions, previewBadge, icon, actionsUnavailable, liftMenu } from './result_actions.js';
@@ -53,7 +53,7 @@ import { createOtherUsageNotice } from './other_usage.js';
 import { openEditorView } from './editor_loader.js';
 import { frameShapes, frameSize } from './frame_sizes.js';
 // The creation panel's frames: the shared three, then the other common ratios (named by their ratio).
-const studioShapes = t => [...frameShapes(t), ...[[4, 3], [3, 4], [3, 2], [2, 3]].map(([a, b]) => [`${a}:${b}`, `${a}:${b}`, a / b])];
+const studioShapes = t => [...frameShapes(t), ...[[4, 3], [3, 4], [3, 2], [2, 3], [21, 9]].map(([a, b]) => [`${a}:${b}`, `${a}:${b}`, a / b])];
 import { createFirstRunGuide, createFirstStart } from './first_run_guide.js';
 import { SHOWCASE_SCENE } from './entry_showcase.js';
 import { registerTourWorkspace, triggerFeatureTour, offerVersionTour } from './feature_tour.js';
@@ -75,6 +75,7 @@ import { resultEffort, effortName } from './sampling_effort.js';
 import { createPromptLibrary, rememberPrompt } from './prompt_library.js';
 import { createCompare, COMPARE_ICON } from './studio_compare.js';
 import { toast } from './notifications.js';
+import { mediaQueue } from './work_media.js';
 
 const languageOverride = typeof location !== 'undefined'
     ? new URLSearchParams(location.search).get('freevideo_lang') : null;
@@ -1061,8 +1062,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const passControl = createPassMode({t, onChoose: mode => choosePassMode(mode), listen: listenDialogKey});
     const passMode = passControl.element;
     cleanup.push(passControl.dispose);
-    const previewPassHint = t('Stops at a half-resolution preview. Choose "Run second pass" in the result when it looks right; the video matches a direct run.',
-        '先出半分辨率预览，满意后在结果里点“继续二采”，成片与直接生成一致。');
+    const previewPassHint = t('Stops at a lower-resolution preview. Choose "Run second pass" in the result when it looks right; the video matches a direct run.',
+        '先出低分辨率预览，满意后在结果里点“继续二采”，成片与直接生成一致。');
     twoPassLabel.append(el('span', t('Two-pass', '二采')), twoPassStatus, passMode);
     let effortEstimate = {}, effortEstimateKey = '', effortEstimateTimer = null, effortEstimateRequest = null, lengthControl = null, chainController = null;
     // A level's step cache; custom steps and workflows without the input sample every step.
@@ -1123,7 +1124,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const passListeners = new Set();
     function syncPassMode() {
         const value = passState();
-        passControl.sync(value);
+        // The creative panel's tray keeps Off / On; a preview is chosen from the Generate key's menu.
+        passControl.sync({...value, mode: value.mode === 'preview' ? 'on' : value.mode, hidden: {...value.hidden, preview: true}});
         for (const listener of [...passListeners]) listener(value);
     }
     const sharedPass = {state: passState, choose: mode => choosePassMode(mode),
@@ -1145,20 +1147,17 @@ export function openStudio(node, {extendFrom = null} = {}) {
         return {node: anchor, rect: {left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height},
             reveal: () => { mediaDetails.open = true; }};
     };
-    const paintMediaHint = () => { try { mediaHint.hidden = mediaDetails.open || !mediaNode?.freevideoCreateMediaEditor || mediaFilled(); } catch { mediaHint.hidden = true; } };
     const [mediaDetails, mediaMount] = expand(t('Media', '素材'));
-    const mediaTitle = mediaDetails.querySelector('summary'), mediaHint = el('span', t('Reference images, first and last frames', '参考图、首帧、尾帧'), 'fv-section-hint');
-    mediaTitle.dataset.fvGuide = 'media'; mediaTitle.append(mediaHint);
+    const mediaTitle = mediaDetails.querySelector('summary');
+    mediaTitle.dataset.fvGuide = 'media';
     const extendMount = el('div', null, 'fv-extend-source'); extendMount.hidden = true; mediaMount.prepend(extendMount);
     let releaseExtendThumbnail = () => {};
     cleanup.push(() => releaseExtendThumbnail());
     if (mediaNode?.freevideoCreateMediaEditor) { cleanup.push(mediaNode.freevideoCreateMediaEditor(mediaMount)); mediaDetails.open = mediaFilled(); }
     else mediaMount.append(el('p', t('Connect a FreeVideo Media panel in node view to upload here.', '在节点视图连接 FreeVideo 素材面板，可在这里上传。'), 'fv-legacy'));
-    paintMediaHint(); mediaDetails.addEventListener('toggle', paintMediaHint);
     mediaTitle.addEventListener('click', () => {
         queueMicrotask(() => { if (mediaDetails.open && mediaDetails.dataset.expanded !== 'false') { firstStart?.dismiss(); triggerFeatureTour('media'); } });
     });
-    controls.addEventListener('change', paintMediaHint, true); controls.addEventListener('input', paintMediaHint, true);
     const connectedLora = upstream(node, 'loras');
     const loraNode = connectedLora?.properties?.[CREATED_BY_PANEL] ? pendingLoras(node, connectedLora) : connectedLora || pendingLoras(node);
     // Replace person: its LoRA row is found among the registered names (it may sit in a subfolder), a row the user had
@@ -1196,16 +1195,15 @@ export function openStudio(node, {extendFrom = null} = {}) {
     }
     const ensureSwapLora = (retry = false) => (swapLoraBusy = swapLoraBusy.then(() => applySwapLora(retry), () => applySwapLora(retry)));
     function swapChanged(info) {
-        mediaHint.textContent = swapState(mediaNode) ? t('Source video, person image', '源视频、人物图') : t('Reference images, first and last frames', '参考图、首帧、尾帧');
         // Switching the option only changes which media the prompt reads: its pictures are re-bound, never renumbered.
-        syncReferencePrompt(node, t, info?.toggled === true); paintMediaHint();
+        syncReferencePrompt(node, t, info?.toggled === true);
         ensureSwapLora(info?.toggled === true).then(problem => { if (problem && !swapDownload.shown) swapPanel?.notify(problem); });
         window.dispatchEvent(new CustomEvent('freevideo-media', {detail: mediaNode.id}));
     }
     if (mediaNode?.freevideoCreateMediaEditor) {
         const swap = swapPanel = createReplacePerson({t, api, media: mediaNode, mount: mediaMount, view, onChange: swapChanged, extra: swapDownload.element});
         cleanup.push(() => swap.dispose());
-        if (swapState(mediaNode)) { mediaHint.textContent = t('Source video, person image', '源视频、人物图'); mediaDetails.open = true; }
+        if (swapState(mediaNode)) mediaDetails.open = true;
     }
     const [loraDetails, loraMount] = expand(t('LoRA', 'LoRA'));
     if (loraNode && widget(loraNode, 'adapters')) {
@@ -1458,6 +1456,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     seedFields.append(field(t('Seed', '种子'), seed), field(t('After generation', '生成后'), skinSelect(mode))); advanced.append(seedFields);
     const previewHead = el('div', null, 'fv-preview-head'); previewHead.append(el('strong', t('Preview', '预览')));
     const previewTools = el('div', null, 'fv-preview-tools');
+    // Creations opened from a notification, the palette or search finish a first-pass preview through this node too.
+    setDefaultUpscale(value => node.freevideoUpscaleResult(value));
     const worksButton = button('', () => {
         stage.querySelector('video')?.pause(); openLibrary(t, {upscale: value => node.freevideoUpscaleResult(value),
             extend: (saved, options) => openExtendEditor(saved, node, {studio: dialog, ...options}),
@@ -1465,9 +1465,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
             reuse});
     }, 'fv-works-entry'); worksButton.dataset.tourId = 'works-entry';
     worksButton.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1.2"/><rect x="9" y="2.5" width="4.5" height="4.5" rx="1.2"/><rect x="2.5" y="9" width="4.5" height="4.5" rx="1.2"/><rect x="9" y="9" width="4.5" height="4.5" rx="1.2"/></svg>';
-    worksButton.append(el('span', t('All works', '全部作品'), 'fv-works-label'));
-    worksButton.setAttribute('aria-label', t('All works', '全部作品'));
-    tip(worksButton, t('All works', '全部作品'), t('Open your works to sort and manage them', '打开作品库，筛选和管理'));
+    worksButton.append(el('span', t('Creations', '作品库'), 'fv-works-label'));
+    worksButton.setAttribute('aria-label', t('Creations', '作品库'));
+    tip(worksButton, t('Creations', '作品库'), t('Open your works to sort and manage them', '打开作品库，筛选和管理'));
     previewHead.append(previewTools); previewHead.hidden = true; output.append(previewHead);
     // The picture's space: its size comes from the column and the shape alone (fitPreview), never from what is below it.
     const previewSpace = el('div', null, 'fv-preview-space sgf-avoid'); previewSpace.dataset.fvMain = ''; output.append(previewSpace);
@@ -1534,10 +1534,12 @@ export function openStudio(node, {extendFrom = null} = {}) {
     progress.updateReport({report_id: node.freevideoReportId});
     cleanup.push(() => progress.dispose());
     cleanup.push(createPreviewScene(stage, progress.element, stageMedia));
-    // While a video is made the frame carries a quiet light (glass/studio.css): a soft band drifting across it and the
-    // made share rising from the bottom as a faint tint. CSS only (transform and opacity): nothing runs when idle.
+    // While a video is made, soft water rises from the bottom of the frame with the made share and its surface keeps
+    // rolling (glass/studio.css). CSS only (transform and translate): nothing runs when idle.
     const making = el('div', null, 'fvs-making'); making.setAttribute('aria-hidden', 'true');
-    making.append(el('i', null, 'fvs-making-level'), el('i', null, 'fvs-making-sweep'));
+    const level = el('i', null, 'fvs-making-level');
+    level.append(el('i', null, 'fvs-wave fvs-wave-back'), el('i', null, 'fvs-wave fvs-wave-mid'), el('i', null, 'fvs-wave fvs-wave-front'));
+    making.append(level);
     stage.append(making);
     const madeTrack = progress.element.querySelector('.fv-generation-track');
     const syncMade = () => {
@@ -1764,7 +1766,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     if (node.freevideoFailure) failure.show(node.freevideoFailureReport || node.freevideoFailure, false);
     failureLayer.hidden = failure.element.hidden;
     let result = node.freevideoLastResult || app.nodeOutputs?.[node.id]?.freevideo_summary?.[0] || lastShown.get(node) || recallShown();
-    // The history stays beside the picture as a rail of thumbnails; All works opens the full library from its top.
+    // The history stays beside the picture as a rail of thumbnails; Creations opens the full library from its top.
     // Compare (F9): the video on screen against another one, on the stage; a card picked in the rail becomes the other.
     const savedVideo = video => /^FreeVideo\/\d{4}-\d{2}-\d{2}\/[0-9a-f]{32}\/video\.mp4$/.test(video || '');
     const compare = createCompare({t, host: stage,
@@ -1794,10 +1796,10 @@ export function openStudio(node, {extendFrom = null} = {}) {
         onChange: () => syncHistory()});
     recent.element.classList.add('sgf-avoid');
     recent.element.prepend(worksButton); body.append(recent.element);
-    // Phones have no rail: All works sits in the bar under the picture instead.
+    // Phones have no rail: Creations sits in the bar under the picture instead.
     const worksPhone = button('', () => worksButton.click(), 'fvs-icon-button fvs-works-phone');
-    worksPhone.innerHTML = worksButton.querySelector('svg').outerHTML; worksPhone.setAttribute('aria-label', t('All works', '全部作品'));
-    tip(worksPhone, t('All works', '全部作品'), t('Open your works to sort and manage them', '打开作品库，筛选和管理'));
+    worksPhone.innerHTML = worksButton.querySelector('svg').outerHTML; worksPhone.setAttribute('aria-label', t('Creations', '作品库'));
+    tip(worksPhone, t('Creations', '作品库'), t('Open your works to sort and manage them', '打开作品库，筛选和管理'));
     stageBar.start.prepend(worksPhone);
     function syncHistory() {
         stageBar.element.dataset.empty = String(!result?.video);
@@ -1890,6 +1892,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
         video.controlsList?.add?.('nodownload', 'noplaybackrate', 'noremoteplayback'); video.disablePictureInPicture = true; video.disableRemotePlayback = true;
         const cover = /^FreeVideo\/\d{4}-\d{2}-\d{2}\/[0-9a-f]{32}\/video\.mp4$/.test(r.video) && !r.preview ? videoThumbnailURL(r) : '';
         video.dataset.pending = 'true'; stageMedia.prepend(video); lastShown.set(node, r); rememberShown(r);
+        // The video on the stage goes before anything the page loads ahead in the background (work_media.js).
+        mediaQueue().open(video.getAttribute('src'), video);
         playerBar = attachPlayer(video, playerRow, {t});
         // A click on the picture plays or pauses it, as the play bar's key does.
         video.addEventListener('click', event => {
@@ -1901,6 +1905,13 @@ export function openStudio(node, {extendFrom = null} = {}) {
         // over a slow link it waits up to 700 ms (inside the shell's 800 ms), then fades in the stage's plain colour.
         let done = false; const ready = () => { if (!done) { done = true; markReady(); } };
         video.addEventListener('loadeddata', () => { video.removeAttribute('poster'); take(); ready(); }, {once: true});
+        // The stage wraps the video itself: when the work's recorded size is missing or does not match the file (an old
+        // or imported work), it takes the video's own shape once that is known.
+        video.addEventListener('loadedmetadata', () => {
+            if (disposed || result !== r || nextShown || !video.isConnected || !(video.videoWidth > 0 && video.videoHeight > 0)) return;
+            const own = video.videoWidth / video.videoHeight;
+            if (!(Math.abs(own - previewRatio) <= own * .01)) previewSize(video.videoWidth, video.videoHeight);
+        }, {once: true});
         setTimeout(() => { if (disposed || !video.isConnected || video.readyState >= 2) return; if (cover) video.poster = cover; take(); }, kept ? 1000 : 400);
         setTimeout(ready, 700);
         video.addEventListener('error', () => {
@@ -2058,6 +2069,16 @@ export function openStudio(node, {extendFrom = null} = {}) {
     count.value = node.properties?.freevideo_batch_count ?? 4;
     count.setAttribute('aria-label', t('Number of videos', '生成数量'));
     const countField = field(t('Number of videos', '生成数量'), count); optionsPanel.append(countField);
+    // One prompt per line: each non-empty line of the description is its own video, so several ideas queue at once.
+    const perLine = el('input'); perLine.type = 'checkbox'; perLine.setAttribute('role', 'switch');
+    perLine.checked = node.properties?.freevideo_batch_lines === true;
+    const perLineField = el('label', null, 'fv-batch-lines');
+    perLineField.append(el('span', t('One prompt per line', '每行一条描述')), perLine); optionsPanel.append(perLineField);
+    const linesUsable = () => !linked(node, 'text') && !linked(node, 'conditioning');
+    const byLine = () => runMode === 'batch' && perLine.checked && linesUsable();
+    const lineTexts = () => promptLines(shown(value(node, 'text')), (node.properties?.[LORA_TRIGGERS] || []).map(row => row?.words));
+    prompt.addEventListener('input', () => { if (byLine()) updateRunButton(); });
+    perLine.onchange = () => { node.properties.freevideo_batch_lines = perLine.checked; rememberPromptDraft(api, node); updateRunButton(); };
     const modeHelp = el('p', '', 'fv-muted'); optionsPanel.append(modeHelp);
     count.oninput = () => {
         if (count.value && count.checkValidity()) {
@@ -2066,6 +2087,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         updateRunButton();
     };
     runOptions.append(optionsToggle, optionsPanel);
+    runOptions.addEventListener('toggle', () => { if (runOptions.open) updateRunButton(); });
     // The run-mode menu opens in the top layer above its button, so it never sits under the prompt's tools.
     liftMenu(runOptions, optionsPanel);
     const generate = button('', submitDraft, 'fv-primary');
@@ -2078,7 +2100,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const paintEta = () => {
         const parts = (effort?.element?.querySelector('.fv-effort-estimate')?.textContent || '').trim().split(' · ').filter(Boolean);
         keySetup = parts.some(setupPart);
-        const estimate = keyShowsEta ? parts.filter(part => !setupPart(part)).join(' · ') : '';
+        // A preview has no estimate of its own (the figures are for the whole two-pass run), so the line stays empty rather than show the wrong time.
+        const estimate = keyShowsEta && !(previewFirst.checked && !previewFirst.disabled) ? parts.filter(part => !setupPart(part)).join(' · ') : '';
         if (keyEta.textContent !== estimate) keyEta.textContent = estimate;
         // Kept in place when empty (not hidden), so the label above it never moves.
         keyEta.dataset.empty = String(!estimate);
@@ -2090,12 +2113,34 @@ export function openStudio(node, {extendFrom = null} = {}) {
     };
     // The key has its two lines from the first frame, so its label is in place before anything else is known.
     paintKey(t('Generate video', '生成视频'), true);
-    runrow.append(generate, runOptions);
+    // Generate's second segment: the menu that says what the key makes, a video or a preview (the same choice as the
+    // two-pass state; a preview turns two-pass on).
+    const keyMore = el('details', null, 'fv-key-more');
+    const keyMoreToggle = el('summary'); keyMoreToggle.title = t('What to generate', '生成什么'); keyMoreToggle.setAttribute('aria-label', keyMoreToggle.title);
+    keyMoreToggle.append(el('span', null, 'fv-chevron'));
+    const keyMenu = el('div', null, 'fv-run-menu fv-key-menu');
+    const keyChoices = [['video', t('Generate video', '生成视频')], ['preview', t('Generate preview', '生成预览')]].map(([id, label]) => {
+        const b = button(label, () => { choosePassMode(id === 'preview' ? 'preview' : twoPass.checked ? 'on' : 'off'); keyMore.open = false; });
+        b.dataset.choice = id; keyMenu.append(b); return b;
+    });
+    keyMore.append(keyMoreToggle, keyMenu);
+    liftMenu(keyMore, keyMenu);
+    const syncKeyMore = () => {
+        const state = passState();
+        keyMore.hidden = runMode !== 'single' || videoMissing || Boolean(state.hidden.preview) || Boolean(extension.source);
+        for (const b of keyChoices) b.setAttribute('aria-pressed', String((b.dataset.choice === 'preview') === (state.mode === 'preview')));
+        keyChoices[1].disabled = state.disabled.preview && !(state.mode === 'preview');
+        if (keyMore.hidden) keyMore.open = false;
+    };
+    runrow.append(generate, runOptions, keyMore);
     runButtonReady = true;
     // An installation with MiniMax H3 Image alone: the main button adds the video model instead of generating.
     let videoMissing = false;
     const addVideoNote = el('p', '', 'fv-add-video-note'); addVideoNote.hidden = true;
     addVideoNote.setAttribute('role', 'status');
+    // A length the device cannot make greys the main button: the reason and the next step are said beside it, not only on hover.
+    const lengthWhy = el('p', '', 'fv-length-why'); lengthWhy.hidden = true;
+    lengthWhy.setAttribute('role', 'status');
     videoModelState((path, options) => api.fetchApi(path, options)).then(state => {
         if (disposed || state.installed) return;
         videoMissing = true;
@@ -2195,6 +2240,10 @@ export function openStudio(node, {extendFrom = null} = {}) {
             {stage: 'execution', node, graph: app.graph, ...(error.joining ? {progress: {phase: 'save'}} : {})});
         node.freevideoFailureReport = report; node.freevideoFailure = errorText(report);
     }
+    function lineLabel() {
+        const n = lineTexts().length;
+        return n ? t(n === 1 ? 'Add 1 video' : `Add ${n} videos`, `添加 ${n} 个视频`) : t('Add videos', '添加视频');
+    }
     function updateRunButton() {
         const submitting = capturing || queueState?.submitting;
         updateFirstFrame();
@@ -2217,15 +2266,21 @@ export function openStudio(node, {extendFrom = null} = {}) {
             `正在添加 ${Math.min(queueState.batch.done + 1, queueState.batch.total)}/${queueState.batch.total}…`)
             : capturing ? t('Planning segments…', '正在规划分段…') : t('Adding…', '正在添加…');
         const label = submitting ? adding
-            : chainReason || (runMode === 'batch' ? t(`Add ${count.value || '…'} videos`, `添加 ${count.value || '…'} 个视频`)
+            : chainReason || (byLine() ? lineLabel()
+            : runMode === 'batch' ? t(`Add ${count.value || '…'} videos`, `添加 ${count.value || '…'} 个视频`)
             : runMode === 'loop' ? (queueState?.looping ? t('Looping', '循环中') : t('Start loop', '开始循环'))
             : busy ? t('Add to queue', '加入队列')
             : previewFirst.checked && !previewFirst.disabled ? t('Generate preview', '生成预览') : t('Generate video', '生成视频'));
         paintKey(label, !submitting && !chainReason);
+        syncKeyMore();
         if (videoMissing) { paintKey(addVideoLabel(t), false); generate.disabled = false; }
         // The hover card names what the button does now (its own label), and when it is greyed, why and how to free it.
+        const lineUse = enhancer.element.dataset.enabled === 'true'
+            ? t('Each line is one video, sent as written without enhancement', '每行生成一个视频，按原文发送，不做描述增强')
+            : t('Each line of the description is one video', '描述的每一行生成一个视频');
         const use = videoMissing ? t('Download the video model before generating', '下载视频模型后才能生成视频')
             : generate.disabled ? ''
+            : byLine() ? lineUse
             : runMode === 'batch' ? t(...TIPS['studio.mode.batch'].use)
             : runMode === 'loop' ? t(...TIPS['studio.mode.loop'].use)
             : busy ? t('Starts when the current video finishes', '当前视频完成后自动开始')
@@ -2235,6 +2290,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
             : chainWait ? t('Parts are generating. Wait, or cancel them in the queue.', '分段视频生成中，完成或在队列里取消后可再生成')
             : lengthControl.blocked ? lengthControl.message || ''
             : t('A loop is running. Stop it to start again.', '正在循环生成，停止后可重新开始');
+        const lengthSaid = lengthControl.blocked && !videoMissing ? lengthControl.visibleMessage : '';
+        if (lengthWhy.textContent !== lengthSaid) lengthWhy.textContent = lengthSaid;
+        lengthWhy.hidden = !lengthSaid;
         const words = {fvTipName: keyLabel.textContent.replace(/…$/, ''), fvTipUse: use && keySetup && keyShowsEta ? `${use} · ${t('Includes first-time setup', '含首次准备')}` : use, fvTipKey: TIPS['studio.generate'].key, fvTipWhy: why};
         for (const [field, value] of Object.entries(words)) {
             if (value) { if (generate.dataset[field] !== value) generate.dataset[field] = value; } else delete generate.dataset[field];
@@ -2243,10 +2301,28 @@ export function openStudio(node, {extendFrom = null} = {}) {
         for (const b of modeButtons) b.setAttribute('aria-pressed', String(b.dataset.mode === runMode));
         optionsLabel.textContent = {single: t('Single', '单次'), batch: t('Batch', '批量'), loop: t('Loop', '循环')}[runMode] || '';
         for (const b of modeButtons) if (b.dataset.mode !== 'single') b.disabled = multiple;
-        countField.hidden = runMode !== 'batch'; count.disabled = runMode !== 'batch';
+        // Outside Batch both rows are greyed (the tray keeps them in place); with one prompt per line the lines set the number.
+        countField.hidden = runMode !== 'batch'; count.disabled = runMode !== 'batch' || byLine();
+        const countWhy = byLine() ? t('Set by the number of lines', '按描述的行数生成') : '';
+        if (count.title !== countWhy) count.title = countWhy;
+        // The greyed box shows how many videos the lines make; the saved number comes back when the switch is off.
+        if (byLine() || count.dataset.fvLines) {
+            const shownCount = byLine() ? String(lineTexts().length) : String(node.properties?.freevideo_batch_count ?? 4);
+            if (byLine()) count.dataset.fvLines = 'true'; else delete count.dataset.fvLines;
+            if (count.value !== shownCount) { count.value = shownCount; count.fvAtPaint?.(); }
+        }
+        perLineField.hidden = !linesUsable(); perLine.disabled = runMode !== 'batch';
+        const lineTip = {fvTipName: t('One prompt per line', '每行一条描述'), fvTipUse: lineUse,
+            fvTipWhy: perLine.disabled ? t('Choose Batch to use it', '选“批量”后可用') : ''};
+        for (const [key, text] of Object.entries(lineTip)) {
+            if (text) { if (perLineField.dataset[key] !== text) perLineField.dataset[key] = text; } else delete perLineField.dataset[key];
+        }
         modeHelp.hidden = runMode === 'single' && !multiple;
         modeHelp.textContent = multiple ? t('Videos made in parts cannot use batch or loop.', '分段视频不能批量或循环生成。') : runMode === 'loop'
             ? t('Same settings, a new seed each time. Stops when this page closes.', '用当前设置，每次换一个种子；关闭网页后停止。')
+            : byLine() ? (enhancer.element.dataset.enabled === 'true'
+                ? t('Each line of the description is one video, sent as written without enhancement.', '描述的每一行生成一个视频，按原文发送，不做描述增强。')
+                : t('Each line of the description is one video.', '描述的每一行生成一个视频。'))
             : t('Same settings, a new seed for each video.', '用当前设置，每个视频换一个种子。');
         // With one video per GPU each running row carries its own Cancel; "current" would be ambiguous.
         cancelCurrent.hidden = !chainController?.active && (!queueState?.running || Boolean(queueState?.running_all));
@@ -2287,7 +2363,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         const wasBusy = busy;
         busy = Boolean(active) || progressLive(); queued = !state.running && Boolean(state.pending.length);
         // A finished, failed or cancelled video may have downloaded what the line above Generate still lists.
-        if (wasBusy && !busy) { requestAssets?.refresh(true); paintMediaHint(); }
+        if (wasBusy && !busy) { requestAssets?.refresh(true); }
         const g = active?.inputs;
         runningSummary = Number.isFinite(g?.width) && Number.isFinite(g?.height)
             ? [t('Generating', '正在生成'), `${g.width} × ${g.height}`, Number(g.seconds) > 0 ? t(`${g.seconds} s`, `${g.seconds} 秒`) : ''].filter(Boolean).join(' · ') : '';
@@ -2405,6 +2481,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
             }
             invalid.focus(); invalid.reportValidity(); return;
         }
+        // One prompt per line with no lines: say what to write (generating without a prompt is not offered here).
+        if (byLine() && !lineTexts().length) { status.dataset.error = 'true'; status.textContent = t('Write one prompt per line, then add them.', '每行写一条描述后再添加。'); prompt.focus(); return; }
         if (!emptyAllowed && !extension.source && !prompt.disabled && !prompt.value.trim() && !untouched() && !swapState(mediaNode)) {
             showEmptyPrompt({t, anchor: runrow, field: prompt, onContinue: () => submitDraft({allowEmpty: true})}); return;
         }
@@ -2414,7 +2492,11 @@ export function openStudio(node, {extendFrom = null} = {}) {
         }
         const timedNote = !prompt.disabled && timedRun() ? timedProblem(prompt.value, Number(value(node, 'seconds')), t) : '';
         if (timedNote) { status.dataset.error = 'true'; status.textContent = timedNote; prompt.focus(); return; }
-        const chosenMode = runMode, batchCount = chosenMode === 'batch' ? Number(count.value) : 1;
+        const chosenMode = runMode, texts = byLine() ? lineTexts() : null;
+        const batchCount = texts ? texts.length : chosenMode === 'batch' ? Number(count.value) : 1;
+        if (texts && !texts.length) { status.dataset.error = 'true'; status.textContent = t('Write one prompt per line, then add them.', '每行写一条描述后再添加。'); prompt.focus(); return; }
+        if (texts && texts.length > 100) { status.dataset.error = 'true'; status.textContent = t(`At most 100 lines at a time; there are ${texts.length}.`, `一次最多 100 行，现在有 ${texts.length} 行。`); prompt.focus(); return; }
+        if (texts && timedParse(texts.join('\n'))[1].length) { status.dataset.error = 'true'; status.textContent = t('Timed lines cannot be split into separate videos. Turn off One prompt per line.', '带时间的台词不能拆成多个视频，请关闭“每行一条描述”。'); return; }
         const originalSeed = value(node, 'seed'), seedMode = mode.value;
         // A request that is not accepted leaves the node mode as the user had it; a retry turns it on again.
         // Once the server has taken a request it stays taken; only a request it never took is undone.
@@ -2424,7 +2506,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
             stopNote = ''; lastQueueError = null; failure.clear(); node.freevideoFailure = ''; node.freevideoFailureReport = null;
             capturing = true; updateRunButton(); status.dataset.error = 'false'; runOptions.open = false;
             lengthControl.freeze();
-            if ((!extension.source || prompt.value.trim()) && !swapState(mediaNode) && await enhancer.beforeGenerate() === false) return;
+            // Lines are sent as written: an enhanced rewrite would merge them into one description.
+            if (!texts && (!extension.source || prompt.value.trim()) && !swapState(mediaNode) && await enhancer.beforeGenerate() === false) return;
             if (disposed) return;
             if (selected === 'input' && !dimensionsLinked) await inputRatio(true);
             const lengthPlan = await lengthControl.ready();
@@ -2470,7 +2553,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
                 if (chain && chainController.waiting > waitingBefore) { status.dataset.error = 'false'; status.textContent = addedNote; return; }
                 if (!chain) { if (source) throw new Error(extendText(t, 'unavailable')); lengthControl.fallback(); if (!seconds.reportValidity()) return;
                     await queueController.start(snapshot, {count: batchCount, repeat: chosenMode === 'loop', seedIndex, onAccepted}); }
-            } else await queueController.start(snapshot, {count: batchCount, repeat: chosenMode === 'loop', seedIndex, onAccepted});
+            } else await queueController.start(snapshot, {count: batchCount, repeat: chosenMode === 'loop', seedIndex, onAccepted,
+                ...(texts ? {texts, textIndex: node.widgets.findIndex(w => w.name === 'text')} : {})});
             // Preserve draft changes made while the POST was in flight.
             if (chosenMode === 'single' && !linked(node, 'seed') && value(node, 'seed') === originalSeed) {
                 const max = Number.MAX_SAFE_INTEGER;
@@ -2520,7 +2604,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         shapes.dataset.custom = String(shapeIndex < 0);
         // An empty frame takes the chosen shape; a work on the stage keeps its own (the outline shows the new one).
         if (!busy && (nextShown || !stageMedia.querySelector('video, img'))) { previewSize(Number(w), Number(h)); if (nextShown) nextSize.textContent = `${w} × ${h}`; }
-        framePicker?.set({shape: selected, ratio: Number(w) / Number(h) || ratio, pixels: Number(mp.value), width: Number(w), height: Number(h), locked: shapeKept,
+        framePicker?.set({shape: selected, ratio: studioShapes(t).find(([id]) => id === selected)?.[2] || Number(w) / Number(h) || ratio, pixels: Number(mp.value), width: Number(w), height: Number(h), locked: shapeKept,
             unavailable: {input: mediaPicture() ? '' : t('Add a picture in Media first', '先在素材里添加图片')},
             disabled: dimensionsLinked || Boolean(extension.source)});
         refreshEffortEstimate();
@@ -2580,7 +2664,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
     function leaveNext() {
         if (!nextShown) return; nextShown = false; delete stage.dataset.next; stage.style.translate = '';
         // The stage takes back the shape of what it shows: the work's own, or the chosen frame when it is empty.
-        const g = stageMedia.querySelector('video, img') && result?.geometry?.width > 0 && result.geometry.height > 0 ? result.geometry
+        const own = [...stageMedia.querySelectorAll('video')].find(v => !v.dataset.leaving && v.videoWidth > 0 && v.videoHeight > 0);
+        const g = own ? {width: own.videoWidth, height: own.videoHeight}
+            : stageMedia.querySelector('video, img') && result?.geometry?.width > 0 && result.geometry.height > 0 ? result.geometry
             : {width: Number(value(node, 'width')), height: Number(value(node, 'height'))};
         stageBar.setNext(false); previewSize(g.width, g.height); fitPreview();
     }
@@ -2592,9 +2678,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
         // The panel floats over the page; the stage stays as it is until a frame or size is pointed at or chosen.
         onClose: () => { if (!busy) { leaveNext(); fitPreview(); } },
         shapes: [...studioShapes(t).map(([id, label, r]) => ({id, label, ratio: r})), {id: 'input', label: t('Match image', '跟随图片'), ratio: null}],
-        // Standard and High; any other size (the earlier 0.5, 0.75 and 1.5 MP steps too) is typed as width × height.
-        // Named by their megapixels (1M, 2M), so they are not mistaken for the quality levels.
-        sizes: [{pixels: .98}, {pixels: 2}],
+        // Five steps, named by their megapixels (written out, so 0.75 is not read as 0.8M and 1.5 not as 2M); any
+        // other size is typed as width × height.
+        sizes: [{pixels: .5, label: '0.5M'}, {pixels: .75, label: '0.75M'}, {pixels: .98, label: '1M'}, {pixels: 1.5, label: '1.5M'}, {pixels: 2, label: '2M'}],
         sizeFor: (r, p) => { const [w, h] = canvasDimensions(p, r); return {width: w, height: h}; },
         custom: {minSide: 256, maxSide: 4096, snap: 32, lock: true},
         onChange: change => {
@@ -2918,7 +3004,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             }},
             {id: 'advanced', tray: 'advanced', icon: 'sliders', read: () => ({label: '', tip: [t('Advanced', '高级选项'), t('Run mode, seed, steps and parts', '生成方式、种子、步数和分段')]})},
         ],
-        status: [requestAssets.element, addVideoNote, otherUsage.element], onTray: open => {
+        status: [requestAssets.element, addVideoNote, lengthWhy, otherUsage.element], onTray: open => {
             placeTray(); fitPreview();
             // An open tray: the play bar and the bar under the picture step back (CSS); they show again when it closes.
             void open;

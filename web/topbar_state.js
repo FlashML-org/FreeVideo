@@ -13,6 +13,7 @@ export function words(t = t0, mac = MAC) {
     return {
         status: [t('Run status', '运行状态'), t('See running tasks and notices', '看进行中的任务和通知')],
         search: [t('Search and commands', '搜索与命令'), t('Search works and run any action', '搜索作品、提示词并执行操作'), `${mod} K`],
+        works: [t('Creations', '作品库'), t('Open your works to sort and manage them', '打开作品库，筛选和管理')],
         phone: [t('Phone', '手机'), t('Open on a phone on this network', '在同一网络的手机上打开')],
         version: [t('Version', '版本'), t('See updates and what is new', '查看更新和新功能')],
         tutorial: [t('Tutorials', '教程'), t('Learn each feature step by step', '一步步学会每个功能')],

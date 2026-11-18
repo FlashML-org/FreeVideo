@@ -8,11 +8,13 @@ import { isNetworkTypeError, connectionLostText } from './browser_extension.js';
 import { issueButton } from './issue_button.js';
 import { applyTasks, toggledTask } from './task_groups.js';
 import { outputDownloadURL } from './output_download.js';
-import { attachContextMenu, openContextMenu, contextMenuOpen } from './context_menu.js';
+import { attachContextMenu, openContextMenu, contextMenuOpen, compatView, reducedMotion } from './context_menu.js';
 import { createMeta, createPictureBin, dayOf, inOrderPictures, matches, needsEverything, pictureRow, readView, saveView,
     sortRows, workKey, TAG_COLORS } from './library_meta.js';
 import { createMetaStore, promptOfRow } from './image_view_history.js';
 import { attach as attachPlayerBar } from './glass/player_bar.js';
+import { hasPictureThumbnail, mediaQueue, pictureThumbnailURL, watchCards } from './work_media.js';
+import { zoomable } from './picture_zoom.js';
 
 const style = document.createElement('link');
 style.rel = 'stylesheet'; style.href = new URL('./library.css', import.meta.url).href; document.head.append(style);
@@ -100,26 +102,30 @@ if (typeof window !== 'undefined') {
     window.addEventListener('freevideo-works-removed', event => { if (event.detail?.undoable === false) forgetPictures(event.detail.paths || event.detail.ids); });
     window.addEventListener('freevideo-pictures-deleted', event => forgetPictures(event.detail?.files));
 }
-function pictureThumb(file, source) {
+function pictureThumb(file, source, fallback = source) {
     if (thumbsMade.has(file)) return thumbsMade.get(file);
     const made = (async () => {
         const key = thumbKey(file);
         const store = globalThis.caches ? await caches.open(THUMBS).catch(() => null) : null;
         const hit = store && await store.match(key).catch(() => null);
         if (hit) return {url: URL.createObjectURL(await hit.blob()), width: Number(hit.headers.get('x-width')) || 0, height: Number(hit.headers.get('x-height')) || 0};
-        const blob = await (await fetch(source)).blob();
-        const bitmap = await createImageBitmap(blob);
-        const width = bitmap.width, height = bitmap.height, scale = Math.min(1, 320 / width);
+        const response = await fetch(source);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const blob = await response.blob();
+        // The engine's small copy (work_media.js) names the picture's own size; it is kept as it came.
+        const named = [response.headers.get('x-picture-width'), response.headers.get('x-picture-height')].map(Number);
+        const bitmap = named.every(value => value > 0) ? null : await createImageBitmap(blob);
+        const width = bitmap ? bitmap.width : named[0], height = bitmap ? bitmap.height : named[1], scale = bitmap ? Math.min(1, 320 / width) : 1;
         let small = blob;
-        if (typeof OffscreenCanvas === 'function' && scale < 1) {
+        if (bitmap && typeof OffscreenCanvas === 'function' && scale < 1) {
             const canvas = new OffscreenCanvas(Math.round(width * scale), Math.round(height * scale));
             canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
             small = await canvas.convertToBlob({type: 'image/webp', quality: .82});
         }
-        bitmap.close?.();
+        bitmap?.close?.();
         if (store) store.put(key, new Response(small, {headers: {'content-type': small.type || 'image/webp', 'x-width': String(width), 'x-height': String(height)}})).catch(() => {});
         return {url: URL.createObjectURL(small), width, height};
-    })().catch(() => ({url: source, width: 0, height: 0}));
+    })().catch(() => ({url: fallback, width: 0, height: 0}));
     thumbsMade.set(file, made);
     return made;
 }
@@ -161,6 +167,8 @@ const offeredUndoRows = () => undoRows().filter(row => !deletingNow.has(row.toke
 const undoChangedHere = () => window.dispatchEvent(new CustomEvent('freevideo-library-undo'));
 // Tells the notices and the task window which creations left the library (or came back): ids are the creations' ids
 // (a picture's is its file), paths the files; undoable is true while Undo can still bring them back.
+// The bar's Creations entry shows the room as current while it is open (topbar.js).
+const announceOpen = open => window.dispatchEvent(new CustomEvent('freevideo-library', {detail: {open}}));
 const worksEvent = (name, ids, paths, undoable) => { if (ids.length) window.dispatchEvent(new CustomEvent(name, {detail: {ids, paths, undoable}})); };
 // The server is the authority on what can still be undone; what it says replaces what this page guessed.
 const applyUndoStates = states => {
@@ -362,12 +370,16 @@ function libraryHost() {
     return front && views.includes(front) ? front : null;
 }
 
-// ``upscale`` queues the second pass of a first-pass preview (the studio's node).
+// ``upscale`` queues the second pass of a first-pass preview (the studio's node). A room opened from anywhere else
+// (a notification, the palette, search, a chat or autopilot job) carries none, so the studio registers its own as the default.
+let defaultUpscale = null;
+export function setDefaultUpscale(run) { defaultUpscale = typeof run === 'function' ? run : null; }
 // ``reuse`` is the creation panel's {now, apply}: given, Reuse settings fills that panel from a creation.
 export function openLibrary(t, options = {}) {
     if (parked?.dialog.isConnected !== false && parked && !parked.dialog.open) return parked.reopen(options);
     if (parked?.dialog.open) { parked.reopen(options); return; }
     let {upscale = null, selectedWork = null, extend = null, reuse = null, back: backLabel = null} = options;
+    const secondPassRunner = () => upscale || defaultUpscale;
     const dialog = el('dialog', null, 'fv-studio fv-library'); opened = dialog;
     let host = libraryHost();
     const hostClosed = () => { if (dialog.open) dialog.close(); };
@@ -445,7 +457,7 @@ export function openLibrary(t, options = {}) {
     const remembered = readView();
     // The shelf's filter: category from the side bar, the rest from the tool row. Opened to show one creation from
     // elsewhere, every creation is listed this time so it is found; the saved choices stay for the next opening.
-    const filter = {kind: remembered.kind, favorites: false, tag: null, query: '', period: 'any', preview: false, agent: false};
+    const filter = {kind: remembered.kind, favorites: false, tag: null, query: '', period: 'any', preview: false, agent: false, source: ''};
     // Every opening starts newest first; the sort button still changes it for this opening.
     let sort = 'new', dense = remembered.dense, trash = false;
     if (!selectedWork) try { filter.favorites = localStorage.getItem(FILTER_KEY) === 'favorites'; } catch { /* Show all. */ }
@@ -648,9 +660,6 @@ export function openLibrary(t, options = {}) {
     // Pictures deleted in the image view or the image editor: hidden while their undo lasts, gone when the engine
     // has deleted them, back when undone (freevideo-works-removed / -restored from image_works.js).
     const heldElsewhere = new Set();
-    // Pictures made for a character card (drafts and the card's own views) are not works (cast_photo.js keeps the list).
-    const readCastFiles = () => { try { return new Set(JSON.parse(localStorage.getItem('freevideo.cast.files') || '[]')); } catch { return new Set(); } };
-    let castHidden = readCastFiles();
     const dayHeadings = new Map();
     const prompts = new Map();
     // What each picture was made with (prompt, time), as the image view keeps it in this browser.
@@ -711,6 +720,7 @@ export function openLibrary(t, options = {}) {
         big.setAttribute('aria-label', t('View large', '查看大图')); tip(big, t('View large', '查看大图'), t('Open it over the whole window', '铺满窗口查看'), 'Space');
         if (row.kind === 'image') {
             const picture = el('img'); picture.alt = ''; picture.decoding = 'async'; picture.src = pictureURL(row);
+            mediaQueue().open(pictureURL(row), picture);
             picture.onload = () => {
                 row.size = {width: picture.naturalWidth, height: picture.naturalHeight};
                 frame.style.setProperty('--fv-ratio', String(picture.naturalWidth / picture.naturalHeight));
@@ -722,7 +732,7 @@ export function openLibrary(t, options = {}) {
             return;
         }
         player = el('video'); player.preload = 'metadata'; player.playsInline = true;
-        player.src = view(row.video);
+        player.src = view(row.video); mediaQueue().open(view(row.video), player);
         const g = row.geometry || {};
         if (g.width > 0 && g.height > 0) frame.style.setProperty('--fv-ratio', String(g.width / g.height));
         media.append(player, ...playerControls(player, t), big);
@@ -819,7 +829,7 @@ export function openLibrary(t, options = {}) {
             links.replaceChildren(row.kind === 'image' ? pictureActions(row) : resultActions(row, t, {
                 extend: extendSaved,
                 reuse: row.preview ? null : reuseNow(),
-                secondPass: row.preview && upscale ? () => secondPass(row) : null,
+                secondPass: row.preview && secondPassRunner() ? () => secondPass(row) : null,
                 favorite: value => saveFavorite(row, value),
                 remove: () => remove(row)}));
             tipActions(links);
@@ -919,7 +929,7 @@ export function openLibrary(t, options = {}) {
     async function secondPass(row) {
         notice.textContent = '';
         try {
-            await upscale(row);
+            await secondPassRunner()(row);
             if (!disposed && selected === workKey(row)) notice.textContent = t('Queued. It appears in "Creations" when done.', '已加入队列，完成后在“作品”里。');
         } catch (error) {
             if (!disposed && selected === workKey(row)) fault(notice, t('Could not start the second pass: ', '无法继续二采：') + error.message, ['Second pass', '二采']);
@@ -980,7 +990,7 @@ export function openLibrary(t, options = {}) {
         const loadedVideos = [...works.values()].filter(row => row.kind !== 'image');
         const pics = filter.kind === 'video' ? [] : sort === 'new' && !everything ? inOrderPictures(pictureRows, loadedVideos, !!next) : pictureRows;
         const context = {tagsOf: key => meta.tagsOf(key), promptOf: row => prompts.get(row.id) || ''};
-        return sortRows([...videos, ...pics.filter(row => !pictureBin.holding(row.file) && !heldElsewhere.has(row.file) && !castHidden.has(row.file))].filter(row => matches(row, filter, context)), sort);
+        return sortRows([...videos, ...pics.filter(row => !pictureBin.holding(row.file) && !heldElsewhere.has(row.file))].filter(row => matches(row, filter, context)), sort);
     }
     const seconds = row => { const g = row.geometry || {}; return g.seconds || (g.frames && g.frames / (g.fps || 24)) || 0; };
     // A video's card is named after its prompt, read when the card first comes into view (four at a time).
@@ -1057,7 +1067,11 @@ export function openLibrary(t, options = {}) {
             let wait = 0, preview = null;
             card.addEventListener('pointerenter', event => {
                 if (event.pointerType === 'touch' || selecting || layout === 'stage') return;
+                if (compatView()) return; // The compatibility view plays nothing until asked.
                 wait = setTimeout(() => {
+                    // Over a link the pointer only moves the video to the front of the queue; it plays here once it is in.
+                    const queue = mediaQueue();
+                    if (queue.enabled && !queue.loaded(view(row.video))) { queue.want(view(row.video), {kind: 'video', rank: -1e15 - performance.now(), bytes: row.bytes}); return; }
                     preview = el('video', null, 'fv-library-hover'); preview.muted = true; preview.loop = true; preview.playsInline = true; preview.preload = 'auto';
                     preview.src = view(row.video); preview.addEventListener('playing', () => { preview.dataset.on = 'true'; }, {once: true});
                     card.querySelector('.fv-library-picture')?.append(preview); preview.play().catch(() => {});
@@ -1095,7 +1109,7 @@ export function openLibrary(t, options = {}) {
         card.append(picture, el('span', ''), el('small', ''));
         card.setAttribute('aria-label', cardLabel(row));
         cardTip(card, row);
-        cards.set(key, card); thumbnails.observe(image);
+        cards.set(key, card); thumbnails.observe(image); originals.observe(card);
         return card;
     }
     // Lays the shelf out from the filter: cards are kept and moved, days get a heading while the order is by time.
@@ -1169,7 +1183,7 @@ export function openLibrary(t, options = {}) {
     function emptyText() {
         if (filter.query) return t('Nothing matches this search.', '没有符合搜索的作品。');
         if (filter.tag) return t('No creation has this tag yet. Select creations and press Tag.', '还没有作品带这个标签。选中作品后点“标签”。');
-        if (filter.period !== 'any' || filter.preview || filter.agent) return t('Nothing matches these filters.', '没有符合筛选条件的作品。');
+        if (filter.period !== 'any' || filter.source || filter.preview || filter.agent) return t('Nothing matches these filters.', '没有符合筛选条件的作品。');
         if (filter.favorites) return t("No favorite creations. Click the heart in a creation's details to add one.", '暂无收藏的作品。点作品详情中的爱心图标收藏。');
         if (filter.kind === 'image') return picturesState === 'failed' ? t('Pictures could not be read just now. Try Refresh.', '图片暂时无法读取，请点击刷新。') : t('Pictures made in the image view appear here.', '在图像视图里生成的图片会保存在这里。');
         return t('Finished videos and pictures appear here.', '生成完成的视频和图片会保存在这里。');
@@ -1222,7 +1236,7 @@ export function openLibrary(t, options = {}) {
     }
     // The shelf swaps by a cross-fade: the old cards stay until the new order is there.
     function transition(change) {
-        if (!document.startViewTransition || matchMedia('(prefers-reduced-motion: reduce)').matches || !dialog.isConnected) { change(); return; }
+        if (!document.startViewTransition || reducedMotion() || !dialog.isConnected) { change(); return; }
         grid.style.viewTransitionName = 'fv-library-shelf';
         const done = document.startViewTransition(change);
         done.finished.finally(() => { grid.style.viewTransitionName = ''; });
@@ -1291,11 +1305,15 @@ export function openLibrary(t, options = {}) {
         const period = [['any', t('Any time', '任何时间')], ['today', t('Today', '今天')], ['week', t('Last 7 days', '最近 7 天')], ['month', t('Last 30 days', '最近 30 天')]];
         filterMenu.replaceChildren(el('div', t('When', '时间'), 'fv-library-menu-label'));
         for (const [key, label] of period) filterMenu.append(menuItem(label, filter.period === key, () => { filter.period = key; drawFilterMenu(); applyFilter(); }));
+        filterMenu.append(el('div', null, 'fv-library-menu-sep'), el('div', t('Pictures from', '图片来源'), 'fv-library-menu-label'));
+        for (const [key, label] of [['', t('Any', '全部')], ['image', t('Image', '图片')], ['edit', t('Edit', '编辑')], ['cast', t('Character', '角色')]]) {
+            filterMenu.append(menuItem(label, filter.source === key, () => { filter.source = key; drawFilterMenu(); applyFilter(); }));
+        }
         filterMenu.append(el('div', null, 'fv-library-menu-sep'), el('div', t('Only', '只看'), 'fv-library-menu-label'));
         filterMenu.append(menuItem(t('First-pass previews', '一采预览'), filter.preview, () => { filter.preview = !filter.preview; drawFilterMenu(); applyFilter(); }, 'menuitemcheckbox', t('Videos that still need a second pass', '还没有继续二采的视频')));
         filterMenu.append(menuItem(t('Made by the assistant', '助手生成'), filter.agent, () => { filter.agent = !filter.agent; drawFilterMenu(); applyFilter(); }, 'menuitemcheckbox', t('Videos made by the assistant', '由助手生成的视频')));
-        const clear = button(t('Clear filters', '清除筛选'), () => { filter.period = 'any'; filter.preview = filter.agent = false; drawFilterMenu(); applyFilter(); }, 'fv-library-menu-clear');
-        clear.disabled = filter.period === 'any' && !filter.preview && !filter.agent;
+        const clear = button(t('Clear filters', '清除筛选'), () => { filter.period = 'any'; filter.source = ''; filter.preview = filter.agent = false; drawFilterMenu(); applyFilter(); }, 'fv-library-menu-clear');
+        clear.disabled = filter.period === 'any' && !filter.source && !filter.preview && !filter.agent;
         tip(clear, t('Clear filters', '清除筛选'), t('Show everything again', '恢复显示全部'));
         filterMenu.append(el('div', null, 'fv-library-menu-sep'), clear);
     }
@@ -1306,7 +1324,7 @@ export function openLibrary(t, options = {}) {
         for (const [key, label] of Object.entries(SORT_NAMES())) sortMenu.append(menuItem(label, sort === key, () => { sort = key; persistView(); closeMenus(); applyFilter(); }));
     }
     function syncTools() {
-        const count = (filter.period !== 'any') + filter.preview + filter.agent;
+        const count = (filter.period !== 'any') + !!filter.source + filter.preview + filter.agent;
         filterButton.querySelector('.fv-library-badge').textContent = count ? String(count) : '';
         filterButton.dataset.active = String(!!count);
         sortButton.querySelector('.fv-library-tool-label').textContent = SORT_NAMES()[sort];
@@ -1380,6 +1398,10 @@ export function openLibrary(t, options = {}) {
                 document.body.append(link); link.click(); link.remove();
             }});
             if (one.kind !== 'image') {
+                if (one.preview) items.push({id: 'second-pass', icon: 'history', label: ['Run second pass', '继续二采'],
+                    use: ['Finish the full-resolution video', '从预览继续生成全分辨率视频'],
+                    disabled: secondPassRunner() ? '' : ['Open the create view first, then run the second pass', '请先打开创作页，再继续二采'],
+                    run: () => secondPass(one).then(() => say(t('Queued. It appears in "Creations" when done.', '已加入队列，完成后在“作品”里。')), error => say(t('Could not start the second pass: ', '无法继续二采：') + error.message, true))});
                 items.push({id: 'reuse', icon: 'reuse', label: ['Reuse settings', '复用设置'],
                     disabled: one.preview ? ['A first-pass preview: finish it first', '这是一采预览，先继续二采'] : '',
                     run: () => reuseSaved(one)});
@@ -1553,7 +1575,7 @@ export function openLibrary(t, options = {}) {
             const cell = el('figure', null, 'fv-library-compare-cell');
             let media;
             if (row.kind === 'image') { media = el('img'); media.alt = ''; media.src = pictureURL(row); }
-            else { media = el('video'); media.muted = true; media.loop = true; media.playsInline = true; media.autoplay = true; media.preload = 'auto'; media.poster = coverOf(workKey(row)) || videoThumbnailURL(row); media.src = view(row.video); }
+            else { media = el('video'); media.muted = true; media.loop = true; media.playsInline = true; media.autoplay = !compatView(); media.preload = 'auto'; media.poster = coverOf(workKey(row)) || videoThumbnailURL(row); media.src = view(row.video); }
             cell.append(media, el('figcaption', viewerName(row))); stage.append(cell);
         }
         const top = el('div', null, 'fv-library-viewer-bar');
@@ -1562,7 +1584,7 @@ export function openLibrary(t, options = {}) {
         close.setAttribute('aria-label', t('Stop selecting', '退出多选')); tip(close, t('Stop selecting', '退出多选'), t('Back to one creation', '回到单个作品'), 'Esc');
         top.append(label, close);
         viewer.append(stage, top);
-        for (const media of stage.querySelectorAll('video')) media.play().catch(() => {});
+        if (!compatView()) for (const media of stage.querySelectorAll('video')) media.play().catch(() => {});
     }
     function setSelecting(value) {
         if (selecting === value || deleting) return;
@@ -1723,6 +1745,7 @@ export function openLibrary(t, options = {}) {
     };
     function leaveShelf(key) {
         const row = works.get(key);
+        if (cards.has(key)) originals.unobserve(cards.get(key));
         works.delete(key); if (row?.video) rows.delete(row.video);
         cards.get(key)?.remove(); cards.delete(key);
     }
@@ -1758,7 +1781,7 @@ export function openLibrary(t, options = {}) {
                 removed.add(key);
                 const row = works.get(key);
                 if (batch && row) batchContents.set(batch, [...(batchContents.get(batch) || []), {id: row.id, video: row.video, created_at: row.created_at}]);
-                window.dispatchEvent(new CustomEvent('freevideo-library-deleted', {detail: {video: row?.video}}));
+                window.dispatchEvent(new CustomEvent('freevideo-library-deleted', {detail: {video: row?.video, id: row?.id}}));
                 if (row) left.push(row);
                 if (disposed) continue;
                 leaveShelf(key);
@@ -1856,16 +1879,26 @@ export function openLibrary(t, options = {}) {
             thumbnails.unobserve(target);
             if (target.dataset.picture) {
                 const file = target.dataset.picture;
-                pictureThumb(file, `${target.dataset.src}&preview=${encodeURIComponent('jpeg;70')}`).then(({url, width, height}) => {
+                // A picture of the image history comes as the engine's small copy; any other is made small here.
+                const source = hasPictureThumbnail(file) ? pictureThumbnailURL(file) : `${target.dataset.src}&preview=${encodeURIComponent('jpeg;70')}`;
+                // Counted from now: the originals wait for it while it is fetched and drawn.
+                mediaQueue().thumbnail(target);
+                pictureThumb(file, source, target.dataset.src).then(({url, width, height}) => {
                     const row = works.get('image:' + file) || pictureRows.find(item => item.file === file);
                     if (row && width && !row.size) { row.size = {width, height}; labelCard(workKey(row)); if (selected === workKey(row)) geometry.textContent = pictureDimensions(row); }
                     target.src = url;
                 });
-            } else target.src = target.dataset.src;
+            } else { mediaQueue().thumbnail(target); target.src = target.dataset.src; }
             const key = target.closest('.fv-library-card')?.dataset.key;
             if (isVideo(key)) wantPrompt(works.get(key));
         }
     }, {root: collection, rootMargin: '160px'});
+    // Over a link, the originals of the cards on screen and near them load in the background after their thumbnails.
+    const originals = watchCards(mediaQueue(), collection, card => {
+        const row = works.get(card.dataset.key);
+        if (!row) return null;
+        return row.kind === 'image' ? {url: pictureURL(row), kind: 'image'} : {url: view(row.video), kind: 'video', bytes: row.bytes};
+    });
     let serverOffset = null;
     const PICTURE_TIME = /image-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})/;
     function restampPictures() {
@@ -1888,7 +1921,7 @@ export function openLibrary(t, options = {}) {
         works.set(key, row); rows.set(row.video, row);
     }
     function reset() {
-        thumbnails.disconnect(); grid.replaceChildren(); cards.clear(); works.clear(); rows.clear(); unread = 0; unreadable.textContent = '';
+        thumbnails.disconnect(); originals.disconnect(); grid.replaceChildren(); cards.clear(); works.clear(); rows.clear(); unread = 0; unreadable.textContent = '';
         next = null; everything = false; clearDetail(); dialog.dataset.detail = 'false'; drawTail();
     }
     async function loadPictures() {
@@ -2035,23 +2068,8 @@ export function openLibrary(t, options = {}) {
         const node = button('', run, 'fv-library-viewer-action'); node.append(iconNode, el('span', name));
         tip(node, name, use); return node;
     }
-    // Wheel or double-click zooms a picture around the pointer; drag moves it while zoomed.
-    function zoomable(stage, image) {
-        let scale = 1, x = 0, y = 0, drag = null;
-        const apply = () => { image.style.transform = scale === 1 ? '' : `translate(${x}px, ${y}px) scale(${scale})`; stage.dataset.zoomed = String(scale > 1); };
-        const zoomAt = (next, cx, cy) => {
-            next = Math.max(1, Math.min(8, next));
-            const box = stage.getBoundingClientRect(), dx = cx - (box.left + box.width / 2), dy = cy - (box.top + box.height / 2);
-            x = dx - (dx - x) * next / scale; y = dy - (dy - y) * next / scale; scale = next;
-            if (scale === 1) x = y = 0;
-            apply();
-        };
-        stage.addEventListener('wheel', event => { event.preventDefault(); zoomAt(scale * Math.exp(-event.deltaY * .0015), event.clientX, event.clientY); }, {passive: false});
-        image.addEventListener('dblclick', event => zoomAt(scale > 1 ? 1 : 2.5, event.clientX, event.clientY));
-        image.addEventListener('pointerdown', event => { if (scale === 1) return; drag = {id: event.pointerId, x: event.clientX - x, y: event.clientY - y}; image.setPointerCapture(event.pointerId); });
-        image.addEventListener('pointermove', event => { if (drag?.id !== event.pointerId) return; x = event.clientX - drag.x; y = event.clientY - drag.y; apply(); });
-        image.addEventListener('pointerup', () => { drag = null; }); image.addEventListener('pointercancel', () => { drag = null; });
-    }
+    // The picture in the viewer zooms and moves (picture_zoom.js); the arrow keys move it while it is zoomed.
+    let zoomer = null;
     // The play bar under a stage video: the shared thin bar (glass/player_bar.js), as in the creation panel.
     function playBar(video) {
         const host = document.createDocumentFragment();
@@ -2081,10 +2099,10 @@ export function openLibrary(t, options = {}) {
         download.append(icon('download'), el('span', t('Download', '下载'))); tip(download, t('Download video', '下载视频'), t('Save the MP4 to this computer', '把视频文件保存到电脑'));
         const extendButton = viewerAction(t('Continue', '接着生成'), canExtend(row) ? t('Make a longer video from its end', '从结尾继续生成更长的视频') : t('This video cannot be continued', '这条视频不能接着生成'), icon('extend'), () => { closeViewer(); extendSaved(row); });
         extendButton.disabled = !canExtend(row);
-        const again = row.preview && upscale
+        const again = row.preview && secondPassRunner()
             ? viewerAction(t('Run second pass', '继续二采'), t('Finish the full-resolution video', '从预览继续生成全分辨率视频'), icon('reuse'), () => { closeViewer(); secondPass(row); })
             : viewerAction(t('Reuse settings', '复用设置'), row.preview ? t('A first-pass preview: finish it first', '这是一采预览，先继续二采') : t('Fill the creation panel with these settings', '把这次的设置填回创作面板'), icon('reuse'), () => { closeViewer(); reuseSaved(row); });
-        if (row.preview && !upscale) again.disabled = true;
+        if (row.preview && !secondPassRunner()) again.disabled = true;
         foot.append(download, extendButton, again, more);
         return foot;
     }
@@ -2167,11 +2185,14 @@ export function openLibrary(t, options = {}) {
             // A picture that cannot be read says so where it would be, with the feedback button, as in the details.
             media.addEventListener('error', () => { if (!disposed && viewing === key && layer.isConnected) { layer.replaceChildren(pictureProblem()); drawn(); } }, {once: true});
             if (!cover) media.dataset.loaded = 'true';
-            layer.append(media); zoomable(stage, media);
+            layer.append(media); zoomer = zoomable(stage, media);
+            // Opened: it goes before anything loading in the background.
+            mediaQueue().open(pictureURL(row), media);
         } else {
-            media = el('video'); media.autoplay = true; media.loop = true; media.playsInline = true; media.muted = viewerMuted; media.preload = 'auto';
+            media = el('video'); media.autoplay = !compatView(); media.loop = true; media.playsInline = true; media.muted = viewerMuted; media.preload = 'auto';
             // Its cover shows until the first frame arrives, so the stage is drawn as soon as the small cover is in.
             media.poster = cover || videoThumbnailURL(row); media.src = view(row.video);
+            mediaQueue().open(view(row.video), media);
             if (!cover) { const poster = new Image(); poster.onload = drawn; poster.src = media.poster; media.addEventListener('loadeddata', drawn, {once: true}); }
             media.addEventListener('volumechange', () => { viewerMuted = media.muted; });
             media.addEventListener('click', () => { if (media.paused) media.play().catch(() => {}); else media.pause(); });
@@ -2213,7 +2234,7 @@ export function openLibrary(t, options = {}) {
         viewer.replaceChildren(main, panel); viewer.hidden = false;
         toggleInfo(infoOpen);
         if (hadFocus) (isFull() ? close : full).focus({preventScroll: true});
-        if (row.kind !== 'image') media.play().catch(() => {});
+        if (row.kind !== 'image' && !compatView()) media.play().catch(() => {});
         wake();
     }
     // "View large" and Space: the stage when it shows something else, else full screen.
@@ -2281,7 +2302,7 @@ export function openLibrary(t, options = {}) {
         }
         stage.onclick = event => { if (event.target === stage) closeViewer(); };
         viewer.append(stage, facts, top); viewer.hidden = false; dialog.dataset.viewing = 'true';
-        if (videos.length) for (const video of videos) video.play().catch(() => {});
+        if (videos.length && !compatView()) for (const video of videos) video.play().catch(() => {});
         setTimeout(syncPlay, 300);
         close.focus({preventScroll: true});
     }
@@ -2324,7 +2345,13 @@ export function openLibrary(t, options = {}) {
             const video = viewer.querySelector('video');
             if (viewing === 'compare') { if (event.key === ' ' && !event.target.closest?.('button,input')) { event.preventDefault(); compareToggle?.(); } return; }
             const across = () => Math.max(1, getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length);
-            if (event.key === 'ArrowLeft') { event.preventDefault(); step(-1); }
+            // A zoomed picture: the arrows move it, a step of 80 px; at its own size they step through the works.
+            if (event.key.startsWith('Arrow') && zoomer?.zoomed() && !event.target.closest?.('input,textarea,[role=slider]')) {
+                event.preventDefault();
+                const by = event.shiftKey ? 240 : 80;
+                zoomer.pan({ArrowLeft: by, ArrowRight: -by}[event.key] || 0, {ArrowUp: by, ArrowDown: -by}[event.key] || 0);
+            }
+            else if (event.key === 'ArrowLeft') { event.preventDefault(); step(-1); }
             else if (event.key === 'ArrowRight') { event.preventDefault(); step(1); }
             else if ((event.key === 'ArrowUp' || event.key === 'ArrowDown') && !isFull()) { event.preventDefault(); step((event.key === 'ArrowUp' ? -1 : 1) * across()); }
             else if (event.key.toLowerCase() === 'f' && !event.metaKey && !event.ctrlKey) { event.preventDefault(); if (isFull()) exitFull(); else goFull(); }
@@ -2362,7 +2389,7 @@ export function openLibrary(t, options = {}) {
         const gone = new Set(event.detail?.files || []);
         if (disposed || !gone.size) return;
         pictureRows = pictureRows.filter(row => !gone.has(row.file));
-        for (const file of gone) { const key = workKey({kind: 'image', file}); works.delete(key); cards.get(key)?.remove(); cards.delete(key); picked.delete(key); }
+        for (const file of gone) { const key = workKey({kind: 'image', file}); if (cards.has(key)) originals.unobserve(cards.get(key)); mediaQueue().forget(view(file, 'input')); works.delete(key); cards.get(key)?.remove(); cards.delete(key); picked.delete(key); }
         render();
     };
     window.addEventListener('freevideo-pictures-deleted', picturesGone);
@@ -2413,7 +2440,7 @@ export function openLibrary(t, options = {}) {
         // Parked: the room keeps its creations, stage, selection and scroll; listeners keep it current in the background.
         exitFull(); closeMenus(); if (viewing === 'compare') closeViewer();
         for (const media of dialog.querySelectorAll('video')) media.pause();
-        parked = {dialog, reopen}; dialog.onclose = park; dialog.inert = true;
+        parked = {dialog, reopen}; dialog.onclose = park; dialog.inert = true; announceOpen(false);
         if (opener?.isConnected && !opener.closest('[inert]') && (!document.activeElement || document.activeElement === document.body || !document.activeElement.isConnected)) opener.focus({preventScroll: true});
     };
     dialog.onclose = park;
@@ -2429,20 +2456,20 @@ export function openLibrary(t, options = {}) {
             if (where) { dialog.dataset.fvEmbedded = 'true'; if (dialog.parentNode !== where) where.append(dialog); dialog.show(); where.addEventListener('close', hostClosed); }
             else { delete dialog.dataset.fvEmbedded; if (dialog.parentNode !== document.body) document.body.append(dialog); dialog.showModal(); }
         }
-        host = where; opened = dialog; dialog.dataset.fvReady = 'true';
+        host = where; opened = dialog; dialog.dataset.fvReady = 'true'; announceOpen(true);
         dialog.focus({preventScroll: true});
         if (next.selectedWork) {
             const row = [...works.values()].find(item => item.id === next.selectedWork || item.video === next.selectedWork);
             if (row) { select(workKey(row), false); cards.get(workKey(row))?.scrollIntoView({block: 'nearest'}); } else { selectedWork = next.selectedWork; }
         }
-        if (layout === 'stage') viewer.querySelector('.fv-layer:not(.fv-leaving) video')?.play().catch(() => {});
+        if (layout === 'stage' && !compatView()) viewer.querySelector('.fv-layer:not(.fv-leaving) video')?.play().catch(() => {});
         load(false); showUndo(); syncUndo();
         return dialog;
     }
     // Ends the room for good (not used by closing; kept for a page that wants the memory back).
     function destroy() {
         headerObserver.disconnect();
-        disposed = true; abort.abort(); listAbort?.abort(); thumbnails.disconnect(); releasePlayer(); closeViewer(); closeMenus();
+        disposed = true; abort.abort(); listAbort?.abort(); thumbnails.disconnect(); originals.disconnect(); releasePlayer(); closeViewer(); closeMenus();
         clearTimeout(undoTimer); clearTimeout(sizeTimer); clearTimeout(syncTimer); clearTimeout(trashTimer); clearTimeout(sayTimer); clearTimeout(searchTimer);
         metaOff(); meta.dispose(); pictureOff(); castRoom?.destroy(); host?.removeEventListener('close', hostClosed);
         window.removeEventListener('freevideo-view-leave', viewLeft); window.removeEventListener('freevideo-view', viewLeft); drawer.removeEventListener('change', drawerChanged);
@@ -2487,8 +2514,6 @@ export function openLibrary(t, options = {}) {
         if (!disposed) render();
     };
     window.addEventListener('freevideo-works-removed', worksRemoved); window.addEventListener('freevideo-works-restored', worksRestored);
-    const castChanged = event => { if (event.type === 'storage' && event.key !== 'freevideo.cast.files') return; castHidden = readCastFiles(); if (!disposed) renderSoon(); };
-    window.addEventListener('freevideo-cast-files', castChanged); window.addEventListener('storage', castChanged);
     // Leaving the view puts the room's menus and viewer away in the same frame; the room itself stays with its view.
     // On the stage the room stays as it is (a comparison of the selection included); full screen ends.
     const viewLeft = () => { closeMenus(); if (layout === 'stage') exitFull(); else closeViewer(); };
@@ -2518,7 +2543,7 @@ export function openLibrary(t, options = {}) {
     const show = () => {
         if (host) { dialog.dataset.fvEmbedded = 'true'; host.append(dialog); dialog.show(); host.addEventListener('close', hostClosed); }
         else { document.body.append(dialog); dialog.showModal(); }
-        dialog.focus({preventScroll: true}); load(false); showUndo(); syncUndo();
+        dialog.focus({preventScroll: true}); load(false); showUndo(); syncUndo(); announceOpen(true);
         // Nothing cached yet: quiet cards hold the shelf while the first list comes.
         if (!works.size) render();
         holdUntilDrawn();

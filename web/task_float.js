@@ -219,7 +219,7 @@ const tip = (element, name, use, key = '') => {
 };
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
 const EASE = 'cubic-bezier(.2, .8, .2, 1)';
-const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+const calm = () => document.documentElement.dataset.glass === 'solid' || document.documentElement.classList.contains('lite') || matchMedia('(prefers-reduced-motion: reduce)').matches;
 // Phone width (the design system's breakpoint): one capsule along the bottom.
 const narrow = () => innerWidth <= 720;
 const raise = element => { try { if (element.matches(':popover-open')) element.hidePopover(); element.showPopover(); } catch { /* not connected */ } };

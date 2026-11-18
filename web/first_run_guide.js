@@ -498,10 +498,21 @@ export function createFirstRunGuide({dialog, api, cn, isBusy = () => false, grou
         else if (layer) poll();
     };
     const execution = () => { serverBlocked = true; if (!editor || layer) interrupt(); };
+    // The page can change many times a second (a playing video moves its own controls), and each check reads layout:
+    // the first change is judged at once, later ones at most four times a second, so playback stays smooth.
+    const CHECK_GAP = 250;
+    let checkedAt = -Infinity, checkTimer = 0;
+    const check = () => {
+        checkTimer = 0; checkedAt = performance.now();
+        if (disposed || stopped) return;
+        if ((!editor || layer) && (blocked() || layer && [...document.querySelectorAll('.p-blockui-mask')].some(visible))) interrupt(); else follow();
+    };
     const observer = new MutationObserver(rows => {
         if (disposed || stopped) return;
         if (rows.every(row => layer?.contains(row.target))) return;
-        if ((!editor || layer) && (blocked() || layer && [...document.querySelectorAll('.p-blockui-mask')].some(visible))) interrupt(); else follow();
+        if (checkTimer) return;
+        const wait = checkedAt + CHECK_GAP - performance.now();
+        if (wait <= 0) check(); else checkTimer = setTimeout(check, wait);
     });
     observer.observe(document.body, {subtree: true, childList: true, attributes: true, attributeFilter: ['hidden', 'open', 'class', 'style', 'inert', 'role', 'aria-modal']});
     const resizeObserver = new ResizeObserver(follow);
@@ -522,7 +533,7 @@ export function createFirstRunGuide({dialog, api, cn, isBusy = () => false, grou
             key(event);
             return event.defaultPrevented;
         }, dispose() {
-        disposed = true; clearTimeout(startTimer); clearTimeout(pollTimer); cancelAnimationFrame(frame);
+        disposed = true; clearTimeout(startTimer); clearTimeout(pollTimer); clearTimeout(checkTimer); cancelAnimationFrame(frame);
         cancelReplay();
         hide(); observer.disconnect(); resizeObserver.disconnect();
         document.removeEventListener('pointerdown', touch, true); document.removeEventListener('click', touch, true);

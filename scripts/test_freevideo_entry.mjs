@@ -48,7 +48,7 @@ globalThis.__permissionAsks = [];
 test('main browser entry registers both views and preserves node hooks', async t => {
     const extensions = [], opened = [], installed = [], events = new EventTarget();
     const issueURLs = [];
-    let refreshed = 0, compatibilityChecks = 0, updateChecks = 0, doneNotifyStarts = 0, whatsNewStarts = 0, rememberedView = null;
+    let whatsNewInFront, refreshed = 0, compatibilityChecks = 0, updateChecks = 0, doneNotifyStarts = 0, whatsNewStarts = 0, rememberedView = null;
     const openingEvents = [];
     let restoreReleases = 0;
     let launchReady = null;
@@ -96,7 +96,7 @@ test('main browser entry registers both views and preserves node hooks', async t
         createProgressConnection: () => ({start() {}, refresh() {}, reset() {}}),
         notifyCompatibility: async () => { compatibilityChecks++; },
         startUpdateChecks: () => { updateChecks++; }, productVersion: () => '0.5.0',
-        startWhatsNew: options => { whatsNewStarts++; },
+        startWhatsNew: options => { whatsNewStarts++; whatsNewInFront = options.inFront; },
         startWhiteboxWorker: () => ({stop() {}}),
         startDoneNotify: options => { doneNotifyStarts++; doneNotifyOptions = options; },
         installNavigation: callback => installed.push(callback),
@@ -155,7 +155,7 @@ test('main browser entry registers both views and preserves node hooks', async t
             .replace("import { installNavigation, refreshNavigation, preferredView, collapseWorkspaces, openImage } from './view_navigation.js';", 'const {installNavigation,refreshNavigation,preferredView} = globalThis.__freevideoEntryTest; const collapseWorkspaces = () => { globalThis.__freevideoEntryTest.collapsed = (globalThis.__freevideoEntryTest.collapsed || 0) + 1; }; const openImage = async () => false;')
             // The video model is installed here, so the workspace opens on Create as before the Images view existed.
             .replace("import { videoModelState } from './video_model.js';", 'const videoModelState = async () => ({installed: true});')
-            .replace("import { isLaunchVisit } from './launch_visit.js';", 'const isLaunchVisit = () => false;')
+            .replace("import { isLaunchVisit, freeVideoInFront } from './launch_visit.js';", 'const isLaunchVisit = () => false, freeVideoInFront = launched => () => launched;')
             // Only a launcher visit opens the workspace; the test flips this to compare a plain tab with a launched one.
             .replace('&& launchVisit;', '&& globalThis.__freevideoEntryTest.launchVisit;')
             .replace("import { openFreeVideoWorkflow } from './launcher.js';", 'const openFreeVideoWorkflow = (...args) => globalThis.__freevideoEntryTest.openFreeVideoWorkflow?.(...args);')
@@ -177,6 +177,7 @@ test('main browser entry registers both views and preserves node hooks', async t
         assert.equal(compatibilityChecks, 1);
         assert.equal(updateChecks, 1);
         assert.equal(whatsNewStarts, 1);
+        assert.equal(whatsNewInFront?.(), false, "what's new waits on a page the launcher did not open");
         assert.equal(doneNotifyStarts, 1);
 
         await t.test('desktop notification uses the registered default without overwriting stored opt-outs', () => {
@@ -268,7 +269,7 @@ test('main browser entry registers both views and preserves node hooks', async t
                         ['seed', 'seed', '种子', 2026090903],
                         ['force_regenerate', 'Force regeneration', '重新生成', false, '跳过已保存结果的缓存。'],
                         ['preview', 'Two-pass: preview first pass', '先出预览', false,
-                            '先出半分辨率预览，满意后在结果里点“继续二采”，成片与直接生成一致。'],
+                            '先出低分辨率预览，满意后在结果里点“继续二采”，成片与直接生成一致。'],
                         ['refine_from', 'Second pass of preview', '继续二采', 'preview.mp4', '从这个预览继续生成全分辨率视频。'],
                         ['continue_from', 'Continue from video', '接着生成', 'previous.mp4'],
                         ['frames', 'Total frames', '帧数', 141],

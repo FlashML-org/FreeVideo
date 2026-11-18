@@ -35,19 +35,22 @@ html[data-fv-shell=nodes] .fv-view-navigation .fv-view-row>.fv-view-switch{justi
 html[data-fv-shell=nodes] .fv-view-navigation .fv-view-actions{justify-self:end;min-width:0}
 html[data-fv-shell=nodes] .fv-view-grip{display:none}
 
-/* ComfyUI's own frame stays out of sight whenever FreeVideo is in front (a view, the node view, the opening cover), so
+/* ComfyUI's own frame stays out of sight whenever a FreeVideo view or the opening cover is in front (not in the node view, which is
+   ComfyUI itself and shows it, see below), so
    no veil, tour or transition ever shows it (frontend 1.51, measured): workflow tabs, side tool bar, breadcrumb and
    run bar row, minimap and canvas menus, right-hand and bottom panels, a floating run bar. The canvas itself and the
    layer inside the canvas panel (nodes drawn as HTML) stay. Running a workflow from the node view keeps ComfyUI's
    shortcut (Ctrl+Enter); FreeVideo's own generation lives in Create. */
-html[data-fv-shell] :is(.comfyui-body-top,.comfyui-body-left,.comfyui-body-right,.comfyui-body-bottom,.actionbar,.actionbar-container,.comfyui-menu,.comfy-menu-hamburger),
-html[data-fv-shell] #graph-canvas-container :is(.minimap-main-container,.litegraph-minimap,.bottom-panel,.selection-toolbox),
-html[data-fv-shell] #graph-canvas-container .graph-canvas-panel>:not(.absolute.inset-0),
-html[data-fv-shell] #graph-canvas-container .p-splitter-horizontal>:is(.p-splitter-gutter,.p-splitterpanel.pointer-events-auto),
-html[data-fv-shell] #graph-canvas-container .splitter-overlay-bottom>:not(.graph-canvas-panel){display:none!important}
+html[data-fv-shell]:not([data-fv-shell=nodes]) :is(.comfyui-body-top,.comfyui-body-left,.comfyui-body-right,.comfyui-body-bottom,.actionbar,.actionbar-container,.comfyui-menu,.comfy-menu-hamburger),
+html[data-fv-shell]:not([data-fv-shell=nodes]) #graph-canvas-container :is(.minimap-main-container,.litegraph-minimap,.bottom-panel,.selection-toolbox),
+html[data-fv-shell]:not([data-fv-shell=nodes]) #graph-canvas-container .graph-canvas-panel>:not(.absolute.inset-0),
+html[data-fv-shell]:not([data-fv-shell=nodes]) #graph-canvas-container .p-splitter-horizontal>:is(.p-splitter-gutter,.p-splitterpanel.pointer-events-auto),
+html[data-fv-shell]:not([data-fv-shell=nodes]) #graph-canvas-container .splitter-overlay-bottom>:not(.graph-canvas-panel){display:none!important}
 /* These keep their space, so the layer of HTML-drawn nodes and widgets stays exactly over the canvas. */
-html[data-fv-shell] #graph-canvas-container :is(.workflow-tabs-container,.side-toolbar-container,.side-tool-bar-container),
-html[data-fv-shell] #graph-canvas-container .p-splitterpanel-nested>:first-child:not(.p-splitter){visibility:hidden!important;pointer-events:none!important}
+html[data-fv-shell]:not([data-fv-shell=nodes]) #graph-canvas-container :is(.workflow-tabs-container,.side-toolbar-container,.side-tool-bar-container),
+html[data-fv-shell]:not([data-fv-shell=nodes]) #graph-canvas-container .p-splitterpanel-nested>:first-child:not(.p-splitter){visibility:hidden!important;pointer-events:none!important}
+/* The node view is ComfyUI itself: its own tabs, menus and buttons all show and work, below FreeVideo's bar. */
+html[data-fv-shell=nodes] .comfyui-body{position:absolute;top:var(--fv-header-h);left:0;right:0;bottom:0;width:auto;height:auto}
 /* ComfyUI's toasts and its own dialogs keep working but take FreeVideo's ground behind them. */
 html[data-fv-shell] .p-dialog-mask{background:rgb(6 8 12 / .72)!important}
 
@@ -193,3 +196,8 @@ html[data-fv-shell=view] :is(.litecontextmenu,.p-tieredmenu-overlay,.p-menu-over
    nothing of one view can show through another while it fills in. */
 dialog.fv-studio[data-fv-surface=view]{background-color:var(--fv-bg,var(--fv-shell-bg))!important}
 dialog.fv-studio[data-fv-surface=view][data-fv-behind]{visibility:hidden}
+
+/* The compatibility view (Settings → 兼容界面): nothing slides or fades; states change at once. Busy indicators keep
+   moving, since a still spinner reads as a hang. Solid panels come from the [data-glass=solid] rules in each sheet. */
+:root:is([data-glass=solid],.lite) *,:root:is([data-glass=solid],.lite) *::before,:root:is([data-glass=solid],.lite) *::after{transition:none!important}
+:root:is([data-glass=solid],.lite)::view-transition-group(*),:root:is([data-glass=solid],.lite)::view-transition-old(*),:root:is([data-glass=solid],.lite)::view-transition-new(*){animation:none!important}

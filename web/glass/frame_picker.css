@@ -155,8 +155,10 @@
 /* Few frames keep their own width, from the left; a phone's panel is as wide as the console under it. */
 @media (min-width:521px){.fvp-pop .fvp-shapes:not(:has(>button:nth-of-type(6))){grid-auto-columns:56px;justify-content:start}}
 @media (max-width:520px){.fvp.fvp-pop{max-width:calc(100vw - 24px);width:calc(100vw - 24px)!important}}
-/* Size: one row across the panel: the sizes, then the typed width × height and the lock; no empty corner. */
+/* Size: a few sizes share one row with the typed width × height and the lock; many sizes take the row across the panel and
+   the typed width × height and the lock get a row of their own. */
 .fvp-pop .fvp-size-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:stretch;gap:var(--fv-sp-8)}
+.fvp-pop .fvp-size-row:has(>.fvp-sizes>button:nth-of-type(4)){grid-template-columns:minmax(0,1fr)}
 .fvp-pop .fvp-size-row>.fvp-custom{margin:0;padding:var(--fv-sp-4);border-radius:var(--fv-r-sm);background:var(--fv-ctl-bg);gap:var(--fv-sp-4)}
 .fvp-pop .fvp-size-row>.fvp-custom .fvp-field{height:40px!important;min-height:40px!important;border-color:transparent}
 .fvp-pop .fvp-size-row>.fvp-custom button.fvp-lock{width:40px!important;height:40px!important;min-height:40px!important}
@@ -213,8 +215,8 @@
 @media (max-width:520px){
   .fvp-pop>.fvp-shapes{margin-bottom:var(--fv-sp-12)}
   .fvp-pop button.fvp-shape{height:48px!important;min-height:48px!important}
-  .fvp-pop .fvp-size-row{grid-template-columns:auto minmax(0,1fr)}
-  .fvp-pop .fvp-size-row>.fvp-sizes{grid-auto-columns:48px}
+  .fvp-pop .fvp-size-row:not(:has(>.fvp-sizes>button:nth-of-type(4))){grid-template-columns:auto minmax(0,1fr)}
+  .fvp-pop .fvp-size-row:not(:has(>.fvp-sizes>button:nth-of-type(4)))>.fvp-sizes{grid-auto-columns:48px}
   .fvp-pop .fvp-size-row .fvp-px{display:none}
   .fvp-pop button.fvp-size{height:40px!important;min-height:40px!important;padding:0!important}
   .fvp-pop .fvp-size-row>.fvp-custom .fvp-field,.fvp-pop .fvp-size-row>.fvp-custom button.fvp-lock{height:40px!important;min-height:40px!important}

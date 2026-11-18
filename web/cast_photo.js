@@ -10,9 +10,8 @@
 // Save puts the sheet, the four views and the source picture on the card.
 //
 // Privacy: everything stays on this computer. The pictures go to the local image engine only when Generate is pressed.
-// Views made here are hidden from the picture lists while they are drafts and after they belong to a card
-// (freevideo.cast.files); views replaced by drawing again, and every unsaved view when the dialog closes, the page is
-// left or the tab closes, are deleted at once (keepalive, so a closing tab still deletes them).
+// Every view made here is a work of the picture library from the moment it is made (source: character), whether or not
+// the card is saved; deleting it there is the only way it goes. The pictures uploaded for the views go when the dialog is left.
 import {createImageGenClient, imagePackUnavailableMessage, renderImageFailure, IMAGE_GEN_INFO_POLL_MS} from './image_generation.js';
 import {createCastGenerator} from './cast_generate.js';
 import {faceCloseUp, dressMaskFile, facesCamera, repaintTook} from './cast_face_crop.js';
@@ -27,18 +26,9 @@ const VIEW_TITLES = Object.freeze({front: ['Front', '正面'], side: ['Side', '�
 // The sheet: the cast sheet's rules (equal height, light grey ground, 48 px gaps, each picture whole and centred), one
 // row of four, the face cell 1.4 times as wide as a full-body cell.
 const SHEET = Object.freeze({body: [736, 1302], face: [1030, 1302], gap: 48, ground: 'rgb(238 238 238)'});
-export const CAST_FILES_KEY = 'freevideo.cast.files';
 const ORIGINAL = 'photo:original';
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const tip = (node, name, use) => { node.dataset.fvTipName = name; if (use) node.dataset.fvTipUse = use; else delete node.dataset.fvTipUse; return node; };
-
-// Cast pictures are not works: the picture lists leave out what this set names.
-export function castFiles() { try { return new Set(JSON.parse(localStorage.getItem(CAST_FILES_KEY) || '[]')); } catch { return new Set(); } }
-function markCastFiles(add = [], remove = []) {
-    const files = castFiles(); for (const file of add) files.add(file); for (const file of remove) files.delete(file);
-    try { localStorage.setItem(CAST_FILES_KEY, JSON.stringify([...files].slice(-2000))); } catch { /* The lists may show it; it is still deleted when unsaved. */ }
-    window.dispatchEvent(new CustomEvent('freevideo-cast-files'));
-}
 
 // The image client the views are made through. The engine removes a page upload when the job that sent it ends, and the
 // photo (an edited view, the clothes picture) goes into several jobs: the first job takes the upload itself, each later
@@ -264,22 +254,13 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
     // references: what this dialog uploaded to the image engine (name → used by a generation).
     const made = new Set(), saved = new Set(), references = new Map();
     let cardSaved = false;
-    // Drafts (engines that list the "cast-draft" purpose): views are made as drafts in FreeVideo's own folder, never works;
-    // Save hands their names to the card, which makes them its own files; a draft let go is discarded, and the engine
-    // deletes any left a day. Older engines: views are pictures in the history, hidden by freevideo.cast.files and deleted
-    // through history-delete.
+    // Views are works of the library (the "cast-draft" purpose names their source); an engine that does not list it files them as plain works.
     let drafts = false;
-    // The engine's copies let go: drafts and uploads, in one discard-uploads call (keepalive, so a closing tab still
-    // sends it). Silent where the engine has no such call.
+    // The engine's copies let go: uploads, in one discard-uploads call (keepalive, so a closing tab still sends it).
+    // Silent where the engine has no such call.
     const discardNames = names => { if (names.length) Promise.resolve().then(() => keeper.discardUploads(names)).catch(() => {}); };
-    // A view made here and then replaced, or left unsaved, goes at once.
-    const discard = file => {
-        if (!file || saved.has(file)) return;
-        if (/^freevideo-draft\//.test(file)) { made.delete(file); discardNames([file]); return; }
-        if (!/^freevideo-image\//.test(file)) return;
-        made.delete(file); markCastFiles([], [file]);
-        void keeper.historyDelete?.(file).catch(() => {});
-    };
+    // A view drawn again stays in the library like every other picture.
+    const discard = () => {};
     // The engine's copies of the uploaded pictures go too (discard-uploads; the engine keeps any a task still uses).
     // Closed without saving: the ones no generation used. Saved: all of them. Silent where the engine has no such call yet.
     const releaseReferences = (all = false) => {
@@ -299,11 +280,6 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
     const facing = file => facesCamera({client, fetcher, name: file});
     const generator = createCastGenerator({client: draftClient, kind: 'character', views: make, dressMask, dressTook, facing, beforeGenerate: query => otherUsage.check(query), onDiscard: discard,
         onChange: state => {
-            // The views, and pictures made on the way (the clothes picture drawn from described clothes): hidden from the
-            // picture lists and deleted with the unsaved views.
-            const fresh = [...state.pictures.filter(r => r.file && !r.original).map(r => r.file), ...(state.extras || [])].filter(file => !made.has(file));
-            for (const file of fresh) made.add(file);
-            if (fresh.length && !drafts) markCastFiles(fresh.filter(file => /^freevideo-image\//.test(file)));
             render(state);
         }});
 
@@ -393,13 +369,8 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
         if (disposed) return; render(); clearTimeout(infoTimer);
         if (missing()) infoTimer = setTimeout(checkInfo, IMAGE_GEN_INFO_POLL_MS);
     }
-    // The tab closing or the page going away: unsaved views go with it.
+    // The tab closing or the page going away: the uploads go; the views stay in the library.
     const leaving = () => {
-        // Drafts go in one discard-uploads call (with keepalive, so a closing tab still sends it); older pictures one by one.
-        const left = [...made].filter(file => /^freevideo-draft\//.test(file) && !saved.has(file));
-        for (const file of left) made.delete(file);
-        discardNames(left);
-        for (const file of [...made]) discard(file);
         releaseReferences(cardSaved);
     };
     window.addEventListener('pagehide', leaving);
@@ -435,13 +406,13 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
             const extra = photoSlot?.get() && !SHOW.some(view => pictureOf(view)?.original) ? [{file: photoSlot.get().file, label: 'other'}] : [];
             return [{file: await sheet(), label: 'sheet'}, ...views, ...extra];
         },
-        // The card keeps the made views it shows; a view replaced by its edit is let go like any unsaved one.
+        // The card keeps its own copy of the views it shows; the views stay in the library.
         markSaved() { cardSaved = true; generator.state().pictures.forEach((r, at) => { if (r.file && !edits[make[at]]) saved.add(r.file); }); },
         isBusy: () => generator.state().running,
         cancel: () => generator.stop(),
         destroy() {
             disposed = true; clearTimeout(infoTimer); otherUsage.dispose(); picker?.dispose(); window.removeEventListener('pagehide', leaving);
-            // Cancel, close, Esc: the views made here and not saved are deleted.
+            // Cancel, close, Esc: the uploads go; the views stay in the library.
             leaving();
             for (const view of Object.keys(edits)) dropEdit(view);
             void generator.dispose(); photoSlot?.dispose(); outfitSlot.dispose(); action.remove(); root.remove();

@@ -1,7 +1,7 @@
 // The one top bar of every view (the spec: design-jia-glass/work-glob/TOPBAR.md). Every view dialog builds its own
 // `.fv-header` with the logo, the view switch (view_navigation.js viewSwitch) and its entries; this module takes that
 // header over the moment it is in the page and rebuilds it to the same parts, in the same order, from the same code:
-//   [logo]            [the five view tabs, centred on the window]            [status · search | phone version tutorial feedback settings]
+//   [logo]            [the five view tabs, centred on the window]            [status · search | works phone version tutorial feedback settings]
 // So the bar is identical in all five views and does not move when the view changes (the shell holds it as its own
 // layer during the cross-fade). The node view's bar is built with the same parts (installNavigation).
 // How far the right side folds is measured, never guessed from breakpoints (data-fv-fit on the header):
@@ -13,7 +13,7 @@ import { createLanAccess } from './lan_access.js';
 import { openSetup } from './setup.js';
 import { feedbackButton, guideButton } from './feedback.js';
 import { createVersionInfo } from './updates.js';
-import { paletteButton } from './palette.js';
+import { paletteButton, openCreations } from './palette.js';
 import { wordmark } from './wordmark.js';
 import { jobs, ACTIVE } from './task_store.js';
 import { onNotices, mountNotices, markNoticesRead } from './notifications.js';
@@ -46,6 +46,7 @@ const PATHS = {
     editor: '<circle cx="6.5" cy="7" r="2.5"/><circle cx="6.5" cy="17" r="2.5"/><path d="M8.6 8.4 19.5 18M8.6 15.6 19.5 6"/>',
     autopilot: '<path d="M12 3.5 13.9 9l5.6 1.9-5.6 1.9L12 18.5l-1.9-5.7L4.5 11 10.1 9z"/>',
     stop: '<rect x="7" y="7" width="10" height="10" rx="2"/>',
+    works: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.6"/>',
     first: '<path d="M6 5.5h12M12 19V9.5M7.5 14l4.5-4.5 4.5 4.5"/>',
 };
 export const iconURL = name => `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'>${PATHS[name]}</svg>`)}")`;
@@ -492,6 +493,13 @@ export function topbarActions(t = t0) {
     const search = paletteButton(t, 'fv-tb-btn fv-tb-search'); withIcon(search, 'search'); search.replaceChildren(); tip(search, ...w.search);
     search.dataset.fvField = t('Search works, prompts and actions', '搜索作品、提示词和操作');
     const sep = el('span', 'fv-tb-sep'); sep.setAttribute('aria-hidden', 'true');
+    // The works library is one click away in every view and at every width: never folded into the menu (CEO 11-17).
+    // It is a link like the five beside it (same box, icon, hover), kept out of the phone menu so it stays on the bar.
+    const works = el('button', 'fv-tb-link fv-tb-works'); works.type = 'button'; withIcon(works, 'works'); tip(works, ...w.works);
+    works.append(el('span', 'fv-tb-lbl', w.works[0])); works.setAttribute('aria-label', w.works[0]);
+    works.onclick = () => openCreations();
+    const worksOpen = event => { if (event.detail?.open) works.setAttribute('aria-current', 'page'); else works.removeAttribute('aria-current'); };
+    globalThis.addEventListener?.('freevideo-library', worksOpen);
     const links = el('div', 'fv-tb-links'); links.setAttribute('role', 'group'); links.setAttribute('aria-label', t('App', '应用'));
     const lan = createLanAccess(t, api), version = createVersionInfo(CN);
     const phone = lan.element.querySelector('.fv-lan-trigger'); withIcon(phone, 'phone'); phone.classList.add('fv-tb-link'); tip(phone, ...w.phone);
@@ -507,9 +515,9 @@ export function topbarActions(t = t0) {
     links.append(lan.element, version.element, tutorial, feedback, settings);
     const menuButton = el('button', 'fv-tb-btn fv-tb-menu'); menuButton.type = 'button'; withIcon(menuButton, 'menu'); tip(menuButton, ...w.menu);
     menuButton.setAttribute('aria-label', w.menu[0]); menuButton.setAttribute('aria-haspopup', 'menu'); menuButton.setAttribute('aria-expanded', 'false');
-    right.append(capsule, search, sep, links, menuButton);
+    right.append(capsule, search, sep, works, links, menuButton);
     const menu = phoneMenu(right, menuButton, [search, links]);
-    return {element: right, capsule, lan, version, menu, dispose() { lan.dispose?.(); version.dispose?.(); capsules.delete(capsule); menu.dispose(); }};
+    return {element: right, capsule, lan, version, menu, dispose() { lan.dispose?.(); version.dispose?.(); capsules.delete(capsule); menu.dispose(); globalThis.removeEventListener?.('freevideo-library', worksOpen); }};
 }
 
 // ── Phone level: one menu button holds search and the links (moved in while it is open, back when it closes) ──
@@ -685,16 +693,18 @@ const PHONE = 720;
 export function fitLevel(header) {
     const right = header.querySelector(':scope > .fv-tb-right'), brand = header.querySelector(':scope > .fv-tb-logo');
     if (!right || !header.clientWidth) return header.dataset.fvFit || '0';
-    if (header.clientWidth < PHONE) return '3';
+    if (header.clientWidth < PHONE) { header.dataset.fvWorks = 'icon'; return '3'; }
     // The links are icons with hover tips in every language (level 1 up): Chinese and English get the same layout.
-    for (const level of ['1', '2']) {
-        header.dataset.fvFit = level; reserveCapsule(header, level); snap(header);
+    // The works entry carries its name only on room left over at level 1, so the name never folds anything else.
+    for (const [level, works] of [['1', 'name'], ['1', 'icon'], ['2', 'icon']]) {
+        header.dataset.fvFit = level; header.dataset.fvWorks = works; reserveCapsule(header, level); snap(header);
         const columns = getComputedStyle(header).gridTemplateColumns.split(' ').map(parseFloat);
         const side = columns.length >= 3 ? Math.min(columns[0], columns[2]) : 0;
         const capsule = right.querySelector(':scope > .fv-tb-cap');
         const room = capsule ? Math.max(0, widestCapsule(capsule, level) - capsule.getBoundingClientRect().width) : 0;
         if (right.scrollWidth + room <= side + 0.5 && (!brand || brand.scrollWidth <= side + 0.5)) return level;
     }
+    header.dataset.fvWorks = 'icon';
     return '3';
 }
 function keepFit(header) {

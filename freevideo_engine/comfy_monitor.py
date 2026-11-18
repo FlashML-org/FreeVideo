@@ -104,6 +104,12 @@ def snapshot(reader, root, busy, paused):
     free = disk_free(root)
     if free is not None:
         result['disk_free'] = free
+    try:
+        from . import server_mode
+        # Why the video or picture models last left the card, newest last.
+        result['model_releases'] = server_mode.releases()
+    except Exception:
+        pass
     return result
 
 

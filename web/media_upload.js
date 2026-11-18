@@ -4,6 +4,8 @@ const languageOverride = typeof location !== 'undefined'
 const cn = languageOverride === 'zh' || (languageOverride !== 'en'
     && String(navigator.language || '').toLowerCase().startsWith('zh'));
 const text = (en, zh) => cn ? zh : en;
+// The page's background loading of works (work_media.js) waits while an upload runs.
+const uploadRunning = active => { try { globalThis.dispatchEvent?.(new CustomEvent('freevideo-upload', {detail: {active}})); } catch { /* no page */ } };
 // The server's limit; a bigger file is turned away before a byte is sent.
 export const MAX_UPLOAD_BYTES = 2 * 1024 ** 3;
 const failures = () => ({
@@ -43,13 +45,14 @@ export async function uploadMedia(api, file, {onProgress = null, timeoutMs = upl
     const body = new FormData(); body.append('file', file);
     let response, result = {};
     const abort = new AbortController(), timer = setTimeout(() => abort.abort(), timeoutMs);
+    uploadRunning(true);
     try {
         response = onProgress && typeof api.apiURL === 'function' && typeof XMLHttpRequest !== 'undefined'
             ? await sendWithProgress(api, body, onProgress, timeoutMs)
             : await api.fetchApi('/freevideo/media/upload', {method: 'POST', body, signal: abort.signal});
         result = await response.json();
     } catch { if (!response || response.ok) throw new Error(generic()); }
-    finally { clearTimeout(timer); }
+    finally { clearTimeout(timer); uploadRunning(false); }
     if (!response.ok) throw new Error(found[result?.code] || generic());
     return result;
 }

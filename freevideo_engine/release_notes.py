@@ -42,6 +42,9 @@ def problems(value):
                   for number, item in enumerate(changes, 1) if not _text(item, 600)]
     if not found and not notes(value):
         found.append('total is over %d bytes' % MAX_NOTES_BYTES)
+    if 'media' in value:
+        from .release_media import problem
+        found += [why for why in (problem(value['media']),) if why]
     return found
 
 
@@ -122,6 +125,12 @@ def optional_fields(value):
         result['product_version'] = version
     if release:
         result['release_notes'] = release
+    if version and 'media' in value:
+        # The picture or video above this version's notes; dropped, like the notes, when malformed.
+        from .release_media import entry
+        media = entry(value['media'])
+        if media:
+            result['media'] = media
     earlier = history(value.get('release_history'), before=version)
     if version and earlier:
         result['release_history'] = earlier
@@ -141,7 +150,14 @@ def catalog(package=None):
     earlier = history(value.get('history'), before=version)
     if len(earlier) != len(value.get('history') or []):
         raise ValueError('Every earlier version in release_notes.json needs complete English/Chinese text')
-    return dict(product_version=version, release_notes=release, **({'release_history': earlier} if earlier else {}))
+    # Optional: absent unless this version has a picture or video above its notes.
+    media = {}
+    if 'media' in value:
+        from .release_media import entry, problem
+        media = dict(media=entry(value['media']))
+        if not media['media']:
+            raise ValueError('release_notes.json: ' + problem(value['media']))
+    return dict(product_version=version, release_notes=release, **media, **({'release_history': earlier} if earlier else {}))
 
 
 def public_details(value):

@@ -3,7 +3,7 @@
 // versions put in ComfyUI's input folder under the user's own file names, which cannot be told apart from the user's own
 // files, so each one goes only when the user chooses it. Built with the settings kit so it reads like the rest of the
 // page. An engine older than this page has none of these calls: the whole group then stays hidden and nothing is asked.
-import { el, tip, button, row, card, groupHead, groupNote, fold, segmented } from './settings_kit.js';
+import { el, icon, tip, button, row, card, groupHead, fold, segmented } from './settings_kit.js';
 import { privacyOffered } from './private_offers.js';
 
 const amount = bytes => bytes >= 1e9 ? (bytes / 1e9).toFixed(1) + ' GB' : (bytes / 1e6).toFixed(1) + ' MB';
@@ -85,18 +85,29 @@ export function privacySettings(t, api) {
         await new Promise(done => setTimeout(done, 1500)); await usage();
     });
 
-    // Old reference pictures in the input folder itself.
-    const old = fold({iconName: 'img', title: t('Clean up old reference pictures', '清理旧参考图'),
-        sub: t('Pictures in ComfyUI’s input folder, deleted one by one', 'ComfyUI 输入文件夹中的图片，逐张删除')});
+    // Old reference pictures in the input folder itself. Counted when the page opens: with none there is nothing to
+    // open, the line says so and the fold stays shut; otherwise one sentence over the pictures, each deleted on its own.
+    const oldSub = t('Pictures in ComfyUI’s input folder, deleted one by one', 'ComfyUI 输入文件夹中的图片，逐张删除');
+    const old = fold({iconName: 'img', title: t('Clean up old reference pictures', '清理旧参考图'), sub: oldSub, cls: 'st-private-old'});
     const grid = el('div', 'st-private-grid'), status = el('div', 'st-private-status'); status.setAttribute('role', 'status');
-    old.body.append(groupNote(t('Earlier versions saved reference pictures here under their own file names, which cannot be told apart from your own files, so each one is deleted only when you choose it.',
-        '旧版本曾把参考图以原文件名存放在这里，无法与您自己的文件区分，因此只在您逐张选择后删除。')), grid, status);
+    const note = el('p', 'st-private-note'); note.append(icon('info', 'fv-i'), el('span', '', t('Earlier versions left reference pictures among your own files. Check each one before deleting it.',
+        '旧版本的参考图与其他文件混在一起，请逐张确认后删除。')));
+    old.body.append(note, grid, status);
+    const nothingOld = none => {
+        old.element.toggleAttribute('data-empty', none);
+        old.summary.setAttribute('aria-disabled', String(none)); old.summary.tabIndex = none ? -1 : 0;
+        old.sub.textContent = none ? t('No pictures to clean up', '没有需要清理的图片') : oldSub;
+        if (none) old.element.open = false;
+    };
+    old.summary.addEventListener('click', event => { if (old.element.hasAttribute('data-empty')) event.preventDefault(); });
     const view = name => api.apiURL('/view?' + new URLSearchParams({filename: name, subfolder: '', type: 'input'}));
+    const readOld = async () => (await json('/freevideo/private/legacy')).items || [];
+    const countOld = async () => { try { nothingOld(!(await readOld()).length); } catch { nothingOld(false); } };
     const listOld = async () => {
         grid.replaceChildren(); status.textContent = '';
         let items = [];
-        try { items = (await json('/freevideo/private/legacy')).items || []; } catch { status.textContent = t('The list cannot be read now.', '暂时无法读取清单。'); return; }
-        if (!items.length) { status.textContent = t('No pictures in the input folder.', '输入文件夹中没有图片。'); return; }
+        try { items = await readOld(); } catch { status.textContent = t('The list cannot be read now.', '暂时无法读取清单。'); return; }
+        if (!items.length) { nothingOld(true); return; }
         for (const item of items) {
             const cell = el('figure', 'st-private-cell'), image = el('img'), caption = el('figcaption', '', item.name);
             image.src = view(item.name); image.alt = ''; image.loading = 'lazy'; caption.title = item.name;
@@ -108,7 +119,7 @@ export function privacySettings(t, api) {
                     else status.textContent = value.reason === 'in-use' ? t('This picture is still used by a work or workflow, so it was kept.', '这张图片仍被作品或工作流使用，已保留。')
                         : t('This picture could not be deleted.', '这张图片无法删除。');
                 } catch { status.textContent = t('This picture could not be deleted.', '这张图片无法删除。'); }
-                if (!grid.childElementCount) status.textContent = t('No pictures in the input folder.', '输入文件夹中没有图片。');
+                if (!grid.childElementCount) nothingOld(true);
             });
             cell.append(image, caption, el('span', 'st-private-size', amount(item.bytes || 0)), remove);
             grid.append(cell);
@@ -118,7 +129,7 @@ export function privacySettings(t, api) {
 
     group.append(groupHead(t('Privacy', '隐私')), card(unused.element, cache.element, cacheLimit.element), old.element);
     // Only an engine that says it has these calls is asked; an older one is sent nothing.
-    const load = () => privacyOffered().then(yes => { if (yes) { void review(); void usage(); } });
+    const load = () => privacyOffered().then(yes => { if (yes) { void review(); void usage(); void countOld(); } });
     void load();
     return {element: group, refresh: () => { void load(); }};
 }
@@ -126,10 +137,16 @@ export function privacySettings(t, api) {
 if (typeof document !== 'undefined' && !document.querySelector('style[data-fv-private-settings]')) {
     const style = document.createElement('style'); style.dataset.fvPrivateSettings = '';
     style.textContent = `.st-privacy .st-sz{white-space:nowrap}
-.st-private-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:var(--fv-sp-12,12px);margin-top:var(--fv-sp-8,8px);padding:0 var(--fv-sp-16,16px)}
+.st-private-note{display:flex;align-items:flex-start;gap:var(--fv-sp-8,8px);margin:0;padding:var(--fv-sp-12,12px) var(--fv-sp-16,16px);font-size:var(--fv-fs-1,12px);line-height:var(--fv-lh-1,16px);color:var(--fv-fg3)}
+.st-private-note .fv-i{flex:none;width:12px;height:12px;margin-top:calc((var(--fv-lh-1,16px) - 12px) / 2)}
+.st-privacy .st-private-old[data-empty]>summary{cursor:default}
+.st-privacy .st-private-old[data-empty]>summary:hover{background:none}
+.st-privacy .st-private-old[data-empty]>summary .chev{visibility:hidden}
+.st-private-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:var(--fv-sp-12,12px);padding:0 var(--fv-sp-16,16px)}
 .st-private-cell{display:flex;flex-direction:column;gap:var(--fv-sp-4,4px);margin:0;min-width:0}
 .st-private-cell img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:var(--fv-rad-pic,12px);background:var(--fv-ctl-bg,#0002)}
 .st-private-cell figcaption,.st-private-size{font-size:var(--fv-fs-1,12px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.st-private-status{font-size:var(--fv-fs-1,12px);color:var(--fv-fg2);min-height:16px;margin:var(--fv-sp-8,8px) 0 var(--fv-sp-12,12px);padding:0 var(--fv-sp-16,16px)}`;
+.st-private-status{font-size:var(--fv-fs-1,12px);line-height:var(--fv-lh-1,16px);color:var(--fv-fg3);padding:var(--fv-sp-8,8px) var(--fv-sp-16,16px) var(--fv-sp-12,12px)}
+.st-private-status:empty{padding:0 0 var(--fv-sp-16,16px)}`;
     document.head.append(style);
 }

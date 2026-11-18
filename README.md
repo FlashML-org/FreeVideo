@@ -80,6 +80,8 @@ git clone https://github.com/FlashML-org/FreeVideo.git
 
 Restart ComfyUI, open **Workflow → Browse Templates → FreeVideo → FreeVideo-All-in-One**, and complete the setup in FreeVideo **Settings**.
 
+To update, run `git pull` in `custom_nodes/FreeVideo` (or update the node in ComfyUI-Manager) and restart ComfyUI.
+
 ### Linux
 
 **Desktop:** [Download FreeVideo-Linux-x86_64.AppImage](https://github.com/FlashML-org/FreeVideo/releases/latest/download/FreeVideo-Linux-x86_64.AppImage), make it executable and open it, then follow the same steps as on Windows.
