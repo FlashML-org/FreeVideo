@@ -389,7 +389,7 @@ dialog.fv-set .st-notes p{margin:var(--fv-sp-4) 0;color:var(--fv-fg2);max-inline
 dialog.fv-set .st-notes .fv-release-build{display:none}
 dialog.fv-set .st-notes ul{margin:var(--fv-sp-8) 0;padding-left:var(--fv-sp-20);color:var(--fv-fg2)}
 dialog.fv-set .st-notes li+li{margin-top:var(--fv-sp-4)}
-dialog.fv-set .st-notes .fv-release-empty{margin:var(--fv-sp-8) 0}
+dialog.fv-set .st-notes .fv-release-empty{margin:var(--fv-sp-8) 0;max-inline-size:none}
 
 /* ── Getting started: the how-to list under its row ── */
 dialog.fv-set .st-howtos{display:flex;flex-direction:column;gap:var(--fv-sp-2);padding:var(--fv-sp-4) var(--fv-sp-8) var(--fv-sp-8) 56px}

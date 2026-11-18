@@ -12,7 +12,7 @@ const CANCEL_FAILURE = {en: 'Cancellation failed. Please use the launcher.', zh:
 const listeners = new Set();
 // Launcher phases during which the server may disappear and come back updated.
 const working = new Set(['checking', 'downloading', 'waiting', 'restarting', 'engine']);
-let value = null, dismissed, started = false, pending = false, lastCheck = -Infinity, timer = null;
+let value = null, dismissed, started = false, pending = false, retrying = false, lastCheck = -Infinity, timer = null;
 let loadedVersion, updating = false, offline = false, failure = '';
 try { dismissed = sessionStorage.getItem(storageKey); } catch { /* Session memory still works. */ }
 // The launcher passes its language in the first address, which ComfyUI later
@@ -178,7 +178,10 @@ export async function checkUpdates() {
         offline = true;
         if (updating) { publish(); later(2000); }
         else if (!value) publish();
-    } finally { pending = false; }
+    } finally {
+        pending = false;
+        if (retrying) { retrying = false; publish(); }
+    }
 }
 
 export async function applyUpdate() {
@@ -372,13 +375,14 @@ function fillNotes(body, cn) {
 function emptyNotes(body, t) {
     if (!started && !offline) void checkUpdates();
     const empty = document.createElement('p'); empty.className = 'fv-release-empty';
-    if (!value && !offline) { empty.textContent = t('Reading version information…', '正在读取版本信息…'); body.append(empty); return; }
+    if (retrying || (!value && !offline)) { empty.textContent = t('Reading version information…', '正在读取版本信息…'); body.append(empty); return; }
     const message = t('Version information is not available: FreeVideo on this computer did not return it. Click Retry; if it still fails, report a problem.',
         '暂时无法获取版本信息：本机的 FreeVideo 服务没有返回结果。请点“重试”；仍然失败时请提交问题。');
     empty.textContent = message;
     const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'fv-release-retry';
     retry.textContent = t('Retry', '重试');
-    retry.onclick = () => { offline = false; value = null; lastCheck = -Infinity; publish(); void checkUpdates(); };
+    // Keep what the last check returned; a failed retry then leaves the update bar as it was.
+    retry.onclick = () => { retrying = true; offline = false; lastCheck = -Infinity; publish(); void checkUpdates(); };
     const row = document.createElement('div'); row.className = 'fv-release-empty-actions';
     row.append(retry, issueButton(t, () => ({where: ['Version information', '版本信息'], message})));
     body.append(empty, row);
