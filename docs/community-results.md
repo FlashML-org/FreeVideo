@@ -141,15 +141,6 @@ Thanks to the community members who sent diagnostic reports. FreeVideo already r
 | 5060 | 8&nbsp;GB | 64&nbsp;GB | 1088×1920 | 5.9&nbsp;s | Medium | 0.4.31 | 1259&nbsp;s | 0.4.31 | Already&nbsp;optimal¹² |
 | 3050 | 8&nbsp;GB | 32&nbsp;GB | 1344×768 | 5&nbsp;s | Light | 0.4.35 | 978&nbsp;s | 0.4.35 | Already&nbsp;optimal¹² |
 | 4070&nbsp;Ti&nbsp;SUPER | 16&nbsp;GB | 32&nbsp;GB | 1344×768 | 12&nbsp;s | Light | 0.4.37 | 3427&nbsp;s | 0.5.3 | 2200&nbsp;s&nbsp;(−1230&nbsp;s)¹² |
-| 4070 | 12&nbsp;GB | 64&nbsp;GB | 1344×768 | 8&nbsp;s | Light⁵ | 0.4.38 | 269&nbsp;s | 0.4.38 | Already&nbsp;optimal |
-| 5060&nbsp;Ti | 16&nbsp;GB | 32&nbsp;GB | 960×544 | 5.2&nbsp;s | Light | 0.4.38 | 348&nbsp;s | 0.4.38 | Already&nbsp;optimal |
-| 5060 | 8&nbsp;GB | 64&nbsp;GB | 960×1664 | 11.5&nbsp;s | Light⁵ | 0.4.38 | 1035&nbsp;s | 0.4.38 | Already&nbsp;optimal¹² |
-| 5090 | 32&nbsp;GB | 128&nbsp;GB | 1088×1920 | 10&nbsp;s | Light | 0.5.0 | 638&nbsp;s | 0.5.0 | Already&nbsp;optimal¹² |
-| 3060&nbsp;Ti | 8&nbsp;GB | 16&nbsp;GB | 1344×768 | 5.2&nbsp;s | Light | 0.5.0 | 2102&nbsp;s | 0.5.0 | Already&nbsp;optimal¹²,¹⁵ |
-| 5060&nbsp;Ti | 8&nbsp;GB | 16&nbsp;GB | 768×1344 | 8&nbsp;s | Light | 0.4.33 | 594&nbsp;s | 0.4.33 | Already&nbsp;optimal |
-| 5060&nbsp;Ti | 16&nbsp;GB | 32&nbsp;GB | 1344×768 | 10&nbsp;s | Light | 0.5.1 | 716&nbsp;s | 0.5.1 | Already&nbsp;optimal |
-| 4060&nbsp;Laptop | 8&nbsp;GB | 16&nbsp;GB | 1344×768 | 10&nbsp;s | Light | 0.5.1 | 882&nbsp;s | 0.5.1 | Already&nbsp;optimal |
-| M4&nbsp;Max | Unified | 128&nbsp;GB | 1344×768 | 10.1&nbsp;s | Light | 0.5.4 | 3399&nbsp;s | 0.5.4 | Already&nbsp;optimal |
 
 - Time: end to end, from submission until the video is saved.
 - After: the estimated time, derived from the report's stage times and from complete planned runs on our test machines (RTX 3090 and RTX 5060 Ti on Windows, RTX PRO 6000 on Linux) under the reporting machine's VRAM and RAM limits, not from reruns on that machine.
@@ -168,4 +159,3 @@ Thanks to the community members who sent diagnostic reports. FreeVideo already r
 - ¹² Task with a reference: every step also processes the reference video, images or audio, so each step takes longer than a plain request of the same size, up to about twice as long with a long reference.
 - ¹³ Preview (first pass only).
 - ¹⁴ Compatibility level 3 was set manually; it is the slowest level and made each step about 2.4 times slower than the automatic setting for this request, and the GPU core clock also stayed at 900 MHz against the 1815 MHz it reached. With the level off, the same request takes about 1100 s.
-- ¹⁵ The video model is read from the drive again at every step, at about 110 MB/s on this machine; the graphics card was busy for about 9–13% of the first pass and 36% of the second pass.
