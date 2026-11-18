@@ -927,8 +927,19 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if (completed.size || (!active && previous?.state !== job.state) || (job.output && job.output !== previous?.output))
             library?.refresh({outputs: job.output ? [job.output] : [...completed]});
         if (!active) jobWatchers.delete(job.id);
+        if (job.state === 'done' && ['queued', 'running', 'cancelling'].includes(previous?.state)) offerNextPart(job);
         void startHeld();
         return active;
+    }
+    // A continued video that has just finished gets its next part ready at its end, as opening a work does, so the
+    // next part continues it too. Only while the viewer is still on that video and nothing else is being sent.
+    function offerNextPart(job) {
+        const ids = new Set((job.blocks || []).map(block => block.id));
+        const last = state.record.tracks[0].clips.filter(clip => ids.has(clip.id)).sort((a, b) => a.start - b.start).at(-1);
+        if (!last || !model.continuesBefore(state.record, last.id) || generationBusy || held.length) return;
+        const picked = state.selection;
+        if (picked && !(picked.kind === 'clip' && picked.ids.some(id => ids.has(id) || model.find(state.record, id)?.link && ids.has(model.find(state.record, id).link)))) return;
+        enterClip(clip => clip.id === last.id, projectEpoch, {select: false});
     }
     function watchJob(id) {
         if (disposed) return;
