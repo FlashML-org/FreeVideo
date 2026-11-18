@@ -2135,10 +2135,17 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         else if (mod && key === 'y' && !event.shiftKey) { event.preventDefault(); travel(false); }
     }
     listen('keydown', keyboard); listen('keyup', event => event.stopPropagation());
+    // The shell turns every Escape in a view into a cancel (shell.js), and for a real key press that cancel arrives before
+    // the editor's own key handling. One Escape does one thing: it closes a popup, or stops a drag, or deselects; the
+    // first to use it marks it taken for the rest of that key press, so a drag stopped by Escape adds no undo step.
+    let escapeTaken = false;
+    const tookEscape = () => { escapeTaken = true; setTimeout(() => { escapeTaken = false; }, 0); };
     listen('cancel', event => {
         if (event.target !== element) return;
         event.preventDefault();
-        if (topDialog() === element && !dismissPopup(event)) state.select(null, {history: true});
+        if (escapeTaken || topDialog() !== element) return;
+        if (dismissPopup(event) || tracks?.cancelGesture()) { tookEscape(); return; }
+        state.select(null, {history: true});
     });
     const stopKeys = isolateDialogKeys(element, (event, inside) => {
         // FreeVideo's shared menus (a text box's Cut/Copy/Paste, and any menu opened over the editor) live inside this
@@ -2153,9 +2160,10 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if (event.type !== 'keydown') return;
         if (event.isComposing || event.keyCode === 229) return;
         if (event.key.toLowerCase() === 'escape') {
-            if (dismissPopup(event)) return;
-            if (tracks?.cancelGesture()) { event.preventDefault(); return; }
-            if (document.fullscreenElement) { event.preventDefault(); document.exitFullscreen().catch(() => {}); return; }
+            if (escapeTaken) { event.preventDefault(); return; }
+            if (dismissPopup(event)) { tookEscape(); return; }
+            if (tracks?.cancelGesture()) { event.preventDefault(); tookEscape(); return; }
+            if (document.fullscreenElement) { event.preventDefault(); tookEscape(); document.exitFullscreen().catch(() => {}); return; }
         }
         if (recording.keyboard(event)) return;
         if (inside && event.target.closest?.('.fv-ed-refs')) {
