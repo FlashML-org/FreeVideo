@@ -787,8 +787,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 }
             }
             if (disposed || closing || epoch !== projectEpoch) return;
-            if (picture) notify(t('Saved the current frame to Edit image > Generate with AI > History.',
-                '已保存当前帧，位于“编辑图片 > AI 生成 > 历史”。'));
+            if (picture) notify(t('Saved the current frame to Edit image > Generate with AI > Works.',
+                '已保存当前帧，位于“编辑图片 > AI 生成 > 作品库”。'));
         } catch (value) {
             if (disposed || epoch !== projectEpoch) return;
             const said = {no_picture: t('There is no picture at this position. Move the playhead onto a clip.', '这个位置没有画面，请把播放头移到片段上。'),
