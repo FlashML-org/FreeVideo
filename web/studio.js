@@ -3100,7 +3100,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // have; 60 s until that is known); a typed length beyond either becomes that end. Its hover card says when the
     // length is made in parts.
     const longest = () => { try { const one = lengthControl?.absent ? null : lengthControl?.options().singleLimit; return one > 0 ? Math.max(5, Math.floor(one) * 8) : 60; } catch { return 60; } };
-    const stepper = durationStepper(t, seconds, {max: longest});
+    // A locked length says what decides it: the audio used as is (the old field's lock shows that) or a connected node.
+    const stepper = durationStepper(t, seconds, {max: longest,
+        lockedBy: () => (!audioLock.hidden ? 'audio' : linked(node, 'seconds') ? 'linked' : null)});
     seconds.addEventListener('change', () => {
         const n = Number(seconds.value), most = longest(), least = 2;
         if (seconds.value === '' || !Number.isFinite(n) || seconds.disabled) return;

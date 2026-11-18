@@ -794,6 +794,10 @@ html body .fv-studio.fv-create .fvs-stepper .fvs-step-input.fvs-step-input:is(:f
 /* The number and its unit side by side in the key. */
 .fv-studio.fv-create .fvs-stepper .fvs-step-value{grid-auto-flow:column}
 .fv-studio.fv-create .fvs-step-value .fvs-step-unit{margin-left:.25em}
+/* The audio decides the length: a 12 px lock before the number, in the unit's colour. */
+.fv-studio.fv-create .fvs-step-value .fvs-step-locked{display:inline-flex;align-items:center}
+.fv-studio.fv-create .fvs-step-value .fvs-step-lock{display:inline-block;flex:none;width:12px;height:12px;margin:0 4px 0 0;vertical-align:0;color:inherit}
+.fv-studio.fv-create .fvs-step-value .fvs-step-lock svg{display:block;width:12px;height:12px}
 @media(prefers-reduced-motion:reduce){.fv-studio.fv-create .fv-stage{transition:none}}
 /* The frame tray holds frame and size only: the duration's notes live with the duration in the console. */
 .fv-studio.fv-create .fvs-tray[data-tray=size] :is(.fv-length-hint,.fv-canvas-note,.fv-range){display:none}

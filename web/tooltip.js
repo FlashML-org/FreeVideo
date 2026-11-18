@@ -375,6 +375,14 @@ function release(element) {
     }
 }
 
+// Show a control's tip now, as a long press does, and take it away a moment later: for a click on a control that
+// cannot change, which answers with the same words its hover gives instead of doing nothing.
+export function showTipFor(element) {
+    if (!element?.isConnected) return;
+    show(element);
+    setTimeout(() => { if (shown === element) hideTip(); }, 1800);
+}
+
 export function hideTip({now = false} = {}) {
     clearTimeout(showTimer); clearTimeout(hideTimer); showTimer = 0; pending = null;
     const finish = () => {
