@@ -53,7 +53,7 @@ export function stampOf(row, meta = null) {
 }
 const dayStart = ms => { const d = new Date(ms); d.setHours(0, 0, 0, 0); return d.getTime(); };
 
-export const FILTERS = Object.freeze(['all', 'fav', 'minimax-h3-image', 'qwen-image-2.1-turbo']);
+export const FILTERS = Object.freeze(['all', 'fav', 'minimax-h3-image', 'qwen-image-2.1-turbo', 'moss-image-sft']);
 export function filterRows(rows, {filter = 'all', query = '', sort = 'new'} = {}, meta, now = Date.now()) {
     const q = query.trim().toLowerCase(), today = dayStart(now);
     const kept = rows.filter(row => {
@@ -153,7 +153,7 @@ export function createTrash({client, holdMs = 10000, now = () => Date.now(), set
     return trash;
 }
 
-const FILTER_WORDS = {all: ['All', '全部'], fav: ['Favourites', '收藏'], today: ['Today', '今天'], 'minimax-h3-image': ['H3', 'H3'], 'qwen-image-2.1-turbo': ['Qwen', 'Qwen']};
+const FILTER_WORDS = {all: ['All', '全部'], fav: ['Favourites', '收藏'], today: ['Today', '今天'], 'minimax-h3-image': ['H3', 'H3'], 'qwen-image-2.1-turbo': ['Qwen', 'Qwen'], 'moss-image-sft': ['MOSS', 'MOSS']};
 const SORT_WORDS = {new: ['Newest first', '最新在前'], old: ['Oldest first', '最早在前'], fav: ['Favourites first', '收藏在前']};
 
 // The column itself. `paint(state)` redraws; tiles are kept by file so pictures never reload on a redraw.
@@ -278,7 +278,8 @@ export function historyPanel({pictureURL, thumbURL = pictureURL, queue = null, o
             b.querySelector('.fv-iv-chip-n').textContent = '';
             b.hidden = (f.includes('-') && !n && state.filter !== f);
             tip(b, t(...FILTER_WORDS[f]), {all: t('Show every picture', '显示全部图片'), fav: t('Only the starred ones', '只看收藏的图片'), today: t('Only pictures made today', '只看今天生成的'),
-                'minimax-h3-image': t('Only pictures made with H3 Image', '只看 H3 Image 生成的'), 'qwen-image-2.1-turbo': t('Only pictures made with Qwen-Image', '只看 Qwen-Image 生成的')}[f]);
+                'minimax-h3-image': t('Only pictures made with H3 Image', '只看 H3 Image 生成的'), 'qwen-image-2.1-turbo': t('Only pictures made with Qwen-Image', '只看 Qwen-Image 生成的'),
+                'moss-image-sft': t('Only pictures made with MOSS-Image', '只看 MOSS-Image 生成的')}[f]);
         }
         for (const item of sortItems) item.setAttribute('aria-checked', String(item.dataset.sort === state.sort));
         tip(sortBtn, t('Sort', '排序'), t(`Now: ${t(...SORT_WORDS[state.sort])}`, `当前：${t(...SORT_WORDS[state.sort])}`));

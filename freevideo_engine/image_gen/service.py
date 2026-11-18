@@ -37,6 +37,8 @@ H3_MAX_IMAGES = 16
 H3_MAX_AREA = image_model.H3_AREAS['high'] ** 2
 H3_MAX_SIDE = 8192
 H3_GROUP = 'h3-image:' + image_pack.default_tier()
+MOSS_GROUP = image_pack.MOSS_GROUP
+MOSS_MAX_SIDE = 2048
 REPORT_LIMIT = 16
 # A point selection's picture stays this long after its last use, and at most this many at once.
 SEGMENT_KEEP = 900.
@@ -83,6 +85,7 @@ UNDO_GRACE = 3
 HIGH_SIZE_MIN_TOTAL = 6 * 1024 ** 3
 INFERENCE_TIMEOUT = 600.
 H3_INFERENCE_TIMEOUT = 1800.
+MOSS_INFERENCE_TIMEOUT = 1800.
 QUEUE_TIMEOUT = 600.
 QUEUE_POLL = .1
 # Pictures that may wait behind the running one; a further request is turned away with 'busy'.
@@ -238,6 +241,7 @@ class Service:
         self.finished = OrderedDict()
         self.pack_installer = None
         self.h3_installer = None
+        self.moss_installer = None
         # Model ids waiting for the other model's download to end; started one by one in memory only.
         self.pack_queue = []
         self.pack_drain = None
@@ -318,11 +322,27 @@ class Service:
                          shared_bytes=0,
                          blocked_by=active if active == image_model.H3 and not qwen_ready else None,
                          install=queued if image_model.QWEN in waiting else qwen_state))
+        moss_ready = image_pack.ready(root, group=MOSS_GROUP)
+        moss_status = {} if moss_ready else image_pack.status(root, group=MOSS_GROUP)
+        moss_state = None if moss_ready or self.moss_installer is None else self.moss_installer.state()
+        moss_active = moss_state is not None and moss_state['state'] in ('running', 'paused_for_generation')
+        moss_rows = image_pack.rows(group=MOSS_GROUP)
+        rows.append(dict(id=image_model.MOSS, label='MOSS-Image', available=not mac, ready=moss_ready,
+                         downloading=moss_active, sizes=['standard', 'high'], max_images=0,
+                         bytes_total=moss_status.get('total_bytes', sum(r['bytes'] for r in moss_rows)),
+                         bytes=moss_status.get('bytes', 0), bytes_done=(moss_state or {}).get('done', 0),
+                         bytes_needed=moss_status.get('remaining_bytes', 0), shared_bytes=0,
+                         blocked_by=active if active not in (None, image_model.MOSS) and not moss_ready else None,
+                         install=None if moss_ready else queued if image_model.MOSS in waiting
+                         else self.pack_row(self.moss_installer, moss_ready)))
+        if mac:
+            rows[-1]['unavailable_reason'] = 'platform'
         return rows
 
     def _active_pack(self):
         """The image model this engine is downloading now (running or waiting for a video), or None."""
-        for model, installer in ((image_model.H3, self.h3_installer), (image_model.QWEN, self.pack_installer)):
+        for model, installer in ((image_model.H3, self.h3_installer), (image_model.QWEN, self.pack_installer),
+                                     (image_model.MOSS, self.moss_installer)):
             if installer is not None and installer.state()['state'] in ('running', 'paused_for_generation'):
                 return model
         return None
@@ -396,16 +416,22 @@ class Service:
         return row
 
     def _pack_installer(self, model, root, engine_root):
-        attribute = 'h3_installer' if model == image_model.H3 else 'pack_installer'
+        attribute = {image_model.H3: 'h3_installer', image_model.MOSS: 'moss_installer'}.get(model, 'pack_installer')
         installer = getattr(self, attribute)
         if installer is None or installer.root != root or installer.engine_root != engine_root:
-            options = dict(group=H3_GROUP) if model == image_model.H3 else {}
+            options = dict(group=self.model_group(model)) if model != image_model.QWEN else {}
             installer = image_pack.Installer(root, engine_root=engine_root, busy=self.video_busy, **options)
             setattr(self, attribute, installer)
         return installer
 
     def _pack_ready(self, model, root):
-        return image_pack.ready(root, group=H3_GROUP) if model == image_model.H3 else image_pack.ready(root)
+        group = self.model_group(model)
+        return image_pack.ready(root, group=group) if group else image_pack.ready(root)
+
+    @staticmethod
+    def model_group(model):
+        """The installer group of a picture model; None for Qwen-Image, whose files are the default group."""
+        return {image_model.H3: H3_GROUP, image_model.MOSS: MOSS_GROUP}.get(model)
 
     def _drain_packs(self):
         """Start each waiting model once the other download has ended; the queue lives in memory only."""
@@ -444,6 +470,10 @@ class Service:
             if sys.platform == 'darwin':
                 raise ValueError('invalid_request')
             group = H3_GROUP
+        if model == image_model.MOSS:
+            if sys.platform == 'darwin':
+                raise ValueError('invalid_request')
+            group = MOSS_GROUP
         with self.mutex:
             if group == 'segment':
                 installer = self.segment_installer
@@ -456,20 +486,20 @@ class Service:
                         self.segment_installer = installer
                     installer.start('install', background=True)
                 return self.info()
-            target = image_model.H3 if group == H3_GROUP else image_model.QWEN
+            target = {H3_GROUP: image_model.H3, MOSS_GROUP: image_model.MOSS}.get(group, image_model.QWEN)
             if action == 'cancel':
                 if model is None:
                     target = self._active_pack() or (self.pack_queue[0] if self.pack_queue else image_model.QWEN)
                 if target in self.pack_queue:
                     self.pack_queue.remove(target)
-                installer = self.h3_installer if target == image_model.H3 else self.pack_installer
+                installer = {image_model.H3: self.h3_installer, image_model.MOSS: self.moss_installer}.get(target, self.pack_installer)
                 if installer is not None:
                     installer.cancel()
             elif target in self.pack_queue:
                 pass
             elif not self._pack_ready(target, root):
-                other = image_model.QWEN if target == image_model.H3 else image_model.H3
-                if self._active_pack() == other:
+                other = self._active_pack()
+                if other is not None and other != target:
                     self.pack_queue.append(target)
                     if self.pack_drain is None:
                         self.pack_drain = threading.Thread(target=self._drain_packs, daemon=True)
@@ -1119,6 +1149,11 @@ class Service:
                 raise ValueError('invalid_dimensions')
             if any(value.get(name) is not None for name in ('mask', 'cast_view', 'loras')):
                 raise ValueError('invalid_request')
+        elif model == image_model.MOSS:
+            if any(type(size) is not int or not 256 <= size <= MOSS_MAX_SIDE for size in dimensions):
+                raise ValueError('invalid_dimensions')
+            if value.get('images') or any(value.get(name) is not None for name in ('mask', 'cast_view', 'loras')):
+                raise ValueError('invalid_request')
         elif any(type(size) is not int or not 256 <= size <= 2048 for size in dimensions):
             raise ValueError('invalid_dimensions')
         seed = value.get('seed')
@@ -1234,9 +1269,10 @@ class Service:
             # A model this computer does not run (H3 Image on a Mac) is said so; its files are not looked for.
             if h3 and sys.platform == 'darwin':
                 raise ValueError('model_unavailable')
-            if not image_pack.ready(machine['model_root'], group=H3_GROUP if h3 else 'image'):
+            moss = model == image_model.MOSS
+            if not image_pack.ready(machine['model_root'], group=self.model_group(model) or 'image'):
                 raise ValueError('pack_missing')
-            if h3 and action != 'generate':
+            if (h3 or moss) and action != 'generate':
                 raise ValueError('invalid_request')
             from .image_policy import UNIFIED_MIN_TOTAL
             unified = self.unified_total(machine)
@@ -1255,7 +1291,7 @@ class Service:
                                    resident_endpoint=self.resident_endpoint())
             context.update_request(value)
             # H3 Image plans its own residency in the worker; the Qwen plan below does not describe it.
-            context.plan = None if h3 else self.preflight(machine, value, fit=not waiting, reading=context.gpu_reading)
+            context.plan = None if h3 or moss else self.preflight(machine, value, fit=not waiting, reading=context.gpu_reading)
             # Live free memory while another job owns the GPU is advisory. Keep
             # the original request for dispatch, when the owner has released it.
             if not waiting and context.plan is not None and not context.plan['feasible']:
@@ -2271,7 +2307,7 @@ class Service:
         The ladder is the one start-up fitting uses (32-pixel grid, 512 pixels at the least);
         the step grows with the size so a big canvas needs few tries. False at the smallest size.
         """
-        if (value.get('model') == image_model.H3 or row.get('code') != 'no_memory'
+        if (value.get('model') in (image_model.H3, image_model.MOSS) or row.get('code') != 'no_memory'
                 or row.get('stage') in ('load', 'text', 'encode')
                 or self.stop.is_set() or self.session_stop.is_set()):
             return False
@@ -2378,7 +2414,7 @@ class Service:
             # The picture session may have started the resident worker after this request was prepared.
             value['h3']['resident_endpoint'] = self.resident_endpoint()
         loading = True
-        limit = H3_INFERENCE_TIMEOUT if value.get('model') == image_model.H3 else INFERENCE_TIMEOUT
+        limit = {image_model.H3: H3_INFERENCE_TIMEOUT, image_model.MOSS: MOSS_INFERENCE_TIMEOUT}.get(value.get('model'), INFERENCE_TIMEOUT)
         try:
             session.send(action='generate', **value)
         except OSError:

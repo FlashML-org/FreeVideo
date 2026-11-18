@@ -205,6 +205,7 @@ export async function openSetup(options) {
     const IMAGE_WORDS = {
         'minimax-h3-image': t('Default for the image view; clear lettering in pictures', '图像视图默认模型，图中文字清晰'),
         'qwen-image-2.1-turbo': t('Another look, up to about 4 MP', '另一种画风，最大约 4 MP'),
+        'moss-image-sft': t('Pictures from a text prompt, up to about 4 MP', '根据文字提示出图，最大约 4 MP'),
     };
     for (const model of IMAGE_MODELS) {
         const r = row({iconName: 'img', title: model.short, sub: IMAGE_WORDS[model.id] || '', cls: 'st-mrow'});

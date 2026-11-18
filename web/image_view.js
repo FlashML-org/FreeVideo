@@ -48,6 +48,7 @@ const remember = id => { try { localStorage.setItem(MODEL_KEY, id); } catch { /*
 
 // H3 Image is made for 4 to 16 MP; a smaller picture would still cost a 4 MP canvas, so its tiers start there.
 const H3_AREAS = Object.freeze({standard: 2048, high: 4096});
+const MOSS_AREAS = Object.freeze({standard: 1024, high: 2048});
 // The shape of a picture as a ratio, when it is one of the common ones; otherwise nothing is said.
 const SHAPES = [[1, 1], [16, 9], [9, 16], [4, 3], [3, 4], [3, 2], [2, 3], [21, 9], [9, 21]];
 export function shapeOf(width, height) {
@@ -59,18 +60,19 @@ const pictureShape = shapeOf;
 // A size with the ratio at about the tier's area, in steps of 32 (kept for callers of the two-tier page).
 export function imageSize(ratio, tier = 'standard', same = null, model = '') {
     const [w, h] = (ratio === 'same' && same ? [same.width, same.height] : ratio.split(':').map(Number));
-    const areas = model === 'minimax-h3-image' ? H3_AREAS : BLANK_CANVAS_AREAS;
+    const areas = model === 'minimax-h3-image' ? H3_AREAS : model === 'moss-image-sft' ? MOSS_AREAS : BLANK_CANVAS_AREAS;
     const side = areas[tier] || areas.standard;
     const scale = Math.sqrt(side * side / (w * h));
-    const round = value => Math.max(32, Math.round(value * scale / 32) * 32);
+    const step = model === 'moss-image-sft' ? 16 : 32;
+    const round = value => Math.max(model === 'moss-image-sft' ? 256 : 32, Math.min(model === 'moss-image-sft' ? 2048 : Infinity, Math.round(value * scale / step) * step));
     return {width: round(w), height: round(h)};
 }
 
 // Stands in for the engine until it answers (tests and the first skeleton): a flat picture after a short wait.
 // references: how many pictures each model row reports it takes, as the engine does. history: rows to start with.
 // install: per model, 'missing' | 'failed' | 'downloading' to start in that state. sizes: the engine's tier list.
-export function createFakeImageClient({delay = 600, ready = {'minimax-h3-image': true, 'qwen-image-2.1-turbo': true}, fail = null, steps = 0,
-    references = {'minimax-h3-image': 0, 'qwen-image-2.1-turbo': 4}, history = [], install = {}, sizes = ['standard', 'high'], fitted = null, bytes = 12.5e9, rate = 5e6} = {}) {
+export function createFakeImageClient({delay = 600, ready = {'minimax-h3-image': true, 'qwen-image-2.1-turbo': true, 'moss-image-sft': true}, fail = null, steps = 0,
+    references = {'minimax-h3-image': 0, 'qwen-image-2.1-turbo': 4, 'moss-image-sft': 0}, history = [], install = {}, sizes = ['standard', 'high'], fitted = null, bytes = 12.5e9, rate = 5e6} = {}) {
     const items = history.map(row => typeof row === 'string' ? {file: row, name: row.slice(row.lastIndexOf('/') + 1)} : row); let count = 0;
     const jobs = new Map(), state = {...ready}; const loading = new Map(), failed = new Set(Object.keys(install).filter(id => install[id] === 'failed'));
     for (const id of Object.keys(install)) { if (install[id] !== 'ready') state[id] = false; if (install[id] === 'downloading') loading.set(id, Date.now() - bytes / rate * .4); }
@@ -687,7 +689,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     const subject = number => t(`Subject ${number}`, `主体 ${number}`);
     // Each model row says how many pictures it takes; the strip holds as many as the most generous one.
     // Until the engine answers, each model's usual reference count, so the strip has its final height from the first frame.
-    const USUAL_CAPS = {'minimax-h3-image': 16, 'qwen-image-2.1-turbo': 4};
+    const USUAL_CAPS = {'minimax-h3-image': 16, 'qwen-image-2.1-turbo': 4, 'moss-image-sft': 0};
     function cap_(m) { if (!info?.models) return USUAL_CAPS[m.id] || 0; const n = Number(info.models.find(r => r.id === m.id)?.max_images); return Number.isInteger(n) && n > 0 ? n : 0; }
     const most = () => Math.max(0, ...IMAGE_MODELS.map(cap_));
     const over = () => Math.max(0, references.length - cap_(model));

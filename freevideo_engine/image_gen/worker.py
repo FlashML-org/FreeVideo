@@ -280,8 +280,13 @@ def load_h3_runner(pack_dir, device, *, progress=None):
     return H3Runner(pack_dir, device=device, progress=progress)
 
 
+def load_moss_runner(pack_dir, device, *, progress=None):
+    from .moss_runner import MossRunner
+    return MossRunner(pack_dir, device=device, progress=progress)
+
+
 def serve(pack_dir, *, device='cuda', idle_seconds=45., stream=None, output=None, factory=None, h3_factory=None,
-          server_root=None, lock_path=None):
+          moss_factory=None, server_root=None, lock_path=None):
     global SERVER_ROOT, LOCK_PATH
     SERVER_ROOT = server_root
     LOCK_PATH = lock_path
@@ -289,6 +294,7 @@ def serve(pack_dir, *, device='cuda', idle_seconds=45., stream=None, output=None
     output = sys.stdout if output is None else output
     factory = factory or load_runner
     h3_factory = h3_factory or load_h3_runner
+    moss_factory = moss_factory or load_moss_runner
     runner_model = None
     output_mutex = threading.Lock()
 
@@ -360,7 +366,7 @@ def serve(pack_dir, *, device='cuda', idle_seconds=45., stream=None, output=None
                         runner = drop(runner)
                     if runner is None:
                         context.timing.enter('load')
-                        runner = (h3_factory if model == 'minimax-h3-image' else factory)(pack_dir, device, progress=progress)
+                        runner = {'minimax-h3-image': h3_factory, 'moss-image-sft': moss_factory}.get(model, factory)(pack_dir, device, progress=progress)
                         runner_model = model
                     if hasattr(runner, 'last_plan'):
                         runner.last_plan = None
@@ -386,9 +392,10 @@ def serve(pack_dir, *, device='cuda', idle_seconds=45., stream=None, output=None
                             seed=seed, reference_images=references, **region,
                             **(dict(loras=loras) if loras else {}),
                             progress=progress, cancel=inbox.cancel.is_set,
-                            **(dict(setup=value['h3']) if model == 'minimax-h3-image' and value.get('h3') else {}),
+                            **(dict(setup=value['h3']) if model in ('minimax-h3-image', 'moss-image-sft') and value.get('h3') else {}),
                             # Which stage a failure belongs to, without a progress row the page would show.
-                            **(dict(preview=preview, stage=context.timing.enter, note=note) if model == 'minimax-h3-image' else {}))
+                            **(dict(preview=preview, stage=context.timing.enter, note=note) if model == 'minimax-h3-image'
+                               else dict(stage=context.timing.enter) if model == 'moss-image-sft' else {}))
 
                     if value.get('cast_view') == 'back' and len(references) == 1 and not region:
                         from .back_view import generate_back, load_detector
