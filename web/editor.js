@@ -831,6 +831,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         // With the creation panel's bar in the editor, its values are the request's (the edit's size is its starting point).
         if (!panel.barActive) Object.assign(inputs, state.record.settings || {}, capability.generationSize || generationSize(state.record));
         else if (bar?.overrides) for (const [name, setting] of Object.entries(bar.overrides())) if (name in inputs && !Array.isArray(inputs[name])) inputs[name] = setting;
+        // The first-frame reference is the work's own setting, the one the length limit is worked out from.
+        if (panel.barActive && 'first_frame_reference' in inputs && !Array.isArray(inputs.first_frame_reference)) inputs.first_frame_reference = state.record.settings?.first_frame_reference === true;
         // The media panel's pictures guide every part (the engine keeps only the references for a part that continues);
         // without a panel to show them they stay out of the request.
         if (!panel.references?.available()) delete inputs.media;
