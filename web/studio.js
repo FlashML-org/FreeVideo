@@ -792,8 +792,28 @@ export function openStudio(node, {extendFrom = null} = {}) {
             ? Boolean(effort.levels().find(tier => tier.name === entry.settings.quality)) && !baseSteps.disabled && ['base_steps', 'two_pass', 'step_cache', 'upscale_factor'].every(key => widget(node, key) && !linked(node, key))
             : Boolean(widget(node, name)) && !linked(node, name))
         && ((entry.settings?.two_pass !== true && entry.settings?.preview !== true) || !twoPass.disabled);
+    // A tour example that could not be filled in says why and what to do, not only "try again" (the report button stays beside it).
+    const tourFault = (reason, error) => {
+        const missing = /^missing_example_asset:/.test(String(error?.message || ''));
+        const say = {
+            busy: ['A video is being made. Try the example when it finishes.', '正在生成，完成后再试示例'],
+            linked: ['Some settings this example needs are connected to other nodes, so it cannot fill them in. Disconnect those links in the node view, then try again.', '示例要改的设置已连到别的节点，无法填入；在节点视图断开这些连线后再试'],
+            unavailable: ['The current model cannot use this example\'s settings.', '当前模型用不了这个示例的设置'],
+            asset: missing ? ['An example file is missing from this installation. Select "Repair" under Settings > Environment, then try again.', '示例素材不在本机安装里，在“设置 → 环境”里点“修复”后重试']
+                : ['The example files could not be read from FreeVideo. Check that FreeVideo is still running, then try again.', '没能从 FreeVideo 读取示例素材，确认 FreeVideo 仍在运行后再试'],
+            write: ['The example files could not be added to this panel\'s media list. Try again.', '示例素材没能加入这个面板的素材列表，请再试一次'],
+            workspace_changed: ['Another view was opened, so the example was not filled in. Go back to the creation panel and try again.', '已切到别的视图，示例没有填入，回到创作面板再试'],
+            no_editor: ['The editor did not open, so the start clip was not placed. Open the editor, then select the example again.', '剪辑视图没有打开，起始片段没有放上去；打开剪辑视图后再点一次示例'],
+            'pending-assets': ['This example is not available yet.', '这个示例暂时不能用'],
+            unknown_example: ['This example is not available yet.', '这个示例暂时不能用'],
+        }[reason];
+        const detail = String(error?.message || error || '').split('\n')[0].slice(0, 160);
+        fault(say ? t(...say) : detail ? t(`The example was not filled in: ${detail}`, `示例没有填入：${detail}`) : t('The example was not filled in.', '示例没有填入'));
+    };
+    const tourBlock = example => busy || queued || capturing ? 'busy'
+        : (example.prompt && linked(node, 'text')) || Object.keys(example.settings || {}).some(name => linked(node, name)) ? 'linked' : 'unavailable';
     const tryTourExample = async example => {
-        if (!canTryTour(example)) { fault(t('Could not complete. Try again.', '没有完成，请重试')); return {ok: false, reason: 'unavailable'}; }
+        if (!canTryTour(example)) { tourFault(tourBlock(example)); return {ok: false, reason: 'unavailable'}; }
         const {applyTourExample} = await import('./tour_try.js');
         const target = castAssets();
         const result = await applyTourExample({node, api, cn, rows: () => mediaRows(node), canApply: canTryTour,
@@ -820,19 +840,19 @@ export function openStudio(node, {extendFrom = null} = {}) {
             syncSamplingSteps(); syncCanvasSize(); seconds.dispatchEvent(new Event('input')); updateRunButton();
             if (example.assets?.length) mediaDetails.open = true;
             // The lazy entry switches back through the editor before applying an example.
-            if (topDialog() !== dialog) { fault(t('Could not complete. Try again.', '没有完成，请重试')); return {ok: false, reason: 'workspace_changed'}; }
+            if (topDialog() !== dialog) { tourFault('workspace_changed'); return {ok: false, reason: 'workspace_changed'}; }
             exampleFocused = true; generate.focus({preventScroll: true});
-        } else fault(t('Could not complete. Try again.', '没有完成，请重试'));
+        } else tourFault(result.reason === 'unavailable' ? tourBlock(example) : result.reason, result.error);
         return result;
     };
     // A start clip goes onto the editor timeline, where it can be continued; nothing is placed unless the file loaded.
     const tryStartClip = async entry => {
-        if (busy || queued || capturing) { fault(t('Could not complete. Try again.', '没有完成，请重试')); return {ok: false, reason: 'unavailable'}; }
+        if (busy || queued || capturing) { tourFault('busy'); return {ok: false, reason: 'unavailable'}; }
         let file;
-        try { file = await (await import('./tour_try.js')).fetchStartClip(entry); } catch (error) { fault(t('Could not complete. Try again.', '没有完成，请重试')); return {ok: false, reason: 'asset', error}; }
+        try { file = await (await import('./tour_try.js')).fetchStartClip(entry); } catch (error) { tourFault('asset', error); return {ok: false, reason: 'asset', error}; }
         const handle = await openEditorView(node, {studio: dialog});
         await handle?.ready;
-        if (!handle?.actions?.importFiles) { fault(t('Could not complete. Try again.', '没有完成，请重试')); return {ok: false, reason: 'no_editor'}; }
+        if (!handle?.actions?.importFiles) { tourFault('no_editor'); return {ok: false, reason: 'no_editor'}; }
         // The clips already on the timeline are noted first, so the draft follows the clip this import adds and not an older one.
         const known = handle.actions.clipIds?.() || [];
         await handle.actions.importFiles([file], {at: 0});
@@ -3364,7 +3384,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         }, onGenerate: () => { if (generate.disabled) return false; generate.click(); return true; }, onEdit: () => openEditorView(node, {studio: dialog}),
         isBusy: () => busy || queued || capturing});
     cleanup.push(() => firstStart.dispose());
-    const tourContext = {dialog, api, cn, onError: () => fault(t('Could not complete. Try again.', '没有完成，请重试')), onTry: tryTourExample, onStartClip: tryStartClip, canTry: canTryTour, isBusy: () => busy || queued || capturing};
+    const tourContext = {dialog, api, cn, onError: error => tourFault('', error), onTry: tryTourExample, onStartClip: tryStartClip, canTry: canTryTour, isBusy: () => busy || queued || capturing};
     cleanup.push(registerTourWorkspace(tourContext));
     const tourTimer = setTimeout(async () => { const state = await firstStart.ready; if (!closed && !state?.firstRun && !tourContext.isBusy()) offerVersionTour(tourContext); }, 1400);
     cleanup.push(() => clearTimeout(tourTimer));
