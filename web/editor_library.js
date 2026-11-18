@@ -3,6 +3,7 @@ import {sourceKey} from './editor_store.js';
 import {issueButton} from './issue_button.js';
 import {connectionLostText} from './browser_extension.js';
 import {tip} from './editor_tips.js';
+import {setAttr, setData, setHidden} from './dom_quiet.js';
 const LIBRARY_ISSUE = ['Editor media library', '剪辑器素材库'];
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const stamp = frames => { const seconds = Math.floor((frames || 0) / 24); return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`; };
@@ -214,7 +215,7 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
     function updateUsed() {
         const keys = new Set((state?.record.tracks || []).flatMap(track => track.clips)
             .filter(clip => clip.source).map(clip => sourceKey(clip.source)));
-        for (const button of grid.querySelectorAll('.fv-ed-source')) button.querySelector('.fv-ed-source-used').hidden = !keys.has(button.dataset.key);
+        for (const button of grid.querySelectorAll('.fv-ed-source')) setHidden(button.querySelector('.fv-ed-source-used'), !keys.has(button.dataset.key));
     }
     // What a card shows, for reusing it: everything card() reads except the picture's address (a picture already
     // decoded is kept), plus the removal question when one is open.
@@ -229,9 +230,8 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
         const scroll = host.scrollTop || 0, top = host.getBoundingClientRect().top;
         const anchor = scroll > 0 ? [...grid.querySelectorAll('.fv-ed-source')].find(node => node.getBoundingClientRect().bottom > top) : null;
         const anchorTop = anchor?.getBoundingClientRect().top;
-        works.setAttribute('aria-selected', String(tab === 'work')); imports.setAttribute('aria-selected', String(tab === 'import'));
-        works.setAttribute('aria-pressed', String(tab === 'work')); imports.setAttribute('aria-pressed', String(tab === 'import'));
-        search.hidden = tab !== 'work';
+        for (const [button, value] of [[works, tab === 'work'], [imports, tab === 'import']]) { setAttr(button, 'aria-selected', value); setAttr(button, 'aria-pressed', value); }
+        setHidden(search, tab !== 'work');
         // A redraw (the imports are read again every few seconds) keeps the focus on the same control.
         const held = document.activeElement, strip = held && grid.contains?.(held) ? held.closest?.('.fv-ed-source-confirm') : null;
         const control = ['fv-ed-source-remove', 'fv-ed-source-add'].find(name => held?.className === name);
@@ -280,7 +280,7 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
                 : target.card ? card(target.card) : (target.next && card(target.next)) || (tab === 'import' ? importButton : null);
             node?.focus?.();
         }
-        globalThis.requestAnimationFrame?.(() => { if (!disposed) host.dataset.atEnd = String(host.scrollTop + host.clientHeight >= host.scrollHeight - 2); });
+        globalThis.requestAnimationFrame?.(() => { if (!disposed) markEnd(); });
         if (scroll > 0) {
             const replacement = anchor && [...grid.querySelectorAll('.fv-ed-source')].find(node => node.dataset.key === anchor.dataset.key);
             host.scrollTop = replacement ? scroll + replacement.getBoundingClientRect().top - anchorTop : scroll;
@@ -359,7 +359,7 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
     }
     host.addEventListener('scroll', scheduleMore, {passive: true});
     // The last row cut by the pane's foot fades out (24 px) instead of looking cut off; at the very end there is no fade.
-    const markEnd = () => { host.dataset.atEnd = String(host.scrollTop + host.clientHeight >= host.scrollHeight - 2); };
+    function markEnd() { setData(host, 'atEnd', host.scrollTop + host.clientHeight >= host.scrollHeight - 2); }
     host.addEventListener('scroll', markEnd, {passive: true});
     const resize = new ResizeObserver(scheduleMore); resize.observe(host);
     // Files dropped on the tracks go to the drop point once ready, in drop order.

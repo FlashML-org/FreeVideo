@@ -54,6 +54,7 @@ import {tip, modKey} from './editor_tips.js';
 import {jobs} from './task_store.js';
 import {openingChoice} from './editor_opening.js';
 import {CN} from './topbar_state.js';
+import {setDisabled} from './dom_quiet.js';
 const editorStyles = Promise.all(['result_actions.css', 'editor.css', 'editor_expand.css', 'editor_tracks.css', 'editor_frame.css', 'editor_adjust.css', 'editor_adjust_picture.css', 'editor_preview_picture.css', 'editor_select.css', 'editor_menu.css', 'editor_text.css', 'editor_notes.css', 'editor_transport.css', 'glass/editor.css'].map(name => {
     const style = document.createElement('link'); style.rel = 'stylesheet'; style.href = new URL(name, import.meta.url).href;
     const ready = 'sheet' in style ? new Promise(resolve => { style.onload = style.onerror = resolve; }) : Promise.resolve();
@@ -1952,7 +1953,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         });
     }
     function updateSplit() {
-        const ids = splitIds(), busy = ids.some(id => model.pair(state.record, id).some(isBusy)); split.disabled = !ids.length || busy;
+        const ids = splitIds(), busy = ids.some(id => model.pair(state.record, id).some(isBusy)); setDisabled(split, !ids.length || busy);
         tip(split, {name: t('Split', '剪开'), use: t('Cut the clip in two at the playhead', '在播放头处把片段分成两段'), key: `B / ${modKey}B`,
             why: !split.disabled ? '' : busy ? t('This part is generating', '这一段正在生成') : t('Put the playhead inside a clip first', '先把播放头放到片段中间')});
     }

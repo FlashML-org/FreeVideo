@@ -10,6 +10,7 @@
 // into the line under it, the remark into a line with its key, and the drop-down for new pictures into the title row.
 import './tray_pop.js';
 import { mediaQueue } from '../work_media.js';
+import {setHidden} from '../dom_quiet.js';
 
 const CARD_KEYS = {'↑': 'fv-mt-up', '↓': 'fv-mt-down'};
 // How many saved works the works page lists (newest first, pictures and videos together).
@@ -388,8 +389,8 @@ function markNow(panel) {
         card.querySelector('.fv-mt-held-note')?.remove();
         if (held) (card.querySelector('.fv-preview-wrap') || card).append(make('span', 'fv-mt-held-note', say(panel, 'Not used with frames', '不与首尾帧同用')));
     }
-    panel.fvMtMix.hidden = !blocked;
-    panel.fvMtRemark.hidden = Boolean(!note || note.hidden) && !blocked;
+    setHidden(panel.fvMtMix, !blocked);
+    setHidden(panel.fvMtRemark, Boolean(!note || note.hidden) && !blocked);
     if (tray && !tray.fvMtPaged) {
         tray.fvMtPaged = true; showPage(panel, 'media');
         // Placed by tray_pop.js: measured with the scrolling parts at their full height, then fitted to the window.

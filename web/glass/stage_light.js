@@ -139,7 +139,8 @@ function dress() {
         const box = document.createElement('div'); box.className = 'fv-look-light'; box.setAttribute('aria-hidden', 'true');
         dialog.prepend(box);
     }
-    root.dataset.fvLight = raw ? 'on' : 'off';
+    // On the page root: an unchanged value is left alone, or the whole page would restyle.
+    if (root.dataset.fvLight !== (raw ? 'on' : 'off')) root.dataset.fvLight = raw ? 'on' : 'off';
 }
 
 let timer = 0, theme = root.dataset.theme;

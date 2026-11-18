@@ -12,6 +12,7 @@ import {issueButton} from './issue_button.js';
 import {skinSelect} from './fv_select.js';
 import {tip} from './editor_tips.js';
 import {registerMenuItem} from './editor_menu.js';
+import {setAttr, setData, setHidden, setText} from './dom_quiet.js';
 const SPEECH_ISSUE = ['Auto subtitles', '自动字幕'], FONT_ISSUE = ['Editor text fonts', '剪辑器文字字体'];
 const el=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e;};
 const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
@@ -255,7 +256,7 @@ export function createEditorText({element,state,t,actions,adjust,player,toolbar,
     function updateWarnings(){
         const r=record(),c=selectedText(),s=c&&styleOf(r,model.find(r,c.id));
         const missing=projectMissing(r),chars=[...new Set(missing.flatMap(r=>r.chars))];
-        notice.hidden=!chars.length&&!loadError;notice.textContent=loadError?fontFailure():missingHint(chars,t);notice.title=notice.textContent;
+        setHidden(notice,!chars.length&&!loadError);setText(notice,loadError?fontFailure():missingHint(chars,t));setAttr(notice,'title',notice.textContent);
         for(const [kind,p]of panels){
             if(c?.text_kind!==kind)continue;
             const entry=model.find(r,c.id),absent=table?missingGlyphs(entry.text,s.font,!!s.bold,table):[];
@@ -319,8 +320,8 @@ export function createEditorText({element,state,t,actions,adjust,player,toolbar,
         if(element.dataset.textAudio2!==audio2)element.dataset.textAudio2=audio2;
         if(!ready&&record().tracks.some(isTextTrack))ensureFonts();
         const entries=textEntries(),c=selectedText(),r=record(),sourcePreview=frame.querySelector('.fv-ed-source-preview');
-        canvas.hidden=!ready||(!entries.length&&!c)||!!sourcePreview;
-        frame.dataset.textSelected=String(!!c&&!sourcePreview);
+        setHidden(canvas,!ready||(!entries.length&&!c)||!!sourcePreview);
+        setData(frame,'textSelected',!!c&&!sourcePreview);
         if(canvas.hidden){boundsLayer.replaceChildren();return;}
         mapped=frameMap();const {x,y,w,h,cw,ch}=mapped;
         if(canvas.width!==cw)canvas.width=cw;if(canvas.height!==ch)canvas.height=ch;ctx.clearRect(0,0,cw,ch);

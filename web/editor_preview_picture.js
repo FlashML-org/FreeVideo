@@ -2,6 +2,7 @@ import {plan, cssTransform, visibleRect} from './editor_geometry.js';
 import {differentPictureShape} from './editor_frame.js';
 import {PICTURE_DEFAULTS} from './editor_picture_fields.js';
 import {pictureSession} from './editor_picture_session.js';
+import {setHidden} from './dom_quiet.js';
 const metrics = new WeakMap();
 export function previewPictureTimings(state, reset = false) {
     const value = metrics.get(state) || {draw: [], layout: []};
@@ -82,8 +83,8 @@ export function createPreviewPicture(host, frame, {state, t}) {
         && state.selection.ids.every(id => id === clip.id || id === clip.link);
     const editable = clip => isSelected(clip) && session.canEdit(clip);
     function reset() {
-        for (const node of [bed, outside, shade, handles, cropBox, ...lines]) node.hidden = true;
-        shade.style.display = 'none';
+        for (const node of [bed, outside, shade, handles, cropBox, ...lines]) setHidden(node, true);
+        if (shade.style.display !== 'none') shade.style.display = 'none';
         frame.classList.remove('fv-ed-picture-adjusted'); layout = null; key = ''; inputs = drawn = null;
         frame.querySelectorAll('video').forEach(v => { if (!v.matches('.fv-ed-source-preview')) v.removeAttribute('style'); });
     }

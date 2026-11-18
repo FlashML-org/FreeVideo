@@ -17,6 +17,7 @@ import {renderSpeedBadge} from './editor_speed.js';
 import {speedEdited} from './editor_speed_model.js';
 import {MUSIC_TRACK, MAX_MUSIC_FRAMES} from './editor_music_model.js';
 import {applyTip, switchTip, setTip} from './editor_tracks_tips.js';
+import {setAttr, setData, setHidden, setText} from './dom_quiet.js';
 // A range drawn on the music track alone: music for that stretch.
 const musicRange = selection => selection?.kind === 'range' && selection.tracks?.length === 1 && selection.tracks[0] === MUSIC_TRACK;
 
@@ -463,7 +464,7 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         playhead.style.left = `${x}px`;
         // Near time zero the 28 px grip moves right so it stays clear of the heads; the drawn tab stays on the line.
         playhead.style.setProperty?.('--fv-ed-handle-shift', `${Math.max(0, Math.min(14, 6 - x))}px`);
-        handle.setAttribute('aria-label', `${t('Play position', '播放位置')}, ${clock(state.playhead)}`);
+        setAttr(handle, 'aria-label', `${t('Play position', '播放位置')}, ${clock(state.playhead)}`);
     }
     function renderRuler() {
         const {minor, major} = tickSpacing(state.zoom);
@@ -741,7 +742,7 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
     // While the playhead is dragged, its time (to a tenth) rides above it on the ruler.
     function showTime() {
         const bounds = element.getBoundingClientRect(), x = content.getBoundingClientRect().left - bounds.left + pixels(state.playhead);
-        tooltip.textContent = preciseClock(state.playhead); tooltip.hidden = false; tooltip.dataset.time = 'true';
+        setText(tooltip, preciseClock(state.playhead)); setHidden(tooltip, false); setData(tooltip, 'time', 'true');
         tooltip.style.left = `${clamp(x + 10, 8, Math.max(8, bounds.width - 80))}px`; tooltip.style.top = '28px';
     }
     function showGuide(frame) { guide.hidden = frame == null; if (frame != null) guide.style.left = `${pixels(frame)}px`; }
