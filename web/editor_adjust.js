@@ -17,7 +17,8 @@ export const busyReason = t => t('Cancel generation before changing this part.',
 export function disabledReason(context, {needs, single = false} = {}) {
     const {t} = context;
     if (context.busy) return busyReason(t);
-    if (!context.single && !context.multiple) return t('Select a part first', '先选中一段');
+    // A part that is not generated yet is selected, but has nothing to adjust.
+    if (!context.single && !context.multiple) return context.clips?.length ? t('Available after this part is generated', '这一段生成后才能调整') : t('Select a part first', '先选中一段');
     if (single && context.multiple) return t('Only for a single part', '只能对单独一段调整');
     if (needs === 'video' && !context.hasVideo) return t('This part has no video', '这一段没有画面');
     if (needs === 'audio' && !context.hasAudio) return t('This part has no audio', '这一段没有声音');
