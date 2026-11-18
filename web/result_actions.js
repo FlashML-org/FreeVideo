@@ -116,10 +116,13 @@ export function secondPassAction(t, run) {
         button.disabled = true; button.setAttribute('aria-busy', 'true');
         label.textContent = button.title = t('Adding…', '正在添加…');
         try { await run(); label.textContent = button.title = t('Queued', '已加入队列'); }
-        catch {
+        catch (error) {
             button.disabled = false;
-            label.textContent = button.title = t('Second pass did not start · retry', '二采没有开始 · 重试');
-            problem = issueButton(t, () => ({where: ['Second pass', '二采'], message: label.textContent}));
+            label.textContent = t('Second pass did not start · retry', '二采没有开始 · 重试');
+            // The caller has shown the cause; the tooltip and the report carry the error itself.
+            const said = error instanceof Error ? `${error.name}: ${error.message}` : String(error ?? '');
+            button.title = said ? `${label.textContent}\n${said}` : label.textContent;
+            problem = issueButton(t, () => ({where: ['Second pass', '二采'], message: said || label.textContent}));
             button.after(problem);
         } finally { button.removeAttribute('aria-busy'); }
     };
