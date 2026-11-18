@@ -591,6 +591,18 @@ def source_lines(lines, zh=False):
     return list(rows.values())[-SOURCE_CARD_LINES:]
 
 
+# Graphics card families that all predate compute capability 8.0 (Ampere), by the name the driver reports.
+BELOW_COMPUTE_FLOOR = re.compile(
+    r'\b(?:GeForce\s+)?(?:GT|GTS|GTX)\s*\d'            # GeForce 8 to GTX 16 series, including GT 730
+    r'|\bGeForce\s+(?:RTX\s*)?20[0-9]0\b'               # RTX 20 series (Turing)
+    r'|\bGeForce\s+(?:8|9|2|3)\d{2,3}\s*(?:GT|GS|M)?\b'  # older numbered GeForce cards
+    r'|\bTITAN\s*(?:X|V|Xp|RTX|Black|Z)?\b'
+    r'|\bQuadro\s+(?:RTX\s*)?[KMPT]?\d'
+    r'|\bTesla\s+[KMPVT]\d'
+    r'|\bGeForce\s+MX\s*(?:[1-4]\d0|550)\b'            # MX110 to MX550; the MX570 is Ampere and stays supported
+    r'|\bNVS\s*\d', re.I)
+
+
 def launcher_failure(value, *, zh=False, **options):
     """Short guidance; a download that failed on every source also lists what each source returned."""
     text, lines = _sources_block(str(value)) if value else ('', [])
@@ -992,6 +1004,13 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
     if tools and tools.group(1).endswith((':', '：', '.', '。')):
         return dict(title=('缺少基础工具' if zh else 'Basic tools are missing'),
                     detail='\n'.join(part for part in tools.groups() if part), action='', kind='system-tools')
+    # A driver too old to report the compute capability leaves it unknown, and the update card would then be shown for a
+    # card no driver can help. When the card is named and belongs to a family below the floor, it is the unsupported card.
+    if 'CUDA_ARCH_UNSUPPORTED' not in text:
+        named = re.search(r'NVIDIA driver(?: [\w.]+)?(?: \(([^)]*)\))? is older than 580', text, re.I) \
+            or re.search(r'\[CUDA_CAPABILITY_UNKNOWN\] Could not determine the CUDA architecture of (.+?) \(SM', text)
+        if named and named.group(1) and BELOW_COMPUTE_FLOOR.search(named.group(1)):
+            text += '\n[CUDA_ARCH_UNSUPPORTED] %s (SMunknown; compute capability unknown; driver unknown)' % named.group(1)
     for pattern, kind, title, action in rules:
         if re.search(pattern, text, re.I):
             if kind in WITHOUT_REPAIR and not can_repair:
@@ -1016,6 +1035,10 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
                 if found:
                     model, capability = found.groups()
                     detail = ('检测到：%s，计算能力 %s' if zh else 'Detected: %s, compute capability %s') % (model, capability)
+                    return dict(title=title[zh], detail=detail + '\n' + action[zh], action='', kind=kind)
+                found = re.search(r'\[CUDA_ARCH_UNSUPPORTED\]\s+(.+?)\s+\(SMunknown;', text)
+                if found:
+                    detail = ('检测到：%s' if zh else 'Detected: %s') % found[1]
                     return dict(title=title[zh], detail=detail + '\n' + action[zh], action='', kind=kind)
             if kind == 'path-too-long':
                 # A dependency folder Git cannot read is named, above the same next step.
