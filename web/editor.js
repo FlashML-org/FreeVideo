@@ -40,7 +40,7 @@ import {voiceTarget} from './editor_voice_model.js';
 import {MAX_MUSIC_TEXT as MUSIC_TEXT_LIMIT} from './editor_music_model.js';
 import {createProgressConnection} from './progress_connection.js';
 import {createSelectionActions, deletionStatus, isMultiple, isTyping, playheadIds, removableGaps, removeGaps} from './editor_select.js';
-import {isolateDialogKeys, topDialog} from './dialog_keys.js';
+import {isolateDialogKeys, routeDialogKey, topDialog} from './dialog_keys.js';
 import {createBlockNotes, describedTrack} from './editor_notes.js';
 import {createFirstRunGuide} from './first_run_guide.js';
 import {SHOWCASE_SCENE} from './entry_showcase.js';
@@ -2141,6 +2141,9 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if (topDialog() === element && !dismissPopup(event)) state.select(null, {history: true});
     });
     const stopKeys = isolateDialogKeys(element, (event, inside) => {
+        // FreeVideo's shared menus (a text box's Cut/Copy/Paste, and any menu opened over the editor) live inside this
+        // dialog and listen through dialog_keys: their arrows, Enter, Esc and Tab are theirs, with no editor shortcut.
+        if (inside && event.target.closest?.('.fv-cm[role=menu]')) { routeDialogKey(event, element); return; }
         if (guide?.handleKey(event)) return;
         if (event.type === 'keyup') {
             // The Space that played from a media card does not also press the card.
