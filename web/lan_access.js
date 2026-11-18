@@ -67,8 +67,9 @@ export function createLanAccess(t, api) {
     }
     function position() {
         if (panel.hidden) return;
-        const box = trigger.getBoundingClientRect();
-        place(panel, box.bottom + 8, Math.max(8, Math.min(box.right - 264, window.innerWidth - 272)));
+        // The panel's own width: the glass layer sets it (web/glass/library.css), so the right edge meets the entry's.
+        const box = trigger.getBoundingClientRect(), width = panel.offsetWidth;
+        place(panel, box.bottom + 8, Math.max(8, Math.min(box.right - width, window.innerWidth - 8 - width)));
     }
     function render() {
         // No launcher installation: the switch cannot work from this page, so say why instead of "Please try again".
