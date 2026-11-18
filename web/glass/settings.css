@@ -169,8 +169,8 @@ dialog.fv-set .st-close{color:var(--fv-fg2)}
 dialog.fv-set .st-link{display:inline-flex;align-items:center;gap:var(--fv-sp-4);font-size:var(--fv-fs-1);font-weight:var(--fv-fw-2);color:var(--fv-accent-ink);text-decoration:none}
 dialog.fv-set .st-link:hover{text-decoration:underline;text-underline-offset:3px}
 /* The report button other modules make (issue_button.js) in this room's look. */
-dialog.fv-set .fv-issue-button{display:inline-flex;align-items:center;height:var(--fv-ctl-s);padding:0 var(--fv-sp-8);border-radius:var(--fv-rad-sm);background:var(--fv-ctl-bg);color:var(--fv-fg);font-size:var(--fv-fs-1);font-weight:var(--fv-fw-2);white-space:nowrap}
-dialog.fv-set .fv-issue-button:hover{background:var(--fv-ctl-hover)}
+dialog.fv-set :is(.fv-issue-button,.fv-release-retry){display:inline-flex;align-items:center;height:var(--fv-ctl-s);padding:0 var(--fv-sp-8);border-radius:var(--fv-rad-sm);background:var(--fv-ctl-bg);color:var(--fv-fg);font-size:var(--fv-fs-1);font-weight:var(--fv-fw-2);white-space:nowrap}
+dialog.fv-set :is(.fv-issue-button,.fv-release-retry):hover{background:var(--fv-ctl-hover)}
 
 /* ── Controls ── */
 /* switch: the native check box drawn as a switch */

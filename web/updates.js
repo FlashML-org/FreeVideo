@@ -177,6 +177,7 @@ export async function checkUpdates() {
         // server restarts; keep asking until the updated one answers.
         offline = true;
         if (updating) { publish(); later(2000); }
+        else if (!value) publish();
     } finally { pending = false; }
 }
 
@@ -211,11 +212,16 @@ export async function cancelUpdate() {
     later(800);
 }
 
+// The update bar and sheet styles, added once (the sheet can open before the checks start).
+function loadStyles() {
+    const href = new URL('./updates.css', import.meta.url).href;
+    if ([...document.querySelectorAll('link[rel=stylesheet]')].some(link => link.href === href)) return;
+    const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = href; document.head.append(css);
+}
 export function startUpdateChecks() {
     if (started) return;
     started = true;
-    const css = document.createElement('link'); css.rel = 'stylesheet';
-    css.href = new URL('./updates.css', import.meta.url).href; document.head.append(css);
+    loadStyles();
     void checkUpdates();
     setInterval(checkUpdates, 60000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) void checkUpdates(); });
@@ -359,13 +365,23 @@ function fillNotes(body, cn) {
         }
         body.append(section);
     }
-    if (!body.childElementCount) {
-        const message = t('Version information is not available yet.', '暂时无法获取版本信息。');
-        const empty = document.createElement('p'); empty.className = 'fv-release-empty'; empty.textContent = message;
-        body.append(empty, issueButton(t, () => ({where: ['Version information', '版本信息'], message})));
-        if (!started) void checkUpdates();
-    }
+    if (!body.childElementCount) emptyNotes(body, t);
     return hasWhatsNew(productVersion());
+}
+// No version information yet: while the first check runs, say so; once it has failed, say why and offer a retry.
+function emptyNotes(body, t) {
+    if (!started && !offline) void checkUpdates();
+    const empty = document.createElement('p'); empty.className = 'fv-release-empty';
+    if (!value && !offline) { empty.textContent = t('Reading version information…', '正在读取版本信息…'); body.append(empty); return; }
+    const message = t('Version information is not available: FreeVideo on this computer did not return it. Click Retry; if it still fails, report a problem.',
+        '暂时无法获取版本信息：本机的 FreeVideo 服务没有返回结果。请点“重试”；仍然失败时请提交问题。');
+    empty.textContent = message;
+    const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'fv-release-retry';
+    retry.textContent = t('Retry', '重试');
+    retry.onclick = () => { offline = false; value = null; lastCheck = -Infinity; publish(); void checkUpdates(); };
+    const row = document.createElement('div'); row.className = 'fv-release-empty-actions';
+    row.append(retry, issueButton(t, () => ({where: ['Version information', '版本信息'], message})));
+    body.append(empty, row);
 }
 export function releaseNotesInto(body, cn, {onNews = () => {}} = {}) {
     body.classList.add('fv-release-body');
@@ -406,13 +422,7 @@ function fillSheet(body, cn) {
     body.replaceChildren();
     const available = value?.available, current = value?.current_release || (value?.current_version ? {version: value.current_version} : null);
     const release = available || current;
-    if (!release) {
-        const message = t('Version information is not available yet.', '暂时无法获取版本信息。');
-        const empty = document.createElement('p'); empty.className = 'fv-release-empty'; empty.textContent = message;
-        body.append(empty, issueButton(t, () => ({where: ['Version information', '版本信息'], message})));
-        if (!started) void checkUpdates();
-        return false;
-    }
+    if (!release) { emptyNotes(body, t); return false; }
     const head = document.createElement('h2'); head.className = 'fv-release-ver';
     const name = document.createElement('b'); name.textContent = versionName(release);
     // The version alone heads the notes; the buttons and the version-in-use line below say the rest.
@@ -438,6 +448,7 @@ function fillSheet(body, cn) {
 
 function showReleaseNotes(cn) {
     const t = (en, zh) => cn ? zh : en;
+    loadStyles();
     const dialog = document.createElement('dialog'); dialog.className = 'fv-release-notes fv-release-rich';
     dialog.setAttribute('aria-label', t('Version & updates', '版本与更新'));
     const top = document.createElement('div'); top.className = 'fv-release-top';

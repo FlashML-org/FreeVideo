@@ -124,3 +124,4 @@ dialog.fv-set .st-notes .fv-release-text{min-width:0;text-wrap:pretty}
   dialog.fv-set .st-notes ul.fv-release-list li{display:block}
   dialog.fv-set .st-notes .fv-release-tag{display:inline-block;max-width:none;margin:0 var(--fv-sp-8,8px) var(--fv-sp-2,2px) 0;vertical-align:1px}
 }
+.fv-release-empty-actions{display:flex;flex-wrap:wrap;align-items:center;gap:var(--fv-sp-8,8px);margin-top:var(--fv-sp-8,8px)}
