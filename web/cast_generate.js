@@ -192,13 +192,16 @@ export function createCastGenerator({client, kind = 'character', views = null, f
     const setPicture = (index, patch) => emit({pictures: state.pictures.map((row, i) => i === index ? {...row, ...patch} : row)});
     const cancelJob = id => Promise.resolve().then(() => client.cancel(id)).catch(() => {});
     const done = () => state.pictures.every(row => row.file);
+    // The set starts again: what was made goes, the pictures the user put in stay (own rows).
+    const kept = () => state.pictures.map(row => row.own ? row : {view: row.view, file: '', fraction: 0});
 
     // over: the dress pass of a close-up ({file: the close-up, mask: the uploaded mask, again: the second try}).
     async function runOne(index, alive, over = null) {
-        const view = plan[index], front = state.pictures[0].original ? state.photo : state.pictures[0].file;
+        const view = plan[index], front = state.pictures[0].original && !state.pictures[0].own ? state.photo : state.pictures[0].file;
         const dress = view.outfit && state.outfit ? [state.outfit] : [];
         // From a photo: each view names the pictures it sees (the photo, the face close-up, the front, the clothes).
-        const picked = name => { const at = names.indexOf(name), row = at >= 0 ? state.pictures[at] : null; return row?.original ? state.photo : row?.file || ''; };
+        // A picture the user put in is an upload of its own (row.file), not the photo.
+        const picked = name => { const at = names.indexOf(name), row = at >= 0 ? state.pictures[at] : null; return row?.original && !row.own ? state.photo : row?.file || ''; };
         // The face close-up sees the face cut out of the photo where the page made one (a small face), else the photo.
         const roles = {photo: () => (view.view === 'face' && closeUp) || state.photo, face: () => overrides.face || picked('face'), front: () => overrides.front || picked('front'), outfit: () => state.outfit};
         const images = over ? [over.file, ...(view.dress.outfit && state.outfit ? [state.outfit] : [])]
@@ -326,7 +329,7 @@ export function createCastGenerator({client, kind = 'character', views = null, f
         closeUp = photo ? face : '';
         // Another source, picture or clothes: the set starts again and the pictures made before go.
         const asked = source ? JSON.stringify([source, photo, wear, outfitImage]) : '';
-        if (source && asked !== inputs) { inputs = asked; plan = null; dropClothes(); given = outfitImage; emit({photo, outfit: outfitImage}); outfit = wear; for (const row of state.pictures) if (row.file && !row.original) onDiscard(row.file); emit({pictures: fresh(), description: ''}); }
+        if (source && asked !== inputs) { inputs = asked; plan = null; dropClothes(); given = outfitImage; emit({photo, outfit: outfitImage}); outfit = wear; for (const row of state.pictures) if (row.file && !row.original) onDiscard(row.file); emit({pictures: kept(), description: ''}); }
         // After a failure the same description goes on from the picture that failed.
         const resume = !!state.error && description === state.description && plan && !done()
             && JSON.stringify(selectedLoras) === JSON.stringify(loras);
@@ -338,7 +341,7 @@ export function createCastGenerator({client, kind = 'character', views = null, f
             for (const row of state.pictures) if (row.file && !row.original) onDiscard(row.file);
         }
         emit({running: true, error: '', report_id: null, waiting: '', description,
-            ...(resume ? {} : {pictures: fresh(), current: 0})});
+            ...(resume ? {} : {pictures: kept(), current: 0})});
         try {
             if (!plan) {
                 plan = await client.castViews(description, kind);
@@ -389,18 +392,18 @@ export function createCastGenerator({client, kind = 'character', views = null, f
         const id = job; job = null;
         ++epoch; unschedule(timer); timer = null; plan = null; clothes = null;
         // A stopped run is dropped whole: the next Generate starts again from the description.
-        emit({running: false, current: -1, waiting: '', error: '', report_id: null, pictures: fresh()});
+        emit({running: false, current: -1, waiting: '', error: '', report_id: null, pictures: kept()});
         return id ? cancelJob(id) : Promise.resolve();
     }
     // The description changed: pictures made from the old one no longer belong to it.
     function reset() {
         if (state.running || !(state.pictures.some(row => row.file) || state.error)) return;
         plan = null;
-        emit({pictures: fresh(), error: '', report_id: null, current: -1});
+        emit({pictures: kept(), error: '', report_id: null, current: -1});
     }
     // One view again with a new seed; the other views stay. The replaced picture is discarded when the new one is in.
     async function redo(index) {
-        if (state.running || disposed || !plan || !state.pictures[index]) return;
+        if (state.running || disposed || !plan || !state.pictures[index] || state.pictures[index].own) return;
         const current = ++epoch, alive = () => current === epoch && !disposed;
         const before = state.pictures[index];
         seeds[index] = randomSeed();
@@ -422,14 +425,23 @@ export function createCastGenerator({client, kind = 'character', views = null, f
             emit({running: false, current: -1, waiting: '', ...failureOf(error)});
         }
     }
+    // A picture the user put in for one view (file: its upload name, or a stand-in until it is uploaded; '' takes it out).
+    // Generate then makes only the views that are still empty. A made picture it replaces is discarded.
+    function setOwn(index, file) {
+        const before = state.pictures[index];
+        if (state.running || disposed || !before) return;
+        if (file) setPicture(index, {file, fraction: 1, original: true, own: true});
+        else if (before.own) setPicture(index, {file: '', fraction: 0, original: false, own: false});
+        if (file && before.file && !before.original) onDiscard(before.file);
+    }
     // The photo itself as the front (it was uploaded for the reference); the generated front is discarded.
     function useOriginal(file) {
         if (state.running || disposed) return;
         const before = state.pictures[0];
-        setPicture(0, {file, fraction: 1, original: true});
+        setPicture(0, {file, fraction: 1, original: true, own: false});
         if (before.file && !before.original) onDiscard(before.file);
     }
-    return {start, stop, reset, redo, useOriginal, state: () => state, done,
+    return {start, stop, reset, redo, useOriginal, setOwn, state: () => state, done,
         setOverride(role, name) { if (name) overrides[role] = name; else delete overrides[role]; },
         dispose() { disposed = true; return stop(); }};
 }

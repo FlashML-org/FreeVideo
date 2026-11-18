@@ -103,3 +103,8 @@
 @container (max-width:520px){
   .fv-cp .fv-cg-view>.fv-cp-edited{width:8px;height:8px;padding:0;overflow:hidden;border-radius:50%;background:var(--fv-accent-fill,#1a7fe5);color:transparent;line-height:8px}
 }
+
+/* "Upload images": a view can be a picture of the user's own. An empty cell takes a click or a drop; a picture of the user's own has the accent border; with all four in, Generate is not shown. */
+.fv-cp[data-mode=image] .fv-cg-view[data-state=empty]{cursor:pointer}
+.fv-cp .fv-cg-view[data-own=true]{border-color:var(--fv-accent-line,#6db8fa)}
+.fv-cp-action.fv-cp-none{display:none}
