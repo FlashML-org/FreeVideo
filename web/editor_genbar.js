@@ -522,8 +522,6 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
     };
     // A large first download (the dubbing model) is asked about in the tray before it starts (E26).
     const askDownload = el('div', 'fv-ed-gen-ask'); askDownload.hidden = true; askDownload.setAttribute('role', 'alertdialog'); tray.append(askDownload);
-    // Where the empty-prompt question appears: in the tray, next to the other questions the bar asks.
-    const emptyAnchor = el('span', 'fv-ed-gen-anchor'); emptyAnchor.hidden = true; tray.append(emptyAnchor);
     function confirmDownload(bytes) {
         const words = el('span', 'fv-ed-gen-ask-text', t(`The first line downloads the dubbing model (${size(bytes)}) before it is made.`, `第一次配音要先下载配音模型（${size(bytes)}），下载完再生成。`));
         const go = el('button', 'fv-primary', t('Download and generate', '下载并生成')), no = el('button', null, t('Not now', '先不下载'));
@@ -534,6 +532,26 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         no.onclick = () => { askDownload.hidden = true; generate.focus(); };
         askDownload.replaceChildren(words, no, go); askDownload.hidden = false; go.focus();
     }
+    // The empty-description question stands on the bar right over Generate, at every width, in the box's own word.
+    // It goes last in the bar, so Generate keeps its split half (the pass options) as its next sibling.
+    let emptyWatch = null;
+    const askEmpty = () => {
+        emptyWatch?.disconnect();
+        const watch = new ResizeObserver(() => place());
+        const box = showEmptyPrompt({t, anchor: host.lastElementChild, field: input, onContinue: () => press(true),
+            text: t('The description is empty.', '描述为空。'), onGone: () => watch.disconnect()});
+        // The press is still settling (Generate's label, Cancel), so it follows the keys until it is gone.
+        const place = () => {
+            if (!box.isConnected) { watch.disconnect(); return; }
+            const bar = host.getBoundingClientRect(), key = generate.getBoundingClientRect(), edge = getComputedStyle(host);
+            const end = passMenu && !passMenu.hidden ? passMenu.getBoundingClientRect().right : key.right;
+            box.style.right = `${Math.round(bar.right - parseFloat(edge.borderRightWidth) - end)}px`;
+            box.style.bottom = `${Math.round(bar.bottom - parseFloat(edge.borderBottomWidth) - key.top) + 8}px`;
+        };
+        for (const node of [host, ...host.children]) if (node !== box) watch.observe(node);
+        emptyWatch = watch;
+        place();
+    };
     const press = async (allowEmpty = false, allowDownload = false) => {
         const key = JSON.stringify(state.selection ?? null);
         if (pressing.has(key)) return;
@@ -550,7 +568,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
             // Never over what the user typed meanwhile, for another part.
             if (result?.text != null && result.text !== input.value && input.value === shown) input.value = result.text;
             if (result?.say) { say(result.say, !!result.queued); reason = result.say; }
-            if (result?.empty) showEmptyPrompt({t, anchor: emptyAnchor, field: input, onContinue: () => press(true)});
+            if (result?.empty) askEmpty();
             if (result?.focus) { pressing.delete(key); render(); input.disabled = false; input.focus(); }
         }
         // A specific reason is said once; the planning limits are already shown above.
@@ -660,7 +678,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
             if (!value && note.contains(retryService)) { retryService.remove(); note.hidden = true; }
             showService();
         }, getText() { expand.commit(); return input.value; }, update(value) { status = value; render(); }, preview(selection) { previewSelection = selection; render(); }, setText(value) { input.value = value || ''; state.setRangeText(input.value); if (bound && input.value !== bound.text) { dirty = true; written = input.value; } render(); },
-        dispose() { disposed = true; ++serial; downloadWatch?.disconnect(); besideWatch?.disconnect(); for (const move of besideMoves.values()) move.cancel(); clearTimeout(noteTimer); clearTimeout(openTimer); stopPass?.(); stopEffort?.(); effortControl?.dispose(); passControl?.dispose(); document.removeEventListener('pointerdown', closePass, true); document.removeEventListener('pointerdown', closeHistoryOutside, true); clearTimeout(refNoticeTimer); duration.dispose(); unsubscribe(); resize?.disconnect(); noteResize?.disconnect(); phone?.removeEventListener?.('change', fitNote); host.closest('.fv-editor')?.style.removeProperty('--fv-ed-note-growth'); expand.dispose(); references?.dispose(); voicePanel?.dispose(); installPanel?.dispose(); voiceRow?.dispose(); assets?.dispose(); Object.values(pickers).forEach(picker => picker.dispose()); }};
+        dispose() { disposed = true; ++serial; downloadWatch?.disconnect(); besideWatch?.disconnect(); for (const move of besideMoves.values()) move.cancel(); clearTimeout(noteTimer); clearTimeout(openTimer); stopPass?.(); stopEffort?.(); effortControl?.dispose(); passControl?.dispose(); document.removeEventListener('pointerdown', closePass, true); document.removeEventListener('pointerdown', closeHistoryOutside, true); clearTimeout(refNoticeTimer); duration.dispose(); unsubscribe(); resize?.disconnect(); noteResize?.disconnect(); emptyWatch?.disconnect(); phone?.removeEventListener?.('change', fitNote); host.closest('.fv-editor')?.style.removeProperty('--fv-ed-note-growth'); expand.dispose(); references?.dispose(); voicePanel?.dispose(); installPanel?.dispose(); voiceRow?.dispose(); assets?.dispose(); Object.values(pickers).forEach(picker => picker.dispose()); }};
 }
 
 // A missing optional module leaves the editor's existing progress in place.

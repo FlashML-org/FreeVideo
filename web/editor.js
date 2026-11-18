@@ -1856,7 +1856,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             if (inspector && notices.parentNode !== projectRow) projectRow.insertBefore(notices, exportBox);
             else if (!inspector && notices.parentNode !== element) element.append(notices);
         };
-        const passive = node => node.classList.contains('fv-request-assets') || node.classList.contains('fv-ed-gen-anchor') || node.classList.contains('fv-ed-ref-notice');
+        const passive = node => node.classList.contains('fv-request-assets') || node.classList.contains('fv-ed-ref-notice');
         const follow = () => {
             if (disposed || element.dataset.trayPlace !== 'inspector' || !adjust.narrow) return;
             const shown = [...tray.children].some(node => !node.hidden && !passive(node));

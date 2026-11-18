@@ -27,7 +27,7 @@ const RULES = [
     ['lib', '.fv-editor', host => shown(host, '.fv-ed-library[data-open=true]')],
     ['open', '.fv-ed-track-heads', host => kid(host, c => c.matches('[data-open=true]'))],
     ['voice', '.fv-editor', host => shown(host, '.fv-ed-genbar[data-voice=true]')],
-    ['tray', '.fv-ed-gen-tray', host => kid(host, c => !c.hidden && !c.matches('.fv-ed-gen-anchor'))],
+    ['tray', '.fv-ed-gen-tray', host => kid(host, c => !c.hidden)],
     ['descdis', '.fv-ed-description-box', host => shown(host, '.fv-ed-description:disabled')],
     ['pass', '.fv-ed-generate', host => !!host.nextElementSibling?.matches('.fv-ed-pass-options:not([hidden])')],
     ['nodev', '.fv-ed-record-side', host => shown(host, '.fv-ed-record-device[hidden]')],

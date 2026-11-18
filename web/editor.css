@@ -351,7 +351,8 @@
 @keyframes fv-ed-tray-in{from{opacity:0;transform:translateY(4px)}}
 @media(prefers-reduced-motion:reduce){.fv-ed-gen-tray>*{animation:none!important}}
 /* The empty-prompt question floats over the press instead of opening a line under it. */
-.fv-ed-genbar .fv-empty-prompt{position:absolute;right:12px;bottom:calc(100% + 48px);z-index:12;margin:0;flex:none;flex-wrap:nowrap;padding:8px 8px 8px 16px;border:1px solid var(--fv-border);border-radius:var(--fv-r-md);background:var(--fv-card);box-shadow:0 12px 32px -12px #000a}
+/* The empty-description question: on the bar, its corner over Generate's (placed by editor_genbar.js). */
+.fv-ed-genbar>.fv-empty-prompt{position:absolute;right:12px;bottom:calc(100% + 8px);z-index:12;margin:0;flex:none;flex-wrap:nowrap;padding:8px 8px 8px 16px;border:1px solid var(--fv-border);border-radius:var(--fv-r-md);background:var(--fv-card);box-shadow:0 12px 32px -12px #000a}
 /* The press: verb over its estimate, one width while the estimate arrives. */
 .fv-editor .fv-ed-genbar .fv-ed-generate{display:inline-grid;grid-auto-rows:auto;place-items:center;align-content:center;gap:0;min-width:104px;height:40px;padding:0 16px;line-height:1.15}
 .fv-ed-generate-verb{font-weight:600;font-size:13px;white-space:nowrap}
@@ -437,9 +438,9 @@
 /* The zoom bar moves here once the timeline has drawn; its place is kept from the first frame so the tool row never shifts. */
 @media(min-width:481px){.fv-ed-toolbar>.fv-ed-zoom{min-width:176px;display:flex;justify-content:flex-end}}
 /* The tray sits over the picture's column, never over the library or the inspector. */
-@media(min-width:1280px){.fv-ed-gen-tray{left:252px;right:252px}.fv-ed-genbar .fv-empty-prompt{right:252px}}
+@media(min-width:1280px){.fv-ed-gen-tray{left:252px;right:252px}}
 @media(min-width:681px) and (max-width:1279px){
- .fv-ed-gen-tray{left:44px;right:44px}.fv-ed-genbar .fv-empty-prompt{right:44px}
+ .fv-ed-gen-tray{left:44px;right:44px}
  /* The floating library and inspector open under the project row, so the name and Export stay in reach. */
  .fv-editor .fv-ed-library,.fv-editor .fv-ed-adjust-host{grid-row:3/5}
 }
@@ -466,10 +467,6 @@
 .fv-ed-adjust-host>.fv-ed-gen-tray>.fv-ed-gen-failure{border-color:color-mix(in srgb,var(--fv-danger) 40%,var(--fv-border));background:color-mix(in srgb,var(--fv-danger) 8%,transparent)}
 .fv-ed-adjust-host>.fv-ed-gen-tray .fv-ed-music-row{flex-wrap:wrap}
 .fv-ed-adjust-host>.fv-ed-gen-tray .fv-ed-voice-extra{padding-left:0}
-.fv-ed-adjust-host>.fv-ed-gen-tray .fv-empty-prompt{position:static;flex-wrap:wrap;padding:8px 12px;margin:0;box-shadow:none}
-.fv-ed-gen-anchor{display:none!important}
-/* The empty-prompt question is created after its anchor, in the tray. */
-.fv-ed-gen-tray>.fv-empty-prompt{position:static;order:2}
 /* The bar's own line: one row, cut with an ellipsis, said whole on hover; it narrows the description only. */
 .fv-ed-genbar>.fv-ed-gen-note{flex:0 1 auto;max-width:40%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--fv-ink)}
 .fv-ed-genbar>.fv-ed-gen-note[data-hx-issue]{white-space:nowrap;overflow:hidden;display:flex;align-items:center;gap:8px}
@@ -562,10 +559,9 @@
 }
 @media(min-width:1280px){
  .fv-studio.fv-editor .fv-ed-library,.fv-studio.fv-editor .fv-ed-adjust-host{grid-row:2/6}
- /* The tray's empty-prompt question sits over the picture's column's right edge, as the bar now does. */
- .fv-ed-gen-tray{left:12px;right:12px}.fv-ed-genbar .fv-empty-prompt{right:12px}
+ .fv-ed-gen-tray{left:12px;right:12px}
 }
-@media(min-width:681px) and (max-width:1279px){.fv-ed-gen-tray{left:12px;right:12px}.fv-ed-genbar .fv-empty-prompt{right:12px}}
+@media(min-width:681px) and (max-width:1279px){.fv-ed-gen-tray{left:12px;right:12px}}
 /* A card's name (the prompt's start) and, under it, when it was made, its length and size. */
 .fv-ed-source-caption{display:grid;gap:0;padding:4px 2px 0;text-align:left;min-width:0}
 .fv-ed-source-title{font-size:12px;line-height:16px;color:var(--fv-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
