@@ -31,7 +31,7 @@ MESSAGE_ZH = {
     'no_memory': '显存不足，最小尺寸也无法生成。请关闭其他占用显卡的程序后重试。',
     'small_memory': '这台 Mac 的内存不足 16 GB，无法生成图片。',
     'busy_video': '视频正在生成，完成后再试。',
-    'busy': '已有一张图在生成，请等它完成。',
+    'busy': '排队的图已满，请等前面的完成后再试。',
     'pack_missing': '请先在启动器里下载“图像生成模型”。',
     'model_unavailable': '这台电脑不支持所选的图片模型。请改用 Qwen-Image 2.1。',
     'model_unreadable': '图像生成模型的文件读不出来。在启动器里修复后再试。',

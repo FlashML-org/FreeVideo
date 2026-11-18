@@ -85,6 +85,8 @@ INFERENCE_TIMEOUT = 600.
 H3_INFERENCE_TIMEOUT = 1800.
 QUEUE_TIMEOUT = 600.
 QUEUE_POLL = .1
+# Pictures that may wait behind the running one; a further request is turned away with 'busy'.
+QUEUE_LIMIT = 8
 INVALID_ERRORS = frozenset(('invalid_request', 'invalid_prompt', 'invalid_dimensions', 'invalid_seed',
                             'invalid_media', 'invalid_points', 'too_many_images')) | LORA_ERRORS
 
@@ -229,7 +231,7 @@ class Service:
         # The last memory_budget reading of each calling thread, for the report.
         self.budget_reading = threading.local()
         self.worker_started = False
-        self.queued = None
+        self.pending = []
         self.habit_root = None
         self.queue_thread = None
         self.queue_wake = threading.Event()
@@ -1014,7 +1016,7 @@ class Service:
                 raise ValueError('closed')
             if self.yielding or self.video_busy():
                 raise ValueError('busy_video')
-            if self.busy() or self.queued is not None:
+            if self.busy() or self.pending:
                 raise ValueError('busy')
             try:
                 root, machine = self.installation()
@@ -1186,13 +1188,13 @@ class Service:
                 raise ValueError('closed')
             if self.segmenting:
                 raise ValueError('busy')
-            if self.queued is not None:
+            if len(self.pending) >= QUEUE_LIMIT:
                 raise ValueError('busy')
             if self.yielding:
                 context.set_machine(self.last_machine)
                 raise FailureError(self.failed('busy_video', context, video_busy=True))
             video = self.video_busy()
-            waiting = (video or self.busy() or self.thread is not None
+            waiting = (video or self.busy() or bool(self.pending) or self.thread is not None
                        and self.thread.is_alive() and self.session_stop.is_set())
             raw = deepcopy(value)
             root, machine, prepared = self.prepare(action, raw, context, waiting=waiting)
@@ -1206,9 +1208,10 @@ class Service:
                 _, names = self.uploads.popitem(last=False)
                 self.remove_uploads(names)
             if waiting:
-                self.queued = dict(key=key, action=action, value=raw, context=context,
-                                   state=dict(phase='queued', queued_behind='video' if video else 'image'),
-                                   video_since=time.monotonic() if video else None)
+                self.pending.append(dict(key=key, action=action, value=raw, context=context,
+                                         state=dict(phase='queued', queued_behind='video' if video else 'image',
+                                                    queue_position=len(self.pending) + 1),
+                                         video_since=time.monotonic() if video else None))
                 if self.queue_thread is None or not self.queue_thread.is_alive():
                     self.queue_thread = threading.Thread(target=self.wait_queued,
                                                         name='freevideo-image-queue', daemon=True)
@@ -1301,7 +1304,7 @@ class Service:
         with self.mutex:
             if self.closed:
                 return skipped('closed')
-            if self.segmenting or self._busy or self.queued is not None:
+            if self.segmenting or self._busy or bool(self.pending):
                 return skipped('busy')
             if self.thread is not None and self.thread.is_alive() and self.session_stop.is_set():
                 return skipped('busy')
@@ -1477,20 +1480,24 @@ class Service:
         else:
             self.requests.put(value)
 
-    def discard_queued(self, state):
-        self.drop_uploads(self.queued['key'])
-        self.remember(self.queued['key'], state)
-        self.queued = None
+    def discard_queued(self, state, pending=None):
+        """Drop one waiting request (the first unless named) and move the ones behind it up."""
+        pending = pending or self.pending[0]
+        self.drop_uploads(pending['key'])
+        self.remember(pending['key'], state)
+        self.pending.remove(pending)
+        for place, other in enumerate(self.pending, 1):
+            other['state']['queue_position'] = place
         self.queue_wake.set()
 
     def wait_queued(self):
         while True:
             with self.mutex:
-                pending = self.queued
-                if pending is None:
+                if not self.pending:
                     # Clearing under the lock lets a new admission start a reader.
                     self.queue_thread = None
                     return
+                pending = self.pending[0]
                 if self.closed:
                     self.discard_queued(dict(phase='cancelled'))
                     continue
@@ -1499,7 +1506,9 @@ class Service:
                 except Exception as error:
                     self.discard_queued(self.failed(classify_exception(error), pending['context'], error=error))
                     continue
-                pending['state']['queued_behind'] = 'video' if video else 'image'
+                for place, other in enumerate(self.pending, 1):
+                    other['state']['queued_behind'] = 'video' if video else 'image'
+                    other['state']['queue_position'] = place
                 if video:
                     if pending['video_since'] is None:
                         pending['video_since'] = time.monotonic()
@@ -1526,7 +1535,9 @@ class Service:
                                     else classify_exception(error))
                             self.discard_queued(self.failed(code, pending['context'], error=error))
                         else:
-                            self.queued = None
+                            self.pending.remove(pending)
+                            for place, other in enumerate(self.pending, 1):
+                                other['state']['queue_position'] = place
                             self.begin(pending['key'], root, machine, value, pending['context'])
                         continue
                 self.queue_wake.clear()
@@ -1777,8 +1788,9 @@ class Service:
                     if row.get('phase') in ('complete', 'failed', 'cancelled'):
                         self.drop_uploads(self.key)
                     return row
-                if self.queued is not None and matches(self.queued['key']):
-                    return deepcopy(self.queued['state'])
+                for waiting in self.pending:
+                    if matches(waiting['key']):
+                        return deepcopy(waiting['state'])
                 for candidate, state in self.finished.items():
                     if matches(candidate):
                         self.drop_uploads(candidate)
@@ -1817,7 +1829,8 @@ class Service:
         with self.mutex:
             row = self.status(key)
             if row['phase'] == 'queued':
-                self.discard_queued(dict(phase='cancelled'))
+                mine = next(w for w in self.pending if secrets.compare_digest(key.encode('utf-8'), w['key'].encode('utf-8')))
+                self.discard_queued(dict(phase='cancelled'), mine)
                 return dict(phase='cancelled')
             if key != self.key or not self.busy():
                 return row
@@ -1846,10 +1859,10 @@ class Service:
             self.segment_stop.set()
             self.stop.set()
             self.session_stop.set()
-            if self.queued is not None:
-                self.queued['state']['queued_behind'] = 'video'
-                if self.queued['video_since'] is None:
-                    self.queued['video_since'] = time.monotonic()
+            for waiting in self.pending:
+                waiting['state']['queued_behind'] = 'video'
+                if waiting['video_since'] is None:
+                    waiting['video_since'] = time.monotonic()
             thread = self.thread
         try:
             self.close_segment_worker()
@@ -1867,7 +1880,7 @@ class Service:
         between jobs (no picture, no placement, no model load asked for or under way), so it holds no lease. Called
         under the mutex."""
         return (self.per_request and server_mode.coresident() and not self._busy and not self.placing
-                and not self.segmenting and self.segment_worker is None and self.queued is None
+                and not self.segmenting and self.segment_worker is None and not self.pending
                 and self.thread is not None and self.thread.is_alive() and not self.session_stop.is_set()
                 and self.worker is not None and self.requests.empty()
                 and not self.loading_full)
@@ -1912,7 +1925,7 @@ class Service:
     def close(self):
         with self.mutex:
             self.closed = True
-            if self.queued is not None:
+            while self.pending:
                 self.discard_queued(dict(phase='cancelled'))
             queue_thread = self.queue_thread
         self.stop_for_generation()
