@@ -1661,6 +1661,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const tall = window.matchMedia?.('(orientation: portrait) and (min-width: 761px)');
     const TALL_EDGE = 48, TALL_RAIL = 122, GRID_MIN = 320;
     let recentCount = () => 0;
+    let consoleSnap = {shape: '', held: false};
     const tallChange = () => fitPreview();
     tall?.addEventListener?.('change', tallChange); cleanup.push(() => tall?.removeEventListener?.('change', tallChange));
     function fitTall(gap) {
@@ -1724,7 +1725,13 @@ export function openStudio(node, {extendFrom = null} = {}) {
             const dock = getComputedStyle(controls), edge = parseFloat(dock.getPropertyValue('--fvs-edge')) || 16;
             const room = body.clientWidth - 2 * edge, preset = dock.getPropertyValue('--fvs-dock-w').trim();
             const natural = Math.min(preset.endsWith('px') ? parseFloat(preset) : room, room);
-            const same = Math.abs(fittedWidth - natural) < 48 && fittedWidth <= room;
+            // The console takes the picture's width when a window or picture shape is first fitted, and lets go for good
+            // (until that shape changes) once they are 48 px apart: the console's own height moves the picture (the room
+            // left under it), so a row of chips right at a wrap would otherwise flip it between the two widths every frame.
+            const shape = `${body.clientWidth}x${body.clientHeight}:${previewRatio}`;
+            if (consoleSnap.shape !== shape) consoleSnap = {shape, held: true};
+            consoleSnap.held &&= Math.abs(fittedWidth - natural) < 48 && fittedWidth <= room;
+            const same = consoleSnap.held;
             if (same) controls.style.setProperty('--fvs-console-w', `${Math.round(fittedWidth)}px`); else controls.style.removeProperty('--fvs-console-w');
         } else controls.style.removeProperty('--fvs-console-w');
         stage.dataset.short = String(fittedHeight < 150);
