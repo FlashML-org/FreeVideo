@@ -173,6 +173,12 @@
 /* Selection, ranges, gaps, guides. */
 .fv-studio.fv-editor .fv-ed-selection{border-color:var(--fv-accent);border-radius:var(--fv-r-sm)}
 .fv-studio.fv-editor :is(.fv-ed-selection.fv-ed-range,.fv-ed-selection.fv-ed-planned-selection,.fv-ed-gesture-preview,.fv-ed-selection.fv-ed-gap){border:1.5px dashed var(--fv-accent);background:var(--fv-accent-soft);border-radius:var(--fv-r-sm)}
+/* A move or range that cannot go there keeps its dashed shape in red (border, fill, handles, label), over the blue
+   range above and the faint placeholder of glass/polish.css. */
+.fv-studio.fv-editor .fv-ed-track-view .fv-ed-selection.fv-ed-range-blocked{border-color:var(--fv-danger);background:color-mix(in srgb,var(--fv-danger) 8%,transparent)}
+.fv-studio.fv-editor .fv-ed-track-view .fv-ed-selection.fv-ed-range-blocked .fv-ed-range-border{border-color:var(--fv-danger)}
+.fv-studio.fv-editor .fv-ed-track-view .fv-ed-selection.fv-ed-range-blocked :is(.fv-ed-trim-handle,.fv-ed-boundary-handle){background:var(--fv-danger)}
+.fv-studio.fv-editor .fv-ed-track-view .fv-ed-selection.fv-ed-range-blocked .fv-ed-planned-label{color:var(--fv-danger)}
 .fv-studio.fv-editor .fv-ed-snap-line{width:1px;background:var(--fv-accent);box-shadow:0 0 0 .5px var(--fv-accent-line)}
 .fv-studio.fv-editor .fv-ed-snap-line::before{content:"";position:absolute;top:-8px;left:-4px;width:9px;height:9px;background:var(--fv-accent);clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%)}
 .fv-studio.fv-editor .fv-ed-insertion-line{background:var(--fv-fg)}
