@@ -97,6 +97,24 @@ def cancel_running_generation(url):
     stopped.set()
 
 
+RUNS_KEPT = 10
+RUN_NAME = re.compile(r'^\d{8}T\d{6}-[0-9a-f]{8}$')
+
+
+def prune_runs(folder, *, keep, limit=RUNS_KEPT):
+    """Keep the newest ``limit`` ComfyUI run folders (their logs can hold file names and prompts); never ``keep``.
+
+    Only folders this launcher named are touched; whatever cannot be removed now stays for the next start."""
+    try:
+        runs = sorted((item for item in Path(folder).iterdir() if RUN_NAME.match(item.name) and item.is_dir()),
+                      key=lambda item: item.name)
+    except OSError:
+        return
+    for old in runs[:max(0, len(runs) - limit)]:
+        if old.name != Path(keep).name:
+            shutil.rmtree(old, ignore_errors=True)
+
+
 class OlderLauncher(ValueError):
     def __init__(self, launcher_label, installed_label):
         self.launcher_label = launcher_label
@@ -1505,6 +1523,7 @@ class Controller:
             raise ValueError('ComfyUI Python is missing. Inspect again to prepare a separate environment.')
         directory = io_path(selected['engine']) / 'launcher' / 'comfy-runs' / (time.strftime('%Y%m%dT%H%M%S') + '-' + secrets.token_hex(4))
         directory.mkdir(parents=True)
+        prune_runs(directory.parent, keep=directory)
         self.server_log = Path(plain(directory / 'comfy.log'))
         save(Path(selected['engine']) / 'launcher/comfy-console.json',
              dict(log=str(self.server_log.relative_to(Path(selected['engine']) / 'launcher'))))
