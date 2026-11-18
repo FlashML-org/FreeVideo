@@ -2290,6 +2290,16 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         kept: false, panel,
         reopen() {
             handle.kept = false;
+            // A blank edit of this tab that nothing was done in follows the creation panel's quality as it is now: a level
+            // chosen there while this view was away applies here too, as one chosen here goes there. An edit with parts,
+            // a saved one, or one with a part queued or generating keeps its own settings. The blank edit stays unsaved.
+            const now = panel.sampling?.(), set = state.record.settings || {};
+            if (now && !state.record.id && state.record.tracks.every(track => !track.clips.length) && !held.length && !jobActive()
+                    && Object.entries(now).some(([key, value]) => set[key] !== value)) {
+                panel.settings = {...panel.settings, ...now};
+                suppressSave = true; try { state.settle(record => model.setSampling(record, now)); } finally { suppressSave = false; }
+                savedContent = content(state.record);
+            }
             resumeCanvasPointer = suspendCanvasPointer(app?.canvas);
             // What the last switch left on the dialog (its fade, the leaving mark) goes, so it shows as it was.
             element.getAnimations?.().forEach(animation => animation.cancel());
