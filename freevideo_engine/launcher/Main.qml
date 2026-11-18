@@ -1867,7 +1867,7 @@ ApplicationWindow {
             }
             FMeter { Layout.fillWidth: true; visible: s.update.status === "downloading"; active: true; fraction: s.update.progress && s.update.progress.total ? s.update.progress.done/s.update.progress.total : -1 }
             FReleaseNotes { objectName: "updateReleaseNotes"; visible: !!availableRelease; Layout.fillWidth: true; room: updateDialog.availableWidth; release: availableRelease; earlier: availableEarlier; zh: s.zh; heading: releaseVersion(availableRelease) }
-            FButton { text: t("Version & release notes", "版本与更新说明"); flat: true; onClicked: releaseNotesOpen = true }
+            FButton { text: t("Version & release notes", "版本与更新说明"); flat: true; Layout.maximumWidth: updateContents.width; onClicked: releaseNotesOpen = true }
             }
             }
             FScrollFade { objectName: "updateDialogFade"; view: updateScroll; barWidth: updateScroll.ScrollBar.vertical.width }
