@@ -284,7 +284,7 @@ export const MATCHES = [
     ['.fv-action-report,.fv-report-download', 'studio.report'], ['.fv-action-delete>summary', 'studio.delete'], ['.fv-action-second-pass', 'studio.secondPass'],
     ['.fv-generation-hint-settings', 'studio.hintSettings'], ['.fv-generation-hint-close', 'studio.hintClose'],
     ['.fv-repair-open', 'common.openSettings'], ['.fv-failure-fold>summary', 'common.details'], ['.fv-failure-copy', 'common.copyDetails'], ['.fv-issue-button', 'common.issue'],
-    ['.fv-cast-add', 'cast.add'], ['.fv-panel>.fv-toolbar>button', 'cast.generate'], ['.fv-panel>.fv-toolbar select', 'cast.purpose'], ['div.fv-panel[tabindex]', 'cast.drop'],
+    ['.fv-cast-add', 'cast.add'], ['.fv-media-generate', 'cast.generate'], ['[data-freevideo=media]>.fv-toolbar select', 'cast.purpose'], ['div.fv-panel[tabindex]', 'cast.drop'],
 
     // Images.
     ['.fv-image-go', 'image.generate'], ['.fv-image-add', 'image.addReference'], ['.fv-image-reference-use', 'image.useReference'],

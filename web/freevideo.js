@@ -213,7 +213,7 @@ function mediaPanel(node, mount = null) {
         rows.push({file, role: mediaKind(file) === "image" ? use : "reference", enabled: true}); update(rows);
     }
     const generateImage = button(text('Generate with AI', 'AI 生成'), text('Generate with AI', 'AI 生成'), () => newImage());
-    generateImage.hidden = !imageGenerationSupported();
+    generateImage.classList.add('fv-media-generate'); generateImage.hidden = !imageGenerationSupported();
     const audioPicker = el('input'); audioPicker.type = 'file'; audioPicker.multiple = true;
     audioPicker.accept = acceptList(["audio"]); audioPicker.hidden = true;
     const addAudio = button(text('Reference audio', '参考音频'),
