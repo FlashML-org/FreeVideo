@@ -361,6 +361,12 @@
 .fv-studio.fv-create .fvs-rail[data-expanded=true] .fv-recent-card>small{display:block;align-self:start;font-size:var(--fv-fs-1);color:var(--fv-fg3)}
 .fv-studio.fv-create .fvs-rail .fv-library-message{margin:var(--fv-sp-8) var(--fv-sp-4);font-size:var(--fv-fs-1);color:var(--fv-fg3);text-align:center}
 .fv-studio.fv-create .fvs-rail:not([data-expanded=true]) .fv-library-message{display:none}
+/* A failed read: a mark the size of a thumbnail, on the thumbnails' own ground and corners; its words are the hover tip.
+   The restart mark (a span) is no control: no hand, no pressed or focus state. */
+.fv-studio.fv-create .fvs-rail .fv-recent-fail{display:flex;align-items:center;justify-content:center;flex:none;box-sizing:border-box;width:100%;height:48px;padding:0;margin:0;border:0;border-radius:var(--fv-rad-ctl);background:var(--fv-ctl-bg);color:var(--fv-warn);font:inherit;cursor:default}
+.fv-studio.fv-create .fvs-rail button.fv-recent-fail:not(:disabled){cursor:pointer}
+.fv-studio.fv-create .fvs-rail button.fv-recent-fail:hover:not(:disabled){background:var(--fv-ctl-hover)}
+.fv-studio.fv-create .fvs-rail button.fv-recent-fail:disabled{opacity:.6}
 
 /* Update bar: floats under the top bar instead of pushing the whole panel down. */
 .fv-studio.fv-create>.fv-update-notice{position:absolute;z-index:8;top:calc(var(--fv-header-h) + var(--fv-sp-8));left:50%;transform:translateX(-50%);max-width:calc(100% - 32px);
