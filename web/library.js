@@ -15,6 +15,8 @@ import { createMetaStore, promptOfRow } from './image_view_history.js';
 import { attach as attachPlayerBar } from './glass/player_bar.js';
 import { hasPictureThumbnail, mediaQueue, pictureThumbnailURL, watchCards } from './work_media.js';
 import { zoomable } from './picture_zoom.js';
+import { createUpscaleOffer, upscale4kOffer } from './upscale_offer.js';
+import { capabilityPoints } from './chain_support.js';
 
 const style = document.createElement('link');
 style.rel = 'stylesheet'; style.href = new URL('./library.css', import.meta.url).href; document.head.append(style);
@@ -388,12 +390,27 @@ function libraryHost() {
 // (a notification, the palette, search, a chat or autopilot job) carries none, so the studio registers its own as the default.
 let defaultUpscale = null;
 export function setDefaultUpscale(run) { defaultUpscale = typeof run === 'function' ? run : null; }
+// ``upscaleWork`` makes a larger copy of a finished video; registered by the studio like the second pass.
+let defaultUpscaleWork = null;
+export function setDefaultUpscaleWork(run) { defaultUpscaleWork = typeof run === 'function' ? run : null; }
+// The longest single request at a size, as the planner admits it now; null when it cannot be told.
+async function admittedFrames(width, height) {
+    for (let tries = 0; tries < 5; tries++) {
+        const response = await api.fetchApi('/freevideo/capabilities?' + new URLSearchParams({width, height}));
+        if (!response.ok) return null;
+        const reply = await response.json();
+        if (reply?.status === 'computing') { await new Promise(done => setTimeout(done, 1000)); continue; }
+        return reply && (!reply.status || reply.status === 'ready') ? capabilityPoints(reply, {width, height}).maxRequestFrames : null;
+    }
+    return null;
+}
 // ``reuse`` is the creation panel's {now, apply}: given, Reuse settings fills that panel from a creation.
 export function openLibrary(t, options = {}) {
     if (parked?.dialog.isConnected !== false && parked && !parked.dialog.open) return parked.reopen(options);
     if (parked?.dialog.open) { parked.reopen(options); return; }
     let {upscale = null, selectedWork = null, extend = null, reuse = null, back: backLabel = null} = options;
     const secondPassRunner = () => upscale || defaultUpscale;
+    const upscaleOffer = createUpscaleOffer(admittedFrames);
     const dialog = el('dialog', null, 'fv-studio fv-library'); opened = dialog;
     let host = libraryHost();
     const hostClosed = () => { if (dialog.open) dialog.close(); };
@@ -1430,6 +1447,17 @@ export function openLibrary(t, options = {}) {
                     use: ['Finish the full-resolution video', '从预览继续生成全分辨率视频'],
                     disabled: secondPassRunner() ? '' : ['Open the create view first, then run the second pass', '请先打开创作页，再继续二采'],
                     run: () => secondPass(one).then(() => say(t('Queued. It appears in "Creations" when done.', '已加入队列，完成后在“作品”里。')), error => say(t('Could not start the second pass: ', '无法继续二采：') + error.message, true))});
+                // One 1.5× step where this computer can generate it (gap-04a), and the 4K size by a small model (gap-04b):
+                // each shown on its own, the same way.
+                for (const [id, larger, options] of [['upscale', defaultUpscaleWork && upscaleOffer.offer(one), {}],
+                                                     ['upscale-4k', defaultUpscaleWork && upscale4kOffer(one), {to: '4k'}]]) {
+                    if (!larger) continue;
+                    const size = `${larger.width} × ${larger.height}`;
+                    items.push({id, icon: 'upscale', label: [`Upscale to ${size}`, `放大到 ${size}`],
+                        use: ['Make a larger copy as a new creation', '生成一个更大的新作品，原作品不变'],
+                        run: () => defaultUpscaleWork(one, options).then(() => say(t('Queued. It appears in "Creations" when done.', '已加入队列，完成后在“作品”里。')),
+                            error => say(t('Could not start upscaling: ', '无法开始放大：') + error.message, true))});
+                }
                 items.push({id: 'reuse', icon: 'reuse', label: ['Reuse settings', '复用设置'],
                     disabled: one.preview ? ['A first-pass preview: finish it first', '这是一采预览，先继续二采'] : '',
                     run: () => reuseSaved(one)});
@@ -2042,6 +2070,8 @@ export function openLibrary(t, options = {}) {
         if (ok && !disposed && round === loadRound) {
             if (selected && works.has(selected)) select(selected, false);
             render();
+            if (!appendPage) upscaleOffer.forget();
+            void upscaleOffer.prepare(works.values());
             if (!appendPage) { gatherIfNeeded(); if (filter.favorites) void gatherFavorites(); }
             if (filter.query) fetchPrompts();
         }

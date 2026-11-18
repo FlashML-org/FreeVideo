@@ -538,6 +538,13 @@ def _run(args):
     from .media_request import read as read_media, task_for, cache_key
     from .original_audio import cli_media, prepare_request
     media = cli_media(args, read_media(getattr(args, 'media', None)))
+    upscale_work = None
+    if getattr(args, 'upscale_from', None):
+        # A finished video upscaled by one step: its own frames are the first pass
+        # and its own sound, cut to its pictures, is used as is (work_upscale).
+        from .work_upscale import media as work_media, source as work_source
+        upscale_work = work_source(args.upscale_from)
+        media = work_media(media, upscale_work)
     original_audio, original_canvas = prepare_request(media, getattr(args, 'width', 1344),
         getattr(args, 'height', 768), continuation=continue_from is not None)
     if continue_from is not None and frames is not None:
@@ -564,6 +571,15 @@ def _run(args):
     from .preview import validate_flags, source as preview_source
     validate_flags(preview, getattr(args, 'refine_from', None), two_pass, requested_steps)
     refine_source = preview_source(args.refine_from) if getattr(args, 'refine_from', None) else None
+    if upscale_work:
+        if preview or getattr(args, 'refine_from', None) or continue_from is not None or not two_pass:
+            raise ValueError('An upscale of a finished video is a request of its own')
+        if upscale_factor(args) != 1.5 or (requested_steps or 8) != 8 or refine_steps != 3:
+            raise ValueError('A finished video is upscaled with --upscale-factor 1.5 and the default steps')
+        if getattr(args, 'step_cache', None) not in (None, 'none'):
+            raise ValueError('An upscale of a finished video samples every step')
+        if original_audio is None or Path(original_audio['path']) != Path(upscale_work['output']):
+            raise ValueError("An upscale keeps the video's own sound")
     if requested_steps is not None:
         validate_steps(requested_steps, refine_steps, two_pass)
         if requested_steps != 8:
@@ -582,7 +598,7 @@ def _run(args):
     # Too small to sample cleanly: render larger, scale the picture down. Decided before anything
     # compares or stores the canvas, so every later check sees the size that is sampled.
     from .two_pass import sampling_canvas
-    canvas, output_size = sampling_canvas(canvas, staged=bool(preview or refine_source), media=media,
+    canvas, output_size = sampling_canvas(canvas, staged=bool(preview or refine_source or upscale_work), media=media,
                                           conditioned=bool(args.conditioning))
     if continue_from is not None:
         validate_route(task=getattr(args, 'task', None) or ('ref2va' if anchored else 't2va'),
@@ -689,7 +705,7 @@ def _run(args):
             # The optional tail must fit this size/step tier too. Re-admit the
             # original duration before encoding anything; never shorten it.
             canvas, output_size = sampling_canvas(dict(canvas, **visible_canvas),
-                staged=bool(preview or refine_source), media=media, conditioned=bool(args.conditioning))
+                staged=bool(preview or refine_source or upscale_work), media=media, conditioned=bool(args.conditioning))
             hardware, resident_credit, profile = automatic_profile(args, canvas, stage='before-encoding', evidence=planning)
             hide_tail, hide_tail_frames = dict(requested=True, used=False, reason='too_long'), 0
             if continuation is not None:
@@ -729,7 +745,7 @@ def _run(args):
         validate_route(task=profile['engine'].get('task', 't2va'), anchor=anchored,
                        original_audio=original_audio is not None)
         planned = continuation_plan(canvas, two_pass, base_steps=base_steps, refine_steps=refine_steps,
-                                    staged=bool(preview or refine_source), scale=upscale_factor(args))
+                                    staged=bool(preview or refine_source or upscale_work), scale=upscale_factor(args))
         if two_pass and not planned['enabled'] and base_steps != 8:
             raise ValueError(planned['reason'] + ' A continuation needs two-pass generation.')
         continuation_first = planned['first']
@@ -1027,10 +1043,16 @@ def _run(args):
             if not condition.is_file():
                 raise FileNotFoundError(condition)
             from .two_pass import plan as plan_sampling, ensure_checkpoint
+            from .refine_schedule import UPSCALE
             sampling_plan = plan_sampling(canvas, two_pass, profile['engine'].get('task', 't2va'),
                                           base_steps=base_steps, refine_steps=refine_steps,
-                                          staged=bool(preview or refine_source), scale=upscale_factor(args))
+                                          staged=bool(preview or refine_source or upscale_work), scale=upscale_factor(args),
+                                          schedule=UPSCALE if upscale_work else None)
             report['sampling_plan'] = sampling_plan
+            if upscale_work:
+                from .work_upscale import check as check_upscale
+                check_upscale(upscale_work, canvas, sampling_plan)
+                report['upscaled_work'] = dict(output=upscale_work['output'])
             if continuation is not None:
                 validate_route(task=profile['engine'].get('task', 't2va'), anchor=anchored,
                                original_audio=original_audio is not None,
@@ -1149,6 +1171,8 @@ def _run(args):
             if original_audio is not None:
                 request['original_audio'] = original_audio
                 report['original_audio'] = original_audio
+            if upscale_work:
+                request['upscale_source'] = upscale_work
             if preview:
                 request['preview'] = True
             if allocator_limit_bytes is not None:

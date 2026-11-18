@@ -319,7 +319,9 @@ export function imageReportBar(card, report_id, t, {productVersion = () => null,
     const anchor = doc.createElement('button'); anchor.type = 'button';
     anchor.className = 'fv-action fv-action-secondary fv-action-report' + (quiet ? ' fv-image-report-quiet' : '');
     anchor.textContent = t(...download); anchor.title = t(...REPORT_LABELS.description);
-    const issue = issueButton(t, () => ({where: ['Image diagnostic report', '生图诊断报告'], message: t(...REPORT_LABELS.unavailable)}));
+    // On a failure card it is drawn as the card's actions; beside a quiet report link it stays as it was.
+    const issue = issueButton(t, () => ({where: ['Image diagnostic report', '生图诊断报告'], message: t(...REPORT_LABELS.unavailable)}),
+        quiet ? {} : {className: 'fv-action'});
     issue.hidden = true;
     anchor.onclick = async () => {
         if (anchor.disabled) return;
@@ -375,7 +377,8 @@ export function renderImageFailure(host, {error, report_id, stage, step, fitted,
     else {
         const facts = [[['Error code', '错误码'], error], [['Stage', '阶段'], stage], [['Step', '步骤'], step], [['Memory', '内存'], memory]].filter(([, v]) => v);
         bar = doc.createElement('div'); bar.className = 'fv-actions';
-        bar.append(issueButton(t, () => ({where: ['Image generation', '图像生成'], message: facts.map(([[en, zh], v]) => `${t(en, zh)}: ${v}`).join('\n')})));
+        // Drawn as the card's other actions (Retry, Download report): their border, focus ring and press.
+        bar.append(issueButton(t, () => ({where: ['Image generation', '图像生成'], message: facts.map(([[en, zh], v]) => `${t(en, zh)}: ${v}`).join('\n')}), {className: 'fv-action'}));
         if (again) bar.prepend(again);
         card.append(bar);
         const details = doc.createElement('details'); details.className = 'fv-image-failure-details';

@@ -483,9 +483,10 @@ function reportText(item) {
         navigation: t('The FreeVideo toolbar could not be added', 'FreeVideo 工具栏没有加载'),
         progress: t('Live progress could not start', '生成进度无法更新'),
         updates: t('Update checks could not start', '更新检查无法启动'),
-        launch: t('The FreeVideo workflow did not open', 'FreeVideo 工作流没有打开')}[item.where] || t('FreeVideo reported an error', 'FreeVideo 报错');
+        launch: t('The FreeVideo workflow did not open', 'FreeVideo 工作流没有打开'),
+        menu: t('FreeVideo could not be opened from the menu', '从菜单打开 FreeVideo 失败')}[item.where] || t('FreeVideo reported an error', 'FreeVideo 报错');
     // The script's own words go to the technical details and the report, not into the sentence the card shows.
-    return {text: where, detail: describe(item.error), error: item.error, advice: item.where === 'launch' ? 'relaunch' : 'reload'};
+    return {text: where, detail: describe(item.error), error: item.error, advice: item.where === 'launch' ? 'relaunch' : 'reload', asked: item.where === 'menu'};
 }
 
 function extensionProblem(problem) {
@@ -612,10 +613,10 @@ window.addEventListener('keydown', event => {
     if (event.key !== 'Escape' || !card?.isConnected) return;
     event.preventDefault(); event.stopImmediatePropagation(); dismiss();
 }, true);
-function show(problems) {
+function show(problems, asked = false) {
     opening?.finish(); opening = null;
     lastProblems = problems;
-    if (dismissed(problems)) { card?.remove(); card = null; return; }
+    if (!asked && dismissed(problems)) { card?.remove(); card = null; return; }
     addQuoteFaces();
     card?.remove();
     card = document.createElement('section');
@@ -629,7 +630,9 @@ function show(problems) {
     const extension = problems.map(extensionProblem).find(Boolean);
     const extensionAdvice = extension && extensionUI.browserExtensionAdvice(extension, t,
         {blocked: problems.some(p => p.advice === 'blocked')});
-    title.textContent = extensionAdvice?.title || t('FreeVideo did not load completely', 'FreeVideo 没有完整加载');
+    // Only what the user just asked for failed (opening from the menu): the page itself loaded.
+    title.textContent = extensionAdvice?.title || (problems.every(p => p.asked) ? t('FreeVideo ran into a problem', 'FreeVideo 出错了')
+        : t('FreeVideo did not load completely', 'FreeVideo 没有完整加载'));
     Object.assign(title.style, {color: '#f09aa2', fontWeight: '600', fontSize: '16px', marginBottom: '8px'});
     const list = document.createElement('ul');
     Object.assign(list.style, {margin: '0 0 10px', paddingLeft: '18px'});
@@ -803,8 +806,10 @@ async function check() {
     // Later failures, such as the workspace failing to open from a node.
     listener = item => {
         if (item.type !== 'error') return;
-        const problems = distinct([...lastProblems, reportText(item)]);
-        show(problems); send('error', problems);
+        // Opening from the menu is a click the user just made: its failure leads the card and shows even after an earlier card was closed.
+        const asked = item.where === 'menu', fresh = reportText(item);
+        const problems = distinct(asked ? [fresh, ...lastProblems] : [...lastProblems, fresh]);
+        show(problems, asked); send('error', problems);
     };
     if (document.hidden && problems.length) {
         // File and extension diagnostics still run at startup. Only their

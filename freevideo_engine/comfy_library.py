@@ -952,6 +952,14 @@ def _kept_facts(root):
                     prompts.add(name('prompt', text))
         except (OSError, ValueError, AttributeError):
             continue
+    # A picture that still has the same prompt keeps it in the history too.
+    try:
+        import folder_paths
+        records = json.loads((Path(folder_paths.get_input_directory()) / 'freevideo-image' / 'image-records.json').read_text(encoding='utf-8'))
+        prompts.update(row['prompt_hash'] for row in records.values()
+                       if isinstance(row, dict) and isinstance(row.get('prompt_hash'), str))
+    except Exception:
+        pass
     return receipts, prompts
 
 

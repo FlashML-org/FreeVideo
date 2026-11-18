@@ -15,6 +15,8 @@ TOLERATED = {
     'force_regenerate': ('bool', False, None),
     'preview': ('bool', False, None),
     'refine_from': ('text', '', None),
+    'upscale_from': ('text', '', None),
+    'upscale_to': ('text', '', None),
     'continue_from': ('text', '', None),
     'first_frame_reference': ('bool', False, None),
     'voice_reference': ('bool', False, None),

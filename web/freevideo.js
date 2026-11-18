@@ -11,6 +11,7 @@ import { openStudio, loraPanel, loraWarning } from "./studio.js";
 import { createGenerationProgress, referenceTrimText, thermalText, sharedGpuText, keepSoundText, encoderFileText, encoderFilePath } from './generation_progress.js';
 import { createProgressConnection } from './progress_connection.js';
 import { notifyCompatibility } from './compatibility.js';
+import { clearWorkflowDrafts, workflowPersist } from './workflow_drafts.js';
 import { startUpdateChecks, productVersion } from './updates.js';
 import { startWhatsNew } from './whatsnew.js';
 import { startWhiteboxWorker } from './whitebox_worker.js';
@@ -31,7 +32,7 @@ import { shareButton } from './share.js';
 import { reportFileName } from './report_issue.js';
 import { rememberPromptDraft, savePromptDraft, trackPromptDraft, watchPromptHistory, promptHistoryRestoring } from './prompt_draft.js';
 import { cleanOptionalWidgets, cleanOptionalPrompt, optionalInputValue, cleanAudioUse } from './optional_inputs.js';
-import { regenerateResult, createSecondPassQueue, enableNode } from './studio_queue.js';
+import { regenerateResult, createSecondPassQueue, enableNode, upscaleWork } from './studio_queue.js';
 import { secondPassAction } from './result_actions.js';
 import { openImageEditor, icon } from './image_editor.js';
 import { imageGenerationSupported } from './image_generation.js';
@@ -60,7 +61,6 @@ style.textContent = `
 .fv-panel[data-freevideo=result]{display:flex;flex-direction:column;justify-content:center}.fv-panel[data-freevideo=result][data-hx-ppr]{justify-content:flex-start}.fv-panel .fv-connected-card{text-align:center;padding:28px 12px;border:1px solid var(--fv-border);border-radius:var(--fv-r-md,12px);color:var(--fv-muted);background:var(--fv-raised)}
 .fv-panel button,.fv-panel select,.fv-panel a{box-sizing:border-box;min-height:var(--fv-h-sm,32px);border:1px solid var(--fv-border);border-radius:var(--fv-r-sm,8px);background:var(--fv-raised);color:var(--fv-ink);padding:5px 10px;font:inherit;font-weight:var(--fv-medium,500);cursor:pointer;text-decoration:none}
 .fv-panel button:hover,.fv-panel a:hover{background:var(--fv-hover)}.fv-panel button:disabled{opacity:.45;cursor:wait}
-.fv-menu-failure{width:min(460px,calc(100vw - 32px));height:auto}.fv-menu-failure::backdrop{background:#0009}
 .fv-panel select{max-width:170px}.fv-panel .fv-toolbar>.fv-select{width:auto}.fv-note[hidden]{display:none}.fv-note{color:var(--fv-muted);font-size:var(--fv-micro,12px);margin:8px 0;white-space:pre-wrap}.fv-error{color:var(--fv-danger)}.fv-panel .fv-depth-only input,.fv-panel .fv-sound input{min-height:0;height:16px}.fv-panel .fv-depth-only{display:flex;align-items:center;gap:6px;margin:0 0 8px;white-space:nowrap;font-size:var(--fv-micro);cursor:pointer}
 .fv-mode{font-size:var(--fv-micro,12px);color:var(--fv-accent)}
 .fv-panel .fv-time{display:flex;align-items:center;gap:8px;margin:8px 0 0}.fv-panel .fv-time input{width:92px;min-height:var(--fv-h-sm,32px);padding:4px 8px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm,8px);background:var(--fv-bg);color:var(--fv-ink);font:inherit;font-size:16px}.fv-panel .fv-time input[aria-invalid=true]{border-color:var(--fv-danger)}.fv-panel .fv-time-error{margin:4px 0 0;color:var(--fv-danger);font-size:var(--fv-micro,12px)}
@@ -826,6 +826,7 @@ function resultPanel(node) {
         fitPanel();
     };
     node.freevideoUpscaleResult = createSecondPassQueue(api, () => node.id, async () => { enableNode(node); return cleanOptionalPrompt(await app.graphToPrompt()); });
+    node.freevideoUpscaleWork = (value, options) => upscaleWork(api, node.id, value, async () => { enableNode(node); return cleanOptionalPrompt(await app.graphToPrompt()); }, options);
     node.freevideoRegenerateResult = async value => {
         if (node.freevideoRegenerating) return;
         node.freevideoRegenerating = true;
@@ -921,24 +922,15 @@ const isFreeVideoNode = id => /^FreeVideo/.test(String(app.graph?.getNodeById(id
 const launchVisit = isLaunchVisit(globalThis.location?.search, globalThis.sessionStorage);
 const inFront = freeVideoInFront(launchVisit);
 
-let menuFailure;
+// A failure here goes to the page check's card, which names the cause, says what to do, and carries the error for the report.
 async function openFromMenu() {
-    menuFailure?.close();
     try {
         const node = (app.graph?._nodes || []).find(isGenerate) || await openFreeVideoWorkflow();
-        if (!node) throw new Error('FreeVideo workflow unavailable');
+        if (!node) throw new Error('The FreeVideo workflow loaded without a FreeVideoGenerate node');
         showStudio(node);
     } catch (error) {
         console.warn('FreeVideo menu:', error);
-        const message = text('Could not complete. Try again.', '没有完成，请重试');
-        const dialog = el('dialog', undefined, 'fv-panel fv-menu-failure'); menuFailure = dialog;
-        dialog.setAttribute('aria-label', 'FreeVideo');
-        const actions = el('div', undefined, 'fv-row');
-        actions.append(issueButton(text, () => ({where: ['Open FreeVideo', '打开 FreeVideo'], message})),
-            button(text('Close', '关闭'), '', () => dialog.close()));
-        dialog.append(el('p', message), actions);
-        dialog.onclose = () => { dialog.remove(); if (menuFailure === dialog) menuFailure = null; };
-        document.body.append(dialog); dialog.showModal();
+        health({type: 'error', where: 'menu', error});
     }
 }
 
@@ -959,7 +951,7 @@ app.registerExtension({
         for (const [where, start] of [['progress', () => progressConnection.start()], ['navigation', () => installNavigation(showStudio, agentInterfaceState(api), {openWorkflow: openFreeVideoWorkflow, recheck: () => agentInterfaceState(api)})],
             ['updates', startUpdateChecks], ['whatsnew', () => startWhatsNew({api, cn, productVersion, inFront})], ['done-notify', () => startDoneNotify({api, text, desktop: desktopNoticeEnabled, isFreeVideoNode,
                 isFreeVideoWorkflow: () => (app.graph?._nodes || []).some(isGenerate)})],
-            ['whitebox', () => startWhiteboxWorker({api})]]) {
+            ['whitebox', () => startWhiteboxWorker({api})], ['workflow-drafts', () => clearWorkflowDrafts({persist: workflowPersist(app)})]]) {
             try { start(); } catch (error) { health({type: 'error', where, error}); }
         }
         window.addEventListener('pagehide', () => savePromptDraft(api, true));

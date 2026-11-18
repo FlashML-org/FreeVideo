@@ -306,6 +306,19 @@ export function openTutorialBook({chapter = TUTORIAL_CHAPTERS[0].id, tab = 'chap
         }
         if (!result.ok && dialog.isConnected) { state.note = text[{view: 'noView', hidden: 'noHidden'}[result.reason] || 'noTarget']; const note = page.querySelector('.fv-book-note'); if (note) { note.textContent = state.note; note.hidden = false; note.scrollIntoView({block: 'nearest'}); } }
     }
+    // A view that has just opened may not have turned its box on yet (the chat does once it has read the conversation);
+    // the caret goes there as soon as it is on, unless the user has put focus somewhere else meanwhile.
+    function focusWhenOn(box) {
+        if (!box.disabled) { box.focus(); return; }
+        const watch = new MutationObserver(() => {
+            if (box.disabled) return;
+            watch.disconnect(); clearTimeout(stop);
+            const at = document.activeElement;
+            if (!at || at === document.body || at.closest('.fv-view-switch')) box.focus();
+        });
+        const stop = setTimeout(() => watch.disconnect(), 5000);
+        watch.observe(box, {attributes: true, attributeFilter: ['disabled']});
+    }
     function drawExamples() {
         const box = el('div', 'fv-book-ex');
         const hero = el('div', 'fv-book-hero'), art = el('div', 'fv-book-art'), img = el('img'); img.alt = ''; img.src = SHOWCASE_ASSET; art.append(img);
@@ -315,7 +328,7 @@ export function openTutorialBook({chapter = TUTORIAL_CHAPTERS[0].id, tab = 'chap
             dialog.close();
             await globalThis.FreeVideoShell?.go?.('autopilot');
             const box = document.querySelector('dialog.fv-autopilot[open] textarea');
-            if (box && !box.value.trim()) { box.value = L(SHOWCASE_TEXT.example); box.dispatchEvent(new Event('input', {bubbles: true})); box.focus(); }
+            if (box && !box.value.trim()) { box.value = L(SHOWCASE_TEXT.example); box.dispatchEvent(new Event('input', {bubbles: true})); focusWhenOn(box); }
         };
         words.append(begin); hero.append(art, words); box.append(hero);
         const grid = el('div', 'fv-book-grid'), ready = new Set(readyCards().map(c => c.id));

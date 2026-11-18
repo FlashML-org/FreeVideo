@@ -21,7 +21,7 @@ import { issueButton } from './issue_button.js';
 import { skinSelect } from './fv_select.js';
 import { createPreviewScene } from './preview_scene.js?v=20261115-still';
 import { animateDetails, closeDialog } from './motion.js';
-import { openLibrary, setDefaultUpscale, videoThumbnailURL } from './library.js';
+import { openLibrary, setDefaultUpscale, setDefaultUpscaleWork, videoThumbnailURL } from './library.js';
 import { createRecentVideos } from './studio_recent.js';
 import { createAgentActivity } from './agent_activity.js';
 import { createStudioQueue, randomSeed, turnNodeOn } from './studio_queue.js';
@@ -63,7 +63,7 @@ import { firstFrameRow } from './first_frame_row.js';
 import { createReplacePerson, swapMissingText } from './replace_person.js';
 import { swapState, swapMissing, effectiveRows, prepareSwapLora, releaseSwapLora, peopleOf } from './replace_state.js';
 import { swapLoraDownload } from './swap_lora.js';
-import { createStudioChain, chainPosition, chainParts, chainSplit, composePartText, readChainResult, sumPartEstimates, singleRunSnapshot } from './studio_chain.js?v=20261113-connection';
+import { createStudioChain, chainPosition, chainParts, chainSplit, composePartText, readChainResult, sumPartEstimates, singleRunSnapshot } from './studio_chain.js?v=20261117-chain-errors';
 import { activeOriginal, checkOriginal, lockMark, blockOriginal, originalBlocked, usesOriginal, referenceRow, partsNeedTwoPassText } from './audio_original.js';
 import { joiningText, waitingText } from './chain_support.js';
 import { createExtendState, extendText, extendSourceProblem, extendSourceState, readExtendRecord, extendSnapshot, mountExtendThumbnail, videoUnavailableText } from './studio_extend.js';
@@ -114,7 +114,7 @@ const el = (tag, label, cls) => { const e = document.createElement(tag); if (lab
 // One line per part of a long video, under the preview. A part that has not started opens in
 // place for editing and saves when it loses focus; the server's reply decides what stays.
 // After the video stops, an ended part can be made again from there on as a new video.
-function createChainPartList(t, save, {onShow = () => {}, onHide = () => {}, redo = async () => {}, resume = async () => {}, playSeam = null} = {}) {
+function createChainPartList(t, save, {onShow = () => {}, onHide = () => {}, redo = async () => {}, resume = async () => {}, onError = () => {}, playSeam = null} = {}) {
     const element = el('div', null, 'fv-chain-parts'); element.hidden = true;
     const rows = new Map(), timers = new Map();
     let editing = null, showing = null;
@@ -157,8 +157,15 @@ function createChainPartList(t, save, {onShow = () => {}, onHide = () => {}, red
         row.starting = true; row.redo.disabled = true; tag(row, t('Starting…', '正在开始…'));
         try { await (row.part.action === 'resume' ? resume() : redo(row.part.id)); }
         catch (error) {
-            if (rows.get(row.part.id) === row) flash(row, error.status === 409 ? t('Another video is generating. Try again when it finishes.', '正在生成别的视频，完成后再试。')
-                : t('Could not start. Try again.', '没能开始，请重试。'), 'error');
+            if (error.status === 409) {
+                if (rows.get(row.part.id) === row) flash(row, t('Another video is generating. Try again when it finishes.', '正在生成别的视频，完成后再试。'), 'error');
+                return;
+            }
+            // The line says the server's own sentence when it gave one; the card carries what failed and a report.
+            const said = (error.said || error.cause?.said);
+            if (rows.get(row.part.id) === row) flash(row, said ? t(said[0], said[1])
+                : t('Could not start. See the details on the picture.', '没能开始，原因见画面上的说明。'), 'error');
+            onError(error);
         } finally { row.starting = false; row.redo.disabled = false; }
     }
     function flash(row, text, kind) {
@@ -1497,6 +1504,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const previewTools = el('div', null, 'fv-preview-tools');
     // Creations opened from a notification, the palette or search finish a first-pass preview through this node too.
     setDefaultUpscale(value => node.freevideoUpscaleResult(value));
+    setDefaultUpscaleWork((value, options) => node.freevideoUpscaleWork(value, options));
     const worksButton = button('', () => {
         stage.querySelector('video')?.pause(); openLibrary(t, {upscale: value => node.freevideoUpscaleResult(value),
             extend: (saved, options) => openExtendEditor(saved, node, {studio: dialog, ...options}),
@@ -1521,6 +1529,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const partList = createChainPartList(t, (block, text) => chainController.setText(block, composePartText(chainController.state, block, text)), {
         redo: block => { failure.clear(); return chainController.redo(block); },
         resume: () => { failure.clear(); return chainController.resume(); },
+        onError: error => showChainActionError(error),
         playSeam: seconds => playAround(seconds)});
     // Set once the queue buttons exist: "Continue generating" stays hidden while a listed part offers the same.
     let syncResume = () => {};
@@ -2260,7 +2269,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const otherUsage = createOtherUsageNotice(runbar, t, api.fetchApi.bind(api));
     cleanup.push(() => otherUsage.dispose());
     runbar.append(requestAssets.element, runrow, addVideoNote, queueActions); controls.append(runbar);
-    const queueError = error => ({
+    // A chain action the server refused with its own sentence says that sentence, not the general "could not continue".
+    const queueError = error => (error?.action && error.said ? t(error.said[0], error.said[1]) : null) || ({
         queue_unavailable: t('Could not read the queue. The loop has stopped; videos already added stay queued.', '暂时读不到队列，循环已停止；已加入的视频还在队列中。'),
         cancel_failed: t('Could not cancel. Try again.', '没有取消成功，请重试。'),
         move_failed: t('Could not move it. Try again.', '没有移动成功，请重试。'),
@@ -2307,11 +2317,20 @@ export function openStudio(node, {extendFrom = null} = {}) {
             if (record && !disposed && !status.textContent) status.textContent = engineExitText(record, t);
         }).catch(() => {});
     }
+    // A part that did not start says so on its own line; what the server said goes in the card, with a report.
+    function showChainActionError(error) {
+        if (disposed) return;
+        lastQueueError = null;
+        const report = failure.show(error?.cause || error, false, {stage: 'queue', node, graph: app.graph});
+        node.freevideoFailureReport = report; node.freevideoFailure = errorText(report);
+    }
     // A part that stopped is one sentence on the status line; what ComfyUI said goes in the card, as a generation failure.
     function showPartError(error) {
         if (disposed) return;
         status.dataset.error = 'true';
-        status.textContent = error.joining ? t('Could not join the parts. See the details on the picture.', '未能接合各段，原因见画面上的说明。')
+        // The server's plain sentence (a full disk, unreadable storage) when it has one; what failed stays in the card.
+        status.textContent = error.said ? (error.joining ? '' : t(`Part ${error.index + 1}: `, `第 ${error.index + 1} 段：`)) + t(error.said[0], error.said[1])
+            : error.joining ? t('Could not join the parts. See the details on the picture.', '未能接合各段，原因见画面上的说明。')
             : t(`Part ${error.index + 1} could not be generated. See the details on the picture.`, `第 ${error.index + 1} 段未能生成，原因见画面上的说明。`);
         if (lastQueueError === error.message) return;
         lastQueueError = error.message;

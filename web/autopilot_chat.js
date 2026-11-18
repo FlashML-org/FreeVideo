@@ -9,7 +9,7 @@ export {emptyChat, chatMerge, chatEntries, canSend} from './chat_data.js';
 import {isolateDialogKeys, listenDialogKey, routeDialogKey} from './dialog_keys.js';
 import {closeDialog} from './motion.js';
 import { estimatedFraction, remainingAbove, remainingShown, createDiagnosticReportControl } from './generation_progress.js';
-import {createErrorReport, failureFold} from './error_panel.js';
+import {createErrorReport, failureAdvice, failureFold} from './error_panel.js';
 import {canDeleteConversation, canRenameConversation, conversationMenu, emptyConversations, hasConversations, mergeConversations, removeConversation, runningElsewhere, selectConversation} from './autopilot_conversations.js';
 import {renderImageFailure} from './image_generation.js';
 import {issueButton} from './issue_button.js';
@@ -89,10 +89,17 @@ function failureReason(value, t) {
 
 // A failed job's one reason line. The engine's classified sentence (both languages) is for people; anything else is
 // program text and goes to the technical details, so the card then says only that the generation did not finish.
-function failureCardReason(value, t) {
+export function failureCardReason(value, t) {
     const error = value.error, zh = error?.error_zh || value.error_zh, en = error?.error_en || value.error_en;
     const said = zh && en && zh !== GENERIC_FAILURE_ZH && en !== 'Did not finish' && zh !== '生成没有完成';
-    return said || error?.code === 'session_full' ? failureReason(value, t) : t('Generation did not finish.', '生成未完成。');
+    if (said || error?.code === 'session_full') return failureReason(value, t);
+    // Unclassified: the creation panel's reading of the original text (memory, a missing file, a component that
+    // did not load...) says the cause and the next step; only what it cannot place stays "did not finish".
+    const raw = [error?.code, error?.message].filter(value => typeof value === 'string' && value).join('\n');
+    const advice = raw ? failureAdvice(raw, t) : null;
+    if (advice && advice.kind !== 'unknown' && advice.title)
+        return [advice.title, advice.summary || advice.action].filter(Boolean).join(t('. ', '。'));
+    return t('Generation did not finish.', '生成未完成。');
 }
 
 export {about};

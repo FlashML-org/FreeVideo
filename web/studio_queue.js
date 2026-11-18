@@ -96,6 +96,22 @@ export async function upscaleResult(api, nodeId, result, currentPrompt) {
     return reply.prompt_id;
 }
 
+// Upscale a finished video by one step into a new creation. The bridge reads the source's own saved
+// description and length; the node's current settings only carry the request through the queue.
+// {to: '4k'} asks for the 4K size, made frame by frame by a small model instead of one 1.5× step.
+export async function upscaleWork(api, nodeId, result, currentPrompt, {to = ''} = {}) {
+    nodeId = String(nodeId);
+    if (!result?.video || result.preview) throw new Error('not_finished');
+    if (to !== '' && to !== '4k') throw new Error('unknown_size');
+    const snapshot = clone(await currentPrompt());
+    if (!snapshot.output?.[nodeId]) throw new Error('missing_node');
+    Object.assign(snapshot.output[nodeId].inputs, {preview: false, refine_from: '', upscale_from: result.video, upscale_to: to, force_regenerate: true});
+    const reply = await api.queuePrompt(0, snapshot);
+    if (!reply?.prompt_id) throw new Error('submit_failed');
+    api.dispatchCustomEvent?.('promptQueued', {number: 0, batchCount: 1});
+    return reply.prompt_id;
+}
+
 // Each preview owns its submission outcome; another preview waits its turn.
 // Only duplicate clicks for the same pending preview share a promise.
 export function createSecondPassQueue(api, nodeId, currentPrompt) {

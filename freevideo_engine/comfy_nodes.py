@@ -4,7 +4,7 @@ from pathlib import Path
 
 from comfy_api.latest import ComfyExtension, InputImpl, io, ui
 
-from . import comfy_bridge, usage_habit, workflow_repairs
+from . import comfy_bridge, job_record, usage_habit, workflow_repairs
 from .comfy_continuation import node_frames, optional_text, part_steps, request_options
 from .default_prompt import DEFAULT_PROMPT
 from .original_audio import audio_use_option
@@ -159,6 +159,12 @@ class FreeVideoGenerate(io.ComfyNode):
                     tooltip='Two-pass only: a smaller factor starts from a larger first pass, for more detail and a longer run.'),
                 io.Boolean.Input('allow_empty_prompt', display_name='Allow empty prompt', default=False,
                     optional=True, advanced=True, tooltip='Generates from an empty prompt instead of asking for one.'),
+                io.String.Input('upscale_from', display_name='Upscale video', default='', optional=True, advanced=True,
+                    socketless=True, tooltip='Set by Upscale in Creations: the finished video to make larger. '
+                                             "The upscale uses the video's own prompt, seed, length and sound."),
+                io.String.Input('upscale_to', display_name='Upscale size', default='', optional=True, advanced=True,
+                    socketless=True, tooltip='Set by Upscale in Creations: empty for one 1.5x step, 4k for the 4K size '
+                                             'made frame by frame by a small upscale model.'),
             ],
             outputs=[io.Video.Output('video'), io.String.Output('report', display_name='Report JSON')],
             hidden=[io.Hidden.unique_id, io.Hidden.prompt, io.Hidden.extra_pnginfo],
@@ -168,12 +174,15 @@ class FreeVideoGenerate(io.ComfyNode):
     @classmethod
     def validate_inputs(cls, text, width, height, seconds, seed, continue_from='', frames=0, two_pass=True,
                         preview=False, refine_from='', base_steps=8, refine_steps=3, step_cache='none',
-                        upscale_factor='2', allow_empty_prompt=False):
+                        upscale_factor='2', allow_empty_prompt=False, upscale_from='', upscale_to=''):
         # ComfyUI marks every input named here when a check fails, so only the checked widgets are
         # listed. Linked pictures, media and conditioning have no value before the run anyway.
         # step_cache and upscale_factor are named so ComfyUI skips their option lists: an older saved
         # workflow puts '' there, and execute uses no cache and the 2x upscale for a value that is not an option.
         refine_from = optional_text(refine_from)
+        if optional_text(upscale_from):
+            # The bridge reads the finished video's own request; the node's widgets do not apply.
+            return True if optional_text(upscale_to) in (None, '', '4k') else 'Upscale size must be empty or 4k'
         try:
             options = request_options(continue_from, node_frames(frames))
             if options.get('continue_from'):
@@ -207,11 +216,12 @@ class FreeVideoGenerate(io.ComfyNode):
         return float('nan')
 
     @classmethod
+    @job_record.video_node
     def execute(cls, text, width, height, seconds, seed, first=None, last=None,
                 references=None, loras=None, conditioning=None, media=None, two_pass=True,
                 force_regenerate=False, base_steps=8, refine_steps=3, preview=False, refine_from='',
                 continue_from='', frames=0, first_frame_reference=False, voice_reference=False, hide_tail=False,
-                step_cache='none', upscale_factor='2', allow_empty_prompt=False):
+                step_cache='none', upscale_factor='2', allow_empty_prompt=False, upscale_from='', upscale_to=''):
         from .comfy_environment import control_process
         from .gpu_pool import pool_enabled
         if control_process() and pool_enabled():
@@ -219,6 +229,15 @@ class FreeVideoGenerate(io.ComfyNode):
         from server import PromptServer
         from .comfy_chain import block_context, block_finished, report_fields
         refine_from, continue_from = optional_text(refine_from), optional_text(continue_from)
+        upscale_from = optional_text(upscale_from)
+        upscale_to = optional_text(upscale_to) if upscale_from else None
+        # The 4K size is made by a small frame-wise model beside whatever else is loaded (frame_upscale).
+        frames_upscale = upscale_to == '4k'
+        if upscale_from:
+            # Upscaling a finished video is its own request: three refinement steps, no preview or continuation.
+            two_pass, preview, base_steps, refine_steps, step_cache = True, False, 8, 3, 'none'
+            refine_from = continue_from = ''
+            frames = 0
         node_id = cls.hidden.unique_id
         chain = block_context(PromptServer.instance, node_id)
         options = request_options(continue_from, node_frames(frames))
@@ -237,7 +256,7 @@ class FreeVideoGenerate(io.ComfyNode):
                 preview = False
                 notes.append('A continued part is made in full, without stopping at the preview.')
         from .two_pass import validate_steps
-        if not refine_from:
+        if not refine_from and not upscale_from:
             validate_steps(base_steps, refine_steps, two_pass)
         from .background_compile import COMPILE
         # Returns once the idle compile released the GPU and the engine lease.
@@ -253,39 +272,41 @@ class FreeVideoGenerate(io.ComfyNode):
         from .encoder_prewarm import IDLE
         from .resident_process import OWNER
         from .prompt_vlm.service import stop_prestart_for_generation
-        stop_prestart_for_generation(PromptServer.instance)
-        try:   # the image option must never keep a video from starting
-            from .image_gen.service import stop_prestart_for_generation as stop_image_for_generation
-            # An idle picture model stays when the planner places this video the same beside it; only a plain
-            # text-to-video request is planned here, anything with media or a continuation stops it as before.
-            plain = not any((first, last, references, loras, conditioning, media, refine_from,
-                             options.get('continue_from'), chain is not None and chain.get('count', 1) > 1))
-            video = dict(width=width, height=height, seconds=seconds, steps=base_steps, two_pass=two_pass,
-                         refine=refine_steps, step_cache=step_cache_option(step_cache).get('step_cache'),
-                         upscale=upscale_option(upscale_factor).get('upscale_factor', 2)) if plain else None
-            stop_image_for_generation(PromptServer.instance, video=video)
-        except Exception as error:
-            logging.warning('[FreeVideo] Could not stop image generation before the video: %s', error)
-        try:   # nor music for a cut, which composes again after the video
-            from .music.service import stop_for_generation as stop_music_for_generation
-            stop_music_for_generation(PromptServer.instance)
-        except Exception as error:
-            logging.warning('[FreeVideo] Could not stop music before the video: %s', error)
-        try:   # the picture worker keeps the card longer only for people who mostly make pictures
-            from .image_gen.keep import note, path
-            note('video', path(comfy_bridge.installation_root()))
-        except Exception as error:
-            logging.warning('[FreeVideo] Could not record the video for the picture worker: %s', error)
-        try:   # nor splitting a clip's sound, which starts again after the video
-            from .stems.service import stop_for_generation as stop_stems_for_generation
-            stop_stems_for_generation(PromptServer.instance)
-        except Exception as error:
-            logging.warning('[FreeVideo] Could not stop sound separation before the video: %s', error)
+        if not frames_upscale:
+            # Pictures, prompt help, music and sound separation keep their models for the 4K upscale.
+            stop_prestart_for_generation(PromptServer.instance)
+            try:   # the image option must never keep a video from starting
+                from .image_gen.service import stop_prestart_for_generation as stop_image_for_generation
+                # An idle picture model stays when the planner places this video the same beside it; only a plain
+                # text-to-video request is planned here, anything with media or a continuation stops it as before.
+                plain = not any((first, last, references, loras, conditioning, media, refine_from, upscale_from,
+                                 options.get('continue_from'), chain is not None and chain.get('count', 1) > 1))
+                video = dict(width=width, height=height, seconds=seconds, steps=base_steps, two_pass=two_pass,
+                             refine=refine_steps, step_cache=step_cache_option(step_cache).get('step_cache'),
+                             upscale=upscale_option(upscale_factor).get('upscale_factor', 2)) if plain else None
+                stop_image_for_generation(PromptServer.instance, video=video)
+            except Exception as error:
+                logging.warning('[FreeVideo] Could not stop image generation before the video: %s', error)
+            try:   # nor music for a cut, which composes again after the video
+                from .music.service import stop_for_generation as stop_music_for_generation
+                stop_music_for_generation(PromptServer.instance)
+            except Exception as error:
+                logging.warning('[FreeVideo] Could not stop music before the video: %s', error)
+            try:   # the picture worker keeps the card longer only for people who mostly make pictures
+                from .image_gen.keep import note, path
+                note('video', path(comfy_bridge.installation_root()))
+            except Exception as error:
+                logging.warning('[FreeVideo] Could not record the video for the picture worker: %s', error)
+            try:   # nor splitting a clip's sound, which starts again after the video
+                from .stems.service import stop_for_generation as stop_stems_for_generation
+                stop_stems_for_generation(PromptServer.instance)
+            except Exception as error:
+                logging.warning('[FreeVideo] Could not stop sound separation before the video: %s', error)
         prewarm = {}
         result_reused = [False]
         result_report = [None]
-        total_steps = base_steps + (refine_steps if two_pass and not preview else 0)
-        if two_pass and not preview and not refine_from:
+        total_steps = 1 if frames_upscale else refine_steps if upscale_from else base_steps + (refine_steps if two_pass and not preview else 0)
+        if two_pass and not preview and not refine_from and not upscale_from:
             # A small canvas runs in one pass even with two-pass on.
             from .geometry import geometry
             from .two_pass import plan, sampling_canvas
@@ -307,7 +328,7 @@ class FreeVideoGenerate(io.ComfyNode):
         if notice:
             logging.warning('[FreeVideo] %s', notice)
             PromptServer.instance.send_progress_text(notice, node_id)
-        if two_pass and not refine_from and not preview:
+        if two_pass and not refine_from and not preview and not upscale_from:
             from .two_pass import one_pass_note
             step_note = one_pass_note(base_steps)
             if step_note:
@@ -360,6 +381,8 @@ class FreeVideoGenerate(io.ComfyNode):
             # The upscaled video is the full request's result: embed that
             # workflow, not one that points at this machine's preview file.
             graph = comfy_bridge.without_upscale(graph, node_id, refine_from)
+        if graph and upscale_from:
+            graph = comfy_bridge.without_work_upscale(graph, node_id, upscale_from)
         output_root = Path(folder_paths.get_output_directory()).resolve()
 
         def kept(exported):
@@ -391,6 +414,8 @@ class FreeVideoGenerate(io.ComfyNode):
                 **({'voice_reference': True} if voice_reference is True and options.get('continue_from') else {}),
                 **({'hide_tail': True} if hide_tail is True else {}),
                 **({'allow_empty_prompt': True} if allow_empty_prompt is True else {}),
+                **({'upscale_from': upscale_from} if upscale_from else {}),
+                **({'upscale_to': '4k'} if frames_upscale else {}),
                 **step_cache_option(step_cache),
                 **upscale_option(upscale_factor),
                 **({'report_extra': {'chain': report_fields(chain)}} if chain is not None else {}))

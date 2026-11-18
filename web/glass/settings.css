@@ -251,6 +251,10 @@ dialog.fv-set .st-bar.is-ind>i{transform:none;width:30%;animation:st-ind 1.3s va
 @media (prefers-reduced-motion:reduce){dialog.fv-set .st-bar.is-ind>i{animation:none;width:100%;opacity:.5}}
 /* copyable path and text */
 dialog.fv-set .st-path{font-family:var(--fv-font-mono);font-size:var(--fv-fs-1);line-height:var(--fv-lh-1);color:var(--fv-fg2);overflow-wrap:anywhere}
+/* a path cut in the middle on one line: its start gives way with an ellipsis, its last folder stays (whole monospace
+   characters, so no gap is left between the ellipsis and the last folder) */
+dialog.fv-set .st-path-cut{display:block;min-width:0;max-width:100%;white-space:nowrap;overflow:hidden;overflow-wrap:normal}
+dialog.fv-set .st-path-cut>.st-path-head{display:inline-block;max-width:calc(100% - 26ch);max-width:round(down,calc(100% - 26ch),1ch);overflow:hidden;text-overflow:ellipsis;vertical-align:top}
 dialog.fv-set .st-pre{margin:0;padding:var(--fv-sp-12);border-radius:var(--fv-rad-ctl);background:var(--fv-ctl-bg);font-family:var(--fv-font-mono);font-size:var(--fv-fs-1);line-height:var(--fv-lh-1);color:var(--fv-fg2);
   white-space:pre-wrap;overflow-wrap:anywhere;max-height:168px;overflow:auto}
 /* folds */

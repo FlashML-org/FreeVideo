@@ -747,6 +747,16 @@ class Service:
         self.works_deleted([name])
         return self.history()
 
+    @staticmethod
+    def video_prompts():
+        """The prompt hashes the library's videos still use: a prompt a video keeps stays in the history."""
+        try:
+            import folder_paths
+            from .. import comfy_library
+            return comfy_library._kept_facts(Path(folder_paths.get_output_directory()) / 'FreeVideo')[1]
+        except Exception:
+            return set()
+
     def works_deleted(self, names):
         """What only a deleted picture had goes with it: its model record, the files and caches it held, and (through
         the hook the server sets) its library card and ComfyUI's record of the request."""
@@ -764,7 +774,7 @@ class Service:
             if gone & set(records):
                 kept = {name: row for name, row in records.items() if name not in gone}
                 save(output / RECORDS_FILE, kept)
-                kept_prompts = {row.get('prompt_hash') for row in kept.values()}
+                kept_prompts = {row.get('prompt_hash') for row in kept.values()} | self.video_prompts()
                 private_store.forget_prompts({row.get('prompt_hash') for name, row in records.items() if name in gone}
                                              - kept_prompts - {None})
         except (OSError, ValueError):
@@ -1499,6 +1509,7 @@ class Service:
         if self.key is not None:
             self.remember(self.key, self.state)
         self.key = key
+        self.started_at = time.time()
         self.stop.clear()
         self.state = dict(phase='starting', stage='start')
         self.preview = None
@@ -1521,6 +1532,9 @@ class Service:
         pending = pending or self.pending[0]
         self.drop_uploads(pending['key'])
         self.remember(pending['key'], state)
+        # Every way a waiting picture ends without running comes here: cancelled, failed, timed out, or closed.
+        from .. import job_record
+        job_record.image(pending['key'], state)
         self.pending.remove(pending)
         for place, other in enumerate(self.pending, 1):
             other['state']['queue_position'] = place
@@ -2294,6 +2308,8 @@ class Service:
                     self.preview = None
                     self._busy = False
                     self.context = None
+                    from .. import job_record
+                    job_record.image(self.key, self.state, started_at=getattr(self, 'started_at', None))
                     # The worker is gone, so nothing reads the job's pictures any more.
                     self.drop_uploads(self.key)
                 elif failure_error is not None:
@@ -2513,6 +2529,8 @@ class Service:
                     self.state = result
                     self.preview = None
                     self._busy = False
+                    from .. import job_record
+                    job_record.image(self.key, result, started_at=getattr(self, 'started_at', None))
                     self.context = None
                     # Remove the job's uploads now, not when the page next asks: a page that was stopped,
                     # closed or reloaded never asks again.

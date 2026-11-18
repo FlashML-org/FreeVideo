@@ -136,6 +136,7 @@ def serve_instance(app, session, bridge, name):
 
 
 def create_ui(session, *, show=True, instance=None):
+    from .launcher_session import log_error
     from .windows_ux import taskbar_identity
     taskbar_identity()
     from PySide6.QtCore import QObject, Property, QTimer, QUrl, Signal, Slot, Qt
@@ -195,6 +196,7 @@ def create_ui(session, *, show=True, instance=None):
                 function(*args, **kwargs)
             except Exception:
                 session.error = traceback.format_exc()
+                log_error(session.error)
             self.refresh()
 
         @Slot()
@@ -228,6 +230,7 @@ def create_ui(session, *, show=True, instance=None):
             except Exception:
                 # A failed status read must remain copyable and not kill the UI.
                 session.error = traceback.format_exc()
+                log_error(session.error)
                 from .offline_errors import alias_failure
                 if alias_failure(session.error):
                     # The card says what to do; the details keep the cause.

@@ -1335,8 +1335,10 @@ export async function openSetup(options) {
         folderStatus.className = savedMissing ? 'st-slot is-caution' : 'st-slot is-ok';
         folderStatus.replaceChildren(savedFolders);
         if (savedMissing) {
-            // The full path is in the box above; show its start and last folder on one line.
-            const first = missing[0], path = el('span', 'st-path fv-copyable', first.length > 44 ? `${first.slice(0, 14)}…${first.slice(-26)}` : first);
+            // The full path is in the box above; show its start and last folder on one line. The start gives way to the room
+            // there is (cut with an ellipsis), the last 26 characters stay; copying takes the whole path.
+            const first = missing[0], cut = Math.max(0, first.length - 26), path = el('span', 'st-path st-path-cut fv-copyable');
+            path.append(el('span', 'st-path-head', first.slice(0, cut)), el('span', 'st-path-tail', first.slice(cut)));
             path.title = first; folderStatus.append(path);
         }
         return result;

@@ -6,14 +6,25 @@ import time
 
 COMMUNITY = 'community-sigma3-v1'
 VIDEO_SIGMAS = (0.9035, 0.6316, 0.3158, 0.)
+# Upscaling a finished video: the community clocks scaled to start at 0.30, so
+# three steps add detail at the larger size while the picture keeps its content.
+UPSCALE = 'upscale-sigma3-v1'
+UPSCALE_SIGMAS = (0.30, 0.2097, 0.1049, 0.)
+SIGMAS = {COMMUNITY: VIDEO_SIGMAS, UPSCALE: UPSCALE_SIGMAS}
 
 
-def schedulers(device):
+def sigmas(schedule):
+    if schedule not in SIGMAS:
+        raise ValueError('Unsupported refinement schedule')
+    return SIGMAS[schedule]
+
+
+def schedulers(device, schedule=COMMUNITY):
     import torch
     from diffusers import MiniMaxH3Scheduler
     # Keep the leading 1.0 used by the verified community workflow. It is
     # initialization only: the three executed calls start at index one.
-    sigma = torch.tensor((1.,) + VIDEO_SIGMAS, device=device, dtype=torch.float32)
+    sigma = torch.tensor((1.,) + sigmas(schedule), device=device, dtype=torch.float32)
     raw = sigma / (12. + (1. - 12.) * sigma)
     audio_sigma = 3. * raw / (1. + 2. * raw)
     video, audio = MiniMaxH3Scheduler(shift=12.), MiniMaxH3Scheduler(shift=3.)
@@ -22,9 +33,9 @@ def schedulers(device):
     return video, audio
 
 
-def timesteps(device, task):
+def timesteps(device, task, schedule=COMMUNITY):
     from .adaln import modality_timesteps
-    video, audio = schedulers(device)
+    video, audio = schedulers(device, schedule)
     return modality_timesteps(video.timesteps[1:], audio.timesteps[1:], task)
 
 
@@ -34,8 +45,7 @@ def modulation(engine, schedule):
     if schedule is None:
         yield None
         return
-    if schedule != COMMUNITY:
-        raise ValueError('Unsupported refinement schedule')
+    sigmas(schedule)
     import torch
     from .adaln import CachedModulation, ScheduleCursor, TableCache
     from .adaln_assets import restore_projections
@@ -49,7 +59,7 @@ def modulation(engine, schedule):
         return
     manifest = json.loads((Path(engine.cache) / 'manifest.json').read_text(encoding='utf-8'))
     task = getattr(engine, 'adaln_task', engine.task)
-    times = timesteps(device, task)
+    times = timesteps(device, task, schedule)
     cursor = ScheduleCursor(times)
     fetch = getattr(engine, 'fetch_tables', True)
     cache = TableCache(engine.cache, manifest['source_id'], 3, task=task,

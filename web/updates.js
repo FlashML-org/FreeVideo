@@ -1,6 +1,7 @@
 import { api } from '../../scripts/api.js';
 import { setLauncherPresent, setOfflineInstall } from './repair_hint.js';
 import { issueButton } from './issue_button.js';
+import { userMessage } from './user_message.js';
 import './glass/library.js';
 import { hasWhatsNew } from './whatsnew_pages.js';
 import { releaseMedia, mediaKind, mediaPath, splitChange } from './release_media.js';
@@ -237,7 +238,8 @@ export function createUpdateNotice(cn) {
     const element = document.createElement('aside'); element.className = 'fv-update-notice fv-update-bar';
     element.hidden = true; element.setAttribute('role', 'status');
     const label = document.createElement('span');
-    let problem;
+    // Read by the issue button when clicked, so the report carries the latest render's reason.
+    let problem, issueText = '';
     const details = document.createElement('button'); details.type = 'button';
     details.textContent = t("What's new", '更新内容');
     let closeNotes = () => {};
@@ -288,7 +290,8 @@ export function createUpdateNotice(cn) {
         // The last model state seen stays while ComfyUI is away.
         const model = launcher?.model || '';
         const busy = updating && (working.has(phase) || !!model || offline);
-        let text = '', actions = false;
+        let text = '', actions = false, reason = '', cause = '', short = '';
+        issueText = '';
         if (failure === 'cancel') {
             text = t(CANCEL_FAILURE.en, CANCEL_FAILURE.zh);
         } else if (busy) {
@@ -307,16 +310,36 @@ export function createUpdateNotice(cn) {
             actions = true;
         } else if (candidate && dismissed !== identity(candidate)) {
             text = t('FreeVideo update available', 'FreeVideo 有新版本') + ' · ' + displayVersion(candidate);
-            if (launcher?.status === 'error' && launcher.error) text += ' · ' + t('last attempt failed', '上次更新未完成');
+            // The launcher's own reason (its copy, in the user's language) follows “last attempt failed”: its first
+            // sentence, the cause, like the other parts without a full stop. The whole reason is the tooltip and goes in
+            // the issue; program text from the launcher leaves only the prefix.
+            if (launcher?.status === 'error' && launcher.error) {
+                const prefix = t('Last attempt failed', '上次更新未完成');
+                reason = userMessage(launcher.error, t, '');
+                const first = (/^.+?(?:[。！？]|[.!?](?=\s|$))/u.exec(reason)?.[0] || reason).replace(/[。！？.!?]+$/u, '');
+                // Lower-case the first word unless it is a name (FreeVideo, GitHub).
+                cause = first && t(first.replace(/^[A-Z][a-z]*\b/, w => w.toLowerCase()), first);
+                text += ' · ' + prefix; short = text;
+                if (cause) text += t(': ', '：') + cause;
+                issueText = short + (reason ? t(': ', '：') + reason : '');
+            }
             actions = true;
         }
         element.hidden = !text;
         element.classList.toggle('fv-update-working', busy);
         label.textContent = text;
+        if (reason) label.title = reason; else label.removeAttribute('title');
+        // A cause that does not fit leaves only the prefix; the tooltip still has it.
+        const fit = () => { if (cause && label.textContent === text && label.scrollWidth > label.clientWidth + 1) label.textContent = short; };
+        if (cause) { fit(); globalThis.requestAnimationFrame?.(fit); }
         const failed = failure === 'cancel' || failure === 'launcher' && !busy && phase !== 'review'
             || actions && launcher?.status === 'error' && !!launcher.error;
         if (failed) {
-            problem ||= issueButton(t, () => ({where: ['Update FreeVideo', '更新 FreeVideo'], message: label.textContent}));
+            problem ||= issueButton(t, () => {
+                const launcher = value?.launcher;
+                return {where: ['Update FreeVideo', '更新 FreeVideo'], message: issueText || label.textContent,
+                    facts: launcher?.error ? {launcher_error: String(launcher.error), launcher_status: launcher.status, launcher_phase: launcher.phase || ''} : null};
+            });
             element.append(problem);
         } else problem?.remove();
         details.hidden = !actions;

@@ -284,6 +284,7 @@ class Front:
                             messages=[[kind, dict(detail, prompt_id=row.task.id)]]),
                 freevideo_dispatch=self.receipt(row))
             self.scheduler.finished(row.task.id, False)
+        self._record(row)
         if kind == 'execution_error':
             # No executor will report this failure, so the page hears it from here.
             node = next((key for key, value in row.prompt.items() if value.get('class_type') == 'FreeVideoGenerate'), None)
@@ -321,6 +322,7 @@ class Front:
                     status=dict(status_str='error', completed=False,
                                 messages=[['execution_interrupted', {'prompt_id': prompt_id}]]),
                     freevideo_dispatch=self.receipt(row))
+                self._background_record(row)
             elif state == 'running':
                 row.state, row.cancelled = 'cancelling', True
                 if row.worker_prompt_id is not None:
@@ -546,6 +548,7 @@ class Front:
         with self.lock:
             row.result, row.state = result, 'finished'
             self.scheduler.finished(row.task.id, status.get('status_str') == 'success')
+        self._record(row)
         self.updated()
 
     def _event_row(self, worker, data):
@@ -606,6 +609,38 @@ class Front:
             self.server.send_sync(kind, data)
         else:
             self.server.send_sync(kind, data, row.task.client_id or None)
+
+    def _record(self, row):
+        """The finished-job record for a creation-panel video run on a worker; a long video's parts are left to
+        their chain, which is recorded once."""
+        try:
+            from .comfy_chain import RUNNER
+            if RUNNER is not None and RUNNER.part_of(row.task.id):
+                return
+            from . import job_record
+            result = row.result or {}
+            status = result.get('status') or {}
+            kinds = [m[0] for m in status.get('messages') or () if isinstance(m, (list, tuple)) and m]
+            video = None
+            for output in (result.get('outputs') or {}).values():
+                summary = ((output or {}).get('freevideo_summary') or [None])[0] if isinstance(output, dict) else None
+                if isinstance(summary, dict) and summary.get('video'):
+                    video = summary['video']
+            if status.get('status_str') == 'success':
+                state, failure = 'done', None
+            elif 'execution_interrupted' in kinds or row.cancelled:
+                state, failure = 'cancelled', None
+            else:
+                state, failure = 'failed', kinds[-1] if kinds and isinstance(kinds[-1], str) else 'execution_error'
+            client = str(getattr(row.task, 'client_id', '') or '')
+            job_record.ended(row.task.id, 'video', state, origin='agent' if client.startswith('agent:') else 'page',
+                             result=job_record.library_id(video) if state == 'done' else None, failure=failure)
+        except Exception:
+            logging.getLogger(__name__).warning('A finished run could not be recorded.', exc_info=True)
+
+    def _background_record(self, row):
+        # Called under the front's lock: the record file is written off it.
+        threading.Thread(target=self._record, args=(row,), daemon=True, name='freevideo-job-record').start()
 
     def _chain_finished(self, row, node, data):
         if row.chain_notified:

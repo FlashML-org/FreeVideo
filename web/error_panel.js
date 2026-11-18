@@ -345,6 +345,43 @@ export function createErrorReport(detail, context = {}) {
     return report;
 }
 
+// Failures of turning a reference video into depth (freevideo_engine/depth_reference.py), most specific first.
+const RETRY_REPORT = ['Try again. If it happens again, choose "Report a problem" to send us the report.', '请重试。再次出现时，请点击“提交问题”，把报告发给我们。'];
+const REFERENCE_FAILURES = [
+    [/Source video (?:frame count )?changed during depth (?:conversion|inspection)/i,
+        'reference-changed', ['The reference video changed', '参考视频在转换时被改动'],
+        ['The reference video file changed while FreeVideo was converting it.', '转换参考视频的过程中，这个文件被改动了。'],
+        ['Try again, and leave the file unchanged until the video is generated.', '请重试，并在生成完成前保持该文件不变。']],
+    [/Depth reference (?:needs a decodable video|video has no valid frame rate|video changes display rotation|video changes dimensions|video has no decodable frames)/i,
+        'reference-unreadable', ['The reference video cannot be read', '无法读取参考视频'],
+        ['FreeVideo could not read this reference video frame by frame.', 'FreeVideo 无法逐帧读取这段参考视频。'],
+        ['Convert it to a standard MP4 with one fixed size, or choose another video, then try again.', '请把它转成尺寸固定的标准 MP4，或换一段视频，然后重试。']],
+    [/Depth reference weights are unavailable|Depth reference weight size\/SHA-256 verification failed/i,
+        'reference-model', ['The depth model could not be downloaded', '深度模型未能下载'],
+        ['Depth only uses a small model, which could not be downloaded or verified.', '“仅参考深度”需要一个小模型，这次未能下载或校验未通过。'],
+        ['Check the network connection or choose another download source in Settings, then try again.', '请检查网络，或在设置里换一个下载源，然后重试。']],
+    [/Not enough free GPU memory for depth reference/i,
+        'reference-vram', ['Not enough GPU memory for depth', '显存不足，无法提取深度'],
+        ['Extracting depth needs free GPU memory, and other programs were using it.', '提取深度需要空闲显存，当时被其他程序占用。'],
+        ['Close other programs that use the GPU, then try again.', '请关闭其他占用显卡的程序，然后重试。']],
+    [/Depth reference needs 1 GiB working RAM|Depth reference stopped to preserve 1 GiB/i,
+        'reference-ram', ['Not enough memory to convert the reference video', '内存不足，参考视频未能转换完成'],
+        ['FreeVideo stopped converting the reference video to keep the computer responsive.', '为保证电脑正常运行，FreeVideo 停止了参考视频的转换。'],
+        ['Close other programs or use a shorter reference video, then try again.', '请关闭其他程序或换一段更短的参考视频，然后重试。']],
+    [/Not enough disk space to stage depth frames/i,
+        'reference-disk', ['Not enough disk space', '磁盘空间不足'],
+        ['Converting the reference video needs temporary space on the drive that holds FreeVideo\'s data.', '转换参考视频需要在 FreeVideo 数据所在的磁盘上临时占用一些空间。'],
+        ['Free some space on that drive, then try again.', '请在该磁盘上腾出一些空间，然后重试。']],
+    [/CUDA is unavailable for depth reference/i,
+        'reference-gpu', ['The GPU is not available for depth', '暂时无法用显卡提取深度'],
+        // Raised when the depth step starts on a computer set up for the GPU, but the graphics driver offers none to it.
+        ['When depth extraction started, the graphics driver did not make the GPU available.', '开始提取深度时，显卡驱动未提供可用的显卡。'],
+        ['Restart FreeVideo and try again. If it happens again, choose "Report a problem" to send us the report.', '请重启 FreeVideo 后重试。再次出现时，请点击“提交问题”，把报告发给我们。']],
+    [/Depth reference worker exited with code|Depth reference cache unexpectedly contains|Depth reference output dimensions|Depth model returned invalid|Depth reference device must be/i,
+        'reference-failed', ['The reference video could not be converted', '参考视频未能转换'],
+        ['Turning the reference video into depth stopped unexpectedly.', '把参考视频转成深度时意外中止。'], RETRY_REPORT],
+];
+
 // Match explicit failure signatures, not a guessed GPU/RAM capacity. Keep the
 // original error separately so an explanation never replaces diagnostic data.
 // known: a report's known_error. Pass null when the report has none, so an
@@ -391,6 +428,11 @@ export function failureAdvice(value, t, known = knownError(value)) {
     for (const {key, title, summary} of PLAIN_ERRORS) {
         if (key === known)
             return {...row(key, title, summary, ['', '']), plain: true};
+    }
+    // A reference video turned into depth (depth_reference.py) failed: the cause in people's words and the
+    // next step, in both languages; the engine's own sentence stays in the details below.
+    for (const [pattern, kind, title, summary, action] of REFERENCE_FAILURES) {
+        if (pattern.test(text)) return row(kind, title, summary, action);
     }
     if (known === 'media-missing')
         return {...row('media-missing', ['A media file is missing', '找不到素材'],
@@ -474,6 +516,23 @@ export function failureAdvice(value, t, known = knownError(value)) {
         return row('encoder-files', ['The text encoder is not fully installed', '文本编码器没有装全'],
             ['Some of the text encoder files FreeVideo needs are missing.', 'FreeVideo 需要的部分文本编码器文件缺失。'],
             repairAction());
+    // Upscaling to 4K (frame_upscale.py): its own small model, disk need and GPU memory.
+    if (/The 4K upscale model (?:could not be downloaded|failed its size\/SHA-256 check)/.test(text))
+        return row('upscale-download', ['The upscale model could not be downloaded', '放大模型未能下载'],
+            ['Upscaling uses a small model (about 5 MB), which could not be downloaded or verified this time.', '放大要用一个约 5 MB 的小模型，这次没能下载，或下载后校验未通过。'],
+            ['Check the network connection or choose another download source in Settings, then try again. If it happens again, choose "Report a problem" to send us the report.',
+             '请检查网络，或在设置里换一个下载源，然后重试。再次出现时，请点击“提交问题”，把报告发给我们。']);
+    if (/Not enough disk space to save the 4K video/.test(text)) {
+        const megabytes = /about (\d+) MB is needed/.exec(text)?.[1];
+        return row('upscale-disk', ['Not enough disk space for the upscaled video', '磁盘空间不足，放大后的视频没能保存'],
+            megabytes ? [`The upscaled video needs about ${megabytes} MB on the drive of the output folder.`, `放大后的视频需要输出文件夹所在磁盘约 ${megabytes} MB 空间。`]
+                : ['The upscaled video needs more space on the drive of the output folder.', '放大后的视频需要输出文件夹所在磁盘更多空间。'],
+            ['Free some space on that drive, then try again.', '请在该磁盘上腾出空间后重试。']);
+    }
+    if (/Not enough GPU memory to upscale to 4K/.test(text))
+        return row('upscale-memory', ['Not enough GPU memory to upscale', '显存不足，放大没能完成'],
+            ['Upscaling needs about 1.5 GB of free GPU memory, and other programs were using it.', '放大需要约 1.5 GB 空闲显存，当时被其他程序占用。'],
+            ['Close other programs that use the GPU, then try again.', '请关闭其他占用显卡的程序，然后重试。']);
     if (/No space left on device|WinError 112|disk (?:is )?full/i.test(text))
         return row('disk', ['Disk space is insufficient', '磁盘空间不足'],
             ['FreeVideo could not write a required file.', 'FreeVideo 无法写入所需文件。'],

@@ -1256,8 +1256,127 @@ def without_upscale(graph, node_id, refine_from):
     return graph
 
 
+def without_work_upscale(graph, node_id, upscale_from):
+    """The embedded workflow of an upscaled video names no file of this machine."""
+    import copy
+    graph = copy.deepcopy(graph)
+    inputs = ((graph.get('prompt') or {}).get(str(node_id)) or {}).get('inputs')
+    if isinstance(inputs, dict) and 'upscale_from' in inputs:
+        inputs['upscale_from'] = ''
+    if isinstance(inputs, dict) and 'upscale_to' in inputs:
+        inputs['upscale_to'] = ''
+    for node in (graph.get('workflow') or {}).get('nodes') or []:
+        values = node.get('widgets_values')
+        if str(node.get('id')) == str(node_id) and isinstance(values, list) and values:
+            # Upscale video and Upscale size are the node's last two widgets (a workflow saved before the size has one).
+            if values[-1] == upscale_from:
+                values[-1] = ''
+            elif len(values) > 1 and values[-2] == upscale_from:
+                values[-2:] = ['', '']
+    return graph
+
+
 def argument(arguments, flag, default=None):
     return arguments[arguments.index(flag) + 1] if flag in arguments else default
+
+
+def upscale_frames(upscale_from, output_directory, *, source=None, environ=None, progress=None, interrupted=None,
+                   release_models=None, comfy_metadata=None):
+    """A finished 24 fps video made a new work at the 4K size by frame_upscale: its own description, seed and length,
+    every frame enlarged by the small model, its sound copied as is. Returns the new video's path."""
+    from .comfy_continuation import optional_text
+    from . import frame_upscale
+    upscale_from = optional_text(upscale_from)
+    video, saved = frame_upscale.work_request(output_directory, upscale_from)
+    width, height = frame_upscale.size(saved['geometry']['width'], saved['geometry']['height'])
+    source = Path(source or source_root()).resolve()
+    root, machine = installation(source, environ)
+    backend = machine.get('device_backend', 'cuda')
+    if backend not in ('cuda', 'mps'):
+        raise ValueError('Upscaling to 4K needs a graphics card')
+    environment = engine_environment(root, source, environ)
+    environment.update(FREEVIDEO_HOME=str(root), PYTHONPATH=str(source), PYTHONUNBUFFERED='1',
+                       PYTHONUTF8='1', PYTHONIOENCODING='utf-8', NO_COLOR='1')
+    for key in ('FREEVIDEO_RUNTIME_LOCK_FD', 'FREEVIDEO_RUNTIME_LOCK_HANDLE'):
+        environment.pop(key, None)
+    run = Path(output_directory).resolve() / 'FreeVideo' / time.strftime('%Y-%m-%d', time.gmtime()) / uuid.uuid4().hex
+    run.mkdir(parents=True, exist_ok=False)
+    output = run / 'video.mp4'
+    saved_prompt = video.parent / 'prompt.txt'
+    (run / 'prompt.txt').write_text(saved_prompt.read_text(encoding='utf-8') if saved_prompt.is_file() else '',
+                                    encoding='utf-8')
+    canvas = dict(saved['geometry'], width=width, height=height)
+    state = {'status': 'starting', 'geometry': canvas, 'seed': saved.get('seed'), 'installation': str(root),
+             'output': str(output), 'source': str(source), 'upscaled_work': str(video), 'upscale': '4k'}
+    try:
+        from server import PromptServer
+        prompt_id = getattr(PromptServer.instance, 'last_prompt_id', None)
+        if isinstance(prompt_id, str) and 0 < len(prompt_id) <= 128:
+            state['comfy_prompt_id'] = prompt_id
+    except (ImportError, AttributeError):
+        pass
+    save(run / 'comfy-request.json', state)
+    from .comfy_progress import REPORTS
+    report_id = REPORTS.register(output)
+    started = time.monotonic()
+    frames = saved['geometry'].get('frames') or 0
+    label = 'Upscaling to %d × %d' % (width, height)
+
+    def send(message):
+        if not progress:
+            return
+        # The download is the first twentieth, the frames the rest; the time left follows the frames done.
+        done, total = message.get('done'), message.get('total')
+        elapsed = time.monotonic() - started
+        fraction, remaining = 0., None
+        if message.get('downloading') and total:
+            fraction = .05 * done / total
+        elif message.get('unit') == 'frames' and total:
+            fraction = .05 + .95 * done / total
+            if done:
+                remaining = elapsed / done * (total - done)
+        progress(dict({key: value for key, value in message.items() if key != 'downloading'}, report_id=report_id,
+                      label=label if message.get('unit') == 'frames' else message.get('label', label),
+                      phase=frame_upscale.STAGE, overall=dict(status='running', estimated=True, fraction=min(fraction, .99),
+                      remaining_seconds=remaining, elapsed_seconds=elapsed)))
+
+    def release():
+        # Only when the small model does not fit beside what other requests keep in the GPU.
+        if release_models:
+            release_models()
+        from .encoder_prewarm import IDLE
+        from .resident_process import OWNER
+        IDLE.stop()
+        OWNER.release(frame_upscale.STAGE)
+    try:
+        send({'label': label, 'done': 0, 'total': frames, 'unit': 'frames'})
+        result = frame_upscale.upscale(video, output, root=root, device=backend, python=machine['python'],
+                                       environ=environment, progress=send, interrupted=interrupted, release_models=release)
+        if comfy_metadata:
+            from .comfy_metadata import embed_comfy_metadata
+            state['workflow_in_video'] = embed_comfy_metadata(output, **comfy_metadata)
+        seconds = time.monotonic() - started
+        canvas = dict(canvas, frames=result['frames'], seconds=result['frames'] / 24)
+        state.update(status='complete', geometry=canvas, request_seconds=seconds, frame_upscale=result)
+        save(output.with_suffix('.request.json'), dict(geometry=canvas, request_seconds=seconds, output_frames=result['frames'],
+             upscaled_work=str(video), frame_upscale=result,
+             video=dict(torch_peak_reserved_bytes=result.get('torch_peak_reserved_bytes'))))
+        if progress:
+            progress({'label': 'Video + audio saved', 'phase': 'complete', 'done': result['frames'], 'total': result['frames'],
+                      'unit': 'frames', 'report_id': report_id,
+                      'overall': dict(status='complete', fraction=1., remaining_seconds=0., elapsed_seconds=seconds)})
+        return output
+    except BaseException as error:
+        cancelled = isinstance(error, KeyboardInterrupt) or type(error).__name__ in ('InterruptProcessingException', 'CancelledError')
+        state.update(status='cancelled' if cancelled else 'failed', error=repr(error))
+        if getattr(error, 'code', None):
+            state['error_code'] = error.code
+        raise
+    finally:
+        state['bridge_seconds'] = time.monotonic() - started
+        save(run / 'comfy-request.json', state)
+        from .support_report import write as write_debug
+        write_debug(output, bridge=state)
 
 
 def engine_environment(root, source, environ=None):
@@ -1274,10 +1393,16 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
              force_regenerate=False, base_steps=8, refine_steps=3, comfy_metadata=None,
              prompt_rewrite_report=None, preview=False, refine_from=None, report_extra=None,
              continue_from=None, frames=None, first_frame_reference=False, voice_reference=False, hide_tail=False,
-             step_cache=None, upscale_factor=2, allow_empty_prompt=False):
+             step_cache=None, upscale_factor=2, allow_empty_prompt=False, upscale_from=None, upscale_to=None):
     from .comfy_environment import control_process
     if control_process(environ):
         raise RuntimeError('Generation requires a dispatched executor')
+    if upscale_to not in (None, '', '4k'):
+        raise ValueError('Upscale size must be 4k')
+    if upscale_to:
+        # The 4K size: a small frame-wise model, not a generation (frame_upscale).
+        return upscale_frames(upscale_from, output_directory, source=source, environ=environ, progress=progress,
+                              interrupted=interrupted, release_models=release_models, comfy_metadata=comfy_metadata)
     from .tiers import STEP_CACHES
     from .two_pass import SCALES
     if upscale_factor not in SCALES:
@@ -1330,6 +1455,25 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
     if preview or upscale:
         # A preview stays the quick half-size first pass, and its upscale continues that same pass.
         upscale_factor = 2
+    upscale_from = optional_text(upscale_from)
+    work = None
+    if isinstance(upscale_from, str) and upscale_from.strip():
+        # A finished video made larger by one step: its own description, seed and length,
+        # its frames as the first pass and its own sound used as is (work_upscale).
+        if upscale or preview or continue_from is not None:
+            raise ValueError('An upscale of a finished video is a request of its own')
+        from .work_upscale import FACTOR, size as upscaled_size, work_request
+        work = work_request(output_directory, upscale_from)
+        saved = work[0].parent / 'prompt.txt'
+        prompt = saved.read_text(encoding='utf-8') if saved.is_file() else ''
+        allow_empty_prompt = allow_empty_prompt or not prompt.strip()
+        width, height = upscaled_size(work[1]['geometry']['width'], work[1]['geometry']['height'])
+        seconds, seed = work[1]['geometry']['seconds'], work[1]['seed']
+        two_pass, upscale_factor, base_steps, refine_steps, step_cache = True, FACTOR, 8, 3, None
+        frames, first_frame_reference, voice_reference, hide_tail = None, False, False, False
+    staged = bool(preview or upscale or work)
+    from .refine_schedule import UPSCALE
+    schedule = UPSCALE if work else None
     from .preview import validate_flags
     validate_flags(preview, upscale, two_pass, base_steps)
     from .two_pass import validate_steps
@@ -1343,7 +1487,7 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
     def check_ending():
         from .continuation_tail import check
         from .two_pass import sampling_canvas
-        check(continue_from, sampling_canvas(canvas, staged=bool(preview or upscale))[0])
+        check(continue_from, sampling_canvas(canvas, staged=staged)[0])
 
     if step_cache == 'fbcache' and machine.get('device_backend') == 'mps':
         # Only the audio-video EasyCache is ported to Mac: the request samples every step,
@@ -1356,7 +1500,7 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
         from .two_pass import sampling_canvas
         # A continuation takes no media, so its sampled size is known here; the snapshot
         # of the previous segment was written for that canvas, not for the requested size.
-        started = sampling_canvas(canvas, staged=bool(preview or upscale))[0]
+        started = sampling_canvas(canvas, staged=staged)[0]
         preview_encoded = False
         if upscale:
             from .preview import continuation_snapshot, source as preview_source
@@ -1451,6 +1595,8 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
         state['preview'] = True
     if upscale:
         state['upscaled_preview'] = str(upscale[0])
+    if work:
+        state['upscaled_work'] = str(work[0])
     from .diagnostic_resources import encoder_prewarm as prewarm_summary
     state['encoder_prewarm'] = prewarm_summary(encoder_prewarm)
     save(run / 'comfy-request.json', state)
@@ -1515,6 +1661,13 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                 extra['media'] = json.loads(Path(argument(arguments, '--media')).read_text(encoding='utf-8'))
             if '--conditioning' in arguments:
                 extra['conditioning'] = argument(arguments, '--conditioning')
+        elif work:
+            # The video's own sound, used as is: it sets the length and is copied into the result.
+            from .work_upscale import media as work_media, source as work_source
+            extra['media'] = work_media(None, work_source(work[0]))
+            save(run / 'media.json', extra['media'])
+            command += ['--media', str(run / 'media.json'), '--upscale-from', str(work[0])]
+            state['command'] = command
         elif export_inputs:
             send_progress({'label': 'Retaining and checking input media', 'timing_phase': 'encoding'})
             extra = export_inputs(run, canvas) or {}
@@ -1577,11 +1730,11 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                                                       hide_tail, preview=bool(preview or upscale))
         hide_tail_frames = hidden['frames'] if hidden and hidden['used'] else 0
         # The engine samples this canvas; results, cache keys and labels keep the requested size.
-        sampled, output_size = sampling_canvas(generated_canvas, staged=bool(preview or upscale), media=extra.get('media'),
+        sampled, output_size = sampling_canvas(generated_canvas, staged=staged, media=extra.get('media'),
                                                conditioned=bool(extra.get('conditioning')))
         planned = plan(sampled, two_pass, 'ref2va' if anchored or pictured else task_for(extra.get('media', {})),
-                       base_steps=base_steps, refine_steps=refine_steps, staged=bool(preview or upscale),
-                       scale=upscale_factor)
+                       base_steps=base_steps, refine_steps=refine_steps, staged=staged,
+                       scale=upscale_factor, schedule=schedule)
         if continue_from is not None:
             from .continuation import ADALN_TASK, ANCHOR_ADALN_TASK, MISSING, validate_snapshot, summary
             validate_route(task='ref2va' if anchored or pictured else task_for(extra.get('media', {})),
@@ -1605,7 +1758,7 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                         # An encoded ending carries no first frame of the film, so nothing anchors this run.
                         anchored = False
                         planned = plan(sampled, two_pass, task_for(extra.get('media', {})),
-                                       base_steps=base_steps, refine_steps=refine_steps, staged=bool(preview or upscale),
+                                       base_steps=base_steps, refine_steps=refine_steps, staged=staged,
                                        scale=upscale_factor)
             if continuation is None:
                 from .continuation import OVERLAP_FRAMES
@@ -1708,15 +1861,15 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
             # estimate. Validate the ordinary plan and don't cache it as a hidden-tail result.
             # After encoding the conditioning is tied to the longer canvas, so a later refusal
             # fails like any other request.
-            sampled, output_size = sampling_canvas(canvas, staged=bool(preview or upscale),
+            sampled, output_size = sampling_canvas(canvas, staged=staged,
                 media=extra.get('media'), conditioned=bool(extra.get('conditioning')))
             hidden, hide_tail_frames = report['hide_tail'], 0
             cache_key = None
         from .two_pass import steps, plan
         completed_steps = steps(report.get('sampling_plan'))
         expected_plan = plan(sampled, two_pass, report.get('profile', {}).get('engine', {}).get('task', 't2va'),
-                             base_steps=base_steps, refine_steps=refine_steps, staged=bool(preview or upscale),
-                             scale=upscale_factor)
+                             base_steps=base_steps, refine_steps=refine_steps, staged=staged,
+                             scale=upscale_factor, schedule=schedule)
         shown = sampled
         if preview:
             # A preview decodes its first pass at the planned smaller canvas.
@@ -1728,6 +1881,7 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                 or engine.get('sampling_plan') != report.get('sampling_plan')
                 or report.get('sampling_plan') != expected_plan
                 or bool(report.get('preview')) != preview or bool(report.get('upscaled_preview')) != bool(upscale)
+                or bool(report.get('upscaled_work')) != bool(work)
                 or (hide_tail and report.get('hide_tail') != hidden)
                 or any(engine.get('geometry', {}).get(k) != shown[k] for k in ('width', 'height', 'frames'))
                 or (report.get('output_size') or None) != output_size):

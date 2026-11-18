@@ -221,7 +221,7 @@ def launcher_target(engine, source, portable_root=None, *, prepare=True):
     python = resolved(sys.executable)
     if python.with_name('pythonw.exe').is_file():
         python = python.with_name('pythonw.exe')
-    code = "import runpy,sys;sys.path.insert(0,sys.argv[1]);runpy.run_module('freevideo_engine.comfy_launcher',run_name='__main__')"
+    code = "import runpy,sys;sys.path.insert(0,sys.argv[1]);runpy.run_module('freevideo_engine.modern_launcher',run_name='__main__')"
     return Path(plain(python)), ['-c', code, plain(resolved(source))], Path(plain(source)) / 'freevideo_engine/assets/icon.ico'
 
 

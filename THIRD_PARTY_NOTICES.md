@@ -6,6 +6,7 @@ FreeVideo code uses [Apache-2.0](LICENSE). Its dependencies and models retain th
 | --- | --- |
 | [Three.js](https://threejs.org/) r160 and its TransformControls (examples/jsm; import path and handle colours changed), © 2010–2023 three.js authors (bundled whitebox renderer and mannequin) | [MIT](web/vendor/three/LICENSE) |
 | [Depth Anything V2 Small](https://github.com/DepthAnything/Depth-Anything-V2/tree/a561b849ebae10a6f5ef49e26c83cbbcd36c71bf), © 2024 Depth Anything authors; DINOv2 © Meta Platforms, Inc. and affiliates. Small-only DPT/DINOv2 inference and preprocessing are adapted and bundled; Small weights are an optional download pinned at `03876f8651c73a60fe4c2c48294e09fcb6838fcf`. | [Apache-2.0 (code and Small weights)](freevideo_engine/licenses/Depth-Anything-V2-Apache-2.0.txt) |
+| [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN/tree/685d429c81888252bdb10f56c7754baededc3823) realesr-general-x4v3, © 2021 Xintao Wang. The SRVGGNetCompact inference network is adapted and bundled for upscaling finished videos to 4K; the weights are an optional download (4,885,111 bytes, SHA-256 `8dc7edb9ac80ccdc30c3a5dca6616509367f05fbc184ad95b731f05bece96292`, the v0.2.5.0 release file). | [BSD-3-Clause (code and weights)](freevideo_engine/licenses/Real-ESRGAN-BSD-3-Clause.txt) |
 | Qt, PySide6 and Shiboken6 | LGPL-3.0; [component notices](freevideo_engine/launcher/licenses/NOTICE.txt) |
 | PyInstaller bootloader | GPL-2.0 with the bootloader exception |
 | CPython / psutil | PSF / BSD-3-Clause |

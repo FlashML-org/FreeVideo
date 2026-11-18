@@ -2285,7 +2285,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             return closePromise;
         },
         // Hidden and kept: the dialog closes (its sheet keeps a closed editor out of sight) and turns inert; saving,
-        // progress and the job watchers go on, so coming back needs nothing redrawn.
+        // progress and the job watchers go on, so coming back needs nothing redrawn. The import list waits (it is
+        // read again on coming back), unless an import it waits for is still on its way.
         kept: false, panel,
         reopen() {
             handle.kept = false;
@@ -2297,7 +2298,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             const later = [...document.querySelectorAll('dialog[open]')].some(dialog => dialog !== element && element.compareDocumentPosition(dialog) & Node.DOCUMENT_POSITION_FOLLOWING);
             if (!element.isConnected || later) document.body.append(element);
             element.inert = false;
-            attachBar?.();
+            attachBar?.(); library?.resume?.();
             if (!element.open) element.showModal();
             viewChanged('editor'); globalThis.FreeVideoStageLight?.refresh();
             // The tab takes focus after the first frame: focusing now would lay the whole view out a second time before it shows.
@@ -2315,6 +2316,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         // The microphone is let go with the view: an open record bar closes, and a take in progress lands as Stop would.
         recording.hide();
         detachBar?.();
+        // The import list is not read while out of sight, unless an import it waits for is still on its way.
+        library?.suspend?.();
         if (element.open) element.close();
         element.inert = true;
         resumeCanvasPointer(); resumeCanvasPointer = () => {};

@@ -11,6 +11,7 @@ import time
 import uuid
 
 from . import chain_plan
+from .chain_errors import BLOCK_FIELDS as BLOCK_ERROR_FIELDS, OUTPUT_FIELDS as OUTPUT_ERROR_FIELDS
 
 ACTIVE = ('queued', 'running', 'cancelling')
 CHAIN_STATES = (*ACTIVE, 'cancelled', 'failed', 'interrupted', 'done')
@@ -215,6 +216,7 @@ def summary(record):
                 output_seams=deepcopy(record.get('output_seams')),
                 output_unrepaired=deepcopy(record.get('output_unrepaired')), split=deepcopy(record.get('split')),
                 redo_of=deepcopy(record.get('redo_of')),
+                **{key: record[key] for key in OUTPUT_ERROR_FIELDS if isinstance(record.get(key), str)},
                 count=len(blocks), done=sum(row['state'] == 'done' for row in blocks),
                 current=current, elapsed_seconds=sum(row['seconds'] or 0 for row in blocks if row['state'] == 'done'),
                 last_report_id=record.get('last_report_id') or next((row['report_id'] for row in reversed(blocks)
@@ -359,6 +361,11 @@ def load_all(directory, limit=200, *, identity=None, visitor=None):
                 raise ValueError('Invalid chain output state')
             if any(record[key] is not None and not isinstance(record[key], str) for key in ('output', 'output_error')):
                 raise ValueError('Invalid chain output')
+            # The readable failure sentences are only words for the page: a malformed one is dropped, not the chain.
+            for row in (record, *(row for row in record.get('blocks') or () if isinstance(row, dict))):
+                for key in OUTPUT_ERROR_FIELDS if row is record else BLOCK_ERROR_FIELDS:
+                    if key in row and not isinstance(row[key], str):
+                        row.pop(key)
             record.setdefault('output_blocks', len(record['blocks']) if record['output_state'] == 'done' else 0)
             if (type(record['output_blocks']) is not int or not 0 <= record['output_blocks'] <= len(record['blocks'])
                     or record['output'] is None and record['output_blocks'] != 0):

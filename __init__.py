@@ -1,7 +1,9 @@
 """Optional ComfyUI custom-node entry point; the engine also runs standalone."""
 from .freevideo_engine.comfy_logging import configure_managed_logging
+from .freevideo_engine.comfy_privacy import configure_managed_privacy
 
 configure_managed_logging()
+configure_managed_privacy()
 
 WEB_DIRECTORY = './web'
 

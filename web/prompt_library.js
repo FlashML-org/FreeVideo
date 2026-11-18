@@ -49,6 +49,10 @@ if (typeof window !== 'undefined') {
     // When the page opens, and after a creation is deleted for good (the engine notes its prompt once the undo time is over).
     setTimeout(() => { void forgetDeletedPrompts().catch(() => {}); }, 4000);
     window.addEventListener('freevideo-library-deleted', () => setTimeout(() => { void forgetDeletedPrompts().catch(() => {}); }, 16000));
+    // A picture deleted for good takes its words from this history as well: the same words may have made a video.
+    window.addEventListener('freevideo-works-removed', event => {
+        if (event.detail?.undoable === false) setTimeout(() => { void forgetDeletedPrompts().catch(() => {}); }, 2000);
+    });
 }
 
 export function presets(storage) { return read(PRESET_KEY, storage).filter(row => row && typeof row.name === 'string' && row.settings && typeof row.settings === 'object'); }

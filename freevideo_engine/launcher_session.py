@@ -38,6 +38,27 @@ SETTLE_SECONDS = 60
 # a newer release reminds at once.
 SNOOZE_SECONDS = 365 * 24 * 3600
 QUEUE_POLL_SECONDS = 3
+
+
+_last_logged = [None]
+
+
+def log_error(trace, root=None):
+    """Keep every launcher failure on disk, errors/launcher-<ns>.log, so one that is dismissed or never read still leaves a trace.
+
+    Returns the file, or None when the same failure was just written (a refresh that fails every tick) or the disk refuses.
+    """
+    text = plain_text(trace)
+    if not text or text == _last_logged[0]:
+        return None
+    try:
+        path = Path(root or launcher_root()) / 'errors' / ('launcher-' + str(time.time_ns()) + '.log')
+        io_path(path.parent).mkdir(parents=True, exist_ok=True)
+        io_path(path).write_text(text, encoding='utf-8')
+    except OSError:
+        return None
+    _last_logged[0] = text
+    return path
 RECEIPT_POLL_SECONDS = 5
 
 

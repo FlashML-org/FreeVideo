@@ -148,6 +148,10 @@ def main():
     upscale.add_argument('--refine-from', type=Path, metavar='PREVIEW.mp4',
                          help="Upscale a finished preview: reuse its first pass, then the latent upscale, the refinement "
                               "steps and a full-resolution decode. Use the preview's own prompt, seed, size and inputs")
+    upscale.add_argument('--upscale-from', type=Path, metavar='VIDEO.mp4',
+                         help='Upscale a finished 24 fps video by 1.5x: its frames are the first pass, then the latent '
+                              'upscale and three light refinement steps; its own sound is used as is. Give '
+                              '--width/--height at 1.5x and --upscale-factor 1.5')
     generate.add_argument('--out', type=Path, required=True)
     generate.add_argument('--width', type=int, default=1344)
     generate.add_argument('--height', type=int, default=768)
@@ -178,6 +182,8 @@ def main():
             validate_route(task=args.task or ('ref2va' if args.continue_anchor else 't2va'),
                            anchor=args.continue_anchor is not None, two_pass=args.two_pass, preview=args.preview,
                            refine_from=args.refine_from)
+    if sys.platform == 'darwin' and args.command == 'generate' and args.upscale_from is not None:
+        raise ValueError('Upscaling a finished video is not available on Mac yet')
     if sys.platform == 'darwin' and args.command in ('plan', 'generate', 'encode', 'doctor'):
         if args.command == 'generate':
             from .media_request import read
