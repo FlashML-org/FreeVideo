@@ -1788,7 +1788,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     actions.narration = narration;
     actions.music = {target: selection => music.target(selection), preset: selection => music.preset(selection), choose: value => music.choose(value),
         styles: music.styles, moods: music.moods, downloadBytes: music.downloadBytes};
-    let bar = null, barLabel = '', attachBar = null, detachBar = null;
+    let bar = null, barLabel = '', attachBar = null, detachBar = null, guideBack = [];
     actions.onLabel = text => { barLabel = text; if (bar) queueMicrotask(() => bar.sync()); };
     genbar = createEditorGenbar(genHost, {state, t, actions, text: ''}); settleService();
     // The creation panel's own bar (same chips, trays and rules) stands in for the description, size, duration and quality
@@ -1803,6 +1803,15 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if (bar) {
             genHost.classList.add('fv-ed-genbar-borrowed');
             element.dataset.barBorrowed = 'true';
+            // The guide's editor steps ring the borrowed bar's prompt, media and Generate, not the editor's hidden ones.
+            guideBack = [['editor-describe', '[data-fv-guide="describe"]'], ['editor-refs', '.fvs-chip[data-chip="media"]'], ['editor-generate', '[data-fv-guide="generate"]']].flatMap(([mine, selector]) => {
+                const own = genHost.querySelector(`[data-fv-guide="${mine}"]`), lent = bar.shell.querySelector(selector);
+                if (!lent) return [];
+                const theirs = lent.dataset.fvGuide;
+                if (own) delete own.dataset.fvGuide;
+                lent.dataset.fvGuide = mine;
+                return [() => { if (theirs) lent.dataset.fvGuide = theirs; else delete lent.dataset.fvGuide; if (own) own.dataset.fvGuide = mine; }];
+            });
             // The bar's height is the row's: the timeline below keeps what is left.
             const fit = () => element.style.setProperty('--fv-ed-generation-row', `${Math.ceil(bar.shell.getBoundingClientRect().height) + 18}px`);
             if (typeof ResizeObserver === 'function') { observer = new ResizeObserver(fit); observer.observe(bar.shell); }
@@ -1821,7 +1830,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         }
         };
         // Hidden, the editor gives the panel its bar back; shown again, it takes it once more.
-        detachBar = () => { observer?.disconnect(); observer = null; bar?.release(); bar = null; panel.barActive = false; genHost.classList.remove('fv-ed-genbar-borrowed'); delete element.dataset.barBorrowed; };
+        detachBar = () => { observer?.disconnect(); observer = null; for (const back of guideBack.splice(0)) back(); bar?.release(); bar = null; panel.barActive = false; genHost.classList.remove('fv-ed-genbar-borrowed'); delete element.dataset.barBorrowed; };
         cleanupBar = detachBar;
         attachBar();
     }

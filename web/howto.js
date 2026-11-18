@@ -54,8 +54,8 @@ const HOWTOS = [
     {id: 'editor-extend-refs', view: 'editor', title: ['Add reference images when extending in Edit', '在剪辑视图延长时加参考图'],
         steps: [
             {id: 'editor-timeline', target: selectedPart, en: 'Select the part to continue.', zh: '选中要接续的一段。'},
-            {id: 'editor-refs', anchor: '[data-fv-guide="editor-refs"]', image: 'editor-refs',
-                en: 'Click + next to the prompt to upload or generate images, up to 3.', zh: '点描述框旁的 +，上传或生成图片，最多 3 张。'},
+            {id: 'editor-refs', anchor: '[data-fv-guide="editor-refs"]', image: 'editor-refs', prefer: ['below', 'left', 'right', 'above'],
+                en: 'Choose "Media" to upload or generate images.', zh: '点“素材”，上传或生成图片。'},
             {id: 'editor-describe', anchor: '[data-fv-guide="editor-describe"]', en: 'Describe it, then choose "Generate".', zh: '填写描述，然后点“生成”。'}]},
     {id: 'separate-tracks', view: 'editor', title: ['Separate tracks', '分离音轨'],
         steps: [
