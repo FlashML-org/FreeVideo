@@ -6,6 +6,7 @@ import { savedSettings } from './result_reuse.js';
 import { listenDialogKey } from './dialog_keys.js';
 import { isNetworkTypeError, connectionLostText } from './browser_extension.js';
 import { issueButton } from './issue_button.js';
+import { fileFailureText, responseFileReason } from './file_failure.js';
 import { applyTasks, toggledTask } from './task_groups.js';
 import { outputDownloadURL } from './output_download.js';
 import { attachContextMenu, openContextMenu, contextMenuOpen, compatView, reducedMotion } from './context_menu.js';
@@ -993,8 +994,8 @@ export function openLibrary(t, options = {}) {
         const result = await removeKeys([key]);
         if (result.removed.has(key)) { notice.textContent = ''; return; }
         const skipped = result.skipped.find(item => item.id === row.id);
-        throw Object.assign(new Error(skipped ? refusal(skipped.reason, skipped.kept || []) : t('Could not delete this creation.', '无法删除这条作品。')), {
-            reportable: !skipped || !['foreign-files', 'editor-in-use', 'continuation-in-use', 'in-use'].includes(skipped.reason),
+        throw Object.assign(new Error(skipped ? refusal(skipped.reason, skipped.kept || []) : result.why || t('Could not delete this creation.', '无法删除这条作品。')), {
+            reportable: skipped ? !['foreign-files', 'editor-in-use', 'continuation-in-use', 'in-use'].includes(skipped.reason) : !result.why,
         });
     }
     // --- Selecting several creations ---
@@ -1826,8 +1827,8 @@ export function openLibrary(t, options = {}) {
         // A held picture stays known (the shelf hides it while held), so Undo puts its card straight back; it leaves for
         // good only when the engine has deleted it (freevideo-pictures-deleted).
         const skipped = [];
-        let failed = false, unsaved = false;
-        if (!videoKeys.length) return {removed, skipped, failed};
+        let failed = false, unsaved = false, why = '';
+        if (!videoKeys.length) return {removed, skipped, failed, why};
         const idOf = new Map(videoKeys.map(key => [key, works.get(key)?.id])), ids = videoKeys.map(key => idOf.get(key)).filter(Boolean);
         // Windows keeps a streamed video open; release it before deleting.
         const selectedRow = works.get(selected);
@@ -1863,7 +1864,7 @@ export function openLibrary(t, options = {}) {
                     // or a lost connection may still have been carried out, so the batch is looked up again.
                     const response = await api.fetchApi('/freevideo/library/delete-batch', {method: 'POST',
                         headers: jsonHeaders, body: JSON.stringify({ids: part, batch: name, extend: earlier})});
-                    if (!response.ok) { forgetUndo([name]); throw new Error('failed'); }
+                    if (!response.ok) { why = fileFailureText(await responseFileReason(response), t); forgetUndo([name]); throw new Error('failed'); }
                     const value = await response.json();
                     const gone = new Set(value.deleted || []);
                     // A creation that is already gone from disk only needs to leave the page.
@@ -1893,12 +1894,12 @@ export function openLibrary(t, options = {}) {
             if (selected && !works.has(selected)) clearDetail();
             else if (selectedRow && works.has(selected) && !player && selectedRow.kind !== 'image') mountPlayer(selectedRow);
         }
-        return {removed, skipped, failed};
+        return {removed, skipped, failed, why};
     }
     async function removeSelected() {
         deleting = true; syncSelection();
         const keys = [...picked];
-        const {removed, skipped, failed} = await removeKeys(keys);
+        const {removed, skipped, failed, why} = await removeKeys(keys);
         deleting = false;
         if (disposed) return;
         const kept = new Set(skipped.map(row => row.id));
@@ -1910,7 +1911,7 @@ export function openLibrary(t, options = {}) {
             confirming = false;
             undoFailure = removed.size
                 ? t(`${picked.size} could not be deleted. Try again.`, `还有 ${picked.size} 个没能删除，请重试。`)
-                : t('Could not delete. Try again.', '没能删除，请重试。');
+                : why || t('Could not delete. Try again.', '没能删除，请重试。');
             if (!picked.size) setSelecting(false);
         } else { undoFailure = ''; setSelecting(false); }
         render();
