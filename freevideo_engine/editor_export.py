@@ -1111,7 +1111,7 @@ class ExportQueue:
         return {**{key: job[key] for key in ('id', 'state', 'fraction', 'work', 'reason')},
                 'queued': job['state'] == 'running' and job['id'] in self.pending,
                 **job['options'].status(), 'path': job.get('path'), 'url': job.get('url'),
-                'project_id': job['project'].get('id'), 'revision': job['project'].get('revision')}
+                'class': job.get('error_class'), 'project_id': job['project'].get('id'), 'revision': job['project'].get('revision')}
 
     def submit(self, identity, revision=None, *, options=None):
         if not isinstance(identity, str) or not _PROJECT_ID.fullmatch(identity):
@@ -1226,7 +1226,7 @@ class ExportQueue:
                     if isinstance(error, ExportCancelled) or job['stop'].is_set():
                         job.update(state='cancelled', reason=None)
                     else:
-                        job.update(state='failed', reason=reason)
+                        job.update(state='failed', reason=reason, error_class=type(error).__name__ if reason == 'failed' else None)
 
 
 def register():

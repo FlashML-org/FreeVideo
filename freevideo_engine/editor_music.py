@@ -26,7 +26,18 @@ PREEMPTIONS = 8
 POLL_SECONDS = .5
 _JOB_ID = re.compile(r'm-[0-9a-f]{32}')
 _FIELDS = {'frames', 'text', 'style', 'mood', 'seed', 'quiet'}
-REASONS = ('music_download_failed', 'out_of_memory', 'music_failed', 'invalid_request', 'busy', 'unsupported', 'failed')
+REASONS = ('music_download_failed', 'disk_space', 'out_of_memory', 'music_failed', 'invalid_request', 'busy', 'unsupported', 'failed')
+
+
+def _disk_or_network_reason(error, download=False):
+    """A full disk, or (while downloading) a lost network, as the reason the page already words; None when it is neither."""
+    from .disk_space import ran_out
+    if ran_out(error):
+        return 'disk_space'
+    if download and isinstance(error, (ConnectionError, TimeoutError)) or download and type(error).__name__ in ('URLError', 'HTTPError', 'ReadTimeout', 'ConnectTimeout', 'ChunkedEncodingError', 'IncompleteRead'):
+        return 'music_download_failed'
+    return None
+
 
 # Presets: the genre and instruments, then the feeling and pace. Instrumental only, as the Agent asks for.
 STYLES = {
@@ -284,7 +295,7 @@ class MusicQueue:
                         code = getattr(error, 'code', None)
                         if code not in REASONS:
                             logging.warning('[FreeVideo] Editor music failed', exc_info=error)
-                            code = 'music_failed'
+                            code = _disk_or_network_reason(error) or 'music_failed'
                         job.update(state='failed', phase=None, reason=code)
                 if not isinstance(error, Exception):
                     raise
@@ -385,9 +396,9 @@ class MusicPack:
             pass
         except service.MusicError as error:
             reason = error.reason or 'failed'
-        except Exception:  # noqa: BLE001 - the page says it did not download; the log keeps why
+        except Exception as error:  # noqa: BLE001 - the page says it did not download; the log keeps why
             logging.warning('[FreeVideo] Music model download failed', exc_info=True)
-            reason = 'failed'
+            reason = _disk_or_network_reason(error, download=True) or 'failed'
         with self.lock:
             self.value = dict(running=False, fraction=0. if reason or stop.is_set() else 1., reason=reason)
 
