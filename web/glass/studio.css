@@ -402,7 +402,8 @@
   .fv-studio.fv-create .fvs-console .fv-runbar{min-width:96px}
   .fv-studio.fv-create .fvs-console .fv-runrow>.fv-primary{min-height:var(--fv-touch);height:var(--fv-touch);padding:0 var(--fv-sp-12);font-size:var(--fv-fs-2);border-radius:var(--fv-rad-ctl)}
   .fv-studio.fv-create .fvs-chip .fvs-chip-extra{display:none}
-  .fv-studio.fv-create .fvs-console .fv-prompt-editor textarea{height:88px;min-height:88px}
+  .fv-studio.fv-create .fvs-console .fv-prompt-editor textarea{height:88px;min-height:88px;max-height:120px}
+  @supports (field-sizing:content){.fv-studio.fv-create .fvs-console .fv-prompt-editor textarea{field-sizing:content;height:auto}}
   .fv-studio.fv-create .fvs-console .fv-prompt-tools{flex-direction:column;height:auto}
   .fv-studio.fv-create .fvs-console .fv-prompt-tools>.fv-prompt-help{display:none}
   .fv-studio.fv-create .fvs-stagebar .fv-actions[data-layout=stage] .fv-action:not(.fv-action-primary):not(.fv-action-icon):not(.fv-more-item)>span:last-child{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
@@ -689,7 +690,7 @@
   /* Two lines when short, growing with the text up to five. */
   /* The description takes the row the enhancement switch had (the switch is a key in the chip row now): three lines
      when short, growing with the text up to six. */
-  .fv-studio.fv-create .fvs-console .fv-prompt-editor textarea{field-sizing:content;height:auto;min-height:calc(56px + var(--fvs-row) + var(--fv-sp-8));max-height:152px;padding:var(--fv-sp-4) 0;font-size:var(--fv-fs-3);line-height:24px}
+  .fv-studio.fv-create .fvs-console .fv-prompt-editor textarea{field-sizing:content;height:auto;min-height:calc(56px + var(--fvs-row) + var(--fv-sp-8));max-height:170px;padding:var(--fv-sp-4) 0;font-size:var(--fv-fs-3);line-height:24px}
   .fv-studio.fv-create .fvs-console .fv-prompt-tools{position:absolute;top:0;right:calc(-1 * (var(--fvs-key-w) + var(--fv-sp-16)));height:var(--fv-ctl);gap:var(--fv-sp-4)}
   /* Chips: one shape, one height, 8 px apart; icon-only chips are square. */
   .fv-studio.fv-create .fvs-chips{grid-column:1;grid-row:3;align-self:end;margin-left:0;gap:var(--fv-sp-8);min-height:var(--fvs-row)}

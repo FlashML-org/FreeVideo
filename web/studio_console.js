@@ -27,6 +27,9 @@ export function tip(element, name, use = '', key = '') {
     return element;
 }
 
+// The prompt's tallest height: 170 px, 120 px in a narrow window so Generate stays on the first screen.
+const promptMax = () => globalThis.matchMedia?.('(max-width:760px)').matches ? 120 : 170;
+
 // trays: [{id, title, element}] where element is a <details> (its summary is hidden; open is the tray's state)
 // or any element, which is then wrapped in one. chips: what each chip shows, read again on sync().
 export function createConsole({t, body, controls, prompt, runbar, trays, chips, status = [], onTray = () => {}}) {
@@ -110,7 +113,20 @@ export function createConsole({t, body, controls, prompt, runbar, trays, chips, 
         for (const [id, item] of rows) item.chip?.setAttribute('aria-expanded', String(id === open));
         onTray(open, open ? rows.get(open).details : null);
     }
+    // The prompt grows with its text up to 170 px (120 px in a narrow window). Browsers that size a text box by its content (field-sizing) do it
+    // in CSS; the others get the same height here, so the box is never a fixed strip with a scroll bar inside it.
+    const sizesItself = Boolean(globalThis.CSS?.supports?.('field-sizing', 'content'));
+    function fitPrompt() {
+        if (sizesItself) return;
+        const area = box.querySelector('.fv-prompt-editor textarea'); if (!area || !area.offsetParent) return;
+        area.style.height = 'auto';
+        const edge = area.offsetHeight - area.clientHeight;
+        area.style.height = `${Math.min(area.scrollHeight + edge, promptMax())}px`;
+    }
+    box.addEventListener('input', event => { if (event.target?.matches?.('.fv-prompt-editor textarea')) fitPrompt(); });
+    if (!sizesItself && globalThis.ResizeObserver) new ResizeObserver(() => fitPrompt()).observe(box);
     function sync() {
+        fitPrompt();
         for (const spec of built) {
             if (!spec.read) continue;
             const value = spec.read() || {};
