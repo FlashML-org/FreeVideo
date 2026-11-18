@@ -81,3 +81,23 @@
 .fv-studio.fv-autopilot .fv-header.fv-header[data-place=wrap]{grid-template-columns:auto minmax(0,1fr)}
 @media(max-width:480px){.fv-studio.fv-autopilot .fv-header{grid-template-columns:auto minmax(0,1fr)}.fv-autopilot-now{font-size:12px}.fv-autopilot-now-name{display:none}.fv-autopilot .fv-header-actions>.fv-quiet{flex:none;white-space:nowrap}.fv-studio .fv-autopilot-now-go{padding:4px 4px 4px 8px}.fv-studio .fv-autopilot-lamp{width:30px;height:30px;padding:0;justify-content:center}.fv-autopilot-lamp>span{display:none}.fv-agent-connect-body{padding:24px}}
 @media(prefers-reduced-motion:reduce){.fv-autopilot-line{transition:none}}
+/* The connection light's menu: disconnect and the steps while connected; why it is off and Reconnect when not. */
+.fv-autopilot .fv-autopilot-body{position:relative}
+.fv-agent-link-menu{box-sizing:border-box;position:absolute;z-index:6;display:grid;gap:2px;width:max-content;min-width:200px;max-width:min(320px,calc(100% - 16px));padding:8px;border:1px solid var(--fv-border);border-radius:var(--fv-r-md);background:var(--fv-raised);box-shadow:0 14px 36px #00000073;color:var(--fv-ink);animation:fv-agent-link-enter .16s ease}
+.fv-agent-link-menu[hidden],.fv-agent-link-menu [hidden]{display:none}
+.fv-agent-link-menu>p{margin:0;padding:4px 12px;font-size:13px;line-height:1.5;white-space:normal;overflow-wrap:anywhere}
+.fv-agent-link-menu>.fv-agent-link-next{padding-top:0;color:var(--fv-muted)}
+.fv-agent-link-menu>.fv-agent-link-error{color:var(--fv-danger)}
+.fv-studio .fv-agent-link-menu .fv-agent-link-item{justify-content:flex-start;width:100%;min-height:0;padding:8px 12px;border:0;border-radius:var(--fv-r-sm);background:none;color:var(--fv-ink);font-size:13px;text-align:start;white-space:nowrap}
+.fv-studio .fv-agent-link-menu .fv-agent-link-item:is(:hover,:focus-visible){background:var(--fv-hover);outline:none}
+.fv-studio .fv-agent-link-menu .fv-agent-link-danger{color:var(--fv-danger)}
+.fv-studio .fv-agent-link-menu .fv-agent-link-danger:is(:hover,:focus-visible){background:var(--fv-danger-subtle)}
+.fv-studio .fv-agent-link-menu .fv-agent-link-item:disabled{opacity:.6;cursor:default}
+.fv-studio .fv-agent-link-menu .fv-agent-link-main{justify-self:start;width:auto;margin:4px 12px 2px;padding:8px 16px;border:1px solid var(--fv-accent);background:var(--fv-accent);color:var(--fv-bg);font-weight:var(--fv-semibold)}
+.fv-studio .fv-agent-link-menu .fv-agent-link-main:is(:hover,:focus-visible){background:var(--fv-accent-hover);border-color:var(--fv-accent-hover);outline:none}
+.fv-studio .fv-agent-link-menu .fv-agent-link-main:focus-visible{box-shadow:0 0 0 2px var(--fv-bg),0 0 0 4px var(--fv-accent)}
+.fv-agent-link-menu>.fv-issue-button{justify-self:start;margin:4px 12px}
+.fv-autopilot .fv-agent-link-menu{border:0;border-radius:var(--fv-rad-pop,16px);background:rgb(var(--ap-tint,24 26 32) / var(--ap-a3,.92));box-shadow:inset 0 0 0 1px var(--ap-edge,var(--fv-border)),var(--ap-sh3,0 14px 36px #00000073);-webkit-backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%);backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%);color:var(--ap-fg,var(--fv-ink))}
+.fv-agent-connect-body>.fv-agent-connect-reason{margin-top:-8px;font-size:13px;line-height:1.5;color:var(--fv-muted)}
+@keyframes fv-agent-link-enter{from{opacity:0}}
+@media(prefers-reduced-motion:reduce){.fv-agent-link-menu{animation:none}}

@@ -626,7 +626,7 @@ def contracts(*, local=False):
     for suffix, method, body in (('', 'GET', None), ('/session', 'GET', None), ('/activity', 'GET', None),
             ('/activity/cancel', 'POST', obj({'id': JOB}, ('id',))), ('/activity/resume', 'POST', obj({'id': JOB}, ('id',))),
             ('/connect', 'GET', None),
-            ('/connect/reset', 'POST', EMPTY), ('/chat', 'GET', None), ('/chat/now', 'GET', None),
+            ('/connect/reset', 'POST', EMPTY), ('/connect/disconnect', 'POST', EMPTY), ('/chat', 'GET', None), ('/chat/now', 'GET', None),
             ('/chat/video', 'GET', None), ('/chat/list', 'GET', None), ('/chat/new', 'POST', EMPTY),
             ('/chat/delete', 'POST', obj({'session': SESSION, 'stop': {'type': 'boolean'}}, ('session',))),
             ('/chat/rename', 'POST', obj({'session': SESSION, 'title': {'type': 'string', 'maxLength': 60}}, ('session', 'title'))),
