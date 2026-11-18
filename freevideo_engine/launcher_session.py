@@ -20,7 +20,7 @@ from .comfy_launcher_runtime import (ENGINE_UPDATE_WAITS, SETUP_WAITS_FOR_JOB, C
 from .desktop_runtime import launcher_root, materialize_source
 from .download_settings import Probe, read as download_preferences, speed_text
 from .launcher_settings import Store, default_language
-from .launcher_copy import ACTION_COPY, size_text
+from .launcher_copy import ACTION_COPY, Phrase, follow_language, size_text
 from .launcher_terminal import Tail
 from .model_status import FAMILIES, NAMES
 from .model_guidance import (package_instructions, video_instructions, runtime_packages_supported, download_view,
@@ -96,6 +96,11 @@ def _qr_rows(text):
         return [''.join('1' if cell else '0' for cell in row) for row in encode(text)]
     except ValueError:
         return []
+
+
+class BrowserRefused(OSError):
+    """The system did not accept the request to open the browser."""
+
 
 class Session:
     # A launcher started from an offline package (portable_launcher.PortableSession).
@@ -265,6 +270,10 @@ class Session:
     def t(self, en, zh):
         return zh if self.language.startswith('zh') else en
 
+    def phrase(self, make):
+        """Text that stays on screen: make(t) builds it with t(en, zh), and a language switch rewords it."""
+        return Phrase.build(make, self.language.startswith('zh'))
+
     def task_busy(self):
         """Work that must finish before another installation operation starts."""
         return bool(self.controller.busy or self.importer.busy or self.cleaner.busy
@@ -326,6 +335,9 @@ class Session:
             self.language = str(value)
             if self.updater:
                 self.updater.language = self.language
+            # Messages already shown are reworded too, not left in the old language until the next failure.
+            for name in ('browser_error', 'notice', 'download_error'):
+                setattr(self, name, follow_language(getattr(self, name), self.language.startswith('zh')))
             self.persist(); return
         if key == 'token':
             if self.controller.busy:
@@ -466,7 +478,7 @@ class Session:
         self.download_export = self.download_error = self.download_error_key = ''
         image = self.download_scope == 'image'
         if not image and (self.controller.busy or self.controller.state.get('status') != 'review'):
-            self.download_error = self.t('Wait for the file check to finish.', '请等待文件检查完成。')
+            self.download_error = self.phrase(lambda t: t('Wait for the file check to finish.', '请等待文件检查完成。'))
             return
         preferences = download_preferences(self.engine_root() / 'download-settings.json')
         try:
@@ -474,15 +486,15 @@ class Session:
                                     export_download_list(self.controller.state.get('plan', {}), folder, preferences['source']))
         except DownloadListError as error:
             self.download_error_key = error.key
-            reason = ''
+            reason = ('', '')
             if error.key == 'write':
-                reason = self.t(*DOWNLOAD_COPY.get('write_' + error.reason, DOWNLOAD_COPY['write_other']))
+                reason = DOWNLOAD_COPY.get('write_' + error.reason, DOWNLOAD_COPY['write_other'])
                 # Session has no log writer; keep the OS detail on stderr, without the user's paths.
                 from .failure_details import redacted_launcher_error
                 print('Download list export failed (%s): %s' % (error.reason, redacted_launcher_error(error.original_error)),
                       file=sys.stderr)
             texts = dict(DOWNLOAD_COPY, error_changed=IMAGE_COPY['error_changed']) if image else DOWNLOAD_COPY
-            self.download_error = self.t(*texts['error_' + error.key]).format(reason=reason)
+            self.download_error = self.phrase(lambda t: t(*texts['error_' + error.key]).format(reason=t(*reason)))
 
     def use_downloaded_folder(self, folder):
         if not self.can_manage():
@@ -1332,15 +1344,19 @@ class Session:
         # compatible; only the browser hint is added at launch time.
         try:
             if not open_browser(address):
-                raise OSError(self.t("Couldn't open the browser. Click Copy address and open it in your browser.",
-                                     '没能自动打开浏览器，请点“复制地址”，在浏览器里打开。'))
+                raise BrowserRefused
             if moved_from:
                 self.port_notice_url = self.browser_url
             self.browser_error = ''
             self.browser_opened = time.monotonic()
         except Exception as error:
-            self.browser_error = self.t('ComfyUI is ready. Open the browser again or copy its address.\n',
-                                        'ComfyUI 已就绪，请重试打开浏览器，或复制地址手动打开。\n') + str(error)
+            def cause(t, error=error):
+                if isinstance(error, BrowserRefused):
+                    return t("Couldn't open the browser. Click Copy address and open it in your browser.",
+                             '没能自动打开浏览器，请点“复制地址”，在浏览器里打开。')
+                return str(error)
+            self.browser_error = self.phrase(lambda t: t('ComfyUI is ready. Open the browser again or copy its address.\n',
+                                                         'ComfyUI 已就绪，请重试打开浏览器，或复制地址手动打开。\n') + cause(t))
 
     def select_source(self, name):
         self.probe.select(self.engine_root(), name)
@@ -1359,7 +1375,8 @@ class Session:
                 self.compatibility = check_installation(root)
                 if self.compatibility.get('notice'):
                     from .compatibility_copy import notice_text
-                    self.notice = notice_text(self.compatibility, self.language.startswith('zh'))
+                    self.notice = Phrase(notice_text(self.compatibility, False), notice_text(self.compatibility, True),
+                                         self.language.startswith('zh'))
         except (OSError, ValueError, RuntimeError):
             self.compatibility = dict(available=False, level=0, automatic=False)
 
