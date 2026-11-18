@@ -763,19 +763,19 @@ export const TUTORIAL_CHAPTERS = [
     {
         id: 'system-status',
         title: {zh: '运行状态', en: 'System status'},
-        summary: {zh: '在顶栏查看显存、温度和硬盘空间，必要时立即停止生成。', en: 'Watch VRAM, temperature and disk space from the top bar, and stop a generation at once when needed.'},
+        summary: {zh: '在顶栏看显存和显卡温度，在“运行状态”面板里看本机详情，必要时停止生成。', en: 'See the video memory and graphics card temperature in the top bar and this computer in the Run status panel, and stop a generation when needed.'},
         media: {
             type: 'image',
             src: {zh: 'system-status-1.webp', en: 'system-status-2.webp'},
-            alt: {zh: '顶栏的运行状态和展开的面板：运行状态和“立即停止”按钮已用红框标出。', en: 'The system status in the top bar with its panel open; the status and the "Stop now" button are outlined in red.'},
+            alt: {zh: '一个视频正在生成时，顶栏的运行状态和展开的“运行状态”面板：顶栏的运行状态和面板底部的“停止”按钮已用红框标出。', en: 'The status in the top bar while a video is being generated, with the Run status panel open; the status and the Stop button at the bottom of the panel are outlined in red.'},
         },
         steps: {
-            zh: ['点顶部的“设置”，在“运行状态”下勾选“在顶栏显示运行状态”。', '顶栏出现运行状态，显示显存占用和显卡温度；顶栏放不下时只显示图标。', '点运行状态打开面板，查看显卡名称、显存、使用率、温度和硬盘剩余空间，数值每 2 秒更新一次。', '要马上停下正在进行的生成时，点“立即停止”，再在 4 秒内点“确认停止”；队列随之暂停，点“继续队列”恢复。'],
-            en: ['Choose "Settings" at the top, and under "System status" turn on "Show system status in the top bar".', 'The status appears in the top bar, with the VRAM in use and the graphics card temperature. When the top bar is short of room, only its icon is shown.', 'Choose the status to open its panel: the graphics card name, VRAM, utilization, temperature and free disk space, updated every 2 seconds.', 'To stop the running generation at once, choose "Stop now", then "Confirm stop" within 4 seconds. The queue is paused; choose "Resume queue" to continue.'],
+            zh: ['点顶部的“设置”，在“外观”里打开“在运行状态中显示本机数据”。', '没有任务时，顶栏的运行状态显示显存占用和显卡温度；有任务时改为显示任务进度。', '点顶栏的运行状态打开“运行状态”面板：上面是进行中的任务，“本机”下是显存、温度、显卡占用和硬盘剩余，面板开着时每 2 秒更新一次。', '要停下正在生成的视频，点面板底部的“停止”（有任务进行或排队时才有），再在提问下点“停止”确认；正在生成的不会保留，排队的任务会暂停，点“继续队列”恢复。'],
+            en: ['Choose "Settings" at the top, and under "Appearance" turn on "Show this computer in the status".', 'With no task running, the status in the top bar shows the video memory in use and the graphics card temperature; while a task runs it shows the task\'s progress instead.', 'Choose the status in the top bar to open the Run status panel: running tasks at the top, and under "This computer" the video memory, temperature, graphics card load and free disk, updated every 2 seconds while the panel is open.', 'To stop the video being generated, choose "Stop" at the bottom of the panel (there while a task runs or waits), then "Stop" again under the question. What is being made is not kept and waiting tasks pause; choose "Resume queue" to go on.'],
         },
         limits: {
-            zh: ['显存达到 95% 或温度达到 85 °C 时，数值以红色显示。', '“立即停止”只在有生成正在进行时可用。', '窗口很窄时，顶栏不显示运行状态。'],
-            en: ['VRAM at 95% or more, or a temperature of 85 °C or more, is shown in red.', '"Stop now" is available only while a generation is running.', 'In a very narrow window, the top bar does not show the status.'],
+            zh: ['显存达到 95% 或温度达到 85 °C 时，数值以红色显示。', '顶栏变窄时先只留显存数字，再只留图标；点图标仍能打开面板。', '不打开这项设置时，顶栏不显示本机数据，也不在后台读取；“运行状态”面板里的“本机”照常显示。'],
+            en: ['Video memory at 95% or more, or a temperature of 85 °C or more, is shown in red.', 'As the top bar narrows, it first keeps only the video memory figure, then only the icon; choosing the icon still opens the panel.', 'With this setting off, the top bar shows no figures for this computer and nothing is read in the background; "This computer" in the Run status panel is shown as usual.'],
         },
     },
     {
