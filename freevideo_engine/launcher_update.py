@@ -154,8 +154,10 @@ def error_text(row, zh=False):
     if row.get('retry_at'):
         return text + ('稍后会自动重试，当前版本可以照常使用。' if zh else
                        ' FreeVideo will try again later. You can keep using the current version.')
-    return text + ('请重试，或去发布页手动下载。' if zh else
-                   ' Try again, or download it from the release page.')
+    # The buttons beside the reason already offer retrying and the release page; only a full disk needs a step first.
+    if row.get('error_code') == 'disk':
+        return text + ('请清理磁盘空间后重试。' if zh else ' Free up disk space, then try again.')
+    return text
 
 
 # One line per failed update source, kept beside the update cache and added to
