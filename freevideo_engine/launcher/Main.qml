@@ -181,6 +181,13 @@ ApplicationWindow {
         if (code === "active-variant-incomplete") return t("The faster model's files are incomplete, so the old model is kept.", "更快的模型文件不完整，旧模型保留。")
         return t("The model in use is not a standard FreeVideo model, so nothing was deleted.", "当前使用的模型不是标准安装的模型，为安全起见没有删除任何文件。")
     }
+    function upgradeCause(code, step) {
+        if (code === "disk") return t("There is not enough free disk space for the model files. Free some space first.", "磁盘可用空间不足，放不下模型文件。请先腾出空间。")
+        if (code === "network") return t("The model download lost its connection. Check the network first.", "模型下载时网络连接中断。请先检查网络。")
+        if (step === "switch") return t("The switch to the faster model did not finish.", "切换到更快的模型没有完成。")
+        if (step === "release") return t("The old model could not be removed.", "旧模型未能删除。")
+        return t("The model download did not finish.", "模型下载没有完成。")
+    }
     function upgradeReportText() {
         // A failed upgrade reports the whole failure, including the step log, not only the first line shown on the card.
         return upgrade.status === "failed" && upgrade.error ? upgrade.error : upgradeExplanation()
@@ -218,7 +225,7 @@ ApplicationWindow {
             return (u.released_bytes ? t("Freed ", "已释放 ") + bytes(u.released_bytes) + t(".", "。") : "")
                 + (lora ? t(" The old model stays for your fused LoRAs.", "旧模型为需要合并的 LoRA 保留。") : "")
         if (u.status === "failed")
-            return (u.blockers && u.blockers.length ? upgradeBlocker(u.blockers[0]) + t(" ", "") : u.error ? u.error.split("\n")[0] + "\n" : "")
+            return (u.blockers && u.blockers.length ? upgradeBlocker(u.blockers[0]) + t(" ", "") : upgradeCause(u.cause, u.step) + "\n")
                 + (u.step === "release" ? t("The faster model is in use; the old model files are kept for now.", "已在用更快的模型，旧模型文件暂时保留。")
                    : u.step === "switch" && !u.kept ? t("The previous model's files are all kept. Select \"Retry\" on the setup page to restore it.", "原来的模型文件都还在，在安装页点“重试”可恢复。")
                    : t("Your previous model is unchanged and still works. Select \"Try again\", or report a problem.", "原来的模型没有变化，可以继续使用。可以点“重试”，或提交问题。"))

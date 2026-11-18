@@ -1154,8 +1154,17 @@ class Session:
         failure = ''
         if active.get('state') == 'failed':
             failure = {'disk_space': self.t('Not enough disk space.', '磁盘空间不足。'),
+                       'ram_space': self.t('Not enough free memory to prepare this model. Close other programs, then resume.',
+                                           '可用内存不足，无法准备这个模型。请关闭其他程序后点击“继续”。'),
+                       'network_failed': self.t('The download stopped: the connection to the download server was lost. Resume to continue.',
+                                                '下载中断：与下载服务器的连接断开。请点击“继续”接着下载。'),
+                       'write_failed': self.t('The download stopped: the model files could not be written to this folder. Check the folder, then resume.',
+                                              '下载中断：模型文件无法写入这个文件夹。请检查文件夹后点击“继续”。'),
+                       'verify_failed': self.t('The download stopped: a downloaded file did not pass the check. Resume to download it again.',
+                                               '下载中断：下载的文件没有通过校验。请点击“继续”重新下载。'),
                        'busy': self.t('Another download of this model is running.', '这个模型正在被另一处下载。')}.get(
-                active.get('reason'), self.t('The download stopped. Resume to continue.', '下载中断了，点继续可接着下载。'))
+                active.get('reason'), self.t('The download stopped. Resume to continue; if it stops again, export the report and use "Report a problem".',
+                                             '下载中断。请点击“继续”；如再次中断，请导出报告，再点击“提交问题”并附上报告。'))
         return dict(ready=ready, checking=checking, total_bytes=total, enough_disk=enough, busy=busy, install=active, failure=failure,
                     downloaded_bytes=active.get('done', 0), title=self.t(*NAMES['text']),
                     suggest=bool(engine) and not ready and not checking and not busy and enough and not self.form['prompt_hint_dismissed']

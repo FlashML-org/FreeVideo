@@ -1106,7 +1106,11 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
         name = _step_name(step.group(1), zh)
         if name:
             title = ('“%s”这一步没有完成' if zh else 'The step "%s" did not finish') % name
-        detail = ''
+        # The step's own line is internal. The last other error line is raw text, so it shows only
+        # when it has a known sentence in this language; otherwise it stays in the technical details.
+        other = [line for line in causes if not line.startswith(('Failed step:', 'Setup failed:'))]
+        raw = re.sub(r'^(?:[\w.]+(?:Error|Exception)|ERROR):?\s*', '', other[-1])[:200] if other else ''
+        detail = raw if raw and lan_error(raw, zh) != raw else ''
     # A message the launcher raised itself (a ValueError) is the next step already.
     unexpected = 'Traceback' in text and not re.match(r'(?:[\w.]+\.)?ValueError:', causes[-1] if causes else '')
     detail = lan_error(detail, zh)

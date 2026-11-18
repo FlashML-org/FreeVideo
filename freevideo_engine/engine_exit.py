@@ -116,11 +116,18 @@ def public(value):
 
 
 def describe(value, zh):
-    """The launcher's one sentence about a stopped engine, in the language of the window.
+    """The launcher's sentence about a stopped engine, in the language of the window: when, why as far as known, what next.
 
-    The exit status is not in it: it is in the record, the logs and the diagnostic report.
+    The exit status itself is not in it: it is in the record, the logs and the diagnostic report.
     """
     clock = time.strftime('%H:%M', time.localtime(value['at']))
+    kind = value.get('exit_class')
+    memory = kind in ('system_commit_limit', 'system_no_memory')
+    ended = kind in ('killed_by_signal', 'terminated_externally')
+    crashed = kind in ('native_crash', 'abort', 'system_stack_overflow')
     if zh:
-        return 'ComfyUI 于 %s 意外停止。请点击“重新连接”重新启动。' % clock
-    return 'ComfyUI stopped unexpectedly at %s. Click "Connect again" to restart it.' % clock
+        cause = ('，原因是电脑内存不足' if memory else '，被系统或其他程序结束' if ended else '，程序自身崩溃' if crashed else '')
+        return ('ComfyUI 于 %s 意外停止%s。请点击“重新连接”重新启动；如再次停止，请导出报告，再点击“提交问题”并附上报告。' % (clock, cause))
+    cause = (': the computer ran out of memory' if memory else ': the system or another program ended it' if ended
+             else ': it crashed' if crashed else '')
+    return 'ComfyUI stopped unexpectedly at %s%s. Click "Connect again" to restart it; if it stops again, export the report and use "Report a problem".' % (clock, cause)
