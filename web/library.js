@@ -1855,8 +1855,11 @@ export function openLibrary(t, options = {}) {
         } else { undoFailure = ''; setSelecting(false); }
         render();
         showUndo();
-        // The delete button is gone; keep the keyboard inside the dialog.
-        if (!dialog.contains(document.activeElement)) choose.focus();
+        // The confirm button is gone; keep the keyboard inside the dialog, so Escape still walks back from here: on the
+        // bar's Delete while a part that failed is still selected (another try is one press away), on the dialog itself
+        // otherwise, as when it opened. (The header's Select button is hidden since selecting starts from the cards.)
+        if (!dialog.contains(document.activeElement) || document.activeElement.closest('[hidden]'))
+            (selecting && picked.size && !barDelete.hidden ? barDelete : dialog).focus({preventScroll: true});
     }
     // Asks the server about batches this page did not make or cannot vouch for (after a reload, or while a
     // request of an earlier page still runs), and again until every pending one is settled.
