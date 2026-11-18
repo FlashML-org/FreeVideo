@@ -37,6 +37,9 @@ function markCard(card) {
     card.dataset.fvMtWide = String(Boolean(card.querySelector(':scope > :is(.fv-time,.fv-depth-only,.fv-sound,audio.fv-preview)')));
     const rows = [...card.children].filter(child => child.classList.contains('fv-row'));
     const controls = rows.length > 1 ? rows.at(-1) : null;
+    // Edited is a small mark on the picture; its words stay as the mark's name.
+    const edited = card.querySelector('.fv-edited');
+    if (edited && !edited.title) { edited.title = edited.textContent; edited.setAttribute('role', 'img'); edited.setAttribute('aria-label', edited.textContent); }
     if (!controls || controls.classList.contains('fv-mt-rest')) return;
     controls.classList.add('fv-mt-rest');
     const buttons = [...controls.querySelectorAll(':scope > button')], keys = document.createElement('div');
@@ -45,17 +48,17 @@ function markCard(card) {
     // The picture itself opens the editor (the panel's own handler on it); 'Original' joins the drop-down, so tiles stay one size.
     const original = card.dataset.kind === 'image' && buttons.length > 3 ? buttons.find((b, index) => index > 0 && b !== up && b !== down && b !== remove) : null;
     original?.classList.add('fv-mt-original');
-    // Moving earlier or later is in the tile's drop-down, under its uses; the two keys stay in the page for it to press.
-    if (select && (up || down) && !select.dataset.fvMt) {
+    // Moving earlier or later, and Remove, are in the tile's drop-down, under its uses; the two keys stay in the page for it to press.
+    if (select && (up || down || remove) && !select.dataset.fvMt) {
         select.dataset.fvMt = '1'; select.append(document.createElement('hr'));
-        for (const [key, value] of [[up, 'fv-mt-earlier'], [down, 'fv-mt-later'], [original, 'fv-mt-original']]) {
+        for (const [key, value] of [[up, 'fv-mt-earlier'], [down, 'fv-mt-later'], [original, 'fv-mt-original'], [remove, 'fv-mt-remove']]) {
             if (!key) continue;
-            const option = document.createElement('option'); option.value = value; option.textContent = key.title || key.textContent; option.disabled = key.disabled; select.append(option);
+            const option = document.createElement('option'); option.value = value; option.textContent = key === remove ? key.textContent : key.title || key.textContent; option.disabled = key.disabled; select.append(option);
         }
         const chosen = select.value;
         select.addEventListener('change', event => {
             if (!select.value.startsWith('fv-mt-')) return;
-            event.stopImmediatePropagation(); const key = {'fv-mt-earlier': up, 'fv-mt-later': down, 'fv-mt-original': original}[select.value]; select.value = chosen; key?.click();
+            event.stopImmediatePropagation(); const key = {'fv-mt-earlier': up, 'fv-mt-later': down, 'fv-mt-original': original, 'fv-mt-remove': remove}[select.value]; select.value = chosen; key?.click();
         }, true);
     }
     for (const button of [up, down, remove]) {
