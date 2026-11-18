@@ -1795,7 +1795,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     // controls here; what the editor adds (music, narration, dubbing, downloads) stays in its own bar. Without a panel to
     // borrow from, the editor's bar is shown as before.
     if (panel.borrowBar) {
-        let observer = null, arranged = false, unlisten = null;
+        let observer = null, arranged = false, unlisten = null, echo = false, lent = false, home = '', arrangeNow = null; // the subscription below outlives one borrow, so what it reads is kept out here
         attachBar = () => {
         if (bar) return;
         bar = panel.borrowBar({mount: genHost, onSeconds: value => { const field = genbar.duration; if (!field || field.element.hidden || field.input.disabled || !(value > 0)) return; field.input.value = String(Math.round(value)); field.commit(); }, label: () => barLabel || null, disabled: () => !genbar.canGenerate(),
@@ -1819,11 +1819,11 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             // What the three ways in prefill and lock: a new part takes the edit's size and the selection's length; a part
             // that continues keeps the size it continues; one made again keeps its size and length.
             // The description each part keeps is bound in the editor's own box (hidden); the bar's box shows it and writes it back.
-            let echo = false;
-            const field = bar.prompt;
+            echo = false; lent = false;
+            const field = bar.prompt; home = field.value; // the panel's own text, given back when the bar is released
             const onType = () => { if (!echo) genbar.type(field.value); }, onLeave = () => genbar.leave();
             field.addEventListener('input', onType); field.addEventListener('blur', onLeave);
-            unlisten = () => { field.removeEventListener('input', onType); field.removeEventListener('blur', onLeave); };
+            unlisten = () => { field.removeEventListener('input', onType); field.removeEventListener('blur', onLeave); if (lent) { field.value = home; field.dispatchEvent(new Event('input', {bubbles: true})); } };
             const arrange = () => {
                 if (!bar) return;
                 const selection = state.selection, clips = selection?.kind === 'clip' ? selection.ids.map(id => model.find(state.record, id)).filter(Boolean) : [];
@@ -1831,12 +1831,13 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 const continuing = !again && clips.length > 0 && model.generationBefore(state.record, clips.map(clip => clip.id)).some(Boolean);
                 const range = selectionRange(), length = range ? range.frames / model.FPS : null; // the span, not a sum: a part's picture and sound are two linked clips over the same frames
                 echo = true;
+                if (clips.length) lent = true;
                 try { bar.apply({initial: {size: edit, ...(clips.length ? {text: genbar.shown()} : {}), ...(length ? {seconds: Number(length.toFixed(3))} : {})}, locked: again ? ['size', 'seconds'] : continuing ? ['size'] : []}); } finally { echo = false; }
             };
-            arrange(); if (!arranged) { arranged = true; state.subscribe(event => {
-                if (event.type === 'selection') arrange();
+            arrangeNow = arrange; arrange(); if (!arranged) { arranged = true; state.subscribe(event => {
+                if (event.type === 'selection') arrangeNow?.();
                 // An undo or a description written elsewhere shows in the bar too, unless it is being typed in.
-                else if (event.type === 'record' && bar && state.selection?.kind === 'clip' && document.activeElement !== bar.prompt && bar.prompt.value !== genbar.shown()) { echo = true; try { bar.apply({initial: {text: genbar.shown()}}); } finally { echo = false; } }
+                else if (event.type === 'record' && bar && state.selection?.kind === 'clip' && document.activeElement !== bar.prompt && bar.prompt.value !== genbar.shown()) { echo = true; lent = true; try { bar.apply({initial: {text: genbar.shown()}}); } finally { echo = false; } }
             }); }
         }
         };
