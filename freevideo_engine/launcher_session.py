@@ -2696,9 +2696,14 @@ class Session:
                 speeds.append(dict(source=source_name(entry['id'], zh)+' · '+route, group=self.t(*names.get(group, (group, group))),
                     ok=entry.get('ok', False), rate=speed_text(entry, self.language.startswith('zh'))))
         from .sampling_assets import total_bytes
+        # The controller's record of the exception (class names and errno) belongs to its own message only: it tells an
+        # unexpected failure from a message the launcher wrote, which str(error) alone cannot.
+        own = (bool(row.get('error')) and not (self.error or self.browser_error or self.page_error)
+               and not self.offline_page())
         failure = launcher_failure(error, zh=self.language.startswith('zh'), can_repair=self.can_repair(),
                                    repairs_comfy=self.repairs_comfy(), unavailable=self.repair_unavailable(),
-                                   model_package=model_mismatch_package(raw_error, zh))
+                                   model_package=model_mismatch_package(raw_error, zh),
+                                   exception=row.get('exception') if own else None)
         if failure.get('kind') == 'gpu-driver-missing':
             from .display_adapters import adapters, line, only_other_vendors
             zh = self.language.startswith('zh')

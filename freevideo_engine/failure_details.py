@@ -653,7 +653,7 @@ def launcher_failure(value, *, zh=False, **options):
 
 
 def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_repair=False, repairs_comfy=False,
-                      unavailable='none', model_package=''):
+                      unavailable='none', model_package='', exception=None):
     """Short guidance for known failures; callers retain the full error separately.
 
     other_disk: the launcher can offer another disk with enough room (macOS).
@@ -661,6 +661,9 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
     can_repair: the launcher's Repair button can fix this installation.
     repairs_comfy: ComfyUI runs in the environment the launcher made, which Repair reinstalls.
     unavailable: why Repair is missing when it cannot run (a key of WITHOUT_REPAIR's rows).
+    exception: the launcher's record of the exception behind the message (diagnostic_resources.exception_details:
+        class names and errno, no text), when the message is that exception's str(); it tells an unexpected
+        failure from a message the launcher wrote itself.
     """
     if not value:
         return dict(title='', detail='', action='', kind='')
@@ -1115,21 +1118,98 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
         other = [line for line in causes if not line.startswith(('Failed step:', 'Setup failed:'))]
         raw = re.sub(r'^(?:[\w.]+(?:Error|Exception)|ERROR):?\s*', '', other[-1])[:200] if other else ''
         detail = raw if raw and lan_error(raw, zh) != raw else ''
-    # A message the launcher raised itself (a ValueError) is the next step already.
-    unexpected = 'Traceback' in text and not re.match(r'(?:[\w.]+\.)?ValueError:', causes[-1] if causes else '')
-    detail = lan_error(detail, zh)
-    if step or unexpected:
+    # A message the launcher raised itself (a ValueError, or its own RuntimeError/TimeoutError such as a cancellation)
+    # keeps its words. Anything else is unexpected: a traceback says so, and so does the launcher's record of the
+    # exception when the message is only its str().
+    types = [row.get('exception_type') for row in exception or () if isinstance(row, dict)]
+    own = re.match(r'(?:[\w.]+\.)?ValueError:', causes[-1] if causes else '') or (types[:1] == ['ValueError'])
+    if not own and exception:
+        own = _raised_by_freevideo(exception)
+    unexpected = not own and ('Traceback' in text or bool(types))
+    if not own and unexpected and not exception and _traceback_raised_by_freevideo(text, causes):
+        # A traceback of the launcher's own error keeps its words, with the next step, as before.
+        return dict(title=title, detail=(lan_error(detail, zh) + '\n' if detail else '') + UNKNOWN_NEXT_STEP[zh],
+                    action='', kind='unknown')
+    if step:
         # The launcher's failure card shows the action only when there is no detail, so the next
         # step goes under the detail rather than being hidden by it.
-        return dict(title=title, detail=(detail + '\n' if detail else '') + UNKNOWN_NEXT_STEP[zh], action='', kind='unknown')
-    return dict(title=title, detail=detail, action='', kind='unknown')
+        return dict(title=title, detail=(lan_error(detail, zh) + '\n' if detail else '') + UNKNOWN_NEXT_STEP[zh],
+                    action='', kind='unknown')
+    if unexpected:
+        # The raw error line (a path, "'python'") stays in the details; the card says what kind of problem it was.
+        cause, next_step = _plain_cause(text, exception)
+        return dict(title=title, detail=cause[zh] + '\n' + next_step[zh], action='', kind='unknown')
+    return dict(title=title, detail=lan_error(detail, zh), action='', kind='unknown')
 
 
 # comfy_setup.inspection_failed: the first line of a failed check.
 INSPECTION_SUMMARY = r'Setup inspection failed(?: \([^()\r\n]*(?:\([^()\r\n]*\)[^()\r\n]*)*\))?'
 CHECK_UNFINISHED = ('The check did not finish.', '这次检查没有完成。')
-UNKNOWN_NEXT_STEP = ('Try again. If it fails again, export the report, then use "Report a problem" and attach it.',
-                     '请重试。仍然失败时，请先导出报告，再点“提交问题”并附上报告。')
+# The way to send a failure to us, by the launcher's own button names (Main.qml: "Export report", "Report a problem").
+REPORT_STEP = ('If it fails again, select "Export report", then select "Report a problem" and attach the report.',
+               '仍然失败时，请先点击“导出报告”，再点击“提交问题”并附上报告。')
+UNKNOWN_NEXT_STEP = ('Try again. ' + REPORT_STEP[0], '请重试。' + REPORT_STEP[1])
+
+
+# Unexpected launcher errors in one sentence each, by the exception's class and errno (or the "[Errno n]" /
+# "[WinError n]" in its text), with the next step. Network first: a refused connection is also an OSError.
+_NETWORK_TYPES = {'ConnectionError', 'ConnectionRefusedError', 'ConnectionResetError', 'ConnectionAbortedError',
+                  'URLError', 'gaierror', 'timeout', 'RemoteDisconnected', 'SSLError', 'IncompleteRead'}
+# A TimeoutError is a network one only from a network module (or with a network errno, below); the launcher's own
+# deadlines raise it too.
+_NETWORK_MODULES = ('socket', 'ssl', 'http.', 'urllib.', 'requests.', 'urllib3.', 'freevideo_engine.network')
+# What the launcher raises with its own words (a cancellation, a refusal it explains); never with an OS error number.
+_OWN_TYPES = {'ValueError', 'RuntimeError', 'TimeoutError'}
+
+
+def _raised_by_freevideo(exception):
+    """The launcher's record says FreeVideo's own code raised this, in its own words: the first exception is one of
+    the types it raises itself, carries no OS error number, and its innermost frame (when known) is FreeVideo's."""
+    first = next((row for row in exception or () if isinstance(row, dict)), None)
+    if not first or first.get('exception_type') not in _OWN_TYPES or first.get('errno') is not None or first.get('winerror') is not None:
+        return False
+    frames = [frame for frame in first.get('frames') or () if isinstance(frame, dict)]
+    return not frames or str(frames[-1].get('module') or '').startswith('freevideo_engine')
+
+
+def _traceback_raised_by_freevideo(text, causes):
+    """The same for a traceback: its last line is one of those types and its innermost file is FreeVideo's."""
+    found = re.match(r'(?:[\w.]+\.)?(\w+):', causes[-1] if causes else '')
+    files = re.findall(r'^\s*File "([^"]+)"', text, re.M)
+    return bool(found and found.group(1) in _OWN_TYPES and files and 'freevideo_engine' in files[-1].replace('\\', '/'))
+_NETWORK_ERRNO = {101, 104, 110, 111, 113, 10050, 10051, 10053, 10054, 10060, 10061, 10065, 11001, 11002}
+_IN_USE_ERRNO, _IN_USE_WINERROR = {16, 26}, {32, 33}
+_MISSING_ERRNO, _MISSING_WINERROR = {2}, {2, 3}
+PLAIN_CAUSES = {
+    'network': (('FreeVideo could not reach the network.', 'FreeVideo 无法连接网络。'),
+                ('Check the network connection, then try again. ' + REPORT_STEP[0], '请检查网络连接后重试。' + REPORT_STEP[1])),
+    'in-use': (('Another program is using a file FreeVideo needs.', '有其他程序正在使用 FreeVideo 需要的文件。'),
+               ('Close programs that may be using FreeVideo\'s files, such as another FreeVideo window or a virus scan, '
+                'then try again. ' + REPORT_STEP[0],
+                '请关闭可能正在使用 FreeVideo 文件的程序，例如另一个 FreeVideo 窗口或病毒扫描，然后重试。' + REPORT_STEP[1])),
+    'missing': (('A file or folder FreeVideo needs is missing.', '缺少 FreeVideo 需要的文件或文件夹。'), UNKNOWN_NEXT_STEP),
+    'other': (('FreeVideo ran into an unexpected problem.', 'FreeVideo 遇到了意外问题。'), UNKNOWN_NEXT_STEP),
+}
+
+
+def _plain_cause(text, exception=None):
+    """(sentence, next step) pairs, (English, Chinese), for an unexpected launcher error."""
+    rows = [row for row in exception or () if isinstance(row, dict)]
+    types = {row.get('exception_type') for row in rows}
+    types.update(re.findall(r'^(?:[\w.]+\.)?(\w+(?:Error|Exception|timeout|gaierror)):', text, re.M))
+    errnos = {row.get('errno') for row in rows} | {int(n) for n in re.findall(r'\[Errno (\d+)\]', text)}
+    winerrors = {row.get('winerror') for row in rows} | {int(n) for n in re.findall(r'\[WinError (\d+)\]', text)}
+    modules = {str(frame.get('module') or '') for row in rows for frame in row.get('frames') or () if isinstance(frame, dict)}
+    network_frames = any(module.startswith(_NETWORK_MODULES) for module in modules)
+    if types & _NETWORK_TYPES or (errnos | winerrors) & _NETWORK_ERRNO or ('TimeoutError' in types and network_frames):
+        kind = 'network'
+    elif errnos & _IN_USE_ERRNO or winerrors & _IN_USE_WINERROR:
+        kind = 'in-use'
+    elif 'FileNotFoundError' in types or errnos & _MISSING_ERRNO or winerrors & _MISSING_WINERROR:
+        kind = 'missing'
+    else:
+        kind = 'other'
+    return PLAIN_CAUSES[kind]
 
 
 def _step_name(label, zh):
