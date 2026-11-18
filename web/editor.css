@@ -358,8 +358,8 @@
 .fv-ed-generate-time{font-size:12px;font-weight:500;opacity:.85;white-space:nowrap;font-variant-numeric:tabular-nums}
 .fv-ed-generate-time[hidden]{display:none}
 .fv-ed-generate-sep{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
-/* The progress words share the bar's line and give up width first. */
-.fv-ed-genbar[data-mode=running] .fv-ed-gen-hint{flex:0 1 auto;min-width:0}
+/* The progress words share the bar's line and stay whole; the sentence beside them gives up width. */
+.fv-ed-genbar[data-mode=running] .fv-ed-gen-hint{flex:0 0 auto;min-width:auto}
 /* The record bar takes the bar's place at the bar's height. */
 .fv-editor .fv-ed-record{grid-row:5;height:100%;min-height:0}
 /* Dubbing lines no longer change the rows. */
