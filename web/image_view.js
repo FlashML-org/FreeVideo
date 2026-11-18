@@ -423,7 +423,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     const menuItem = (iconName, text, use, onClick, cls = '') => { const b = el('button', 'fv-iv-menu-item ' + cls); b.type = 'button'; b.setAttribute('role', 'menuitem'); b.append(icon(iconName), el('span', '', text)); tip(b, text, use); b.addEventListener('click', () => { more.hidden = true; onClick(); }); return b; };
     const copyPrompt = () => { const text = promptFor(shownFile); try { void navigator.clipboard?.writeText(text); } catch { /* the clipboard may be refused */ } };
     const usePromptItem = menuItem('prompt', t('Use prompt', '使用提示词'), t('Put its prompt back in the box', '把它的提示词填回描述框'), () => { const text = promptFor(shownFile); if (text) { prompt.value = text; prompt.dispatchEvent(new Event('input', {bubbles: true})); promptGroup.open(true); } });
-    more.append(menuItem('folder', t('Open folder', '打开文件夹'), t('Show the pictures on this computer', '在电脑上打开保存图片的文件夹'), () => void client.historyOpen?.()),
+    more.append(menuItem('folder', t('Open folder', '打开文件夹'), t('Show the pictures on this computer', '在电脑上打开保存图片的文件夹'), () => void openFolder()),
         menuItem('copy', t('Copy prompt', '复制提示词'), t('Copy the words this picture was made from', '复制这张图的提示词'), copyPrompt), usePromptItem,
         menuItem('trash', t('Delete', '删除'), t('Move to recently deleted; can be undone', '移到最近删除，可以撤销'), () => deleteFiles([shownFile]), 'fv-iv-danger'));
     const moreHost = el('span', 'fv-image-more-host fv-iv-more-host'); moreHost.append(moreButton, more);
@@ -433,7 +433,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     const copyInline = inlineBtn('copy', t('Copy prompt', '复制提示词'), t('Copy the words this picture was made from', '复制这张图的提示词'), copyPrompt);
     const useInline = inlineBtn('prompt', t('Use prompt', '使用提示词'), t('Put its prompt back in the box', '把它的提示词填回描述框'), () => usePromptItem.click());
     inline.append(copyInline, useInline,
-        inlineBtn('folder', t('Open folder', '打开文件夹'), t('Show the pictures on this computer', '在电脑上打开保存图片的文件夹'), () => void client.historyOpen?.()),
+        inlineBtn('folder', t('Open folder', '打开文件夹'), t('Show the pictures on this computer', '在电脑上打开保存图片的文件夹'), () => void openFolder()),
         inlineBtn('trash', t('Delete', '删除'), t('Move to recently deleted; can be undone', '移到最近删除，可以撤销'), () => deleteFiles([shownFile]), 'fv-iv-danger'));
     const capActions = el('div', 'fv-iv-cap-actions'); capActions.append(editThis, asReference, el('i', 'fv-iv-sep'), favBtn, save, inline, moreHost);
     cap.append(info_, capActions);
@@ -544,7 +544,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         onTrash: value => { view = value === false ? 'works' : view === 'trash' ? 'works' : 'trash'; drawWorks(); },
         onRestore: files => { restoreWorks(files); if (undoNote) undoNote.files = undoNote.files.filter(f => !files.includes(f)); if (!undoNote?.files.length) undoNote = null; drawWorks(); render(); },
         onPurge: () => { void trash.flush(); },
-        onOpenFolder: () => void client.historyOpen?.(),
+        onOpenFolder: () => void openFolder(),
         onCollapse: () => setPanel('right', false), onRun: () => returnToRun()});
     const rightRail = el('div', 'fv-iv-rail fv-iv-rail-right');
     const rightRailOpen = button('fv-iv-icon-btn', {iconName: 'panelR', name: t('Show works', '展开作品栏'), use: t('Your pictures, newest first', '你的图片，最新在前')});
@@ -656,6 +656,33 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     listenDialogKey(prompt, 'paste', event => { const files = [...(event.clipboardData?.files || [])].filter(f => f.type.startsWith('image/')); if (files.length) { event.preventDefault(); addFiles(files); } });
 
     const say = text => { note.textContent = text || ''; if (alive) paintSlot(); };
+    // Open folder: when the engine cannot show it (no desktop, or a remote engine: expected there, not a fault), the line
+    // above Generate says so as a plain note and gives the folder on a line of its own, so the click is never silent;
+    // opening it later clears that line. (The wording is the one the image history used before 0.6.0.)
+    let folderNote = null;
+    async function openFolder() {
+        let answer;
+        try { answer = await client.historyOpen?.(); } catch { answer = {opened: false}; }
+        if (!alive) return;
+        if (answer?.opened === false) {
+            const sentence = t('The folder could not be opened automatically. Open it in a file manager.', '无法自动打开该文件夹，请在文件管理器中手动打开');
+            const folder = typeof answer.folder === 'string' ? answer.folder : '';
+            folderNote = {sentence, folder, text: folder ? `${sentence} ${folder}` : sentence};
+            say(folderNote.text);
+        } else if (folderNote && note.textContent === folderNote.text) { folderNote = null; say(''); }
+    }
+    // The folder note's two lines. Its path breaks only where it does not fit (its spaces are shown unbreakable and
+    // copied as plain spaces, so a copied path still works).
+    function folderParts() {
+        const tx = el('span', 'fv-iv-slot-tx'); tx.append(el('span', 'fv-iv-folder-say', folderNote.sentence));
+        if (folderNote.folder) tx.append(el('span', 'fv-iv-folder-path', folderNote.folder.replace(/ /g, '\u00a0')));
+        tx.addEventListener('copy', event => {
+            const text = String(globalThis.getSelection?.() || '').replace(/\u00a0/g, ' ');
+            if (!text || !event.clipboardData) return;
+            event.clipboardData.setData('text/plain', text); event.preventDefault();
+        });
+        return [icon('info'), tx];
+    }
     const label = number => t(`Image ${number}`, `图 ${number}`);
     const subject = number => t(`Subject ${number}`, `主体 ${number}`);
     // Each model row says how many pictures it takes; the strip holds as many as the most generous one.
@@ -891,7 +918,8 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         // One fixed-height line above Generate: the most pressing thing there is to say.
         const s = modelState(info, model.id), tooMany = over() > 0;
         let kind = '', parts = [];
-        if (note.textContent) { kind = note.dataset.kind === 'busy' ? 'info' : 'warn'; parts = [icon(kind === 'info' ? 'clock' : 'warn'), el('span', 'fv-iv-slot-tx', note.textContent)]; }
+        if (note.textContent && folderNote && note.textContent === folderNote.text) { kind = 'note'; parts = folderParts(); }
+        else if (note.textContent) { kind = note.dataset.kind === 'busy' ? 'info' : 'warn'; parts = [icon(kind === 'info' ? 'clock' : 'warn'), el('span', 'fv-iv-slot-tx', note.textContent)]; }
         else if (tooMany) {
             kind = 'warn';
             parts = [icon('warn'), el('span', 'fv-iv-slot-tx', cap_(model) === 0 ? t(`${model.short} does not take reference pictures. Remove ${over()}.`, `${model.short} 暂不支持参考图，请移除 ${over()} 张。`) : t(`${model.short} takes at most ${cap_(model)}. Remove ${over()}.`, `${model.short} 最多 ${cap_(model)} 张，请移除 ${over()} 张。`))];
@@ -910,6 +938,8 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         else if (fitted && fitted.file === shownFile) { kind = 'info'; parts = [icon('info'), el('span', 'fv-iv-slot-tx', fittedNote(fitted, t, !!info?.unified_memory))]; }
         else parts = running ? [el('span', 'fv-iv-slot-tx', t('Generating; you can leave this view', '正在生成，可以离开这个视图'))] : [];
         slot.dataset.kind = kind; slot.replaceChildren(...parts);
+        // A folder that could not be opened is read (and copied) in full: that line takes the height it needs.
+        slot.toggleAttribute('data-whole', kind === 'note');
         paintStatus();
     }
 

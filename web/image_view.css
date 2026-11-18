@@ -266,6 +266,11 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
 .fv-iv .fv-iv-slot{display:flex;align-items:center;gap:8px;height:40px;padding:0 4px 0 8px;margin-bottom:8px;border-radius:var(--fv-rad-ctl,12px);font-size:var(--fv-fs-1,12px);color:var(--fv-fg3);overflow:hidden}
 .fv-iv .fv-iv-slot .fv-iv-icon{width:15px;height:15px}
 .fv-iv .fv-iv-slot-tx{flex:1;min-width:0;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:16px}
+.fv-iv .fv-iv-slot[data-whole]{height:auto;min-height:40px;padding-top:8px;padding-bottom:8px;align-items:flex-start}
+.fv-iv .fv-iv-slot[data-whole] .fv-iv-slot-tx{display:block;-webkit-line-clamp:unset;-webkit-user-select:text;user-select:text}
+.fv-iv .fv-iv-slot[data-kind=note]{background:rgb(var(--fv-solid3))}
+.fv-iv .fv-iv-folder-say,.fv-iv .fv-iv-folder-path{display:block}
+.fv-iv .fv-iv-folder-path{overflow-wrap:anywhere}
 .fv-iv .fv-iv-slot[data-kind=warn]{background:var(--fv-warn-soft);color:var(--fv-warn)}
 .fv-iv .fv-iv-slot[data-kind=info]{background:var(--fv-accent-soft);color:var(--fv-accent-ink)}
 .fv-iv .fv-iv-slot-act{height:28px;padding:0 12px;color:inherit;font-weight:600}
