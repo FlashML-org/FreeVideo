@@ -273,6 +273,9 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         target.addEventListener(type, listener, options);
         listeners.push(() => target.removeEventListener(type, listener, options));
     }
+    // On a wider touch screen the sound and text rows are finger height (48 px); the picture row keeps its size.
+    const touchRows = typeof matchMedia === 'function' ? matchMedia('(pointer:coarse) and (min-width:1024px)') : null;
+    const laneHeight = () => touchRows?.matches ? 48 : 40;
     const locate = id => clips.get(id);
     const pairIds = id => {
         const clip = locate(id)?.clip;
@@ -641,7 +644,7 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
             row.empty.hidden = track.clips.length > 0;
             // A picture track with any block description grows a strip for it under the pictures.
             const noted = !!actions.describedTrack?.(track); row.element.dataset.noted = String(noted);
-            row.top = top; row.height = track.kind === 'video' ? 64 + (noted ? 22 : 0) : 40;
+            row.top = top; row.height = track.kind === 'video' ? 64 + (noted ? 22 : 0) : laneHeight();
             row.element.style.top = row.head.style.top = `${top}px`;
             row.element.style.height = row.head.style.height = `${row.height}px`;
             row.element.setAttribute('aria-label', name);
@@ -1292,20 +1295,20 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
             const head = create('div', 'fv-ed-track-head'); head.dataset.track = 'a2'; head.dataset.preview = 'true';
             const name = t('Audio 2', '声音 2'); head.title = name; head.append(icon('audio'), create('span', '', name));
             row.setAttribute('aria-label', name);
-            row.style.top = head.style.top = `${top}px`; row.style.height = head.style.height = '40px';
+            row.style.top = head.style.top = `${top}px`; row.style.height = head.style.height = `${laneHeight()}px`;
             const oldName = first.head.title, oldTop = addAudio.style.top, oldHeight = content.style.height;
             sourcePreview.restore = () => {
                 first.head.title = oldName; first.head.querySelector('span').textContent = oldName;
                 addAudio.style.top = oldTop; setTrackHeight(parseFloat(oldHeight) - 34);
             };
             first.head.title = t('Audio 1', '声音 1'); first.head.querySelector('span').textContent = first.head.title;
-            addAudio.style.top = `${top + 46}px`; setTrackHeight(top + 40);
+            addAudio.style.top = `${top + laneHeight() + 6}px`; setTrackHeight(top + laneHeight());
             heads.insertBefore(head, addAudio); content.insertBefore(row, overlays); nodes.push(head, row);
         }
         for (const {track, clip} of added) {
             const node = create('div', 'fv-ed-gesture-preview fv-ed-source-placement'); node.dataset.track = track;
             const row = rows.get(track), top = row?.top ?? rows.get('a1').top + rows.get('a1').height + 6;
-            node.style.top = `${top}px`; node.style.height = `${row?.height ?? 40}px`;
+            node.style.top = `${top}px`; node.style.height = `${row?.height ?? laneHeight()}px`;
             position(node, clip.start, clip.frames); overlays.append(node); nodes.push(node);
         }
         return added;
@@ -1466,6 +1469,7 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         else if (event.type === 'zoom') { if (gesture) stopPointer(null, true); layout(); }
     });
     const observer = new ResizeObserver(layout); observer.observe(scroll);
+    if (touchRows) on(touchRows, 'change', () => { if (!disposed) renderRecord(); });
     selectionBox.hidden = previewBox.hidden = guide.hidden = insertion.hidden = true;
     const audioControls = attachAudioTracks(element, {state, t, actions});
     // Track head switches are drawn by the audio and text modules on every change; each gets its name, use and state.

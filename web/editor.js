@@ -55,7 +55,7 @@ import {jobs} from './task_store.js';
 import {openingChoice} from './editor_opening.js';
 import {CN} from './topbar_state.js';
 import {setDisabled} from './dom_quiet.js';
-const editorStyles = Promise.all(['result_actions.css', 'editor.css', 'editor_expand.css', 'editor_tracks.css', 'editor_frame.css', 'editor_adjust.css', 'editor_adjust_picture.css', 'editor_preview_picture.css', 'editor_select.css', 'editor_menu.css', 'editor_text.css', 'editor_notes.css', 'editor_transport.css', 'glass/editor.css'].map(name => {
+const editorStyles = Promise.all(['result_actions.css', 'editor.css', 'editor_expand.css', 'editor_tracks.css', 'editor_frame.css', 'editor_adjust.css', 'editor_adjust_picture.css', 'editor_preview_picture.css', 'editor_select.css', 'editor_menu.css', 'editor_text.css', 'editor_notes.css', 'editor_transport.css', 'glass/editor.css', 'editor_touch.css'].map(name => {
     const style = document.createElement('link'); style.rel = 'stylesheet'; style.href = new URL(name, import.meta.url).href;
     const ready = 'sheet' in style ? new Promise(resolve => { style.onload = style.onerror = resolve; }) : Promise.resolve();
     document.head.append(style); return ready;
@@ -1907,7 +1907,9 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     editTools.append(secondPassButton);
     toolbar.append(adjust.toggleButton);
     const textTools = createEditorText({element, state, t, actions, adjust, player, toolbar, exportBox, tracksHost});
-    const toolbarMore = createToolbarMore({toolbar, t, keep: '.fv-ed-undo, .fv-ed-split, .fv-ed-delete, .fv-ed-adjust-toggle, .fv-ed-zoom, .fv-ed-stems-button, .fv-ed-second-pass'});
+    const toolbarMore = createToolbarMore({toolbar, t, keep: '.fv-ed-undo, .fv-ed-split, .fv-ed-delete, .fv-ed-adjust-toggle, .fv-ed-zoom, .fv-ed-stems-button, .fv-ed-second-pass',
+        touchKeep: '.fv-ed-undo, .fv-ed-redo, .fv-ed-split, .fv-ed-delete, .fv-ed-snapping, .fv-ed-adjust-toggle, .fv-ed-zoom, .fv-ed-stems-button, .fv-ed-second-pass',
+        touchWideKeep: '.fv-ed-record-toggle, .fv-ed-add-text'});
     actions.speech.ability().then(value => { if (!disposed) textTools.speech(value); }).catch(() => {});
     // The command palette (Ctrl/Cmd+K) offers this view's actions while it is open; a greyed one says why (the control's own reason).
     {

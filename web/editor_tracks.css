@@ -229,6 +229,8 @@
 /* The timeline's own surface (glass/editor.css keeps only the outer .fv-ed-tracks surface): heads, the sticky ruler
    and the area under the rows share the solid timeline tone. */
 .fv-studio.fv-editor :is(.fv-ed-track-view,.fv-ed-track-heads,.fv-ed-track-view[data-vertical-overflow=true] .fv-ed-ruler,.fv-ed-track-view[data-vertical-overflow=true] .fv-ed-track-heads::after){background:var(--fv-ed-timeline,var(--fv-bg))}
+/* A pseudo-element is not allowed inside :is(), so the ruler corner above the heads gets its own rule. */
+.fv-studio.fv-editor .fv-ed-track-view[data-vertical-overflow=true] .fv-ed-track-heads::after{background:var(--fv-ed-timeline,var(--fv-bg))}
 /* Time zero sits 8 px in from the heads, so the playhead tab (and a clip's start handle) at the very start is whole,
    not cut by the edge of the scrolling area under the heads. Every position is measured from this content box. */
 .fv-studio.fv-editor .fv-ed-track-content{margin-left:8px}
