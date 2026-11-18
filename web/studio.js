@@ -1314,9 +1314,18 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const firstFrame = firstFrameRow(t, 'fv-first-frame');
     firstFrame.row.hidden = true; fields.after(firstFrame.row);
     firstFrame.input.checked = value(node, 'first_frame_reference') === true;
-    firstFrame.input.onchange = () => { set(node, 'first_frame_reference', firstFrame.input.checked); firstFrame.input.checked = value(node, 'first_frame_reference') === true; };
+    firstFrame.input.onchange = () => {
+        if (borrowed?.firstFrame) { borrowed.onFirstFrame?.(firstFrame.input.checked); return; } // the edit keeps it, not this panel
+        set(node, 'first_frame_reference', firstFrame.input.checked); firstFrame.input.checked = value(node, 'first_frame_reference') === true;
+    };
     let manyParts = false, originalOn = false;
     function updateFirstFrame() {
+        // While the editor borrows the bar, the editor says when the switch applies and what is on.
+        const lent = borrowed?.firstFrame;
+        if (lent) {
+            if (firstFrame.row.hidden !== !lent.shown) firstFrame.row.hidden = !lent.shown;
+            firstFrame.input.checked = lent.checked; firstFrame.setDisabled(Boolean(lent.disabled)); return;
+        }
         // While a new plan is being worked out the row keeps its place.
         const plan = lengthControl.plan; if (plan || !lengthControl.needsPlan) manyParts = plan?.count > 1;
         { const gone = !widget(node, 'first_frame_reference') || !(manyParts || extension.source); if (firstFrame.row.hidden !== gone) firstFrame.row.hidden = gone; }
@@ -2946,7 +2955,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // same chips and their rules stay in one place. Pressing Generate runs the editor's submission instead; the values
     // come from the same node the bar edits. Release puts everything back as it was.
     let popHolder = null;
-    current.borrow = ({mount, submit, label = null, disabled = null, onSeconds = null, initial = {}, locked = []}) => {
+    current.borrow = ({mount, submit, label = null, disabled = null, onSeconds = null, onFirstFrame = null, initial = {}, locked = []}) => {
         if (borrowed || disposed) return null;
         const outer = mount.closest('dialog') || document.body;
         const home = {parent: controls.parentNode, next: controls.nextSibling};
@@ -2969,10 +2978,12 @@ export function openStudio(node, {extendFrom = null} = {}) {
             // Every setting changed in the bar while it is borrowed (the request is built from these).
             overrides: () => Object.fromEntries(shadow?.get(node) || []),
             setLabel: next => { state.labelFn = next; updateRunButton(); },
+            // {shown, checked, disabled} from the editor; null gives the switch back to this panel's own rule.
+            firstFrame: next => { if (!borrowed) return; borrowed.firstFrame = next || null; updateFirstFrame(); },
             release({disposing = false} = {}) {
                 if (!borrowed) return;
                 borrowed = null; shadow = null;
-                unlock();
+                unlock(); updateFirstFrame();
                 shell.remove();
                 if (!disposing) {
                     if (home.next?.parentNode === home.parent) home.parent.insertBefore(controls, home.next); else home.parent.append(controls);
@@ -2981,7 +2992,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
                 updateRunButton();
             }};
         shadow = new Map();
-        borrowed = {submit, label: () => (state.labelFn ?? label)?.(), disabled, onSeconds, applying: false, release: state.release};
+        borrowed = {submit, label: () => (state.labelFn ?? label)?.(), disabled, onSeconds, onFirstFrame, firstFrame: null, applying: false, release: state.release};
         const unlock = () => {
             for (const control of lockedNow.splice(0)) { control.disabled = false; delete control.dataset.fvLocked; }
             for (const element of [framePicker?.element, stepper?.element]) delete element?.dataset.fvLocked;

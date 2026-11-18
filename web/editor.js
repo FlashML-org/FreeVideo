@@ -1801,9 +1801,13 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         attachBar = () => {
         if (bar) return;
         bar = panel.borrowBar({mount: genHost, onSeconds: value => { const field = genbar.duration; if (!field || field.element.hidden || field.input.disabled || !(value > 0)) return; field.input.value = String(Math.round(value)); field.commit(); }, label: () => barLabel || null, disabled: () => !genbar.canGenerate(),
-            submit: async options => { genbar.setText(bar.prompt.value); await genbar.press(options?.allowEmpty === true); }});
+            submit: async options => { genbar.setText(bar.prompt.value); await genbar.press(options?.allowEmpty === true); },
+            onFirstFrame: value => genbar.firstFrame?.set(value)});
         if (bar) {
             genHost.classList.add('fv-ed-genbar-borrowed');
+            // The editor's own first-frame switch is hidden with its bar; the borrowed bar's switch (in its frame pop-up,
+            // where the creation panel keeps it) follows the editor's rule and saves to the edit.
+            genbar.firstFrame?.mirror(next => bar?.firstFrame?.(next));
             element.dataset.barBorrowed = 'true';
             // The guide's editor steps ring the borrowed bar's prompt, media and Generate, not the editor's hidden ones.
             guideBack = [['editor-describe', '[data-fv-guide="describe"]'], ['editor-refs', '.fvs-chip[data-chip="media"]'], ['editor-generate', '[data-fv-guide="generate"]']].flatMap(([mine, selector]) => {
@@ -1846,7 +1850,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         }
         };
         // Hidden, the editor gives the panel its bar back; shown again, it takes it once more.
-        detachBar = () => { observer?.disconnect(); observer = null; unlisten?.(); unlisten = null; for (const back of guideBack.splice(0)) back(); bar?.release(); bar = null; panel.barActive = false; genHost.classList.remove('fv-ed-genbar-borrowed'); delete element.dataset.barBorrowed; };
+        detachBar = () => { genbar.firstFrame?.mirror(null); observer?.disconnect(); observer = null; unlisten?.(); unlisten = null; for (const back of guideBack.splice(0)) back(); bar?.release(); bar = null; panel.barActive = false; genHost.classList.remove('fv-ed-genbar-borrowed'); delete element.dataset.barBorrowed; };
         cleanupBar = detachBar;
         attachBar();
     }
