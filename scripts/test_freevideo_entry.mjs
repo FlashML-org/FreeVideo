@@ -120,6 +120,9 @@ test('main browser entry registers both views and preserves node hooks', async t
     }
     try {
         let source = await readFile(new URL('../web/freevideo.js', import.meta.url), 'utf8');
+        // has_mirror.js keeps CSS state attributes on live DOM nodes and installs itself on import (a MutationObserver on the
+        // whole document); this test's document is a stub, and what it checks (registration and node hooks) does not use it.
+        source = source.replace("import './has_mirror.js';", '');
         source = source.replace("import { beginWorkspaceRestore, finishWorkspaceRestore, waitForLauncherRestore } from './workspace_restore.js';", 'const {beginWorkspaceRestore,finishWorkspaceRestore,waitForLauncherRestore} = globalThis.__freevideoEntryTest;');
         source = source.replace("import { openEditorView } from './editor_loader.js';", 'const openEditorView = (...args) => globalThis.__freevideoEntryTest.openEditorView?.(...args);');
         source = source.replace("from './issue_button.js'", `from '${new URL('../web/issue_button.js', import.meta.url).href}'`);
