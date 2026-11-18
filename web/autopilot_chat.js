@@ -1417,7 +1417,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                     // "Send again" leads the card's own action row; its label and state are set below with the others.
                     const host = el('div');
                     const card = renderImageFailure(host, {error: job.error?.code || 'generation_failed', report_id: job.error?.report_id,
-                        stage: job.error?.stage, memory: job.error?.memory}, t,
+                        stage: job.error?.stage, step: job.error?.step || (job.error?.code ? '' : 'agent_job'), memory: job.error?.memory}, t,
                         {productVersion, fetchApi: (path, options) => api.fetchApi(path, options),
                             retry: retry ? {label: AGAIN.resend, onClick: () => retry?.()} : null});
                     item.replaceChildren(host);

@@ -1355,7 +1355,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             running = null; level.hidden = true; clearStep();
             // The worker is full: a state of the worker, shown in place, not a failed picture.
             if (IMAGE_BUSY.has(error.code)) { note.dataset.kind = 'busy'; say(imageGenError(error.code, info, t)); render(); drawWorks(); return; }
-            failure = {error: error.code || 'generation_failed', report_id: error.report_id, stage: error.stage, fitted: error.fitted, memory: error.memory, other_usage: error.other_usage, retryStandard: tierNow === 'high' && error.code === 'no_memory'};
+            failure = {error: error.code || 'generation_failed', report_id: error.report_id, stage: error.stage, step: error.step, fitted: error.fitted, memory: error.memory, other_usage: error.other_usage, retryStandard: tierNow === 'high' && error.code === 'no_memory'};
             renderFailure(); render(); drawWorks();
         } finally {
             // Pictures sent for a request that never became a job; a job's own go when it ends.
@@ -1398,7 +1398,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             failure = null; jobs.dismiss(row.id);
         } else if (row.status === 'failed' || row.status === 'interrupted') {
             const reason = row.failure || {};
-            failure = {error: reason.code || 'generation_failed', report_id: reason.report_id, stage: reason.stage, fitted: reason.fitted, memory: reason.memory, other_usage: reason.other_usage,
+            failure = {error: reason.code || 'generation_failed', report_id: reason.report_id, stage: reason.stage, step: reason.step, fitted: reason.fitted, memory: reason.memory, other_usage: reason.other_usage,
                 retryStandard: row.meta?.tier === 'high' && reason.code === 'no_memory'};
             renderFailure(); jobs.dismiss(row.id);
         } else jobs.dismiss(row.id);
