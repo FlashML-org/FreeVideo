@@ -904,3 +904,22 @@ html body .fv-studio.fv-create .fvs-console :is(.fvs-console-prompt,.fv-section,
   .fv-studio.fv-create .fvs-console .fv-runrow.fv-at-moved>.fv-key-more{height:calc(2 * var(--fvs-row) + var(--fv-sp-8))}
   .fv-studio.fv-create .fvs-console .fv-runrow.fv-at-moved>.fv-key-more>summary{border-radius:0 var(--fv-rad-ctl) var(--fv-rad-ctl) 0}
 }
+/* Tall windows (portrait, wider than a phone; studio.js sets data-tall): the picture takes the column less 48 px each
+   way, the works button's strip left out on the right. When it fills the width with 320 px or more under it
+   (data-grid), it keeps to the top and the recent works fill that room as a grid of the same cards, behind a 1 px line;
+   the works button steps aside. */
+.fv-studio.fv-create .fv-body[data-tall=true] .fv-preview-column.fv-preview-column{padding:var(--fv-sp-24) 122px var(--fv-sp-24) 48px;scrollbar-gutter:auto}
+.fv-studio.fv-create .fv-body[data-grid=true] .fv-preview-column.fv-preview-column{padding-inline:48px}
+.fv-studio.fv-create .fv-body[data-grid=true] .fv-recent.fvs-rail{top:var(--fvs-grid-top,50%);bottom:calc(var(--fvs-dock-h,200px) + var(--fv-sp-16));left:48px;right:48px;width:auto;height:auto;max-height:none;
+  margin:0;translate:none;padding:var(--fv-sp-16) 0 0;border:0;border-top:1px solid var(--fv-line);border-radius:0;background:none!important;box-shadow:none;
+  -webkit-backdrop-filter:none!important;backdrop-filter:none!important;transition:none}
+.fv-studio.fv-create .fv-body[data-grid=true] .fvs-rail :is(.fv-works-entry,.fv-recent-toggle,.fv-recent-head,.fv-library-message){display:none}
+.fv-studio.fv-create .fv-body[data-grid=true] .fvs-rail .fv-recent-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));grid-auto-rows:max-content;align-content:start;gap:var(--fv-sp-12);
+  max-height:none;padding:var(--fv-sp-2) var(--fv-sp-2) 32px;overflow-y:auto;scrollbar-width:thin;
+  -webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 32px),transparent);mask-image:linear-gradient(to bottom,#000 calc(100% - 32px),transparent)}
+/* The fade above keeps the row cut by the bottom edge from ending on a hard line; the last row scrolls clear of it. */
+/* Each row is as tall as its cards: the rail's cards keep min-height 0, which in this fixed-height, scrolling grid would
+   otherwise squeeze the rows into the visible height and stack the cards on one another. */
+.fv-studio.fv-create .fv-body[data-grid=true] .fvs-rail .fv-recent-card{display:block;min-height:auto;padding:0}
+.fv-studio.fv-create .fv-body[data-grid=true] .fvs-rail .fv-recent-card .fv-library-picture{height:auto;aspect-ratio:16/9}
+.fv-studio.fv-create .fv-body[data-grid=true] .fvs-rail .fv-recent-card>:is(span:not(.fv-recent-check),small){display:none}

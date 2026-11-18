@@ -717,3 +717,17 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
 .fvp-pop[data-kind=image-lora] .fv-ie-lora-actions>button:disabled{opacity:.4;cursor:default}
 .fvp-pop[data-kind=image-lora] .fv-ie-lora-note{margin:0;font-size:var(--fv-fs-1,12px);line-height:18px;color:var(--fv-fg3)}
 .fvp-pop[data-kind=image-lora] .fv-ie-lora-note:empty{display:none}
+
+/* ── tall window (portrait, wider than a phone; image_view.js sets data-tall): the works keep to the top in the layout
+   of one to four columns that gives each picture the most room; the settings float over them as an opaque drawer;
+   the works panel opens below them and takes the height they leave ── */
+.fv-iv[data-tall=true]{--iv-lw:320px;--iv-rw:320px}
+.fv-iv[data-tall=true][data-drawer=left]{--iv-lp:var(--iv-lw)}
+.fv-iv[data-tall=true] .fv-iv-panel{z-index:4}
+.fv-iv[data-tall=true][data-drawer=left] .fv-iv-left{background:rgb(var(--fv-solid2))!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important;box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh3)}
+.fv-iv[data-tall=true][data-below=true] .fv-iv-stage{bottom:calc(var(--iv-sbar) + var(--iv-below,332px))}
+.fv-iv[data-tall=true][data-below=true] .fv-iv-right{top:auto;left:var(--iv-side);right:var(--iv-side);width:auto;height:calc(var(--iv-below,332px) - var(--iv-gut))}
+.fv-iv[data-tall=true] .fv-iv-stage[data-state=blank] .fv-iv-frame-box{align-items:flex-start}
+.fv-iv[data-tall=true] .fv-iv-stage[data-state=blank] .fv-iv-frame{width:min(calc(100cqw - var(--iv-cover,0px)),calc((100cqh - 88px) * var(--iv-grid-ar,1)));aspect-ratio:var(--iv-grid-ar,1)}
+.fv-iv[data-tall=true] .fv-iv-samples{grid-template-columns:repeat(var(--iv-cols,2),minmax(0,1fr));grid-template-rows:repeat(var(--iv-rows,2),minmax(0,1fr))}
+.fv-iv[data-tall=true] .fv-iv-compare[data-mode=grid] .fv-iv-compare-panes{grid-template-columns:repeat(var(--iv-cols,2),var(--iv-tw,minmax(0,1fr)));grid-template-rows:repeat(var(--iv-rows,2),var(--iv-th,minmax(0,1fr)));justify-content:center;align-content:start}

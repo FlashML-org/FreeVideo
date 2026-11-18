@@ -466,7 +466,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             const copy = button('fv-iv-text-btn', {iconName: 'copy', label: t('Copy prompt', '复制提示词'), name: t('Copy prompt', '复制提示词'), use: t('Copy the words this picture was made from', '复制这张图的提示词')});
             copy.addEventListener('click', copyPrompt);
             const reuse = button('fv-iv-text-btn', {iconName: 'prompt', label: t('Use prompt', '使用提示词'), name: t('Use prompt', '使用提示词'), use: t('Put its prompt back in the box', '把它的提示词填回描述框')});
-            reuse.addEventListener('click', () => { prompt.value = text; prompt.dispatchEvent(new Event('input', {bubbles: true})); promptGroup.open(true); if (narrowQuery.matches) setPanel('left', true); });
+            reuse.addEventListener('click', () => { prompt.value = text; prompt.dispatchEvent(new Event('input', {bubbles: true})); promptGroup.open(true); if (narrowQuery.matches || tallQuery.matches) setPanel('left', true); });
             acts.append(copy, reuse); parts.push(acts);
         }
         if (!shownFile) { const e = el('div', 'fv-iv-empty fv-iv-empty-small'); e.append(icon('info'), el('span', '', t('Pick a picture to see its facts', '选一张图片查看信息'))); parts.splice(0, parts.length, e); }
@@ -616,8 +616,20 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     // Under 1280 wide both panels rest as rails and open as drawers over the stage, one at a time, so the picture
     // keeps the room; the stage still measures from the two rails, so it stays centred. Wide, they dock and fold.
     const narrowQuery = matchMedia('(min-width: 720px) and (max-width: 1279px)');
-    let drawer = '';
+    // A tall window (portrait, wider than a phone): the settings open as a drawer over the works, and the works panel
+    // opens below them, taking the height they leave (at least 320 px), so it never narrows them from the side.
+    const tallQuery = matchMedia('(orientation: portrait) and (min-width: 720px)');
+    let drawer = '', below = false;
     function paintPanels() {
+        if (tallQuery.matches) {
+            if (drawer === 'right') drawer = '';
+            left.dataset.collapsed = String(drawer !== 'left'); column.dataset.collapsed = String(!below);
+            body.dataset.tall = 'true'; body.dataset.below = String(below); body.dataset.narrow = 'true'; body.dataset.drawer = drawer;
+            body.dataset.left = 'rail'; body.dataset.right = 'rail';
+            paintCover(); fitTallSoon();
+            return;
+        }
+        delete body.dataset.tall; delete body.dataset.below;
         const narrow = narrowQuery.matches;
         const leftShown = narrow ? drawer === 'left' : panels.left !== false, rightShown = narrow ? drawer === 'right' : panels.right !== false;
         left.dataset.collapsed = String(!leftShown); column.dataset.collapsed = String(!rightShown);
@@ -629,20 +641,76 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     // windows) covers its left part, so the frame centres in the rest.
     function paintCover() {
         let cover = 0;
-        if (stage.dataset.state === 'draft' && body.dataset.drawer === 'left' && !matchMedia('(max-width: 719px)').matches) {
+        if (stage.dataset.state === 'draft' && body.dataset.drawer === 'left' && !tallQuery.matches && !matchMedia('(max-width: 719px)').matches) {
             const l = left.getBoundingClientRect(), c = canvasArea.getBoundingClientRect();
             cover = Math.max(0, Math.round(l.right + 12 - c.left));
         }
         shot.style.setProperty('--iv-cover', `${cover}px`);
     }
     function setPanel(side, open) {
-        if (narrowQuery.matches) drawer = open ? side : drawer === side ? '' : drawer;
+        if (tallQuery.matches && side === 'right') below = open;
+        else if (tallQuery.matches || narrowQuery.matches) drawer = open ? side : drawer === side ? '' : drawer;
         else { panels[side] = open; writeStore(PANEL_KEY, panels); }
         paintPanels(); if (open && side === 'left') fitSoon();
     }
     narrowQuery.addEventListener('change', () => { drawer = ''; paintPanels(); fitSoon(); });
-    // A drawer closes when the stage is touched.
+    tallQuery.addEventListener('change', () => { drawer = ''; below = false; paintPanels(); fitSoon(); });
+    // A drawer closes when the stage is touched; on a tall window, when anything outside it is.
     stage.addEventListener('pointerdown', () => { if (drawer) { drawer = ''; paintPanels(); } });
+    body.addEventListener('pointerdown', event => { if (tallQuery.matches && drawer === 'left' && !left.contains(event.target)) { drawer = ''; paintPanels(); } });
+    // The works grid on a tall window (the four samples, or three or four works compared): of one to four columns, the
+    // layout that gives each picture the most room in the width and height there are; it keeps to the top. With the
+    // works panel open below, the panel takes the height the grid leaves.
+    const TALL_PANEL = 320;
+    let tallFrame = 0;
+    function fitTallSoon() { cancelAnimationFrame(tallFrame); tallFrame = requestAnimationFrame(() => { tallFrame = 0; fitTall(); }); }
+    function bestGrid(n, ratio, width, height, gap) {
+        let best = null;
+        for (let cols = 1; cols <= Math.min(4, n); cols++) {
+            const rows = Math.ceil(n / cols);
+            const w = Math.min((width - (cols - 1) * gap) / cols, ((height - (rows - 1) * gap) / rows) * ratio);
+            if (w > 0 && (!best || w > best.w + 0.5)) best = {cols, rows, w: Math.floor(w), h: Math.floor(w / ratio)};
+        }
+        return best && {...best, height: best.rows * best.h + (best.rows - 1) * gap, width: best.cols * best.w + (best.cols - 1) * gap};
+    }
+    function fitTall() {
+        if (!alive) return;
+        const panes = comparer.element.querySelector('.fv-iv-compare-panes');
+        if (!tallQuery.matches) {
+            for (const target of [shot, panes]) for (const name of ['--iv-cols', '--iv-rows', '--iv-tw', '--iv-th', '--iv-grid-ar']) target?.style.removeProperty(name);
+            body.style.removeProperty('--iv-below');
+            return;
+        }
+        const now = parseFloat(body.style.getPropertyValue('--iv-below')) || TALL_PANEL + 12;
+        let used = 0, spare = 0;
+        if (stage.dataset.mode === 'compare' && comparer.element.dataset.mode === 'grid' && panes) {
+            const files = compare?.files || [], ratios = files.map(file => { const m = meta.get(file); return m?.width ? m.width / m.height : 0; }).filter(r => r > 0);
+            const ratio = ratios.length ? ratios.reduce((a, b) => a + b, 0) / ratios.length : 1;
+            const extra = below ? now - (TALL_PANEL + 12) : 0, height = panes.clientHeight + extra;
+            const g = bestGrid(files.length, ratio, panes.clientWidth, height, 12);
+            if (g) {
+                for (const [name, value] of [['--iv-cols', g.cols], ['--iv-rows', g.rows], ['--iv-tw', `${g.w}px`], ['--iv-th', `${g.h}px`]]) panes.style.setProperty(name, String(value));
+                used = 1; spare = height - g.height;
+            }
+        } else if (stage.dataset.state === 'blank') {
+            const pictures = [...grid.querySelectorAll('img')], first = pictures.find(i => i.naturalWidth);
+            const ratio = first ? first.naturalWidth / first.naturalHeight : 1;
+            const extra = below ? now - (TALL_PANEL + 12) : 0, height = canvasArea.clientHeight - 88 + extra;
+            const g = bestGrid(pictures.length, ratio, canvasArea.clientWidth, height, 12);
+            if (g) {
+                for (const [name, value] of [['--iv-cols', g.cols], ['--iv-rows', g.rows]]) shot.style.setProperty(name, String(value));
+                shot.style.setProperty('--iv-grid-ar', String(g.width / g.height));
+                used = 1; spare = height - g.height;
+            }
+        }
+        const want = below ? Math.round(TALL_PANEL + 12 + (used ? Math.max(0, spare) : 0)) : 0;
+        if (want) { if (Math.abs(want - now) > 1 || !body.style.getPropertyValue('--iv-below')) body.style.setProperty('--iv-below', `${want}px`); }
+        else body.style.removeProperty('--iv-below');
+    }
+    const tallWatch = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { if (tallQuery.matches) fitTallSoon(); }) : null;
+    tallWatch?.observe(body);
+    for (const image of grid.querySelectorAll('img')) image.addEventListener('load', () => { if (tallQuery.matches) fitTallSoon(); });
+    comparer.element.addEventListener('load', () => { if (tallQuery.matches) fitTallSoon(); }, true);
     leftCollapse.addEventListener('click', () => setPanel('left', false));
     railOpen.addEventListener('click', () => setPanel('left', true));
     rightRailOpen.addEventListener('click', () => setPanel('right', true));
@@ -1148,6 +1216,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         }
         comparer.paint(compare);
         stage.dataset.mode = compare ? 'compare' : 'single';
+        if (tallQuery.matches) fitTallSoon();
         if (rightTab === 'info' && infoPop.dataset.file !== shownFile) { infoPop.dataset.file = shownFile; paintInfo(); }
         tabWorksN.textContent = '';
     }

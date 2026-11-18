@@ -1618,15 +1618,34 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // A notice that wraps to more lines than the slot holds widens the slot while it shows (8 px clear on each side).
     const toastSlot = () => Math.max(TOAST_SLOT, toastHeight() + 16);
     const statusRoom = () => Math.max(STATUS_LINE, output.querySelector(':scope > .fv-status')?.offsetHeight || 0);
+    // A tall window (portrait, wider than a phone) gives the picture the column less 48 px each way (the works button's
+    // strip left out); when the picture fills the width and 320 px or more is left under it, the recent works take that
+    // room as a grid (glass/studio.css) and the picture keeps to the top.
+    const tall = window.matchMedia?.('(orientation: portrait) and (min-width: 761px)');
+    const TALL_EDGE = 48, TALL_RAIL = 122, GRID_MIN = 320;
+    let recentCount = () => 0;
+    const tallChange = () => fitPreview();
+    tall?.addEventListener?.('change', tallChange); cleanup.push(() => tall?.removeEventListener?.('change', tallChange));
+    function fitTall(gap) {
+        const playerShown = getComputedStyle(playerRow).display !== 'none';
+        const room = output.clientHeight - 2 * (TALL_EDGE / 2) - 40 - gap - (playerShown ? playerRoom() + gap : 0);
+        const gridWidth = output.clientWidth - 2 * TALL_EDGE, gridHeight = gridWidth / previewRatio;
+        const grid = recentCount() > 0 && gridHeight <= room && room - gridHeight >= GRID_MIN;
+        body.dataset.grid = String(grid);
+        return {room, width: grid ? gridWidth : output.clientWidth - TALL_EDGE - TALL_RAIL, grid, barRoom: 40 + gap + (playerShown ? playerRoom() + gap : 0)};
+    }
     function fitPreview() {
+        const isTall = !phone?.matches && !!tall?.matches;
+        if (isTall) body.dataset.tall = 'true'; else { delete body.dataset.tall; delete body.dataset.grid; }
         const style = getComputedStyle(output), gap = parseFloat(style.rowGap) || 0;
-        const width = output.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+        const fit = isTall && Number.isFinite(previewRatio) && previewRatio > 0 ? fitTall(gap) : null;
+        const width = fit ? fit.width : output.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
         // On a phone a 56 px slot stays free above the console for the shared toast strip, so a toast never covers the
         // result's bar and its actions; the status line keeps its own row there. Wider windows show only the picture and
         // its bar here (the status line reads in the notes line at the top of the dock).
         // The play bar's row is left out while there is no video to play (glass/studio.css), and its room with it.
         const playerShown = getComputedStyle(playerRow).display !== 'none';
-        const room = output.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom)
+        const room = fit ? fit.room : output.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom)
             - (phone?.matches ? 88 + toastSlot() + statusRoom() + 2 * gap : 40 + gap) - (playerShown ? playerRoom() + gap : 0);
         if (!(width > 0) || !(room > 0) || !Number.isFinite(previewRatio) || previewRatio <= 0) return;
         const height = Math.max(Math.min(room, 160), Math.min(room, width / previewRatio));
@@ -1638,7 +1657,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         output.style.setProperty('--fvs-stage-w', `${Math.round(fittedWidth)}px`);
         // On a phone the picture block sits just above the console (no empty band between them); wider windows centre it.
         const free = Math.max(0, Math.floor(room - fittedHeight));
-        const marginTop = phone?.matches ? free : Math.floor(free / 2);
+        const marginTop = fit?.grid ? 0 : phone?.matches ? free : Math.floor(free / 2);
         previewSpace.style.marginTop = `${marginTop}px`;
         // The next generation's empty frame stays whole while a tray floats over the picture's lower part: it is fitted
         // and centred in the part left free, and takes the full stage again when the tray closes (200 ms).
@@ -1660,6 +1679,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
         const pictureTop = output.getBoundingClientRect().top - body.getBoundingClientRect().top + parseFloat(style.paddingTop) + marginTop;
         body.style.setProperty('--fvs-stage-top', `${Math.round(pictureTop)}px`);
         body.style.setProperty('--fvs-stage-h', `${Math.round(fittedHeight)}px`);
+        if (fit?.grid) body.style.setProperty('--fvs-grid-top', `${Math.round(pictureTop + fittedHeight + fit.barRoom + 16)}px`);
+        else body.style.removeProperty('--fvs-grid-top');
         // The console and the picture are either the same width or clearly apart (at least 24 px a side), never a
         // few pixels off.
         if (!phone?.matches) {
@@ -1803,13 +1824,15 @@ export function openStudio(node, {extendFrom = null} = {}) {
     compareButton.setAttribute('aria-label', t('Compare', '对比'));
     tip(compareButton, t('Compare', '对比'), t('Side by side or with a divider, with another video', '和另一条视频并排或滑动对比'));
     // No Compare button on the bar: two videos picked together in the rail compare on the stage (F9 still opens it).
+    let shownCount = 0;
     const recent = createRecentVideos(t, {body, rail: true, named: row => savedPrompt(api, row),
         onSelect: row => { if (compare.active) compare.close(); showResult(row, {chosen: true}); },
         onPick: rows => {
             if (rows.length === 2) { if (compare.active) compare.close(); compare.open(rows[0], rows[1]); }
             else { if (compare.active) compare.close(); if (rows[0]) showResult(rows[0], {chosen: true}); }
         },
-        onChange: () => syncHistory()});
+        onChange: () => { syncHistory(); const count = recent.rows().length; if (count !== shownCount) { shownCount = count; fitPreview(); } }});
+    recentCount = () => recent.rows().length;
     recent.element.classList.add('sgf-avoid');
     recent.element.prepend(worksButton); body.append(recent.element);
     // Phones have no rail; Creations is the top bar's works entry, there at every width.
