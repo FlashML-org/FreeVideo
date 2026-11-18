@@ -509,6 +509,8 @@ export function createEditorPlayer(host, transport, {state, sources, api, t, err
             render(); return listening;
         },
         setTextRenderer(callback) { textRenderer = callback; },
+        // Leaving the edit view stops a source preview and lets its file go, as letting the editor go does.
+        stopPreview() { clearPreview(); render(); },
         previewVolume(id, value) { volumePreview.set(id, value); render(); },
         clearVolumePreview() { volumePreview.clear(); render(); },
         previewClipSource(id, source) { if (source) sourcePreview.set(id, source); else sourcePreview.delete(id); render(); },

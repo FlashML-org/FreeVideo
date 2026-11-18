@@ -1177,7 +1177,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             if (closing || disposed) return;
             const cached = store.sources.get(sourceKey(source));
             if (!initializing || (!cached?.video && !cached?.audio)) await store.getSources([sourceKey(source)]);
-            if (!closing && !disposed) player.previewSource(source);
+            // A preview whose details arrive after leaving never starts in the hidden editor.
+            if (!closing && !disposed && !handle.kept) player.previewSource(source);
         },
         generationLimits: () => ({maxSeconds: capability.maxSeconds, maxFollowSeconds: capability.maxFollowSeconds}),
         generationAvailable: () => store.generationAvailable,
@@ -1213,7 +1214,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             if (loadMetadata) {
                 const epoch = projectEpoch;
                 return store.getSources([sourceKey(value.source)]).then(() => {
-                    if (!closing && !disposed && epoch === projectEpoch) return actions.insertSource(value);
+                    // Details that arrive after leaving never insert into the hidden edit.
+                    if (!closing && !disposed && !handle.kept && epoch === projectEpoch) return actions.insertSource(value);
                 });
             }
             const metadata = store.sources.get(sourceKey(value.source));
@@ -2286,7 +2288,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     };
     function hide() {
         closing = false; closePromise = null; handle.kept = true;
-        player.pause(); lineStop?.();
+        player.pause(); player.stopPreview(); lineStop?.();
         // The microphone is let go with the view: an open record bar closes, and a take in progress lands as Stop would.
         recording.hide();
         detachBar?.();
