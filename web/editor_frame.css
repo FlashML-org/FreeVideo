@@ -30,14 +30,12 @@
 .fv-editor .fv-ed-picture-size-menu button{display:flex;align-items:center;justify-content:flex-start}
 .fv-ed-picture-size-detail{margin-left:auto;padding-left:16px;color:var(--fv-muted);font-variant-numeric:tabular-nums}
 
-/* Glass version: the switch is a small floating capsule (g3), solid where glass is off. */
+/* The switch is a small floating capsule over the picture: solid, so the picture never shows through it. */
 .fv-studio.fv-editor .fv-ed-picture-tools{top:12px;left:12px;gap:2px;padding:2px;border:1px solid var(--fv-edge,var(--fv-line));border-radius:var(--fv-r-md);
-  background:rgb(var(--fv-tint) / var(--fv-a3,.8));box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh2);-webkit-backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%);backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%)}
+  background:rgb(var(--fv-solid3));box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh2)}
 .fv-studio.fv-editor .fv-ed-picture-tools button{height:28px;padding:0 10px;border-radius:var(--fv-r-md);font-size:var(--fv-fs-1,12px);color:var(--fv-fg2)}
 .fv-studio.fv-editor .fv-ed-picture-tools button:hover{color:var(--fv-fg)}
 .fv-studio.fv-editor .fv-ed-picture-tools button[aria-pressed=true]{background:var(--fv-ctl-hover);color:var(--fv-fg)}
-:is(:root[data-glass=solid],:root.lite) .fv-studio.fv-editor .fv-ed-picture-tools{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--fv-solid3))}
-@media(prefers-reduced-transparency:reduce){.fv-studio.fv-editor .fv-ed-picture-tools{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--fv-solid3))}}
 /* The picture is centred on the window, not on its column (the side panes may differ in width); see editor_player.js. */
 .fv-studio.fv-editor .fv-ed-picture{translate:var(--fv-ed-center-shift,0px) 0}
 /* The empty picture: one line and the next step, centred, in the caption size. */
