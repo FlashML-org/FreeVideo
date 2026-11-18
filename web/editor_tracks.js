@@ -1265,8 +1265,9 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
             const target = key === 'arrowup' ? ordered.findLast(point => point < state.playhead) : ordered.find(point => point > state.playhead);
             if (target != null) state.seek(target);
             if (range?.kind === 'range') layout();
-            const x = pixels(state.playhead);
-            if (x < scroll.scrollLeft) scroll.scrollLeft = x;
+            // Going left, the line keeps the lead before it in view (a jump to the start scrolls fully back to 0).
+            const x = scrolledX(state.playhead), lead = content.offsetLeft;
+            if (x - lead < scroll.scrollLeft) scroll.scrollLeft = Math.max(0, x - lead);
             else if (x > scroll.scrollLeft + scroll.clientWidth) scroll.scrollLeft = x - scroll.clientWidth;
         }
         else if (modifier && key === 'z') { event.preventDefault(); event.shiftKey ? state.redo() : state.undo(); }
@@ -1377,6 +1378,9 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         else attempt(t('Insert clip', '放入素材'), record => model.insertSource(record, {...payload, at, targetTrack}), {clearRange: true});
         showInsertion(null); showGuide(null); dropPoint = null; dropPreviewKey = ''; draggedSource = null;
     }
+    // Time zero sits a little in from the scrolling area's left edge (the content's margin, editor_tracks.css), so a
+    // frame's place in the scrolled area is its pixels plus that lead.
+    function scrolledX(frames) { return pixels(frames) + content.offsetLeft; }
     function zoom(value, anchor = scroll.clientWidth / 2) {
         const center = (scroll.scrollLeft + anchor) / state.zoom;
         state.setZoom(clamp(value, Number(slider.min), Number(slider.max)));
