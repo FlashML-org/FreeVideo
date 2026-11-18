@@ -134,6 +134,7 @@ dialog.fv-studio.fv-library::backdrop{background:var(--lib-page)}
 
 .fv-library-message{color:var(--fv-fg3);font-size:var(--fv-fs-2,13px);line-height:1.6;text-align:center;margin:var(--fv-sp-40,40px) var(--fv-sp-8,8px)}.fv-library-message:empty{display:none}
 .fv-library-message .fv-issue-button{margin:var(--fv-sp-4,4px) 0 var(--fv-sp-4,4px) var(--fv-sp-8,8px);vertical-align:middle}
+.fv-library-message .fv-library-message-retry{display:inline-flex;align-items:center;min-height:var(--fv-h-sm,32px);box-sizing:border-box;border:1px solid var(--fv-border,#45454a);border-radius:var(--fv-r-sm,8px);background:transparent;color:var(--fv-muted,#bbb);padding:4px 11px;font:inherit;font-size:13px;cursor:pointer;margin:var(--fv-sp-4,4px) 0 var(--fv-sp-4,4px) var(--fv-sp-8,8px);vertical-align:middle}.fv-library-message .fv-library-message-retry:hover{color:var(--fv-ink,#eee);border-color:var(--fv-ink,#eee)}
 .fv-library .fv-library-unreadable{margin:var(--fv-sp-8,8px);text-align:center;font-size:var(--fv-fs-1,12px);color:var(--fv-fg3)}.fv-library .fv-library-unreadable:empty{display:none}
 
 /* Selecting: the tool row turns into the selection row; the dock floats below (glass, never shortening the list) */

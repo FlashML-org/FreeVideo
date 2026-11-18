@@ -265,7 +265,7 @@ export async function libraryPage(t, {limit = 24, before = null, favorite = null
     if (favorite !== null) query.set('favorite', String(favorite));
     const response = await api.fetchApi('/freevideo/library?' + query, {signal});
     if (response.status === 404) throw Object.assign(new Error(t('Restart FreeVideo after updating to open the creations.', '更新后重启 FreeVideo，可打开作品。')), {restart: true});
-    if (!response.ok) throw new Error(t('The creations could not be loaded. Try Refresh.', '作品暂时无法读取，请点击刷新。'));
+    if (!response.ok) throw new Error(t('The creations could not be loaded.', '作品暂时无法读取。'));
     return response.json();
 }
 
@@ -413,6 +413,12 @@ export function openLibrary(t, options = {}) {
     back.append(icon('back'), el('span', backText, 'fv-library-back-label'));
     const title = el('h2', t('Creations', '作品库'));
     const refresh = button(t('Refresh', '刷新'), () => load(false), 'fv-quiet');
+    // The recovery sits before the report button, in the same bordered style.
+    const retryRead = target => {
+        const retry = button(t('Retry', '重试'), () => load(false), 'fv-library-message-retry');
+        const report = target.querySelector(':scope > .fv-issue-button');
+        if (report) report.before(retry); else target.append(retry);
+    };
     const choose = button(t('Select', '选择'), () => setSelecting(!selecting), 'fv-quiet fv-library-choose');
     // Stage: the creation large in the middle, thumbnails on the right to switch it. Grid: the shelf for sorting and selecting.
     const LAYOUT_KEY = 'freevideo.library.layout';
@@ -1181,6 +1187,8 @@ export function openLibrary(t, options = {}) {
         message.textContent = loading && !works.size ? ''
             : gathering ? t('Reading all creations…', '正在读取全部作品…')
             : list.length ? '' : emptyText();
+        // The header's Refresh stays hidden (the shelf follows changes by itself), so a failed read carries its own retry.
+        if (!list.length && !trash && !loading && filter.kind === 'image' && picturesState === 'failed') retryRead(message);
         drawTail();
         fold(); syncSelection(false); syncCounts();
         clearTimeout(cacheTimer); cacheTimer = setTimeout(saveCache, 1000);
@@ -1205,7 +1213,7 @@ export function openLibrary(t, options = {}) {
         if (filter.tag) return t('No creation has this tag yet. Select creations and press Tag.', '还没有作品带这个标签。选中作品后点“标签”。');
         if (filter.period !== 'any' || filter.source || filter.preview || filter.agent) return t('Nothing matches these filters.', '没有符合筛选条件的作品。');
         if (filter.favorites) return t("No favorite creations. Click the heart in a creation's details to add one.", '暂无收藏的作品。点作品详情中的爱心图标收藏。');
-        if (filter.kind === 'image') return picturesState === 'failed' ? t('Pictures could not be read just now. Try Refresh.', '图片暂时无法读取，请点击刷新。') : t('Pictures made in the image view appear here.', '在图像视图里生成的图片会保存在这里。');
+        if (filter.kind === 'image') return picturesState === 'failed' ? t('Pictures could not be read just now.', '图片暂时无法读取。') : t('Pictures made in the image view appear here.', '在图像视图里生成的图片会保存在这里。');
         return t('Finished videos and pictures appear here.', '生成完成的视频和图片会保存在这里。');
     }
     function syncCounts() {
@@ -2020,7 +2028,10 @@ export function openLibrary(t, options = {}) {
             if (!disposed && round === loadRound && error.name !== 'AbortError') {
                 if (appendPage) tailState = 'failed';
                 else if (error.restart) message.textContent = error.message;
-                else fault(message, isNetworkTypeError(error) ? connectionLostText(t) : error.message);
+                else {
+                    fault(message, isNetworkTypeError(error) ? connectionLostText(t) : error.message); retryRead(message);
+                    for (const ghost of grid.querySelectorAll(':scope > .fv-library-ghost')) ghost.remove();
+                }
             }
         }
         finally {

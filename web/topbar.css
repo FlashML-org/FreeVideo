@@ -207,6 +207,7 @@ html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"] .fv-tb-cap.is-warn.has
 .fv-tb-job-tx{flex:1;display:flex;flex-direction:column;align-items:stretch;gap:var(--fv-sp-2);min-width:0;text-align:left}
 .fv-tb-job-line{display:flex;align-items:baseline;gap:var(--fv-sp-8);min-width:0}
 .fv-tb-job-line .fv-tb-job-t2{flex:1;min-width:0}
+.fv-tb-job-t2.is-warn{color:var(--fv-warn);white-space:normal;text-wrap:pretty}
 .fv-tb-job-n{flex:none;margin-left:auto;font-size:var(--fv-fs-1);line-height:16px;color:var(--fv-fg2);text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
 .fv-tb-job-n.is-warn{color:var(--fv-warn)}
 .fv-tb-job-t1{font-size:var(--fv-fs-2);line-height:20px;font-weight:500;color:var(--fv-fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

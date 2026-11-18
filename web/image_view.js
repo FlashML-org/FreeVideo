@@ -5,6 +5,7 @@
 // The wire adapter, failure card, report and reference rules are the editor's own (image_generation.js);
 // a running picture belongs to the page-wide job store (task_store.js), so leaving the page never stops it.
 import { api } from '../../scripts/api.js';
+import { isNetworkTypeError, connectionLostText } from './browser_extension.js';
 import { closeDialog } from './motion.js';
 import { listenDialogKey, topDialog } from './dialog_keys.js';
 import { openEditorView } from './editor_loader.js';
@@ -1431,7 +1432,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             if (!await confirmStop(go, {kind: 'image', queued: jobs.get(mine.id)?.status === 'queued'})) return;
             if (running !== mine) return;
             mine.cancelled = true;
-            if (mine.id) { try { await jobs.cancel(mine.id); } catch { say(t('Could not stop. Try again.', '没有停止成功，请重试。')); } return; }
+            if (mine.id) { try { await jobs.cancel(mine.id); } catch (error) { say(isNetworkTypeError(error) ? connectionLostText(t) : t('Could not stop. Try again.', '没有停止成功，请重试。')); } return; }
             running = null; level.hidden = true; render(); drawWorks();
         }
     // ── end run ──
