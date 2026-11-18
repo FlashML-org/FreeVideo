@@ -173,8 +173,12 @@ export function durationStepper(t, seconds, {onOpen, max = () => Infinity}) {
         let done = false;
         const finish = apply => {
             if (done) return; done = true;
-            const n = Number(String(input.value).replace(',', '.'));
-            if (apply && Number.isFinite(n) && n > 0 && n !== Number(seconds.value)) {
+            const typed = String(input.value).trim(), n = Number(typed.replace(',', '.'));
+            // A cleared field leaves the duration empty (Generate then asks for it); the old length does not come back.
+            if (apply && !typed && seconds.value !== '') {
+                seconds.value = '';
+                seconds.dispatchEvent(new Event('input', {bubbles: true})); seconds.dispatchEvent(new Event('change', {bubbles: true}));
+            } else if (apply && Number.isFinite(n) && n > 0 && n !== Number(seconds.value)) {
                 seconds.value = String(n);
                 seconds.dispatchEvent(new Event('input', {bubbles: true})); seconds.dispatchEvent(new Event('change', {bubbles: true}));
             }
@@ -190,13 +194,13 @@ export function durationStepper(t, seconds, {onOpen, max = () => Infinity}) {
     };
     void onOpen;
     function sync() {
-        const n = Number(seconds.value);
+        const n = seconds.value === '' ? NaN : Number(seconds.value);
         const shown = Number.isFinite(n) ? (Number.isInteger(n) ? String(n) : n.toFixed(n < 10 ? 2 : 1).replace(/0+$/, '').replace(/\.$/, '')) : '—';
         // The number and its unit apart, so a narrow row can show the number alone; the name says both.
         const unit = el('span', 'fvs-step-unit', t('s', '秒')); value.replaceChildren(el('span', 'fvs-step-number', shown), unit);
         value.setAttribute('aria-label', t(`${shown} s`, `${shown} 秒`));
         minus.disabled = plus.disabled = seconds.disabled;
-        minus.disabled ||= n <= 2;
+        minus.disabled ||= !(n > 2);
         plus.disabled ||= n >= max();
     }
     seconds.addEventListener('input', sync); seconds.addEventListener('change', sync);

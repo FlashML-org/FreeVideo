@@ -14,7 +14,8 @@
 // sizes    [{pixels, label?}]: megapixels; a size is named by them (1M, 2M) unless a label is given. Entries marked more are not listed:
 //          any other size is typed as width × height.
 // sizeFor  (ratio, pixels) => {width, height}: the caller's rounding (default: 32-pixel steps, 256–4096 a side).
-// custom   optional {minSide, maxSide, snap = 32, lock = true}: the width × height fields and the ratio lock.
+// custom   optional {minSide, maxSide, snap = 32, lock = true, keepEmpty = false}: the width × height fields and the ratio lock.
+//          keepEmpty: a cleared side stays empty (onChange source 'empty'); without it the side is filled again.
 //          set({limit: {pixels, note?}}): what this computer can make. A typed size above it becomes the largest size
 //          at that shape, and a line under the fields says so.
 // onChange ({source, side?, shape, ratio, pixels, width, height, locked}) after the user picks ('shape', 'size',
@@ -73,7 +74,7 @@ export function createFramePicker({t = en => en, shapes = [], sizes = [], sizeFo
     onChange = () => {}, onPreview = () => {}, onPaint = () => {}} = {}) {
     loadStyle();
     shapes = shapes.filter(shape => shape.id !== 'custom'); sizes = sizes.filter(size => !size.more);
-    const state = {shape: shapes[0]?.id ?? null, ratio: shapes[0]?.ratio || 16 / 9, pixels: sizes[0]?.pixels ?? 1, width: 0, height: 0, locked: true, disabled: false, limit: null, custom: false, unavailable: {}, capped: ''};
+    const state = {shape: shapes[0]?.id ?? null, ratio: shapes[0]?.ratio || 16 / 9, pixels: sizes[0]?.pixels ?? 1, width: 0, height: 0, locked: true, disabled: false, limit: null, custom: false, unavailable: {}, capped: '', empty: '', ask: false};
     const element = el('div', 'fvp');
     const emit = (source, side) => onChange({source, side, shape: state.shape, ratio: state.ratio, pixels: state.pixels, width: state.width, height: state.height, locked: state.locked});
     const ratioOf = shape => shape.ratio || (shape.id === state.shape ? state.ratio : null) || 1;
@@ -100,7 +101,7 @@ export function createFramePicker({t = en => en, shapes = [], sizes = [], sizeFo
         b.append(art, name); b.setAttribute('aria-label', shape.ratio ? `${shape.label} ${ratioName(shape.ratio)}` : shape.label);
         b.onclick = () => {
             if (state.disabled) return;
-            state.capped = ''; state.shape = shape.id; if (shape.ratio) state.ratio = shape.ratio; Object.assign(state, sizeFor(state.ratio, state.pixels));
+            state.capped = ''; state.empty = ''; state.shape = shape.id; if (shape.ratio) state.ratio = shape.ratio; Object.assign(state, sizeFor(state.ratio, state.pixels));
             paint(); emit('shape');
         };
         hover(b, () => { const ratio = ratioOf(shape); return {ratio, ...sizeFor(ratio, state.pixels)}; });
@@ -116,7 +117,7 @@ export function createFramePicker({t = en => en, shapes = [], sizes = [], sizeFo
         b.append(px, name);
         b.onclick = () => {
             if (state.disabled) return;
-            state.capped = ''; state.pixels = size.pixels; state.custom = false; Object.assign(state, sizeFor(state.ratio, size.pixels));
+            state.capped = ''; state.empty = ''; state.pixels = size.pixels; state.custom = false; Object.assign(state, sizeFor(state.ratio, size.pixels));
             paint(); emit('size');
         };
         hover(b, () => ({ratio: state.ratio, ...sizeFor(state.ratio, size.pixels)}));
@@ -125,7 +126,7 @@ export function createFramePicker({t = en => en, shapes = [], sizes = [], sizeFo
     });
     let more = null;
     if (custom) {
-        const {minSide = 256, maxSide = 4096, snap = 32, lock = true} = custom;
+        const {minSide = 256, maxSide = 4096, snap = 32, lock = true, keepEmpty = false} = custom;
         more = {panel: el('div', 'fvp-custom'), width: el('input', 'fvp-dim'), height: el('input', 'fvp-dim'), lock: el('button', 'fvp-lock'), status: el('p', 'fvp-status')};
         const {panel, width, height} = more;
         const field = (input, label, short) => {
@@ -142,8 +143,14 @@ export function createFramePicker({t = en => en, shapes = [], sizes = [], sizeFo
         const fit = v => Math.min(maxSide, Math.max(minSide, Math.round(Number(v) / snap) * snap));
         const typed = which => {
             if (state.disabled) return;
-            const w = fit(width.value), h = fit(height.value);
+            // A side left empty stays empty (Generate then asks for it); it is not filled with the smallest size.
+            // With the ratio locked, a side typed after the other was cleared fills both again.
+            const other = which === 'width' ? 'height' : 'width', blank = input => !String(input.value).trim();
+            if (keepEmpty && blank(more[which])) { state.empty = which; paint(); emit('empty', which); return; }
+            if (keepEmpty && !state.locked && blank(more[other])) { state[which] = fit(more[which].value); state.empty = other; paint(); emit('empty', other); return; }
+            const w = fit(keepEmpty ? width.value || state.width : width.value), h = fit(keepEmpty ? height.value || state.height : height.value);
             if (!(w > 0 && h > 0)) { paint(); return; }
+            state.empty = '';
             if (state.locked) { if (which === 'width') { state.width = w; state.height = fit(w / state.ratio); } else { state.height = h; state.width = fit(h * state.ratio); } }
             else { state.width = w; state.height = h; state.ratio = w / h; state.shape = 'custom'; }
             // More than this computer can make: the largest size at this shape is used, and the line under the fields says so.
@@ -168,7 +175,7 @@ export function createFramePicker({t = en => en, shapes = [], sizes = [], sizeFo
         // A size block is lit when the size in force is exactly its size at this frame; otherwise the typed fields are.
         let preset = false;
         for (const {b, size, px} of sizeItems) {
-            const dims = sizeFor(state.ratio, size.pixels), on = dims.width === state.width && dims.height === state.height;
+            const dims = sizeFor(state.ratio, size.pixels), on = !state.empty && dims.width === state.width && dims.height === state.height;
             // A size this computer cannot make is listed, greyed, and says so where its pixels would be.
             const above = state.limit?.pixels > 0 && size.pixels > state.limit.pixels * 1.001;
             preset ||= on;
@@ -180,14 +187,17 @@ export function createFramePicker({t = en => en, shapes = [], sizes = [], sizeFo
             const {width, height, lock, status, panel, shackle} = more;
             panel.dataset.on = String(!preset && state.width > 0);
             width.disabled = height.disabled = lock.disabled = state.disabled;
-            if (typed || document.activeElement !== width) width.value = String(state.width || '');
-            if (typed || document.activeElement !== height) height.value = String(state.height || '');
+            if (typed || document.activeElement !== width) width.value = state.empty === 'width' ? '' : String(state.width || '');
+            if (typed || document.activeElement !== height) height.value = state.empty === 'height' ? '' : String(state.height || '');
             lock.setAttribute('aria-pressed', String(state.locked));
             lock.setAttribute('aria-label', state.locked ? t('Ratio locked', '比例锁定') : t('Ratio free', '比例不锁'));
             shackle.setAttribute('d', state.locked ? 'M5.5 7.5V5.5a2.5 2.5 0 0 1 5 0v2' : 'M5.5 7.5V5.5a2.5 2.5 0 0 1 4.8-1');
             const limit = state.limit;
-            const said = state.capped ? t(`The largest on this computer is ${state.capped}; that size is used.`, `本机最大 ${state.capped}，已按最大生成。`) : limit?.note || '';
-            status.textContent = said; status.hidden = !said; status.toggleAttribute('data-capped', Boolean(state.capped));
+            // Generate stopped on an empty side (the caller sets ask): the panel covers the studio's status line, so it asks here.
+            if (!state.empty) state.ask = false;
+            const ask = state.ask && (state.empty === 'height' ? t('Fill in the height.', '请填写高度。') : t('Fill in the width.', '请填写宽度。'));
+            const said = state.capped ? t(`The largest on this computer is ${state.capped}; that size is used.`, `本机最大 ${state.capped}，已按最大生成。`) : ask || limit?.note || '';
+            status.textContent = said; status.hidden = !said; status.toggleAttribute('data-capped', Boolean(state.capped || ask));
         }
         onPaint();
     }
@@ -323,7 +333,7 @@ export function createFrameChip({placement = 'auto', host = null, extra = null, 
         const like = shape || picker.shapes.find(s => s.ratio && Math.abs(s.ratio - state.ratio) < .01);
         frameName.textContent = like ? (like.ratio ? ratioName(like.ratio) : like.label) : t('Custom', '自定义');
         const preset = picker.sizes.find(s => { const d = (options.sizeFor || ((r, p) => frameSize(r, p)))(state.ratio, s.pixels); return d.width === state.width && d.height === state.height; });
-        sizeLabel.textContent = preset ? sizeName(preset) : state.width > 0 ? pixelsText(state.width, state.height) : '';
+        sizeLabel.textContent = state.empty ? '' : preset ? sizeName(preset) : state.width > 0 ? pixelsText(state.width, state.height) : '';
         element.disabled = Boolean(state.disabled);
         glide(); if (open) place();
     }

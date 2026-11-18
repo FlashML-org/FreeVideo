@@ -1223,6 +1223,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const width = el('input'), height = el('input');
     // Width × height, typed: with the shape kept, the other side follows (32-pixel steps); set free, the shape is custom.
     let shapeKept = true;
+    // The side the frame panel's width × height left empty: it stays empty until a size is set again.
+    let emptySide = '';
     const keepShape = button('', () => { shapeKept = !shapeKept; paintKeepShape(); }, 'fvs-keep-shape');
     keepShape.append(icon('lock'));
     function paintKeepShape() {
@@ -2479,6 +2481,12 @@ export function openStudio(node, {extendFrom = null} = {}) {
                     [refineSteps, t('Fill in the second-pass steps.', '请填写二采步数。')]]).get(invalid);
                 if (message) { status.dataset.error = 'true'; status.textContent = message; }
             }
+            // Width and height are typed in the frame panel: it opens at the empty field.
+            const side = (invalid === width || invalid === height) && framePicker?.element.checkVisibility() ? [...framePicker.pop.querySelectorAll('.fvp-dim')][invalid === width ? 0 : 1] : null;
+            if (side) { framePicker.set({empty: emptySide, ask: true}); if (framePicker.pop.dataset.open !== 'true') framePicker.element.click(); side.focus(); return; }
+            // The duration is typed in the stepper's number: it opens for typing.
+            const stepValue = invalid === seconds ? dialog.querySelector('.fvs-step-value') : null;
+            if (stepValue?.checkVisibility()) { stepValue.click(); return; }
             invalid.focus(); invalid.reportValidity(); return;
         }
         // One prompt per line with no lines: say what to write (generating without a prompt is not offered here).
@@ -2604,13 +2612,14 @@ export function openStudio(node, {extendFrom = null} = {}) {
         shapes.dataset.custom = String(shapeIndex < 0);
         // An empty frame takes the chosen shape; a work on the stage keeps its own (the outline shows the new one).
         if (!busy && (nextShown || !stageMedia.querySelector('video, img'))) { previewSize(Number(w), Number(h)); if (nextShown) nextSize.textContent = `${w} × ${h}`; }
-        framePicker?.set({shape: selected, ratio: studioShapes(t).find(([id]) => id === selected)?.[2] || Number(w) / Number(h) || ratio, pixels: Number(mp.value), width: Number(w), height: Number(h), locked: shapeKept,
+        framePicker?.set({shape: selected, ratio: studioShapes(t).find(([id]) => id === selected)?.[2] || Number(w) / Number(h) || ratio, pixels: Number(mp.value), width: Number(w), height: Number(h), locked: shapeKept, empty: emptySide,
             unavailable: {input: mediaPicture() ? '' : t('Add a picture in Media first', '先在素材里添加图片')},
             disabled: dimensionsLinked || Boolean(extension.source)});
         refreshEffortEstimate();
         consoleUI?.sync();
     }
     function syncCanvasSize() {
+        emptySide = '';
         width.value = extension.source?.geometry.width ?? value(node, 'width');
         height.value = extension.source?.geometry.height ?? value(node, 'height');
         updateCanvas();
@@ -2682,12 +2691,13 @@ export function openStudio(node, {extendFrom = null} = {}) {
         // other size is typed as width × height.
         sizes: [{pixels: .5, label: '0.5M'}, {pixels: .75, label: '0.75M'}, {pixels: .98, label: '1M'}, {pixels: 1.5, label: '1.5M'}, {pixels: 2, label: '2M'}],
         sizeFor: (r, p) => { const [w, h] = canvasDimensions(p, r); return {width: w, height: h}; },
-        custom: {minSide: 256, maxSide: 4096, snap: 32, lock: true},
+        custom: {minSide: 256, maxSide: 4096, snap: 32, lock: true, keepEmpty: true},
         onChange: change => {
             if (change.source === 'shape') [...shapes.children].find(b => b.dataset.ratio === change.shape)?.click();
             else if (change.source === 'size') choosePixels(change.pixels);
             // Typed width × height and the lock go through the panel's own fields, so their rules stay in one place.
             else if (change.source === 'lock') { if (shapeKept !== change.locked) keepShape.click(); }
+            else if (change.source === 'empty') { emptySide = change.side; (change.side === 'height' ? height : width).value = ''; }
             else if (change.source === 'dimensions') { const input = change.side === 'height' ? height : width; input.value = String(change[change.side === 'height' ? 'height' : 'width']); input.onchange(); }
             updateCanvas(); showNext();
         },
