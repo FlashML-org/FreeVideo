@@ -1795,7 +1795,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     // controls here; what the editor adds (music, narration, dubbing, downloads) stays in its own bar. Without a panel to
     // borrow from, the editor's bar is shown as before.
     if (panel.borrowBar) {
-        let observer = null, arranged = false;
+        let observer = null, arranged = false, unlisten = null;
         attachBar = () => {
         if (bar) return;
         bar = panel.borrowBar({mount: genHost, onSeconds: value => { const field = genbar.duration; if (!field || field.element.hidden || field.input.disabled || !(value > 0)) return; field.input.value = String(Math.round(value)); field.commit(); }, label: () => barLabel || null, disabled: () => !genbar.canGenerate(),
@@ -1818,19 +1818,30 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             fit();
             // What the three ways in prefill and lock: a new part takes the edit's size and the selection's length; a part
             // that continues keeps the size it continues; one made again keeps its size and length.
+            // The description each part keeps is bound in the editor's own box (hidden); the bar's box shows it and writes it back.
+            let echo = false;
+            const field = bar.prompt;
+            const onType = () => { if (!echo) genbar.type(field.value); }, onLeave = () => genbar.leave();
+            field.addEventListener('input', onType); field.addEventListener('blur', onLeave);
+            unlisten = () => { field.removeEventListener('input', onType); field.removeEventListener('blur', onLeave); };
             const arrange = () => {
                 if (!bar) return;
                 const selection = state.selection, clips = selection?.kind === 'clip' ? selection.ids.map(id => model.find(state.record, id)).filter(Boolean) : [];
                 const edit = capability.generationSize || generationSize(state.record), again = clips.some(clip => clip.source);
                 const continuing = !again && clips.length > 0 && model.generationBefore(state.record, clips.map(clip => clip.id)).some(Boolean);
-                const range = selectionRange(), length = clips.length ? clips.reduce((sum, clip) => sum + clip.frames, 0) / model.FPS : range ? range.frames / model.FPS : null;
-                bar.apply({initial: {size: edit, ...(length ? {seconds: Number(length.toFixed(3))} : {})}, locked: again ? ['size', 'seconds'] : continuing ? ['size'] : []});
+                const range = selectionRange(), length = range ? range.frames / model.FPS : null; // the span, not a sum: a part's picture and sound are two linked clips over the same frames
+                echo = true;
+                try { bar.apply({initial: {size: edit, ...(clips.length ? {text: genbar.shown()} : {}), ...(length ? {seconds: Number(length.toFixed(3))} : {})}, locked: again ? ['size', 'seconds'] : continuing ? ['size'] : []}); } finally { echo = false; }
             };
-            arrange(); if (!arranged) { arranged = true; state.subscribe(event => { if (event.type === 'selection') arrange(); }); }
+            arrange(); if (!arranged) { arranged = true; state.subscribe(event => {
+                if (event.type === 'selection') arrange();
+                // An undo or a description written elsewhere shows in the bar too, unless it is being typed in.
+                else if (event.type === 'record' && bar && state.selection?.kind === 'clip' && document.activeElement !== bar.prompt && bar.prompt.value !== genbar.shown()) { echo = true; try { bar.apply({initial: {text: genbar.shown()}}); } finally { echo = false; } }
+            }); }
         }
         };
         // Hidden, the editor gives the panel its bar back; shown again, it takes it once more.
-        detachBar = () => { observer?.disconnect(); observer = null; for (const back of guideBack.splice(0)) back(); bar?.release(); bar = null; panel.barActive = false; genHost.classList.remove('fv-ed-genbar-borrowed'); delete element.dataset.barBorrowed; };
+        detachBar = () => { observer?.disconnect(); observer = null; unlisten?.(); unlisten = null; for (const back of guideBack.splice(0)) back(); bar?.release(); bar = null; panel.barActive = false; genHost.classList.remove('fv-ed-genbar-borrowed'); delete element.dataset.barBorrowed; };
         cleanupBar = detachBar;
         attachBar();
     }
