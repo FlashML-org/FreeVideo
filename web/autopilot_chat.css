@@ -146,6 +146,8 @@
 /* A picture's failure row (Send again, the report) takes the video failure card's button size, not the result bar's 38 px. */
 .fv-studio .fv-chat-log .fv-chat-job:is([data-mode=failed],[data-mode=stopped]) .fv-result-links .fv-actions>.fv-action{height:auto;min-width:0;line-height:inherit}
 .fv-chat-job .fv-report-tip{max-width:100%}
+/* The report card spans the picture failure grid (justify-items:start); as an inline-size container it would shrink to nothing. */
+.fv-studio .fv-chat-job:is([data-mode=failed],[data-mode=stopped]) .fv-result-links>.fv-report-tip{justify-self:stretch}
 .fv-chat-main{grid-template-rows:auto minmax(0,1fr) auto auto}
 .fv-chat-tools{grid-row:1}.fv-chat-scroll{grid-row:2}.fv-chat-notice-row{grid-row:3}.fv-chat-input{grid-row:4}
 .fv-chat-input:focus-within{border-color:var(--fv-accent-dim);box-shadow:0 0 0 3px color-mix(in srgb,var(--fv-accent) 13%,transparent)}
