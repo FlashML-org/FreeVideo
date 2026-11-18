@@ -514,6 +514,8 @@ ApplicationWindow {
                             FButton { objectName: "changeSource"; visible: s.failure.kind === "download" || s.failure.kind === "model-source"; text: t("Change source", "切换下载源"); onClicked: { settingsTab = "downloads"; settingsOpen = true } }
                             FButton { objectName: "changeAddress"; visible: s.failure.kind === "port-taken"; text: t("Change address", "更改地址"); onClicked: { settingsTab = "advanced"; settingsOpen = true } }
                             FButton { objectName: "repairCardButton"; primary: true; visible: !!s.repair_offered; text: t("Repair", "修复"); onClicked: backend.action("repair", false) }
+                            FButton { objectName: "openInstallFolder"; visible: s.failure.kind === "missing-file"; primary: true
+                                      text: t("Open install folder", "打开安装目录"); onClicked: backend.openInstallFolder() }
                             FButton { objectName: "latestLauncherLink"; visible: s.failure.kind === "older-launcher"; flat: true
                                       text: t("Download the latest ↗", "下载最新版 ↗"); onClicked: backend.link("https://github.com/FlashML-org/FreeVideo/releases/latest") }
                             FButton { objectName: "reportProblem"; visible: !diskFailure && !notAFault && s.failure.kind !== "port-taken" && s.failure.kind !== "comfy-restart" && s.failure.kind !== "comfy-folder" && s.failure.kind !== "engine-folder-denied"; text: reportOpened(s.error, s.failure.title || "") ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(s.error, s.failure.title || ""); onClicked: backend.reportProblem(s.error, s.failure.title || "") }

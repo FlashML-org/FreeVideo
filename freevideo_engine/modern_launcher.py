@@ -431,6 +431,22 @@ def create_ui(session, *, show=True, instance=None):
             self.invoke(open_browser, url)
 
         @Slot()
+        def openInstallFolder(self):
+            from PySide6.QtGui import QDesktopServices
+            # The package the launcher verifies is the folder it runs from; the installation's engine folder is the fallback.
+            folder = Path(session.source)
+            if not folder.is_dir():
+                engine = session.installation_engine()
+                folder = Path(engine).parent if engine else folder
+            if sys.platform.startswith('linux'):
+                from .windows_ux import open_folder
+                if not open_folder(folder.resolve()):
+                    session.action_notice = 'folder_open_failed'
+                    self.refresh()
+                return
+            self.invoke(QDesktopServices.openUrl, QUrl.fromLocalFile(str(folder.resolve())))
+
+        @Slot()
         def openDownloadFolder(self):
             from PySide6.QtGui import QDesktopServices
             folder = session.download_export
