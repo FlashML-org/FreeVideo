@@ -569,7 +569,7 @@ dialog.fv-studio.fv-autopilot:not([open]){display:none!important}
    and its picture grows with it; the words keep their 720 px measure and the connection card keeps its size. */
 @media (orientation:portrait) and (min-width:700px){
   .fv-autopilot .fv-chat-scroll{container-type:inline-size}
-  .fv-autopilot .fv-chat-scroll .fv-chat-job[data-mode=done]:has(.fv-chat-preview){--ap-wide:min(960px,100cqw);width:var(--ap-wide);margin-inline:calc((100% - var(--ap-wide)) / 2)}
+  .fv-autopilot .fv-chat-scroll .fv-chat-job[data-mode=done][data-hx-prev]{--ap-wide:min(960px,100cqw);width:var(--ap-wide);margin-inline:calc((100% - var(--ap-wide)) / 2)}
   .fv-autopilot .fv-chat-job[data-mode=done] .fv-chat-preview{width:calc(var(--ap-wide,720px) * .5)}
   .fv-autopilot .fv-chat-job[data-mode=done] .fv-chat-preview[data-shape=tall]{width:calc(var(--ap-wide,720px) * .25)}
 }
