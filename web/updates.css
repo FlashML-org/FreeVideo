@@ -80,7 +80,7 @@ dialog.fv-set .fv-update-notice.st-update .fv-update-thumb{display:none!importan
 .fv-release-rich>.fv-release-top{flex:none}
 .fv-release-rich .fv-release-media{max-height:42dvh;width:100%;border-radius:0}
 .fv-release-notes.fv-release-rich .fv-release-body{flex:1;min-height:0;container-type:inline-size;padding:var(--fv-sp-24,24px) var(--fv-sp-24,24px) var(--fv-sp-8,8px)}
-.fv-release-rich:has(>.fv-release-top>.fv-release-media:not([hidden])) .fv-release-body{padding-top:var(--fv-sp-20,20px)}
+.fv-release-rich[data-hx-rm] .fv-release-body{padding-top:var(--fv-sp-20,20px)}
 /* More notes below: the last lines fade out at the edge rather than showing a line of text cut in half. */
 .fv-release-notes.fv-release-rich .fv-release-body[data-more=true]{-webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 64px),transparent calc(100% - 16px));mask-image:linear-gradient(to bottom,#000 calc(100% - 64px),transparent calc(100% - 16px))}
 .fv-release-rich .fv-release-ver{display:flex;align-items:baseline;flex-wrap:wrap;gap:var(--fv-sp-4,4px) var(--fv-sp-12,12px);margin:0 0 var(--fv-sp-8,8px);font-size:inherit;font-weight:400;line-height:1.3}
@@ -89,7 +89,7 @@ dialog.fv-set .fv-update-notice.st-update .fv-update-thumb{display:none!importan
 /* One column of labels for the whole list, so every sentence starts at the same place. */
 .fv-release-rich .fv-release-list{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:minmax(0,max-content) minmax(0,1fr);gap:var(--fv-sp-12,12px)}
 .fv-release-rich .fv-release-list li{grid-column:1/-1;display:grid;grid-template-columns:subgrid;align-items:baseline;margin:0;color:var(--fv-fg)}
-.fv-release-rich .fv-release-list li:not(:has(.fv-release-tag))>.fv-release-text{grid-column:1/-1}
+.fv-release-rich .fv-release-list li:not([data-hx-tag])>.fv-release-text{grid-column:1/-1}
 .fv-release-rich .fv-release-tag{justify-self:start;max-width:11em;padding:1px var(--fv-sp-8,8px);border-radius:var(--fv-rad-xs,4px);background:var(--fv-ctl-bg);color:var(--fv-accent-ink);font-size:var(--fv-fs-1,12px);line-height:18px;text-wrap:balance;overflow-wrap:anywhere}
 .fv-release-rich .fv-release-text{min-width:0;text-wrap:pretty}
 .fv-release-rich .fv-release-earlier{margin:var(--fv-sp-24,24px) 0 var(--fv-sp-8,8px);font-size:var(--fv-fs-2,13px);font-weight:var(--fv-fw-3,600);color:var(--fv-fg)}
@@ -116,7 +116,7 @@ dialog.fv-set .fv-update-notice.st-update .fv-update-thumb{display:none!importan
 dialog.fv-set .st-notes.fv-release-body{container-type:inline-size}
 dialog.fv-set .st-notes ul.fv-release-list{list-style:none;margin:var(--fv-sp-8,8px) 0 var(--fv-sp-4,4px);padding:0;display:grid;grid-template-columns:minmax(0,max-content) minmax(0,1fr);gap:var(--fv-sp-8,8px) var(--fv-sp-12,12px);color:var(--fv-fg)}
 dialog.fv-set .st-notes ul.fv-release-list li{grid-column:1/-1;display:grid;grid-template-columns:subgrid;align-items:baseline;margin:0}
-dialog.fv-set .st-notes ul.fv-release-list li:not(:has(.fv-release-tag))>.fv-release-text{grid-column:1/-1}
+dialog.fv-set .st-notes ul.fv-release-list li:not([data-hx-tag])>.fv-release-text{grid-column:1/-1}
 dialog.fv-set .st-notes .fv-release-tag{justify-self:start;max-width:11em;padding:1px var(--fv-sp-8,8px);border-radius:var(--fv-rad-xs,4px);background:var(--fv-ctl-bg);color:var(--fv-accent-ink);font-size:var(--fv-fs-1,12px);line-height:18px;text-wrap:balance;overflow-wrap:anywhere}
 dialog.fv-set .st-notes .fv-release-text{min-width:0;text-wrap:pretty}
 @container (max-width:420px){

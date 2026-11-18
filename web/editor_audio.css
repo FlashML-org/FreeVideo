@@ -20,7 +20,7 @@
 .fv-ed-audio-junction[data-active=true]{background:var(--fv-accent)!important}
 .fv-ed-audio-junction[aria-pressed=true]{box-shadow:0 0 0 2px var(--fv-card),0 0 0 3px var(--fv-accent)}
 .fv-ed-audio-notice{position:absolute;z-index:12;padding:5px 8px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);background:var(--fv-card);color:var(--fv-ink);font-size:12px;pointer-events:none}
-.fv-ed-adjust:has([data-adjust-tab=audio][aria-selected=true])>.fv-ed-tabs{position:sticky;top:0;z-index:1}
+.fv-ed-adjust[data-hx-audtab]>.fv-ed-tabs{position:sticky;top:0;z-index:1}
 .fv-ed-track-row[data-locked=true]::after{content:"";position:absolute;inset:0;z-index:3;border-radius:inherit;pointer-events:none;background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--fv-ink) 22%,transparent) 0 1.5px,transparent 1.5px 7px)}
 .fv-ed-adjust-slider[data-mixed=true] input[type=range]::-webkit-slider-thumb{opacity:0}
 .fv-ed-adjust-slider[data-mixed=true] input[type=range]::-moz-range-thumb{opacity:0}

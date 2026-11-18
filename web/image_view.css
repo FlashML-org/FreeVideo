@@ -152,15 +152,15 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
 /* The switch is the Enhance key in the prompt's tool row (image_view.js); the bar keeps the versions, Rewrite and Cancel
    and shows only while one of them is there. */
 .fv-iv .fv-image-enhance .fv-enhance-bar>.fv-enhance-toggle{display:none}
-.fv-iv .fv-image-enhance .fv-enhance-bar:not(:has(>:not([hidden]):not(.fv-enhance-toggle))){display:none}
+.fv-iv .fv-image-enhance .fv-enhance-bar:not([data-hx-enh]){display:none}
 .fv-iv .fv-iv-prompt-bar .fv-iv-enhance-tool svg{flex:none}
 .fv-iv .fv-iv-prompt-bar .fv-iv-enhance-tool[aria-pressed=true]{color:var(--fv-accent-ink)}
 /* While the count shows (from 1600 characters) the row's keys keep their icons only (their hover cards name them), so
    the count, Clear and Expand fit on the row's one line. */
-.fv-iv .fv-iv-prompt-bar:is([data-compact=true],:has(.fv-iv-prompt-count:not([hidden]))) .fv-iv-text-btn .fv-iv-btn-label{display:none}
+.fv-iv .fv-iv-prompt-bar:is([data-compact=true],[data-hx-cnt]) .fv-iv-text-btn .fv-iv-btn-label{display:none}
 .fv-iv .fv-image-enhance .fv-iv-prompt:focus-visible{box-shadow:inset 0 0 0 1.5px var(--fv-accent-line)}
 /* the helper's status line (with its report button) only while the helper is on */
-.fv-iv .fv-image-enhance:not(:has(.fv-enhance-toggle input:checked)) .fv-enhance-status{display:none}
+.fv-iv .fv-image-enhance:not([data-hx-chk]) .fv-enhance-status{display:none}
 .fv-iv .fv-image-enhance[data-off=true] :is(.fv-enhance-bar,.fv-enhance-status,.fv-enhance-install){display:none}
 .fv-studio .fv-iv .fv-iv-prompt{display:block;width:100%;box-sizing:border-box;height:96px;min-height:96px;max-height:280px;resize:none;padding:12px 12px;border:0;border-radius:var(--fv-r-md);
   background:var(--iv-well);box-shadow:inset 0 0 0 1px var(--fv-line);color:var(--fv-fg);font:inherit;font-size:var(--fv-fs-3,16px);line-height:1.55;
@@ -252,7 +252,7 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
 .fv-iv .fv-iv-li-end .fv-iv-icon-btn{width:28px;height:28px;color:var(--fv-fg3)}
 .fv-iv .fv-iv-pin[aria-pressed=true]{background:transparent;color:#e9b43a!important}
 .fv-iv .fv-iv-pin[aria-pressed=true] .fv-iv-icon{fill:currentColor}
-.fv-iv .fv-iv-li:has(.fv-iv-pin[aria-pressed=true]) .fv-iv-li-end{opacity:1}
+.fv-iv .fv-iv-li[data-hx-pin] .fv-iv-li-end{opacity:1}
 .fv-iv .fv-iv-preset-save{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px}
 .fv-studio .fv-iv .fv-iv-preset-save input:not([type=checkbox]){flex:1;min-width:0;height:32px;padding:0 12px;border:0;border-radius:var(--fv-rad-ctl,12px);background:var(--fv-ctl-bg);box-shadow:inset 0 0 0 1px var(--fv-line);color:var(--fv-fg);font:inherit}
 .fv-studio .fv-iv .fv-iv-preset-save input:not([type=checkbox]):focus{box-shadow:inset 0 0 0 1.5px var(--fv-accent-line)}
@@ -443,16 +443,16 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
 .fv-iv .fv-iv-tile img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;transition:transform var(--iv-dur) var(--iv-ease),border-radius var(--iv-dur) var(--iv-ease)}
 /* placeholders while a picture loads: a soft moving sheen on the frame or tile; the picture fades in whole */
 @keyframes fv-iv-sheen{from{background-position:100% 0}to{background-position:-100% 0}}
-.fv-iv .fv-iv-frame[data-loading=true] .fv-iv-pic,.fv-iv .fv-iv-tile:has(img[data-loaded=false]){
+.fv-iv .fv-iv-frame[data-loading=true] .fv-iv-pic,.fv-iv .fv-iv-tile[data-hx-unl]{
   background:linear-gradient(100deg,rgb(var(--fv-tint)) 30%,color-mix(in srgb,rgb(var(--fv-tint)) 88%,#fff) 50%,rgb(var(--fv-tint)) 70%) 0 0/200% 100%;animation:fv-iv-sheen 1.4s linear infinite}
 .fv-iv .fv-iv-picture[data-loaded=false],.fv-iv .fv-iv-tile img[data-loaded=false]{opacity:0;animation:none}
 .fv-iv .fv-iv-tile img[data-loaded=true]{animation:fv-iv-in 120ms var(--iv-ease)}
-.fv-iv .fv-iv-tile.fv-iv-current:has(img[data-loaded=false])::after{display:none}
+.fv-iv .fv-iv-tile.fv-iv-current[data-hx-unl]::after{display:none}
 /* a picture whose file is gone: a plain tile or frame in place of the browser's broken-image mark */
 .fv-iv img[data-missing=true]{visibility:hidden}
 .fv-iv .fv-iv-cap[data-missing=true] .fv-image-action,.fv-iv .fv-iv-cap[data-missing=true] .fv-iv-sep{display:none}
-.fv-iv .fv-iv-pic:has(.fv-iv-picture[data-missing=true]){background:rgb(var(--fv-tint))}
-@media(prefers-reduced-motion:reduce){.fv-iv .fv-iv-frame[data-loading=true] .fv-iv-pic,.fv-iv .fv-iv-tile:has(img[data-loaded=false]){animation:none}}
+.fv-iv .fv-iv-pic[data-hx-miss]{background:rgb(var(--fv-tint))}
+@media(prefers-reduced-motion:reduce){.fv-iv .fv-iv-frame[data-loading=true] .fv-iv-pic,.fv-iv .fv-iv-tile[data-hx-unl]{animation:none}}
 /* the shown picture opens large on a click */
 .fv-iv .fv-iv-frame[data-state=done] .fv-iv-picture{cursor:zoom-in}
 .fv-image .fv-iv-viewer{position:fixed;inset:0;z-index:40;display:grid;grid-template:minmax(0,1fr)/minmax(0,1fr);place-items:center;padding:24px;box-sizing:border-box;background:rgb(0 0 0 / .92);opacity:0;transition:opacity 160ms ease;outline:none}

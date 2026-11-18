@@ -2,7 +2,7 @@
 import {openEditor} from './editor.js';
 import {api} from '../../scripts/api.js';
 import {app} from '../../scripts/app.js';
-import {openStudio, showNodes} from './studio.js';
+import {openStudio, showNodes, borrowCreationBar} from './studio.js';
 import {cleanOptionalPrompt, clonePrompt} from './optional_inputs.js';
 import {openAutopilot, openImage, viewChanged} from './view_navigation.js';
 import {mediaReferences} from './editor_media_references.js';
@@ -25,6 +25,9 @@ function editorPanel(node) {
                 step_cache: now.step_cache, upscale_factor: now.upscale_factor}).filter(([, value]) => value !== undefined));
         },
         references: mediaReferences(node),
+        // The creation panel's own bar, borrowed while this editor is open (null when it cannot be made).
+        borrowBar(options) { const bar = borrowCreationBar(node, options); this.barActive = Boolean(bar); return bar; },
+        barActive: false,
         async snapshot() {
             if (node.freevideoEditorLooping?.()) throw new Error('loop_active');
             // A muted or bypassed node would be left out of the request; if no request comes out, it stays as it was.

@@ -46,7 +46,7 @@
 .sgf-img[data-empty=true] { background: radial-gradient(120% 90% at 30% 20%, #2a3a52 0%, #141a24 60%, #0b0d12 100%); }
 .sgf-glyph { position: absolute; inset: 0; display: none; place-items: center; color: rgb(255 255 255 / .5); }
 .sgf-glyph svg { width: 16px; height: 16px; }
-.sgf-rth:has(.sgf-img[data-empty=true]) .sgf-glyph { display: grid; }
+.sgf-rth[data-hx-empty] .sgf-glyph { display: grid; }
 .sgf-scrim { position: absolute; inset: 0; background: rgb(0 0 0 / .26); transition: opacity 200ms; }
 .sgf-ring { position: absolute; left: 50%; top: 50%; width: 32px; height: 32px; margin: -16px 0 0 -16px; rotate: -90deg; transition: opacity 200ms; }
 .sgf-ring circle { fill: none; stroke-width: 2.6; }

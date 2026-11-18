@@ -17,12 +17,12 @@
 .fv-ed-clip.fv-ed-seamed .fv-ed-note{padding-left:26px}
 .fv-ed-clip.fv-ed-seamed[data-noted=true] .fv-ed-seam-mark{bottom:2px}
 /* Block numbers take the top-left corner, so planned lengths move right beside them. */
-.fv-ed-track-view:has(.fv-ed-track-row[data-noted=true]) .fv-ed-planned-label{left:24px}
+.fv-ed-track-view[data-hx-noted] .fv-ed-planned-label{left:24px}
 /* The block's number sits on a small dark chip, so it reads on any picture and in either theme (white on .78 near-black). */
 .fv-ed-block-number{position:absolute;left:4px;top:4px;z-index:2;padding:2px 4px;border-radius:4px;background:rgb(10 12 16 / .78);color:#fff;font:700 12px/1 var(--fv-font);pointer-events:none}
 .fv-ed-user-mark{position:absolute;right:4px;top:4px;z-index:2;display:grid;place-items:center;width:16px;height:16px;border-radius:var(--fv-r-xs);background:rgba(0,0,0,.55);color:#fff;pointer-events:none}
 .fv-ed-user-mark .fv-ed-glyph{width:11px;height:11px}
-.fv-ed-clip:has(.fv-ed-picture-badge:not([hidden])) .fv-ed-user-mark{right:auto;left:22px}
+.fv-ed-clip[data-hx-pbv] .fv-ed-user-mark{right:auto;left:22px}
 .fv-ed-note-tip{position:absolute;z-index:10;max-width:360px;padding:6px 8px;background:var(--fv-card);color:var(--fv-ink);border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);font-size:12px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;pointer-events:none;box-shadow:0 4px 12px rgba(0,0,0,.35)}
 .fv-editor .fv-ed-note-input{position:absolute;top:64px;z-index:5;box-sizing:border-box;height:22px;min-height:0;margin:0;padding:0 8px;font:12px/20px var(--fv-font);color:var(--fv-ink);background:var(--fv-bg);border:1px solid var(--fv-accent);border-radius:0 0 var(--fv-r-sm) var(--fv-r-sm);outline:none;box-shadow:none}
 .fv-editor .fv-ed-note-input:focus,.fv-editor .fv-ed-note-input:focus-visible{outline:none;border-color:var(--fv-accent)}

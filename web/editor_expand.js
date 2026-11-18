@@ -2,9 +2,9 @@ import {isolateDialogKeys, listenDialogKey, routeDialogKey} from './dialog_keys.
 // The creative panel loads this file eagerly, so the hover-help writer is local (the timeline's tips module stays lazy).
 function setTip(element, {name, use, why = ''}) {
     for (const [attribute, value] of [['data-fv-tip-name', name], ['data-fv-tip-use', use], ['data-fv-tip-why', why]]) {
-        if (value) element.setAttribute(attribute, value); else element.removeAttribute(attribute);
+        if (value) { if (element.getAttribute(attribute) !== value) element.setAttribute(attribute, value); } else if (element.hasAttribute(attribute)) element.removeAttribute(attribute);
     }
-    element.title = '';
+    if (element.getAttribute('title') !== '') element.title = '';
 }
 
 let style;

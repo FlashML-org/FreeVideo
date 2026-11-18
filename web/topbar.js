@@ -610,7 +610,7 @@ export function decorateTabs(group, view, t = t0) {
     const back = event => {
         if (!group.isConnected) { globalThis.removeEventListener?.('freevideo-view', back); return; }
         if (event.detail?.view !== own) return;
-        for (const tab of group.querySelectorAll('[data-view]')) tab.setAttribute('aria-pressed', String(tab.dataset.view === own));
+        for (const tab of group.querySelectorAll('[data-view]')) { const next = String(tab.dataset.view === own); if (tab.getAttribute('aria-pressed') !== next) tab.setAttribute('aria-pressed', next); }
     };
     if (own) globalThis.addEventListener?.('freevideo-view', back);
     // The picker: at the phone level the pressed tab opens the list instead of re-opening its own view.
@@ -636,8 +636,9 @@ export function decorateTabs(group, view, t = t0) {
 function slide(group) {
     const pressed = group.querySelector('[data-view][aria-pressed=true]:not([hidden])');
     if (!pressed || !pressed.offsetWidth) return;
-    group.style.setProperty('--fv-tb-l', `${pressed.offsetLeft}px`);
-    group.style.setProperty('--fv-tb-r', `${pressed.offsetLeft + pressed.offsetWidth}px`);
+    const left = `${pressed.offsetLeft}px`, right = `${pressed.offsetLeft + pressed.offsetWidth}px`;
+    if (group.style.getPropertyValue('--fv-tb-l') !== left) group.style.setProperty('--fv-tb-l', left);
+    if (group.style.getPropertyValue('--fv-tb-r') !== right) group.style.setProperty('--fv-tb-r', right);
     // The first place is taken at once; only later moves slide (a new bar never animates in).
     if (!group.hasAttribute('data-fv-tb-ink')) { void getComputedStyle(group, '::before').clipPath; group.setAttribute('data-fv-tb-ink', ''); }
 }

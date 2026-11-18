@@ -1,3 +1,4 @@
+import './has_mirror.js';
 import { createErrorPanel, errorText, createErrorReport, adviceFor } from './error_panel.js';
 import { installNativeErrorGuard } from './native_errors.js';
 import { installTranslateGuard } from './translate_guard.js';
@@ -56,7 +57,7 @@ style.textContent = `
 .fv-panel .fv-stats[hidden]{display:none}
 .fv-panel .fv-connected{display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;margin:10px 0}.fv-panel .fv-connection{border:1px solid var(--fv-border);border-radius:var(--fv-r-sm,8px);padding:5px 9px;background:var(--fv-selected);color:var(--fv-accent);font-size:var(--fv-micro,12px)}
 .fv-panel :focus-visible{outline:2px solid var(--fv-accent);outline-offset:2px}
-.fv-panel[data-freevideo=result]{display:flex;flex-direction:column;justify-content:center}.fv-panel[data-freevideo=result]:has(>.fv-generation-progress:not([hidden])){justify-content:flex-start}.fv-panel .fv-connected-card{text-align:center;padding:28px 12px;border:1px solid var(--fv-border);border-radius:var(--fv-r-md,12px);color:var(--fv-muted);background:var(--fv-raised)}
+.fv-panel[data-freevideo=result]{display:flex;flex-direction:column;justify-content:center}.fv-panel[data-freevideo=result][data-hx-ppr]{justify-content:flex-start}.fv-panel .fv-connected-card{text-align:center;padding:28px 12px;border:1px solid var(--fv-border);border-radius:var(--fv-r-md,12px);color:var(--fv-muted);background:var(--fv-raised)}
 .fv-panel button,.fv-panel select,.fv-panel a{box-sizing:border-box;min-height:var(--fv-h-sm,32px);border:1px solid var(--fv-border);border-radius:var(--fv-r-sm,8px);background:var(--fv-raised);color:var(--fv-ink);padding:5px 10px;font:inherit;font-weight:var(--fv-medium,500);cursor:pointer;text-decoration:none}
 .fv-panel button:hover,.fv-panel a:hover{background:var(--fv-hover)}.fv-panel button:disabled{opacity:.45;cursor:wait}
 .fv-menu-failure{width:min(460px,calc(100vw - 32px));height:auto}.fv-menu-failure::backdrop{background:#0009}

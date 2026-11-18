@@ -146,19 +146,19 @@
 /* Whatever else the view keeps with the setting: quiet lines under the control. */
 .fvp-pop-body :is(.fv-label,.fvs-size-fields,.fv-shapes){display:none!important}
 .fvp-pop-body :is(section,.fv-section,.fv-sampling-settings){display:grid;gap:var(--fv-sp-8);margin:0;padding:0;border:0;background:none}
-.fvp-pop-body :is(section,.fv-section,.fv-sampling-settings):not(:has(>:not([hidden],.fv-label,.fvs-size-fields,.fv-shapes,:empty))){display:none}
+.fvp-pop-body :is(section,.fv-section,.fv-sampling-settings):not([data-hx-sec]){display:none}
 .fvp-pop-body :is(.fv-muted,.fv-canvas-note,p){margin:0;font-size:var(--fv-fs-1);line-height:16px;color:var(--fv-fg3)}
 .fvp-pop-body [hidden]{display:none!important}
 .fvp-pop-body .fv-length-link{all:unset;color:var(--fv-accent-ink);cursor:pointer}
 .fvp-pop-body .fv-canvas-note>span:first-child{display:none}
 .fvp-pop-body .fv-two-pass{display:flex;align-items:center;gap:var(--fv-sp-8);font-size:var(--fv-fs-1);color:var(--fv-fg2)}
 /* Few frames keep their own width, from the left; a phone's panel is as wide as the console under it. */
-@media (min-width:521px){.fvp-pop .fvp-shapes:not(:has(>button:nth-of-type(6))){grid-auto-columns:56px;justify-content:start}}
+@media (min-width:521px){.fvp-pop .fvp-shapes:not([data-hx-six]){grid-auto-columns:56px;justify-content:start}}
 @media (max-width:520px){.fvp.fvp-pop{max-width:calc(100vw - 24px);width:calc(100vw - 24px)!important}}
 /* Size: a few sizes share one row with the typed width × height and the lock; many sizes take the row across the panel and
    the typed width × height and the lock get a row of their own. */
 .fvp-pop .fvp-size-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:stretch;gap:var(--fv-sp-8)}
-.fvp-pop .fvp-size-row:has(>.fvp-sizes>button:nth-of-type(4)){grid-template-columns:minmax(0,1fr)}
+.fvp-pop .fvp-size-row[data-hx-four]{grid-template-columns:minmax(0,1fr)}
 .fvp-pop .fvp-size-row>.fvp-custom{margin:0;padding:var(--fv-sp-4);border-radius:var(--fv-r-sm);background:var(--fv-ctl-bg);gap:var(--fv-sp-4)}
 .fvp-pop .fvp-size-row>.fvp-custom .fvp-field{height:40px!important;min-height:40px!important;border-color:transparent}
 .fvp-pop .fvp-size-row>.fvp-custom button.fvp-lock{width:40px!important;height:40px!important;min-height:40px!important}
@@ -166,7 +166,7 @@
 .fvp-pop .fvp-size-row>.fvp-custom .fvp-field,.fvp-pop .fvp-size-row>.fvp-custom button.fvp-lock{height:48px!important;min-height:48px!important}
 @media (max-width:520px){.fvp-pop .fvp-size-row{grid-template-columns:minmax(0,1fr)}.fvp-pop .fvp-size-row>.fvp-custom .fvp-field{flex:1 1 0!important}.fvp-pop .fvp-size-row>.fvp-custom .fvp-field input.fvp-dim{flex:1!important;width:0!important}}
 /* While a panel is open, no hover tip is drawn over it. */
-:root:has(.fvp-pop[data-open=true]) .fv-tip{display:none!important}
+:root[data-hx-fp] .fv-tip{display:none!important}
 @media (min-width:521px){.fvp-pop .fvp-size-row>.fvp-custom .fvp-field{flex:none!important;padding:0 var(--fv-sp-8)}.fvp-pop .fvp-size-row>.fvp-custom .fvp-field input.fvp-dim{flex:none!important;width:48px!important;height:24px!important}}
 
 /* Quality: the slider (sampling_effort.js) in the panel. The panel's own title names it, so the slider's heading (its
@@ -187,7 +187,7 @@
 /* What the view keeps with the frame (the creation panel: notes on a long length, the first-frame switch), under the
    size row; only what is shown takes room. */
 .fvp-extra{margin-top:var(--fv-sp-12)}
-.fvp-extra:not(:has(:is(.fv-first-frame,.fv-length-plan,.fv-length-model):not([hidden]))){display:none}
+.fvp-extra:not([data-hx-extra]){display:none}
 .fvp-extra .fv-section{display:grid;gap:var(--fv-sp-8);margin:0;padding:var(--fv-sp-12) 0 0;border:0;border-top:1px solid var(--fv-line);border-radius:0;background:none}
 .fvp-extra :is(.fv-label,.fv-shapes,.fvs-size-fields,.fv-canvas-note,.fv-range,.fv-length-hint,.fv-sampling-settings){display:none!important}
 .fvp-extra :is(.fv-muted,p){margin:0!important;font-size:var(--fv-fs-1);line-height:16px;color:var(--fv-fg2)}
@@ -203,7 +203,7 @@
 .fvp-extra .fv-first-frame input::before{content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:var(--fv-r-pill);background:#fff;box-shadow:0 1px 2px rgb(0 0 0 / .3);transition:transform .16s ease-out}
 .fvp-extra .fv-first-frame input:checked{background-color:var(--fv-accent-fill)}
 .fvp-extra .fv-first-frame input:checked::before{transform:translateX(12px)}
-.fvp-extra .fv-first-frame:has(input:disabled){opacity:.4}
+.fvp-extra .fv-first-frame[data-hx-dis]{opacity:.4}
 @media (prefers-reduced-motion:reduce){.fvp-extra .fv-first-frame input,.fvp-extra .fv-first-frame input::before{transition:none}}
 
 /* Text fields: one frame, the field's own; it lights for the keyboard only (a press marks the panel, frame_picker.js). */
@@ -215,8 +215,8 @@
 @media (max-width:520px){
   .fvp-pop>.fvp-shapes{margin-bottom:var(--fv-sp-12)}
   .fvp-pop button.fvp-shape{height:48px!important;min-height:48px!important}
-  .fvp-pop .fvp-size-row:not(:has(>.fvp-sizes>button:nth-of-type(4))){grid-template-columns:auto minmax(0,1fr)}
-  .fvp-pop .fvp-size-row:not(:has(>.fvp-sizes>button:nth-of-type(4)))>.fvp-sizes{grid-auto-columns:48px}
+  .fvp-pop .fvp-size-row:not([data-hx-four]){grid-template-columns:auto minmax(0,1fr)}
+  .fvp-pop .fvp-size-row:not([data-hx-four])>.fvp-sizes{grid-auto-columns:48px}
   .fvp-pop .fvp-size-row .fvp-px{display:none}
   .fvp-pop button.fvp-size{height:40px!important;min-height:40px!important;padding:0!important}
   .fvp-pop .fvp-size-row>.fvp-custom .fvp-field,.fvp-pop .fvp-size-row>.fvp-custom button.fvp-lock{height:40px!important;min-height:40px!important}

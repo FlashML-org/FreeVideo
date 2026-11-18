@@ -101,7 +101,7 @@ export function createLanAccess(t, api) {
     }
     trigger.onpointerenter = trigger.onfocus = () => { if (!panel.hidden) return; const box = trigger.getBoundingClientRect(); tip.hidden = false; place(tip, box.bottom + 8, Math.max(8, Math.min(box.right, window.innerWidth - 8) - tip.offsetWidth)); };
     trigger.onpointerleave = trigger.onblur = () => { tip.hidden = true; };
-    function close() { tip.hidden = true; panel.hidden = true; trigger.setAttribute('aria-expanded', 'false'); clearTimeout(timer); form.hidden = true; password.value = ''; }
+    function close() { if (!tip.hidden) tip.hidden = true; if (!panel.hidden) panel.hidden = true; if (trigger.getAttribute('aria-expanded') !== 'false') trigger.setAttribute('aria-expanded', 'false'); clearTimeout(timer); if (!form.hidden) form.hidden = true; if (password.value) password.value = ''; }
     function toggle() {
         tip.hidden = true;
         if (!panel.hidden) { close(); return; }

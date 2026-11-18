@@ -11,7 +11,7 @@
 .fv-ed-track-view[data-vertical-overflow=true] .fv-ed-track-heads{clip-path:inset(0 -100vw 0 0)}
 .fv-ed-track-view[data-vertical-overflow=true] .fv-ed-track-heads::after{content:"";position:absolute;inset:0 0 auto;height:24px;background:var(--fv-bg)}
 .fv-ed-track-view[data-vertical-overflow=true] .fv-ed-track-heads>.fv-ed-track-head,.fv-ed-track-view[data-vertical-overflow=true] .fv-ed-track-heads>.fv-ed-add-audio{translate:0 var(--fv-ed-track-offset,0px)}
-.fv-ed-track-view:where(:has(.fv-ed-track-row[data-track=a2])){height:260px}
+.fv-ed-track-view:where([data-hx-a2]){height:260px}
 .fv-editor .fv-ed-track-heads,.fv-editor .fv-ed-track-scroll{bottom:0}
 .fv-ed-track-view .fv-ed-add-audio{position:absolute;left:0;width:100%;height:28px;padding:0 4px;border:0;border-radius:0;background:transparent;color:var(--fv-muted);font:400 13px/1.4 var(--fv-font,system-ui);text-align:center;white-space:nowrap;overflow:hidden;cursor:pointer}
 .fv-ed-track-view .fv-ed-add-audio:hover:not(:disabled){color:var(--fv-ink)}
@@ -289,5 +289,5 @@
 .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads>.fv-ed-add-audio[data-mode=remove]::after{display:none}
 .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads>.fv-ed-add-audio[data-mode=remove]::before{margin:0}
 .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads>.fv-ed-add-audio[data-mode=remove]:not([data-shown=true]):not(:hover){visibility:hidden}
-.fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads:has(>.fv-ed-track-head[data-track=a2]:hover)>.fv-ed-add-audio[data-mode=remove]{visibility:visible}
+.fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads[data-hx-a2hover]>.fv-ed-add-audio[data-mode=remove]{visibility:visible}
 @media(max-width:520px){.fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads>.fv-ed-add-audio[data-mode=remove]{left:calc(100% - 32px)}}

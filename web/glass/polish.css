@@ -56,7 +56,7 @@ html:not([data-fv-polish="off"]) .fv-editor :is(.fv-ed-export-main,.fv-ed-source
 /* While generating, the stage is the plain surface under the numbers, in the theme's own ink: no drawn plane, no
    glow behind the text. */
 html:not([data-fv-polish="off"]) .fv-create .fv-stage .fv-preview-scene{opacity:0!important}
-html:not([data-fv-polish="off"]) .fv-create .fv-stage:has(.fv-generation-progress:not([hidden])){background:rgb(var(--fv-solid1))!important}
+html:not([data-fv-polish="off"]) .fv-create .fv-stage[data-hx-prog]{background:rgb(var(--fv-solid1))!important}
 html:not([data-fv-polish="off"]) .fv-create .fv-stage .fv-generation-progress{--fv-ink:var(--fv-fg);--fv-muted:var(--fv-fg2);color:var(--fv-fg)}
 html:not([data-fv-polish="off"]) .fv-create .fv-stage .fv-generation-progress :is(.fv-generation-heading,.fv-generation-count,.fv-generation-label){text-shadow:none!important;color:var(--fv-fg)!important}
 html:not([data-fv-polish="off"]) .fv-create .fv-stage .fv-generation-progress .fv-generation-times{text-shadow:none!important;color:var(--fv-fg2)!important}
@@ -92,7 +92,7 @@ html:not([data-fv-polish="off"]) :is(.fv-studio,.fv-library) :is(img,video){imag
 /* Both looks: the picture sits in the page with one hairline; no shadow, reflection or light spot under it.
    The hairline is an outline so that it is drawn over the picture, not hidden under it. */
 html:not([data-fv-polish="off"]) :is(.fv-create .fv-stage,.fv-image .fv-iv-frame,.fv-image .fv-iv-pic,.fv-image .fv-iv-pic>button,.fv-library .fv-library-media){box-shadow:none!important}
-html:not([data-fv-polish="off"]) :is(.fv-image .fv-iv-pic:not(:has(>button)),.fv-image .fv-iv-pic>button:not(:focus-visible),.fv-library .fv-library-media){outline:1px solid var(--fv-edge);outline-offset:-1px}
+html:not([data-fv-polish="off"]) :is(.fv-image .fv-iv-pic:not([data-hx-btn1]),.fv-image .fv-iv-pic>button:not(:focus-visible),.fv-library .fv-library-media){outline:1px solid var(--fv-edge);outline-offset:-1px}
 /* The two video frames: one line at 8 % (white on dark, black on light), so a dark scene keeps its edge against
    the ground. The corners stay the frame's own. An empty edit preview keeps its dashed line instead. */
 html:not([data-fv-polish="off"]) :is(.fv-create .fv-stage,.fv-editor .fv-ed-picture:not([data-empty=true])){outline:1px solid var(--fv-line);outline-offset:-1px}

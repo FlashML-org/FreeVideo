@@ -32,13 +32,13 @@
  .fv-ed-record-center{grid-column:1;grid-row:1;gap:10px}
  .fv-ed-record-close{grid-column:2;grid-row:1}
  .fv-ed-record-side{grid-column:1/-1;grid-row:2}
- .fv-ed-record-side:has(.fv-ed-record-device[hidden]){display:none}
+ .fv-ed-record-side[data-hx-nodev]{display:none}
  .fv-ed-record-meter{flex:1 1 48px;min-width:48px}
 }
 
 /* The recording sub-track sits one level under a1, with the same head as the other sound tracks. */
 .fv-ed-track-row[data-sub=true] .fv-ed-track-empty{opacity:.8}
 /* The bar takes the generation bar's place while it is open, so the row is only as tall as the bar. */
-.fv-studio.fv-editor:has(.fv-ed-record:not([hidden])) .fv-ed-genbar{display:none}
+.fv-studio.fv-editor[data-hx-rec] .fv-ed-genbar{display:none}
 .fv-ed-audio-track-switch:disabled{opacity:.35;cursor:default}
 .fv-ed-record-meter[hidden]{display:none}

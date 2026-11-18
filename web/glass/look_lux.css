@@ -113,7 +113,7 @@ html[data-fv-lux]:root dialog.fv-studio.fv-create .fvs-console::after{
   mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0);
   opacity:0;transition:opacity .22s var(--lx-ease);
 }
-html[data-fv-lux]:root dialog.fv-studio.fv-create .fvs-console:has(.fv-prompt-editor textarea:focus)::after{opacity:1}
+html[data-fv-lux]:root dialog.fv-studio.fv-create .fvs-console[data-hx-ta]::after{opacity:1}
 html[data-fv-lux][data-theme=light]:root dialog.fv-studio.fv-create .fvs-console::after{
   background:linear-gradient(135deg,rgb(13 109 204 / .45),rgb(13 109 204 / .14) 30%,transparent 56%);
 }
@@ -159,7 +159,7 @@ html[data-fv-lux]:root dialog.fv-studio :is(.fv-runrow>.fv-primary,.fv-iv-go):ho
 html[data-fv-lux]:root .fvs-console>.fv-lux-flow{position:absolute;display:block;pointer-events:none;border-radius:inherit;margin:0;padding:0}
 html[data-fv-lux]:root .fvs-console>.fv-lux-flow{inset:0;z-index:-1;overflow:hidden;opacity:0;transition:opacity .48s steps(8,end)}
 html[data-fv-lux]:root .fvs-console:is(:hover,:focus-within)>.fv-lux-flow{opacity:.7;transition:opacity .3s steps(6,end) .12s}
-html[data-fv-lux]:root .fvs-console:has(.fv-prompt-editor textarea:focus)>.fv-lux-flow,
+html[data-fv-lux]:root .fvs-console[data-hx-ta]>.fv-lux-flow,
 html[data-fv-lux][data-fv-lux-run=on]:root .fvs-console>.fv-lux-flow{opacity:1}
 html[data-fv-lux]:root .fvs-console>.fv-lux-flow::before,
 html[data-fv-lux]:root .fvs-console>.fv-lux-flow::after{

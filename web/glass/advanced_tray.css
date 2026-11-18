@@ -29,7 +29,7 @@
 .fv-studio.fv-create .fvs-tray.fv-at :is(.fv-at-off,.fv-at-gone){display:none!important}
 /* The count row keeps its place in every mode (studio.js hides it outside Batch; here it is greyed instead). */
 .fv-studio.fv-create .fvs-tray.fv-at .fv-at-row.fv-at-keep[hidden]{display:flex!important}
-.fv-studio.fv-create .fvs-tray.fv-at .fv-at-row:has(input:disabled)>.fv-at-name,.fv-studio.fv-create .fvs-tray.fv-at .fv-at-row.fv-at-keep:has(input:disabled)>span:first-child{color:var(--fv-fg3)!important}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-row[data-hx-dis]>.fv-at-name,.fv-studio.fv-create .fvs-tray.fv-at .fv-at-row.fv-at-keep[data-hx-dis]>span:first-child{color:var(--fv-fg3)!important}
 /* The field boxes are spans inside the field's label: the label's own caption rule (.fv-field>span) does not reach them. */
 .fv-studio.fv-create .fvs-tray.fv-at .fv-field>:is(.fv-at-num,.fv-at-seed){margin:0!important}
 
@@ -74,7 +74,7 @@ html .fv-studio.fv-create .fvs-tray.fv-at .fv-at-num input:is(:focus,:focus-visi
 .fv-studio.fv-create .fvs-tray.fv-at .fv-at-mid>input{flex:none;width:4ch;text-align:right}
 @supports (field-sizing:content){.fv-studio.fv-create .fvs-tray.fv-at .fv-at-mid>input{field-sizing:content;width:auto;min-width:1ch}}
 .fv-studio.fv-create .fvs-tray.fv-at .fv-at-unit{flex:none;font-size:var(--fv-fs-2);line-height:20px;color:var(--fv-fg2)}
-.fv-studio.fv-create .fvs-tray.fv-at .fv-at-num:has(input:disabled) .fv-at-unit{color:var(--fv-fg3)}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-at-num[data-hx-dis] .fv-at-unit{color:var(--fv-fg3)}
 /* Back to the automatic part length: a small key in front of the field while a length of its own is set. */
 .fv-studio.fv-create .fvs-tray.fv-at .fv-at-unset{--fv-at-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 8a4.5 4.5 0 1 0 1.4-3.3'/%3E%3Cpath d='M4.5 2.5v2.5H7'/%3E%3C/svg%3E")}
 
@@ -127,5 +127,5 @@ html .fv-studio.fv-create .fvs-tray.fv-at .fv-at-seed>input:is(:focus,:focus-vis
 .fv-studio.fv-create .fvs-tray.fv-at .fv-batch-lines input[role=switch]::before{content:'';position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:var(--fv-r-pill);background:#fff;box-shadow:0 1px 3px rgb(0 0 0 / .3);transition:transform var(--fv-dur-1,160ms) var(--fv-ease-out,cubic-bezier(.2,.8,.2,1))}
 .fv-studio.fv-create .fvs-tray.fv-at .fv-batch-lines input[role=switch]:checked{background:var(--fv-accent-fill)}
 .fv-studio.fv-create .fvs-tray.fv-at .fv-batch-lines input[role=switch]:checked::before{transform:translateX(16px)}
-.fv-studio.fv-create .fvs-tray.fv-at .fv-batch-lines:has(input:disabled){cursor:default}.fv-studio.fv-create .fvs-tray.fv-at .fv-batch-lines:has(input:disabled)>span:first-child{color:var(--fv-fg3)!important}
+.fv-studio.fv-create .fvs-tray.fv-at .fv-batch-lines[data-hx-dis]{cursor:default}.fv-studio.fv-create .fvs-tray.fv-at .fv-batch-lines[data-hx-dis]>span:first-child{color:var(--fv-fg3)!important}
 .fv-studio.fv-create .fvs-tray.fv-at .fv-batch-lines input[role=switch]:disabled{opacity:.45;cursor:default}

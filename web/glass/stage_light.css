@@ -34,7 +34,7 @@ html:root:not([data-fv-polish=off]):not([data-fv-look=calm]):not([data-glass=sol
 html:root[data-fv-light=on]:not([data-fv-polish=off]):not([data-fv-look=calm]):not([data-glass=solid]):not(.lite) dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot)>.fv-look-light{opacity:var(--fv-light-op)}
 /* The library opens under the view's top bar and has its own plain ground: the bar above it carries no light, so the
    two read as one surface rather than a coloured band over the library. */
-html:root[data-fv-light=on]:has(dialog.fv-library[open]):not([data-fv-polish=off]):not([data-fv-look=calm]):not([data-glass=solid]):not(.lite) dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot)>.fv-look-light{opacity:0}
+html:root[data-fv-light=on][data-hx-libopen]:not([data-fv-polish=off]):not([data-fv-look=calm]):not([data-glass=solid]):not(.lite) dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot)>.fv-look-light{opacity:0}
 /* The page under the views carries the light too: between one view closing and the next being drawn, the page is what
    shows, and it should not drop to its plain ground for that frame; its colour is the light's own, since a part of a
    view not yet drawn shows the page colour. */

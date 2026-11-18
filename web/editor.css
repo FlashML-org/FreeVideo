@@ -115,7 +115,7 @@
 /* Locked: the dimming goes on the parts one by one, so the level the knob rests on stays at the menu's own text colour, as the Two-pass title. */
 .fv-ed-pass-menu .fv-effort[data-disabled=true] :is(.fv-effort-heading,.fv-effort-rail,.fv-effort-name:not([data-active])){opacity:.5}
 .fv-ed-pass-menu .fv-effort[data-disabled=true] .fv-effort-name[data-active]{color:var(--fv-muted);font-weight:500;opacity:1}.fv-ed-pass-menu>.fv-ed-pass-sub{padding-top:28px}
-.fv-ed-gen-note:has(.fv-issue-button){white-space:normal;overflow:visible}
+.fv-ed-gen-note[data-hx-issue]{white-space:normal;overflow:visible}
 .fv-ed-gen-note .fv-issue-button,.fv-ed-library-message .fv-issue-button{margin-left:8px}
 .fv-editor .fv-ed-gen-retry{height:auto;padding:0;border:0;background:none;color:inherit;font:inherit;cursor:pointer}
 .fv-editor .fv-ed-gen-retry:hover:not(:disabled){text-decoration:underline}
@@ -143,7 +143,7 @@
 .fv-ed-failure-actions{justify-content:flex-start;width:100%}
 .fv-ed-failure-reason{flex:1 1 220px;min-width:0;color:var(--fv-warning);overflow-wrap:anywhere}
 /* While the failed block's card is open it already says this; the line keeps its place so the timeline does not move. */
-.fv-editor:has(.fv-ed-clip-popover:not([hidden])) .fv-ed-gen-failure .fv-ed-failure-actions{visibility:hidden}
+.fv-editor[data-hx-clippop] .fv-ed-gen-failure .fv-ed-failure-actions{visibility:hidden}
 .fv-ed-gen-failure .fv-report-tip{width:100%}
 .fv-ed-basic-progress[data-state=waiting] .fv-ed-basic-percent{font-weight:500;color:var(--fv-muted)}
 .fv-ed-description{flex:1;width:0}
@@ -153,13 +153,13 @@
 .fv-ed-first-frame input::before{content:'';position:absolute;top:3px;left:3px;width:10px;height:10px;border-radius:var(--fv-r-pill);background:white;transition:transform .2s}
 .fv-ed-first-frame input:checked{background:var(--fv-accent,#6db8fa)}
 .fv-ed-first-frame input:checked::before{transform:translateX(10px)}
-.fv-ed-first-frame:has(input:disabled){opacity:.4}
+.fv-ed-first-frame[data-hx-dis]{opacity:.4}
 /* Duration of the parts not generated yet, typed in whole seconds; the seconds field of Studio, narrower. */
 .fv-ed-duration{position:relative;flex:none;font-size:13px;white-space:nowrap}
 .fv-ed-duration[hidden]{display:none}
 .fv-ed-duration label{display:flex;align-items:center;gap:6px}
 .fv-studio .fv-ed-duration input[type=number]{width:56px;height:36px;min-height:36px;padding:0 6px;text-align:center;font-variant-numeric:tabular-nums}
-.fv-ed-duration:has(input:disabled){opacity:.4}
+.fv-ed-duration[data-hx-dis]{opacity:.4}
 .fv-ed-duration-hint{bottom:calc(100% + 6px);left:0}
 .fv-ed-duration-hint[hidden]{display:none}
 .fv-ed-genbar-break{display:none}
@@ -298,7 +298,7 @@
 /* Keep the editor's controls visible instead of clipping them at phone widths. */
 @media(max-width:480px){
  .fv-studio.fv-editor{grid-template-rows:auto var(--fv-ed-project-h) minmax(0,1fr) 40px var(--fv-ed-generation-row) 40px minmax(160px,236px)}
- .fv-studio.fv-editor .fv-header:has(.fv-view-switch){grid-template-columns:minmax(0,1fr) auto}
+ .fv-studio.fv-editor .fv-header[data-hx-vs]{grid-template-columns:minmax(0,1fr) auto}
  /* One row: undo, split, delete and zoom; editor_toolbar_more.js moves the rest behind ⋯. */
  .fv-ed-duration-word{display:none}
  .fv-ed-toolbar{gap:4px;padding:0 12px;overflow:visible}
@@ -312,7 +312,7 @@
  .fv-studio.fv-editor .fv-ed-add-audio:disabled{display:none}
  .fv-editor .fv-ed-playhead-handle{left:0}
  .fv-editor .fv-ed-library{grid-area:auto;top:116px;bottom:0;z-index:8}
- .fv-editor:has(.fv-ed-library[data-open=true]) .fv-ed-drawer-toggle{position:fixed;top:128px;right:20px;z-index:9}
+ .fv-editor[data-hx-lib] .fv-ed-drawer-toggle{position:fixed;top:128px;right:20px;z-index:9}
 }
 /* Up to 520 px the track heads keep only the name; a press opens that track's switches beside it.
    Names stay plain text, like Video and Audio, so "Subtitles" fits the narrow column. */
@@ -320,14 +320,14 @@
  .fv-studio.fv-editor .fv-ed-track-head{justify-content:center;padding:0;cursor:pointer}
  .fv-studio.fv-editor .fv-ed-track-head>[class$=-track-controls]{display:none}
  .fv-studio.fv-editor .fv-ed-track-head[data-open=true]>[class$=-track-controls]{display:flex;position:absolute;left:calc(100% + 4px);top:50%;transform:translateY(-50%);gap:2px;padding:2px 4px;background:var(--fv-card);border:1px solid var(--fv-border);border-radius:var(--fv-r-sm)}
- .fv-studio.fv-editor .fv-ed-track-heads:has(>[data-open=true]){z-index:9}
+ .fv-studio.fv-editor .fv-ed-track-heads[data-hx-open]{z-index:9}
 }
 /* The press shows its verb over its estimate, so it no longer needs a line of its own in a narrow English bar. */
 /* Narrow window: the picture sits right under the header, the row takes the project's own shape (a
    16:9 project is about 200 px tall at 400 px wide), and whatever height is left goes to the timeline. */
 @media(max-width:680px){
  .fv-studio.fv-editor{grid-template-rows:auto var(--fv-ed-project-h) minmax(0,auto) 40px var(--fv-ed-generation-row) 40px minmax(160px,1fr)}
- .fv-editor .fv-ed-preview{box-sizing:border-box;align-self:start;aspect-ratio:var(--fv-ed-project-width,16)/var(--fv-ed-project-height,9);max-height:max(116px,calc(100dvh - 470px));padding-top:12px;padding-bottom:8px}
+ .fv-editor .fv-ed-preview{box-sizing:border-box;align-self:start;width:100%;aspect-ratio:var(--fv-ed-project-width,16)/var(--fv-ed-project-height,9);max-height:max(116px,calc(100dvh - 362px - var(--fv-ed-generation-row)));padding-top:12px;padding-bottom:8px}
 }
 
 /* ── Layout that never moves (Iris E1, E8; CEO 11-14 "生成前会先下载……把下面的轨挤下去") ──
@@ -363,7 +363,7 @@
 /* The record bar takes the bar's place at the bar's height. */
 .fv-editor .fv-ed-record{grid-row:5;height:100%;min-height:0}
 /* Dubbing lines no longer change the rows. */
-@media(min-width:681px){.fv-studio.fv-editor:has(.fv-ed-genbar[data-voice=true]){grid-template-rows:auto var(--fv-ed-project-h) minmax(96px,1fr) 40px var(--fv-ed-generation-row) 40px var(--fv-ed-timeline-h)}}
+@media(min-width:681px){.fv-studio.fv-editor[data-hx-voice]{grid-template-rows:auto var(--fv-ed-project-h) minmax(96px,1fr) 40px var(--fv-ed-generation-row) 40px var(--fv-ed-timeline-h)}}
 .fv-ed-genbar[data-voice=true],.fv-ed-genbar[data-voice=note]{flex-wrap:nowrap}
 @media(max-width:680px){.fv-ed-genbar[data-voice=true],.fv-ed-genbar[data-voice=note]{flex-wrap:wrap}}
 
@@ -457,7 +457,7 @@
    From 681 px the tray is the head of the inspector (beside the picture); the bar's own line is part of the bar;
    what downloads first is said under the press; notices take the free middle of the project row. */
 .fv-ed-adjust-host>.fv-ed-gen-tray{position:static;inset:auto;max-height:none;margin:0 0 12px;display:flex;flex-direction:column;align-items:stretch;gap:8px;pointer-events:auto}
-.fv-ed-adjust-host>.fv-ed-gen-tray:not(:has(>:not([hidden]):not(.fv-ed-gen-anchor))){display:none}
+.fv-ed-adjust-host>.fv-ed-gen-tray:not([data-hx-tray]){display:none}
 .fv-ed-adjust-host>.fv-ed-gen-tray>*{max-width:none;width:auto;order:1;box-shadow:none;animation:none}
 .fv-ed-adjust-host>.fv-ed-gen-tray>:not([hidden]){padding:8px 12px;border:1px solid var(--fv-border);border-radius:var(--fv-r-md);background:color-mix(in srgb,var(--fv-ink) 4%,transparent)}
 .fv-ed-adjust-host>.fv-ed-gen-tray>.fv-ed-voice{max-height:none;overflow:visible;width:auto}
@@ -470,7 +470,7 @@
 .fv-ed-gen-tray>.fv-empty-prompt{position:static;order:2}
 /* The bar's own line: one row, cut with an ellipsis, said whole on hover; it narrows the description only. */
 .fv-ed-genbar>.fv-ed-gen-note{flex:0 1 auto;max-width:40%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--fv-ink)}
-.fv-ed-genbar>.fv-ed-gen-note:has(.fv-issue-button){white-space:nowrap;overflow:hidden;display:flex;align-items:center;gap:8px}
+.fv-ed-genbar>.fv-ed-gen-note[data-hx-issue]{white-space:nowrap;overflow:hidden;display:flex;align-items:center;gap:8px}
 .fv-ed-genbar>.fv-ed-gen-note .fv-issue-button{flex:none;margin-left:0}
 @media(max-width:680px){.fv-ed-genbar>.fv-ed-gen-note{order:-1;flex:1 1 100%;max-width:none}}
 /* Under the press: what downloads first (its hover names it and its size). */
@@ -510,10 +510,10 @@
 .fv-ed-genbar .fv-ed-description-box:focus-within{border-color:var(--fv-accent)}
 .fv-ed-genbar .fv-ed-description-box .fv-ed-description{border:0;background:transparent;padding-right:8px;min-width:0}
 .fv-ed-genbar .fv-ed-description-box .fv-ed-description:focus{outline:none}
-.fv-ed-genbar .fv-ed-description-box:has(.fv-ed-description:disabled){opacity:.5}
+.fv-ed-genbar .fv-ed-description-box[data-hx-descdis]{opacity:.5}
 .fv-ed-genbar .fv-ed-description-box .fv-ed-description:disabled{opacity:1}
 /* Nothing chosen yet: the box is not greyed; its placeholder says what it is for. */
-.fv-ed-genbar[data-mode=idle] .fv-ed-description-box:has(.fv-ed-description:disabled){opacity:1}
+.fv-ed-genbar[data-mode=idle] .fv-ed-description-box[data-hx-descdis]{opacity:1}
 .fv-ed-genbar[data-mode=idle] .fv-ed-description:disabled{cursor:default}
 .fv-editor .fv-ed-save-warning-card .fv-ed-save-leave{background:transparent;border-color:color-mix(in srgb,var(--fv-danger) 40%,var(--fv-border));color:var(--fv-danger)}
 .fv-editor .fv-ed-save-warning-card .fv-ed-save-leave:hover{background:var(--fv-danger-subtle)}
@@ -542,7 +542,7 @@
 .fv-studio .fv-ed-genbar .fv-ed-duration input[type=number]{height:40px;min-height:40px}
 .fv-editor .fv-ed-genbar :is(.fv-ed-ref-add,.fv-ed-ref-chip){width:40px;height:40px;border-radius:var(--fv-r-md)}
 .fv-ed-genbar .fv-ed-pass-options{margin-left:-12px}
-.fv-editor .fv-ed-genbar .fv-ed-generate:has(+ .fv-ed-pass-options:not([hidden])){border-top-right-radius:0;border-bottom-right-radius:0}
+.fv-editor .fv-ed-genbar .fv-ed-generate[data-hx-pass]{border-top-right-radius:0;border-bottom-right-radius:0}
 .fv-ed-genbar .fv-ed-pass-options>summary{width:36px;height:40px;border-radius:0 var(--fv-r-lg) var(--fv-r-lg) 0;border-color:transparent;border-left:1px solid rgb(255 255 255 / .28)}
 .fv-ed-genbar .fv-ed-generate.fv-primary+.fv-ed-pass-options>summary{background:var(--fv-accent-fill);color:#fff}
 .fv-ed-genbar .fv-ed-generate:not(.fv-primary)+.fv-ed-pass-options>summary{background:var(--fv-accent-soft);color:var(--fv-accent-ink);border-left-color:var(--fv-accent-line)}
@@ -581,3 +581,11 @@
 .fv-editor .fv-ed-library:not([data-at-end=true]){-webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 24px),transparent);mask-image:linear-gradient(to bottom,#000 calc(100% - 24px),transparent)}
 /* On a phone the sound clips are finger-sized (44 px; the row's 6 px gap holds the extra 4 px). */
 @media(max-width:680px){.fv-editor .fv-ed-track-row[data-track^=a] .fv-ed-clip{min-height:44px}}
+
+/* The creation panel's own bar stands in for the description, size, duration and quality controls (editor.js). */
+.fv-ed-genbar.fv-ed-genbar-borrowed{height:auto;flex-wrap:wrap;align-content:flex-start;align-items:flex-start}
+.fv-ed-genbar-borrowed>.fv-ed-refs,.fv-ed-genbar-borrowed>.fv-ed-description-box,.fv-ed-genbar-borrowed>.fv-ed-duration,.fv-ed-genbar-borrowed>.fv-ed-first-frame,.fv-ed-genbar-borrowed>.fv-ed-generate,.fv-ed-genbar-borrowed>.fv-ed-pass-options{display:none!important}
+.fv-ed-genbar-borrowed>.fv-borrowed{flex:1 1 100%;min-width:0;position:static;display:block;width:auto;height:auto;max-height:none;padding:0;border:0;background:none;box-shadow:none;transform:none;inset:auto}
+.fv-ed-genbar-borrowed>.fv-borrowed>.fv-body{display:block;position:static;width:auto;height:auto;padding:0}
+.fv-editor[data-bar-borrowed=true] .fv-ed-genbar-borrowed>.fv-borrowed .fv-controls{position:static;justify-self:stretch;width:auto;max-width:none}
+[data-fv-locked]{opacity:.5}

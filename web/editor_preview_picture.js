@@ -82,6 +82,8 @@ export function createPreviewPicture(host, frame, {state, t}) {
     const isSelected = clip => !!clip && state.selection?.kind === 'clip' && state.selection.ids.includes(clip.id)
         && state.selection.ids.every(id => id === clip.id || id === clip.link);
     const editable = clip => isSelected(clip) && session.canEdit(clip);
+    // (Writing a value an element already has still wakes every observer, so only real changes are written.)
+    const hide = (node, gone) => { gone = Boolean(gone); if (node.hidden !== gone) node.hidden = gone; };
     function reset() {
         for (const node of [bed, outside, shade, handles, cropBox, ...lines]) setHidden(node, true);
         if (shade.style.display !== 'none') shade.style.display = 'none';
@@ -123,7 +125,7 @@ export function createPreviewPicture(host, frame, {state, t}) {
         }
         const policy = previewPictureFrame(clip, p, session.draft?.mode, session.output(clip));
         frame.dataset.pictureMode = policy.mode;
-        frame.classList.add('fv-ed-picture-adjusted');
+        if (!frame.classList.contains('fv-ed-picture-adjusted')) frame.classList.add('fv-ed-picture-adjusted');
         frame.style.setProperty('--fv-ed-width', String(policy.width)); frame.style.setProperty('--fv-ed-height', String(policy.height));
         const rect = frame.getBoundingClientRect(), hostRect = host.getBoundingClientRect();
         // The frame eases to a new shape over 150 ms; keep the picture and handles on it each frame until it settles.
@@ -132,7 +134,7 @@ export function createPreviewPicture(host, frame, {state, t}) {
         const oldShade = frame.querySelector('.fv-ed-crop-shade');
         const traditional = policy.mode === 'source' && !clip.rotate && !clip.flip_h && !clip.flip_v && !clip.crop_left && !clip.crop_top && !clip.crop_right && !clip.crop_bottom;
         const different = differentPictureShape({width:Math.round(p.rotated.width),height:Math.round(p.rotated.height)}, record);
-        if (oldShade) oldShade.hidden = !traditional || !different || clip.fit === 'contain';
+        if (oldShade) hide(oldShade, !traditional || !different || clip.fit === 'contain');
         // The Fill/Fit switch sits on the preview area (editor_frame.js shows or hides it); here it only turns gray while the part cannot change.
         const tools = host.querySelector('.fv-ed-picture-tools');
         if (tools) for (const button of tools.querySelectorAll('button')) button.disabled = !session.canEdit(clip);
@@ -158,18 +160,18 @@ export function createPreviewPicture(host, frame, {state, t}) {
         }
         // Existing guide keeps the fit switch; its axis-only shade is replaced here.
         layout = {p, view, policy, clip, bw, bh, m, left: rect.left-hostRect.left, top: rect.top-hostRect.top, hw: hostRect.width, hh: hostRect.height};
-        shade.hidden = traditional || policy.mode !== 'source' || clip.fit === 'contain';
-        shade.style.display = shade.hidden ? 'none' : '';
+        hide(shade, traditional || policy.mode !== 'source' || clip.fit === 'contain');
+        { const shown = shade.hidden ? 'none' : ''; if (shade.style.display !== shown) shade.style.display = shown; }
         shade.setAttribute('viewBox', `0 0 ${bw} ${bh}`);
         const path = polygon => polygon.length ? `M${polygon.map(([x,y])=>`${x},${y}`).join('L')}Z` : '';
         const c = view.crop;
         const outer = [[c.x,c.y],[c.x+c.width,c.y],[c.x+c.width,c.y+c.height],[c.x,c.y+c.height]].map(([x,y])=>point(m,x,y));
         const inner = visibleRect(p).polygon.map(([x,y])=>point(m,x,y));
         shadePath.setAttribute('d', path(outer)+path(inner));
-        handles.hidden = !editable(clip) || value.playing || cropping;
+        hide(handles, !editable(clip) || value.playing || cropping);
         const pts = corners(view).map(([x,y])=>[x*sx,y*sy]);
         buttons.forEach((b,i) => { b.style.left = `${clamp(pts[i][0], -layout.left+12, layout.hw-layout.left-12)}px`; b.style.top = `${clamp(pts[i][1], -layout.top+12, layout.hh-layout.top-12)}px`; });
-        cropBox.hidden = !cropping;
+        hide(cropBox, !cropping);
         if (cropping) {
             cropGuide.setAttribute('viewBox', `0 0 ${bw} ${bh}`);
             const c = view.crop, at = (x,y) => point(m,c.x+c.width*x,c.y+c.height*y);
@@ -181,8 +183,8 @@ export function createPreviewPicture(host, frame, {state, t}) {
                 b.style.top=`${clamp(y,-layout.top+12,layout.hh-layout.top-12)}px`;
             });
         }
-        bed.hidden = cropping || policy.mode !== 'output' || p.covers;
-        outside.hidden = policy.mode !== 'output' || !isSelected(clip);
+        hide(bed, cropping || policy.mode !== 'output' || p.covers);
+        hide(outside, policy.mode !== 'output' || !isSelected(clip));
         draw(); recordTime(layouts, started);
     }
     function sourceDraw(ctx, matrix, video, p) {

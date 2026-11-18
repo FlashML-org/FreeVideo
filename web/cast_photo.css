@@ -4,7 +4,7 @@
 .fv-cp{position:relative}
 .fv-cp .fv-cg-body{grid-template-columns:minmax(0,1fr) minmax(0,2.2fr);align-items:stretch}
 .fv-cp .fv-cg-side{gap:var(--fv-sp-8,8px)}
-.fv-cp .fv-cg-side>.fv-cg-foot:not(:has(>.fv-cg-note:not([hidden]),>.fv-cp-rest:not([hidden]))){display:none}
+.fv-cp .fv-cg-side>.fv-cg-foot:not([data-hx-foot]){display:none}
 .fv-cp .fv-cp-rest{justify-self:start;height:32px;min-height:32px;background:var(--fv-ctl-bg,#ffffff0f);color:var(--fv-fg,#e8ecf3)}
 
 /* Picture slots (the photo grows to fill the column; the clothes picture is a smaller one) */

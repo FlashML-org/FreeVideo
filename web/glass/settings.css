@@ -371,7 +371,7 @@ dialog.fv-set .st-loop .fv-i{width:12px;height:12px}
 
 /* ── Version & updates ── */
 dialog.fv-set .st-update-card{padding:var(--fv-sp-12) var(--fv-sp-16)}
-dialog.fv-set .st-update-card:has(>.fv-update-notice[hidden]){display:none}
+dialog.fv-set .st-update-card[data-hx-un]{display:none}
 dialog.fv-set .fv-update-notice.st-update{display:flex;align-items:center;flex-wrap:wrap;gap:var(--fv-sp-8);margin:0;padding:0;border:0;border-radius:0;background:none;box-shadow:none;animation:none;min-height:var(--fv-ctl-l);font:inherit;font-size:var(--fv-fs-2);color:var(--fv-fg)}
 dialog.fv-set .fv-update-notice.st-update>span{flex:1;min-width:200px;font-weight:var(--fv-fw-3);white-space:normal}
 dialog.fv-set .fv-update-notice.st-update :is(button,a){display:inline-flex;align-items:center;height:var(--fv-ctl);min-height:0;padding:0 var(--fv-sp-12);border-radius:var(--fv-rad-ctl);background:var(--fv-ctl-bg);box-shadow:none;
@@ -441,9 +441,9 @@ dialog.fv-set .st-mi[aria-checked=true] .ck{visibility:visible}
   dialog.fv-set .st-row.has-ic{grid-template-columns:var(--fv-sp-32) minmax(0,1fr)}
   dialog.fv-set .st-row>.st-re{grid-column:1 / -1;justify-content:flex-start;flex-wrap:wrap}
   dialog.fv-set .st-row.has-ic>.st-re{grid-column:2}
-  dialog.fv-set .st-row:has(>.st-re>input.st-sw:only-child){grid-template-columns:minmax(0,1fr) auto}
-  dialog.fv-set .st-row.has-ic:has(>.st-re>input.st-sw:only-child){grid-template-columns:var(--fv-sp-32) minmax(0,1fr) auto}
-  dialog.fv-set .st-row:has(>.st-re>input.st-sw:only-child)>.st-re{grid-column:auto}
+  dialog.fv-set .st-row[data-hx-sw]{grid-template-columns:minmax(0,1fr) auto}
+  dialog.fv-set .st-row.has-ic[data-hx-sw]{grid-template-columns:var(--fv-sp-32) minmax(0,1fr) auto}
+  dialog.fv-set .st-row[data-hx-sw]>.st-re{grid-column:auto}
   dialog.fv-set .st-mrow{height:auto;min-height:var(--fv-sp-64);padding:var(--fv-sp-12) var(--fv-sp-16)}
   dialog.fv-set .st-src{grid-template-columns:20px minmax(0,1fr)}
   dialog.fv-set .st-src .sp{grid-column:2;align-items:flex-start;min-width:0}

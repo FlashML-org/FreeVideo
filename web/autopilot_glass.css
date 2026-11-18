@@ -192,7 +192,7 @@ dialog.fv-studio.fv-autopilot:not([open]){display:none!important}
 .fv-autopilot .fv-chat-rail-notices{position:absolute;left:var(--fv-sp-8,8px);right:var(--fv-sp-8,8px);bottom:var(--fv-sp-64,64px);z-index:4;display:grid;gap:var(--fv-sp-8,8px);padding:var(--fv-sp-12,12px);border-radius:var(--fv-rad-pop,16px);
   background:rgb(var(--ap-tint) / var(--ap-a3));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--ap-warn) 30%,transparent),var(--ap-sh3);
   -webkit-backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%);backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%)}
-.fv-autopilot .fv-chat-rail-notices:not(:has(>:not([hidden]))){display:none}
+.fv-autopilot .fv-chat-rail-notices:not([data-hx-kids]){display:none}
 .fv-autopilot .fv-chat-rail-notices :is(.fv-chat-new-error,.fv-chat-delete-error){padding:0;font-size:var(--fv-fs-2,13px)}
 @media(prefers-reduced-motion:no-preference){.fv-autopilot .fv-chat-rail-notices{animation:ap-rise var(--ap-t1) var(--ap-out)}}
 :is(:root[data-glass=solid],:root.lite) .fv-autopilot .fv-chat-rail-notices{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(var(--ap-solid3))}
@@ -214,7 +214,7 @@ dialog.fv-studio.fv-autopilot:not([open]){display:none!important}
 
 /* ── the right panel: tasks and the details of the one picked ───────────────────────────────────────────── */
 .fv-autopilot .fv-chat-side-running{flex:none;padding:0 var(--fv-sp-8,8px) var(--fv-sp-8,8px)}
-.fv-autopilot .fv-chat-side-running:not(:has(.fv-autopilot-now:not([hidden]))){display:none}
+.fv-autopilot .fv-chat-side-running:not([data-hx-now]){display:none}
 .fv-autopilot .fv-chat-side-running .fv-autopilot-now{width:100%;border:0;border-radius:var(--fv-rad-ctl,12px);background:var(--ap-soft);font-size:var(--fv-fs-2,13px)}
 .fv-studio.fv-autopilot .fv-chat-side-running .fv-autopilot-now-go{flex:1;min-width:0;display:grid;grid-template-columns:16px minmax(0,1fr) auto;grid-template-rows:20px 16px;align-content:center;justify-content:stretch;
   column-gap:var(--fv-sp-12,12px);height:52px;padding:0 var(--fv-sp-4,4px) 0 var(--fv-sp-12,12px);border-radius:var(--fv-rad-ctl,12px);color:var(--ap-fg);text-align:left}
@@ -320,15 +320,15 @@ dialog.fv-studio.fv-autopilot:not([open]){display:none!important}
    always shows whole above it): a card scrolled to the bottom edge stays visible through an empty slot, never cut by it. */
 .fv-autopilot .fv-chat-slot{position:absolute;left:0;right:0;bottom:calc(100% + var(--fv-sp-8,8px));height:32px;margin:0;display:flex;align-items:center;min-width:0;pointer-events:none}
 .fv-autopilot .fv-chat-slot>*{pointer-events:auto}
-.fv-autopilot .fv-chat-slot>[hidden],.fv-autopilot .fv-chat-notice-row:not(:has(>:not([hidden]))){display:none}
+.fv-autopilot .fv-chat-slot>[hidden],.fv-autopilot .fv-chat-notice-row:not([data-hx-kids]){display:none}
 /* One line at a time: a notice first; the next-download line shows only when no notice does. */
-.fv-autopilot .fv-chat-slot:has(.fv-chat-notice:not([hidden]))>.fv-request-assets{display:none}
+.fv-autopilot .fv-chat-slot[data-hx-cn]>.fv-request-assets{display:none}
 .fv-autopilot .fv-chat-notice-row{flex:0 1 auto;width:auto;max-width:100%;height:32px;min-width:0;flex-wrap:nowrap;gap:var(--fv-sp-8,8px);padding:0 var(--fv-sp-4,4px) 0 var(--fv-sp-16,16px);border-radius:var(--fv-r-sm);
   background:rgb(var(--ap-tint) / var(--ap-a2));box-shadow:inset 0 0 0 1px var(--ap-edge),var(--ap-sh1);
   -webkit-backdrop-filter:blur(var(--fv-glass-blur2,30px)) saturate(165%);backdrop-filter:blur(var(--fv-glass-blur2,30px)) saturate(165%)}
 .fv-autopilot .fv-chat-notice{flex:0 1 auto;min-width:0;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fv-fs-2,13px);line-height:20px;color:var(--ap-fg)}
 .fv-autopilot .fv-chat-notice-row>.fv-issue-button{flex:none;margin:0}
-.fv-autopilot .fv-chat-notice-row:not(:has(>.fv-issue-button:not([hidden]),>.fv-chat-notice-action:not([hidden]))){padding-right:var(--fv-sp-16,16px)}
+.fv-autopilot .fv-chat-notice-row:not([data-hx-act]){padding-right:var(--fv-sp-16,16px)}
 .fv-autopilot .fv-chat-slot>.fv-request-assets{min-width:0;max-width:100%;margin:0;padding:0 var(--fv-sp-16,16px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fv-fs-1,12px);line-height:32px;color:var(--ap-fg3)}
 .fv-studio.fv-autopilot .fv-chat-above .fv-chat-down{position:static;justify-self:center;width:auto;height:32px;min-height:0;padding:0 var(--fv-sp-12,12px);border:0;border-radius:var(--fv-r-sm);color:var(--ap-fg);
   background:rgb(var(--ap-tint) / var(--ap-a2));box-shadow:inset 0 0 0 1px var(--ap-edge),var(--ap-sh2);
@@ -378,13 +378,13 @@ dialog.fv-studio.fv-autopilot:not([open]){display:none!important}
 .fv-autopilot .fv-chat-log p{font-size:var(--fv-fs-2,13px)}
 .fv-autopilot .fv-chat-ai>p{max-width:none;font-size:var(--fv-fs-3,16px);line-height:26px;color:var(--ap-fg2)}
 .fv-autopilot .fv-chat-me>p{padding:var(--fv-sp-8,8px) var(--fv-sp-16,16px);border-radius:var(--fv-r-lg) var(--fv-r-lg) var(--fv-r-xs) var(--fv-r-lg);background:var(--ap-me);color:var(--ap-fg);font-size:var(--fv-fs-3,16px);line-height:24px}
-.fv-autopilot .fv-chat-log:has(>.fv-chat-hello){min-height:100%;align-content:center;justify-items:center;text-align:center}
+.fv-autopilot .fv-chat-log[data-hx-hello]{min-height:100%;align-content:center;justify-items:center;text-align:center}
 .fv-autopilot .fv-chat-hello{padding-top:0;display:grid;justify-items:center}
 .fv-autopilot .fv-chat-hello-mark{display:grid;place-items:center;width:48px;height:48px;margin-bottom:var(--fv-sp-16,16px);border-radius:var(--fv-rad-ctl,12px);background:var(--ap-soft);color:var(--ap-accent);box-shadow:inset 0 0 0 1px var(--fv-accent-line,rgb(102 182 255 / .5))}
 .fv-autopilot .fv-chat-hello-mark svg{width:22px;height:22px}
 .fv-autopilot .fv-chat-examples button svg{flex:none;width:16px;height:16px;color:var(--ap-fg3)}
-.fv-autopilot .fv-chat-log:has(>.fv-chat-hello) .fv-chat-examples{width:min(480px,100%)}
-.fv-autopilot .fv-chat-log:has(>.fv-chat-hello) .fv-chat-examples>div{justify-items:stretch}
+.fv-autopilot .fv-chat-log[data-hx-hello] .fv-chat-examples{width:min(480px,100%)}
+.fv-autopilot .fv-chat-log[data-hx-hello] .fv-chat-examples>div{justify-items:stretch}
 .fv-autopilot .fv-chat-hello>p{font-size:var(--fv-fs-4,20px);line-height:32px;font-weight:600;color:var(--ap-fg)}
 .fv-autopilot .fv-chat-hello>p+p{color:var(--ap-fg2);font-weight:400}
 .fv-autopilot .fv-chat-examples>.fv-chat-meta{font-size:var(--fv-fs-2,13px)}
@@ -400,7 +400,7 @@ dialog.fv-studio.fv-autopilot:not([open]){display:none!important}
 .fv-autopilot .fv-chat-preview{width:200px;border-radius:var(--fv-rad-sm,8px);border-color:var(--ap-line2);background:var(--ap-ctl)}
 .fv-autopilot .fv-chat-preview[data-shape=wide]{width:240px}
 .fv-autopilot .fv-chat-preview[data-shape=tall]{width:124px}
-.fv-autopilot .fv-chat-preview:has(>:is(img,video)){background:#05070a}
+.fv-autopilot .fv-chat-preview[data-hx-media]{background:#05070a}
 .fv-autopilot .fv-chat-info{gap:var(--fv-sp-8,8px);padding:0}
 .fv-autopilot .fv-chat-card-head{display:grid;gap:var(--fv-sp-4,4px);min-width:0}
 .fv-autopilot .fv-chat-title-row{display:flex;align-items:center;gap:var(--fv-sp-8,8px);min-width:0}
@@ -419,17 +419,17 @@ dialog.fv-studio.fv-autopilot:not([open]){display:none!important}
 .fv-studio.fv-autopilot .fv-chat-log .fv-chat-actions>button.fv-primary:hover:not(:disabled){background:var(--ap-fill-h)}
 .fv-autopilot .fv-chat-length{font-size:var(--fv-fs-1,12px)}
 /* A failure is a card of its own: what did not finish and when, the reason, the details fold, then what to do. */
-.fv-autopilot .fv-chat-job:is([data-mode=failed],[data-mode=stopped]):has(>.fv-chat-fail-head),.fv-autopilot .fv-chat-job[data-kind=image][data-mode=failed]{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--fv-sp-8,8px);width:100%;max-width:none;justify-self:stretch;
+.fv-autopilot .fv-chat-job:is([data-mode=failed],[data-mode=stopped])[data-hx-fh],.fv-autopilot .fv-chat-job[data-kind=image][data-mode=failed]{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--fv-sp-8,8px);width:100%;max-width:none;justify-self:stretch;
   padding:var(--fv-sp-16,16px);border-radius:var(--fv-rad-dock,20px);background:rgb(var(--ap-card));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--ap-warn) 32%,transparent);color:var(--ap-fg)}
-.fv-autopilot .fv-chat-job[data-mode=stopped]:has(>.fv-chat-fail-head){box-shadow:inset 0 0 0 1px var(--ap-line)}
+.fv-autopilot .fv-chat-job[data-mode=stopped][data-hx-fh]{box-shadow:inset 0 0 0 1px var(--ap-line)}
 .fv-autopilot .fv-chat-fail-head{display:flex;align-items:center;gap:var(--fv-sp-8,8px);min-width:0}
 .fv-autopilot .fv-chat-fail-head strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fv-fs-3,16px);font-weight:600;line-height:24px}
 .fv-autopilot .fv-chat-fail-head .fv-chat-when{margin-left:auto;font-size:var(--fv-fs-1,12px);color:var(--ap-fg3);font-variant-numeric:tabular-nums}
 .fv-autopilot .fv-chat-fail-mark{display:grid;place-items:center;flex:none;width:28px;height:28px;border-radius:var(--fv-r-sm);background:var(--ap-warn-soft);color:var(--ap-warn)}
 .fv-autopilot .fv-chat-job[data-mode=stopped] .fv-chat-fail-mark{background:var(--ap-ctl);color:var(--ap-fg3)}
 .fv-autopilot .fv-chat-fail-mark svg{width:16px;height:16px}
-.fv-autopilot .fv-chat-job:is([data-mode=failed],[data-mode=stopped]):has(>.fv-chat-fail-head)>p{margin:0;font-size:var(--fv-fs-2,13px);line-height:20px;color:var(--ap-fg)}
-.fv-autopilot .fv-chat-job:is([data-mode=failed],[data-mode=stopped]):has(>.fv-chat-fail-head) .fv-chat-actions{margin-top:var(--fv-sp-4,4px)}
+.fv-autopilot .fv-chat-job:is([data-mode=failed],[data-mode=stopped])[data-hx-fh]>p{margin:0;font-size:var(--fv-fs-2,13px);line-height:20px;color:var(--ap-fg)}
+.fv-autopilot .fv-chat-job:is([data-mode=failed],[data-mode=stopped])[data-hx-fh] .fv-chat-actions{margin-top:var(--fv-sp-4,4px)}
 .fv-studio.fv-autopilot .fv-chat-log .fv-chat-job:is([data-mode=failed],[data-mode=stopped]) :is(.fv-chat-actions>button,.fv-result-links .fv-actions>.fv-action){min-height:32px;border:0;border-radius:var(--fv-rad-sm,8px);background:var(--ap-ctl);color:var(--ap-fg)}
 .fv-studio.fv-autopilot .fv-chat-log .fv-chat-job:is([data-mode=failed],[data-mode=stopped]) :is(.fv-chat-actions>button,.fv-result-links .fv-actions>.fv-action):hover:not(:disabled){background:var(--ap-ctl-h)}
 .fv-studio.fv-autopilot .fv-chat-log .fv-chat-job:is([data-mode=failed],[data-mode=stopped]) :is(.fv-result-links .fv-chat-actions>.fv-chat-retry,.fv-result-links .fv-actions>.fv-chat-retry){background:var(--ap-fill);color:var(--ap-on-fill)}
@@ -438,7 +438,7 @@ dialog.fv-studio.fv-autopilot:not([open]){display:none!important}
 .fv-autopilot .fv-chat-job:is([data-mode=failed],[data-mode=stopped]) .fv-failure-fold>.fv-failure-cause{font-size:var(--fv-fs-1,12px);line-height:16px}
 .fv-autopilot .fv-chat-confirm>p:first-child{font-size:var(--fv-fs-3,16px);line-height:24px}
 .fv-autopilot .fv-chat-beats{font-size:var(--fv-fs-2,13px)}
-.fv-autopilot .fv-chat-confirm[data-state=answered],.fv-autopilot .fv-chat-job:is([data-mode=quiet],[data-mode=stopped]):not(:has(>.fv-chat-fail-head)){font-size:var(--fv-fs-2,13px);color:var(--ap-fg3)}
+.fv-autopilot .fv-chat-confirm[data-state=answered],.fv-autopilot .fv-chat-job:is([data-mode=quiet],[data-mode=stopped]):not([data-hx-fh]){font-size:var(--fv-fs-2,13px);color:var(--ap-fg3)}
 .fv-studio.fv-autopilot .fv-chat-log .fv-chat-edit-row .fv-chat-edit{font-size:var(--fv-fs-1,12px)}
 .fv-studio.fv-autopilot .fv-chat-log .fv-chat-edit-box{background:var(--ap-me);font-size:var(--fv-fs-3,16px);line-height:24px}
 
@@ -484,7 +484,7 @@ dialog.fv-studio.fv-autopilot:not([open]){display:none!important}
 @media(max-width:560px){
   .fv-autopilot .fv-chat-main{padding:0 var(--fv-sp-12,12px) var(--fv-sp-12,12px)}
   .fv-autopilot .fv-chat-scroll{margin:0 calc(-1 * var(--fv-sp-12,12px));padding-left:var(--fv-sp-12,12px);padding-right:var(--fv-sp-12,12px)}
-  .fv-autopilot .fv-chat-job:not([data-mode=quiet]):not([data-mode=stopped]):not([data-mode=failed]):has(>.fv-chat-preview:not([data-shape=tall])){grid-template-columns:minmax(0,1fr)}
+  .fv-autopilot .fv-chat-job:not([data-mode=quiet]):not([data-mode=stopped]):not([data-mode=failed])[data-hx-flat]{grid-template-columns:minmax(0,1fr)}
   .fv-autopilot .fv-chat-preview,.fv-autopilot .fv-chat-preview[data-shape=wide]{width:100%}
   .fv-autopilot .fv-chat-preview[data-shape=tall]{width:96px}
   .fv-studio.fv-autopilot .fv-chat-input{padding:var(--fv-sp-8,8px) var(--fv-sp-8,8px) var(--fv-sp-4,4px) var(--fv-sp-12,12px);border-radius:var(--fv-rad-dock,20px)}

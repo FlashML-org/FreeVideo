@@ -29,6 +29,8 @@ export async function readLengthCapability(api, context, signal, onReply = () =>
 export function createStudioLength({api, node, seconds, advanced, fields, t, field, setSeconds,
     onChange = () => {}, capability = readLengthCapability, delay = 220, capabilityTimeout = 10000,
     onEditor = () => {}, onAutopilot = () => {}, autopilot = false, promptModel = null}) {
+    // Writing a value an element already has still wakes every observer, so only real changes are written.
+    const put = (target, key, value) => { if (target[key] !== value) target[key] = value; };
     const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; };
     const controls = el('div', 'fv-length-controls'); controls.style.marginTop = '14px';
     const single = el('input'); single.type = 'checkbox'; single.dataset.fvLength = 'single';
@@ -90,9 +92,9 @@ export function createStudioLength({api, node, seconds, advanced, fields, t, fie
     }
     function paintModel() {
         const multiple = !absent && !error && plan?.count >= 2;
-        modelNotice.hidden = !multiple || modelState.info?.ready !== false;
-        modelText.textContent = modelState.text || t('The prompt model is not installed, so the description will be split across the parts by sentence.', '未安装提示词模型，描述将按句子顺序分到各段。');
-        download.hidden = Boolean(modelState.busy); download.disabled = Boolean(modelState.busy);
+        put(modelNotice, 'hidden', !multiple || modelState.info?.ready !== false);
+        put(modelText, 'textContent', modelState.text || t('The prompt model is not installed, so the description will be split across the parts by sentence.', '未安装提示词模型，描述将按句子顺序分到各段。'));
+        put(download, 'hidden', Boolean(modelState.busy)); put(download, 'disabled', Boolean(modelState.busy));
         // Pending plans do not reset the check on every keystroke. A known single part does.
         if (plan?.count === 1 || (!plan && !effectiveSingle() && total() <= singleLimitSeconds(planLimits?.maximum)
             && !Object.hasOwn(node.properties || {}, LENGTH_PROPERTIES.block))) modelChecked = false;
@@ -106,31 +108,31 @@ export function createStudioLength({api, node, seconds, advanced, fields, t, fie
         const maximum = planLimits?.maximum, forcedMaximum = planLimits?.singleMaximum;
         const clamped = positive(maximum) && node.properties?.[LENGTH_PROPERTIES.block] > maximum;
         const cannot = total() > (forcedMaximum ?? 15);
-        single.disabled = absent || seconds.disabled || cannot || forced; single.checked = !absent && effectiveSingle();
+        put(single, 'disabled', Boolean(absent || seconds.disabled || cannot || forced)); put(single, 'checked', !absent && effectiveSingle());
         if (absent) seconds.max = '60';
         const reason = cannot ? positive(forcedMaximum)
             ? t(`Up to ${Math.floor(forcedMaximum)}\u00a0s in one run at this size.`, `当前画面大小单次最长 ${Math.floor(forcedMaximum)}\u00a0秒。`)
             : t('The maximum length is unknown for these settings.', '当前设置下无法确定最长时长。')
             : seconds.disabled ? '' : clamped
                 ? t(`Up to ${Math.floor(maximum)}\u00a0s in one run at this size.`, `当前画面大小单次最长 ${Math.floor(maximum)}\u00a0秒。`) : '';
-        unavailable.hidden = absent || !reason; unavailable.textContent = reason;
-        single.title = single.disabled ? reason : ''; toggle.title = single.title;
-        if (single.disabled && reason) toggle.dataset.fvTipWhy = reason; else delete toggle.dataset.fvTipWhy;
-        if (positive(maximum)) block.max = String(maximum); else block.removeAttribute('max');
-        if (!edited) block.value = Math.min(node.properties?.[LENGTH_PROPERTIES.block] || defaultBlockSeconds(maximum), maximum || Infinity);
-        block.disabled = absent || seconds.disabled || effectiveSingle() || (positive(maximum) && maximum < 5); controls.hidden = absent;
-        reset.hidden = !Object.hasOwn(node.properties || {}, LENGTH_PROPERTIES.block); reset.disabled = block.disabled;
-        block.title = !block.disabled || absent || seconds.disabled || effectiveSingle() ? ''
-            : t('These settings cannot generate in parts.', '当前设置不能分段生成。');
-        reset.title = block.title;
+        put(unavailable, 'hidden', Boolean(absent || !reason)); put(unavailable, 'textContent', reason);
+        put(single, 'title', single.disabled ? reason : ''); put(toggle, 'title', single.title);
+        if (single.disabled && reason) { if (toggle.dataset.fvTipWhy !== reason) toggle.dataset.fvTipWhy = reason; } else if ('fvTipWhy' in toggle.dataset) delete toggle.dataset.fvTipWhy;
+        if (positive(maximum)) { if (block.max !== String(maximum)) block.max = String(maximum); } else if (block.hasAttribute('max')) block.removeAttribute('max');
+        if (!edited) put(block, 'value', String(Math.min(node.properties?.[LENGTH_PROPERTIES.block] || defaultBlockSeconds(maximum), maximum || Infinity)));
+        put(block, 'disabled', Boolean(absent || seconds.disabled || effectiveSingle() || (positive(maximum) && maximum < 5))); put(controls, 'hidden', Boolean(absent));
+        put(reset, 'hidden', !Object.hasOwn(node.properties || {}, LENGTH_PROPERTIES.block)); put(reset, 'disabled', block.disabled);
+        put(block, 'title', !block.disabled || absent || seconds.disabled || effectiveSingle() ? ''
+            : t('These settings cannot generate in parts.', '当前设置不能分段生成。'));
+        put(reset, 'title', block.title);
         // The same sentence is the problem note once a length needs parts: say it once.
-        hint.hidden = absent || (noParts && Boolean(error));
-        note.hidden = absent || !error;
+        put(hint, 'hidden', Boolean(absent || (noParts && Boolean(error))));
+        put(note, 'hidden', Boolean(absent || !error));
         if (error === 'too_long') note.replaceChildren(TOO_LONG(), ...storyboard());
-        else note.textContent = error ? errorMessage(error) : '';
+        else put(note, 'textContent', error ? errorMessage(error) : '');
         if (error === 'other') note.append(issueButton(t, () => ({where: ['Video length planning', '视频分段规划'], message: errorMessage('other')})));
         paintModel();
-        note.style.margin = noParts && error === 'continuation_unavailable' ? '12px 0' : ''; // as spaced as the line it replaces
+        put(note.style, 'margin', noParts && error === 'continuation_unavailable' ? '12px 0' : ''); // as spaced as the line it replaces
     }
     function errorMessage(kind) {
         return {single_unavailable: t('This length is beyond a single run.', '这个长度超出了单次能生成的范围。'),

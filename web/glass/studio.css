@@ -178,7 +178,7 @@
 .fvs-console-status :is(.fv-add-video-note,.fv-length-why){text-align:left;font-size:var(--fv-fs-1)}
 /* The add-video answer is said whole, after the status line: on a short line it wraps, the line grows and the band above
    the console grows with it (studio.js sets --fvs-band), so it never covers the console. Other notes keep the one line. */
-.fv-studio.fv-create .fvs-console-status:has(>:is(.fv-add-video-note,.fv-length-why):not([hidden])){height:auto;min-height:20px}
+.fv-studio.fv-create .fvs-console-status[data-hx-note]{height:auto;min-height:20px}
 .fv-studio.fv-create .fvs-console-status>:is(.fv-add-video-note,.fv-length-why){order:1;flex:0 1 auto;white-space:normal;text-overflow:clip}
 .fv-studio.fv-create .fv-controls[data-status=true]{padding-top:max(var(--fv-sp-24),calc(var(--fvs-band,20px) + var(--fv-sp-4)))}
 .fvs-console-status .fv-enhance-status{display:flex!important;align-items:center;gap:var(--fv-sp-8);padding:0;border:0;background:none;font-size:var(--fv-fs-1);line-height:20px}
@@ -205,7 +205,7 @@
 .fv-studio.fv-create .fvs-chips>.fv-enhance-bar{display:flex;align-items:center;flex:none;gap:var(--fv-sp-4);min-height:0;height:var(--fvs-row,36px);padding:0;border:0}
 .fv-studio.fv-create .fvs-chips>.fv-enhance-bar>.fv-enhance-toggle,.fv-studio.fv-create .fvs-chips>.fv-enhance-bar[data-enabled=false]:not([data-busy=true]){display:none}
 /* Nothing in it (an empty box has nothing to rewrite): no gap is left for it in the row. */
-.fv-studio.fv-create .fvs-chips>.fv-enhance-bar:not(:has(>:not([hidden]):not(.fv-enhance-toggle))){display:none}
+.fv-studio.fv-create .fvs-chips>.fv-enhance-bar:not([data-hx-enh]){display:none}
 .fv-studio.fv-create .fvs-chips>.fv-enhance-bar>.fv-quiet{min-height:var(--fv-ctl-s);height:var(--fv-ctl-s);padding:0 var(--fv-sp-8);font-size:var(--fv-fs-1);border-radius:var(--fv-rad-pill)}
 .fv-studio.fv-create .fvs-chips>.fv-enhance-bar>.fv-enhance-redo{width:var(--fv-ctl-s);padding:0}
 .fv-studio.fv-create .fvs-console .fv-enhance>:is(.fv-prompt-editor,textarea){order:1}
@@ -444,7 +444,7 @@
 .fv-studio.fv-create .fvs-console .fv-enhance-toggle input{margin:0}
 /* Keyboard focus is always visible: the prompt rings the console (an outline, so the material's own shadow, or none,
    stays as it is), the video rings itself. A press in the console only lights its edge (data-pointer, studio_console.js). */
-.fv-studio.fv-create .fvs-console:not([data-pointer]):has(textarea:focus-visible){border-color:var(--fv-accent-line);outline:2px solid var(--fv-accent-line);outline-offset:1px}
+.fv-studio.fv-create .fvs-console:not([data-pointer])[data-hx-focus]{border-color:var(--fv-accent-line);outline:2px solid var(--fv-accent-line);outline-offset:1px}
 .fv-studio.fv-create .fv-stage video:focus-visible{outline:2px solid var(--fv-accent-line);outline-offset:-2px}
 /* A picked work's video takes the stage in one step once its first frame is decoded (studio.js showResult): until then
    it waits unseen under the last clear picture, in the same cell; no fade, so nothing soft shows on the way. */
@@ -594,7 +594,7 @@
   --fvs-water:27 148 252;--fvs-crest:.13;--fvs-body:.045;
   animation:fvs-making-in .4s cubic-bezier(.2,.8,.2,1) both;transition:opacity .5s cubic-bezier(.2,.8,.2,1)}
 :root[data-theme=light] .fv-studio.fv-create .fvs-making{--fvs-water:13 109 204;--fvs-crest:.11;--fvs-body:.04}
-.fv-studio.fv-create .fv-stage:has(.fv-generation-progress:not([hidden])) .fvs-making{display:block}
+.fv-studio.fv-create .fv-stage[data-hx-prog] .fvs-making{display:block}
 .fv-studio.fv-create .fv-stage[data-revealing=true] .fvs-making{opacity:0}
 .fv-studio.fv-create .fvs-making-level{position:absolute;inset:0;transform:translateY(calc(100% - var(--fvs-made,0) * 100%));
   transition:transform 1.6s cubic-bezier(.33,1,.68,1)}
@@ -728,8 +728,8 @@
   .fvs-console-status>.fv-status{width:auto;min-height:0;line-height:20px;text-align:left;align-self:auto}
   .fvs-console-status .fv-status-issue{min-height:20px;height:20px;padding:0 var(--fv-sp-8)}
   /* With the add-video answer, the status that says what is missing and the answer read as one centred line. */
-  .fv-studio.fv-create .fvs-console-status:has(>:is(.fv-add-video-note,.fv-length-why):not([hidden])){justify-content:center}
-  .fv-studio.fv-create .fvs-console-status:has(>:is(.fv-add-video-note,.fv-length-why):not([hidden]))>.fv-status{width:auto;flex:0 1 auto;min-height:0;line-height:20px}
+  .fv-studio.fv-create .fvs-console-status[data-hx-note]{justify-content:center}
+  .fv-studio.fv-create .fvs-console-status[data-hx-note]>.fv-status{width:auto;flex:0 1 auto;min-height:0;line-height:20px}
   /* The history rail: centred on the picture and never taller than it; the selected card's ring has room. */
   .fv-studio.fv-create .fv-recent.fvs-rail{top:calc(var(--fvs-stage-top,16px) + var(--fvs-stage-h,600px) / 2);bottom:auto;height:auto;max-height:var(--fvs-stage-h,620px);margin-block:0;translate:0 -50%}
   .fv-studio.fv-create .fvs-rail .fv-recent-list{padding:var(--fv-sp-4)}
@@ -765,9 +765,9 @@ html body :is(.fv-studio.fv-create .fvs-console,.fv-editor .fv-ed-genbar .fv-ed-
 .fv-studio.fv-create .fvs-next-size{position:absolute;left:var(--fv-sp-12);top:var(--fv-sp-12);z-index:3;display:none;padding:var(--fv-sp-2) var(--fv-sp-8);border-radius:var(--fv-r-xs);
   background:rgb(var(--fv-solid1));color:var(--fv-fg2);font-size:var(--fv-fs-1);line-height:16px;font-variant-numeric:tabular-nums}
 /* The next frame's pixels are not written on it: the console's Frame & size key says them. */
-.fv-studio.fv-create .fv-stage[data-next=true]:not(:has(.fv-generation-progress:not([hidden]))) .fvs-next-size{display:none}
+.fv-studio.fv-create .fv-stage[data-next=true]:not([data-hx-prog]) .fvs-next-size{display:none}
 /* (An empty stage keeps its own icon and the line under it, empty-stage rule above, while a frame is pointed at.) */
-.fv-studio.fv-create .fv-stage[data-next=true]:not([data-empty=true]):not(:has(.fv-generation-progress:not([hidden])))::after{content:var(--fvs-empty-hint,'');position:absolute;left:var(--fv-sp-8);right:var(--fv-sp-8);top:50%;translate:0 -50%;
+.fv-studio.fv-create .fv-stage[data-next=true]:not([data-empty=true]):not([data-hx-prog])::after{content:var(--fvs-empty-hint,'');position:absolute;left:var(--fv-sp-8);right:var(--fv-sp-8);top:50%;translate:0 -50%;
   text-align:center;color:var(--fv-fg3);font-size:var(--fv-fs-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* A frame too narrow for the hint on one line shows none; the pixels badge shows only while the tray covers the bar. */
 .fv-studio.fv-create .fv-stage[data-next=true][data-narrow=true]::after{content:none}
@@ -850,10 +850,10 @@ html body .fv-studio.fv-create .fvs-console :is(.fvs-console-prompt,.fv-section,
 /* The play bar under the stage video: as wide as the picture, 8 px under it (the column's gap); hidden (its row kept)
    while the stage shows the next frame, a run's progress or a comparison; it steps back with the bar while a tray is open. */
 .fv-studio.fv-create .fvs-player{align-self:center;box-sizing:border-box;width:var(--fvs-stage-w,100%);max-width:100%;min-height:32px;transition:opacity var(--fv-dur-1) var(--fv-ease-out)}
-.fv-studio.fv-create .fv-preview-column:has(.fv-stage[data-comparing=true]) .fvs-player{visibility:hidden}
+.fv-studio.fv-create .fv-preview-column[data-hx-cmp] .fvs-player{visibility:hidden}
 /* No video to play (the next generation's empty frame, a video being made): the play bar's row goes and the picture
    takes its room (studio.js fitPreview), so no empty band sits between the picture and the console. */
-.fv-studio.fv-create .fv-preview-column:has(.fv-stage[data-next=true],.fv-stage .fv-generation-progress:not([hidden])) .fvs-player{display:none}
+.fv-studio.fv-create .fv-preview-column[data-hx-nextprog] .fvs-player{display:none}
 .fv-studio.fv-create .fv-body:not([data-tray=""]) .fvs-player{opacity:0;pointer-events:none}
 @media(prefers-reduced-motion:reduce){.fv-studio.fv-create .fvs-player{transition:none}}
 /* Phones: the play bar's buttons and track are 44 px touch targets (the row's room in fitPreview follows). */
@@ -877,8 +877,8 @@ html body .fv-studio.fv-create .fvs-console :is(.fvs-console-prompt,.fv-section,
 /* Generate key, second segment: a narrow ⌄ at the key's right end that chooses video or preview. It takes its 32 px from
    the key's own width (the key's size does not change); its menu opens upward in the top layer (result_actions.js). */
 .fv-studio.fv-create .fvs-console .fv-runrow{position:relative}
-.fv-studio.fv-create .fvs-console .fv-runrow:has(>.fv-key-more:not([hidden]))>.fv-primary{padding-left:var(--fv-sp-4);padding-right:calc(32px + var(--fv-sp-4));letter-spacing:0}
-@media(min-width:761px){.fv-studio.fv-create .fvs-console .fv-runrow:has(>.fv-key-more:not([hidden]))>.fv-primary .fvs-key-label{font-size:13px;white-space:nowrap}}
+.fv-studio.fv-create .fvs-console .fv-runrow[data-hx-more]>.fv-primary{padding-left:var(--fv-sp-4);padding-right:calc(32px + var(--fv-sp-4));letter-spacing:0}
+@media(min-width:761px){.fv-studio.fv-create .fvs-console .fv-runrow[data-hx-more]>.fv-primary .fvs-key-label{font-size:13px;white-space:nowrap}}
 .fv-studio.fv-create .fvs-console .fv-key-more{position:absolute;top:0;right:0;width:32px;height:52px;z-index:1}
 .fv-studio.fv-create .fvs-console .fv-key-more[hidden]{display:none}
 .fv-studio.fv-create .fvs-console .fv-key-more>summary{display:flex;align-items:center;justify-content:center;width:100%;height:100%;list-style:none;cursor:pointer;color:#fff;

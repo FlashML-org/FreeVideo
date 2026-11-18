@@ -169,5 +169,5 @@ dialog.fv-studio.fv-editor:not([open]){display:none!important}
 .fv-editor .fv-ed-adjust-host>.fv-ed-gen-tray>.fv-ed-gen-failure:not([hidden]){background:var(--fv-warn-soft);border-color:color-mix(in srgb,var(--fv-warn) 34%,transparent)}
 /* A notice in the project row sits on the stage: a quiet chip, not a floating sheet. */
 .fv-editor .fv-ed-project-row .fv-ed-notice{background:var(--fv-ctl-bg);border:1px solid var(--fv-line);box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none}
-.fv-editor .fv-ed-project-row .fv-ed-notice:has(.fv-issue-button){background:var(--fv-warn-soft);border-color:color-mix(in srgb,var(--fv-warn) 30%,transparent)}
+.fv-editor .fv-ed-project-row .fv-ed-notice[data-hx-issue]{background:var(--fv-warn-soft);border-color:color-mix(in srgb,var(--fv-warn) 30%,transparent)}
 

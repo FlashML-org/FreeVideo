@@ -131,10 +131,10 @@ export function createConsole({t, body, controls, prompt, runbar, trays, chips, 
             if (!spec.read) continue;
             const value = spec.read() || {};
             if (spec.label && spec.label.textContent !== (value.label ?? '')) spec.label.textContent = value.label ?? '';
-            if (spec.extra) { spec.extra.textContent = value.extra ?? ''; spec.extra.hidden = !value.extra; }
+            if (spec.extra) { if (spec.extra.textContent !== (value.extra ?? '')) spec.extra.textContent = value.extra ?? ''; if (spec.extra.hidden !== !value.extra) spec.extra.hidden = !value.extra; }
             if (spec.chip) {
-                spec.chip.disabled = Boolean(value.disabled);
-                if (value.badge != null) spec.chip.dataset.badge = String(value.badge); else delete spec.chip.dataset.badge;
+                if (spec.chip.disabled !== Boolean(value.disabled)) spec.chip.disabled = Boolean(value.disabled);
+                if (value.badge != null) { if (spec.chip.dataset.badge !== String(value.badge)) spec.chip.dataset.badge = String(value.badge); } else if ('badge' in spec.chip.dataset) delete spec.chip.dataset.badge;
                 if (value.tip) tip(spec.chip, value.tip[0], value.tip[1], value.tip[2]);
             }
         }
@@ -209,15 +209,19 @@ export function durationStepper(t, seconds, {onOpen, max = () => Infinity}) {
         value.replaceWith(edit); input.focus(); input.select();
     };
     void onOpen;
+    let shownNow = null;
     function sync() {
         const n = seconds.value === '' ? NaN : Number(seconds.value);
         const shown = Number.isFinite(n) ? (Number.isInteger(n) ? String(n) : n.toFixed(n < 10 ? 2 : 1).replace(/0+$/, '').replace(/\.$/, '')) : '—';
         // The number and its unit apart, so a narrow row can show the number alone; the name says both.
-        const unit = el('span', 'fvs-step-unit', t('s', '秒')); value.replaceChildren(el('span', 'fvs-step-number', shown), unit);
-        value.setAttribute('aria-label', t(`${shown} s`, `${shown} 秒`));
-        minus.disabled = plus.disabled = seconds.disabled;
-        minus.disabled ||= !(n > 2);
-        plus.disabled ||= n >= max();
+        if (shownNow !== shown || !value.firstChild) {
+            shownNow = shown;
+            const unit = el('span', 'fvs-step-unit', t('s', '秒')); value.replaceChildren(el('span', 'fvs-step-number', shown), unit);
+            value.setAttribute('aria-label', t(`${shown} s`, `${shown} 秒`));
+        }
+        const lessOff = seconds.disabled || !(n > 2), moreOff = seconds.disabled || n >= max();
+        if (minus.disabled !== lessOff) minus.disabled = lessOff;
+        if (plus.disabled !== moreOff) plus.disabled = moreOff;
     }
     seconds.addEventListener('input', sync); seconds.addEventListener('change', sync);
     sync();

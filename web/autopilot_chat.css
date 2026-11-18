@@ -20,7 +20,7 @@
 .fv-chat-conversation-row{position:relative;min-width:0;display:flex;align-items:center;border-radius:var(--fv-chats-radius)}
 .fv-chat-conversation-row:is(:hover,:focus-within,[data-menu-open=true]){background:var(--fv-raised)}
 .fv-studio .fv-chat-conversations .fv-chat-conversation{flex:1;width:100%}
-.fv-studio .fv-chat-conversation-row:has(> .fv-chat-more:not([hidden])):is(:hover,:focus-within,[data-menu-open=true]) .fv-chat-conversation{padding-right:calc(var(--fv-chats-pad) + 28px)}
+.fv-studio .fv-chat-conversation-row[data-hx-cmore]:is(:hover,:focus-within,[data-menu-open=true]) .fv-chat-conversation{padding-right:calc(var(--fv-chats-pad) + 28px)}
 .fv-studio .fv-chat-conversations .fv-chat-more{position:absolute;right:1px;top:50%;transform:translateY(-50%);width:0;height:28px;min-height:28px;padding:0;border:0;overflow:hidden;justify-content:center;color:var(--fv-muted);opacity:0;pointer-events:none}
 .fv-studio .fv-chat-conversation-row:is(:hover,:focus-within,[data-menu-open=true]) .fv-chat-more{width:28px;opacity:1;pointer-events:auto}
 .fv-studio .fv-chat-conversations .fv-chat-more:hover:not(:disabled){background:transparent;color:var(--fv-ink)}
@@ -36,7 +36,7 @@
 .fv-studio .fv-chat-menu .fv-chat-menu-delete{color:var(--fv-danger)}
 .fv-studio .fv-chat-menu .fv-chat-menu-delete:is(:hover,:focus-visible){background:var(--fv-danger-subtle)}
 @keyframes fv-chat-menu-enter{from{opacity:0}}
-@media(hover:none){.fv-studio .fv-chat-conversations .fv-chat-conversation-row:has(> .fv-chat-more:not([hidden])) .fv-chat-conversation{padding-right:calc(var(--fv-chats-pad) + 36px)}.fv-studio .fv-chat-conversations .fv-chat-more,.fv-studio .fv-chat-conversation-row:is(:hover,:focus-within,[data-menu-open=true]) .fv-chat-more{width:36px;height:36px;min-height:36px;opacity:1;pointer-events:auto}}
+@media(hover:none){.fv-studio .fv-chat-conversations .fv-chat-conversation-row[data-hx-cmore] .fv-chat-conversation{padding-right:calc(var(--fv-chats-pad) + 36px)}.fv-studio .fv-chat-conversations .fv-chat-more,.fv-studio .fv-chat-conversation-row:is(:hover,:focus-within,[data-menu-open=true]) .fv-chat-more{width:36px;height:36px;min-height:36px;opacity:1;pointer-events:auto}}
 .fv-chat-running{flex:none;width:var(--fv-chats-dot);height:var(--fv-chats-dot);border-radius:var(--fv-r-pill);background:var(--fv-accent)}
 .fv-chat-tools{display:none}
 .fv-chat-scroll{min-height:0;overflow:auto;margin:0 -40px;padding:24px 40px 4px;scrollbar-gutter:stable both-edges}
@@ -57,7 +57,7 @@
 .fv-chat-job:is([data-mode=stopped],[data-mode=failed],[data-mode=quiet]){width:auto;display:flex;align-items:center;gap:8px;padding:0;border:0;background:none;color:var(--fv-muted);font-size:13px}
 .fv-chat-preview{position:relative;align-self:start;display:grid;place-items:center;width:124px;aspect-ratio:16/9;border-radius:var(--fv-r-sm);overflow:hidden;background:var(--fv-card);border:1px dashed color-mix(in srgb,var(--fv-ink) 28%,transparent);box-sizing:border-box}
 .fv-chat-preview>.fv-empty-frame-icon{width:24px;height:24px;fill:none;stroke:var(--fv-muted);stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
-.fv-chat-preview:has(>:is(img,video)){border:0;background:#0c121a}
+.fv-chat-preview[data-hx-media]{border:0;background:#0c121a}
 .fv-chat-preview[data-shape=wide]{width:240px}
 .fv-chat-preview>:is(img,video){position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block}
 .fv-chat-preview>img{animation:fv-chat-in .3s var(--fv-ease)}.fv-chat-preview[data-video]>img{display:none}
@@ -78,7 +78,7 @@
 .fv-chat-info{display:grid;grid-template-columns:minmax(0,1fr);align-content:space-between;gap:12px;min-width:0;padding:4px 4px 4px 0}
 /* Finished cards have only a heading and any available actions; an empty footer takes no room. */
 .fv-chat-job[data-kind=image][data-mode=done] .fv-chat-preview{max-width:calc(160px * var(--fv-chat-ratio,1.7778))}
-.fv-chat-job[data-mode=done]:not(:has(.fv-chat-preview)){grid-template-columns:minmax(0,1fr)}
+.fv-chat-job[data-mode=done]:not([data-hx-prev]){grid-template-columns:minmax(0,1fr)}
 /* The picture viewer uses the same modal, surfaces and ordinary action buttons as the conversation. */
 .fv-studio.fv-chat-image-viewer[open]{display:grid;grid-template-rows:auto minmax(0,1fr);gap:12px;padding:12px;border-radius:var(--fv-r-lg);background:var(--fv-card)}
 .fv-chat-image-viewer>.fv-chat-actions{justify-content:flex-end}
@@ -137,7 +137,7 @@
 .fv-chat-job:is([data-mode=failed],[data-mode=stopped]){display:block;width:100%}.fv-chat-job:is([data-mode=failed],[data-mode=stopped]) .fv-chat-actions{margin-top:8px;flex-wrap:wrap}
 .fv-studio .fv-chat-job:is([data-mode=failed],[data-mode=stopped]) .fv-result-links{justify-content:flex-start}
 .fv-studio .fv-chat-job:is([data-mode=failed],[data-mode=stopped]) .fv-result-links>.fv-actions{justify-content:flex-start}
-.fv-studio .fv-chat-job:is([data-mode=failed],[data-mode=stopped]) .fv-result-links:has(>.fv-image-failure-reason){display:grid;grid-template-columns:minmax(0,1fr);justify-items:start;gap:12px;width:100%}
+.fv-studio .fv-chat-job:is([data-mode=failed],[data-mode=stopped]) .fv-result-links[data-hx-fr]{display:grid;grid-template-columns:minmax(0,1fr);justify-items:start;gap:12px;width:100%}
 .fv-chat-job:is([data-mode=failed],[data-mode=stopped]) .fv-failure-fold{margin-top:8px;max-width:440px}.fv-chat-job:is([data-mode=failed],[data-mode=stopped]) .fv-failure-fold[hidden]{display:none}
 /* A picture's card is a 12 px grid; the fold keeps the video card's 8 px under the reason and 10 px above the buttons. */
 .fv-chat-job:is([data-mode=failed],[data-mode=stopped]) .fv-result-links>.fv-failure-fold{margin:-4px 0 -4px;justify-self:stretch}
@@ -165,7 +165,7 @@
 .fv-studio .fv-chat-send.fv-chat-halt svg{fill:currentColor}
 .fv-studio .fv-chat-send:focus-visible{outline-offset:2px}
 @media(max-width:720px){
- .fv-studio .fv-chat-conversations .fv-chat-conversation-row:has(> .fv-chat-more:not([hidden])) .fv-chat-conversation{padding-right:calc(var(--fv-chats-pad) + 36px)}
+ .fv-studio .fv-chat-conversations .fv-chat-conversation-row[data-hx-cmore] .fv-chat-conversation{padding-right:calc(var(--fv-chats-pad) + 36px)}
  .fv-studio .fv-chat-conversations .fv-chat-more,.fv-studio .fv-chat-conversation-row:is(:hover,:focus-within,[data-menu-open=true]) .fv-chat-more{width:36px;height:36px;min-height:36px;opacity:1;pointer-events:auto}
  .fv-studio .fv-chat-conversations .fv-chat-rename{font-size:16px}
  .fv-chat[data-conversations=true]{grid-template-columns:minmax(0,1fr)}
