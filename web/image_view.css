@@ -340,7 +340,7 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
 .fv-iv .fv-iv-fail-head{display:flex;align-items:center;gap:12px}
 .fv-iv .fv-iv-fail-head h3{margin:0;font-size:var(--fv-fs-3,16px);font-weight:600}
 .fv-iv .fv-iv-fail-icon{width:36px;height:36px;flex:none;border-radius:var(--fv-r-sm);display:grid;place-items:center;background:var(--fv-warn-soft);color:var(--fv-warn)}
-.fv-iv .fv-iv-fail .fv-result-links{display:grid;gap:12px}
+.fv-iv .fv-iv-fail .fv-result-links{display:grid;grid-template-columns:minmax(0,1fr);justify-content:stretch;gap:12px}
 .fv-iv .fv-iv-fail .fv-image-failure-reason{font-size:var(--fv-fs-2,13px);line-height:1.55;color:var(--fv-fg2);-webkit-user-select:text;user-select:text}
 .fv-iv .fv-iv-fail .fv-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-start}
 .fv-iv .fv-iv-fail-facts{margin:0;padding-top:8px;border-top:1px solid var(--fv-line);font-size:var(--fv-fs-1,12px);color:var(--fv-fg3)}
