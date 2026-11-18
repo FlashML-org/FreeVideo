@@ -802,6 +802,17 @@ async function openImageEditorNow({source = null, name = source || '', target = 
             if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); more.open = false; summary.focus(); }
         };
         more.ontoggle = () => { stop(); if (more.open) { document.addEventListener('pointerdown', away, true); offKey = listenDialogKey(dialog, 'keydown', esc, true); } };
+        // An action picked from the list closes it, so the box it opens is not covered. Choices inside a group
+        // (a segmented control, a dropdown) leave it open.
+        // Focus left on the hidden item, or lost when the action redrew the row, goes back to More, as Esc does; a box
+        // the action opened has already taken it.
+        list.addEventListener('click', event => {
+            if (event.target.closest?.('button')?.parentElement !== list) return;
+            more.open = false;
+            if (!list.contains(document.activeElement) && dialog.contains(document.activeElement)) return;
+            const back = more.isConnected ? summary : optionsBar.querySelector(':scope > .fv-ie-more > summary');
+            if (back) back.focus({preventScroll: true}); else keepFocus();
+        });
     }
     // Sketch sizes (a dot drawn at each size) and colours (black, grey, white and a few strong ones).
     const SKETCH_SIZES = {brush: [.004, .01, .02, .04], eraser: [.01, .025, .05, .1]};

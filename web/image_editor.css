@@ -70,7 +70,7 @@ button.fv-ie-size:hover{background:var(--fv-hover);color:var(--fv-ink)}
 .fv-ie-swap svg{width:13px;height:13px}.fv-ie-swap:hover{color:var(--fv-ink)}
 
 /* Options bar. */
-.fv-ie-workspace{min-width:0;min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr)}
+.fv-ie-workspace{min-width:0;min-height:0;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
 .fv-ie-options{display:flex;align-items:center;gap:var(--fv-sp-8,8px);flex-wrap:wrap;min-height:48px;padding:var(--fv-sp-8,8px) var(--fv-sp-12,12px) 7px;border-bottom:1px solid var(--fv-border);background:var(--fv-card)}
 .fv-ie-opt-title{font-weight:var(--fv-semibold);padding-right:4px;white-space:nowrap}
 .fv-ie-opt-label{color:var(--fv-muted);font-size:var(--fv-micro);white-space:nowrap}
