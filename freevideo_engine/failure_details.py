@@ -458,6 +458,35 @@ ENVIRONMENT_FILES = 'Files are missing or changed in these ComfyUI environment p
 APPLICATION_CONTROL = r'WinError 4551|Application Control policy has blocked'
 
 
+# Error lines ComfyUI may end on, as a sentence for the card; any other line stays in the technical details.
+STARTUP_ERRORS = (
+    (r'CUDA (?:error: )?out of memory|OutOfMemoryError', ('Not enough video memory', '显存不足')),
+    (r'^MemoryError|paging file is too small|WinError 1455', ('Not enough memory', '内存不足')),
+    (r'ModuleNotFoundError|No module named|DLL load failed', ('A required component is missing', '缺少必需的组件')),
+    (r'PermissionError|Access is denied|WinError 5\b', ('Access was denied', '访问被拒绝')),
+)
+
+
+def _startup_cause(summary, zh):
+    """What ComfyUI said when it quit: the exit code, the custom node that last failed to load and, when it is a
+    known one, the last error as a sentence. The raw error line is not shown on the card."""
+    code = re.search(r'^Process exit code: (-?\d+)', summary, re.M)
+    errors = [line.strip() for line in summary.splitlines() if re.match(r'^[\w.]+(?:Error|Exception)\b', line.strip())]
+    known = next((sentence[zh] for pattern, sentence in STARTUP_ERRORS if errors and re.search(pattern, errors[-1])), '')
+    known = known.rstrip('.。')
+    # ComfyUI names a custom node it could not load in either of these lines.
+    nodes = re.findall(r'(?:Cannot import |\(IMPORT FAILED\): ).*?custom_nodes[\\/]([^\\/\r\n]+?)(?: module for custom nodes|\s*$)',
+                       summary, re.M)
+    node = nodes[-1].strip()[:80] if nodes else ''
+    if zh:
+        return ('ComfyUI 在启动时退出' + ('（退出码 %s）' % code.group(1) if code else '')
+                + ('，自定义节点“%s”未能加载' % node if node else '')
+                + ('，最后一条错误：%s。' % known if known else '。'))
+    return ('ComfyUI quit while starting' + (' (exit code %s)' % code.group(1) if code else '')
+            + ('. The custom node "%s" did not load' % node if node else '')
+            + ('. Last error: %s.' % known if known else '.'))
+
+
 def _stopped_on_missing_module(text):
     """ComfyUI itself stopped on an import, not a custom node that logged one and loaded on."""
     lines = [line.strip() for line in text.splitlines() if line.strip()]
@@ -725,11 +754,12 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
     if text.startswith('ComfyUI could not start.') and not _stopped_on_application_control(summary):
         if can_repair and repairs_comfy and (_stopped_on_missing_module(summary) or ENVIRONMENT_FILES in summary):
             return dict(title=DEPENDENCIES[0][zh], detail='', action=DEPENDENCIES[1][zh], kind='dependencies')
+        action = ('完整日志在详情里；使用已有的 ComfyUI 时，请用原来的启动器检查。' if zh else
+                  'Open the details for the full log. For an existing ComfyUI, also check its original launcher.')
+        # The cause and the next step are one text, as for every card: the card and the settings page show the
+        # detail when the action is empty.
         return dict(title='ComfyUI 启动失败' if zh else 'ComfyUI could not start',
-                    detail='ComfyUI 启动时退出了。' if zh else 'ComfyUI quit while starting.',
-                    action='原因在详情里；使用已有的 ComfyUI 时，可以用原来的启动器检查。' if zh else
-                           'Open details for the exit code and plugin errors. For an existing ComfyUI, also check its original launcher.',
-                    kind='comfy-startup')
+                    detail=_startup_cause(summary, zh) + '\n' + action, action='', kind='comfy-startup')
     # A file Windows refused to load is no GPU result: the app-control guidance below applies, and the
     # code the engine adds to the message makes it recognisable in any system language.
     if ('Failed step: kernels (' in summary and not re.search(APPLICATION_CONTROL, summary)
@@ -744,9 +774,10 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
                                 '显卡加速检查没有通过。' if zh else 'The GPU acceleration check did not pass.')
         detail = detail.replace('Required path missing',
                                 '缺少必需的文件夹' if zh else 'A required folder is missing')
-        return dict(title='GPU 检查未通过' if zh else 'GPU validation failed', detail=detail,
-                    action='展开详情或导出报告，查看完整检查结果。' if zh else
-                           'Open the details or export the report for the complete results.', kind='kernels')
+        action = ('展开详情或导出报告，查看完整检查结果。' if zh else
+                  'Open the details or export the report for the complete results.')
+        return dict(title='GPU 检查未通过' if zh else 'GPU validation failed', detail=detail + '\n' + action,
+                    action='', kind='kernels')
     if 'Download list error: read' in text.splitlines():
         from .model_guidance import DOWNLOAD_COPY
         return dict(title=DOWNLOAD_COPY['error_read'][zh], detail='', action='', kind='download-list-read')
