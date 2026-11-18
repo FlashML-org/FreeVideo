@@ -881,7 +881,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             tip(use, t('Edit', '编辑'), r.original ? t(`${label(at + 1)}, edited. Crop or retouch it again`, `${label(at + 1)}（已编辑）：继续裁剪或修图`) : t(`Crop or retouch ${label(at + 1)}; it stays in its place`, `裁剪或修图${label(at + 1)}，改完放回原位`));
             tip(x, t('Remove', '移除'), cell.dataset.over === 'true' ? t(`${model.short} takes ${cap_(model)}; remove this one`, `${model.short} 最多 ${cap_(model)} 张，请移除这张`) : t('Take this picture out', '去掉这张参考图'));
             x.append(icon('x'));
-            const i = el('img'); i.src = r.url; i.alt = ''; i.draggable = false; use.append(i, el('b', '', label(at + 1)));
+            const i = el('img'); i.src = r.url; i.alt = ''; i.draggable = false; use.append(i, el('b', '', String(at + 1)));
             use.onclick = () => void editReference(r);
             x.onclick = () => { notice.dataset.keep = 'false'; URL.revokeObjectURL(r.url); if (r.original) URL.revokeObjectURL(r.original.url); changeRefs(() => references.splice(references.indexOf(r), 1)); render(); };
             cell.append(use, x);

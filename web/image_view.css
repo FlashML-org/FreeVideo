@@ -186,7 +186,7 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
 .fv-iv .fv-iv-ref:hover{transform:scale(1.03)}
 .fv-studio .fv-iv .fv-image-reference-use{position:absolute;inset:0;width:100%;height:100%;min-height:0;padding:0;border:0;background:none;cursor:pointer}
 .fv-iv .fv-iv-ref img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
-.fv-iv .fv-iv-ref b{position:absolute;left:4px;bottom:4px;height:18px;padding:0 8px;border-radius:var(--fv-r-sm);display:flex;align-items:center;font-size:var(--fv-fs-1,12px);font-weight:600;color:#fff;background:rgb(0 0 0 / .55);white-space:nowrap}
+.fv-iv .fv-iv-ref b{position:absolute;left:2px;bottom:2px;box-sizing:border-box;min-width:16px;height:16px;padding:0 4px;border-radius:var(--fv-r-pill);display:flex;align-items:center;justify-content:center;font-size:var(--fv-fs-1,12px);font-weight:600;font-variant-numeric:tabular-nums;color:#fff;background:rgb(0 0 0 / .55);white-space:nowrap}
 .fv-studio .fv-iv .fv-image-reference-remove{position:absolute;right:2px;top:2px;width:20px;height:20px;min-height:0;padding:0;border:0;border-radius:var(--fv-r-pill);display:grid;place-items:center;color:#fff;background:rgb(0 0 0 / .55);opacity:0;cursor:pointer;transition:opacity var(--fv-dur-1,160ms)}
 .fv-studio .fv-iv .fv-image-reference-remove .fv-iv-icon{width:12px;height:12px}
 .fv-iv .fv-iv-ref:hover .fv-image-reference-remove,.fv-iv .fv-iv-ref:focus-within .fv-image-reference-remove{opacity:1}
@@ -591,7 +591,6 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
 .fv-iv .fv-iv-ref-sketch{position:absolute;left:2px;top:2px;max-width:calc(100% - 4px);height:16px;padding:0 4px;box-sizing:border-box;border-radius:var(--fv-r-xs);display:flex;align-items:center;
   font-style:normal;font-size:var(--fv-fs-1,12px);font-weight:600;line-height:16px;color:#1a1d24;background:rgb(255 255 255 / .9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
 .fv-iv .fv-iv-ref-count{color:var(--fv-fg3);font-weight:400;font-variant-numeric:tabular-nums}
-.fv-iv .fv-iv-ref b{font-size:var(--fv-fs-1,12px);height:16px;padding:0 4px;left:2px;bottom:2px}
 .fv-iv .fv-iv-sec[data-drop=true] .fv-iv-prompt{box-shadow:inset 0 0 0 2px var(--fv-accent-line)}
 /* glass that stays smooth: panels paint on their own, blur pauses while their content scrolls, the day bar is solid */
 .fv-iv .fv-iv-panel{contain:paint}
