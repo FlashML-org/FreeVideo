@@ -255,7 +255,7 @@
 @media(min-width:681px) and (max-width:1279px){.fv-ed-notice{right:32px;max-width:min(560px,calc(100vw - 330px))}}
 .fv-ed-notice .fv-issue-button{margin-left:12px;vertical-align:middle;pointer-events:auto}
 @media(max-width:680px){
- .fv-studio.fv-editor{--fv-ed-generation-row:calc(96px + var(--fv-ed-description-growth,0px));grid-template-columns:minmax(0,1fr);grid-template-rows:auto var(--fv-ed-project-h) minmax(0,1fr) 40px var(--fv-ed-generation-row) 40px 236px;overflow:hidden}
+ .fv-studio.fv-editor{--fv-ed-generation-row:calc(96px + var(--fv-ed-description-growth,0px) + var(--fv-ed-note-growth,0px));grid-template-columns:minmax(0,1fr);grid-template-rows:auto var(--fv-ed-project-h) minmax(0,1fr) 40px var(--fv-ed-generation-row) 40px 236px;overflow:hidden}
  .fv-editor .fv-header{overflow-x:auto}
  .fv-editor .fv-ed-name{font-size:13px;max-width:112px;flex:1;padding:0 2px}
  .fv-editor .fv-ed-icon{width:28px;flex:none;font-size:20px}
@@ -490,7 +490,7 @@
 
 /* ── Phone (≤680 px): this view's own controls are finger-sized (44 px) ── */
 @media(max-width:680px){
- .fv-studio.fv-editor{--fv-ed-generation-row:calc(108px + var(--fv-ed-description-growth,0px));grid-template-rows:auto var(--fv-ed-project-h) minmax(0,auto) 44px var(--fv-ed-generation-row) 48px minmax(160px,1fr)}
+ .fv-studio.fv-editor{--fv-ed-generation-row:calc(108px + var(--fv-ed-description-growth,0px) + var(--fv-ed-note-growth,0px));grid-template-rows:auto var(--fv-ed-project-h) minmax(0,auto) 44px var(--fv-ed-generation-row) 48px minmax(160px,1fr)}
  .fv-editor .fv-ed-genbar{padding-top:4px;padding-bottom:4px;row-gap:8px}
  .fv-editor .fv-ed-project-row :is(.fv-ed-name,.fv-ed-export-main,.fv-ed-save-state){height:44px;min-height:44px}
  .fv-editor .fv-ed-project-row .fv-ed-export-main{min-width:56px}

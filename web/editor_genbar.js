@@ -478,6 +478,16 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         width = next; resizeDescription();
     }) : null;
     resize?.observe(description);
+    // On a phone a shown note takes a line of its own above the box; the generation row grows by that line so the
+    // buttons below stay clear of the timeline toolbar.
+    const phone = typeof matchMedia === 'function' ? matchMedia('(max-width: 680px)') : null;
+    const fitNote = () => {
+        if (disposed) return;
+        const line = phone?.matches && !note.hidden ? Math.ceil(note.getBoundingClientRect().height) + 8 : 0;
+        host.closest('.fv-editor')?.style.setProperty('--fv-ed-note-growth', `${line}px`);
+    };
+    const noteResize = typeof ResizeObserver === 'function' ? new ResizeObserver(fitNote) : null;
+    noteResize?.observe(note); phone?.addEventListener?.('change', fitNote); fitNote();
     // The box shows the description of the planned parts chosen and is written to them when the choice moves
     // on, the box is left or Generate is pressed. What is typed with no part or range chosen goes to the next
     // part chosen that has no description yet.
@@ -650,7 +660,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
             if (!value && note.contains(retryService)) { retryService.remove(); note.hidden = true; }
             showService();
         }, getText() { expand.commit(); return input.value; }, update(value) { status = value; render(); }, preview(selection) { previewSelection = selection; render(); }, setText(value) { input.value = value || ''; state.setRangeText(input.value); if (bound && input.value !== bound.text) { dirty = true; written = input.value; } render(); },
-        dispose() { disposed = true; ++serial; downloadWatch?.disconnect(); besideWatch?.disconnect(); for (const move of besideMoves.values()) move.cancel(); clearTimeout(noteTimer); clearTimeout(openTimer); stopPass?.(); stopEffort?.(); effortControl?.dispose(); passControl?.dispose(); document.removeEventListener('pointerdown', closePass, true); document.removeEventListener('pointerdown', closeHistoryOutside, true); clearTimeout(refNoticeTimer); duration.dispose(); unsubscribe(); resize?.disconnect(); expand.dispose(); references?.dispose(); voicePanel?.dispose(); installPanel?.dispose(); voiceRow?.dispose(); assets?.dispose(); Object.values(pickers).forEach(picker => picker.dispose()); }};
+        dispose() { disposed = true; ++serial; downloadWatch?.disconnect(); besideWatch?.disconnect(); for (const move of besideMoves.values()) move.cancel(); clearTimeout(noteTimer); clearTimeout(openTimer); stopPass?.(); stopEffort?.(); effortControl?.dispose(); passControl?.dispose(); document.removeEventListener('pointerdown', closePass, true); document.removeEventListener('pointerdown', closeHistoryOutside, true); clearTimeout(refNoticeTimer); duration.dispose(); unsubscribe(); resize?.disconnect(); noteResize?.disconnect(); phone?.removeEventListener?.('change', fitNote); host.closest('.fv-editor')?.style.removeProperty('--fv-ed-note-growth'); expand.dispose(); references?.dispose(); voicePanel?.dispose(); installPanel?.dispose(); voiceRow?.dispose(); assets?.dispose(); Object.values(pickers).forEach(picker => picker.dispose()); }};
 }
 
 // A missing optional module leaves the editor's existing progress in place.
