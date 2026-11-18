@@ -191,6 +191,13 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         'streamed_layers', 'available_memory_at_start_bytes', 'available_memory_before_load_bytes'];
     const factsOf = diagnostics => Object.fromEntries(MEMORY_FACTS.filter(key => ['number', 'string'].includes(typeof diagnostics?.[key]))
         .map(key => [key, diagnostics[key]]));
+    // Where the worker failed: exception class and the last stack frames as module:function:line, no paths and no message text.
+    const plainName = value => typeof value === 'string' && /^[A-Za-z_][\w.]{0,60}$/.test(value) ? value : null;
+    const failureOf = row => {
+        const frames = (Array.isArray(row?.error_details) ? row.error_details : []).map(frame => [plainName(frame?.module), plainName(frame?.function), frame?.line])
+            .filter(([module, name, line]) => module && name && Number.isInteger(line)).slice(-5).map(([module, name, line]) => `${module}:${name}:${line}`);
+        return Object.assign(plainName(row?.exception) ? {failure_exception: row.exception} : {}, frames.length ? {failure_location: frames.join(' > ')} : {});
+    };
     const gib = value => String(Math.round(value / 2 ** 30));
     // Mentions are counted as the character descriptions they expand to, so the count can exceed what the box shows.
     const lengthOf = (error, english) => {
@@ -349,7 +356,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
                 }
                 if (row.phase === 'complete') return row;
                 if (row.phase === 'failed') {
-                    memoryFacts = row.error === 'out_of_memory' ? factsOf(row.diagnostics) : null;
+                    memoryFacts = row.error === 'out_of_memory' ? {...factsOf(row.diagnostics), ...failureOf(row)} : null;
                     throw Object.assign(new Error(row.error || 'rewrite_failed'), {ramBytes: row.diagnostics?.ram_required_bytes, holders: row.gpu_holders});
                 }
                 if (row.phase === 'cancelled') throw new Error(action === 'install' ? 'download_failed' : 'cancelled');
