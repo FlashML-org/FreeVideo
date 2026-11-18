@@ -320,7 +320,8 @@ function show(element) {
     if (shown && shown !== element) release(shown);
     shown = element;
     // The browser's own tooltip would show the same words a second time.
-    if (element.hasAttribute('title')) { element.dataset.fvTitle = element.getAttribute('title'); element.removeAttribute('title'); }
+    // It is left empty rather than removed, so a page that removes it while the tip shows is seen doing so.
+    if (element.hasAttribute('title')) { element.dataset.fvTitle = element.getAttribute('title'); element.setAttribute('title', ''); }
     render(content);
     const box = ensureTip();
     box.dataset.motion = reduced() ? 'none' : 'fade';
@@ -337,13 +338,24 @@ function show(element) {
 function follow(element) {
     watcher?.disconnect();
     if (globalThis.MutationObserver) {
-        watcher = new MutationObserver(() => {
+        watcher = new MutationObserver(records => {
             if (shown !== element) return;
+            // A title the page sets while the tip shows (Generate's reason, cleared once a prompt is typed) is the tip's
+            // new words; one with words goes aside like the first, so the browser's own tooltip does not show them too.
+            // A title the page removes takes its words away, and nothing is put back when the tip goes.
+            if (records.some(record => record.attributeName === 'title')) {
+                if (!element.hasAttribute('title')) delete element.dataset.fvTitle;
+                else {
+                    element.dataset.fvTitle = element.getAttribute('title');
+                    // Emptying it is the tip's own change, not the page's: its record is dropped.
+                    if (element.dataset.fvTitle) { element.setAttribute('title', ''); watcher.takeRecords(); }
+                }
+            }
             const content = tipContent(element);
             if (!content) { hideTip({now: true}); return; }
             render(content); position(element);
         });
-        watcher.observe(element, {attributes: true, attributeFilter: ['disabled', 'aria-disabled', 'data-fv-tip-name', 'data-fv-tip-use', 'data-fv-tip-key', 'data-fv-tip-why', 'data-fv-tip-off', 'data-fv-tip', 'aria-label']});
+        watcher.observe(element, {attributes: true, attributeFilter: ['disabled', 'aria-disabled', 'data-fv-tip-name', 'data-fv-tip-use', 'data-fv-tip-key', 'data-fv-tip-why', 'data-fv-tip-off', 'data-fv-tip', 'aria-label', 'title']});
     }
     clearInterval(watch);
     watch = setInterval(() => {
@@ -355,7 +367,8 @@ function follow(element) {
 
 function release(element) {
     if (!element) return;
-    if (element.dataset.fvTitle !== undefined) { if (!element.hasAttribute('title')) element.setAttribute('title', element.dataset.fvTitle); delete element.dataset.fvTitle; }
+    // The words go back only where the tip left the title empty; a title the page set or removed since stays as it is.
+    if (element.dataset.fvTitle !== undefined) { if (element.getAttribute('title') === '') element.setAttribute('title', element.dataset.fvTitle); delete element.dataset.fvTitle; }
     if (element.dataset.fvDescribedby !== undefined) {
         const before = element.dataset.fvDescribedby; delete element.dataset.fvDescribedby;
         if (before) element.setAttribute('aria-describedby', before); else element.removeAttribute('aria-describedby');
