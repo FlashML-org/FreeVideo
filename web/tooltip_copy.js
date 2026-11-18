@@ -23,9 +23,6 @@ export const TIPS = {
     'top.feedback': {name: ['Feedback', '反馈'], use: ['Tell us what went wrong or could be better', '告诉我们问题或建议']},
     'top.settings': {name: ['Settings', '设置'], use: ['Models, storage, language and notifications', '模型、存储位置、语言和通知']},
     'top.assistant': {name: ['Assistant activity', '助手动态'], use: ['What the connected AI assistant is doing', '已连接的 AI 助手正在做什么']},
-    'top.monitor': {name: ['Status', '运行状态'], use: ['Graphics memory, memory and the queue, live', '显存、内存和排队的实时情况']},
-    'monitor.resume': {name: ['Resume queue', '继续队列'], use: ['Start the waiting videos again', '让排队的视频接着生成']},
-    'monitor.stop': {name: ['Stop now', '立即停止'], use: ['Stop this video and pause the queue', '停掉当前视频并暂停队列']},
     'update.notes': {name: ['What’s new', '更新内容'], use: ['See what this update changes', '查看这次更新改了什么']},
     'update.later': {name: ['Later', '稍后'], use: ['Keep this version for now', '暂不更新，继续用当前版本']},
     'update.cancel': {name: ['Cancel update', '取消更新'], use: ['Stop downloading this update', '停止下载这次更新']},
@@ -254,7 +251,6 @@ export const MATCHES = [
     ['.fv-guide-entry', 'top.guide'], ['.fv-feedback-entry:not(.fv-guide-entry)', 'top.feedback'],
     ['.fv-settings-entry', 'top.settings'],
     ['.fv-agent-activity button,.fv-agent-activity,.fv-agent-pill', 'top.assistant'],
-    ['.fv-monitor-trigger', 'top.monitor'], ['.fv-monitor-resume', 'monitor.resume'], ['.fv-monitor-stop', 'monitor.stop'],
 
     // Create.
     ['.fv-runrow>.fv-primary', 'studio.generate'], ['.fv-run-options>summary', 'studio.mode'],
