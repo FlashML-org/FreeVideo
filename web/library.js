@@ -2178,7 +2178,7 @@ export function openLibrary(t, options = {}) {
     function viewerMenu(row, key, anchorNode) {
         const outside = new Set(['open', 'select', 'download', 'reuse', 'extend', 'use-prompt', 'image-view']);
         const items = (cardMenuItems(anchorNode, [key], null) || []).filter(item => typeof item === 'string' || !outside.has(item.id));
-        const extra = [{id: 'info', icon: 'alert', label: infoOpen ? ['Hide info', '收起信息'] : ['Info', '信息'], use: ['Prompt and run details', '提示词和运行详情'], key: 'I', run: () => toggleInfo()}];
+        const extra = [{id: 'info', icon: 'info', label: infoOpen ? ['Hide info', '收起信息'] : ['Info', '信息'], use: ['Prompt and run details', '提示词和运行详情'], key: 'I', run: () => toggleInfo()}];
         if (row.kind !== 'image') {
             const share = links.querySelector('.fv-share-trigger'), copy = links.querySelector('.fv-action-copy');
             if (share) extra.unshift({id: 'share', icon: 'globe', label: ['Share', '分享'], use: ['Make a picture or clip to share', '生成可分享的图片或短片'], run: () => share.click()});

@@ -83,6 +83,7 @@ const PATHS = {
     check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
     close: '<path d="m6.5 6.5 11 11M17.5 6.5l-11 11"/>',
     alert: '<path d="M12 4 21 19.5H3z"/><path d="M12 10v4M12 16.8v.01"/>',
+    info: '<circle cx="12" cy="12" r="6.5"/><path d="M12 11.3v4.2M12 8.6v.01"/>',
     download: '<path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14"/>',
     person: '<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/>',
     play: '<path d="M8 5.5v13l10.5-6.5z"/>',
