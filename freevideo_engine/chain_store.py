@@ -94,6 +94,7 @@ def validate(payload):
         if payload.get('original_audio') is not None:
             from .original_audio_chain import plan as audio_plan, selection_info
             planned = audio_plan(selection_info(payload['original_audio']),
+                continued=source is not None,
                 **{key: payload[key] for key in ('single', 'max_frames', 'single_limit_seconds', 'block_seconds')
                    if key in payload})
         else:

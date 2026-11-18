@@ -323,6 +323,7 @@ def plan(port, value, jobs=None):
                               first_pass=passes.get('first'), second_pass=passes.get('second') if passes['enabled'] else None)
     if spec.get('sampling_note'):
         result['warnings'].append(spec['sampling_note'])
+    result['warnings'].extend(specs.ignored_settings(spec))
     if spec['seconds'] > 15:
         result['warnings'].append('Longer than 15 s is experimental')
     if spec['task'] == 'ref2va':
@@ -1717,7 +1718,8 @@ def register():
         def read():
             return [jobs.view(row) for row in rows]
         views = await asyncio.to_thread(read)
-        return reply(dict(job=views[0], jobs=views), 200 if replay else 201)
+        notes = list(dict.fromkeys(note for row in rows for note in specs.ignored_settings(row['spec'])))
+        return reply(dict(job=views[0], jobs=views, **({'warnings': notes} if notes else {})), 200 if replay else 201)
 
     @routes.get(PREFIX + '/jobs')
     @guarded

@@ -21,6 +21,7 @@ MESSAGES = {
     'audio_original_passes': ('Audio longer than 30 seconds used as is is made in parts, which needs "Two-pass acceleration". Turn it on or set the audio to "Reference".', '超过 30 秒的音频选“原样使用”时会分段生成，需要“二次采样加速”。请打开“二次采样加速”，或把音频改选“参考”。'),
     'audio_original_route': ('"Use as is" is not available here yet. Set the audio to "Reference".', '这里还不能用“原样使用”的音频，请改选“参考”。'),
     'audio_original_backend': ('"Use as is" is not available on this computer yet.', '这台电脑上还不能用“原样使用”。'),
+    'audio_original_lead': ('To continue a video with audio used as is, select audio that starts at least 1 second into the file: the first second overlaps the saved video.', '续接已保存的视频并原样使用音频时，所选音频要从文件第 1 秒之后开始：前 1 秒与已保存的视频重叠。'),
     'audio_original_slot': ('The selected audio is longer than this part. Make the part longer or select less audio.', '所选音频比这一段长，请把这一段拉长，或少选一些音频。'),
 }
 
@@ -67,15 +68,25 @@ def fields(row):
         segment = row['segment']
         keys = {'frames', 'frame_origin', 'start_sample', 'end_sample',
                 'source_start_sample', 'source_end_sample', 'source_sha256'}
+        # A chain that continues a saved video marks every part; its first part starts OVERLAP frames
+        # before the selection, on the audio of the frames the saved video already holds.
+        from .chain_plan import OVERLAP as OVERLAP_FRAMES
+        from_work = isinstance(segment, dict) and segment.get('from_work') is True
+        if from_work:
+            segment = {k: v for k, v in segment.items() if k != 'from_work'}
         if (use != 'original' or selected is None or not isinstance(segment, dict) or set(segment) != keys
                 or any(type(segment[k]) is not int for k in keys - {'source_sha256'})
                 or not isinstance(segment['source_sha256'], str) or len(segment['source_sha256']) != 64
                 or segment['frames'] < 39 or (segment['frames'] - 5) % 17
-                or segment['frame_origin'] < 0
-                or not 0 <= segment['source_start_sample'] <= selected['start_sample'] <= segment['start_sample']
+                or segment['frame_origin'] < (-OVERLAP_FRAMES if from_work else 0)
+                or -OVERLAP_FRAMES < segment['frame_origin'] < 0
+                or not 0 <= segment['source_start_sample']
+                or not (segment['source_start_sample'] if segment['frame_origin'] >= 0 else 0)
+                <= selected['start_sample'] <= segment['start_sample']
                 < segment['end_sample'] == selected['end_sample'] <= segment['source_end_sample']):
             raise AudioUseError('audio_original_range')
-        result['segment'] = dict(segment)
+        segment = dict(row['segment'])
+        result['segment'] = segment
     return result
 
 

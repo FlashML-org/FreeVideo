@@ -146,7 +146,8 @@ def continuation_problems(spec, prefix='', *, editor=None):
     if spec['preview']:
         problems.append(schema.diagnostic(prefix + '/preview', 'false' + why, True))
     others = [key for key, value in spec['media'].items() if key != 'references' and value]
-    pictures = spec['media'].get('references') or []
+    # A sound used as it is plays the continued part; it is not one of the pictures.
+    pictures = [item for item in spec['media'].get('references') or [] if item.get('use') != 'original']
     if others:
         problems.append(schema.diagnostic(prefix + '/media', 'only references' + why + ' (continue_from carries the previous video)',
                                           None))
@@ -167,8 +168,6 @@ def original_audio_problems(spec, input_root, prefix='', *, editor=None):
         return []
     why = ' when an audio reference is used as it is (the video follows the audio)'
     problems = []
-    if spec.get('continue_from'):
-        problems.append(schema.diagnostic(prefix + '/continue_from', 'absent' + why, None))
     if spec.get('part_prompts'):
         problems.append(schema.diagnostic(prefix + '/part_prompts', 'absent' + why, None))
     if editor is not None:
@@ -184,6 +183,13 @@ def original_audio_problems(spec, input_root, prefix='', *, editor=None):
         return [schema.diagnostic(prefix + '/media/references', 'audio that can be used as it is (%s)' % error.message_en, None)]
     except (ValueError, OSError):
         return []
+    if spec.get('continue_from'):
+        # The part starts OVERLAP frames before the selection, on the audio of the frames the saved video holds.
+        from ..original_audio_chain import sample_at
+        from ..chain_plan import OVERLAP
+        if chosen['range']['start_sample'] < sample_at(OVERLAP, chosen['sample_rate']):
+            return [schema.diagnostic(prefix + '/media/references',
+                                      'audio that can be used as it is (%s)' % AudioUseError('audio_original_lead').message_en, None)]
     from ..geometry import geometry
     spec['seconds'] = float(chosen['seconds'])
     canvas = geometry(spec['width'], spec['height'], seconds=spec['seconds'])
@@ -350,6 +356,13 @@ def parts_problems(spec, runner, prefix='', *, editor=None, work=None, planned=N
         else:
             problem, got = schema.diagnostic(prefix + '/seconds', 'at most %d' % fit, spec['seconds']), None
     message = problem['message'] if got is None else problem['message'].replace('received None', 'received ' + got)
+    if isinstance(error, ChainShortPartsTooMany):
+        # Say why, and which way out is open: the first frame is not locked when the audio is used as it is.
+        from ..chain_plan import FULL_PART_SECONDS
+        sound = any(item.get('use') == 'original' for item in spec['media'].get('references') or [])
+        message += (' Short parts drift in framing and colour over several parts unless every part also sees the first frame; '
+                    + ('that is not available when an audio reference is used as it is, so make every continuing part at least %d seconds long.'
+                       if sound else 'set first_frame_reference or make every continuing part at least %d seconds long.') % FULL_PART_SECONDS)
     return [dict(problem, got=got or problem['got'], message='%s %s' % (error, message))]
 
 

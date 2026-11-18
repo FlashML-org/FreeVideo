@@ -22,7 +22,11 @@ def plan(info, **options):
     # visible length changes: it ends on the selected final source sample.
     output_frames = (count * chain_plan.FPS + rate - 1) // rate
     from .geometry import geometry
+    continued = options.get('continued') is True
     aligned = geometry(frames=output_frames)['frames']
+    if continued:
+        # The first block also spends OVERLAP frames on the saved video, and adds whole units.
+        aligned = -(-output_frames // chain_plan.UNIT) * chain_plan.UNIT + chain_plan.OVERLAP
     limit = options.get('max_frames')
     if limit is None:
         seconds = options.get('single_limit_seconds')
@@ -36,29 +40,36 @@ def plan(info, **options):
     length = (output_frames - .5) / 24 if count <= 30 * rate and aligned <= limit else (count + rate - 1) // rate
     result = chain_plan.plan(length, **options)
     if result['single']:
-        result['blocks'] = [dict(seconds=exact_seconds, frames=aligned, new_frames=aligned)]
+        result['blocks'] = [dict(seconds=exact_seconds, frames=aligned, new_frames=aligned - (chain_plan.OVERLAP if continued else 0))]
     result.update(seconds=exact_seconds, frames=output_frames,
                   hide_frames=sum(row['new_frames'] for row in result['blocks']) - output_frames)
     return result
 
 
-def ranges(info, blocks):
-    """New ranges partition the selection; conditioning also includes the fixed picture prefix."""
+def ranges(info, blocks, from_work=False):
+    """New ranges partition the selection; conditioning also includes the fixed picture prefix.
+
+    `from_work`: the first block continues a saved video, so it too starts OVERLAP frames before what it
+    shows. That lead is audio before the selection, which the file must have."""
     rate, start, end = info['sample_rate'], info['start_sample'], info['end_sample']
     shown, result = 0, []
     for index, block in enumerate(blocks):
         frames = block.get('frames', block.get('inputs', {}).get('frames'))
-        origin = shown - chain_plan.OVERLAP if index else 0
-        new = frames - chain_plan.OVERLAP if index else frames
+        continues = index > 0 or from_work
+        origin = shown - chain_plan.OVERLAP if continues else 0
+        new = frames - chain_plan.OVERLAP if continues else frames
         begin = start + sample_at(shown, rate)
         finish = min(end, start + sample_at(shown + new, rate))
         if not start <= begin < finish <= end:
             raise AudioUseError('audio_original_slot')
+        if start + sample_at(origin, rate) < 0:
+            raise AudioUseError('audio_original_lead')
         result.append(dict(frames=frames, frame_origin=origin,
                            start_sample=begin, end_sample=finish,
                            source_start_sample=start, source_end_sample=end,
                            source_sha256=info['sha256'],
-                           range=dict(start_sample=start + sample_at(origin, rate), end_sample=finish)))
+                           range=dict(start_sample=start + sample_at(origin, rate), end_sample=finish),
+                           **({'from_work': True} if from_work else {})))
         shown += new
     if result[-1]['end_sample'] != end:
         raise AudioUseError('audio_original_slot')
@@ -101,12 +112,15 @@ def bind(record, selected):
             raise AudioUseError('audio_original_passes')
         if inputs.get('preview') or inputs.get('refine_from'):
             raise AudioUseError('audio_original_route')
+    # The first block may continue a saved video (a reference to a work, not to a block of this chain).
+    from_work = isinstance(blocks[0]['after'], dict) and set(blocks[0]['after']) == {'work'}
     for index, block in enumerate(blocks):
-        if block['before'] is not None or block['after'] != (blocks[index - 1]['id'] if index else None):
+        wanted = blocks[index - 1]['id'] if index else blocks[0]['after'] if from_work else None
+        if block['before'] is not None or block['after'] != wanted:
             raise AudioUseError('audio_original_route')
         if block['inputs']['frames'] > chain_plan._first_frames(30):
             raise AudioUseError('audio_original_part')
-    spans = ranges(info, blocks)
+    spans = ranges(info, blocks, from_work)
     record['original_audio'] = deepcopy(selected)
     for block, span in zip(blocks, spans):
         block['original_audio'] = span
@@ -153,5 +167,11 @@ def joined_info(record, blocks):
 
 def validate_continuation(info, request):
     span = info.get('segment')
-    if not span or span['frame_origin'] != request['frame_origin']:
+    if not span:
+        raise AudioUseError('audio_original_route')
+    if span.get('from_work'):
+        # The saved video counts its own frames: a chain that continues it keeps its own clock, and
+        # each part's range was derived from the part before it when the chain was made.
+        return
+    if span['frame_origin'] != request['frame_origin']:
         raise AudioUseError('audio_original_route')
