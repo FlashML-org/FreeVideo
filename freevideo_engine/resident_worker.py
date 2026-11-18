@@ -76,7 +76,8 @@ def main():
                     if module.endswith('.worker'):
                         from .worker import generate
                         stage('engine_import')
-                        bank.configure(request['gpu_budget_bytes'], request.get('ram_budget_bytes'))
+                        bank.configure(request['gpu_budget_bytes'], request.get('ram_budget_bytes'),
+                                       ram_budget_is_estimate=request.get('ram_budget_is_estimate') is True)
                         generate(request, resident=bank)
                         # Only a fully returned video is a success, including its
                         # final cleanup. Keep habit data inside this worker.

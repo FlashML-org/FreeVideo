@@ -232,6 +232,8 @@ class ModelBank:
         self.gpu_budget = None
         self.gpu_reserve = 0
         self.ram_budget = None
+        # An automatic plan's RAM budget is an estimate (see system.ram_budget_is_estimate).
+        self.ram_budget_is_estimate = False
         self.decisions = []
         from .streamed_weights import ConvertedStore
         # Converted decoder layers streamed from the checkpoint; rebuilt on demand.
@@ -248,10 +250,12 @@ class ModelBank:
         self.device_free = None
         self.device_reserve = 0
 
-    def configure(self, gpu_budget, ram_budget=None, *, gpu_reserve=0):
+    def configure(self, gpu_budget, ram_budget=None, *, gpu_reserve=0, ram_budget_is_estimate=None):
         self.gpu_budget = int(gpu_budget)
         self.gpu_reserve = int(gpu_reserve)
         self.ram_budget = ram_budget
+        if ram_budget_is_estimate is not None:
+            self.ram_budget_is_estimate = bool(ram_budget_is_estimate)
         self.decisions = []
 
     def take(self, role, identity):
@@ -348,14 +352,24 @@ class ModelBank:
         return max(0, min(free + torch.cuda.memory_reserved() - allocated - self.gpu_reserve,
                           self.gpu_budget - allocated))
 
-    def ram_fits(self, need=2*GiB):
+    def ram_fits(self, need=2*GiB, *, bounded=False):
+        """Whether live RAM takes `need` more bytes beside what this process holds.
+
+        `bounded` marks a stage that stages at most `need` in flight and
+        releases it at once. Against an automatic plan's estimated budget it
+        is judged by the live headroom alone: a plan that pinned its weights up
+        to that estimate leaves no room under it for any stage, and releasing
+        the whole pinned engine to make that room costs a full reload. An
+        explicit budget (a capacity test) stays strict.
+        """
         from .ram import ProcessMemory
         from .system import inference_memory_sample, inference_headroom
         import os
         sample = ProcessMemory().sample(os.getpid())
         used = inference_memory_sample(sample)
         return (used is not None and inference_headroom(sample) >= need + 2*GiB and
-                (self.ram_budget is None or used + need <= self.ram_budget))
+                (self.ram_budget is None or (bounded and self.ram_budget_is_estimate) or
+                 used + need <= self.ram_budget))
 
     def settle(self, pinned=0):
         """Keep as many independent components as the next cold start permits.
@@ -494,7 +508,7 @@ class ModelBank:
             return None
         return free + torch.cuda.memory_reserved()
 
-    def make_room(self, role, peak, *, model=None, ram_need=2*GiB, device=False):
+    def make_room(self, role, peak, *, model=None, ram_need=2*GiB, device=False, bounded_ram=False):
         retained = gpu_bytes(model) if model is not None else 0
         extra = max(0, int(peak) - retained)
         # Read once: releasing a model moves its bytes from this pool to the
@@ -507,8 +521,10 @@ class ModelBank:
             if ceiling is not None:
                 room = min(room, max(0, ceiling - torch.cuda.memory_allocated() - reserve))
             return room
+        # Only a bounded stage passes the keyword, so other callers' own ram_fits keep their signature.
+        fits = (lambda: self.ram_fits(ram_need, bounded=True)) if bounded_ram else (lambda: self.ram_fits(ram_need))
         before = available()
-        if not self.ram_fits(ram_need):
+        if not fits():
             self.converted_store.clear()
         # Once conditioning is ready the current video cannot use the encoder
         # again. Reclaim its speculative weights before a VAE needed later in
@@ -516,13 +532,13 @@ class ModelBank:
         def eviction_order(item):
             return (0 if item == 'encoder' and role != 'encoder' else 1, self.entries[item]['used'])
         for other in sorted(self.entries, key=eviction_order):
-            if available() >= extra and self.ram_fits(ram_need):
+            if available() >= extra and fits():
                 break
             if other == role:
                 continue
             if is_parked(self.entries[other]['model']):
                 # A parked engine holds no GPU memory; only RAM releases it.
-                if self.ram_fits(ram_need):
+                if fits():
                     continue
             elif self.available() < extra and self.park(
                     other, 'Next %s stage needs GPU memory; host copy kept for the next request' % role, ram_need):
