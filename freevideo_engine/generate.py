@@ -789,7 +789,8 @@ def _run(args):
         raise KeyboardInterrupt(f'Request interrupted by signal {signum}')
     previous = processes.termination_handler(interrupted)
     try:
-        with runtime_lock() as descriptor:
+        from .sleep_guard import awake
+        with runtime_lock() as descriptor, awake():
             if active_loras:
                 lora_request = artifacts / 'lora-request.json'
                 lora_result = artifacts / 'lora-result.json'
