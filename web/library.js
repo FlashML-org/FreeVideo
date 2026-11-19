@@ -618,9 +618,9 @@ export function openLibrary(t, options = {}) {
     const tagRow = el('div', null, 'fv-library-tag-row');
     const stats = el('div', null, 'fv-stats'); stats.hidden = true;
     stats.setAttribute('aria-label', t('Generation statistics', '生成统计'));
-    const budget = el('div', '', 'fv-budget');
+    const budget = el('div', '', 'fv-budget'), sound = el('div', '', 'fv-budget');
     const run = el('details', null, 'fv-library-run'); run.hidden = true;
-    const runSummary = el('summary', t('Run details', '运行详情')); run.append(runSummary, stats, budget);
+    const runSummary = el('summary', t('Run details', '运行详情')); run.append(runSummary, stats, budget, sound);
     tip(runSummary, t('Run details', '运行详情'), t('Time and memory this generation used', '这次生成的用时和内存'));
     const links = el('div', null, 'fv-result-links');
     const notice = el('p', '', 'fv-library-message fv-library-notice'); notice.setAttribute('role', 'status');
@@ -756,7 +756,7 @@ export function openLibrary(t, options = {}) {
     }
     function clearDetail() {
         releasePlayer(); selected = null; frame.replaceChildren(); links.replaceChildren(); tagRow.replaceChildren(); date.textContent = geometry.textContent = '';
-        stats.hidden = true; stats.replaceChildren(); budget.textContent = ''; run.hidden = true; detail.dataset.empty = 'true';
+        stats.hidden = true; stats.replaceChildren(); budget.textContent = ''; sound.textContent = ''; run.hidden = true; detail.dataset.empty = 'true';
     }
     function mountPlayer(row) {
         releasePlayer(); frame.replaceChildren();
@@ -891,7 +891,7 @@ export function openLibrary(t, options = {}) {
             const seconds = Number(pictureFacts.get(row.file)?.seconds);
             stats.replaceChildren();
             if (seconds > 0) { const item = el('div', null, 'fv-stat'); item.append(el('strong', t(`${seconds} s`, `${seconds} 秒`)), el('span', t('Time', '用时'))); stats.append(item); }
-            stats.hidden = !stats.childElementCount; budget.textContent = ''; run.hidden = stats.hidden;
+            stats.hidden = !stats.childElementCount; budget.textContent = ''; sound.textContent = ''; run.hidden = stats.hidden;
             if (reveal) dialog.dataset.detail = 'true'; return;
         }
         // These are the saved generation's measurements, including when the
@@ -912,7 +912,10 @@ export function openLibrary(t, options = {}) {
         stats.hidden = row.preview || ![row.sample_seconds, row.request_seconds, row.vram_peak_bytes, row.ram_peak_bytes].some(measured);
         budget.textContent = !row.preview && measured(row.gpu_budget_bytes)
             ? `${t('VRAM budget', '可用显存预算')} ${number(row.gpu_budget_bytes, 2 ** 30, 'GiB')} · ${t('Device', '显卡总量')} ${number(row.gpu_total_bytes, 2 ** 30, 'GiB')}` : '';
-        run.hidden = stats.hidden && !budget.textContent;
+        // Sound that could not be kept as it was: what it is stored as, and that the original stays.
+        const stored = row.original_audio?.stored_as;
+        sound.textContent = typeof stored === 'string' && stored ? `${t('Sound', '声音')} ${stored} · ${t('original kept', '原声已保留')}` : '';
+        run.hidden = stats.hidden && !budget.textContent && !sound.textContent;
         if (reveal) dialog.dataset.detail = 'true';
     }
     // Continue a video into a longer one: the editor opens on it and the room closes.

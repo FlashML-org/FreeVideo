@@ -318,10 +318,40 @@ def _audio_stream(container, codec, rate, channels, itemsize):
     stream = container.add_stream(codec, rate=rate, layout='mono' if channels == 1 else 'stereo')
     fmt = _FORMATS[codec]
     stream.codec_context.format = fmt
+    if codec == 'aac':
+        stream.codec_context.bit_rate = 320000
     if codec == 'flac' and itemsize == 4:
         fmt = stream.codec_context.format = 's32'
         stream.codec_context.options = {'bits_per_raw_sample': '24'}
     return stream, fmt
+
+
+AAC_RATES = frozenset((7350, 8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000, 64000, 88200, 96000))
+AAC_FALLBACK_RATE = 48000
+
+
+def _resampled(chunks, rate, channels, target=AAC_FALLBACK_RATE):
+    """Channel-first float chunks converted from `rate` to `target`, piece by piece."""
+    import av
+    import numpy as np
+    layout = 'mono' if channels == 1 else 'stereo'
+    resampler = av.AudioResampler(format='fltp', layout=layout, rate=target)
+
+    def arrays(frames):
+        for frame in frames or ():
+            yield np.ascontiguousarray(frame.to_ndarray(), dtype=np.float32)
+
+    for chunk in chunks:
+        frame = av.AudioFrame.from_ndarray(np.ascontiguousarray(chunk, dtype=np.float32), format='fltp', layout=layout)
+        frame.sample_rate = rate
+        yield from arrays(resampler.resample(frame))
+    yield from arrays(resampler.resample(None))
+
+
+def _to_float(data):
+    """Native samples as 32-bit float amplitudes for the AAC encoder."""
+    import numpy as np
+    return _normalized(data).astype(np.float32, copy=False)
 
 
 def _encoded(stream, fmt, chunks, rate):
@@ -362,7 +392,7 @@ def encode_audio(container, codec, samples, rate):
     return stream, list(_encoded(stream, fmt, [samples], rate))
 
 
-def _mux_streams(picture, target, rate, copy_from=None, encode=None):
+def _mux_streams(picture, target, rate, copy_from=None, encode=None, audio_rate=None):
     """Write picture's video plus one audio track, copied or losslessly encoded.
 
     Both tracks are read and written as they go: a long chain's video and
@@ -408,8 +438,9 @@ def _mux_streams(picture, target, rate, copy_from=None, encode=None):
                 _interleave(writer, pictures(), sounds())
         else:
             codec, chunks, channels, itemsize = encode
-            stream, fmt = _audio_stream(writer, codec, rate, channels, itemsize)
-            _interleave(writer, pictures(), _encoded(stream, fmt, chunks, rate))
+            audio_rate = audio_rate or rate
+            stream, fmt = _audio_stream(writer, codec, audio_rate, channels, itemsize)
+            _interleave(writer, pictures(), _encoded(stream, fmt, chunks, audio_rate))
 
 
 def _decoder_delay(stream):
@@ -484,6 +515,36 @@ def _same_samples(left, right, tail=0):
         a, b = a[:, count:], b[:, count:]
 
 
+def _close_samples(left, right, tail=2048, share=0.1):
+    """Whether the first track is the second one within coding error: at most `share` of its energy is error.
+
+    The first track may run up to `tail` samples past the second but not stop short of it.
+    Tracks are read in pieces of any size, so a long soundtrack is never held whole.
+    """
+    import numpy as np
+    error = energy = extra = 0.0
+    a = b = None
+    while True:
+        while a is None or not a.shape[1]:
+            a = next(left, None)
+            if a is None:
+                break
+        while b is None or not b.shape[1]:
+            b = next(right, None)
+            if b is None:
+                break
+        if b is None:
+            rest = (0 if a is None else a.shape[1]) + sum(chunk.shape[1] for chunk in left)
+            return rest <= tail and (energy == 0 or error <= energy * share)
+        if a is None or a.shape[0] != b.shape[0]:
+            return False
+        count = min(a.shape[1], b.shape[1])
+        x, y = a[:, :count].astype(np.float64), b[:, :count].astype(np.float64)
+        error += float(((x - y) ** 2).sum())
+        energy += float((y ** 2).sum())
+        a, b = a[:, count:], b[:, count:]
+
+
 def _spare(first, rest, limit):
     count = first.shape[1]
     for chunk in rest:
@@ -537,13 +598,14 @@ def _trim_video(source, target, count, rate, frames=None):
 
 
 def mux(video, output, info, *, trim_video=True, video_frames=None):
-    """Copy compatible full tracks; otherwise preserve native PCM in MP4.
+    """Copy a full AAC or MP3 track as it is; store any other sound as AAC 320 kbps.
 
-    Decode and compare the saved track before making it visible. Never fall
-    back to lossy audio. Unsupported lossless muxers fail with an actionable
-    error instead of claiming preservation of a quantized soundtrack.
-    The selection is read, written and compared a frame at a time, so a
-    two-hour soundtrack costs no more memory than a short one.
+    Decode and compare the saved track before making it visible. A copy must
+    hold every sample; an AAC track must hold the same length and sound within
+    AAC's error, and its receipt says so (sample_identical False, stored_as).
+    The exact samples stay in the source file the work keeps, so editing and
+    regeneration still read them. The selection is read, written and compared a
+    frame at a time, so a two-hour soundtrack costs no more memory than a short one.
     """
     import numpy as np
     import tempfile
@@ -554,6 +616,16 @@ def mux(video, output, info, *, trim_video=True, video_frames=None):
 
     def saved(path):
         return _rate(path) == rate and _same_samples(_decoded_chunks(path), map(_normalized, _selected_chunks(info)))
+
+    stored_rate = rate if rate in AAC_RATES else AAC_FALLBACK_RATE
+
+    def reference():
+        chunks = map(_to_float, _selected_chunks(info))
+        return chunks if stored_rate == rate else _resampled(chunks, rate, info['channels'], stored_rate)
+
+    def saved_as_aac(path):
+        # Lossy: the same length (the last AAC frame may run on) at the same rate, and the same sound within AAC's error.
+        return _rate(path) == stored_rate and _close_samples(_decoded_chunks(path), reference())
 
     def saved_with_padding(path):
         # The MP4 cannot carry an MP3's end padding: at most two frames of it follow the last sample.
@@ -569,7 +641,7 @@ def mux(video, output, info, *, trim_video=True, video_frames=None):
         else:
             picture = Path(video)
         copied = False
-        if info['full_source'] and info['codec'] in ('aac', 'mp3', 'mp3float', 'flac'):
+        if info['full_source'] and info['codec'] in ('aac', 'mp3', 'mp3float'):
             try:
                 _mux_streams(picture, temporary, rate, copy_from=info['path'])
                 copied = (saved_with_padding if info['codec'] in ('mp3', 'mp3float') else saved)(temporary)
@@ -578,35 +650,21 @@ def mux(video, output, info, *, trim_video=True, video_frames=None):
             except (OSError, ValueError, av_errors()):
                 copied = False
         if not copied:
-            chunks = _selected_chunks(info)
-            first = next(chunks)
-            fits_flac = info.get('flac_compatible')
-            if fits_flac is None:
-                # Receipts saved before the browser format check still export losslessly.
-                fits_flac = all(_fits_flac(data) for data in _selected_chunks(info))
-            if first.dtype.kind == 'f' and not fits_flac:
-                codec, kind = ('pcm_f64le', first.dtype) if first.dtype.itemsize == 8 else ('pcm_f32le', np.dtype('<f4'))
-                convert = lambda data: data.astype(kind, copy=False)
-            elif first.dtype.itemsize <= 2:
-                # FLAC, not ALAC: browsers play FLAC in MP4, so the app's own player has sound.
-                codec, kind = 'flac', np.dtype('<i2')
-                convert = ((lambda data: ((data.astype(np.int16) - 128) * 256).astype(kind)) if first.dtype == np.uint8
-                           else (lambda data: data.astype(kind, copy=False)))
-            else:
-                codec, kind = 'flac' if fits_flac else 'pcm_s32le', np.dtype('<i4')
-                convert = ((lambda data: (data.astype(np.float64) * (1 << 31)).astype(kind))
-                           if first.dtype.kind == 'f' else (lambda data: data.astype(kind, copy=False)))
+            # FLAC and PCM in an MP4 are silent on Apple devices and many system players (WebKit bugs 198583,
+            # 260491, 275895), and browsers do not play ALAC. AAC plays everywhere; the exact samples stay as the
+            # work's own source file, which editing and regeneration read.
             try:
-                _mux_streams(picture, temporary, rate,
-                             encode=(codec, map(convert, chain([first], chunks)), info['channels'], kind.itemsize))
+                _mux_streams(picture, temporary, rate, encode=('aac', reference(), info['channels'], 4), audio_rate=stored_rate)
             except (OSError, ValueError, av_errors()):
                 raise AudioUseError('audio_original_format') from None
-            if not saved(temporary):
-                raise ValueError('Original audio export did not preserve every sample; no output was saved')
+            if not saved_as_aac(temporary):
+                raise ValueError('Original audio export did not keep the sound; no output was saved')
         verify(info)
         temporary.replace(destination)
-    return dict(use='original', mode='stream_copy' if copied else 'lossless_pcm',
-                sample_identical=True, sample_rate=rate, channels=info['channels'],
+    return dict(use='original', mode='stream_copy' if copied else 'aac320',
+                sample_identical=copied, stored_as=None if copied else ('AAC 320 kbps' if stored_rate == rate else '48 kHz AAC 320 kbps'),
+                stored_sample_rate=rate if copied else stored_rate,
+                source_samples_kept=True, sample_rate=rate, channels=info['channels'],
                 samples_per_channel=count, source_sha256=info['sha256'],
                 start_sample=info['start_sample'], end_sample=info['end_sample'],
                 duration_seconds=count / rate)
