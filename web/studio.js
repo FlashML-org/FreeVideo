@@ -792,8 +792,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const castAssets = () => { const owner = upstream(node, 'media'); const field = owner && widget(owner, 'assets'); return field ? {owner, field} : null; };
     // The library's own upload of a picture goes to the same streaming upload the media panel uses.
     const castUpload = file => uploadMedia(api, file);
-    const castBlocked = reason => ({frames: t('Not available with first and last frames', '首尾帧不能和角色同时使用'),
-        people: t('Up to 3 characters', '最多 3 个角色'), props: t('Up to 2 props', '最多 2 个道具'), full: t('Up to 32 references', '参考素材最多 32 个'),
+    const castBlocked = reason => ({people: t('Up to 3 characters', '最多 3 个角色'), props: t('Up to 2 props', '最多 2 个道具'), full: t('Up to 32 references', '参考素材最多 32 个'),
         continued: t('No room left when continuing', '接续段位置已满')}[reason] || '');
     const castPending = new Map();
     // The feature tour's "try it": one example into this panel's media list, prompt and settings.

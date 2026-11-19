@@ -216,12 +216,23 @@ def prepare(media, canvas, directory):
             ref['early_steps'] = row['early_steps']
         if row.get('guide'):
             ref['guide'] = True
+            if kind == 'image':
+                # A keyframe next to references: a still guide on its frame of the generated clip.
+                from .media_request import guide_index
+                ref['guide_index'] = guide_index(row, canvas['frames'])
         if row.get('voice_only'):
             ref['voice_only'] = True
         numbers[kind] += 1
         longer, length, used = False, None, limit / 24.
         target = directory / ('reference-%02d.npy' % index)
-        if kind == 'image':
+        if kind == 'image' and row.get('guide'):
+            # Cropped to the canvas like a keyframe; like a guide clip, not described to the vision-language encoder.
+            with Image.open(path) as source:
+                image = ImageOps.fit(ImageOps.exif_transpose(source).convert('RGB'),
+                                     (canvas['width'], canvas['height']), method=Image.Resampling.LANCZOS)
+            np.save(target, np.array(image)[None], allow_pickle=False)
+            ref.update(pixels=str(target), frames=1, width=canvas['width'], height=canvas['height'], crop_mode='fit')
+        elif kind == 'image':
             with Image.open(path) as source:
                 image = ImageOps.exif_transpose(source).convert('RGB')
                 target_w, target_h = reference_size(*image.size, canvas)
@@ -559,7 +570,7 @@ def encode_latents(normalized, value, base, canvas, *, resident=None, device='cu
     if torch.device(device).type not in ('cuda', 'mps'):
         raise ValueError('Media encoding requires a CUDA or MPS device')
     empty_cache = torch.mps.empty_cache if torch.device(device).type == 'mps' else torch.cuda.empty_cache
-    refs = [{key: row[key] for key in ('kind', 'early_steps', 'guide') if key in row} for row in normalized]
+    refs = [{key: row[key] for key in ('kind', 'early_steps', 'guide', 'guide_index') if key in row} for row in normalized]
     keys, cache, hits = {}, None, set()
     cache_root = cache_root or (data_root() / 'input-cache')
     if cache_root and any(row.get('pixels') for row in normalized):

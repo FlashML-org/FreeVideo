@@ -61,6 +61,18 @@ export function capabilityContext(node, state) {
     const visual = refs.some(r => r.kind !== 'audio');
     const task = audio ? visual ? 'ref2va_av' : 'ref2va_audio' : visual ? 'ref2va'
         : first && last ? 'fl2va' : first ? 'i2va' : last ? 'l2va' : 't2va';
+    if (refs.length) {
+        // Next to references each keyframe is a still guide of the canvas size: a picture of the canvas shape
+        // at least as large as the canvas is counted as exactly one canvas grid.
+        // referenceItems names only the references then, so the keyframes are read from the panel and its sockets.
+        const mediaNode = upstream(node, 'media'), socket = name => mediaNode?.inputs?.some(i => i.name === name && i.link != null);
+        const used = role => assets.some(r => r.enabled !== false && r.role === role) || socket(role);
+        const middle = assets.filter(r => r.enabled !== false && r.role === 'middle').length;
+        const size = state.custom ? {width: Number(value(node, 'width')), height: Number(value(node, 'height'))}
+            : positive(state.ratio) ? {width: Math.round(4096 * Math.min(1, state.ratio)), height: Math.round(4096 * Math.min(1, 1 / state.ratio))} : null;
+        for (let n = Number(used('first')) + Number(used('last')) + (used('first') && used('last') ? middle : 0); size && n > 0; n--)
+            rows.push({kind: 'image', ...size});
+    }
     const lora = upstream(node, 'loras');
     let adapters = false;
     try {

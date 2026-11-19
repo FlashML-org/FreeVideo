@@ -47,8 +47,9 @@ const PLAIN_ERRORS = [
     {key: 'continuation-media', message: 'Continue from video cannot be used with these settings. Connect up to 3 pictures as references, and remove video, audio and pre-encoded inputs.',
         title: ['A continued part takes picture references only', '接续段只能用图片参考'],
         summary: ['Connect up to 3 pictures as references, and remove video, audio and pre-encoded inputs.', '最多接 3 张图片作为参考图，并移除视频、音频参考和预编码输入。']},
-    {key: 'media-mixed-layout', message: 'Choose keyframes or experimental references; mixed layouts are not supported',
-        title: ['First and last frames cannot be used with references', '首尾帧不能和参考素材同时使用'],
+    // Only the Mac engine still refuses keyframes next to references; elsewhere they become still guides.
+    {key: 'media-mixed-layout', message: 'Reference and first/last keyframe layouts cannot be mixed in one request on this Mac; keep one of the two',
+        title: ['On this Mac, first and last frames cannot be used with references', '这台 Mac 上首尾帧不能与参考素材同时使用'],
         summary: ['Turn off the media cards or inputs you are not using, then generate again.', '请关闭本次不用的素材卡片或输入，再重新生成。']},
     {key: 'audio-original-passes', prefixes: ['audio_original_passes:'],
         title: ['This audio needs two-pass acceleration', '这段音频需要二采加速'],

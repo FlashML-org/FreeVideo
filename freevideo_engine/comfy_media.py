@@ -138,9 +138,7 @@ def export(run, canvas, *, first=None, last=None, references=None, loras=None, c
     if media.get('middle'):
         media['middle'] = _middle(media['middle'], canvas, has_first=first is not None or 'first' in media,
                                   has_last=last is not None or 'last' in media)
-    keyframes = first is not None or last is not None or any(name in media for name in ('first', 'last'))
-    if not continuing and keyframes and (references or media.get('references')):
-        raise ValueError('Choose keyframes or experimental references; mixed layouts are not supported')
+    # Keyframes next to references become still guides when the request is read (media_request.keyframes_as_guides).
     result = {}
     run = Path(run)
     for anchor, value in (('first', first), ('last', last)):

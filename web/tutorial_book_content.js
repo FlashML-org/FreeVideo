@@ -127,8 +127,8 @@ export const TUTORIAL_CHAPTERS = [
             settings: {},
         },
         limits: {
-            zh: ['图片会按所选画幅居中裁切。', '首帧、尾帧不能与参考图、角色同时使用。'],
-            en: ['Images are center-cropped to the chosen shape.', 'First and last frames cannot be used with reference images or characters.'],
+            zh: ['图片会按所选画幅居中裁切。', 'Mac 上首帧、尾帧暂不能与参考图、角色同时使用。'],
+            en: ['Images are center-cropped to the chosen shape.', 'On a Mac, first and last frames cannot be used with reference images or characters yet.'],
         },
     },
     {
@@ -168,8 +168,8 @@ export const TUTORIAL_CHAPTERS = [
             settings: {},
         },
         limits: {
-            zh: ['参考图生成仍在试验中，人物外观可能每次不同；清晰的正面图效果更稳定。', '首帧和尾帧可同时使用，会按画幅居中裁切；暂不能与参考图、参考视频同时使用。', '参考视频只取与成片等长的一段，最长 15 秒；生成用时约为只用图片时的两倍。'],
-            en: ['Reference generation is experimental, so a character may look different between runs. A clearer, front-facing image helps.', 'First and last frames can be used together and are center-cropped to the frame shape. They cannot be used with reference images or videos yet.', 'A reference video is trimmed to the length of the result, up to 15 seconds, and generation takes about twice as long as with images only.'],
+            zh: ['参考图生成仍在试验中，人物外观可能每次不同；清晰的正面图效果更稳定。', '首帧和尾帧可同时使用，会按画幅居中裁切；也可以与参考图、参考视频同时使用（Mac 上暂不支持）。', '参考视频只取与成片等长的一段，最长 15 秒；生成用时约为只用图片时的两倍。'],
+            en: ['Reference generation is experimental, so a character may look different between runs. A clearer, front-facing image helps.', 'First and last frames can be used together and are center-cropped to the frame shape. They can also be used with reference images or videos (not yet on a Mac).', 'A reference video is trimmed to the length of the result, up to 15 seconds, and generation takes about twice as long as with images only.'],
         },
     },
     {

@@ -115,8 +115,9 @@ export function mentionRanges(text, people) {
 }
 
 // The prompt a request carries. Characters mentioned in the text are numbered in order of first mention; one whose
-// pictures are gone is written as a plain name. `active: false` (first/last frames) leaves every name plain too, since
-// pictures of people cannot go with those. `continued` (the part continues a video) lets the characters stay: the part
+// pictures are gone is written as a plain name. `active: false` leaves every name plain too. First and last frames do
+// not change the numbers: next to references they go after them as guides the prompt does not name (a Mac engine refuses
+// the combination with its own message). `continued` (the part continues a video) lets the characters stay: the part
 // keeps three reference pictures (see pictureNumbers) and its frames come after them, so a character whose pictures are
 // not among those three is written as a plain name.
 export function expandCast(text, rows, {active = true, continued = false} = {}) {
@@ -126,7 +127,6 @@ export function expandCast(text, rows, {active = true, continued = false} = {}) 
     const ranges = mentionRanges(text, people);
     if (!ranges.length) return {text, subjects: []};
     const placed = [], placedProps = [];
-    if (!continued && list.some(row => enabled(row) && (row.role === 'first' || row.role === 'last'))) active = false;
     const numbers = pictureNumbers(list, continued);
     const order = [];
     let result = '', at = 0;
@@ -214,7 +214,6 @@ export function mentionState(rows, card, count = cardPictures(card).length, {con
     const list = Array.isArray(rows) ? rows : [];
     const people = castInRows(list);
     if (people.some(person => person.id === card.id)) return {ok: true, present: true};
-    if (!continued && list.some(row => enabled(row) && (row.role === 'first' || row.role === 'last'))) return {ok: false, reason: 'frames'};
     if (card.kind === 'prop') {
         if (people.filter(person => person.prop).length >= MAX_PROPS) return {ok: false, reason: 'props'};
     } else if (card.kind === 'setting' ? people.some(person => person.setting) : people.filter(person => !person.setting && !person.prop).length >= MAX_PEOPLE) {

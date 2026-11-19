@@ -579,8 +579,9 @@ test('main browser entry registers both views and preserves node hooks', async t
         // The stored file may have a plain name; the item keeps the name the user's file had, for the label.
         assert.deepEqual(JSON.parse(media.widgets[0].value), [{file: 'freevideo/' + 'a'.repeat(32) + '/media.wav', name: 'voice.wav', role: 'reference', enabled: true}]);
         assert.equal(media.isUploading, false);
+        // A connected first frame next to a reference is used together with it.
         media.inputs = [{name: 'first', link: 1}]; media.onConnectionsChange(); await Promise.resolve();
-        assert.match(note.textContent, /Choose keyframes or references/);
+        assert.equal(note.textContent, '');
         media.widgets[0].value = '[]'; media.inputs = []; media.onConnectionsChange(); await Promise.resolve();
         assert.equal(note.textContent, '');
         const imageRole = toolbar.children.find(e => e.tag === 'div' && e.className === 'fv-select')?.children.find(e => e.tag === 'select');
