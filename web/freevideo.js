@@ -62,7 +62,7 @@ style.textContent = `
 .fv-panel[data-freevideo=result]{display:flex;flex-direction:column;justify-content:center}.fv-panel[data-freevideo=result][data-hx-ppr]{justify-content:flex-start}.fv-panel .fv-connected-card{text-align:center;padding:28px 12px;border:1px solid var(--fv-border);border-radius:var(--fv-r-md,12px);color:var(--fv-muted);background:var(--fv-raised)}
 .fv-panel button,.fv-panel select,.fv-panel a{box-sizing:border-box;min-height:var(--fv-h-sm,32px);border:1px solid var(--fv-border);border-radius:var(--fv-r-sm,8px);background:var(--fv-raised);color:var(--fv-ink);padding:5px 10px;font:inherit;font-weight:var(--fv-medium,500);cursor:pointer;text-decoration:none}
 .fv-panel button:hover,.fv-panel a:hover{background:var(--fv-hover)}.fv-panel button:disabled{opacity:.45;cursor:wait}
-.fv-panel select{max-width:170px}.fv-panel .fv-toolbar>.fv-select{width:auto}.fv-note[hidden]{display:none}.fv-note{color:var(--fv-muted);font-size:var(--fv-micro,12px);margin:8px 0;white-space:pre-wrap}.fv-error{color:var(--fv-danger)}.fv-panel .fv-depth-only input,.fv-panel .fv-sound input{min-height:0;height:16px}.fv-panel .fv-depth-only{display:flex;align-items:center;gap:6px;margin:0 0 8px;white-space:nowrap;font-size:var(--fv-micro);cursor:pointer}
+.fv-panel select{max-width:170px}.fv-panel .fv-toolbar>.fv-select{width:auto}.fv-note[hidden]{display:none}.fv-note{color:var(--fv-muted);font-size:var(--fv-micro,12px);margin:8px 0;white-space:pre-wrap}.fv-error{color:var(--fv-danger)}.fv-panel .fv-depth-only input,.fv-panel .fv-lines-only input,.fv-panel .fv-sound input{min-height:0;height:16px}.fv-panel .fv-depth-only,.fv-panel .fv-lines-only{display:flex;align-items:center;gap:6px;margin:0 0 8px;white-space:nowrap;font-size:var(--fv-micro);cursor:pointer}
 .fv-mode{font-size:var(--fv-micro,12px);color:var(--fv-accent)}
 .fv-panel .fv-time{display:flex;align-items:center;gap:8px;margin:8px 0 0}.fv-panel .fv-time input{width:92px;min-height:var(--fv-h-sm,32px);padding:4px 8px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm,8px);background:var(--fv-bg);color:var(--fv-ink);font:inherit;font-size:16px}.fv-panel .fv-time input[aria-invalid=true]{border-color:var(--fv-danger)}.fv-panel .fv-time-error{margin:4px 0 0;color:var(--fv-danger);font-size:var(--fv-micro,12px)}
 .fv-card{border:1px solid var(--fv-border);border-radius:var(--fv-r-md,12px);padding:10px;margin-top:10px;background:var(--fv-raised)}
@@ -506,13 +506,18 @@ function mediaPanel(node, mount = null) {
             }
             let showLength = () => {};
             if (kind === "video" && row.role === "reference") {
-                // Off by default: the video itself is the reference. On: its depth picture is, and the picture and colours are not asked for.
-                const depth = el("label", undefined, "fv-depth-only"), box = el("input");
-                box.type = "checkbox"; box.checked = row.depth === true;
-                box.onchange = () => { if (box.checked) rows[index].depth = true; else delete rows[index].depth; update(rows); };
-                depth.append(box, el("span", text("Depth only", "仅参考深度")));
-                depth.title = text("Uses a depth version of this video as the reference.", "转成深度视频后再作参考。");
-                card.append(depth);
+                // Off by default: the video itself is the reference. Depth only: its depth picture is; composition only: a
+                // line drawing of it is, which carries its layout but not its motion (gap-08a A/B, 11-17). Either way its
+                // picture and colours are not asked for, and at most one is on.
+                const only = (key, other, words, title) => {
+                    const label = el("label", undefined, `fv-${key}-only`), box = el("input");
+                    box.type = "checkbox"; box.checked = row[key] === true;
+                    box.onchange = () => { if (box.checked) { rows[index][key] = true; delete rows[index][other]; } else delete rows[index][key]; update(rows); };
+                    label.append(box, el("span", words)); label.title = title;
+                    return label;
+                };
+                card.append(only("depth", "lines", text("Depth only", "仅参考深度"), text("Uses a depth version of this video as the reference.", "转成深度视频后再作参考。")),
+                    only("lines", "depth", text("Composition only", "仅参考构图"), text("Uses a line drawing of this video, so the new video follows its layout, not its motion or colours.", "转成线稿后作参考：新视频沿用它的构图，不沿用动作和颜色。")));
             }
             if (kind === "video") {
                 const sound = el("label", undefined, "fv-sound"); const box = el("input"); box.type = "checkbox"; box.checked = row.sound !== false;
@@ -579,7 +584,7 @@ function mediaPanel(node, mount = null) {
         // The run takes only what it uses (and which character a picture belongs to); the editing data of a picture stays in the workflow.
         const blocked = middleBlock();
         if (blocked) throw new Error(blocked);
-        try { return JSON.stringify(read().map(({file, role, enabled, cast, sound, depth, use, range, seconds}) => ({file, role, enabled, ...(role === 'middle' && Number.isFinite(seconds) ? {seconds} : {}), ...(use === AUDIO_USE.original ? {use, ...(range && typeof range === 'object' ? {range} : {})} : {}), ...(sound === false && mediaKindOrNull(file) === 'video' ? {sound: false} : {}), ...(depth === true && role === 'reference' && mediaKindOrNull(file) === 'video' ? {depth: true} : {}), ...(typeof cast?.id === 'string' && cast.id ? {cast: {id: cast.id, ...(cast.setting === true ? {setting: true} : cast.prop === true ? {prop: true} : {})}} : {})}))); } catch { return serialized.value; }
+        try { return JSON.stringify(read().map(({file, role, enabled, cast, sound, depth, lines, use, range, seconds}) => ({file, role, enabled, ...(role === 'middle' && Number.isFinite(seconds) ? {seconds} : {}), ...(use === AUDIO_USE.original ? {use, ...(range && typeof range === 'object' ? {range} : {})} : {}), ...(sound === false && mediaKindOrNull(file) === 'video' ? {sound: false} : {}), ...(depth === true && role === 'reference' && mediaKindOrNull(file) === 'video' ? {depth: true} : {}), ...(lines === true && depth !== true && role === 'reference' && mediaKindOrNull(file) === 'video' ? {lines: true} : {}), ...(typeof cast?.id === 'string' && cast.id ? {cast: {id: cast.id, ...(cast.setting === true ? {setting: true} : cast.prop === true ? {prop: true} : {})}} : {})}))); } catch { return serialized.value; }
     };
     // `as` (reference / first / last) places these images without changing the toolbar's choice.
     async function upload(files, {role: as} = {}) {

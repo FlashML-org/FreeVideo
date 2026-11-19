@@ -133,6 +133,7 @@ LABEL_KEYS = frozenset((
     'Decoding audio',
     'Decoding video tiles',
     'Downloading extra model weights (one-time download)',
+    'Drawing lines from the reference video',
     'Extracting depth from the reference video',
     'Encoding image/video references',
     'Encoding input media',

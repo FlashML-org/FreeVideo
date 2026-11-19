@@ -34,7 +34,7 @@ function markCard(card) {
     }
     // A tile with more to set than its use (a middle frame's time, a video's depth and sound, audio) is three squares
     // wide: the picture, and its settings beside it.
-    card.dataset.fvMtWide = String(Boolean(card.querySelector(':scope > :is(.fv-time,.fv-depth-only,.fv-sound,audio.fv-preview)')));
+    card.dataset.fvMtWide = String(Boolean(card.querySelector(':scope > :is(.fv-time,.fv-depth-only,.fv-lines-only,.fv-sound,audio.fv-preview)')));
     const rows = [...card.children].filter(child => child.classList.contains('fv-row'));
     const controls = rows.length > 1 ? rows.at(-1) : null;
     // Edited is a small mark on the picture; its words stay as the mark's name.
