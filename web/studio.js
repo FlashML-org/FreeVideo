@@ -76,6 +76,7 @@ import { createPromptLibrary, rememberPrompt } from './prompt_library.js';
 import { createCompare, COMPARE_ICON } from './studio_compare.js';
 import { toast, toastHeight } from './notifications.js';
 import { mediaQueue } from './work_media.js';
+import { userMessage } from './user_message.js';
 
 const languageOverride = typeof location !== 'undefined'
     ? new URLSearchParams(location.search).get('freevideo_lang') : null;
@@ -372,6 +373,11 @@ export function loraPanel(node, panel, {promptNode = null} = {}) {
     const verdicts = createVerdicts((path, options) => api.fetchApi(path, options));
     let rowChecks = [];
     let focusGrip = null;
+    // The list lives in the node as JSON; a broken list is not a reply from FreeVideo, so it gets its own sentence.
+    const listProblem = error => {
+        const unreadable = t('The LoRA list cannot be read. Add the LoRAs again.', 'LoRA 列表无法读取，请重新添加 LoRA。');
+        return error?.name === 'SyntaxError' ? unreadable : userMessage(error, t, unreadable);
+    };
     const read = () => { const rows = JSON.parse(value(node, 'adapters') || '[]'); if (!Array.isArray(rows) || rows.length > 32) throw new Error(t('Use at most 32 LoRAs', '最多使用 32 个 LoRA')); return rows; };
     function syncPrompt(rows) {
         const targets = new Set([promptNode, ...(node.graph?._nodes || []).filter(target =>
@@ -409,7 +415,7 @@ export function loraPanel(node, panel, {promptNode = null} = {}) {
                 if (trigger.dataset.name === name && !drafts.has(name)) trigger.value = triggerEntry(name).data?.words ?? '';
             }
             note.textContent = rows.map(row => errors.get(row.name)).find(Boolean) || idleNote();
-        } catch (error) { note.textContent = error.message; }
+        } catch (error) { note.textContent = listProblem(error); }
     }
     const write = rows => { if (set(node, 'adapters', JSON.stringify(rows))) { syncPrompt(rows); window.dispatchEvent(new CustomEvent('freevideo-loras', {detail: node.id})); } };
     // A LoRA the model cannot take is switched off here, so it is not sent with the request.
@@ -419,7 +425,7 @@ export function loraPanel(node, panel, {promptNode = null} = {}) {
             const rows = read(); let changed = false;
             for (const row of rows) if (row.name === name && row.enabled !== false && verdicts.peek(name)?.usable === false) { row.enabled = false; changed = true; }
             if (changed) write(rows);
-        } catch (error) { note.textContent = error.message; }
+        } catch (error) { note.textContent = listProblem(error); }
     }
     const reorder = order => {
         const rows = read();
@@ -553,14 +559,14 @@ export function loraPanel(node, panel, {promptNode = null} = {}) {
                 if (known) mark(known);
                 else check(false);
                 list.append(wrap);
-                loadTriggers(row.name).catch(error => { if (!disposed && trigger.isConnected) note.textContent = error.message; });
+                loadTriggers(row.name).catch(error => { if (!disposed && trigger.isConnected) note.textContent = userMessage(error, t, t('Could not read the trigger words. Try again.', '没能读取触发词，请重试。')); });
             });
             if (rows.length > 1) actions.append(clear);
             if (focusGrip != null) { list.querySelector(`.fv-lora-row[data-index="${focusGrip}"] .fv-lora-grip`)?.focus(); focusGrip = null; }
             note.textContent = rows.map(row => errors.get(row.name)).find(Boolean) || idleNote();
         } catch (error) {
             if (error instanceof DOMException) throw error;
-            note.textContent = error.message;
+            note.textContent = listProblem(error);
         }
         finally {
             rendering = false;
@@ -1046,7 +1052,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         if (![...mp.options].some(option => Number(option.value) === pixels)) { const option = el('option', `${pixels.toFixed(2)} MP`); option.value = pixels; mp.append(option); }
         mp.value = String(pixels);
         try { applySize(); if (pixels !== 1) legacyOption?.remove(); status.dataset.error = 'false'; }
-        catch (error) { pixels = previous; mp.value = String(previous); syncResolutionLabel(); status.dataset.error = 'true'; status.textContent = error.message; }
+        catch (error) { pixels = previous; mp.value = String(previous); syncResolutionLabel(); status.dataset.error = 'true'; status.textContent = userMessage(error, t, t('Could not change the resolution. Try again.', '没能更改清晰度，请重试。')); }
     }
     for (const preset of PRESET_PIXELS) {
         const mark = button(String(preset), () => choosePixels(preset), 'fvs-res-tick');
@@ -2288,7 +2294,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         missing_node: t('This node is disabled or no longer in the workflow.', '该节点已禁用或已从工作流移除。'),
         chain_cancel_failed: t('Could not cancel. Refresh the page and try again.', '没有取消成功，请刷新页面后再试。'),
         chain_resume_failed: t('Could not continue. Refresh the page and try again.', '没有继续生成，请刷新页面后再试。'),
-    }[error?.message] || (error?.said ? t(error.said[0], error.said[1]) : null) || (isNetworkTypeError(error) ? connectionLostText(t) : error?.message) || String(error));
+    }[error?.message] || (error?.said ? t(error.said[0], error.said[1]) : null) || userMessage(error, t));
     let lastQueueError = null, connectionNotice = false;
     watchEngineExit(api).catch(() => {});
     function showQueueError(error) {

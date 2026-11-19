@@ -7,6 +7,7 @@ import { listenDialogKey } from './dialog_keys.js';
 import { isNetworkTypeError, connectionLostText } from './browser_extension.js';
 import { issueButton } from './issue_button.js';
 import { fileFailureText, responseFileReason } from './file_failure.js';
+import { userMessage } from './user_message.js';
 import { applyTasks, toggledTask } from './task_groups.js';
 import { outputDownloadURL } from './output_download.js';
 import { attachContextMenu, openContextMenu, contextMenuOpen, compatView, reducedMotion } from './context_menu.js';
@@ -418,9 +419,10 @@ export function openLibrary(t, options = {}) {
     // Closing gives the keyboard back to the control that opened the room.
     const opener = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
     // `kind` (text, or a function read when the button is clicked) tells the feedback what the sentence alone cannot.
-    const fault = (target, text, where = ['Creations', '作品库'], kind = null) => {
+    // `error`, when given, is what the report sends instead of the plain sentence shown.
+    const fault = (target, text, where = ['Creations', '作品库'], kind = null, error = null) => {
         target.textContent = text;
-        target.append(issueButton(t, () => ({where, message: text, kind: typeof kind === 'function' ? kind() : kind})));
+        target.append(issueButton(t, () => ({where, message: error?.message || text, kind: typeof kind === 'function' ? kind() : kind})));
     };
     dialog.setAttribute('aria-label', t('Creations', '作品库'));
     const header = el('header', null, 'fv-library-header');
@@ -924,7 +926,7 @@ export function openLibrary(t, options = {}) {
             if (editor && !disposed) { dialog.close(); editor.element?.focus({preventScroll: true}); }
             return editor;
         }
-        catch (error) { fault(notice, error.message, ['Continue video', '延长视频']); }
+        catch (error) { fault(notice, userMessage(error, t, t('Could not open the editor. Try again.', '无法打开剪辑，请重试。')), ['Continue video', '延长视频'], null, error); }
     }
     // Fill the creation panel with a video's prompt, size, length and seed, then go back to it.
     async function reuseSaved(row) {
@@ -976,7 +978,7 @@ export function openLibrary(t, options = {}) {
             await secondPassRunner()(row);
             if (!disposed && selected === workKey(row)) notice.textContent = t('Queued. It appears in "Creations" when done.', '已加入队列，完成后在“作品”里。');
         } catch (error) {
-            if (!disposed && selected === workKey(row)) fault(notice, t('Could not start the second pass: ', '无法继续二采：') + error.message, ['Second pass', '二采']);
+            if (!disposed && selected === workKey(row)) fault(notice, userMessage(error, t, t('Could not start the second pass. Try again.', '没能开始二采，请重试。')), ['Second pass', '二采'], null, error);
             throw error;
         }
     }
@@ -2058,7 +2060,7 @@ export function openLibrary(t, options = {}) {
                 if (appendPage) tailState = 'failed';
                 else if (error.restart) message.textContent = error.message;
                 else {
-                    fault(message, isNetworkTypeError(error) ? connectionLostText(t) : error.message); retryRead(message);
+                    fault(message, userMessage(error, t, t('Could not read the creations. Try again.', '没能读取作品，请重试。')), undefined, null, error); retryRead(message);
                     for (const ghost of grid.querySelectorAll(':scope > .fv-library-ghost')) ghost.remove();
                 }
             }

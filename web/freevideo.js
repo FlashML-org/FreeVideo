@@ -42,6 +42,7 @@ import { MAX_MIDDLE, secondsOf, defaultTime, timeProblems, timeRange, problemTex
 import { swapState, requestRows, swapMissing, withPrefix, peopleOf } from './replace_state.js';
 import { swapMissingText } from './replace_person.js';
 import { issueButton } from './issue_button.js';
+import { userMessage } from './user_message.js';
 import { AUDIO_USE, usesOriginal, checkOriginal, checkedLength, failureText, multipleText, createUseSwitch, originalBlocked, stuckText, liftBlock } from './audio_original.js';
 
 const languageOverride = typeof location !== 'undefined'
@@ -310,7 +311,7 @@ function mediaPanel(node, mount = null) {
             latest[index] = {...latest[index], file: result.file, ...(hasOriginal ? {source} : {}), edit: outcome.edit}; update(latest);
             message(hasOriginal ? text('The edited image is saved, and the original is kept.',
                 '编辑后的图片已保存，原图已保留。') : '');
-        } catch (error) { message(error.message, true); }
+        } catch (error) { message(userMessage(error, text, text('Could not save the image. Try again.', '没能保存图片，请重试。')), true); }
         finally { node.isUploading = false; add.disabled = false; addAudio.disabled = false; }
     }
     async function newImage() {
@@ -334,7 +335,7 @@ function mediaPanel(node, mount = null) {
             const latest = read();
             latest.push({file: result.file, name: outcome.name, role: role.value, enabled: true, edit: outcome.edit});
             update(latest);
-        } catch (error) { message(error.message, true); }
+        } catch (error) { message(userMessage(error, text, text('Could not save the image. Try again.', '没能保存图片，请重试。')), true); }
         finally { node.isUploading = false; add.disabled = addAudio.disabled = generateImage.disabled = false; }
     }
     function restoreImage(file) {
@@ -406,7 +407,10 @@ function mediaPanel(node, mount = null) {
         }
         cards.replaceChildren();
         let rows;
-        try { rows = read(); } catch (error) { message(error.message, true); return; }
+        try { rows = read(); } catch (error) {
+            const unreadable = text('The media list cannot be read. Add the media again.', '素材列表无法读取，请重新添加素材。');
+            message(error?.name === 'SyntaxError' ? unreadable : userMessage(error, text, unreadable), true); return;
+        }
         const active = rows.filter(row => row.enabled !== false);
         const linked = name => node.inputs?.find(i => i.name === name)?.link != null;
         // A Generate node that continues a video takes these keyframes as pictures, so they may sit beside references.
@@ -598,7 +602,7 @@ function mediaPanel(node, mount = null) {
                 rows.push({file: result.file, ...(result.name || file.name ? {name: result.name || file.name} : {}), role: kind === "image" ? use : "reference", enabled: true}); update(rows);
             }
             if (skipped.length) message(skippedNote(skipped), !usable.length);
-        } catch (error) { message(error.message, true); }
+        } catch (error) { message(userMessage(error, text, text('Could not upload. Try again.', '没能上传，请重试。')), true); }
         finally { uploading = false; node.isUploading = false; add.disabled = false; addAudio.disabled = false; picker.value = ""; audioPicker.value = ''; }
     }
     picker.onchange = () => upload(picker.files);

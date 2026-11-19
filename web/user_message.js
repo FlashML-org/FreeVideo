@@ -12,7 +12,7 @@ const RAW = [
     /Cannot read propert|Cannot set propert|is not a function|is not defined|is not iterable|undefined is not|null is not/,
     /^(?:HTTP\s*)?\d{3}(?:\s+[A-Za-z ]+)?$/i,
     /^[a-z][a-z0-9]*(?:[_.:-][a-z0-9]+)+$/,  // a code such as editor_request or generation_failed
-    /^\[object \w+\]$|Traceback \(most recent call last\)|\bat .+:\d+:\d+\)?$/m,
+    /^\[object \w+\]$|Traceback \(most recent call last\)|\bat (?:\S+ \()?\S*[/.]\S*:\d+:\d+\)?$/m,
 ];
 export const isRawErrorText = text => RAW.some(pattern => pattern.test(String(text).trim()));
 

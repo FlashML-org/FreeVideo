@@ -5,6 +5,7 @@ import {fontCSS as bundledFontCSS, fontLoaded, loadFont} from './fonts.js';
 import {shareLayout} from './share_layout.js';
 import {videoUnavailableText} from './studio_extend.js';
 import {issueButton} from './issue_button.js';
+import {userMessage} from './user_message.js';
 import {exportKeepsWorkflow, workflowToggle} from './output_download.js';
 import {fileFailureText, responseFileReason} from './file_failure.js';
 import {isNetworkTypeError, connectionLostText} from './browser_extension.js';
@@ -209,5 +210,5 @@ export async function openShare(record,t){
         preview.style.aspectRatio=`${shape.width}/${shape.height}`;
         player.style.cssText=`left:${shape.rect[0]/shape.width*100}%;top:0;width:${shape.rect[2]/shape.width*100}%;height:${shape.rect[3]/shape.height*100}%`;
         ready=true;choose(kind);save.disabled=false;
-    }catch(error){if(!disposed)say(error.message||t('Preview unavailable. Close and try again.','预览暂时无法读取，请关闭后重试。'),true);}
+    }catch(error){if(!disposed)say(userMessage(error,t,t('Preview unavailable. Close and try again.','预览暂时无法读取，请关闭后重试。')),true);}
 }

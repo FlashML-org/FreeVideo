@@ -6,6 +6,7 @@ import { agentInterfaceState } from './agent_connect.js';
 import { agentSend } from './agent_session.js';
 import { uploadMedia } from './media_upload.js';
 import { issueButton } from './issue_button.js';
+import { userMessage } from './user_message.js';
 
 const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('./cast_room.css', import.meta.url).href; document.head.append(css);
 const el = (tag, text, cls) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; };
@@ -166,7 +167,7 @@ export function createCastRoom({api, t, viewURL: outputURL}) {
             const full = await libraries[row.kind].get(row.id);
             if (disposed || selected !== row.id) return;
             card = {...full, kind: full.kind || row.kind}; paint();
-        } catch (error) { if (selected === row.id) notice.textContent = error.message; }
+        } catch (error) { if (selected === row.id) notice.textContent = userMessage(error, t, t('Could not open it. Try again.', '没能打开，请重试。')); }
     }
     function paint() {
         if (!card) return;
@@ -216,7 +217,7 @@ export function createCastRoom({api, t, viewURL: outputURL}) {
             window.dispatchEvent(new CustomEvent('freevideo-cast-changed'));
             clearDetail(); await refresh();
         } catch (error) {
-            notice.textContent = error.message;
+            notice.textContent = userMessage(error, t, t('Could not delete. Try again.', '没能删除，请重试。'));
             notice.append(issueButton(t, () => ({where: ['Character library', '角色库'], message: error.message})));
         } finally { remove.disabled = false; }
     }

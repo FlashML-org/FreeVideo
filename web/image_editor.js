@@ -15,6 +15,7 @@ import {confirmStop, startJobSources} from './task_float.js';
 import {saveToWorks} from './image_works.js';
 import {listenDialogKey} from './dialog_keys.js';
 import {issueButton} from './issue_button.js';
+import {userMessage} from './user_message.js';
 import {skinSelect} from './fv_select.js';
 
 const css = document.createElement('link');
@@ -1155,7 +1156,7 @@ async function openImageEditorNow({source = null, name = source || '', target = 
             else { const result = await upload(file); name = typeof result === 'string' ? result : result?.file; }
             done(); await addImageLayer(name, file.name);
         }
-        catch (error) { message(error.message || t('Upload failed.', '上传失败。'), ['Image editor upload', '图片编辑器上传']); }
+        catch (error) { message(userMessage(error, t, t('Could not upload. Try again.', '没能上传，请重试。')), ['Image editor upload', '图片编辑器上传'], error); }
     };
     function duplicateLayer() {
         const layer = active();
@@ -1905,10 +1906,11 @@ async function openImageEditorNow({source = null, name = source || '', target = 
     let resolveResult;
     const result = new Promise(r => { resolveResult = r; });
     let messageTimer = null, workingTimer = null;
-    function message(text, where = null) {
+    // `error`, when given, is what the report sends instead of the plain sentence shown.
+    function message(text, where = null, error = null) {
         clearInterval(workingTimer); workingTimer = null;
         status.textContent = text;
-        if (text && where) status.append(issueButton(t, () => ({where, message: text})));
+        if (text && where) status.append(issueButton(t, () => ({where, message: error?.message || text})));
         clearTimeout(messageTimer);
         if (text) messageTimer = setTimeout(() => { status.textContent = ''; }, where ? 20000 : 5000);
     }

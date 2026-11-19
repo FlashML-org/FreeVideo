@@ -6,6 +6,7 @@ import { issueButton } from './issue_button.js';
 import { savedSettings, differs } from './result_reuse.js';
 import { REPORT_GONE } from './report_issue.js';
 import { listenDialogKey } from './dialog_keys.js';
+import { userMessage } from './user_message.js';
 
 const css = document.createElement('link');
 css.rel = 'stylesheet'; css.href = new URL('./result_actions.css', import.meta.url).href; document.head.append(css);
@@ -151,9 +152,9 @@ function deleteAction(t, remove) {
         confirm.disabled = cancel.disabled = true; confirm.lastElementChild.textContent = t('Deleting…', '正在删除…');
         try { await remove(); menu.open = false; }
         catch (error) {
-            problem.textContent = error.message; problem.hidden = false;
+            problem.textContent = userMessage(error, t, t('Could not delete. Try again.', '没能删除，请重试。')); problem.hidden = false;
             if (error.reportable !== false) {
-                problemIssue = issueButton(t, () => ({where: ['Delete creation', '删除作品'], message: problem.textContent}));
+                problemIssue = issueButton(t, () => ({where: ['Delete creation', '删除作品'], message: error?.message || problem.textContent}));
                 problem.after(problemIssue);
             }
         }
@@ -339,7 +340,7 @@ export function resultActions(record, t, {diagnostic = null, secondPass = null, 
                 if (!available(await extendSourceState(api, record))) return;
                 if (await extend(record) === null) throw new Error(t('Could not open the editor. Try again.', '无法打开剪辑，请重试。'));
             } catch (error) {
-                label.textContent = error.message || t('Could not open the editor. Try again.', '无法打开剪辑，请重试。');
+                label.textContent = userMessage(error, t, t('Could not open the editor. Try again.', '无法打开剪辑，请重试。'));
                 button.title = label.textContent;
                 fault();
             } finally { button.disabled = false; }

@@ -4,6 +4,7 @@
 import {reconcileLoraTriggers} from './lora_triggers.js';
 import {createVerdicts} from './lora_check.js';
 import {skinSelect} from './fv_select.js';
+import {userMessage} from './user_message.js';
 
 export const IMAGE_LORA_LIMIT = 8, IMAGE_LORA_STRENGTH = 2;
 const STORE = 'freevideo_image_loras';
@@ -133,7 +134,7 @@ export function createImageLoras({t, fetchApi, el = domEl, getPrompt = () => '',
                 const name = row.name, draft = trigger.value;
                 drafts.set(name, draft);
                 try { await saveWords(name, draft); drafts.delete(name); note.textContent = ''; syncPrompt(); save(); onChange(); }
-                catch (error) { note.textContent = error.message; }
+                catch (error) { note.textContent = userMessage(error, t, t('Could not save the trigger words. Try again.', '没能保存触发词，请重试。')); }
             };
             const check = () => verdicts.get(row.name).then(() => { if (!disposed && wrap.isConnected && select.value === row.name) { show(); drawSummary(); syncPrompt(); onChange(); } });
             wrap.append(on, skinSelect(select), strength, remove, trigger, problem);
@@ -142,7 +143,7 @@ export function createImageLoras({t, fetchApi, el = domEl, getPrompt = () => '',
             triggerWords(row.name).then(() => {
                 if (!disposed && trigger.isConnected && !drafts.has(row.name)) trigger.value = words.get(row.name) ?? '';
                 syncPrompt(); save(); drawSummary(); onChange();
-            }, error => { note.textContent = error.message; });
+            }, error => { note.textContent = userMessage(error, t, t('Could not read the trigger words. Try again.', '没能读取触发词，请重试。')); });
         });
         add.disabled = rows.length >= IMAGE_LORA_LIMIT;
         if (!note.textContent || !rows.some(r => drafts.has(r.name))) note.textContent = skipped

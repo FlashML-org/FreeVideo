@@ -2,6 +2,7 @@ import {agentGet, agentPost, agentSend} from './agent_session.js';
 import {agentInterfaceEnabled} from './agent_connect.js';
 import {issueButton} from './issue_button.js';
 import { skin } from './glass/library.js';
+import {userMessage} from './user_message.js';
 const CAST_ISSUE = ['Character library', '角色库'];
 
 // The optional generator owns its UI and job lifecycle; keep its contract here.
@@ -64,7 +65,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
             // The dialog only sends pictures, so unreadable media here is always one of them.
             const unreadable = data?.error?.code === 'invalid_media' && text('Could not read this picture. Please choose another one.', '无法读取这张图片，请换一张。');
             const error = new Error(unreadable || data?.error?.message || (typeof data?.error === 'string' && data.error)
-                || data?.message || response.statusText || text('Did not finish. Try again.', '没有完成，请重试。'));
+                || data?.message || `HTTP ${response.status} ${response.statusText}`.trim());
             error.status = response.status;
             // Which picture it was, as /images/<n>/media of the request.
             if (unreadable) error.field = data.error.details?.find(detail => typeof detail?.field === 'string')?.field;
@@ -110,7 +111,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         return rows;
     }
     const changed = () => {
-        if (!broadcasting) refresh().catch(error => current?.message(error.message));
+        if (!broadcasting) refresh().catch(error => current?.message(userMessage(error, text, text('Could not refresh the list. Try again.', '没能刷新列表，请重试。'))));
     };
     async function saved() {
         broadcasting = true;
@@ -323,8 +324,8 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
                 try {
                     await load();
                     message(text('Changed elsewhere. Showing the latest version.', '已在别处修改，已显示最新内容'), true);
-                } catch (error) { message(error.message); }
-            } else message(error.message);
+                } catch (error) { message(userMessage(error, text, text('Could not show the latest version. Close and open it again.', '没能显示最新内容，请关闭后重新打开。'))); }
+            } else message(userMessage(error, text));
         }
         async function saveCard() {
             if (closed || save.disabled) return;
@@ -393,7 +394,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         dialog.onclose = close;
         current = {element: dialog, message, close};
         name.value = ''; select('upload'); document.body.append(dialog); dialog.showModal(); name.focus();
-        if (id) load().catch(error => message(error.message));
+        if (id) load().catch(error => message(userMessage(error, text, text('Could not open it. Try again.', '没能打开，请重试。'))));
         // A scene has one set of pictures: the chosen option takes the first place, where the Upload tab shows it.
         const pick = file => { if (closed || !scene) return; slots[0] = {media: file, label: 'other'}; paint(0); };
         // Scenes and props: the description's candidates. Characters: the four views from each source.
