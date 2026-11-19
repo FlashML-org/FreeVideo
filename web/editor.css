@@ -21,6 +21,10 @@
 .fv-editor .fv-ed-genbar>.fv-ed-duration.fv-ed-beside-leaving[hidden]{display:block!important;pointer-events:none}
 .fv-editor button:where(:not(.fv-header button)){height:36px;min-height:0;border-radius:var(--fv-r-sm);font:500 13px/1.4 var(--fv-font);white-space:nowrap}
 .fv-editor .fv-header{grid-column:1/-1;position:sticky;top:0;z-index:6;background:var(--fv-bg)}
+/* The update bar the creative panel brings along is one more grid row below the timeline: as wide as the window and kept at its bottom edge while the view scrolls, never past it. */
+.fv-studio.fv-editor>.fv-pop-holder>.fv-update-notice,.fv-studio.fv-editor>.fv-update-notice{grid-column:1/-1;grid-row:8;position:sticky;bottom:0;z-index:6}
+/* On a narrow window the name and the close button share the first row and the buttons sit on one row below. */
+@media(max-width:680px){.fv-studio.fv-editor>.fv-pop-holder>.fv-update-notice,.fv-studio.fv-editor>.fv-update-notice{padding:8px 14px;justify-content:flex-start}.fv-studio.fv-editor>.fv-pop-holder>.fv-update-notice>span,.fv-studio.fv-editor>.fv-update-notice>span{flex:1 1 calc(100% - 60px);min-width:0;white-space:normal;order:0}.fv-studio.fv-editor>.fv-pop-holder>.fv-update-notice .fv-update-close,.fv-studio.fv-editor>.fv-update-notice .fv-update-close{order:1;margin-left:auto}.fv-studio.fv-editor>.fv-pop-holder>.fv-update-notice>:not(span):not(.fv-update-close),.fv-studio.fv-editor>.fv-update-notice>:not(span):not(.fv-update-close){order:2}}
 .fv-editor>:not(.fv-header){font-size:13px;line-height:1.4}
 .fv-editor .fv-brand{position:relative}.fv-editor .fv-brand>.fv-wordmark{flex-shrink:0}
 .fv-editor .fv-header-actions{min-width:0;height:100%}.fv-editor .fv-header-actions>button,.fv-editor .fv-ed-export-box>button{flex:none}
