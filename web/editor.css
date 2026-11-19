@@ -73,8 +73,9 @@
 .fv-ed-source-card .fv-issue-button{font-size:11px;min-height:28px;max-width:100%}
 .fv-editor .fv-ed-preview{grid-column:2;grid-row:3;min-width:0;min-height:0;display:grid;place-items:center;padding:16px;overflow:hidden;background:var(--fv-bg);container-type:size}
 .fv-ed-picture{position:relative;width:min(100cqw,calc(100cqh * var(--fv-ed-width,16) / var(--fv-ed-height,9)));aspect-ratio:var(--fv-ed-width,16)/var(--fv-ed-height,9);background:#000;border-radius:var(--fv-r-sm);overflow:hidden}
-.fv-ed-picture[data-empty=true]{background:var(--fv-card);border:1px dashed color-mix(in srgb,var(--fv-ink) 28%,transparent)}
+.fv-ed-picture[data-empty=true]{container:fv-picture/size;background:var(--fv-card);border:1px dashed color-mix(in srgb,var(--fv-ink) 28%,transparent)}
 .fv-ed-empty-preview{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--fv-muted);font-size:13px;text-align:center;padding:16px}
+@container fv-picture (max-height:124px){.fv-ed-empty-preview-text{display:none}}
 .fv-ed-empty-preview svg{width:24px;height:24px;flex:none;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
 .fv-editor .fv-ed-preview-close{position:absolute;top:8px;right:8px;width:28px;height:28px;padding:0;z-index:2;background:var(--fv-card);border:1px solid var(--fv-border);color:var(--fv-muted)}
 .fv-ed-preview-close svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round}
