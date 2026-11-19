@@ -1814,7 +1814,7 @@ class Installer:
                     elif folder.exists():
                         command.append('--clear')
                     try:
-                        return self.packages(label + '-venv', [*command, folder])
+                        return self.packages(label + '-venv', [*command, folder], wait_busy=False)
                     except RuntimeError as error:
                         # Another program (usually security software scanning the
                         # Python file just unpacked) held it open while uv copied it.
@@ -2007,11 +2007,23 @@ class Installer:
             if active:
                 self.ui.event('progress', key=key, label='Download', detail='', state='complete')
 
-    def packages(self, label, args, family='pypi'):
-        with self.download_notice('download-patient-' + label) as notice:
-            return network.package_command(self.network, family,
-                lambda env, source: self.command(label if source == 'official' else label + '-' + source, args, env=env),
-                self.env, notice=notice)
+    def packages(self, label, args, family='pypi', *, wait_busy=True):
+        from .failure_details import file_in_use
+        for wait in (*ENVIRONMENT_BUSY_WAITS, None):
+            try:
+                with self.download_notice('download-patient-' + label) as notice:
+                    return network.package_command(self.network, family,
+                        lambda env, source: self.command(label if source == 'official' else label + '-' + source, args, env=env),
+                        self.env, notice=notice)
+            except RuntimeError as error:
+                # Security software or an indexer can hold a file uv has just
+                # written or is about to run (the build environment's Python).
+                # No other download source helps; the file is free again shortly.
+                if wait is None or not wait_busy or not file_in_use(error) or self.cancel.is_set():
+                    raise
+                self.ui.write('A file is in use by another program; trying again in %d s.\n' % wait)
+                if self.cancel.wait(wait):
+                    raise
 
     def python_sources(self, names):
         """The GitHub mirror refuses the Python runtime files, so it is tried after a mirror that serves them."""
