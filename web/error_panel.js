@@ -5,7 +5,7 @@ import {detectBrowserExtension, browserExtensionAdvice, extensionSteps, isNetwor
 import {SAMPLING_EFFORTS, STEP_CACHES, UPSCALE_FACTORS, tableLevel} from './sampling_effort.js';
 import {failureIssue, failureStage} from './failure_issue.js';
 import {knownEngineExit} from './engine_exit.js';
-import {focusReportTip, reportIssue, showReportTip} from './report_issue.js';
+import {focusReportTip, hideReportTip, reportIssue, showReportTip} from './report_issue.js';
 import { skin } from './glass/library.js';
 const reports = new WeakSet();
 const captured = new WeakMap();
@@ -711,7 +711,7 @@ export function createErrorPanel(t, route = null) {
     const privacyInside = document.createElement('p'); privacyInside.className = 'fv-failure-privacy'; privacyInside.hidden = true;
     privacyInside.textContent = t('Paths and typed text are removed.', '已去掉路径和输入的文字。');
     const downloadStatus = document.createElement('p'); downloadStatus.setAttribute('role', 'status');
-    let currentReport = null, githubLora = false;
+    let currentReport = null, githubLora = false, knownAdvice = '', adviceShown = false;
     const disclosure = document.createElement('details'), summary = document.createElement('summary');
     disclosure.className = 'fv-failure-fold';
     const chevron = document.createElement('span'); chevron.className = 'fv-failure-chevron'; chevron.setAttribute('aria-hidden', 'true');
@@ -738,20 +738,31 @@ export function createErrorPanel(t, route = null) {
     // page at once (a page opened after waiting can be blocked as a pop-up).
     let issueModules = null;
     const loadIssueModules = () => import('./feedback.js').then(feedback => import('./updates.js').then(updates => { issueModules = {feedback, updates}; })).catch(() => {});
-    github.onclick = async () => {
-        if (!currentReport) return;
-        // A generation with a diagnostic report goes the report route: save it, then the tip opens the form.
-        if (route?.has() && diagnosticReports.has(currentReport) && !githubLora) {
-            if (focusReportTip(head)) return;
-            try { await route.download(); } catch { return; }
-            showReportTip(head, github, t, {mode: 'downloaded', submit: () => reportIssue(route.fetch, route.version(), {save: false})});
-            return;
-        }
+    const openFeedback = async () => {
         if (!issueModules) await loadIssueModules();
         if (!issueModules) return;
         const draft = failureIssue(currentReport, element.freevideoKind, {lora: githubLora, t, engineExit: knownEngineExit()});
         const url = issueModules.feedback.feedbackIssueURL(draft.text, issueModules.updates.productVersion(), draft.summary, draft.title);
         globalThis.open?.(url, '_blank', 'noopener');
+    };
+    github.onclick = async () => {
+        if (!currentReport) return;
+        // A known error that has its own advice shows it first, once per card; the way on stays one press away.
+        const lead = knownAdvice && !adviceShown ? knownAdvice : '';
+        if (lead) adviceShown = true;
+        if (lead && !(route?.has() && diagnosticReports.has(currentReport) && !githubLora)) {
+            if (!issueModules) await loadIssueModules();
+            showReportTip(head, github, t, {mode: 'advice', lead, proceed: openFeedback});
+            return;
+        }
+        // A generation with a diagnostic report goes the report route: save it, then the tip opens the form.
+        if (route?.has() && diagnosticReports.has(currentReport) && !githubLora) {
+            if (focusReportTip(head)) return;
+            try { await route.download(); } catch { return; }
+            showReportTip(head, github, t, {mode: 'downloaded', lead, submit: () => reportIssue(route.fetch, route.version(), {save: false})});
+            return;
+        }
+        await openFeedback();
     };
     download.onclick = () => {
         if (!currentReport) return;
@@ -791,6 +802,8 @@ export function createErrorPanel(t, route = null) {
         title.textContent = advice.title; explanation.textContent = advice.summary; explanation.hidden = !advice.summary; action.textContent = advice.action;
         element.querySelector('.fv-extension-steps')?.remove();
         if (advice.kind === 'browser-extension') action.after(extensionSteps(advice));
+        knownAdvice = advice.plain && PLAIN_ERRORS.some(error => error.key === advice.kind) ? advice.summary : ''; adviceShown = false;
+        hideReportTip(head);
         element.freevideoKind = advice.kind; reload.hidden = advice.kind !== 'browser-extension';
         if (advice.kind === 'fa4-update') {
             const command = 'freevideo setup --fa4-guard';

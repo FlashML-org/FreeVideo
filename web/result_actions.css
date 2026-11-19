@@ -61,6 +61,7 @@
 .fv-actions .fv-action-report.fv-report-attention::after{content:'';position:absolute;top:-3px;right:-3px;width:9px;height:9px;border-radius:var(--fv-r-pill);background:var(--fv-accent,#6db8fa);box-shadow:0 0 0 2px var(--fv-bg,#111720)}
 /* A narrow card keeps the text on full-width lines and moves the button below it. */
 @container (max-width:640px){:is(.fv-result-links,.fv-failure,.fv-preview-column)>.fv-report-tip .fv-report-tip-card{flex-wrap:wrap;align-items:flex-start;padding-right:40px}:is(.fv-result-links,.fv-failure,.fv-preview-column)>.fv-report-tip .fv-report-tip-text{flex:1 1 calc(100% - 50px)}:is(.fv-result-links,.fv-failure,.fv-preview-column)>.fv-report-tip .fv-report-tip-actions{margin-left:50px}:is(.fv-result-links,.fv-failure,.fv-preview-column)>.fv-report-tip .fv-report-tip-close{position:absolute;top:8px;right:8px}}
+@container (max-width:640px){:is(.fv-result-links,.fv-failure,.fv-preview-column)>.fv-report-tip.fv-report-tip-advice .fv-report-tip-text{flex-basis:100%}:is(.fv-result-links,.fv-failure,.fv-preview-column)>.fv-report-tip.fv-report-tip-advice .fv-report-tip-actions{margin-left:0}}
 @media(prefers-reduced-motion:reduce){:is(.fv-result-links,.fv-failure,.fv-preview-column)>.fv-report-tip .fv-report-tip-mark{transition:none}}
 @keyframes fv-menu-enter{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 @media(prefers-reduced-motion:reduce){.fv-actions *{transition:none!important;animation:none!important}}

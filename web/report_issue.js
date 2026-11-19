@@ -166,7 +166,7 @@ export function hideReportTip(bar) {
     bar?.parentElement?.querySelector(':scope > .fv-report-tip:not(.fv-report-tip-leaving)')?.remove();
 }
 
-export function showReportTip(bar, anchor, t, {mode = 'invite', submit, onHide = null, animate = true} = {}) {
+export function showReportTip(bar, anchor, t, {mode = 'invite', submit, onHide = null, animate = true, lead: leadText = '', proceed = null} = {}) {
     skin();
     bar.parentElement.querySelector(':scope > .fv-report-tip:not(.fv-report-tip-leaving)')?.remove();
     // Under a result in a view, the invitation is no card at all: its one sentence lives in the Report button's hover
@@ -199,7 +199,7 @@ export function showReportTip(bar, anchor, t, {mode = 'invite', submit, onHide =
             if ((run.match(/[\u4e00-\u9fff]/g) || []).length <= 12) { parts.push(run); continue; }
             let first = true;
             for (const {segment} of new Intl.Segmenter('zh', {granularity: 'word'}).segment(run)) {
-                if (!first && /^[\u4e00-\u9fff]/.test(segment)) parts.push(document.createElement('wbr'));
+                if (!first && /^[\u4e00-\u9fff]/.test(segment) && !/[“「（《‘『【(]$/.test(String(parts.at(-1)))) parts.push(document.createElement('wbr'));
                 parts.push(segment); first = false;
             }
         }
@@ -224,7 +224,8 @@ export function showReportTip(bar, anchor, t, {mode = 'invite', submit, onHide =
         tip.animate([{maxHeight: `${tip.offsetHeight}px`, paddingTop: '6px', opacity: 1}, {maxHeight: '0px', paddingTop: '0px', opacity: 0}],
             {duration: 240, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards'}).finished.then(() => tip.remove(), () => tip.remove());
     };
-    const dismiss = () => { closeForGood(); hide(); };
+    // The advice card is no invitation: closing it leaves the later invitations alone.
+    const dismiss = () => { if (mode !== 'advice') closeForGood(); hide(); };
     // Leaving by hand returns focus to the Report button, as Esc does.
     const leave = () => { dismiss(); anchor.focus(); };
     close.onclick = leave;
@@ -249,14 +250,39 @@ export function showReportTip(bar, anchor, t, {mode = 'invite', submit, onHide =
         close.remove();
         done.focus({preventScroll: true});
     }
-    mark.append(glyph('report'));
+    if (mode !== 'advice') mark.append(glyph('report'));
+    if (mode === 'advice') {
+        // A known error with its own advice: the advice first, then the way on to the feedback page.
+        tip.classList.add('fv-report-tip-advice');
+        lead.replaceChildren(...words(leadText));
+        const next = el('button', 'fv-action fv-action-primary'); next.type = 'button';
+        next.append(el('span', null, t('Continue to feedback', '继续反馈')), glyph('external'));
+        next.onclick = () => { hide(); proceed?.(); };
+        row.append(next);
+        text.append(lead);
+        card.append(text, row, close);
+        tip.append(card);
+        tip.addEventListener('keydown', event => {
+            if (event.key !== 'Escape') return;
+            event.preventDefault(); event.stopPropagation(); leave();
+        });
+        bar.after(tip);
+        const place = anchor.getBoundingClientRect(), shape = card.getBoundingClientRect();
+        tip.style.setProperty('--fv-tip-notch', `${Math.max(18, Math.min(shape.width - 18, place.left + place.width / 2 - shape.left))}px`);
+        if (animate && !reducedMotion() && typeof tip.animate === 'function') {
+            tip.animate([{maxHeight: '0px', paddingTop: '0px', opacity: 0}, {maxHeight: `${tip.offsetHeight}px`, paddingTop: '6px', opacity: 1}],
+                {duration: 340, easing: 'cubic-bezier(.22,1,.36,1)'});
+        }
+        next.focus({preventScroll: true});
+        return tip;
+    }
     if (mode === 'downloaded') {
         tip.classList.add('fv-report-tip-downloaded');
         title.textContent = t('Diagnostic report downloaded', '诊断报告已下载');
     } else {
         title.textContent = t('Share a diagnostic report?', '欢迎提交诊断报告');
     }
-    lead.replaceChildren(...words(t("We'll optimize specifically for your setup, and it helps other users too.",
+    lead.replaceChildren(...words(leadText || t("We'll optimize specifically for your setup, and it helps other users too.",
         '我们会针对您的硬件配置进行专门优化，也能帮助其他用户。')));
     note.append(glyph('lock', 'fv-report-tip-lock'), t('Hardware, settings and timings only. No prompts, images or videos.',
         '仅包含硬件信息、生成参数和耗时，不含提示词、参考图或视频。'));
