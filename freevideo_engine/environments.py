@@ -142,6 +142,18 @@ def uv_folder(machine=None):
     return 'uv-%s-unknown-linux-gnu' % (linux_machine(machine) or 'x86_64')
 
 
+def conda_lock(value, machine=None):
+    """A conda-forge lock (micromamba and packages) for this Linux processor: its linux_aarch64 section on ARM64."""
+    if linux_machine(machine) == 'aarch64' and 'linux_aarch64' in value:
+        return dict(value, **value['linux_aarch64'])
+    return value
+
+
+def conda_triple(machine=None):
+    """The prefix conda-forge's GCC gives its compilers on this Linux processor."""
+    return '%s-conda-linux-gnu' % (linux_machine(machine) or 'x86_64')
+
+
 def bootstrap_versions(value, system=None, machine=None):
     result = dict(value, target_system=system or platform.system())
     if result['target_system'] == 'Darwin':
@@ -152,7 +164,9 @@ def bootstrap_versions(value, system=None, machine=None):
     elif result['target_system'] == 'Linux':
         result['target_machine'] = linux_machine(machine) or 'x86_64'
         if result['target_machine'] == 'aarch64':
+            # ARM64 servers (and GB10) take NVIDIA's linux-sbsa toolkit archives of the same versions.
             result['uv'] = result['linux_aarch64']['uv']
+            result['cuda_toolkits'] = result['linux_aarch64']['cuda_toolkits']
     return result
 
 

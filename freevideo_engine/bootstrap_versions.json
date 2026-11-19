@@ -34,6 +34,80 @@
       "version": "0.9.0",
       "url": "https://github.com/astral-sh/uv/releases/download/0.9.0/uv-aarch64-unknown-linux-gnu.tar.gz",
       "sha256": "ca410766024d2d726c937bda2e9441823e2848894ac5a2f8b608902384fc391f"
+    },
+    "cuda_toolkits": {
+      "12.9": {
+        "components": {
+          "cuda_nvcc": {
+            "relative_path": "cuda_nvcc/linux-sbsa/cuda_nvcc-linux-sbsa-12.9.86-archive.tar.xz",
+            "sha256": "0aa1fce92dbae76c059c27eefb9d0ffb58e1291151e44ff7c7f1fc2dd9376c0d",
+            "md5": "1322a14e4d6482f69d4b8a14a7d5f4c5",
+            "size": "73407012"
+          },
+          "cuda_cudart": {
+            "relative_path": "cuda_cudart/linux-sbsa/cuda_cudart-linux-sbsa-12.9.79-archive.tar.xz",
+            "sha256": "8b422a3b2cb8452cb678181b0bf9d7aa7342df168b5319c5488ae3b8514101fc",
+            "md5": "c4b3e0d206f5dc3aceaddb78a32424d3",
+            "size": "1521596"
+          },
+          "cuda_cccl": {
+            "relative_path": "cuda_cccl/linux-sbsa/cuda_cccl-linux-sbsa-12.9.27-archive.tar.xz",
+            "sha256": "8c3da24801b500f1d9217d191bb4b63e5d2096c8e7d0b7695e876853180ba82f",
+            "md5": "b39d03cfac57a3b2ded8e9b0a6b0e782",
+            "size": "997840"
+          }
+        },
+        "required_files": [
+          "bin/nvcc",
+          "include/cuda_runtime.h",
+          "include/crt/host_config.h",
+          "include/cub/cub.cuh",
+          "nvvm/bin/cicc",
+          "nvvm/libdevice/libdevice.10.bc"
+        ]
+      },
+      "13.0": {
+        "components": {
+          "cuda_nvcc": {
+            "relative_path": "cuda_nvcc/linux-sbsa/cuda_nvcc-linux-sbsa-13.0.88-archive.tar.xz",
+            "sha256": "01b01e10aa2662ad1b3aeab3317151d7d6d4a650eeade55ded504f6b7fced18e",
+            "md5": "4defe04ac10e7231bfa63cbd72dd8e21",
+            "size": "22383012"
+          },
+          "cuda_cudart": {
+            "relative_path": "cuda_cudart/linux-sbsa/cuda_cudart-linux-sbsa-13.0.96-archive.tar.xz",
+            "sha256": "e2c78564330a09d890f98a066a2082a32c78256ffcc6bccca1696bd2abbaf445",
+            "md5": "ff3140b2fb00f583295484fe36f77995",
+            "size": "1489276"
+          },
+          "cuda_cccl": {
+            "relative_path": "cuda_cccl/linux-sbsa/cuda_cccl-linux-sbsa-13.0.85-archive.tar.xz",
+            "sha256": "eca22ded176804a78afcba3fe1909e7d473366ee1cb9f3784080df23bc8e74d5",
+            "md5": "e50b07ae0a9920ce07a107a5c7030157",
+            "size": "990368"
+          },
+          "cuda_crt": {
+            "relative_path": "cuda_crt/linux-sbsa/cuda_crt-linux-sbsa-13.0.88-archive.tar.xz",
+            "sha256": "c03b92941ba7bf58a4992231ceb572477784ef450ce678f6545bed02392cae50",
+            "md5": "3db54b1fb543f00c1cca085569bffd9e",
+            "size": "79916"
+          },
+          "libnvvm": {
+            "relative_path": "libnvvm/linux-sbsa/libnvvm-linux-sbsa-13.0.88-archive.tar.xz",
+            "sha256": "f94feb1a0da0c55ceb5c7f039c1f0ffad5d162e0fedfb565efb87771187ddcfd",
+            "md5": "b9730ee7e25db76caa843c858af31d98",
+            "size": "38570872"
+          }
+        },
+        "required_files": [
+          "bin/nvcc",
+          "include/cuda_runtime.h",
+          "include/crt/host_config.h",
+          "include/cccl/cub/cub.cuh",
+          "nvvm/bin/cicc",
+          "nvvm/libdevice/libdevice.10.bc"
+        ]
+      }
     }
   },
   "cuda_redist_base": "https://developer.download.nvidia.com/compute/cuda/redist/",
