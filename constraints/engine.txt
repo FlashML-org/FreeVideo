@@ -3,7 +3,7 @@ accelerate==1.14.0
 annotated-doc==0.0.5
 antlr4-python3-runtime==4.9.3
 anyio==4.15.1
-apache-tvm-ffi==0.1.14rc3
+apache-tvm-ffi==0.1.14.post1
 av==18.1.0
 certifi==2026.7.22
 cffi==2.1.1

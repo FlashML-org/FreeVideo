@@ -87,7 +87,8 @@ export function createEditorText({element,state,t,actions,adjust,player,toolbar,
         speechEnd();if(!cues.length){actions.notify?.(speechSilent());return false;}
         finishInline();commitDraft();
         // Lines already on the subtitle track are replaced in one step; the notice undoes it in one press (E15).
-        const had=state.record.tracks.some(track=>track.kind==='subtitle'&&track.clips.length);
+        // Only lines with words count: an empty one just added by "Add subtitle" is not subtitles the person had.
+        const had=state.record.tracks.some(track=>track.kind==='subtitle'&&track.clips.some(c=>String(c.text||'').trim()));
         if(!apply(t('Auto subtitles','自动字幕'),r=>addSubtitles(r,cues,{replace:true})))actions.notify?.(speechFailed(),SPEECH_ISSUE);
         else if(had){const step=state.step;actions.notify?.(t('The subtitles heard replaced the ones there.','识别出的字幕已替换原有字幕。'),null,null,{label:t('Undo','撤销'),use:t('Bring back the subtitles you had','恢复原来的字幕'),run:()=>{if(state.step===step)actions.undo?.();}});}
         else{const missing=projectMissing(state.record);if(missing.length)actions.notify?.(missingHint([...new Set(missing.flatMap(r=>r.chars))],t));}
