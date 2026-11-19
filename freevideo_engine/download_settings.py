@@ -12,6 +12,34 @@ from .proxy import MODES
 CHOICES = ('auto', 'official', 'hf-mirror', 'modelscope')
 # Shown as is by the Tk window and mapped to Chinese by the setup page.
 SPEED_TEST_FAILED = 'The speed test did not finish. Click "Test source speeds".'
+# The launcher's own words, by rough cause; the raw error is not kept (it can carry request headers).
+SPEED_TEST_REASONS = {
+    'offline': ('The speed test could not reach any download source. Check the network or proxy, then click "Test speed" again.',
+                '测速无法连接任何下载源。请检查网络或代理，再点击“测速”。'),
+    'timeout': ('The speed test timed out. The network may be slow; click "Test speed" again.',
+                '测速超时，网络可能较慢。请再点击“测速”。'),
+    'other': ('The speed test did not finish. Click "Test speed" again.', '测速未完成，请再点击“测速”。'),
+}
+
+
+def speed_test_reason(error):
+    """'timeout', 'offline' or 'other' for a failed speed test, from the exception type only."""
+    import socket
+    import urllib.error
+    seen = set()
+    while error is not None and id(error) not in seen:
+        seen.add(id(error))
+        if isinstance(error, (TimeoutError, socket.timeout)):
+            return 'timeout'
+        if isinstance(error, (ConnectionError, socket.gaierror)):
+            return 'offline'
+        if isinstance(error, urllib.error.URLError) and not isinstance(error, urllib.error.HTTPError):
+            error = error.reason if isinstance(error.reason, BaseException) else None
+            if error is None:
+                return 'offline'
+            continue
+        error = error.__cause__ or error.__context__
+    return 'other'
 FAMILIES = ('edge-models', 'vdn-models', 'encoder-models', 'models', 'image-models')
 
 
@@ -172,7 +200,7 @@ class Probe:
                     with self.lock:
                         # Provider exceptions can contain request headers/URLs.
                         self.state=dict(status='failed',root=str(root),
-                            error=SPEED_TEST_FAILED)
+                            error=SPEED_TEST_FAILED,reason=speed_test_reason(error))
             self.thread=threading.Thread(target=work,daemon=True)
             self.thread.start()
             return dict(self.state)

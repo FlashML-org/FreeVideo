@@ -330,7 +330,10 @@ def _failure(error, menu_ready):
         zh.append('Windows 不允许 FreeVideo 写入桌面。如果在“Windows 安全中心”里开启了“受控文件夹访问”，'
                   '请允许 FreeVideo，然后点击“创建桌面快捷方式”。')
     else:
-        en.append(text); zh.append(text)
+        # The system's own words are the cause; the next step is the same button.
+        cause = text.strip().rstrip('.。')
+        en.append(cause + '. Click Create desktop shortcut to try again.')
+        zh.append(cause + '。请点击“创建桌面快捷方式”重试。')
     if menu_ready:
         en.append('FreeVideo is in the Start menu.'); zh.append('开始菜单里可以找到 FreeVideo。')
     return ' '.join(en), ''.join(zh)
@@ -541,5 +544,6 @@ def create_after_install(engine, source, portable_root=None):
     try:
         return create(engine, source, portable_root)
     except (OSError, ValueError) as error:
-        return dict(status='failed', error='Installed successfully, but the desktop shortcut could not be created: ' + str(error),
-                    error_zh='安装已完成，但桌面快捷方式没有创建成功：' + str(error))
+        # A shortcut failure is its own kind, with the same cause and next step as the shortcut button.
+        en, zh = _failure(error, menu_ready=False)
+        return dict(status='failed', kind='shortcut', error='Installed successfully. ' + en, error_zh='安装已完成。' + zh)

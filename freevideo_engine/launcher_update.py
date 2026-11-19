@@ -134,7 +134,29 @@ def failure_kind(error):
             return 'missing'
         if error.code in (401, 403):
             return 'blocked'
-    return 'connection' if isinstance(error, OSError) else 'invalid'
+    if isinstance(error, OSError):
+        return 'connection'
+    # Bad JSON, a manifest that does not validate or a checksum mismatch say the files are wrong; anything
+    # else is a fault in FreeVideo itself, not in what was downloaded.
+    return 'invalid' if isinstance(error, ValueError) else 'unexpected'
+
+
+# The reasons mac_app_update's swap script records, as a cause and the next step.
+MAC_INSTALL_FAILURES = {
+    'old app did not exit': ('The previous FreeVideo did not close within 10 minutes. Quit FreeVideo completely, then update again.',
+                             '旧版 FreeVideo 在 10 分钟内未退出。请完全退出 FreeVideo 后再更新。'),
+    'could not set the old app aside': ('macOS did not allow the app in its folder to be replaced. Move FreeVideo to the Applications folder, or download the new version from the release page.',
+                                        'macOS 不允许替换所在文件夹里的应用。请把 FreeVideo 移到“应用程序”文件夹，或去发布页下载新版本。'),
+    'the new app did not open': ('The new version did not start on this Mac, so the previous version was put back. Download the new version from the release page; if it does not start either, use "Report a problem".',
+                                 '新版本在这台 Mac 上未能启动，已换回原来的版本。请去发布页下载新版本；如果仍然无法启动，请点击“提交问题”。'),
+}
+MAC_INSTALL_FAILURES['could not put the new app in place'] = MAC_INSTALL_FAILURES['could not set the old app aside']
+MAC_INSTALL_FAILURES['the new app did not stay open'] = MAC_INSTALL_FAILURES['the new app did not open']
+
+
+def mac_install_failure(reason, zh=False):
+    """Cause and next step for a recorded swap failure, or '' when the reason is not one of ours."""
+    return MAC_INSTALL_FAILURES.get(reason, ('', ''))[bool(zh)]
 
 
 def error_text(row, zh=False):
@@ -146,6 +168,8 @@ def error_text(row, zh=False):
         'connection': ('Could not connect to the download server.', '无法连接下载服务器。'),
         'invalid': ('The downloaded update files are incomplete or damaged.', '下载的更新文件不完整或已损坏。'),
         'disk': ('There is not enough disk space to download the update.', '磁盘空间不足，无法下载更新。'),
+        'unexpected': ('The update stopped because of an error in FreeVideo. If it happens again, use "Report a problem".',
+                       '更新因 FreeVideo 自身的错误而中断。如果再次出现，请点击“提交问题”。'),
     }
     message = messages.get(row.get('error_code'))
     if message is None:
@@ -918,11 +942,17 @@ class UpdateClient:
         self.failures = 0
         # The swap of an earlier run put the old app back: say so once, and
         # leave the release page as the way to update this time.
-        self.install_failed = False
+        self.install_failed, self.install_failed_reason = False, ''
         if self.current.get('packaging') == 'app':
             marker = io_path(self.root) / 'updates' / 'mac-update-failed.json'
             try:
                 self.install_failed = marker.is_file()
+                if self.install_failed:
+                    # Read why before the marker goes: the swap script records one fixed reason.
+                    try:
+                        self.install_failed_reason = str(json.loads(marker.read_text(encoding='utf-8')).get('reason') or '')
+                    except (OSError, ValueError, AttributeError):
+                        pass
                 marker.unlink(missing_ok=True)
             except OSError:
                 pass
@@ -1017,6 +1047,8 @@ class UpdateClient:
                 row = dict(status='cancelled' if stopped else 'error', candidate=selected or self.available)
                 if not stopped:
                     row['error_code'] = failure_kind(error)
+                    if row['error_code'] == 'unexpected':
+                        log.exception('Launcher update %s stopped unexpectedly', operation)
                 if (not stopped and row['error_code'] not in ('invalid', 'disk')
                         and (operation == 'check' or self.failures <= MAX_DOWNLOAD_RETRIES)):
                     delay = max(min(MAX_RETRY_SECONDS, RETRY_SECONDS * 2**min(self.failures - 1, 4)),

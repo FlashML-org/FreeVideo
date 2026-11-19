@@ -88,7 +88,9 @@ class Installer(SharedInstaller):
             '--out', kernel_report])
         result = json.loads(kernel_report.read_text(encoding='utf-8'))
         if not result.get('ready') or result.get('device_backend') != 'mps':
-            raise RuntimeError('Native GPU checks did not complete; see the retained report')
+            # launcher_failure turns this line into the card; the report lives in this run's folder.
+            raise RuntimeError('Mac GPU check did not pass (backend %s). Report: %s' %
+                               (result.get('device_backend') or 'none', kernel_report))
         save(self.root / 'kernel-capabilities.json', result)
 
     def record_kernel_validation(self, results, kernel_report):

@@ -128,7 +128,7 @@ function Get-FreeVideoUv {
           [switch]$OfficialOnly)
     $wheel = $Catalog.windows
     if ($Catalog.version -ne $Spec.version -or $wheel.legacy_sha256 -ne $Spec.sha256) {
-        throw 'The uv download catalog does not match the pinned bootstrap version'
+        throw "The uv download catalog does not match the pinned bootstrap version: this copy of FreeVideo is incomplete or mixes two versions. Download FreeVideo again from https://github.com/FlashML-org/FreeVideo/releases/latest. Log: $LogPath"
     }
     $destination = Join-Path $BootstrapRoot ('uv-' + $Spec.version + '\uv.exe')
     $artifacts = @(

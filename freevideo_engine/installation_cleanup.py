@@ -195,7 +195,10 @@ class Cleaner:
             except BlockingIOError:
                 self.state = dict(status='busy', bytes=0, error='')
             except Exception as error:
-                self.state = dict(status='error', bytes=0, error=redacted_launcher_error(str(error)))
+                from .package_cleanup import failure_reason
+                # The code picks the sentence; the redacted text stays for "Copy details" and the report.
+                self.state = dict(status='error', bytes=0, reason=failure_reason(error),
+                                  error=redacted_launcher_error(str(error)))
         # If the window closes, finish the current tool operation and release
         # its leases before Python exits; do not abandon a half-cleaned cache.
         self.thread = threading.Thread(target=work, name='freevideo-storage')

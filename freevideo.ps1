@@ -158,7 +158,7 @@ try {
             if ($pythonReason) { $pythonDetail = " uv reported: $pythonReason." }
             if (-not $installed) { throw "Python installation failed (uv exit $pythonExit).$pythonDetail Check your network or connection mode in Downloads. See $bootstrapLog and retry." }
             $freevideoPython = (& $uv python find --managed-python $versions.python | Select-Object -Last 1).Trim()
-            if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $freevideoPython)) { throw 'Managed Python could not be located.' }
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $freevideoPython)) { throw "Python was installed but could not be found (uv exit $LASTEXITCODE). See $bootstrapLog, then run the same command again." }
         } finally {
             if ($patientDownloadNotice -and $env:FREEVIDEO_UI_EVENTS -eq '1') {
                 Write-Host '{"event":"freevideo_ui","kind":"progress","key":"download-patient-python","label":"Download","detail":"","state":"complete"}'
@@ -177,6 +177,9 @@ try {
 } catch {
     Write-Host ("FreeVideo could not start: " + $_.Exception.Message) -ForegroundColor Red
     Write-Host 'Existing files are retained. Retry the same command after resolving the reported issue.'
+    $freevideoReportLog = ''
+    if ($bootstrapLog -and (Test-Path -LiteralPath $bootstrapLog)) { $freevideoReportLog = " and attach $bootstrapLog" }
+    Write-Host ("To report it: open a new issue at https://github.com/FlashML-org/FreeVideo/issues/new with this message" + $freevideoReportLog + '.')
 } finally {
     [Console]::OutputEncoding = $freevideoConsoleEncoding
     foreach ($name in $freevideoSavedEnvironment.Keys) {

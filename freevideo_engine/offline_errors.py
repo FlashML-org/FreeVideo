@@ -20,8 +20,18 @@ COPY = {
     'path': ('The offline package could not be imported: the path of the chosen folder is too long to save some of '
              'the files. Choose a folder with a shorter path%s and import again.',
              '离线包未能导入：所选文件夹的路径太长，部分文件无法保存。请换一个路径更短的文件夹再导入%s。'),
+    'in-use': ('The offline package could not be imported: a file is in use by another program. Close programs that '
+               'may be using the folder (for example an antivirus scan), then import again.',
+               '离线包未能导入：有文件被其他程序占用。请关闭可能正在使用该文件夹的程序（例如杀毒软件扫描），再导入。'),
+    'missing': ('The offline package could not be imported: a file disappeared during the import, or the drive was '
+                'disconnected. Check that the package and the folder are still there, then import again.',
+                '离线包未能导入：导入过程中有文件不见了，或磁盘已断开。请确认离线包和文件夹都还在，再导入。'),
+    'read': ('The offline package could not be imported: reading it failed, so the file or the drive may be damaged. '
+             'Download the package again or copy it to another drive, then import again.',
+             '离线包未能导入：读取时出错，文件或磁盘可能已损坏。请重新下载离线包，或复制到其他磁盘后再导入。'),
     'other': ('The offline package could not be imported. Choose another folder and import again.',
               '离线包未能导入。请换一个文件夹再导入。'),
+    'import-title': ('The offline package was not imported', '离线包未能导入'),
 }
 # The example folder is a Windows path; other systems leave it out.
 PATH_EXAMPLE = (', such as D:\\FreeVideo,', '，例如 D:\\FreeVideo')
@@ -44,6 +54,10 @@ def write_reason(error, *, windows=None):
     if code is not None:
         if code in (5, 19):
             return 'permission'
+        if code in (32, 33):  # sharing and lock violations
+            return 'in-use'
+        if code in (23, 1392, 1117):  # data error (CRC), corrupt file, device I/O error
+            return 'read'
         if code in (39, 112):
             return 'disk'
         if code == 206:
@@ -56,6 +70,10 @@ def write_reason(error, *, windows=None):
             return 'disk'
         if error.errno == errno.ENAMETOOLONG:
             return 'path'
+        if error.errno in (errno.EBUSY, errno.ETXTBSY):
+            return 'in-use'
+        if error.errno == errno.EIO:
+            return 'read'
         missing = error.errno == errno.ENOENT
     if win and missing:
         try:
@@ -65,7 +83,8 @@ def write_reason(error, *, windows=None):
                 return 'path'
         except Exception:
             pass
-    return 'other'
+    # A missing file that is not explained by a long path: moved, deleted or a disconnected drive.
+    return 'missing' if missing else 'other'
 
 
 def guidance(reason, zh=False, *, windows=None):

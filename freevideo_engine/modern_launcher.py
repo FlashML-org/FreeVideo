@@ -353,7 +353,8 @@ def create_ui(session, *, show=True, instance=None):
             for value in urls:
                 url = value if isinstance(value, QUrl) else QUrl(str(value))
                 if not url.isLocalFile():
-                    session.error = session.t('Drop downloaded ZIP files here.', '请拖入已下载到本机的 ZIP 文件。')
+                    # A hint, not a failure: the card stays as it was.
+                    session.action_notice = 'drop_local_zip'
                     self.refresh()
                     return
                 paths.append(url.toLocalFile())
