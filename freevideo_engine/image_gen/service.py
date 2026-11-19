@@ -2192,7 +2192,7 @@ class Service:
             return False
         # Which picture model comes is not known yet when the session starts: the larger installed one counts.
         sizes = []
-        for files in (self.warm_files(machine), self.qwen_files(machine)):
+        for files in (self.model_files(machine, model) for model in image_model.MODELS):
             try:
                 sizes.append(sum(os.path.getsize(item) for item in files))
             except OSError:
