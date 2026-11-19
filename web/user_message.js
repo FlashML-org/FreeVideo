@@ -40,5 +40,5 @@ export function userMessage(error, t, fallback = t('Did not finish. Try again.',
     }
     const said = (typeof error === 'string' ? error : typeof error?.message === 'string' ? error.message : '').trim();
     if (said && !isRawErrorText(said)) return said;
-    return status ? t(`FreeVideo answered with an error (HTTP ${status}). `, `FreeVideo 返回了错误（HTTP ${status}）。`) + fallback : fallback;
+    return status ? t(`FreeVideo returned an error (HTTP ${status}). `, `FreeVideo 返回了错误（HTTP ${status}）。`) + fallback : fallback;
 }

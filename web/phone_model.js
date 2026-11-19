@@ -47,7 +47,7 @@ export async function saveVideo(job, {navigator: nav = globalThis.navigator, fet
     const path = mediaPath(job.play); if (!path) throw new Error('Video unavailable');
     if (isIOS(nav) && nav.share && FileType) {
         const response = await get(path, {credentials: 'same-origin'});
-        if (!response.ok) throw new Error('Video unavailable');
+        if (!response.ok) throw Object.assign(new Error('Video unavailable'), {status: response.status});
         const file = new FileType([await response.blob()], 'FreeVideo.mp4', {type: 'video/mp4'});
         if (!nav.canShare || nav.canShare({files: [file]})) {
             try { await nav.share({files: [file]}); return 'shared'; }
@@ -85,4 +85,22 @@ export function longGeneration(value) {
     if (value.status && value.status !== 'running' || ['queued', 'waiting'].includes(value.phase)) return false;
     const p = value.progress || value;
     return Number(p.remaining_seconds ?? p.overall?.remaining_seconds) > 120 || Number(p.elapsed_seconds ?? p.overall?.elapsed_seconds) >= 120;
+}
+
+// Why a request from the phone failed, in one sentence: the computer could not be reached (no reply at all), or
+// FreeVideo on it returned an error (its own sentence when it wrote one, otherwise the HTTP status).
+// `what` is the action as [English, Chinese], e.g. ['send', '发送'].
+const RAW_REPLY = /^(?:HTTP\s*)?\d{3}\b|^[a-z][a-z0-9]*(?:[_.:-][a-z0-9]+)+$|Error\b|Traceback|Unexpected token|JSON/;
+export function phoneFailure(error, t, [en, zh]) {
+    const status = Number(error?.status);
+    if (!(Number.isInteger(status) && status >= 100 && status < 600)) {
+        if (error?.name === 'TypeError' || error?.unreachable)
+            return t(`Could not ${en}: the phone cannot reach FreeVideo on the computer. Check that the computer is on and connected to the same Wi-Fi.`,
+                `没能${zh}：手机连不上电脑上的 FreeVideo。请确认电脑已开机，并与手机连接同一个 Wi-Fi。`);
+        return t(`Could not ${en}. Try again.`, `没能${zh}，请重试。`);
+    }
+    const said = error?.data?.error?.message ?? error?.data?.message ?? (typeof error?.data?.error === 'string' ? error.data.error : '');
+    if (typeof said === 'string' && said.trim() && !RAW_REPLY.test(said.trim())) return said.trim();
+    return t(`Could not ${en}: FreeVideo on the computer returned an error (HTTP ${status}). Try again.`,
+        `没能${zh}：电脑上的 FreeVideo 返回了错误（HTTP ${status}）。请重试。`);
 }
