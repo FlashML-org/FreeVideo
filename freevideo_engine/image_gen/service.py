@@ -94,6 +94,24 @@ INVALID_ERRORS = frozenset(('invalid_request', 'invalid_prompt', 'invalid_dimens
                             'invalid_media', 'invalid_points', 'too_many_images')) | LORA_ERRORS
 
 
+def native_allocator(env):
+    """``env`` with CUDA's native caching allocator where ComfyUI had chosen the asynchronous one.
+
+    ComfyUI turns ``backend:cudaMallocAsync`` on in its own process and every child inherits it. The video worker
+    names its allocator itself; the picture worker did not, so its card memory was counted by an allocator the
+    placement plan was never measured with."""
+    selected = env.get('PYTORCH_ALLOC_CONF', env.get('PYTORCH_CUDA_ALLOC_CONF'))
+    if not selected or 'cudaMallocAsync' not in selected:
+        return env
+    options = ['backend:native' if option.strip() == 'backend:cudaMallocAsync' else option
+               for option in selected.split(',')]
+    if 'backend:native' not in options:
+        options.insert(0, 'backend:native')
+    value = ','.join(option for option in options if 'cudaMallocAsync' not in option)
+    env.update(PYTORCH_ALLOC_CONF=value, PYTORCH_CUDA_ALLOC_CONF=value)
+    return env
+
+
 def comfy_server():
     """ComfyUI's server in this process, or None (tests, the engine's own command line)."""
     try:
@@ -2024,7 +2042,7 @@ class Service:
         for name in ('FREEVIDEO_RUNTIME_LOCK_FD', processes.HANDLE_ENV, resident_process.ENV,
                      'FREEVIDEO_PROMPT_PRESTART_WORKER'):
             env.pop(name, None)
-        return env
+        return native_allocator(env)
 
     def takes_video_room(self, machine, model):
         """Whether loading ``model`` now would give back what the kept video worker holds, as a picture session does
