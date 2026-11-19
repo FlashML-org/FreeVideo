@@ -690,6 +690,8 @@ def _render_faster(project, resolve, target, settings, clips, *, progress, cance
         _render_seams(project, resolve, base, progress=first, cancelled=cancelled,
                       options=dataclasses.replace(settings, fps=FPS, intermediate=True))
         _check(cancelled)
+        if _clearly_too_full(base, settings):
+            raise ExportError('disk_full')
 
         def moved(value):
             if progress and value.get('stage') == frame_interp.STAGE and value.get('total'):
@@ -718,6 +720,20 @@ def _render_faster(project, resolve, target, settings, clips, *, progress, cance
     finally:
         base.unlink(missing_ok=True)
         faster.unlink(missing_ok=True)
+
+
+def _clearly_too_full(base, settings):
+    """Whether the disk plainly cannot take the faster file, said before the graphics card spends minutes on it.
+
+    The final file is estimated from the near-lossless 24 fps one: more frames, and about half the size for every 6 steps
+    of quality given up. Only half of that is asked for, so a close call is left to the write itself."""
+    from .disk_space import free_bytes
+    try:
+        size, free = base.stat().st_size, free_bytes(base.parent)
+    except (OSError, ValueError):
+        return False
+    crf = int(settings.video_options['crf'])
+    return free < size * settings.fps / FPS * 2 ** ((10 - crf) / 6) / 2
 
 
 def _render_once(project, resolve, target, *, progress, cancelled, options, repair_seams):

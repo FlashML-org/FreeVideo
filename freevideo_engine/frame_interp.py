@@ -279,8 +279,12 @@ def main():
             write(request['source'], request['target'], fps=request['fps'], video_options=request['video_options'],
                   cuts=request['cuts'], between=between, emit=emit, check=check)
     except Exception as error:
-        save(work / 'error.json', dict(error=type(error).__name__ + ': ' + str(error),
-                                       code=getattr(error, 'code', None)))
+        from .disk_space import ran_out
+        try:
+            save(work / 'error.json', dict(error=type(error).__name__ + ': ' + str(error),
+                                           code='disk_full' if ran_out(error) else getattr(error, 'code', None)))
+        except OSError:
+            pass  # A full disk may not take this either; the parent then looks at the free space itself.
         return 1
     return 0
 
@@ -297,6 +301,14 @@ def release_gpu(required=3 * 2 ** 30):
         memory.soft_empty_cache()
     except Exception:
         pass
+
+
+def _nearly_full(folder, margin=16 * 2 ** 20):
+    from .disk_space import free_bytes
+    try:
+        return free_bytes(folder) < margin
+    except (OSError, ValueError):
+        return False
 
 
 def convert(source, target, *, fps, video_options, cuts, root=None, python=None, environ=None,
@@ -349,7 +361,9 @@ def convert(source, target, *, fps, video_options, cuts, root=None, python=None,
                         error = json.loads((work / 'error.json').read_text(encoding='utf-8'))
                     except (OSError, ValueError):
                         error = {}
-                    if error.get('code') in ('interp_download', 'interp_memory'):
+                    if not error and _nearly_full(target.parent):
+                        error = dict(code='disk_full')
+                    if error.get('code') in ('interp_download', 'interp_memory', 'disk_full'):
                         raise InterpolationError(error['code'], error.get('error', ''))
                     raise RuntimeError(error.get('error') or 'Frame interpolation worker exited with code %s'
                                        % child.returncode)
