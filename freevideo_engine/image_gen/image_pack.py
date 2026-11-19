@@ -205,16 +205,49 @@ def base(root=None):
     return Path(root).expanduser().absolute() / 'image_gen'
 
 
-def _path(folder, name):
-    """Refuse links at the pack root or below it, including partials/receipts."""
+def _linked(path):
+    """A symbolic link, or a Windows directory junction (which is_symlink() does not count)."""
+    if path.is_symlink():
+        return True
+    junction = getattr(path, 'is_junction', None)
+    return bool(junction and junction())
+
+
+def _follow(path):
+    """A link people use to keep the models on another drive must lead somewhere that exists."""
+    try:
+        path.resolve(strict=True)
+    except (OSError, RuntimeError) as error:
+        logging.warning('[FreeVideo] An image model link leads nowhere: %s', redacted_launcher_error(str(path)))
+        raise PackError('broken_link', link=str(path)) from error
+
+
+def _path(folder, name, *, kind='record'):
+    """Where `name` lives in the pack. People keep models on another drive with a link, so the pack folder, its
+    subfolders and the weights ('weight') may be links that lead to something that exists. A file FreeVideo writes
+    itself is never a link: a partial or source record ('beside') sits in its weight's folder wherever that is, and
+    any other record (receipts, ownership, the lock, logs, the notice) stays inside the pack folder itself.
+    Names never leave the pack: _relative refuses absolute paths and '..'."""
     relative = _relative(name)
     path = folder
-    if path.is_symlink():
-        raise PackError('unsafe_path')
-    for part in relative.parts:
+    if _linked(path):
+        _follow(path)
+    for index, part in enumerate(relative.parts):
         path /= part
-        if path.is_symlink():
-            raise PackError('unsafe_path')
+        if not _linked(path):
+            continue
+        if index == len(relative.parts) - 1 and kind != 'weight':
+            logging.warning('[FreeVideo] An image model record file is a link: %s', redacted_launcher_error(str(path)))
+            raise PackError('unsafe_path', link=str(path))
+        _follow(path)
+    if kind == 'record' and len(relative.parts) > 1:
+        try:
+            inside = path.parent.resolve().is_relative_to(folder.resolve())
+        except (OSError, RuntimeError):
+            inside = False
+        if not inside:
+            logging.warning('[FreeVideo] An image model record folder leads outside the pack: %s', redacted_launcher_error(str(path)))
+            raise PackError('unsafe_path', link=str(path.parent))
     return path
 
 
@@ -237,14 +270,14 @@ def shared_root(root=None):
 def target(row, root=None):
     if row.get('shared'):
         return shared_root(root) / _relative(row['file'])
-    return _path(base(root), row['file'])
+    return _path(base(root), row['file'], kind='weight')
 
 
 def _side(folder, row, root, suffix):
     """A partial or source record sits next to its file, also for a file outside the pack folder."""
     if row.get('shared'):
         return Path(str(target(row, root)) + suffix)
-    return _path(folder, row['file'] + suffix)
+    return _path(folder, row['file'] + suffix, kind='beside')
 
 
 def _read(folder, name):
@@ -768,6 +801,9 @@ def install(root=None, progress=None, check=None, *, engine_root=None, repair=Fa
                 check()
                 path = target(row, root)
                 if path.exists():
+                    if not row.get('shared') and _linked(path):
+                        # The user's link leads to a different file: neither the link nor that file is ours to replace.
+                        raise PackError('link_mismatch', link=str(path))
                     if not repair or row.get('shared'):
                         raise PackError('needs_repair')
                     approved = model_repair.replacement(path, row, model_repair.read(folder), set())
@@ -790,7 +826,7 @@ def install(root=None, progress=None, check=None, *, engine_root=None, repair=Fa
                 finally:
                     # Completed files and cancellable prefixes have separate identities.
                     for artifact in (partial, affinity):
-                        if not row.get('shared') and may_own[artifact] and _path(folder, artifact.relative_to(folder).as_posix()).is_file():
+                        if not row.get('shared') and may_own[artifact] and _path(folder, artifact.relative_to(folder).as_posix(), kind='beside').is_file():
                             _own(folder, owned, artifact)
                 ledger[str(path)] = provision.file_identity(path, row)
                 save(_path(folder, LEDGER), ledger)
@@ -812,24 +848,29 @@ def repair(root=None, progress=None, check=None, *, engine_root=None, group='ima
     return install(root, progress, check, engine_root=engine_root, repair=True, group=group)
 
 
+def _kinds(group):
+    """The files of a group FreeVideo may remove, by kind for _path: each weight and what resumes its download."""
+    kinds = {}
+    for row in rows(group=group):
+        if not row.get('shared'):
+            kinds.update({row['file']: 'weight', row['file'] + '.partial': 'beside', row['file'] + '.partial.source.json': 'beside'})
+    return kinds
+
+
 def removal_plan(root=None, *, group='image'):
     folder = base(root)
     owned = _read(folder, OWNERSHIP)
     notice = NOTICES[_notice_key(group)][0]
-    allowed = {notice}
-    for row in rows(group=group):
-        if not row.get('shared'):
-            allowed.update((row['file'], row['file'] + '.partial', row['file'] + '.partial.source.json'))
-    for name in allowed:
-        if name == notice:
-            continue
-        _path(folder, name)
+    kinds = _kinds(group)
+    allowed = {notice, *kinds}
+    for name in kinds:
+        _path(folder, name, kind=kinds[name])
     files, skipped = [], []
     for name, stamp in owned.items():
         if name not in allowed or not isinstance(stamp, dict):
             continue
         try:
-            path = _path(folder, name)
+            path = _path(folder, name, kind=kinds.get(name, 'record'))
         except PackError:
             if name != notice:
                 raise
@@ -837,7 +878,8 @@ def removal_plan(root=None, *, group='image'):
             continue
         if not path.exists():
             continue
-        if _owned_intact(path, stamp):
+        # A weight the user replaced with a link is theirs now: neither the link nor what it leads to is removed.
+        if not _linked(path) and _owned_intact(path, stamp):
             files.append(dict(file=name, identity=stamp, bytes=path.stat().st_size))
         else:
             skipped.append(name)
@@ -852,11 +894,12 @@ def remove(root=None, check=None, *, engine_root=None, group='image'):
             plan = removal_plan(root, group=group)
             owned, ledger = _read(folder, OWNERSHIP), _read(folder, LEDGER)
             released, removed = 0, []
+            kinds = _kinds(group)
             for entry in plan['files']:
                 check()
-                path = _path(folder, entry['file'])
+                path = _path(folder, entry['file'], kind=kinds.get(entry['file'], 'record'))
                 stamp = entry['identity']
-                if not _owned_intact(path, stamp):
+                if _linked(path) or not _owned_intact(path, stamp):
                     plan['skipped'].append(entry['file'])
                     continue
                 path.unlink()

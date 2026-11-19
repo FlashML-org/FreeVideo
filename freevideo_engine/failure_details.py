@@ -35,7 +35,12 @@ IMAGE_PACK_FAILURES = {
     'busy_video': ('A video is using the graphics card; try again when it finishes.', '视频正在使用显卡，完成后再试。'),
     'needs_repair': ('The image model files are incomplete or damaged; repair them in the launcher.', '图像模型文件不完整或已损坏，请在启动器里修复。'),
     'changed': ('The image model files changed during the check; they were kept, so check again.', '图像模型文件在检查期间发生变化，已保留，请重新检查。'),
-    'unsafe_path': ('The image model folder contains a link that cannot be safely changed.', '图像模型目录含有无法安全修改的链接。'),
+    'unsafe_path': ("One of FreeVideo's own record files in the image model folder (image_gen) is a link or leads outside that folder, so it was not written; delete that link and try again.",
+                    '图像模型目录（image_gen）里 FreeVideo 自己的记录文件是链接或指向目录之外，所以没有写入；请删掉这个链接后重试。'),
+    'broken_link': ('A link in the image model folder leads to a place that does not exist, for example a drive that is not connected; connect that drive or folder, or delete the link and download the model again.',
+                    '图像模型目录里有链接指向不存在的位置（例如没接上的硬盘）；请接上它指向的盘或文件夹，或删掉这个链接后重新下载模型。'),
+    'link_mismatch': ('A model file in the image model folder is a link to a file that is damaged or a different version; delete the link so FreeVideo can download the file again, or point the link to the right file.',
+                      '图像模型目录里有模型文件是链接，它指向的文件已损坏或版本不对；请删掉这个链接让 FreeVideo 重新下载，或把链接改指向正确的文件。'),
     'failed': ('The image model operation stopped because of an unexpected error. Export the report, then use "Report a problem" and attach it.',
                '图像模型操作因意外错误停止。请先导出报告，再点击“提交问题”并附上报告。'),
 }

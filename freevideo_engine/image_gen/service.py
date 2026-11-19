@@ -268,18 +268,32 @@ class Service:
     def busy(self):
         return self._busy or self.segmenting
 
+    @staticmethod
+    def pack_checked(call, *args, **kwargs):
+        """(value, problem): a model folder that cannot be read safely (a link leading nowhere) marks that model as
+        failed with the reason and the next step, instead of failing the whole page."""
+        try:
+            return call(*args, **kwargs), None
+        except image_pack.PackError as error:
+            from ..failure_details import image_pack_error_code, image_pack_failure
+            code = image_pack_error_code(error)
+            return None, dict(state='failed', done=0, total=0, bytes_per_second=0, reason=code,
+                              message_en=image_pack_failure(code)['detail'], message_zh=image_pack_failure(code, zh=True)['detail'])
+
     def info(self):
         engine_root, machine = self.installation()
         spec = image_pack.catalog()
-        ready = image_pack.ready(machine['model_root'])
-        downloading = not ready and image_pack.downloading(machine['model_root'], engine_root)
-        return dict(ready=ready, model=spec['repo'], models=self.model_rows(machine, ready, downloading),
-                    checking=not ready and image_pack.checking(machine['model_root']),
+        root = machine['model_root']
+        ready, problem = self.pack_checked(image_pack.ready, root)
+        ready = bool(ready)
+        downloading = not ready and not problem and bool(self.pack_checked(image_pack.downloading, root, engine_root)[0])
+        return dict(ready=ready, model=spec['repo'], models=self.model_rows(machine, ready, downloading, problem),
+                    checking=not ready and image_pack.checking(root),
                     downloading=downloading,
                     bytes=sum(row['bytes'] for row in spec['groups']['image']), busy=self.busy(),
-                    max_images=MAX_IMAGES, sizes=self.size_tiers(machine), install=self.pack_state(ready),
+                    max_images=MAX_IMAGES, sizes=self.size_tiers(machine), install=self.pack_state(ready, problem),
                     face_box=True,
-                    segment=dict(ready=image_pack.ready(machine['model_root'], group='segment'),
+                    segment=dict(ready=bool(self.pack_checked(image_pack.ready, root, group='segment')[0]),
                                  max_points=16, device='cpu',
                                  install=self.segment_installer.state() if self.segment_installer else None),
                     disk_free_bytes=self.disk_free(machine['model_root']),
@@ -287,17 +301,20 @@ class Service:
                     purposes=list(PURPOSES),
                     **({'unified_memory': True} if machine.get('device_backend') == 'mps' else {}))
 
-    def model_rows(self, machine, qwen_ready, qwen_downloading):
+    def model_rows(self, machine, qwen_ready, qwen_downloading, qwen_problem=None):
         """Both picture models for the page: installed, or being fetched with the bytes still to download."""
         root = machine['model_root']
         mac = sys.platform == 'darwin'
-        h3_ready = not mac and image_pack.ready(root, group=H3_GROUP)
-        h3_status = {} if h3_ready or mac else image_pack.status(root, group=H3_GROUP)
+        h3_ready, h3_problem = False, None
+        if not mac:
+            h3_ready, h3_problem = self.pack_checked(image_pack.ready, root, group=H3_GROUP)
+            h3_ready = bool(h3_ready)
+        h3_status = {} if h3_ready or mac or h3_problem else image_pack.status(root, group=H3_GROUP)
         installer = self.h3_installer
         h3_state = None if h3_ready or installer is None else installer.state()
         h3_active = h3_state is not None and h3_state['state'] in ('running', 'paused_for_generation')
-        qwen_state = None if qwen_ready else self.pack_state(False)
-        qwen_status = {} if qwen_ready else image_pack.status(root)
+        qwen_state = None if qwen_ready else self.pack_state(False, qwen_problem)
+        qwen_status = {} if qwen_ready or qwen_problem else image_pack.status(root)
         with self.mutex:
             waiting = list(self.pack_queue)
             active = self._active_pack()
@@ -311,7 +328,7 @@ class Service:
                      checking=bool(h3_status.get('checking')),
                      shared_bytes=sum(r['bytes'] for r in h3_rows if r.get('shared')),
                      blocked_by=active if active == image_model.QWEN and not h3_ready else None,
-                     install=None if mac else queued if image_model.H3 in waiting else self.pack_row(self.h3_installer, h3_ready))]
+                     install=None if mac else queued if image_model.H3 in waiting else self.pack_row(self.h3_installer, h3_ready, h3_problem))]
         if mac:
             rows[0]['unavailable_reason'] = 'platform'
         rows.append(dict(id=image_model.QWEN, label='Qwen-Image 2.1', available=True, ready=qwen_ready, max_images=MAX_IMAGES,
@@ -322,8 +339,9 @@ class Service:
                          shared_bytes=0,
                          blocked_by=active if active == image_model.H3 and not qwen_ready else None,
                          install=queued if image_model.QWEN in waiting else qwen_state))
-        moss_ready = image_pack.ready(root, group=MOSS_GROUP)
-        moss_status = {} if moss_ready else image_pack.status(root, group=MOSS_GROUP)
+        moss_ready, moss_problem = self.pack_checked(image_pack.ready, root, group=MOSS_GROUP)
+        moss_ready = bool(moss_ready)
+        moss_status = {} if moss_ready or moss_problem else image_pack.status(root, group=MOSS_GROUP)
         moss_state = None if moss_ready or self.moss_installer is None else self.moss_installer.state()
         moss_active = moss_state is not None and moss_state['state'] in ('running', 'paused_for_generation')
         moss_rows = image_pack.rows(group=MOSS_GROUP)
@@ -334,7 +352,7 @@ class Service:
                          bytes_needed=moss_status.get('remaining_bytes', 0), shared_bytes=0,
                          blocked_by=active if active not in (None, image_model.MOSS) and not moss_ready else None,
                          install=None if moss_ready else queued if image_model.MOSS in waiting
-                         else self.pack_row(self.moss_installer, moss_ready)))
+                         else self.pack_row(self.moss_installer, moss_ready, moss_problem)))
         if mac:
             rows[-1]['unavailable_reason'] = 'platform'
         return rows
@@ -393,15 +411,18 @@ class Service:
                 total = None
         return ['standard', 'high'] if total and total >= HIGH_SIZE_MIN_TOTAL else ['standard']
 
-    def pack_state(self, ready):
+    def pack_state(self, ready, problem=None):
         """Progress of the Qwen-Image download this page started, in both languages for a failure."""
-        return self.pack_row(self.pack_installer, ready)
+        return self.pack_row(self.pack_installer, ready, problem)
 
     @staticmethod
-    def pack_row(installer, ready):
-        """Progress of one picture-model download; a failure carries both languages and the report id."""
-        if ready or installer is None:
+    def pack_row(installer, ready, problem=None):
+        """Progress of one picture-model download; a failure carries both languages and the report id. A model
+        folder that cannot be read safely shows as that failure unless a download of it is under way."""
+        if ready:
             return None
+        if installer is None or problem and installer.state()['state'] not in ('running', 'paused_for_generation', 'failed'):
+            return problem
         from ..failure_details import image_pack_failure
         value = installer.state()
         row = dict(state=value['state'], done=value.get('done', 0), total=value.get('total', 0),
@@ -425,8 +446,9 @@ class Service:
         return installer
 
     def _pack_ready(self, model, root):
+        """Not ready when its folder cannot be read safely either: the download then stops with the reason."""
         group = self.model_group(model)
-        return image_pack.ready(root, group=group) if group else image_pack.ready(root)
+        return bool(self.pack_checked(image_pack.ready, root, **({'group': group} if group else {}))[0])
 
     @staticmethod
     def model_group(model):
@@ -480,7 +502,8 @@ class Service:
                 if action == 'cancel':
                     if installer is not None:
                         installer.cancel()
-                elif not image_pack.ready(root, group=group) and not image_pack.downloading(root, engine_root):
+                elif (not self.pack_checked(image_pack.ready, root, group=group)[0]
+                      and not self.pack_checked(image_pack.downloading, root, engine_root)[0]):
                     if installer is None or installer.root != root or installer.engine_root != engine_root:
                         installer = image_pack.Installer(root, engine_root=engine_root, busy=self.video_busy, group=group)
                         self.segment_installer = installer
@@ -2662,6 +2685,12 @@ def register():
             return web.json_response(dict(service.info(), token=token))
         except (OSError, ValueError):
             return web.json_response(dict(error='setup_required'), status=400)
+        except image_pack.PackError as error:
+            # Never an empty 500: the reason and the next step, in both languages.
+            from ..failure_details import image_pack_error_code, image_pack_failure
+            code = image_pack_error_code(error)
+            return web.json_response(dict(error=code, message_en=image_pack_failure(code)['detail'],
+                                          message_zh=image_pack_failure(code, zh=True)['detail']), status=409)
 
     @server.routes.get('/freevideo/image-gen/report/{report_id}')
     async def report(request):
