@@ -1408,7 +1408,7 @@ class Service:
                 root, machine = self.installation()
             except (OSError, ValueError):
                 return skipped('pack_missing')
-            if not image_pack.ready(machine['model_root'], group=H3_GROUP if h3 else 'image'):
+            if not image_pack.ready(machine['model_root'], group=self.model_group(model) or 'image'):
                 return skipped('pack_missing')
             from .image_policy import UNIFIED_MIN_TOTAL
             unified = self.unified_total(machine)
@@ -1419,7 +1419,9 @@ class Service:
                 row['files'] = self.warm_files(machine)
                 row['place_encoder'] = self.h3_resident(machine)
             elif level == 'light':
-                row['files'] = self.qwen_files(machine)
+                row['files'] = self.model_files(machine, model)
+            elif model == image_model.MOSS:
+                pass    # a MOSS picture is not planned like Qwen's (no preflight): its warm-up is not either
             else:
                 try:
                     plan = self.preflight(machine, dict(images=[], width=1024, height=1024))
@@ -1520,13 +1522,26 @@ class Service:
                          stop=stop or self.session_stop)
 
     @staticmethod
-    def qwen_files(machine):
-        """The picture model's files to read ahead for a light warm-up of the default model."""
+    def group_files(machine, group):
         try:
-            rows = [image_pack.target(row, machine['model_root']) for row in image_pack.rows(group='image')]
+            rows = [image_pack.target(row, machine['model_root']) for row in image_pack.rows(group=group)]
         except Exception:
             return []
         return [str(item) for item in rows if Path(item).is_file()]
+
+    @classmethod
+    def qwen_files(cls, machine):
+        """The picture model's files to read ahead for a light warm-up of the default model."""
+        return cls.group_files(machine, 'image')
+
+    @classmethod
+    def model_files(cls, machine, model):
+        """The files to read ahead for a picture model: each model's own, from one table."""
+        if model == image_model.H3:
+            return cls.warm_files(machine)
+        if model == image_model.MOSS:
+            return cls.group_files(machine, MOSS_GROUP)
+        return cls.qwen_files(machine)
 
     @staticmethod
     def warm_files(machine):

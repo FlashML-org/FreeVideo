@@ -160,7 +160,7 @@ class Probe:
             files = encoder_file(machine)
         else:
             _, images = self.services()
-            files = images.warm_files(machine) if self.held == image_model.H3 else images.qwen_files(machine)
+            files = images.model_files(machine, self.held)
         size = sum(os.path.getsize(item) for item in files)
         return size + keep.RESERVE_BYTES if size > 0 else None
 
