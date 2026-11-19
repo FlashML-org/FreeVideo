@@ -3,7 +3,7 @@
 // graph node to hold it) and puts trigger words into the prompt the way the video panel does.
 import {reconcileLoraTriggers} from './lora_triggers.js';
 import {createVerdicts} from './lora_check.js';
-import {skinSelect} from './fv_select.js';
+import {loraMenu} from './lora_menu.js';
 import {userMessage} from './user_message.js';
 
 export const IMAGE_LORA_LIMIT = 8, IMAGE_LORA_STRENGTH = 2;
@@ -137,7 +137,7 @@ export function createImageLoras({t, fetchApi, el = domEl, getPrompt = () => '',
                 catch (error) { note.textContent = userMessage(error, t, t('Could not save the trigger words. Try again.', '没能保存触发词，请重试。')); }
             };
             const check = () => verdicts.get(row.name).then(() => { if (!disposed && wrap.isConnected && select.value === row.name) { show(); drawSummary(); syncPrompt(); onChange(); } });
-            wrap.append(on, skinSelect(select), strength, remove, trigger, problem);
+            wrap.append(on, loraMenu(select, t).wrap, strength, remove, trigger, problem);
             list.append(wrap); show();
             if (!verdicts.peek(row.name)) check();
             triggerWords(row.name).then(() => {
