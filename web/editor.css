@@ -281,7 +281,6 @@
  .fv-ed-name-menu{position:fixed;top:120px;left:8px}
  /* Beside the view switch it covered "Editor"; here it sits at the foot of the picture area, in the grid. */
  .fv-ed-notice-stack{grid-column:1;grid-row:3;align-self:end;justify-self:end;margin:0 16px 8px;bottom:auto;right:auto;pointer-events:none}
- .fv-ed-save-warning{position:absolute;top:60px;left:8px;right:8px;border:1px solid var(--fv-border);background:var(--fv-card);padding:8px 12px;border-radius:var(--fv-r-sm);z-index:9}
 }
 
 .fv-ed-name-menu{max-height:calc(100dvh - 72px);overflow-y:auto}
