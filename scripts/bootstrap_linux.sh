@@ -4,7 +4,14 @@
 FV_UV_VERSION=0.9.0
 FV_UV_URL=https://github.com/astral-sh/uv/releases/download/0.9.0/uv-x86_64-unknown-linux-gnu.tar.gz
 FV_UV_SHA256=4dadaa5ff5009ccd6a0a43f6ccfa32bf36ed2eff18df7011275a9b1d81950e7b
+FV_UV_URL_AARCH64=https://github.com/astral-sh/uv/releases/download/0.9.0/uv-aarch64-unknown-linux-gnu.tar.gz
+FV_UV_SHA256_AARCH64=ca410766024d2d726c937bda2e9441823e2848894ac5a2f8b608902384fc391f
 FV_PYTHON_VERSION=3.12.3
+# The processor names uv and the private Python use (x86_64 or aarch64); ARM64 takes its own uv build.
+case "$(uname -m 2>/dev/null)" in
+    aarch64|arm64) FV_ARCH=aarch64; FV_UV_URL=$FV_UV_URL_AARCH64; FV_UV_SHA256=$FV_UV_SHA256_AARCH64 ;;
+    *) FV_ARCH=x86_64 ;;
+esac
 
 fv_note() { printf 'FreeVideo: %s\n' "$*" >&2; }
 fv_fail() { fv_note "$*"; return 1; }
@@ -46,7 +53,7 @@ fv_find_python() {
         return 0
     fi
     for candidate in "$fv_root/envs/unified/bin/python" "$fv_root/envs/engine/bin/python" \
-        "$FREEVIDEO_BOOTSTRAP_ROOT/python/cpython-$FV_PYTHON_VERSION-linux-x86_64-gnu/bin/python3.12" \
+        "$FREEVIDEO_BOOTSTRAP_ROOT/python/cpython-$FV_PYTHON_VERSION-linux-$FV_ARCH-gnu/bin/python3.12" \
         python3 python3.12 python; do
         if fv_python_ok "$candidate"; then
             FREEVIDEO_BOOTSTRAP_PYTHON="$(command -v -- "$candidate")"
@@ -273,11 +280,11 @@ fv_install_python() (
     mkdir -p -- "$FREEVIDEO_BOOTSTRAP_ROOT"
     exec 9>"$FREEVIDEO_BOOTSTRAP_ROOT/bootstrap.lock"
     flock -n 9 || { fv_fail 'Another command is preparing Python. Wait for it to finish and retry.'; exit 1; }
-    if fv_python_ok "$FREEVIDEO_BOOTSTRAP_ROOT/python/cpython-$FV_PYTHON_VERSION-linux-x86_64-gnu/bin/python3.12"; then exit 0; fi
+    if fv_python_ok "$FREEVIDEO_BOOTSTRAP_ROOT/python/cpython-$FV_PYTHON_VERSION-linux-$FV_ARCH-gnu/bin/python3.12"; then exit 0; fi
     fv_note "Preparing private Python $FV_PYTHON_VERSION (allow ~400 MiB including retained bootstrap downloads; no Torch or models yet)."
     fv_note "Files and log: $FREEVIDEO_BOOTSTRAP_ROOT"
     fv_download_uv || exit 1
-    local uv="$FREEVIDEO_BOOTSTRAP_ROOT/tools/uv-x86_64-unknown-linux-gnu/uv" source route attempt=0
+    local uv="$FREEVIDEO_BOOTSTRAP_ROOT/tools/uv-$FV_ARCH-unknown-linux-gnu/uv" source route attempt=0
     local retry_sources retry_mode timeout retries attempt_log attempt_dir attempt_detail python_exit tee_exit other_failures=0 failed_source
     local -A fv_denied=() fv_slow=()
     local -a pipe_status
@@ -341,7 +348,7 @@ fv_install_python() (
               exit 1
           fi
           if (( python_exit == 0 )); then
-              fv_python_ok "$UV_PYTHON_INSTALL_DIR/cpython-$FV_PYTHON_VERSION-linux-x86_64-gnu/bin/python3.12" && exit 0
+              fv_python_ok "$UV_PYTHON_INSTALL_DIR/cpython-$FV_PYTHON_VERSION-linux-$FV_ARCH-gnu/bin/python3.12" && exit 0
               other_failures=1
           elif fv_access_denied "$attempt_detail"; then
               fv_denied[$source]=1
@@ -409,7 +416,7 @@ freevideo_bootstrap_linux() {
         elif [[ "$mode" == setup ]]; then fv_help; printf '\n'; fi
         return 0
     fi
-    [[ "$(uname -s)" == Linux && "$(uname -m)" == x86_64 ]] || { fv_fail 'Use native Windows launchers on Windows. Linux setup currently supports x86_64.'; return 1; }
+    [[ "$(uname -s)" == Linux ]] && [[ "$(uname -m)" == x86_64 || "$(uname -m)" == aarch64 || "$(uname -m)" == arm64 ]] || { fv_fail 'Use native Windows launchers on Windows. Linux setup supports x86_64 and ARM64 (aarch64).'; return 1; }
     if command -v getconf >/dev/null 2>&1 && ! getconf GNU_LIBC_VERSION >/dev/null 2>&1; then
         fv_fail 'Linux setup needs glibc (for example Ubuntu/Debian); musl/Alpine CUDA wheels are unsupported.'; return 1
     fi

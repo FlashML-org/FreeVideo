@@ -31,7 +31,7 @@ from .monitoring import save, load_ledger
 from .install_tuning import build_parallelism, required_models, cache_compatible, wheel_key
 from .terminal_ui import TerminalUI, LogProgress
 from .locking import runtime_lock, LOCK_ENV
-from .environments import (ENVIRONMENTS, environment_names, select_layout, role_pythons, constraints_file,
+from .environments import (ENVIRONMENTS, environment_names, select_layout, role_pythons, constraints_file, setup_supported, uv_folder,
                            bootstrap_versions, uv_file_arguments, uv_build_environment)
 from . import disk_space
 from . import network
@@ -658,14 +658,14 @@ def plan(args, *, local_progress=None, stage=None):
         cache_format = dict(capability=None, scale_granularity='int8_convrot')
         prepared_format = 'int8_convrot'
     else:
-        if not args.hardware_json and (platform.system() not in ('Linux', 'Windows') or platform.machine().lower() not in ('x86_64', 'amd64')):
-            raise RuntimeError('One-click setup supports Linux x86_64 and native Windows x64.')
+        if not args.hardware_json and not setup_supported(platform.system(), platform.machine()):
+            raise RuntimeError('One-click setup supports Linux x86_64 or ARM64 and native Windows x64.')
         snapshot = json.loads(args.hardware_json.read_text(encoding='utf-8')) if args.hardware_json else inventory(args.gpu)
         warnings.extend(snapshot.get('warnings', []))
         hardware = Hardware.from_dict(snapshot['hardware'])
         errors = []
-        if snapshot.get('machine', '').lower() not in ('x86_64', 'amd64') or hardware.system not in ('Linux', 'Windows'):
-            errors.append('This installer supports Linux x86_64 and native Windows x64.')
+        if not setup_supported(hardware.system, snapshot.get('machine', '')):
+            errors.append('This installer supports Linux x86_64 or ARM64 and native Windows x64.')
         windows_target = hardware.system == 'Windows'
         if windows_target and layout != 'unified':
             errors.append('Native Windows uses the unified environment. Rerun with --environment unified.')
@@ -1276,8 +1276,8 @@ def prepare_uv(system, root, uv_spec, networking, env, fetch):
         except OSError:
             shutil.copyfile(previous, archive)
     fetch(uv_spec['url'], archive, uv_spec['sha256'])
-    unpack_folder(archive, root / 'tools', 'uv-x86_64-unknown-linux-gnu')
-    return root / 'tools' / 'uv-x86_64-unknown-linux-gnu' / 'uv'
+    unpack_folder(archive, root / 'tools', uv_folder())
+    return root / 'tools' / uv_folder() / 'uv'
 
 
 def unpack_folder(archive, destination, name):

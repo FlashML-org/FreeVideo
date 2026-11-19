@@ -14,7 +14,7 @@ from . import network, processes
 from .comfy_bridge import installation
 from .comfy_environment import isolated_environment
 from .comfy_requirements import managed_requirements
-from .environments import uv_build_environment, uv_file_arguments
+from .environments import uv_build_environment, uv_file_arguments, uv_folder
 from .locking import runtime_lock
 from .monitoring import save
 from .package_progress import PackageOutput
@@ -178,7 +178,7 @@ def _prepare(root, comfy, machine, run, download, repair=False):
     except (OSError, ValueError):
         saved = None
     recorded = saved == identity
-    uv = root / 'tools' / ('uv.exe' if os.name == 'nt' else 'uv' if sys.platform == 'darwin' else 'uv-x86_64-unknown-linux-gnu/uv')
+    uv = root / 'tools' / ('uv.exe' if os.name == 'nt' else 'uv' if sys.platform == 'darwin' else uv_folder() + '/uv')
     if not repair and not recorded and isinstance(saved, dict) and dict(saved, nodes=identity['nodes']) == identity:
         # An update gave our own nodes a package. Add only that: everything this ComfyUI
         # already runs on stays as it is, so a failure here leaves a working environment.

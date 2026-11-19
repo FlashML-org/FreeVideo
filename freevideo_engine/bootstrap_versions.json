@@ -29,6 +29,13 @@
     "url": "https://github.com/astral-sh/uv/releases/download/0.9.0/uv-x86_64-unknown-linux-gnu.tar.gz",
     "sha256": "4dadaa5ff5009ccd6a0a43f6ccfa32bf36ed2eff18df7011275a9b1d81950e7b"
   },
+  "linux_aarch64": {
+    "uv": {
+      "version": "0.9.0",
+      "url": "https://github.com/astral-sh/uv/releases/download/0.9.0/uv-aarch64-unknown-linux-gnu.tar.gz",
+      "sha256": "ca410766024d2d726c937bda2e9441823e2848894ac5a2f8b608902384fc391f"
+    }
+  },
   "cuda_redist_base": "https://developer.download.nvidia.com/compute/cuda/redist/",
   "cuda_toolkits": {
     "12.9": {

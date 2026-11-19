@@ -498,7 +498,8 @@ def shell_quote(value, *, windows=None):
 
 def linux_wrapper_supported():
     import platform
-    return sys.platform.startswith('linux') and platform.machine() == 'x86_64'
+    from ..environments import linux_machine
+    return sys.platform.startswith('linux') and linux_machine(platform.machine()) is not None
 
 
 def python_shell_command(config, module):

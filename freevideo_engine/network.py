@@ -312,7 +312,8 @@ def probe(family, name, spec, versions, timeout, env, *, measure_speed=False):
             url = wheel_link(base + '/packaging/', r'^packaging-26\.3-py3-none-any\.whl$', timeout, env)
         elif family.startswith('torch-'):
             _, cuda, version = family.split('-')
-            target = r'win_amd64' if versions.get('target_system') == 'Windows' else r'(?:manylinux[^/]*|linux)_x86_64'
+            target = (r'win_amd64' if versions.get('target_system') == 'Windows'
+                      else r'(?:manylinux[^/]*|linux)_' + ('aarch64' if versions.get('target_machine') == 'aarch64' else 'x86_64'))
             url = wheel_link(base + '/' + cuda + '/torch/', r'^torch-' + re.escape(version + '+' + cuda) + r'-cp312-cp312-' + target + r'\.whl$', timeout, env)
         elif family == 'models':
             settings = spec['models']

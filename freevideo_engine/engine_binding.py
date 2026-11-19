@@ -10,7 +10,7 @@ from urllib.parse import urlsplit
 from urllib.request import url2pathname
 
 from . import subprocess_output
-from .environments import uv_build_environment
+from .environments import uv_build_environment, uv_folder
 from .monitoring import save
 from .long_paths import io_path, resolved, plain, plain_text, plain_errors
 from .runtime_alias import checked_real_path
@@ -89,7 +89,7 @@ def source_version(source):
 def _uv(engine_root, machine, restore=None):
     system = machine.get('system') or ('Windows' if os.name == 'nt' else
                                       'Darwin' if sys.platform == 'darwin' else 'Linux')
-    relative = {'Windows': 'uv.exe', 'Darwin': 'uv', 'Linux': 'uv-x86_64-unknown-linux-gnu/uv'}.get(system)
+    relative = {'Windows': 'uv.exe', 'Darwin': 'uv', 'Linux': uv_folder(machine.get('machine')) + '/uv'}.get(system)
     tool = io_path(engine_root) / 'tools' / relative if relative else None
     if tool is None or not tool.is_file():
         where = 'The engine\'s uv is missing from %s/tools (%s)' % (engine_root, system)
