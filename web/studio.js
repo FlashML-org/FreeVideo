@@ -1758,11 +1758,13 @@ export function openStudio(node, {extendFrom = null} = {}) {
             // The console takes the picture's width when a window or picture shape is first fitted, and lets go for good
             // (until that shape changes) once they are 48 px apart: the console's own height moves the picture (the room
             // left under it), so a row of chips right at a wrap would otherwise flip it between the two widths every frame.
-            const shape = `${body.clientWidth}x${body.clientHeight}:${previewRatio}`;
+            // A failure card widens the picture, so the console is matched to the picture as shown, and fitted afresh
+            // when the card comes or goes.
+            const shape = `${body.clientWidth}x${body.clientHeight}:${previewRatio}:${failed}`;
             if (consoleSnap.shape !== shape) consoleSnap = {shape, held: true};
-            consoleSnap.held &&= Math.abs(fittedWidth - natural) < 48 && fittedWidth <= room;
+            consoleSnap.held &&= Math.abs(stageWidth - natural) < 48 && stageWidth <= room;
             const same = consoleSnap.held;
-            if (same) controls.style.setProperty('--fvs-console-w', `${Math.round(fittedWidth)}px`); else controls.style.removeProperty('--fvs-console-w');
+            if (same) controls.style.setProperty('--fvs-console-w', `${Math.round(stageWidth)}px`); else controls.style.removeProperty('--fvs-console-w');
         } else controls.style.removeProperty('--fvs-console-w');
         stage.dataset.short = String(fittedHeight < 150);
         // The history rail centres itself on the stage, above the console.
