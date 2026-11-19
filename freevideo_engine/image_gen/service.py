@@ -584,6 +584,71 @@ class Service:
                 return str(output / (base + suffix))
         raise ValueError('invalid_media')
 
+    def copy_directory(self):
+        """Where the copy of a finished picture goes: the output folder of ComfyUI, in a folder named like the one the
+        pictures are kept in. None when the user switched the copy off or no output folder is known."""
+        try:
+            from ..comfy_bridge import installation_root
+            from ..output_settings import read
+            if not read(installation_root())['image_copy']:
+                return None
+            output = Path(self.folders.get_output_directory()).resolve()
+        except Exception:
+            return None
+        directory = output / 'freevideo-image'
+        if directory.is_symlink() or (directory.exists() and not directory.is_dir()):
+            return None
+        return directory
+
+    def copy_to_output(self, path):
+        """Copy a finished picture into the output folder, as a file of its own (a link would let an edit there change
+        the picture the library keeps). It belongs to the picture: works_deleted removes it. A copy that fails never
+        fails the picture."""
+        try:
+            directory = self.copy_directory()
+            if directory is None:
+                return
+            source = Path(path)
+            target = directory / source.name
+            if source.is_symlink() or not source.is_file() or target.is_symlink():
+                return
+            directory.mkdir(exist_ok=True)
+            temporary = directory / ('.%s.%s.partial' % (source.name, uuid.uuid4().hex[:8]))
+            try:
+                shutil.copyfile(source, temporary)
+                os.replace(temporary, target)
+            finally:
+                temporary.unlink(missing_ok=True)
+        except Exception:
+            logging.warning('[FreeVideo] Could not copy a picture into the output folder.', exc_info=True)
+
+    def forget_copies(self, names):
+        """Remove the copies in the output folder of pictures deleted for good; only the plain file of that name."""
+        try:
+            directory = self.copy_directory_any()
+            if directory is None:
+                return
+            for name in names:
+                target = directory / name.rpartition('/')[2]
+                try:
+                    if target.parent == directory and not target.is_symlink() and target.is_file():
+                        target.unlink()
+                except OSError:
+                    logging.warning('[FreeVideo] Could not remove a picture copy in the output folder.', exc_info=True)
+        except Exception:
+            logging.warning('[FreeVideo] Could not remove the picture copies of deleted pictures.', exc_info=True)
+
+    def copy_directory_any(self):
+        """The copy folder whether or not copying is on now: a picture copied earlier is removed all the same."""
+        try:
+            output = Path(self.folders.get_output_directory()).resolve()
+        except Exception:
+            return None
+        directory = output / 'freevideo-image'
+        if directory.is_symlink() or not directory.is_dir():
+            return None
+        return directory
+
     @staticmethod
     def work_record(value, origin):
         """What a new picture keeps about where it came from: a picture of the history or a content id, and the content
@@ -682,6 +747,7 @@ class Service:
             except (OSError, Image.DecompressionBombError, SyntaxError):
                 raise ValueError('invalid_media') from None
             self.note_record(target, record)
+            self.copy_to_output(target)
         finally:
             self.remove_uploads([name])
         return dict(file='freevideo-image/' + target.name, name=target.name)
@@ -805,6 +871,7 @@ class Service:
         names = [name for name in names if isinstance(name, str)]
         if not names:
             return
+        self.forget_copies(names)
         try:
             output = self.output_directory()
             rows = self.made_by(output)
@@ -2562,6 +2629,7 @@ class Service:
                     self.keep_forecast(context)
                     self.note_model(path, value.get('model') or image_model.QWEN)
                     self.note_record(path, getattr(context, 'work_record', None))
+                    self.copy_to_output(path)
                     receipts = row.get('receipts')
                     from ..private_refs import hold
                     hold('image:' + path.name, value.get('images') or (), input_root=self.input_directory(),

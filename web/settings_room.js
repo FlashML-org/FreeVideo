@@ -485,21 +485,33 @@ export async function openSetup(options) {
     tenSwitch.setAttribute('aria-label', t('Also save a high color depth copy', '同时保存高色深版本'));
     const tenRow = row({iconName: 'film', title: t('Also save a high color depth copy', '同时保存高色深版本'), sub: t('Adds a 10-bit video beside it, for color grading', '另存一份 10 位视频，适合调色'), end: [tenSwitch]});
     tip(tenSwitch, t('High color depth copy', '高色深版本'), t('Adds a 10-bit video beside it, for color grading', '另存一份 10 位视频，适合调色'));
-    const outputCard = card(tenRow.element); const outputHead = groupHead(t('Finished video', '成片'));
-    outputCard.hidden = outputHead.hidden = true;
-    let tenSaved = false;
+    // Every finished picture is also copied into the output folder; the user can switch that off. The 10-bit row stays hidden.
+    const imageSwitch = switchify(el('input')); imageSwitch.type = 'checkbox'; imageSwitch.checked = true;
+    imageSwitch.setAttribute('aria-label', t('Also save pictures to the output folder', '同时将图片保存到 output 文件夹'));
+    const imageRow = row({iconName: 'img', title: t('Also save pictures to the output folder', '同时将图片保存到 output 文件夹'), end: [imageSwitch]});
+    tip(imageSwitch, t('Also save pictures to the output folder', '同时将图片保存到 output 文件夹'));
+    tenRow.element.hidden = true;
+    const outputCard = card(imageRow.element, tenRow.element); const outputHead = groupHead(t('Finished videos and pictures', '成片与图片'));
+    let tenSaved = false, imageSaved = true;
     tenSwitch.onchange = async () => {
         const wanted = tenSwitch.checked; tenSwitch.disabled = true;
         try { tenSaved = (await request('output-settings', {ten_bit: wanted})).ten_bit === true; }
         catch { /* The switch returns to the saved state. */ }
         finally { tenSwitch.checked = tenSaved; tenSwitch.disabled = false; }
     };
+    imageSwitch.onchange = async () => {
+        const wanted = imageSwitch.checked; imageSwitch.disabled = true;
+        try { imageSaved = (await request('output-settings', {image_copy: wanted})).image_copy !== false; }
+        catch { /* The switch returns to the saved state. */ }
+        finally { imageSwitch.checked = imageSaved; imageSwitch.disabled = false; }
+    };
     (async () => {
         try {
             const response = await api.fetchApi('/freevideo/output-settings');
             const value = response.ok ? await response.json() : null;
-            if (value?.available === true) { tenSaved = value.ten_bit === true; tenSwitch.checked = tenSaved; outputCard.hidden = outputHead.hidden = false; }
-        } catch { /* Without an answer the row stays hidden. */ }
+            if (value) { imageSaved = value.image_copy !== false; imageSwitch.checked = imageSaved; }
+            if (value?.available === true) { tenSaved = value.ten_bit === true; tenSwitch.checked = tenSaved; tenRow.element.hidden = false; }
+        } catch { /* Without an answer the picture row shows its default and the 10-bit row stays hidden. */ }
     })();
     const previewFoot = el('div', 'st-foot'); previewFoot.append(previewStatus);
     generation.append(groupHead(t('Preview during generation', '生成中的预览')), card(choices, previewFoot), outputHead, outputCard);

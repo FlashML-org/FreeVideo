@@ -1,4 +1,5 @@
-"""Whether a finished video is also saved as a 10-bit copy (see video_10bit.py). Off unless the user turns it on."""
+"""Output choices: whether a finished video is also saved as a 10-bit copy (see video_10bit.py; off unless the user turns it
+on) and whether a finished picture is also copied into the output folder (on unless the user turns it off)."""
 import json
 from pathlib import Path
 
@@ -20,20 +21,27 @@ def available():
 
 
 def read(root):
-    """{'ten_bit': bool}; anything unreadable is off."""
+    """{'ten_bit': bool, 'image_copy': bool}; a 10-bit copy that cannot be read is off, a picture copy is on."""
     try:
         value = json.loads((Path(root) / FILE).read_text(encoding='utf-8'))
     except (OSError, ValueError):
-        return dict(ten_bit=False)
-    return dict(ten_bit=isinstance(value, dict) and value.get('ten_bit') is True)
+        return dict(ten_bit=False, image_copy=True)
+    value = value if isinstance(value, dict) else {}
+    return dict(ten_bit=value.get('ten_bit') is True, image_copy=value.get('image_copy') is not False)
 
 
-def write(root, ten_bit):
-    if not isinstance(ten_bit, bool):
-        raise ValueError('The 10-bit copy is switched on or off')
+def write(root, ten_bit=None, image_copy=None):
+    """Change the choices given (None leaves one as it is) and return both."""
+    for name, value in (('The 10-bit copy', ten_bit), ('The picture copy in the output folder', image_copy)):
+        if value is not None and not isinstance(value, bool):
+            raise ValueError(name + ' is switched on or off')
     if ten_bit and not available():
         raise ValueError('This installation cannot write 10-bit video')
-    result = dict(ten_bit=ten_bit)
+    result = read(root)
+    if ten_bit is not None:
+        result['ten_bit'] = ten_bit
+    if image_copy is not None:
+        result['image_copy'] = image_copy
     save(Path(root) / FILE, result)
     return result
 

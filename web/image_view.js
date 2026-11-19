@@ -21,6 +21,7 @@ import { keepViewSwitchPlace } from './view_switch_place.js';
 import { openReferenceMenu, removeSavedImages } from './image_library.js';
 import { BLANK_CANVAS_AREAS, createImageGenClient, fittedNote, imageGenError, imageRemainingText, imageReportBar, renderImageFailure } from './image_generation.js';
 import { duration } from './generation_progress.js';
+import { randomSeed } from './studio_queue.js';
 import { createPreviewScene } from './preview_scene.js?v=20261115-still';
 import { jobs, ACTIVE, IMAGE_BUSY } from './task_store.js';
 import { confirmStop, startJobSources } from './task_float.js';
@@ -336,8 +337,8 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     const advanced = {get open() { return advGroup.isOpen(); }, set open(value) { advGroup.open(!!value); }};
     const seedInput = el('input'); seedInput.type = 'number'; seedInput.min = '0'; seedInput.max = String(2 ** 53 - 1); seedInput.step = '1';
     seedInput.placeholder = t('New each run', '每次随机'); tip(seedInput, t('Seed', '种子'), t('Empty: new each time; a number repeats a picture', '留空每次不同；填数字可复现同一张'));
-    const dice = button('fv-iv-icon-btn', {iconName: 'dice', name: t('Random seed', '随机种子'), use: t('Back to a new seed each run', '恢复每次随机')});
-    dice.addEventListener('click', () => { seedInput.value = ''; render(); });
+    const dice = button('fv-iv-icon-btn', {iconName: 'dice', name: t('Random seed', '随机种子'), use: t('Fill in a random seed', '填入一个随机种子')});
+    dice.addEventListener('click', () => { seedInput.value = String(randomSeed()); render(); });
     seedInput.addEventListener('input', () => render());
     const seedField = el('label', 'fv-image-seed fv-iv-field fv-iv-field-wide'); seedField.append(el('span', 'fv-iv-field-key', t('Seed', '种子')), seedInput, dice);
     // LoRA: a button whose panel opens beside it; it answers for the model that takes LoRA files.
