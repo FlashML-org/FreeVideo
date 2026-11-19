@@ -14,6 +14,9 @@ class ExportOptions:
     quality: str = 'high'
     sound_format: str = 'm4a'
     subtitles: str = 'burn'
+    # Above 24 the picture is first rendered at 24 fps (intermediate) and then interpolated.
+    fps: int = 24
+    intermediate: bool = False
 
     @property
     def filename(self):
@@ -30,6 +33,9 @@ class ExportOptions:
 
     @property
     def video_options(self):
+        if self.intermediate:
+            # Near-lossless and quick: only the interpolation step reads it, then it is removed.
+            return {'crf': '10', 'preset': 'veryfast'}
         return {'crf': str({'high': 23, 'standard': 25, 'small': 30}[self.quality]), 'preset': 'medium'}
 
     @property
@@ -41,12 +47,16 @@ class ExportOptions:
                     only=self.only, quality=self.quality if self.only == 'video' else None,
                     range=dict(start=self.start, frames=self.frames),
                     sound_format=self.sound_format if self.only == 'sound' else None,
-                    **({'subtitles': 'none'} if self.only == 'video' and self.subtitles == 'none' else {}))
+                    **({'subtitles': 'none'} if self.only == 'video' and self.subtitles == 'none' else {}),
+                    **({'fps': self.fps} if self.only == 'video' and self.fps != 24 else {}))
+
+
+FRAME_RATES = (24, 48, 60)
 
 
 def validate(options, width, height, frames):
     """Validate wire values once; the queue passes the immutable result to render."""
-    if not isinstance(options, dict) or set(options) - {'short', 'quality', 'range', 'only', 'sound_format', 'subtitles'}:
+    if not isinstance(options, dict) or set(options) - {'short', 'quality', 'range', 'only', 'sound_format', 'subtitles', 'fps'}:
         raise ValueError('Invalid export options')
     if 'short' in options and (type(options['short']) is not int
                               or not 144 <= options['short'] <= 4320 or options['short'] % 2):
@@ -63,6 +73,8 @@ def validate(options, width, height, frames):
                 or span['start'] < 0 or span['frames'] < 1 or span['start'] + span['frames'] > frames):
             raise ValueError('Invalid export range')
         start, count = span['start'], span['frames']
+    if 'fps' in options and (type(options['fps']) is not int or options['fps'] not in FRAME_RATES):
+        raise ValueError('Invalid export fps')
     if options.get('only') == 'sound':
         return ExportOptions(0, 0, start, count, only='sound', sound_format=options.get('sound_format', 'm4a'))
     output_width, output_height = width, height
@@ -74,7 +86,7 @@ def validate(options, width, height, frames):
     if max(output_width, output_height) > 8192:
         raise ValueError('Export picture is too large')
     return ExportOptions(output_width, output_height, start, count, quality=options.get('quality', 'high'),
-                         subtitles=options.get('subtitles', 'burn'))
+                         subtitles=options.get('subtitles', 'burn'), fps=options.get('fps', 24))
 
 
 def effective(options, width, height, frames):
@@ -105,12 +117,15 @@ def sound_samples(mixed, options):
 
 def report_values(report, options):
     geometry = report['geometry']
-    if (options.only == 'video' and options.quality == 'high' and options.start == 0
+    if (options.only == 'video' and options.quality == 'high' and options.start == 0 and options.fps == 24
             and (options.width, options.height, options.frames) ==
                 (geometry['width'], geometry['height'], geometry['frames'])):
         return  # Preserve the original default completion marker as well as media.
     report['geometry'].update(width=options.width, height=options.height,
                               frames=options.frames, seconds=options.frames / 24)
+    if options.only == 'video' and options.fps != 24:
+        # The picture has fps times as many frames per second; the length stays the same.
+        report['geometry'].update(fps=options.fps, frames=-(-options.frames * options.fps // 24))
     if options.only == 'sound':
         report.pop('video', None)
         report['audio'] = dict(format=options.sound_format)

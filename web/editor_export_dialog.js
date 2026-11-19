@@ -5,7 +5,8 @@ import {selectedRange} from './editor_transport_model.js';
 import {isolateDialogKeys, listenDialogKey, routeDialogKey} from './dialog_keys.js';
 
 export const EXPORT_SETTINGS_KEY = 'freevideo.editor.export-settings';
-const defaults = {short: null, quality: 'high', range: 'whole', only: null, sound_format: 'm4a'};
+const defaults = {short: null, quality: 'high', range: 'whole', only: null, sound_format: 'm4a', fps: 24};
+export const FRAME_RATES = [24, 48, 60];
 const active = new WeakSet();
 const style = document.createElement('link');
 style.rel = 'stylesheet'; style.href = new URL('editor_export_dialog.css', import.meta.url).href;
@@ -38,9 +39,9 @@ export function exportRange(record, selection) {
     return Number.isSafeInteger(start) && Number.isSafeInteger(end) && end > start ? {start, frames: end - start} : null;
 }
 
-// Kept from the last export: size, range and sound format. Sound-only and a lower quality are not: the dialog opens on the
+// Kept from the last export: size, frame rate, range and sound format. Sound-only and a lower quality are not: the dialog opens on the
 // full picture at high quality, so Enter never quietly exports a file without the picture or with less of it.
-function settings(record, selection, value, {remembered = false} = {}) {
+function settings(record, selection, value, {remembered = false, fps = true} = {}) {
     value = value && typeof value === 'object' ? value : {};
     return {
         short: exportSizes(record).some(size => size.short === value.short) ? value.short : defaults.short,
@@ -48,6 +49,8 @@ function settings(record, selection, value, {remembered = false} = {}) {
         range: value.range === 'selected' && exportRange(record, selection) ? 'selected' : 'whole',
         only: !remembered && value.only === 'sound' ? 'sound' : null,
         sound_format: value.sound_format === 'wav' ? 'wav' : 'm4a',
+        // 48/60 only where this machine can make the frames in between.
+        fps: fps && FRAME_RATES.includes(value.fps) ? value.fps : defaults.fps,
     };
 }
 
@@ -57,6 +60,7 @@ export function exportOptions(record, selection, value) {
     else {
         if (clean.quality !== 'high') options.quality = clean.quality;
         if (clean.short != null) options.short = clean.short;
+        if (clean.fps !== defaults.fps) options.fps = clean.fps;
     }
     if (clean.range === 'selected') options.range = exportRange(record, selection);
     return options;
@@ -79,7 +83,7 @@ function croppedParts(record, sources, range) {
         && differentPictureShape(clipPictureSize(clip, sources), record));
 }
 
-export async function openExportDialog({parent, state, sources, t = en => en, onError = () => {}}) {
+export async function openExportDialog({parent, state, sources, t = en => en, onError = () => {}, fps = false}) {
     // Only the first trigger owns confirmation, even while the stylesheet loads.
     if (active.has(parent)) return null;
     let resolve;
@@ -89,7 +93,7 @@ export async function openExportDialog({parent, state, sources, t = en => en, on
     if (!parent.isConnected || !parent.open) { active.delete(parent); resolve(null); return result; }
     let saved;
     try { saved = JSON.parse(localStorage.getItem(EXPORT_SETTINGS_KEY)); } catch { /* Private browsing or old data. */ }
-    const value = settings(state.record, state.selection, saved, {remembered: true}), returnFocus = document.activeElement;
+    const value = settings(state.record, state.selection, saved, {remembered: true, fps}), returnFocus = document.activeElement;
     const dialog = el('dialog', 'fv-ed-export-dialog');
     dialog.dataset.fvOwnTab = ''; // Tab cycles its buttons below; a11y.js stands aside
     dialog.setAttribute('aria-label', t('Export', '导出'));
@@ -115,6 +119,8 @@ export async function openExportDialog({parent, state, sources, t = en => en, on
     group('short', t('Frame size', '画面大小'), exportSizes(state.record).map(size => [size.short,
         size.short == null ? t('Same as the edit', '与剪辑相同') : `${size.width} × ${size.height}`]));
     group('quality', t('Quality', '画质'), [['high', t('High', '高')], ['standard', t('Standard', '标准')], ['small', t('Small file', '省空间')]]);
+    // Without a graphics card the group is left out, not shown greyed.
+    if (fps) group('fps', t('Frame rate', '帧率'), FRAME_RATES.map(rate => [rate, String(rate)]));
     group('range', t('Range', '范围'), [['whole', t('Whole edit', '整条')], ['selected', t('Selected range', '选中的范围')]]);
     const contentRow = group('only', t('Content', '内容'), [[null, t('Video and audio', '画面和声音')], ['sound', t('Audio only', '只声音')]]);
     const formatRow = group('sound_format', t('Audio only', '只声音'), [['m4a', 'M4A'], ['wav', 'WAV']], contentRow);
@@ -147,7 +153,7 @@ export async function openExportDialog({parent, state, sources, t = en => en, on
         const sound = value.only === 'sound';
         for (const {name, controls, choices} of groups) [...controls.children].forEach((node, i) => {
             node.setAttribute('aria-pressed', String(value[name] === choices[i][0]));
-            node.disabled = sound && ['short', 'quality'].includes(name)
+            node.disabled = sound && ['short', 'quality', 'fps'].includes(name)
                 || name === 'range' && choices[i][0] === 'selected' && !exportRange(state.record, state.selection)
                 || name === 'only' && choices[i][0] === 'sound' && !audible;
         });

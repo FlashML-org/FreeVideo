@@ -204,7 +204,7 @@ def voice_ready(port):
     return voice_state(port)[0]
 
 
-def features(continuation, vlm, stems=False, voice=True, voice_install=False):
+def features(continuation, vlm, stems=False, voice=True, voice_install=False, fps=False):
     """What an agent can use here (ready says whether the engine can run now). A missing name is not offered."""
     from .editor_runtime import available
     rules = available()
@@ -219,7 +219,9 @@ def features(continuation, vlm, stems=False, voice=True, voice_install=False):
                                                     'finish_sound')},
             'projects.stems': bool(rules and stems), 'projects.voice': bool(rules and stems and voice),
             # The machine could change a voice but the dubbing model is not there yet: the page offers its download.
-            'projects.voice.install': bool(rules and stems and voice_install and not voice)}
+            'projects.voice.install': bool(rules and stems and voice_install and not voice),
+            # 48/60 fps export makes the frames in between on the graphics card (far too slow without one).
+            'projects.export.fps': bool(rules and fps)}
 
 
 def whitebox_support(jobs):
@@ -258,7 +260,8 @@ def capabilities(port, jobs):
     return dict(
         api_version=API_VERSION, freevideo_version=release or __version__, build=__version__, ready=ready, problem=problem,
         continuation=continuation,
-        features=features(continuation, vlm, stems=stems_supported(machine), voice=voice[0], voice_install=voice[1]),
+        features=features(continuation, vlm, stems=stems_supported(machine), voice=voice[0], voice_install=voice[1],
+                          fps=bool(machine) and machine.get('device_backend', 'cuda') == 'cuda'),
         whitebox=whitebox_support(jobs),
         device=dict(backend=machine.get('device_backend', 'cuda') if machine else None,
                     vram_limit_gib=machine.get('vram_gib'), ram_limit_gib=machine.get('ram_gib')),
