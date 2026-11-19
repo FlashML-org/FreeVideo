@@ -60,7 +60,8 @@
 .fv-select[data-hx-seldis]::after{opacity:.5}
 .fv-select[data-hx-selhid]{display:none}
 .fv-select-menu-host>.fv-select-native{position:absolute;inset:0;opacity:0;pointer-events:none}
-.fv-select-menu-host>.fv-select-trigger{display:flex;align-items:center;width:100%;max-width:100%;min-height:var(--fv-h-sm,32px);padding:4px 34px 4px 10px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm,8px);background:var(--fv-raised);color:var(--fv-ink);font:inherit;text-align:left;cursor:pointer}
+/* The name reads from the left like any field; .fv-studio button would otherwise centre it. */
+.fv-select-menu-host>.fv-select-trigger{display:flex;align-items:center;justify-content:flex-start;width:100%;max-width:100%;min-height:var(--fv-h-sm,32px);padding:4px 34px 4px 10px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm,8px);background:var(--fv-raised);color:var(--fv-ink);font:inherit;text-align:left;cursor:pointer}
 .fv-select-menu-host>.fv-select-trigger:hover:not(:disabled){background:var(--fv-hover)}.fv-select-menu-host>.fv-select-trigger:disabled{opacity:.5;cursor:default}
 .fv-select-face{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fv-select-menu{position:fixed;z-index:60;box-sizing:border-box;max-width:calc(100vw - 16px);overflow:auto;padding:6px;background:var(--fv-card);color:var(--fv-ink);border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);font:13px var(--fv-font)}
