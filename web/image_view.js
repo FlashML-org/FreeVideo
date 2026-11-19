@@ -1294,7 +1294,16 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     // Installing from the page: the engine fetches the model; the page watches until it is ready, then generates if asked to.
     async function install() {
         const mine = model.id;
-        try { info = await client.packInstall(mine); } catch (error) { say(imageGenError(error.code, info, t)); return; }
+        try { info = await client.packInstall(mine); } catch (error) {
+            // A failed download says so in its own words; the generation sentences do not describe it.
+            say(error?.code === 'connection_lost'
+                ? t('The download did not start: FreeVideo could not be reached. Start FreeVideo again, then try again.', '下载没有开始：连不上 FreeVideo。请重新启动 FreeVideo 后再试。')
+                : error?.code === 'disk_full'
+                    ? t('The download did not start: the disk is full. Free some space, then download again.', '下载没有开始：磁盘空间不够。空出空间后再下载。')
+                : ['no_memory', 'pack_missing', 'model_unreadable'].includes(error?.code)
+                    ? t('The download did not start: ', '下载没有开始：') + imageGenError(error.code, info, t)
+                    : t('The download did not start. Try again; if it keeps failing, report the problem.', '下载没有开始。请重试；仍然失败请提交问题。')); return;
+        }
         render();
         while (alive && modelState(info, mine).state === 'downloading') {
             await new Promise(r => setTimeout(r, 1500)); try { info = await client.info(); } catch { /* asked again */ } render();

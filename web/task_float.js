@@ -6,6 +6,7 @@ import { isNetworkTypeError, connectionLostText } from './browser_extension.js';
 import { api } from '../../scripts/api.js';
 import { app } from '../../scripts/app.js';
 import { jobs, imageSource, progressSource, chainSource, queueSource, journalSource, ACTIVE, FINAL } from './task_store.js';
+import { errorText, failureAdvice } from './error_panel.js';
 import { createImageGenClient, imageGenError, imageReportBar } from './image_generation.js';
 import { saveGeneratedImage } from './image_library.js';
 
@@ -184,7 +185,14 @@ function reasonLong(row) {
     if (code === 'engine_closed') return t('FreeVideo stopped answering while this was being made. Start FreeVideo again, then generate again.', '生成过程中 FreeVideo 停止了响应。重新启动 FreeVideo 后再生成一次。');
     if (code === 'engine_restarted' || row.status === 'interrupted') return t('FreeVideo restarted while this was being made, so it did not finish. Finished parts are in your works.', 'FreeVideo 在生成过程中重新启动，这次没有完成。已经完成的部分在作品里。');
     if (row.kind === 'image') return imageGenError(code, row.failure, t) || t('The picture did not finish.', '这张图没有完成。');
-    return row.failure?.message || t('The video did not finish.', '这段视频没有完成。');
+    if (row.failure?.message) return row.failure.message;
+    // A run closed from the history has no message, only the exception it raised.
+    const advice = row.failure?.detail ? failureAdvice(errorText(row.failure.detail), t) : null;
+    const said = advice && advice.kind !== 'unknown'
+        ? [advice.summary || advice.title, advice.action].filter(Boolean).map(x => x.replace(/[.。]$/, '')).join(t('. ', '。')) + t('.', '。') : '';
+    if (said) return said;
+    return t('FreeVideo did not report a reason for this video. Try again, and report the problem if it keeps failing.',
+        'FreeVideo 没有给出这段视频失败的原因。请重试，仍然失败请提交问题。');
 }
 function line2(row) {
     if (row.status === 'running') return etaText(row.eta_seconds) || elapsedText(row);

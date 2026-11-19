@@ -365,7 +365,10 @@ export function queueSource(store, {fetchJson, clientId = () => null, interval =
         }
         const messages = entry?.status?.messages || [];
         const stopped = !entry || row.status === 'cancelling' || messages.some(message => message?.[0] === 'execution_interrupted');
-        store.upsert(stopped ? {id, status: 'cancelled'} : {id, status: 'failed', failure: {code: 'generation_failed', message: ''}});
+        // The history keeps the exception the progress stream would have carried; the failure card reads its reason from it.
+        const raised = messages.find(message => message?.[0] === 'execution_error')?.[1];
+        const detail = raised && typeof raised === 'object' ? {exception_type: raised.exception_type, exception_message: raised.exception_message, node_type: raised.node_type} : null;
+        store.upsert(stopped ? {id, status: 'cancelled'} : {id, status: 'failed', failure: {code: 'generation_failed', message: '', ...(detail ? {detail} : {})}});
     }
     async function read() {
         const queue = await fetchJson('/queue');

@@ -122,8 +122,11 @@ export function editorErrorText(value, t = en => en) {
     if (['timeout', 'timed_out', 'generation_timeout'].includes(code) || /timed?\s*out|timeout|超时/i.test(raw))
         return t(`${stage} timed out. Try again.`, `${stage}时等待超时，请再试一次。`);
     const received = raw || (/^[a-z_]+$/.test(code) ? '' : code);
-    return received ? t(`${generating} failed: ${received}`, `${generating}时出错：${received}`)
-        : t(`${generating} failed. Try again.`, `${generating}时出错，请再试一次。`);
+    if (received) return t(`${generating} failed: ${received}`, `${generating}时出错：${received}`);
+    // No readable text: say what the code names, and where the details are.
+    const named = /^[a-z_]+$/.test(code) ? code : '';
+    return t(`${generating} failed. Try again; if it keeps failing, download the report and report the problem.${named ? ` Error code: ${named}` : ''}`,
+        `${generating}时出错。请重试；仍然失败请下载报告并提交问题。${named ? `错误代码：${named}` : ''}`);
 }
 function exportErrorText(value, t) {
     if (isNetworkTypeError(value)) return connectionLostText(t);
