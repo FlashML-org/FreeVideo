@@ -14,7 +14,7 @@
 // the card is saved; deleting it there is the only way it goes. The pictures uploaded for the views go when the dialog is left.
 import {createImageGenClient, imagePackUnavailableMessage, renderImageFailure, IMAGE_GEN_INFO_POLL_MS} from './image_generation.js';
 import {createCastGenerator} from './cast_generate.js';
-import {faceCloseUp, dressMaskFile, facesCamera, repaintTook} from './cast_face_crop.js';
+import {faceCloseUp, dressMaskFile, facesCamera, repaintTook, closeUpShare, neutralCloseUp, CLOSEUP_FRAME} from './cast_face_crop.js';
 import {createOtherUsageNotice} from './other_usage.js';
 
 // Generation order per source; the order on screen and on the sheet is SHOW. The first view made is the one the others
@@ -316,11 +316,14 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
     // New clothes: the made close-up's collar and shoulders are repainted under a mask drawn from its face box.
     // The masks drawn here (uploaded name → file), so a repaint can be checked against its own mask.
     const masks = new Map();
-    const dressMask = async file => { const mask = await dressMaskFile({client, fetcher, name: file}); if (!mask) return ''; const name = await referenceOf({file: mask}); masks.set(name, mask); return name; };
+    const dressMask = async file => { const mask = await dressMaskFile({client, fetcher, name: file, url: viewURL(file)}); if (!mask) return ''; const name = await referenceOf({file: mask}); masks.set(name, mask); return name; };
     const dressTook = (before, after, mask) => masks.has(mask) ? repaintTook({before: viewURL(before), after: viewURL(after), mask: masks.get(mask)}) : true;
     // A back that came out facing the camera (face-box finds a face looking at it) is drawn once more.
     const facing = file => facesCamera({client, fetcher, name: file});
-    const generator = createCastGenerator({client: draftClient, kind: 'character', views: make, dressMask, dressTook, facing, beforeGenerate: query => otherUsage.check(query), onDiscard: discard,
+    // A close-up framed too wide is drawn once more; a repaint that kept the old clothes is retried from the close-up with its clothes greyed out.
+    const framing = file => closeUpShare({client, fetcher, name: file});
+    const dressNeutral = async file => { const grey = await neutralCloseUp({client, fetcher, name: file, url: viewURL(file)}); return grey ? referenceOf({file: grey}) : ''; };
+    const generator = createCastGenerator({client: draftClient, kind: 'character', views: make, dressMask, dressTook, dressNeutral, facing, framing, framingMin: CLOSEUP_FRAME.min, beforeGenerate: query => otherUsage.check(query), onDiscard: discard,
         onChange: state => {
             render(state);
         }});

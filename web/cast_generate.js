@@ -46,9 +46,9 @@ const PHOTO_END = 'A real photograph of one person, sharp focus.';
 export const PHOTO_PROMPTS = Object.freeze({
     // From the whole photo these words keep the likeness best with Qwen (the edit words that turn the head to the front
     // score lower); kept as measured, "Image 1" included.
-    face: 'Image 1 shows the person. A tight head-and-shoulders portrait of this person: the head from the top of the hair to the '
-        + 'chin fills about 80% of the picture height and a little of the shoulders shows; the person faces the camera at eye level '
-        + 'with a neutral expression; the eyes, nose, lips and skin are sharp. The face shape, eyes, nose, mouth, age, hairline, '
+    face: 'Image 1 shows the person. A tight close-up portrait of this person: the face from the forehead to the chin fills about '
+        + 'half of the picture height, the eyes lie on the upper third line, the top of the hair reaches the top edge, and the neck '
+        + 'and the tops of the shoulders fill the lower part; the person faces the camera at eye level with a neutral expression; the eyes, nose, lips and skin are sharp. The face shape, eyes, nose, mouth, age, hairline, '
         + 'hairstyle, glasses and accessories match image 1. On a plain light grey studio backdrop with soft even light. One '
         + 'photograph of one person.',
     face_h3: '把<Picture 1>改成同一个人的近景正面特写照片：画面从头顶到下巴，再带一点肩膀，人物正对镜头，眼睛平视镜头。'
@@ -77,9 +77,9 @@ export function photoFaceModel(info) {
 // "real photograph" for the picture's style.
 const STYLE = 'The art style, line work, colours and shading are the same as in <Picture 1>.';
 export const IMAGE_PROMPTS = Object.freeze({
-    face: 'Image 1 shows the character. A tight head-and-shoulders portrait of this character: the head from the top of the hair '
-        + 'to the chin fills about 80% of the picture height and a little of the shoulders shows; the character faces the viewer at '
-        + 'eye level with a neutral expression. The face shape, eyes, nose, mouth, age, hairline, hairstyle, glasses and accessories '
+    face: 'Image 1 shows the character. A tight close-up portrait of this character: the face from the forehead to the chin '
+        + 'fills about half of the picture height, the eyes lie on the upper third line, the top of the hair reaches the top edge, and '
+        + 'the neck and the tops of the shoulders fill the lower part; the character faces the viewer at eye level with a neutral expression. The face shape, eyes, nose, mouth, age, hairline, hairstyle, glasses and accessories '
         + 'match image 1, and the art style, line work, colours and shading are the same as in image 1. On a plain light grey '
         + 'backdrop with soft even light. One picture of one character.',
     face_h3: '把<Picture 1>改成同一个角色的近景正面特写：画面从头顶到下巴，再带一点肩膀，角色正对画面，眼睛平视。'
@@ -93,9 +93,9 @@ const inStyle = prompt => prompt.replace('a full-body front photograph', 'a full
 // the front.
 export const AI_PROMPTS = Object.freeze({
     front: `{WHO}. {WEAR}One person stands alone and faces the camera: the whole body from the top of the head to the feet, the arms relaxed at the sides, ${BACKDROP}, sharp focus.`,
-    face: 'Image 1 shows the person. A tight head-and-shoulders portrait of this person: the head from the top of the hair to the '
-        + 'chin fills about 80% of the picture height and a little of the shoulders shows; the person faces the camera at eye level '
-        + 'with a neutral expression; the eyes, nose, lips and skin are sharp. The face shape, eyes, nose, mouth, age, hairline, '
+    face: 'Image 1 shows the person. A tight close-up portrait of this person: the face from the forehead to the chin fills about '
+        + 'half of the picture height, the eyes lie on the upper third line, the top of the hair reaches the top edge, and the neck '
+        + 'and the tops of the shoulders fill the lower part; the person faces the camera at eye level with a neutral expression; the eyes, nose, lips and skin are sharp. The face shape, eyes, nose, mouth, age, hairline, '
         + 'hairstyle, glasses, accessories and the clothes at the collar match image 1, and the style of the picture is the same as '
         + 'image 1. On a plain light grey studio backdrop with soft even light. One picture of one person.',
     face_h3: '把<Picture 1>中的人改成同一个人的近景正面特写：画面从头顶到下巴，再带一点肩膀，人物正对镜头，眼睛平视镜头。'
@@ -175,8 +175,11 @@ export function aiPlan(plan, description, {outfitImage = false, faceModel = ''} 
 // The pictures of one set: the engine's views of a description (or a scene's three candidates), or a character's four
 // views made by the page's plan from a photo, a picture or a description. No DOM: the page below draws its state.
 // facing: async (made picture) => whether it shows a face toward the camera; a back that does is drawn once more.
-// dressTook: async (close-up, repainted, mask) => whether the repaint changed the clothes; one that did not is tried once more.
-export function createCastGenerator({client, kind = 'character', views = null, frontAsThird = true, dressMask = null, dressTook = null, facing = null, onChange = () => {}, beforeGenerate = async () => {}, onDiscard = () => {}, schedule = setTimeout, unschedule = clearTimeout}) {
+// framing: async (made close-up) => the face's height in the picture's height (null where unknown); a close-up under framingMin
+// (cropped at the waist, a half-length portrait) is drawn once more from another seed, and the larger face stays.
+// dressTook: async (close-up, repainted, mask) => whether the repaint changed the clothes; one that did not is tried once more,
+// from dressNeutral's answer (async close-up => the close-up with its clothes greyed out, '' for none) where there is one.
+export function createCastGenerator({client, kind = 'character', views = null, frontAsThird = true, dressMask = null, dressTook = null, dressNeutral = null, facing = null, framing = null, framingMin = .21, onChange = () => {}, beforeGenerate = async () => {}, onDiscard = () => {}, schedule = setTimeout, unschedule = clearTimeout}) {
     const scene = kind === 'setting' || kind === 'prop', names = views || (scene ? SCENE_CANDIDATES : CAST_VIEWS);
     const fresh = () => names.map(view => ({view, file: '', fraction: 0}));
     let state = {pictures: fresh(), running: false, current: -1, error: '', report_id: null, waiting: '', description: '', photo: '', outfit: ''};
@@ -279,7 +282,10 @@ export function createCastGenerator({client, kind = 'character', views = null, f
             if (!alive()) return null;
             if (!took) {
                 try {
-                    const again = await runOne(index, alive, {file, mask, again: true});
+                    let base = '';
+                    if (dressNeutral) { try { base = await dressNeutral(file); } catch { base = ''; } }
+                    if (!alive()) return null;
+                    const again = await runOne(index, alive, {file: base || file, mask, again: true});
                     if (again === null) return null;
                     job = null; onDiscard(made); made = again;
                 } catch { const id = job; job = null; if (id) void cancelJob(id); if (!alive()) return null; }
@@ -313,9 +319,39 @@ export function createCastGenerator({client, kind = 'character', views = null, f
             return alive() ? file : null;
         }
     }
-    // A made picture as it goes on the sheet: a close-up dressed in new clothes, a back facing the camera drawn again.
+    // A face close-up that came out framed too wide (the head small in a half-length picture) is drawn once more from another
+    // seed; whichever shows the larger face stays, and a failed redraw keeps the first. null: the run was stopped.
+    async function framed(index, file, alive) {
+        if (plan[index].view !== 'face' || !framing) return file;
+        let share = null;
+        try { share = await framing(file); } catch { share = null; }
+        if (!alive()) return null;
+        if (!Number.isFinite(share) || share >= framingMin) return file;
+        const before = seeds[index];
+        seeds[index] = randomSeed(); setPicture(index, {fraction: 0});
+        const restore = () => { if (before === undefined) delete seeds[index]; else seeds[index] = before; };
+        try {
+            const again = await runOne(index, alive);
+            if (again === null) return null;
+            job = null;
+            let second = null;
+            try { second = await framing(again); } catch { second = null; }
+            if (!alive()) return null;
+            if (second > share) { onDiscard(file); return again; }
+            onDiscard(again); restore();
+            return file;
+        } catch {
+            const id = job; job = null; if (id) void cancelJob(id);
+            restore();
+            return alive() ? file : null;
+        }
+    }
+    // A made picture as it goes on the sheet: a close-up framed again when it came out too wide, then dressed in new clothes;
+    // a back facing the camera drawn again.
     async function finished(index, made, alive) {
-        const file = await dressed(index, made, alive);
+        const wide = await framed(index, made, alive);
+        if (wide === null) return null;
+        const file = await dressed(index, wide, alive);
         return file === null ? null : turned(index, file, alive);
     }
 

@@ -106,15 +106,32 @@ export async function repaintTook({before, after, mask}) {
     } catch { return true; }
 }
 
-// The mask for dressMask's part as a PNG file of the close-up's size (white = change), or null.
-export async function dressMaskFile({client, fetcher, name}) {
+// Where the face cannot be found (an engine without face-box, an illustration it cannot read): a fixed part of a close-up. Measured
+// on 40 close-ups of 4 described people (6-20 seeds each): the face box ends at 42-62% of the picture's height and spans 30-70% of
+// its width, so everything from 68% down is clothes and shoulders, and an ellipse over the middle keeps the chin.
+export const DRESS_FIXED = Object.freeze({top: .68, keep: Object.freeze({cx: .5, cy: .4, rx: .27, ry: .3})});
+export function fixedDressMask(width, height) {
+    if (!(width > 0 && height > 0)) return null;
+    const {cx, cy, rx, ry} = DRESS_FIXED.keep;
+    return {top: Math.round(DRESS_FIXED.top * height), keep: {cx: Math.round(cx * width), cy: Math.round(cy * height), rx: Math.round(rx * width), ry: Math.round(ry * height)}};
+}
+
+// The mask for dressMask's part as a PNG file of the close-up's size (white = change), or null. Where no face is found, the
+// fixed part is used from the picture's own size (`url`) instead of leaving the old clothes on.
+export async function dressMaskFile({client, fetcher, name, url}) {
     try {
-        const found = await findFaces(client, fetcher, name);
-        const part = found && dressMask(found.width, found.height, found.faces);
+        const found = await findFaces(client, fetcher, name).catch(() => null);
+        let width = found?.width, height = found?.height, part = null;
+        if (found) part = dressMask(found.width, found.height, found.faces);
+        if (!part && !found?.faces?.length && url) {
+            const bitmap = await createImageBitmap(await (await fetcher(url)).blob());
+            width = bitmap.width; height = bitmap.height; bitmap.close?.();
+            part = fixedDressMask(width, height);
+        }
         if (!part) return null;
-        const canvas = new OffscreenCanvas(found.width, found.height), g = canvas.getContext('2d'), {cx, cy, rx, ry} = part.keep;
-        g.fillStyle = '#000'; g.fillRect(0, 0, found.width, found.height);
-        g.fillStyle = '#fff'; g.fillRect(0, part.top, found.width, found.height - part.top);
+        const canvas = new OffscreenCanvas(width, height), g = canvas.getContext('2d'), {cx, cy, rx, ry} = part.keep;
+        g.fillStyle = '#000'; g.fillRect(0, 0, width, height);
+        g.fillStyle = '#fff'; g.fillRect(0, part.top, width, height - part.top);
         g.fillStyle = '#000'; g.beginPath(); g.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI); g.fill();
         return new File([await canvas.convertToBlob({type: 'image/png'})], 'mask.png', {type: 'image/png'});
     } catch { return null; }
@@ -139,4 +156,42 @@ export function frontalFace(faces) {
 // Whether the made picture `name` shows a face toward the camera; false where the engine cannot tell (no face-box).
 export async function facesCamera({client, fetcher, name}) {
     try { const found = await findFaces(client, fetcher, name); return !!found && frontalFace(found.faces); } catch { return false; }
+}
+
+// How much of a made close-up the face takes: the largest face box's height over the picture's height, or null where the
+// engine cannot tell (no face-box, no face). Measured on 82 close-ups of 5 described people, 6-20 seeds each, and 10 more
+// from photos and pictures: 0.26-0.45 (median 0.32, 4% at 0.40 or more); the one cropped at the waist 0.16. The page draws a close-up again under 0.36 (a face about 40% of the height with the margin of the engine's box), and the larger face stays.
+export const CLOSEUP_FRAME = Object.freeze({min: .36});
+export function faceShare(height, faces) {
+    if (!(height > 0) || !Array.isArray(faces)) return null;
+    const heights = faces.filter(face => Array.isArray(face?.box) && face.box.length === 4 && face.box.every(Number.isFinite)).map(face => face.box[3] - face.box[1]);
+    return heights.length ? Math.max(...heights) / height : null;
+}
+export async function closeUpShare({client, fetcher, name}) {
+    try { const found = await findFaces(client, fetcher, name); return found ? faceShare(found.height, found.faces) : null; } catch { return null; }
+}
+
+// The close-up with everything below the chin painted flat grey, as a PNG file, or null: a repaint of the same garment in
+// another colour (a green hoodie to be white) takes the new colour from this base, where it keeps the old one from the
+// close-up itself. Measured on a green hoodie to be white, seeds 32-36: 4 of 5 white, against 0 of 6 from the close-up.
+export const NEUTRAL_BASE = Object.freeze({grey: 200, chin: .05});
+export async function neutralCloseUp({client, fetcher, name, url}) {
+    try {
+        const found = await findFaces(client, fetcher, name);
+        if (!found?.faces?.length) return null;
+        const bitmap = await createImageBitmap(await (await fetcher(url)).blob());
+        try {
+            if (bitmap.width !== found.width || bitmap.height !== found.height) return null;
+            const usable = found.faces.filter(face => Array.isArray(face?.box) && face.box.length === 4 && face.box.every(Number.isFinite));
+            if (!usable.length) return null;
+            const area = face => (face.box[2] - face.box[0]) * (face.box[3] - face.box[1]);
+            const [, y0, , y1] = usable.reduce((best, face) => area(face) > area(best) ? face : best).box;
+            const top = Math.round(y1 - NEUTRAL_BASE.chin * (y1 - y0));
+            if (top >= found.height) return null;
+            const canvas = new OffscreenCanvas(found.width, found.height), g = canvas.getContext('2d');
+            g.drawImage(bitmap, 0, 0);
+            g.fillStyle = `rgb(${NEUTRAL_BASE.grey},${NEUTRAL_BASE.grey},${NEUTRAL_BASE.grey})`; g.fillRect(0, top, found.width, found.height - top);
+            return new File([await canvas.convertToBlob({type: 'image/png'})], 'neutral.png', {type: 'image/png'});
+        } finally { bitmap.close?.(); }
+    } catch { return null; }
 }
