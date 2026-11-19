@@ -1684,6 +1684,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const TALL_EDGE = 48, TALL_RAIL = 122, GRID_MIN = 320;
     let recentCount = () => 0;
     let consoleSnap = {shape: '', held: false};
+    // Set once the failure card exists (below): whether it is on the picture, and the height it needs to read whole.
+    let failureShown = () => false, failureNeed = () => 0;
     const tallChange = () => fitPreview();
     tall?.addEventListener?.('change', tallChange); cleanup.push(() => tall?.removeEventListener?.('change', tallChange));
     function fitTall(gap) {
@@ -1710,20 +1712,26 @@ export function openStudio(node, {extendFrom = null} = {}) {
         if (!(width > 0) || !(room > 0) || !Number.isFinite(previewRatio) || previewRatio <= 0) return;
         const height = Math.max(Math.min(room, 160), Math.min(room, width / previewRatio));
         const fittedWidth = Math.min(width, height * previewRatio), fittedHeight = fittedWidth / previewRatio;
-        stage.style.width = `${fittedWidth}px`; stage.style.height = `${fittedHeight}px`;
+        // A failure card on the picture keeps its cause, next step and buttons whole: the picture widens to the card
+        // (560 px at most) and grows to its height, and the column scrolls if that is taller than the room.
+        const failed = failureShown();
+        const stageWidth = failed ? Math.max(fittedWidth, Math.min(width, 560 + 32)) : fittedWidth;
+        stage.style.width = `${stageWidth}px`;
+        const stageHeight = failed ? Math.max(fittedHeight, failureNeed()) : fittedHeight;
+        stage.style.height = `${stageHeight}px`;
         // The picture, its bar and the status line sit as one block in the middle of the column.
-        previewSpace.style.height = `${fittedHeight}px`;
+        previewSpace.style.height = `${stageHeight}px`;
         // The bar and the status line under the picture keep its width, so their ends line up with the picture's edges.
-        output.style.setProperty('--fvs-stage-w', `${Math.round(fittedWidth)}px`);
+        output.style.setProperty('--fvs-stage-w', `${Math.round(stageWidth)}px`);
         // On a phone the picture block sits just above the console (no empty band between them); wider windows centre it.
-        const free = Math.max(0, Math.floor(room - fittedHeight));
+        const free = Math.max(0, Math.floor(room - stageHeight));
         const marginTop = fit?.grid ? 0 : phone?.matches ? free : Math.floor(free / 2);
         previewSpace.style.marginTop = `${marginTop}px`;
         // The next generation's empty frame stays whole while a tray floats over the picture's lower part: it is fitted
         // and centred in the part left free, and takes the full stage again when the tray closes (200 ms).
         stage.style.translate = '';
         // (A tray shown as a small window beside its button, glass/tray_pop.js, floats over the stage and takes no room.)
-        const openTray = nextShown && body.dataset.traySide !== 'true' ? controls.querySelector('.fvs-tray[open]:not([data-closing]):not([data-fv-pop])') : null;
+        const openTray = nextShown && !failed && body.dataset.traySide !== 'true' ? controls.querySelector('.fvs-tray[open]:not([data-closing]):not([data-fv-pop])') : null;
         if (openTray) {
             const spaceTop = output.getBoundingClientRect().top + parseFloat(style.paddingTop) + marginTop;
             const freeHeight = Math.min(fittedHeight, openTray.getBoundingClientRect().top - spaceTop - 16);
@@ -1733,13 +1741,13 @@ export function openStudio(node, {extendFrom = null} = {}) {
                 stage.style.translate = `0 ${Math.round((freeHeight - fittedHeight) / 2)}px`;
             }
         }
-        stage.dataset.narrow = String((parseFloat(stage.style.width) || fittedWidth) < 220);
+        stage.dataset.narrow = String((parseFloat(stage.style.width) || stageWidth) < 220);
         // The history rail centres on the picture and is never taller than it (read from the layout, not the
         // animated boxes).
         const pictureTop = output.getBoundingClientRect().top - body.getBoundingClientRect().top + parseFloat(style.paddingTop) + marginTop;
         body.style.setProperty('--fvs-stage-top', `${Math.round(pictureTop)}px`);
-        body.style.setProperty('--fvs-stage-h', `${Math.round(fittedHeight)}px`);
-        if (fit?.grid) body.style.setProperty('--fvs-grid-top', `${Math.round(pictureTop + fittedHeight + fit.barRoom + 16)}px`);
+        body.style.setProperty('--fvs-stage-h', `${Math.round(stageHeight)}px`);
+        if (fit?.grid) body.style.setProperty('--fvs-grid-top', `${Math.round(pictureTop + stageHeight + fit.barRoom + 16)}px`);
         else body.style.removeProperty('--fvs-grid-top');
         // The console and the picture are either the same width or clearly apart (at least 24 px a side), never a
         // few pixels off.
@@ -1862,8 +1870,25 @@ export function openStudio(node, {extendFrom = null} = {}) {
     failureClose.append(glyph('close', 14)); failureClose.setAttribute('aria-label', t('Close', '关闭'));
     tip(failureClose, t('Close', '关闭'), t('Hide the card and show the picture', '收起这张卡片，显示画面'));
     failureLayer.append(failure.element, failureClose); stage.append(failureLayer);
-    const failureWatch = new MutationObserver(() => { failureLayer.hidden = failure.element.hidden; });
-    failureWatch.observe(failure.element, {attributes: true, attributeFilter: ['hidden']}); cleanup.push(() => failureWatch.disconnect());
+    failureShown = () => !failureLayer.hidden;
+    // The card's whole height (its content, border and the layer's padding), read at the picture's final width.
+    failureNeed = () => { const card = failure.element, pad = parseFloat(getComputedStyle(failureLayer).paddingTop) || 0;
+        return Math.ceil(card.scrollHeight + card.offsetHeight - card.clientHeight + 2 * pad); };
+    let failureFit = 0;
+    const refitFailure = () => { if (!failureFit) failureFit = requestAnimationFrame(() => { failureFit = 0; fitPreview(); }); };
+    cleanup.push(() => cancelAnimationFrame(failureFit));
+    const failureWatch = new MutationObserver(() => {
+        const hidden = failure.element.hidden;
+        if (failureLayer.hidden !== hidden) failureLayer.hidden = hidden;
+        refitFailure();
+    });
+    failureWatch.observe(failure.element, {attributes: true, attributeFilter: ['hidden'], childList: true, subtree: true, characterData: true});
+    cleanup.push(() => failureWatch.disconnect());
+    // Opening its details changes the card's height; a width change is read again once the picture has finished it.
+    failure.element.addEventListener('toggle', refitFailure, true);
+    stage.addEventListener('transitionend', event => { if (event.target === stage && event.propertyName === 'width' && failureShown()) refitFailure(); });
+    const layerWatch = new MutationObserver(refitFailure);
+    layerWatch.observe(failureLayer, {attributes: true, attributeFilter: ['hidden']}); cleanup.push(() => layerWatch.disconnect());
     // With the picture, the result's actions and numbers form one block, centred below the header.
     output.append(el('div', null, 'fv-preview-end'));
     if (node.freevideoFailure) failure.show(node.freevideoFailureReport || node.freevideoFailure, false);
