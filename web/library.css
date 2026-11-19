@@ -417,6 +417,11 @@ dialog.fv-studio.fv-library::backdrop{background:var(--lib-page)}
 .fv-library .fv-library-player-button{display:grid;place-items:center;flex:none;width:var(--fv-ctl,32px);height:var(--fv-ctl,32px);min-height:var(--fv-ctl,32px);padding:0;border:0;border-radius:var(--fv-r-sm);background:transparent;color:#fff;box-shadow:none}
 .fv-library .fv-library-player-button:hover{background:rgb(255 255 255 / .14)}
 .fv-library .fv-library-player-seek{flex:1;min-width:0;height:4px;accent-color:#fff;cursor:pointer}
+/* The bar sits on the video (dark in both themes): its track and knob are light (as before), as the shared slider track follows the page theme. */
+.fv-library .fv-library-player-seek::-webkit-slider-runnable-track{background:rgb(255 255 255 / .35)}
+.fv-library .fv-library-player-seek::-moz-range-track{background:rgb(255 255 255 / .35)}
+.fv-library .fv-library-player-seek::-webkit-slider-thumb{background:#fff}
+.fv-library .fv-library-player-seek::-moz-range-thumb{background:#fff}
 .fv-library .fv-library-player-time{flex:none;font-size:var(--fv-fs-1,12px);font-variant-numeric:tabular-nums;color:rgb(255 255 255 / .9)}
 .fv-library .fv-library-player-big{position:absolute;left:50%;top:50%;z-index:2;display:grid;place-items:center;width:56px;height:56px;min-height:56px;padding:0;border:0;border-radius:var(--fv-r-pill);
   transform:translate(-50%,-50%);background:rgb(8 10 14 / .5);-webkit-backdrop-filter:blur(var(--fv-glass-blur1,22px));backdrop-filter:blur(var(--fv-glass-blur1,22px));color:#fff;box-shadow:0 8px 24px rgb(0 0 0 / .3)}
