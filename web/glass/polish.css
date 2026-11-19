@@ -69,9 +69,7 @@ html:not([data-fv-polish="off"]) :where(.fv-studio,.fv-setup,.fv-panel) progress
 html:not([data-fv-polish="off"]) :is(.fv-studio,.fv-topbar,.fv-library,.fv-select-menu) :is(button,a,summary,input,textarea,select,[role=button],[role=tab],[role=option],[role=menuitem]){
   transition-property:background-color,border-color,color,fill,stroke,opacity,box-shadow,outline-color;transition-duration:.14s;transition-timing-function:cubic-bezier(.2,.8,.2,1);
 }
-/* Keyboard focus: one thin ring, no glow. Text fields take the ring on their own edge. */
-html:not([data-fv-polish="off"]) :is(.fv-studio,.fv-topbar,.fv-library,.fv-select-menu) :is(button,a,summary,[role=button],[role=tab],[role=slider],[role=separator]):focus-visible{outline:2px solid var(--fv-focus);outline-offset:2px}
-html:not([data-fv-polish="off"]) :is(.fv-studio,.fv-library) :is(textarea,input:not([type=checkbox],[type=radio],[type=range])):focus-visible{outline:1px solid var(--fv-focus)!important;outline-offset:-1px!important;box-shadow:none}
+/* Keyboard focus rings come from a11y.css (one ring for every control). */
 html:not([data-fv-polish="off"]) .fv-editor :is(.fv-ed-description-box,.fv-ed-search):focus-within{box-shadow:none;border-color:var(--fv-accent-line)}
 /* Disabled: dimmed once, no pointer. */
 html:not([data-fv-polish="off"]) :is(.fv-studio,.fv-library) :is(button,input,textarea,select):disabled{cursor:default}

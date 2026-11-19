@@ -38,7 +38,6 @@
 :where(.fv-studio,.fv-setup,.fv-panel) :is(input,select,textarea,button){font-family:inherit}
 :where(.fv-studio,.fv-setup,.fv-panel) :is(button,a,summary){touch-action:manipulation}
 :where(.fv-studio,.fv-setup,.fv-panel) button{appearance:none}
-:where(.fv-studio,.fv-setup,.fv-panel) :focus-visible{outline:2px solid var(--fv-accent);outline-offset:3px}
 /* A modal takes focus itself while it fills; its controls carry the ring. */
 :where(.fv-studio,.fv-setup,.fv-failure-dialog):focus-visible{outline:none}
 :where(.fv-studio,.fv-setup,.fv-panel) progress{accent-color:var(--fv-accent);appearance:none;height:6px;border:0;border-radius:var(--fv-r-pill);overflow:hidden;background:var(--fv-raised)}

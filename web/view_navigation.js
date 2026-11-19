@@ -94,7 +94,8 @@ export function viewSwitch(view, onStudio, onNodes, onEditor, onAutopilot, onIma
         if (id === 'autopilot') text.setAttribute('translate', 'no');
         button.dataset.label = label; button.dataset.view = id;
         if (id === 'editor') button.dataset.fvGuide = 'longer';
-        button.setAttribute('aria-pressed', String(view === id)); button.onclick = () => {
+        button.setAttribute('aria-pressed', String(view === id)); button.onclick = event => {
+            const byPointer = event?.detail > 0;
             const go = () => {
                 const result = action?.();
                 if (id === 'autopilot') Promise.resolve(result).then(() => import('./feature_tour.js')).then(({triggerFeatureTour}) => triggerFeatureTour(id)).catch(() => {});
@@ -105,7 +106,7 @@ export function viewSwitch(view, onStudio, onNodes, onEditor, onAutopilot, onIma
             for (const tab of group.querySelectorAll('[data-view]')) tab.setAttribute('aria-pressed', String(tab === button));
             // A view that says no (the editor keeping unsaved work) stays in front, and so does its tab.
             const result = switchView(id, go);
-            Promise.resolve(result).then(answer => { if (answer === false) syncTabs(); else keepFocusOnTab(id); }, () => syncTabs());
+            Promise.resolve(result).then(answer => { if (answer === false) syncTabs(); else keepFocusOnTab(id, byPointer); }, () => syncTabs());
             return result;
         };
         if (id === 'autopilot') {
@@ -125,12 +126,15 @@ export function viewSwitch(view, onStudio, onNodes, onEditor, onAutopilot, onIma
 
 // The view that was left hid what had focus; focus goes to the pressed tab of the bar now in front, so keys go on
 // from where the press was (never to the page itself). Focus the user already moved elsewhere stays.
-function keepFocusOnTab(id) {
+function keepFocusOnTab(id, byPointer = false) {
     const lost = () => { const at = document.activeElement; return !at || at === document.body || !at.checkVisibility?.(); };
     requestAnimationFrame(() => requestAnimationFrame(() => {
         if (!lost()) return;
         const tab = [...document.querySelectorAll(`.fv-view-switch [data-view="${id}"][aria-pressed=true]`)].find(b => b.checkVisibility?.());
-        tab?.focus({preventScroll: true});
+        if (!tab) return;
+        // Focus put back after a mouse press is not keyboard focus: no ring until a key is used (a11y.css).
+        if (byPointer) { tab.dataset.fvPointerFocus = 'true'; tab.addEventListener('blur', () => delete tab.dataset.fvPointerFocus, {once: true}); tab.addEventListener('keydown', () => delete tab.dataset.fvPointerFocus, {once: true}); }
+        tab.focus({preventScroll: true});
     }));
 }
 
