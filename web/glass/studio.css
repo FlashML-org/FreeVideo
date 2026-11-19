@@ -173,6 +173,9 @@
   overflow:hidden;font-size:var(--fv-fs-1);line-height:20px;color:var(--fv-fg3);pointer-events:none}
 .fvs-console-status>*{pointer-events:auto;min-width:0;margin:0!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .fvs-console-status>[hidden]{display:none!important}
+/* The run's status takes no room in the line while it says nothing, so a note beside it (a rewrite's failure and its
+   report key) reads whole. */
+.fvs-console-status>.fv-status:empty{display:none!important}
 .fvs-console-status .fv-request-assets{display:flex;gap:var(--fv-sp-12);font-size:var(--fv-fs-1);line-height:20px}
 .fvs-console-status .fv-request-assets>div{overflow:hidden;text-overflow:ellipsis}
 .fvs-console-status :is(.fv-add-video-note,.fv-length-why){text-align:left;font-size:var(--fv-fs-1)}
