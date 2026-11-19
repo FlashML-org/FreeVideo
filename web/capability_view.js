@@ -58,21 +58,21 @@ export function capabilityContext(node, state) {
         return row;
     });
     const audio = refs.some((r, i) => r.kind === 'audio' || positive(rows[i].audio_seconds));
-    const visual = refs.some(r => r.kind !== 'audio');
-    const task = audio ? visual ? 'ref2va_av' : 'ref2va_audio' : visual ? 'ref2va'
-        : first && last ? 'fl2va' : first ? 'i2va' : last ? 'l2va' : 't2va';
+    let visual = refs.some(r => r.kind !== 'audio');
     if (refs.length) {
-        // Next to references each keyframe is a still guide of the canvas size: a picture of the canvas shape
-        // at least as large as the canvas is counted as exactly one canvas grid.
-        // referenceItems names only the references then, so the keyframes are read from the panel and its sockets.
+        // Next to references each keyframe is a still guide of the canvas size; the server counts one canvas grid for
+        // each on every size it lists. referenceItems names only the references then, so the keyframes are read from
+        // the panel and its sockets.
         const mediaNode = upstream(node, 'media'), socket = name => mediaNode?.inputs?.some(i => i.name === name && i.link != null);
         const used = role => assets.some(r => r.enabled !== false && r.role === role) || socket(role);
         const middle = assets.filter(r => r.enabled !== false && r.role === 'middle').length;
-        const size = state.custom ? {width: Number(value(node, 'width')), height: Number(value(node, 'height'))}
-            : positive(state.ratio) ? {width: Math.round(4096 * Math.min(1, state.ratio)), height: Math.round(4096 * Math.min(1, 1 / state.ratio))} : null;
-        for (let n = Number(used('first')) + Number(used('last')) + (used('first') && used('last') ? middle : 0); size && n > 0; n--)
-            rows.push({kind: 'image', ...size});
+        for (let n = Number(used('first')) + Number(used('last')) + (used('first') && used('last') ? middle : 0); n > 0; n--)
+            rows.push({kind: 'image', guide: true});
+        // The engine counts a still guide as a picture: a sound reference with keyframes is an audio-video request.
+        visual ||= rows.some(r => r.guide);
     }
+    const task = audio ? visual ? 'ref2va_av' : 'ref2va_audio' : visual ? 'ref2va'
+        : first && last ? 'fl2va' : first ? 'i2va' : last ? 'l2va' : 't2va';
     const lora = upstream(node, 'loras');
     let adapters = false;
     try {
@@ -83,7 +83,7 @@ export function capabilityContext(node, state) {
     const query = new URLSearchParams({task, adapters: adapters ? '1' : '0'});
     if (state.custom) { query.set('width', value(node, 'width')); query.set('height', value(node, 'height')); }
     else { if (!positive(state.ratio)) return null; query.set('aspect', `${state.ratio}:1`); }
-    const complete = rows.length && rows.every(r => (r.kind === 'audio' || [r.width, r.height].every(n => Number.isInteger(n) && n > 0 && n <= 65536))
+    const complete = rows.length && rows.every(r => r.guide || (r.kind === 'audio' || [r.width, r.height].every(n => Number.isInteger(n) && n > 0 && n <= 65536))
         && (r.kind === 'image' || positive(r.seconds)));
     if (complete) query.set('references', JSON.stringify(rows));
     return query.toString();

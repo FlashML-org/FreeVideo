@@ -1466,7 +1466,12 @@ export function openStudio(node, {extendFrom = null} = {}) {
             if (!linked(node, 'conditioning')) {
                 const media = referenceItems(node), refs = media.filter(r => !r.role);
                 requestRefs = refs;
-                const audio = refs.some(r => r.kind === 'audio'), visual = refs.some(r => r.kind !== 'audio');
+                const audio = refs.some(r => r.kind === 'audio');
+                // Next to references, keyframes are still guides, which the engine counts as pictures.
+                const keyframes = (() => { try { return JSON.parse(value(upstream(node, 'media'), 'assets') || '[]')
+                    .some(r => r.enabled !== false && ['first', 'last'].includes(r.role)); } catch { return false; } })()
+                    || ['first', 'last'].some(name => linked(upstream(node, 'media'), name));
+                const visual = refs.some(r => r.kind !== 'audio') || refs.length > 0 && keyframes;
                 const first = media.some(r => r.role === 'first'), last = media.some(r => r.role === 'last');
                 task = audio ? visual ? 'ref2va_av' : 'ref2va_audio' : visual ? 'ref2va'
                     : first && last ? 'fl2va' : first ? 'i2va' : last ? 'l2va' : 't2va';
