@@ -92,7 +92,8 @@ QUEUE_POLL = .1
 # Pictures that may wait behind the running one; a further request is turned away with 'busy'.
 QUEUE_LIMIT = 8
 INVALID_ERRORS = frozenset(('invalid_request', 'invalid_prompt', 'invalid_dimensions', 'invalid_seed',
-                            'invalid_media', 'invalid_points', 'too_many_images')) | LORA_ERRORS
+                            'invalid_media', 'invalid_points', 'too_many_images',
+                            'invalid_layout', 'too_many_boxes', 'layout_too_long')) | LORA_ERRORS
 
 
 def native_allocator(env):
@@ -1336,7 +1337,19 @@ class Service:
         purpose = value.get('purpose')
         if purpose is not None and purpose not in PURPOSES:
             raise ValueError('invalid_request')
-        result = dict(prompt=prompt, width=dimensions[0] // 32 * 32, height=dimensions[1] // 32 * 32,
+        dimensions = [size // 32 * 32 for size in dimensions]
+        layout = value.get('layout')
+        if layout is not None:
+            # Boxes drawn on the picture (MOSS only): written against the size actually made, so each box covers the
+            # same part of the picture as on the page. The prompt is the caption of the whole picture.
+            if model != image_model.MOSS:
+                raise ValueError('invalid_request')
+            from .moss_layout import LayoutError, compile_layout
+            try:
+                prompt = compile_layout(prompt, layout, *dimensions)
+            except LayoutError as error:
+                raise ValueError(error.code) from None
+        result = dict(prompt=prompt, width=dimensions[0], height=dimensions[1],
                       steps=8, seed=seed, images=paths, **(dict(mask=mask_path) if mask_path else {}),
                       **(dict(cast_view='back') if cast_view == 'back' else {}),
                       path=self.output_path(named=True),
