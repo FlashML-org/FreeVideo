@@ -1584,7 +1584,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // The floating task window grows out of this picture and returns to it.
     stage.dataset.fvTaskStage = 'studio';
     // Before the first video: one quiet line under the empty frame's icon says where to start.
-    stage.style.setProperty('--fvs-empty-hint', JSON.stringify(t('Describe a scene below, then Generate', '在下方写一句描述，点“生成视频”')));
+    stage.style.setProperty('--fvs-empty-hint', JSON.stringify(t('Describe a scene below to start', '在下方写一句描述，开始生成')));
     const stageMedia = el('div', null, 'fv-stage-media');
     // The next generation's empty frame: the stage itself, at the chosen (or pointed-at) shape, with its pixels.
     const nextSize = el('span', null, 'fvs-next-size');
