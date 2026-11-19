@@ -40,6 +40,7 @@ import { preloadMode } from './preload_setting.js';
 import { openPictureViewer } from './image_view_viewer.js';
 import { LORA_MODEL, imageViewLora } from './image_view_lora.js';
 import { hasPictureThumbnail, mediaQueue, pictureThumbnailURL } from './work_media.js';
+import { fieldNote } from './field_note.js';
 
 export { IMAGE_MODELS, RATIOS };
 for (const name of ['./image_view.css']) {
@@ -352,6 +353,9 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     dice.addEventListener('click', () => { seedInput.value = String(randomSeed()); render(); });
     seedInput.addEventListener('input', () => render());
     const seedField = el('label', 'fv-image-seed fv-iv-field fv-iv-field-wide'); seedField.append(el('span', 'fv-iv-field-key', t('Seed', '种子')), seedInput, dice);
+    // A seed past its range becomes its end (or a whole number), and the line under the field says so.
+    const seedNote = fieldNote(seedInput, {t, place: () => seedField});
+    seedInput.addEventListener('change', () => { if (seedInput.value !== '') seedNote.settle(); });
     // LoRA: a button whose panel opens beside it; it answers for the model that takes LoRA files.
     const loraRow = imageViewLora({host: dialog, fetchApi: (path, options) => api.fetchApi(path, options),
         modelName: () => IMAGE_MODELS.find(m => m.id === LORA_MODEL)?.name || 'Qwen-Image 2.1', onChange: () => render()});
@@ -1373,7 +1377,8 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     // Uploads and the prompt step stay with the page; once the worker has the job, the store follows it.
     async function generate() {
         if (over()) { blockOver(); return; }
-        if (!seedInput.checkValidity()) { advanced.open = true; seedInput.reportValidity(); return; }
+        if (seedInput.value !== '' && !seedNote.settle()) { advanced.open = true; return; }
+        if (!seedInput.checkValidity()) { advanced.open = true; seedNote.say(t('Enter a whole number, or leave it empty', '请输入整数，或留空')); seedInput.focus(); return; }
         const seed = seedInput.value === '' ? undefined : Number(seedInput.value);
         // The boxes as they are now (MOSS only); the frame gives way to the picture being made.
         const boxes = layoutActive() ? layout.request() : [], drawn = boxes.length ? layout.snapshot().filter(item => item.line.trim()) : null;

@@ -78,6 +78,7 @@ import { createCompare, COMPARE_ICON } from './studio_compare.js';
 import { toast, toastHeight } from './notifications.js';
 import { mediaQueue } from './work_media.js';
 import { userMessage } from './user_message.js';
+import { fieldNote } from './field_note.js';
 
 const languageOverride = typeof location !== 'undefined'
     ? new URLSearchParams(location.search).get('freevideo_lang') : null;
@@ -91,15 +92,21 @@ const LORA_USUAL = 4, LORA_LIMIT = 100;
 let loraRangeCount = 0;
 function loraStrengthBox(initial, commit) {
     const input = document.createElement('input'), mark = document.createElement('span');
-    input.type = 'number'; input.step = '.05'; input.value = initial;
+    input.type = 'number'; input.step = '.05'; input.min = String(-LORA_LIMIT); input.max = String(LORA_LIMIT); input.value = initial;
+    const note = fieldNote(input, {t, place: () => mark.isConnected ? mark : null});
     mark.id = 'fv-lora-range-' + ++loraRangeCount; input.setAttribute('aria-describedby', mark.id);
     mark.className = 'fv-lora-range'; mark.textContent = t('Outside usual range', '超出常用范围');
     const sync = () => {
         const number = Number(input.value), filled = input.value !== '';
         mark.hidden = !(filled && Math.abs(number) > LORA_USUAL && Math.abs(number) <= LORA_LIMIT);
-        input.setCustomValidity(filled && !(Math.abs(number) <= LORA_LIMIT) ? t('Enter a value from -100 to 100.', '请输入 -100 到 100 之间的数。') : '');
     };
-    input.oninput = sync; input.onchange = () => { sync(); if (input.reportValidity()) commit(); };
+    // A strength past ±100 becomes ±100, and the line under it says so.
+    // An emptied box goes back to the strength in use, and the line says so.
+    let kept = String(initial);
+    input.oninput = sync; input.onchange = () => {
+        if (input.value === '' && kept !== '') { input.value = kept; sync(); note.say(t(`Back to ${kept}`, `已恢复为 ${kept}`)); return; }
+        const ok = note.settle(); sync(); if (ok) { kept = input.value; commit(); }
+    };
     sync();
     return {input, mark};
 }
@@ -1269,6 +1276,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const [advancedDetails, advanced] = expand(t('Advanced', '高级选项'));
     const custom = el('div', null, 'fv-fields fvs-wh');
     const width = el('input'), height = el('input');
+    // Each number field's line for a typed value brought into range (field_note.js); the submit check says through it.
+    const fieldNotes = new Map();
     // Width × height, typed: with the shape kept, the other side follows (32-pixel steps); set free, the shape is custom.
     let shapeKept = true;
     // The side the frame panel's width × height left empty: it stays empty until a size is set again.
@@ -1288,8 +1297,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
         input.value = value(node, name); input.disabled = dimensionsLinked; input.setAttribute('aria-label', label);
         custom.append(field(label, input));
         if (name === 'width') custom.append(keepShape);
+        const note = fieldNote(input, {t}); fieldNotes.set(input, note);
         input.onchange = () => {
-            if (!input.value || !input.reportValidity()) return;
+            if (!note.settle()) return;
             const kept = shapeKept && selected !== 'custom' && Number.isFinite(ratio) && ratio > 0;
             let w = name === 'width' ? Number(input.value) : Number(value(node, 'width'));
             let h = name === 'height' ? Number(input.value) : Number(value(node, 'height'));
@@ -1310,6 +1320,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     keepShape.disabled = dimensionsLinked;
     resolutionControl.append(custom);
     lengthControl = createStudioLength({api, node, seconds, advanced, fields, t, field, promptModel: enhancer.model,
+        settleSeconds: () => durationNote.settle(),
         setSeconds: seconds => set(node, 'seconds', seconds), onChange: () => { if (runButtonReady) { updateRunButton(); showEffortEstimate(); updateDuration(); } },
         onEditor: toEditor, onAutopilot: toAutopilot, autopilot: !autopilotTab.hidden});
     cleanup.push(() => lengthControl.dispose());
@@ -1344,6 +1355,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const samplingWarning = el('p', t('Changing steps may lower quality. Default: 8 + 3 steps.', '改步数可能降低质量。默认 8 + 3 步。'), 'fv-muted');
     samplingWarning.id = `fv-sampling-warning-${node.id}`;
     samplingWarning.style.color = 'var(--fv-warning)';
+    // Steps past their range become its end, and the line under the field says so (no browser bubble).
     for (const [input, name, label, fallback, maximum] of [
         [baseSteps, 'base_steps', t('First-pass steps', '一采步数'), 8, 32],
         [refineSteps, 'refine_steps', t('Second-pass steps', '二采步数'), 3, 31],
@@ -1352,22 +1364,29 @@ export function openStudio(node, {extendFrom = null} = {}) {
         input.value = value(node, name) ?? fallback;
         input.setAttribute('aria-label', label); input.setAttribute('aria-describedby', samplingWarning.id);
         input.oninput = () => syncSamplingSteps();
-        input.onchange = () => input.reportValidity();
+        fieldNotes.set(input, fieldNote(input, {t}));
+        input.onchange = () => { fieldNotes.get(input).settle(); syncSamplingSteps(); };
         samplingFields.append(field(label, input));
     }
     // Typed steps are custom sampling, which has no step cache.
     baseSteps.oninput = () => { clearStepCache(); syncSamplingSteps(); };
     // Apply the two-pass rule to committed values, never while typing.
-    baseSteps.onchange = () => {
-        // Before validation: one step is valid only once two-pass is off.
+    const twoPassRule = () => {
         const steps = Number(baseSteps.value);
         if (baseSteps.value !== '' && Number.isInteger(steps) && steps >= 1 && steps <= 32
                 && !linked(node, 'two_pass') && widget(node, 'two_pass')) {
-            if (steps !== 8 && twoPass.checked) { twoPass.checked = false; set(node, 'two_pass', false); autoSinglePass = true; }
+            if (steps !== 8 && twoPass.checked) { twoPass.checked = false; set(node, 'two_pass', false); autoSinglePass = true; baseSteps.min = '1'; }
             else if (steps === 8 && autoSinglePass && !extension.source) { twoPass.checked = true; set(node, 'two_pass', true); autoSinglePass = false; }
         }
+    };
+    baseSteps.onchange = () => {
+        // Before the range is applied: one step is allowed once two-pass is off. A value brought into range is
+        // checked against that rule again.
+        twoPassRule();
+        const typed = baseSteps.value;
+        fieldNotes.get(baseSteps).settle();
+        if (baseSteps.value !== typed) twoPassRule();
         syncSamplingSteps();
-        baseSteps.reportValidity();
     };
     // The run button exists only further down; until then its label is set there.
     let runButtonReady = false;
@@ -1513,7 +1532,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     }
     const seedFields = el('div', null, 'fv-fields'); seedFields.style.marginTop = '14px';
     const seed = el('input'); seed.type = 'number'; seed.required = true; seed.min = '0'; seed.max = String(2 ** 53 - 1); seed.step = '1'; seed.value = value(node, 'seed'); seed.disabled = linked(node, 'seed'); seed.setAttribute('aria-label', t('Seed', '种子'));
-    seed.onchange = () => { if (seed.value && seed.reportValidity()) set(node, 'seed', Number(seed.value)); };
+    const seedNote = fieldNote(seed, {t}); fieldNotes.set(seed, seedNote);
+    seed.onchange = () => { if (seedNote.settle()) set(node, 'seed', Number(seed.value)); };
     const mode = el('select'); for (const [v, label] of [['randomize', t('New each run', '每次随机')], ['fixed', t('Keep fixed', '保持固定')], ['increment', t('Increment', '递增')], ['decrement', t('Decrement', '递减')]]) { const o = el('option', label); o.value = v; mode.append(o); }
     mode.value = value(node, 'control_after_generate') || 'fixed'; mode.onchange = () => set(node, 'control_after_generate', mode.value);
     mode.dataset.fvTipName = t('After generation', '生成后'); mode.dataset.fvTipUse = t('How the seed changes after each video', '每次生成后种子怎么变');
@@ -2219,6 +2239,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
         }
         updateRunButton();
     };
+    // A count past 2–100 becomes that end, and the line under the field says so.
+    const countNote = fieldNote(count, {t, place: () => countField}); fieldNotes.set(count, countNote);
+    count.onchange = () => { if (countNote.settle()) count.oninput(); };
     runOptions.append(optionsToggle, optionsPanel);
     runOptions.addEventListener('toggle', () => { if (runOptions.open) updateRunButton(); });
     // The run-mode menu opens in the top layer above its button, so it never sits under the prompt's tools.
@@ -2633,13 +2656,18 @@ export function openStudio(node, {extendFrom = null} = {}) {
                     [refineSteps, t('Fill in the second-pass steps.', '请填写二采步数。')]]).get(invalid);
                 if (message) { status.dataset.error = 'true'; status.textContent = message; }
             }
+            // A value out of range is brought in and said under its field (the length: in the console's line); a rule
+            // between fields is said there too. No browser bubble.
+            const said = invalid.validity.valueMissing ? null : invalid === seconds ? durationNote : fieldNotes.get(invalid);
+            if (said) { said.settle(); if (invalid !== seconds) invalid.focus(); return; }
+            if (!invalid.validity.valueMissing) { status.dataset.error = 'true'; status.textContent = invalid.validationMessage; }
             // Width and height are typed in the frame panel: it opens at the empty field.
             const side = (invalid === width || invalid === height) && framePicker?.element.checkVisibility() ? [...framePicker.pop.querySelectorAll('.fvp-dim')][invalid === width ? 0 : 1] : null;
             if (side) { framePicker.set({empty: emptySide, ask: true}); if (framePicker.pop.dataset.open !== 'true') framePicker.element.click(); side.focus(); return; }
             // The duration is typed in the stepper's number: it opens for typing.
             const stepValue = invalid === seconds ? dialog.querySelector('.fvs-step-value') : null;
             if (stepValue?.checkVisibility()) { stepValue.click(); return; }
-            invalid.focus(); invalid.reportValidity(); return;
+            invalid.focus(); return;
         }
         // One prompt per line with no lines: say what to write (generating without a prompt is not offered here).
         if (byLine() && !lineTexts().length) { status.dataset.error = 'true'; status.textContent = t('Write one prompt per line, then add them.', '每行写一条描述后再添加。'); prompt.focus(); return; }
@@ -2672,7 +2700,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             if (selected === 'input' && !dimensionsLinked) await inputRatio(true);
             const lengthPlan = await lengthControl.ready();
             if (disposed || lengthControl.blocked) return;
-            if (lengthControl.absent && !seconds.reportValidity()) return;
+            if (lengthControl.absent && !durationNote.settle()) return;
             if (originalOn && lengthPlan?.count > 1 && !twoPass.checked) { status.dataset.error = 'true'; status.textContent = partsNeedTwoPassText(t); return; }
             if (lengthPlan?.count > 1 && chosenMode !== 'single') { status.textContent = t('Videos made in parts cannot use batch or loop.', '分段视频不能批量或循环生成。'); return; }
             const lengthOptions = lengthControl.options();
@@ -2711,7 +2739,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
                 const chain = await chainController.start(snapshot, lengthOptions, {onAccepted});
                 if (disposed) return;
                 if (chain && chainController.waiting > waitingBefore) { status.dataset.error = 'false'; status.textContent = addedNote; return; }
-                if (!chain) { if (source) throw new Error(extendText(t, 'unavailable')); lengthControl.fallback(); if (!seconds.reportValidity()) return;
+                if (!chain) { if (source) throw new Error(extendText(t, 'unavailable')); lengthControl.fallback(); if (!durationNote.settle()) return;
                     await queueController.start(snapshot, {count: batchCount, repeat: chosenMode === 'loop', seedIndex, onAccepted}); }
             } else await queueController.start(snapshot, {count: batchCount, repeat: chosenMode === 'loop', seedIndex, onAccepted,
                 ...(texts ? {texts, textIndex: node.widgets.findIndex(w => w.name === 'text')} : {})});
@@ -3167,12 +3195,15 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // length is made in parts.
     const longest = () => { try { const one = lengthControl?.absent ? null : lengthControl?.options().singleLimit; return one > 0 ? Math.max(5, Math.floor(one) * 8) : 60; } catch { return 60; } };
     // A locked length says what decides it: the audio used as is (the old field's lock shows that) or a connected node.
+    // The line that says a typed length was brought to the shortest or longest sits with the console's other lines.
+    const durationNote = fieldNote(seconds, {t, place: () => lengthWhy.isConnected ? lengthWhy : null, className: 'fv-length-why'});
     const stepper = durationStepper(t, seconds, {max: longest,
         lockedBy: () => (!audioLock.hidden ? 'audio' : linked(node, 'seconds') ? 'linked' : null)});
     seconds.addEventListener('change', () => {
         const n = Number(seconds.value), most = longest(), least = 2;
         if (seconds.value === '' || !Number.isFinite(n) || seconds.disabled) return;
-        if (most > 0 && n > most) seconds.value = String(most); else if (n < least) seconds.value = String(least);
+        if (most > 0 && n > most) { seconds.value = String(most); durationNote.say(t(`At most ${most} s`, `最长 ${most} 秒`)); }
+        else if (n < least) { seconds.value = String(least); durationNote.say(t(`At least ${least} s`, `最短 ${least} 秒`)); }
     }, true);
     const stepValue = stepper.element.querySelector('.fvs-step-value');
     const paintDuration = () => {

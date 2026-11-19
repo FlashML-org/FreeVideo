@@ -32,6 +32,7 @@ if (typeof document !== 'undefined') {
     document.head.append(css);
 }
 
+import { nearestAllowed } from './field_note.js';
 import { cn, t, INSTALLED_HINT, gib, bytesText, atLeast, WAIT_REFUSAL, reportable, failureText, setupError, SECTIONS, sectionOf } from './settings_words.js';
 export { failureText, sectionOf, SECTIONS, bytesText };
 
@@ -1178,7 +1179,17 @@ export async function openSetup(options) {
             reserve.focus();
             return;
         }
-        if (!reserveAuto.checked && !reserve.checkValidity()) { reserve.reportValidity(); return; }
+        // Past the top or between steps: the nearest allowed amount goes in the box and the line says so; Save again keeps it.
+        const moved = reserveAuto.checked ? null : nearestAllowed(reserve);
+        if (moved || (!reserveAuto.checked && !reserve.checkValidity())) {
+            if (moved) reserve.value = String(moved.value);
+            reserveFailure.className = 'st-slot is-warn'; reserveStep.classList.add('is-bad');
+            reserveFailure.textContent = !moved ? t('Enter a number in range', '请输入范围内的数')
+                : moved.kind === 'max' ? t(`At most ${moved.value}`, `最多 ${moved.value}`)
+                : moved.kind === 'min' ? t(`At least ${moved.value}`, `最少 ${moved.value}`) : t(`Changed to ${moved.value}`, `已改为 ${moved.value}`);
+            reserve.focus();
+            return;
+        }
         saveReserve.disabled = true;
         try {
             showResources(await request('resources', {[reserveField]: reserveAuto.checked ? null : Number(reserve.value)}));
