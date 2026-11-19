@@ -23,6 +23,7 @@ import uuid
 from . import image_model, image_pack, keep, progress_model
 from .. import server_mode
 from .loras import ERRORS as LORA_ERRORS, resolve_selection
+from ..disk_space import ran_out
 from ..download_settings import observed_speed
 from ..exit_diagnostics import clean_reading
 from ..monitoring import save
@@ -591,7 +592,11 @@ class Service:
         output = directory / 'freevideo-image'
         if output.is_symlink() or output.resolve().parent != directory:
             raise ValueError('invalid_media')
-        output.mkdir(exist_ok=True)
+        try:
+            output.mkdir(exist_ok=True)
+        except OSError as error:
+            # A full disk is its own answer; a missing, read-only or occupied folder is not a wrong setting.
+            raise ValueError('disk_full' if ran_out(error) else 'output_unwritable') from None
         return output
 
     def output_path(self, named=False, suffix='.jpg'):
