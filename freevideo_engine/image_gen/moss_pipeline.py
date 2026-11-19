@@ -24,6 +24,9 @@ ENCODER_RESIDENT_GIB = 24.
 STEPS = 50
 GUIDANCE = 3.
 SKIP_LAYERS = (22,)
+LAYERS = 42
+LAYER_GIB = 0.225   # one bf16 DiT layer
+KEEP_MARGIN_GIB = 1.5
 SIDE_MULTIPLE = 16
 MAX_SIDE = 2048
 MIN_SIDE = 256
@@ -61,11 +64,27 @@ def folder_key(folder):
     return tuple(parts)
 
 
-def plan(vram_gib):
-    """Where each part goes for a card budget in GiB: {'dit': 'resident'|'stream', 'encoder': ...}."""
+def keep_layers(vram_gib, width, height, layers=LAYERS, layer_gib=LAYER_GIB):
+    """How many DiT layers a streamed run keeps on the card: what the budget leaves after the picture's own working
+    memory (measured about 0.3 GiB plus 2.4 GiB per megapixel, streaming alone) and a margin for the driver."""
+    working = 0.3 + 2.4 * width * height / 1e6
+    spare = float(vram_gib or 0) - working - KEEP_MARGIN_GIB
+    return max(0, min(layers - 1, int(spare / layer_gib)))
+
+
+def kept_indices(count, layers=LAYERS):
+    """``count`` layer indices spread evenly, so the next streamed layer is read while kept ones run."""
+    if count <= 0:
+        return ()
+    return tuple(sorted({int((k + 0.5) * layers / count) for k in range(count)}))
+
+
+def plan(vram_gib, width=1024, height=1024):
+    """Where each part goes for a card budget in GiB: {'dit': 'resident'|'stream', 'encoder': ..., 'keep': n}."""
     vram = float(vram_gib or 0)
-    return dict(dit='resident' if vram >= DIT_RESIDENT_GIB else 'stream',
-                encoder='resident' if vram >= ENCODER_RESIDENT_GIB else 'stream')
+    dit = 'resident' if vram >= DIT_RESIDENT_GIB else 'stream'
+    return dict(dit=dit, encoder='resident' if vram >= ENCODER_RESIDENT_GIB else 'stream',
+                keep=0 if dit == 'resident' else keep_layers(vram, width, height))
 
 
 class PairedForward:
@@ -185,7 +204,7 @@ def _one(index, key, device):
         return handle.get_tensor(key).to(device)
 
 
-def _build_dit(module, folder, device, placement):
+def _build_dit(module, folder, device, placement, keep=0):
     """The DiT with its non-layer weights on the card; returns (transformer, stream or None)."""
     import torch
     from .layer_stream import DiskLayerStream
@@ -204,7 +223,8 @@ def _build_dit(module, folder, device, placement):
     for name, buffer in transformer.named_buffers():
         if buffer.is_meta:
             raise RuntimeError('MOSS-Image: buffer %s was not loaded from the files' % name)
-    return transformer, DiskLayerStream(transformer.layers, index, layer_key(''), device)
+    return transformer, DiskLayerStream(transformer.layers, index, layer_key(''), device,
+                                         keep=kept_indices(keep, len(transformer.layers)))
 
 
 def generate(prompt, width, height, seed, progress=None, cancel=None, *, folder, vram_gib=None, kept=None,
@@ -229,7 +249,7 @@ def generate(prompt, width, height, seed, progress=None, cancel=None, *, folder,
         kept.key = key
     free_gib = torch.cuda.mem_get_info()[0] / 2**30 + (torch.cuda.memory_reserved() / 2**30)
     budget = min(float(vram_gib), free_gib) if vram_gib else free_gib
-    placement = plan(budget)
+    placement = plan(budget, width, height)
     stats['placement'] = placement
     check()
     progress('encode', 0, 1)
@@ -251,7 +271,7 @@ def generate(prompt, width, height, seed, progress=None, cancel=None, *, folder,
     if resident and kept.dit is not None:
         transformer, stream = kept.dit, None
     else:
-        transformer, stream = _build_dit(module, folder, device, placement['dit'])
+        transformer, stream = _build_dit(module, folder, device, placement['dit'], placement.get('keep', 0))
         if resident:
             kept.dit = transformer
     stats['dit_load_s'] = round(time.time() - started, 2)
