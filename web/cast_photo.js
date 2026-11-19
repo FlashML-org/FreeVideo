@@ -115,12 +115,12 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
             record = {file, url: URL.createObjectURL(file)}; paint(); onChange();
         };
         async function edit() {
-            let outcome;
+            let outcome, loadFailed = false;
             try {
-                const {openImageEditor} = await import('./image_editor.js');
+                const {openImageEditor} = await import('./image_editor.js').catch(error => { loadFailed = true; throw error; });
                 outcome = await openImageEditor({source: record.original?.url || record.url, name: record.file.name || 'picture.png', edit: record.edit || null,
                     role: 'reference', t: tr, resolve: url => url, upload: async blob => client.upload(blob), imageGenClient: client});
-            } catch { attention = tr('This picture cannot be edited right now.', '这张图暂时无法编辑。'); render(); return; }
+            } catch { attention = loadFailed ? tr('The image editor did not load. Reload the page and try again.', '图片编辑器没有加载出来。请刷新页面后再试。') : tr('This picture could not be read. Choose another picture.', '这张图无法读取。请重新选择一张。'); render(); return; }
             if (!outcome || !record || disposed) return;
             if (outcome.restore) { back(); return; }
             if (!outcome.blob) return;
@@ -272,12 +272,12 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
     // A view opens in the image editor; the edited picture takes its place on the card (marked, and Restore puts the
     // made one back). An edited face or front is what the others are redrawn from.
     async function editView(view) {
-        let outcome;
+        let outcome, loadFailed = false;
         try {
-            const {openImageEditor} = await import('./image_editor.js');
+            const {openImageEditor} = await import('./image_editor.js').catch(error => { loadFailed = true; throw error; });
             outcome = await openImageEditor({source: sourceOf(view), name: `${view}.png`, edit: edits[view]?.edit || null,
                 role: 'reference', t: tr, resolve: url => url, upload: async blob => client.upload(blob), imageGenClient: client});
-        } catch { attention = tr('This picture cannot be edited right now.', '这张图暂时无法编辑。'); render(); return; }
+        } catch { attention = loadFailed ? tr('The image editor did not load. Reload the page and try again.', '图片编辑器没有加载出来。请刷新页面后再试。') : tr('This picture could not be read. Choose another picture.', '这张图无法读取。请重新选择一张。'); render(); return; }
         if (!outcome || disposed) return;
         if (outcome.restore) { dropEdit(view); if (leads(view)) faceChanged = true; render(); return; }
         if (!outcome.blob) return;

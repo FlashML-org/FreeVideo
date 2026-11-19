@@ -490,7 +490,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             if (said) out(said);
             return {ok: false, reason: code};
         }
-        const text = step === 'generate' ? editorErrorText(value, t) : step === 'export' ? exportErrorText(value, t) : t('Could not complete. Try again.', '没有完成，请重试');
+        const text = step === 'generate' ? editorErrorText(value, t) : step === 'export' ? exportErrorText(value, t) : isNetworkTypeError(value) ? connectionLostText(t) : t('This step did not finish. Try again; if it keeps failing, report the problem.', '这一步没有完成。请重试；仍然失败时，请提交问题。');
         out(text, step === 'export' ? EXPORT_ISSUE : EDITOR_ISSUE, failureKind(site, value)); return {ok: false, reason: code, say: text};
     }
     const store = createEditorStore(api, {t, notify, standIn: given?.generationStandIn, onGenerationChecking: () => { if (!disposed) settleService(); }, onGenerationReady: ready => {

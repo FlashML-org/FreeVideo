@@ -11,7 +11,7 @@ const ACTIVE = ['waiting', 'queued', 'running', 'cancelling'];
 const FAILURES = {
     stems_download_failed: ['The separation model could not be downloaded. Check the network and try again.', '分离模型下载失败，请检查网络后重试。'],
     out_of_memory: ['Not enough graphics memory to separate this sound.', '显存不足，无法分离这段声音。'],
-    stems_failed: ['The sound could not be separated. Try again.', '声音分离失败，请重试。'],
+    stems_failed: ['The sound could not be separated. Try again; if it keeps failing, report the problem.', '声音分离失败。请重试；仍然失败时，请提交问题。'],
     project_changed: ['The edit changed meanwhile. Try again.', '编辑内容已变化，请重试。'],
     clip_busy: ['This clip is still being made.', '这个片段还在生成。'],
     clip_locked: ['This clip is locked.', '这个片段已锁定。'],

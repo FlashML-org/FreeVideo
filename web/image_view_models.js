@@ -44,7 +44,7 @@ export function statusLine(state) {
     switch (state.state) {
     case 'ready': return t('Installed', '已安装');
     case 'downloading': return state.paused ? t('Paused', '已暂停') : state.verifying ? verifyText(state) : `${Math.floor(state.fraction * 100)}%`;
-    case 'failed': return t('Download failed', '下载失败');
+    case 'failed': return t('Download failed. Retry to continue.', '下载失败，请重试以继续。');
     case 'missing': return downloadText(state);
     case 'unavailable': return t('Not on this computer', '这台电脑不支持');
     default: return t('Checking…', '正在检查…');

@@ -699,7 +699,7 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
                     if (!mark) { mark = create('span', 'fv-ed-seam-mark'); mark.setAttribute('aria-hidden', 'true'); mark.dataset.kind = seam; mark.append(icon('link')); item.element.append(mark); }
                 } else mark?.remove();
                 item.element.classList.toggle('fv-ed-seamed', !!item.element.querySelector(':scope > .fv-ed-seam-mark'));
-                const failureText = visual === 'failed' ? actions.failureText?.(clip.id) || actions.reasonText?.(clip.reason) || clip.reason || t('Generation failed', '生成时出错') : '';
+                const failureText = visual === 'failed' ? actions.failureText?.(clip.id) || actions.reasonText?.(clip.reason) || t('Generation failed; the cause was not saved. Retry, or download the report.', '生成失败，原因没有保存下来。请重试，或下载报告。') : '';
                 if (visual === 'failed') item.status.replaceChildren(icon('warning'), create('span', 'fv-ed-clip-failure-reason', failureText));
                 else item.status.replaceChildren();
                 const status = {planned: actions.interrupted?.(clip) ? t('Interrupted', '上次中断') : t('Not generated yet', '还没生成'), running: t('Generating', '正在生成'),
@@ -796,7 +796,7 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
     }
     function failedPopover(item) {
         failedPopoverId = item.clip.id;
-        const reason = create('p', '', actions.failureText?.(item.clip.id) || actions.reasonText?.(item.clip.reason) || item.clip.reason || t('Generation failed', '生成时出错'));
+        const reason = create('p', '', actions.failureText?.(item.clip.id) || actions.reasonText?.(item.clip.reason) || t('Generation failed; the cause was not saved. Retry, or download the report.', '生成失败，原因没有保存下来。请重试，或下载报告。'));
         const report = create('button', 'fv-ed-clip-report', t('Download report', '下载报告')); report.type = 'button'; applyTip(report, 'report', t);
         report.onclick = event => { event.stopPropagation(); popover.hidden = true;
             Promise.resolve(actions.downloadFailure?.(item.clip.id)).catch(error => actions.editError?.(error)); };

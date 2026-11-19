@@ -35,7 +35,7 @@ export function narrationFailureText(reason, t) {
         no_speech_model: t('The speech model could not be used, so the voice could not be generated.', '语音识别模型无法使用，未能生成配音。'),
         voice_model_missing: t('The dubbing model is not fully installed. Generate again to download it.', '配音模型没有装全，重新生成会再下载。'),
         missing: t('Generation stopped. Generate again.', '生成已中断，请重新生成。'),
-    }[reason] || t('The voice could not be generated. Generate again.', '无法生成配音，请重新生成。');
+    }[reason] || t('The voice could not be generated. Generate again; if it keeps failing, report the problem.', '无法生成配音。请重新生成；仍然失败时，请提交问题。');
 }
 // How much longer than the stretch a line came out, as the bar says it: one decimal, a no-break space before the unit.
 const longer = (seconds, t) => { const value = (Math.round(seconds * 10) / 10).toFixed(1); return t(`${value}${NBSP}s`, `${value}${NBSP}秒`); };
@@ -253,7 +253,7 @@ export function createEditorNarration({state, store, t, sources = () => new Map(
         },
         failure(selection = state.selection) {
             const found = target(selection);
-            return found?.clip?.pending === 'failed' ? {id: found.clip.id, text: narrationFailureText(found.clip.reason, t), report: false} : null;
+            return found?.clip?.pending === 'failed' ? {id: found.clip.id, text: narrationFailureText(found.clip.reason, t), report: narrationFailureText(found.clip.reason, t) === narrationFailureText('', t)} : null;
         },
         // Seconds the line will take: this machine's pace from its last line; unknown before the first.
         estimate(selection = state.selection) {

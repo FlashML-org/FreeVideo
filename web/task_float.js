@@ -185,7 +185,9 @@ function reasonLong(row) {
     if (code === 'engine_closed') return t('FreeVideo stopped answering while this was being made. Start FreeVideo again, then generate again.', '生成过程中 FreeVideo 停止了响应。重新启动 FreeVideo 后再生成一次。');
     if (code === 'engine_restarted' || row.status === 'interrupted') return t('FreeVideo restarted while this was being made, so it did not finish. Finished parts are in your works.', 'FreeVideo 在生成过程中重新启动，这次没有完成。已经完成的部分在作品里。');
     if (row.kind === 'image') return imageGenError(code, row.failure, t) || t('The picture did not finish.', '这张图没有完成。');
-    if (row.failure?.message) return row.failure.message;
+    // The engine's own text is raw; it goes through the same advice as the create panel, and an unknown cause says so.
+    const told = row.failure?.message ? failureAdvice(String(row.failure.message), t) : null;
+    if (told?.summary) return told.summary + t(' ', '') + told.action;
     // A run closed from the history has no message, only the exception it raised.
     const advice = row.failure?.detail ? failureAdvice(errorText(row.failure.detail), t) : null;
     const said = advice && advice.kind !== 'unknown'
@@ -853,7 +855,7 @@ export function installTaskFloat() {
         if (k === 'keep') { ask = null; drawSheet(); card.focus({preventScroll: true}); }
         else if (k === 'stop') {
             const id = ask; ask = null; drawSheet();
-            try { await jobs.cancel(id); } catch (error) { ask = id; stopError = isNetworkTypeError(error) ? connectionLostText(t) : t('Could not stop. Try again.', '没有停止成功，请重试。'); draw(); }
+            try { await jobs.cancel(id); } catch (error) { ask = id; stopError = isNetworkTypeError(error) ? connectionLostText(t) : t('Could not stop. Try again; if it keeps failing, report the problem.', '没有停止成功。请重试；仍然失败时，请提交问题。'); draw(); }
         } else if (k === 'dismiss') { const id = failCard; failCard = null; if (id) jobs.dismiss(id); draw(); }
         else if (k === 'go') { const target = rows.find(r => r.id === button.dataset.id); if (target) { const visit = failCard === target.id; failCard = null; await expandTo(target, {visit}); } }
     });

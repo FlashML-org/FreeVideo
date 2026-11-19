@@ -290,7 +290,7 @@ function mediaPanel(node, mount = null) {
         try {
             outcome = await openImageEditor({source, name: source, target: videoSize(), edit: original.edit || agent?.edit || null, role: original.role,
                 t: text, resolve: viewURL, upload: uploadOne, library, tool});
-        } catch (error) { message(text('This image cannot be edited right now; choose an image again.', '图片暂时无法编辑，可重新选择图片。'), true); return; }
+        } catch (error) { message(text('This image could not be opened for editing. Choose another image.', '这张图片无法打开编辑。请重新选择一张。'), true); return; }
         if (!outcome) return;
         // The cards may have changed meanwhile; find this one again by its file.
         const rows = read(), at = rows.findIndex(row => row.file === file);
@@ -323,7 +323,7 @@ function mediaPanel(node, mount = null) {
         try {
             outcome = await openImageEditor({target: videoSize(), role: role.value, t: text,
                 resolve: viewURL, upload: uploadOne, library});
-        } catch { message(text('This image cannot be edited right now; choose an image again.', '图片暂时无法编辑，可重新选择图片。'), true); return; }
+        } catch { message(text('This image could not be opened for editing. Choose another image.', '这张图片无法打开编辑。请重新选择一张。'), true); return; }
         if (!outcome?.blob) return;
         if (read().length >= 32) { message(text('The media list is full (32 items, including disabled ones). Remove some to add more.', '素材已满 32 个（含未启用的），请先移除不用的素材。'), true); return; }
         node.isUploading = true; add.disabled = addAudio.disabled = generateImage.disabled = true;

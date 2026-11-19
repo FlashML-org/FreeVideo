@@ -851,12 +851,12 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     }
     async function editReference(record) {
         if (record.sketch) { void drawSketch(record); return; }
-        let outcome;
+        let outcome, loadFailed = false;
         try {
-            const {openImageEditor} = await import('./image_editor.js');
+            const {openImageEditor} = await import('./image_editor.js').catch(error => { loadFailed = true; throw error; });
             outcome = await openImageEditor({source: record.original?.url || record.url, name: record.original?.file?.name || record.file?.name || 'reference.png', edit: record.edit || null,
                 role: 'reference', t, resolve: url => url, upload: async blob => client.upload(blob), imageGenClient: client});
-        } catch { say(t('This picture cannot be edited right now.', '这张图暂时无法编辑。')); return; }
+        } catch { say(loadFailed ? t('The image editor did not load. Reload the page and try again.', '图片编辑器没有加载出来。请刷新页面后再试。') : t('This picture could not be read. Choose another picture.', '这张图无法读取。请重新选择一张。')); return; }
         if (!alive || !outcome || !references.includes(record)) return;
         if (outcome.restore) { restoreReference(record); return; }
         if (!outcome.blob) return;
@@ -999,7 +999,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', t('A picture named in the prompt was removed; choose it again with @', '描述里引用的参考图已移除，请用 @ 重新选择'))];
         }
         else if (s.state === 'failed') {
-            kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', [t(`${model.short} download failed.`, `${model.short} 下载失败。`), s.reason].filter(Boolean).join(' '))];
+            kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', t(`${model.short} download failed${s.reason ? ': ' + s.reason.replace(/[.。]$/, '') : ''}. Retry to continue; if it keeps failing, report the problem.`, `${model.short} 下载失败${s.reason ? '：' + s.reason.replace(/[.。]$/, '') : ''}。请重试以继续下载；仍然失败时，请提交问题。`))];
         } else if (s.state === 'downloading') {
             kind = 'info'; parts = [icon(s.unknown ? 'clock' : 'down'), el('span', 'fv-iv-slot-tx', s.verifying ? (pendingGenerate ? t(`Verifying ${model.short}; it generates when done`, `正在校验 ${model.short}，完成后自动生成`) : t(`Verifying ${model.short}`, `正在校验 ${model.short}`))
                 : pendingGenerate ? t(`Installing ${model.short}; it generates when done`, `正在安装 ${model.short}，完成后自动生成`) : t(`Installing ${model.short}`, `正在安装 ${model.short}`))];
@@ -1441,7 +1441,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             if (!await confirmStop(go, {kind: 'image', queued: jobs.get(mine.id)?.status === 'queued'})) return;
             if (running !== mine) return;
             mine.cancelled = true;
-            if (mine.id) { try { await jobs.cancel(mine.id); } catch (error) { say(isNetworkTypeError(error) ? connectionLostText(t) : t('Could not stop. Try again.', '没有停止成功，请重试。')); } return; }
+            if (mine.id) { try { await jobs.cancel(mine.id); } catch (error) { say(isNetworkTypeError(error) ? connectionLostText(t) : t('Could not stop. Try again; if it keeps failing, report the problem.', '没有停止成功。请重试；仍然失败时，请提交问题。')); } return; }
             running = null; level.hidden = true; render(); drawWorks();
         }
     // ── end run ──
@@ -1496,11 +1496,11 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     // Crop, paint, add text, or change a part with AI in the image editor; the result comes back as Image 1 and into the library.
     async function editPicture(file) {
         if (!file) return;
-        let outcome;
+        let outcome, loadFailed = false;
         try {
-            const {openImageEditor} = await import('./image_editor.js');
+            const {openImageEditor} = await import('./image_editor.js').catch(error => { loadFailed = true; throw error; });
             outcome = await openImageEditor({source: file, name: file, role: 'reference', t, resolve: pictureURL, upload: async blob => client.upload(blob), imageGenClient: client});
-        } catch { say(t('This picture cannot be edited right now.', '这张图暂时无法编辑。')); return; }
+        } catch { say(loadFailed ? t('The image editor did not load. Reload the page and try again.', '图片编辑器没有加载出来。请刷新页面后再试。') : t('This picture could not be read. Choose another picture.', '这张图无法读取。请重新选择一张。')); return; }
         if (!alive || !outcome?.blob) return;
         try {
             const edited = new File([outcome.blob], outcome.name || 'edited.png', {type: outcome.blob.type || 'image/png'});
@@ -1510,7 +1510,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             const record = {file: edited, url: URL.createObjectURL(edited), width: outcome.width, height: outcome.height};
             if (references.length >= most()) URL.revokeObjectURL(record.url); else { changeRefs(() => references.unshift(record)); promptGroup.open(true); }
             render();
-        } catch { say(t('The edited picture could not be saved.', '编辑后的图片没能保存。')); }
+        } catch (error) { say(isNetworkTypeError(error) ? connectionLostText(t) : t('The edited picture could not be saved. Try again; if it keeps failing, report the problem.', '编辑后的图片没能保存。请重试；仍然失败时，请提交问题。')); }
     }
     asReference.addEventListener('click', () => void useAsReference(shownFile, false));
     // Opens downward when it fits inside the stage, otherwise upward over the picture.
