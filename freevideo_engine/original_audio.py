@@ -393,11 +393,15 @@ def _mux_streams(picture, target, rate, copy_from=None, encode=None):
             with av.open(str(copy_from)) as audio_reader:
                 audio_source = audio_reader.streams.audio[0]
                 audio = writer.add_stream_from_template(audio_source)
+                delay = _decoder_delay(audio_source)
 
                 def sounds():
                     for packet in audio_reader.demux(audio_source):
                         if packet.dts is None:
                             continue
+                        if delay:
+                            # The MP4 edit list drops the decoder's start delay, as the MP3 reader did.
+                            packet.pts, packet.dts = packet.pts - delay, packet.dts - delay
                         packet.stream = audio
                         yield packet
 
@@ -406,6 +410,17 @@ def _mux_streams(picture, target, rate, copy_from=None, encode=None):
             codec, chunks, channels, itemsize = encode
             stream, fmt = _audio_stream(writer, codec, rate, channels, itemsize)
             _interleave(writer, pictures(), _encoded(stream, fmt, chunks, rate))
+
+
+def _decoder_delay(stream):
+    """An MP3's start delay in the packets' time base; 0 for other codecs.
+
+    The MP3 reader skips these samples before the first one it returns. A copy
+    into MP4 keeps them unless the first packet starts that much before zero.
+    """
+    if stream.codec_context.name not in ('mp3', 'mp3float') or not stream.start_time or stream.start_time < 0:
+        return 0
+    return stream.start_time
 
 
 def _interleave(writer, pictures, sounds):
@@ -443,8 +458,11 @@ def _decoded(path):
     return _rate(path), np.concatenate(list(_decoded_chunks(path)), axis=1)
 
 
-def _same_samples(left, right):
-    """Whether two chunked tracks hold the same samples, whatever their chunk sizes."""
+def _same_samples(left, right, tail=0):
+    """Whether two chunked tracks hold the same samples, whatever their chunk sizes.
+
+    The first track may run up to `tail` samples past the second.
+    """
     import numpy as np
     a = b = None
     while True:
@@ -456,12 +474,23 @@ def _same_samples(left, right):
             b = next(right, None)
             if b is None:
                 break
+        if b is None and a is not None and tail:
+            return _spare(a, left, tail)
         if a is None or b is None:
             return a is None and b is None
         count = min(a.shape[1], b.shape[1])
         if a.shape[0] != b.shape[0] or not np.array_equal(a[:, :count], b[:, :count]):
             return False
         a, b = a[:, count:], b[:, count:]
+
+
+def _spare(first, rest, limit):
+    count = first.shape[1]
+    for chunk in rest:
+        count += chunk.shape[1]
+        if count > limit:
+            return False
+    return count <= limit
 
 
 def _trim_video(source, target, count, rate, frames=None):
@@ -526,6 +555,11 @@ def mux(video, output, info, *, trim_video=True, video_frames=None):
     def saved(path):
         return _rate(path) == rate and _same_samples(_decoded_chunks(path), map(_normalized, _selected_chunks(info)))
 
+    def saved_with_padding(path):
+        # The MP4 cannot carry an MP3's end padding: at most two frames of it follow the last sample.
+        return _rate(path) == rate and _same_samples(_decoded_chunks(path), map(_normalized, _selected_chunks(info)),
+                                                     tail=2304)
+
     with tempfile.TemporaryDirectory(prefix='original-audio-', dir=destination.parent) as work:
         work = Path(work)
         temporary = work / 'mux.mp4'
@@ -535,10 +569,10 @@ def mux(video, output, info, *, trim_video=True, video_frames=None):
         else:
             picture = Path(video)
         copied = False
-        if info['full_source'] and info['codec'] in ('aac', 'mp3', 'flac'):
+        if info['full_source'] and info['codec'] in ('aac', 'mp3', 'mp3float', 'flac'):
             try:
                 _mux_streams(picture, temporary, rate, copy_from=info['path'])
-                copied = saved(temporary)
+                copied = (saved_with_padding if info['codec'] in ('mp3', 'mp3float') else saved)(temporary)
             except AudioUseError:
                 raise
             except (OSError, ValueError, av_errors()):
