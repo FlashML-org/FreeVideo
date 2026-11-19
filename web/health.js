@@ -22,7 +22,7 @@ export const MODULES = ['audio_original.js', 'chat_data.js', 'phone_model.js', '
     'empty_prompt_notice.js', 'feature_tour.js', 'feature_tour_content.js', 'howto.js', 'swap_lora.js', 'sound_bubble.js', 'tour_goto.js', 'tour_try.js', 'tutorial_book.js', 'tutorial_book_content.js',
     'shell.js', 'tooltip.js', 'tooltip_copy.js',
     'library_meta.js', 'cast_room.js',
-    'editor_tracks_tips.js',
+    'editor_tracks_tips.js', 'tip_words.js', 'cut_tip.js', 'field_note.js', 'image_view_layout.js',
     'task_store.js', 'task_float.js',
     'image_view_ui.js', 'image_view_size.js', 'image_view_models.js', 'image_view_history.js', 'image_view_prompts.js', 'image_view_compare.js', 'image_view_queue.js', 'image_view_mentions.js', 'image_view_warm.js', 'image_view_viewer.js', 'image_view_lora.js',
     'palette.js', 'picture_zoom.js', 'global_search.js', 'notifications.js', 'shortcuts.js', 'context_menu.js',

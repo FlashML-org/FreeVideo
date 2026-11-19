@@ -39,7 +39,7 @@ function markCard(card) {
     const controls = rows.length > 1 ? rows.at(-1) : null;
     // Edited is a small mark on the picture; its words stay as the mark's name.
     const edited = card.querySelector('.fv-edited');
-    if (edited && !edited.title) { edited.title = edited.textContent; edited.setAttribute('role', 'img'); edited.setAttribute('aria-label', edited.textContent); }
+    if (edited && !edited.hasAttribute('role')) { edited.setAttribute('role', 'img'); edited.setAttribute('aria-label', edited.textContent); }
     if (!controls || controls.classList.contains('fv-mt-rest')) return;
     controls.classList.add('fv-mt-rest');
     const buttons = [...controls.querySelectorAll(':scope > button')], keys = document.createElement('div');

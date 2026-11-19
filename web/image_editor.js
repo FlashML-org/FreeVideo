@@ -3,6 +3,8 @@
 // FreeVideo's own look. The original file is never changed: saving renders a
 // new image and keeps the document, so the next visit starts from the original
 // with every layer and step in place. Closing frees every canvas it made.
+import { cutTip } from './cut_tip.js';
+import { setTip } from './tip_words.js';
 import {BLENDS, emptyAdjust, migrate, blankDocument, orientedSize, orientMatrix, canvasRect, layerMatrix, scaleSelection,
     rasterKinds, measureText, Renderer, traceOutline, simplifyLoop} from './image_editor_engine.js';
 import * as commands from './image_commands.js';
@@ -785,7 +787,7 @@ async function openImageEditorNow({source = null, name = source || '', target = 
     // The options row is one line for every tool, so the picture never moves when the tool changes: what does not fit
     // goes, in its order, under More at the end of the row (a long hint is cut short instead, with its full text on hover).
     function fitOptions() {
-        for (const n of optionsBar.querySelectorAll(':scope > .fv-ie-opt-note')) n.title = n.textContent;
+        for (const n of optionsBar.querySelectorAll(':scope > .fv-ie-opt-note')) cutTip(n, n.textContent);
         if (optionsBar.scrollWidth <= optionsBar.clientWidth + 1) return;
         const more = el('details', null, 'fv-ie-menu fv-ie-more'), summary = el('summary', t('More', '更多')), list = el('div', null, 'fv-ie-menu-list fv-ie-more-list');
         summary.dataset.fvTipName = t('More options', '更多选项'); summary.setAttribute('aria-label', summary.dataset.fvTipName);
@@ -1060,18 +1062,18 @@ async function openImageEditorNow({source = null, name = source || '', target = 
                 e => { e.stopPropagation(); commit(commands.setLayer(doc, l.id, {visible: !l.visible})); }, 'fv-ie-eye');
             const thumb = el('canvas', null, 'fv-ie-thumb'); thumb.width = 48; thumb.height = 34; drawThumb(thumb, l);
             const name = el('span', l.name || t('Layer', '图层'), 'fv-ie-layer-name');
-            name.title = t('Double-click to rename', '双击重命名');
+            setTip(name, {name: t('Double-click to rename', '双击重命名')});
             name.ondblclick = e => { e.stopPropagation(); renameLayer(doc.layers.find(layer => layer.id === l.id), name); };
             row.append(eye, thumb);
             if (l.mask) {
                 const m = el('canvas', null, 'fv-ie-thumb fv-ie-mask-thumb'); m.width = 48; m.height = 34; drawMaskThumb(m, l);
-                m.title = t('Layer mask: click to paint on it', '图层蒙版：点击后画笔画在蒙版上');
+                setTip(m, {name: t('Layer mask', '图层蒙版'), use: t('Click to paint on it', '点击后画笔画在蒙版上')}); m.setAttribute('role', 'img'); m.setAttribute('aria-label', t('Layer mask', '图层蒙版'));
                 m.onclick = e => { e.stopPropagation(); setActive(l.id); maskTarget = true; renderLayers(); renderOptions(); };
                 row.append(m);
                 if (l.id === doc.active) (maskTarget ? m : thumb).classList.add('fv-ie-target');
             }
             row.append(name);
-            if (l.locked) { const lk = el('span', null, 'fv-ie-lock'); lk.innerHTML = SVG(ICONS.lock, 14); lk.title = t('Locked', '已锁定'); row.append(lk); }
+            if (l.locked) { const lk = el('span', null, 'fv-ie-lock'); lk.innerHTML = SVG(ICONS.lock, 14); setTip(lk, {name: t('Locked', '已锁定')}); lk.setAttribute('role', 'img'); lk.setAttribute('aria-label', t('Locked', '已锁定')); row.append(lk); }
             else if (l.opacity < 1) row.append(el('span', Math.round(l.opacity * 100) + '%', 'fv-ie-layer-opacity'));
             row.onclick = () => {
                 setActive(l.id); maskTarget = false;

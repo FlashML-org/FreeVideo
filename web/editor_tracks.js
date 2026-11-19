@@ -1,3 +1,4 @@
+import { cutTip } from './cut_tip.js';
 import {editorIcon} from './editor_icons.js';
 import {pageRepair, repairButton} from './repair_hint.js';
 import {displayTracks, isText, isTextTrack, textDropLocked} from './editor_text_model.js';
@@ -641,11 +642,11 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
                 node.append(empty);
                 const head = create('div', 'fv-ed-track-head'); head.dataset.track = track.id;
                 const glyph = track.kind === 'audio' ? (track.stem ? 'audio' : track.id === MUSIC_TRACK ? 'music' : track.id === 'a3' ? 'mic' : 'audio') : track.kind;
-                head.title = name; head.append(icon(glyph), create('span', '', name));
+                head.append(icon(glyph), create('span', '', name)); cutTip(head, name, head.querySelector('span'));
                 heads.append(head); content.insertBefore(node, overlays);
                 row = {element: node, head, empty}; rows.set(track.id, row); parted ||= !!track.stem;
             }
-            row.head.title = name; row.head.querySelector('span').textContent = name;
+            row.head.querySelector('span').textContent = name; cutTip(row.head, name, row.head.querySelector('span'));
             // Guide targets ("take me there"): the lanes where a range is dragged out for speech or music, and the
             // separated music lane where new music replaces the old.
             const tourId = track.stem === 'music' ? 'audio-music-stem' : track.stem ? '' : {a1: 'audio-a1-track', a2: 'audio-a2-track'}[track.id] || '';
@@ -1304,15 +1305,15 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
             const first = rows.get('a1'), top = first.top + first.height + 6;
             const row = create('div', 'fv-ed-track-row'); row.dataset.track = 'a2'; row.dataset.preview = 'true';
             const head = create('div', 'fv-ed-track-head'); head.dataset.track = 'a2'; head.dataset.preview = 'true';
-            const name = t('Audio 2', '声音 2'); head.title = name; head.append(icon('audio'), create('span', '', name));
+            const name = t('Audio 2', '声音 2'); head.append(icon('audio'), create('span', '', name)); cutTip(head, name, head.querySelector('span'));
             row.setAttribute('aria-label', name);
             row.style.top = head.style.top = `${top}px`; row.style.height = head.style.height = `${laneHeight()}px`;
-            const oldName = first.head.title, oldTop = addAudio.style.top, oldHeight = content.style.height;
+            const oldName = first.head.querySelector('span').textContent, oldTop = addAudio.style.top, oldHeight = content.style.height;
             sourcePreview.restore = () => {
-                first.head.title = oldName; first.head.querySelector('span').textContent = oldName;
+                first.head.querySelector('span').textContent = oldName; cutTip(first.head, oldName, first.head.querySelector('span'));
                 addAudio.style.top = oldTop; setTrackHeight(parseFloat(oldHeight) - 34);
             };
-            first.head.title = t('Audio 1', '声音 1'); first.head.querySelector('span').textContent = first.head.title;
+            first.head.querySelector('span').textContent = t('Audio 1', '声音 1'); cutTip(first.head, first.head.querySelector('span').textContent, first.head.querySelector('span'));
             addAudio.style.top = `${top + laneHeight() + 6}px`; setTrackHeight(top + laneHeight());
             heads.insertBefore(head, addAudio); content.insertBefore(row, overlays); nodes.push(head, row);
         }

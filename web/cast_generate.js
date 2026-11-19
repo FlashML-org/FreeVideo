@@ -2,6 +2,7 @@
 // same person (front, three-quarter, side, back, face). Each picture shows as it is finished; the
 // dialog's Save waits for all five. Pictures are made one by one through the page's image client
 // and stay in the input folder; the dialog puts them on the card.
+import { setTip } from './tip_words.js';
 import {createImageGenClient, imageGenProgress, imagePackUnavailableMessage, renderImageFailure,
     IMAGE_GEN_POLL_MS, IMAGE_GEN_INFO_POLL_MS} from './image_generation.js';
 import {createImageLoras} from './image_lora.js';
@@ -521,7 +522,7 @@ export function mountCastGenerate({container, api, text, t = text, viewURL, onSt
     const cells = names.map((view, index) => {
         const cell = el('div', 'fv-cg-view');
         const title = scene ? tr(`Option ${index + 1}`, `方案 ${index + 1}`) : tr(...VIEW_TITLES[view]);
-        cell.title = title; cell.setAttribute('role', scene ? 'button' : 'img');
+        setTip(cell, {name: title}); cell.setAttribute('aria-label', title); cell.setAttribute('role', scene ? 'button' : 'img');
         if (scene) {
             cell.tabIndex = 0;
             const pick = () => { if (cell.dataset.state !== 'done') return; chosen = index; render(); };

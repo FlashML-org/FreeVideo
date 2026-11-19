@@ -5,6 +5,8 @@
 // performance measurement), Version & updates, Getting started. Every function of the earlier settings sheet is here;
 // the technical parts (folders, access token, speed tables, logs) are folded away. Esc closes and gives focus back.
 // setup.js re-exports openSetup from here, so every caller (top bar, failure cards, palette) opens this room.
+import { setTip } from './tip_words.js';
+import { cutTip } from './cut_tip.js';
 import { api } from "../../scripts/api.js";
 import { compatibilityCard } from './compatibility.js';
 import { listenDialogKey } from './dialog_keys.js';
@@ -383,7 +385,7 @@ export async function openSetup(options) {
     let loraLoaded = false, loraRun = 0;
     const loraRow = name => {
         const r = row({iconName: 'layers', title: name.split('/').pop(), sub: t('Checking…', '正在检查…'), cls: 'st-lrow'});
-        r.title.title = name;
+        setTip(r.title, {name});
         const chip = el('span', 'st-chip', t('Checking', '检查中')); r.end.append(chip);
         const more = el('div', 'st-sub st-ldetail'); more.hidden = true;
         r.paint = verdict => {
@@ -1323,7 +1325,7 @@ export async function openSetup(options) {
             t("No conversion on this computer", "无需本地转换")]);
         const list = el('dl', 'st-facts');
         for (const [key, shownValue, small] of facts) {
-            const box = el('div'); const dd = el('dd', '', shownValue); dd.title = shownValue;
+            const box = el('div'); const dd = el('dd', '', shownValue); cutTip(dd, shownValue);
             if (small) dd.append(el('small', '', small));
             box.append(el('dt', '', key), dd); list.append(box);
         }
@@ -1416,7 +1418,7 @@ export async function openSetup(options) {
             // there is (cut with an ellipsis), the last 26 characters stay; copying takes the whole path.
             const first = missing[0], cut = Math.max(0, first.length - 26), path = el('span', 'st-path st-path-cut fv-copyable');
             path.append(el('span', 'st-path-head', first.slice(0, cut)), el('span', 'st-path-tail', first.slice(cut)));
-            path.title = first; folderStatus.append(path);
+            cutTip(path, first); folderStatus.append(path);
         }
         return result;
     }

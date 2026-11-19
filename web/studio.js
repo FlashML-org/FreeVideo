@@ -1,3 +1,4 @@
+import { cutTip } from './cut_tip.js';
 import './has_mirror.js';
 import {createLanAccess} from './lan_access.js';
 import { createErrorPanel, errorText, createErrorReport } from './error_panel.js';
@@ -2557,7 +2558,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
                 // Waiting videos often share every setting; the start of the prompt tells them apart.
                 const summary = String(row.inputs.text ?? '').replace(/\s+/g, ' ').trim();
                 const description = el('div', null, 'fv-queue-text');
-                if (summary) { const line = el('span', summary, 'fv-queue-summary'); line.title = summary; description.append(line); }
+                if (summary) { const line = el('span', summary, 'fv-queue-summary'); cutTip(line, summary); description.append(line); }
                 description.append(el('span', executing ? `${size} · ${row.inputs.seconds} s`
                     : `${index + 1} · ${size} · ${row.inputs.seconds} s`, 'fv-queue-meta'));
                 if (executing) {

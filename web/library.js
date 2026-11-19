@@ -1,3 +1,4 @@
+import { cutTip } from './cut_tip.js';
 import { api } from '../../scripts/api.js';
 import { closeDialog } from './motion.js';
 import { resultActions, previewBadge, icon } from './result_actions.js';
@@ -1069,7 +1070,7 @@ export function openLibrary(t, options = {}) {
             const key = workKey(row);
             labelCard(key, sort === 'new' || sort === 'old');
             if (selected === key) showPrompt(row);
-            if (viewing === key) { const name = viewer.querySelector('.fv-library-viewer-name'); if (name) name.title = name.textContent = viewerName(row); }
+            if (viewing === key) { const name = viewer.querySelector('.fv-library-viewer-name'); if (name) { name.textContent = viewerName(row); cutTip(name, name.textContent); } }
         }
         promptWorkers--;
     }
@@ -2237,7 +2238,7 @@ export function openLibrary(t, options = {}) {
         full.classList.add('fv-library-viewer-full');
         const close = viewerButton(t('Exit full screen', '退出全屏'), t('Back to the library', '回到作品库'), line('close'), () => exitFull(), 'Esc');
         close.classList.add('fv-library-viewer-close');
-        const name = el('strong', viewerName(row), 'fv-library-viewer-name'); name.title = name.textContent;
+        const name = el('strong', viewerName(row), 'fv-library-viewer-name'); cutTip(name, name.textContent);
         const words = el('div', null, 'fv-library-viewer-words'); words.append(name, spec);
         bottom.append(words, viewerActions(row, key), info, full, close);
         const main = el('div', null, 'fv-library-viewer-main'), stage = el('div', null, 'fv-library-viewer-stage');

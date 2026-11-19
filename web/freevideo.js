@@ -1,3 +1,5 @@
+import { setTip } from './tip_words.js';
+import { cutTip } from './cut_tip.js';
 import './has_mirror.js';
 import { createErrorPanel, errorText, createErrorReport, adviceFor } from './error_panel.js';
 import { installNativeErrorGuard } from './native_errors.js';
@@ -429,7 +431,7 @@ function mediaPanel(node, mount = null) {
             const link = node.graph?.links[node.inputs.find(i => i.name === name).link];
             const source = link && node.graph?.getNodeById(link.origin_id);
             const chip = el('span', `${label} · ${text('Connected', '已连接')}`, 'fv-connection');
-            chip.title = source?.title || source?.type || label; connections.append(chip);
+            setTip(chip, {name: source?.title || source?.type || label}); connections.append(chip);
         }
         const middleProblem = middleNotice(active, {first, last, references: refs, seconds: videoSeconds()}, text);
         const audioUnlinked = node.widgets?.find(w => w.name === 'audio_use')?.value === 'original' && !linked('reference_audio');
@@ -446,7 +448,7 @@ function mediaPanel(node, mount = null) {
                 }
                 rows[index].enabled = enabled.checked; update(rows);
             };
-            const label = el("span", mediaName(row), "fv-file"); label.title = mediaName(row);
+            const label = el("span", mediaName(row), "fv-file"); cutTip(label, mediaName(row));
             const select = el("select"); select.setAttribute("aria-label", text("Media role", "素材用途"));
             // One width for every role, whatever the options say in the current state: "Middle frame" is the longest usual one.
             select.style.width = cn ? '7.5em' : '10em';
@@ -513,7 +515,7 @@ function mediaPanel(node, mount = null) {
                     const label = el("label", undefined, `fv-${key}-only`), box = el("input");
                     box.type = "checkbox"; box.checked = row[key] === true;
                     box.onchange = () => { if (box.checked) { rows[index][key] = true; delete rows[index][other]; } else delete rows[index][key]; update(rows); };
-                    label.append(box, el("span", words)); label.title = title;
+                    label.append(box, el("span", words)); setTip(label, {name: words, use: title});
                     return label;
                 };
                 card.append(only("depth", "lines", text("Depth only", "仅参考深度"), text("Uses a depth version of this video as the reference.", "转成深度视频后再作参考。")),
