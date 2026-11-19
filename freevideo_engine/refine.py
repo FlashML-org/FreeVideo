@@ -36,8 +36,8 @@ def generate_latents(transformer, prompt_embeds, text_token_tags, num_frames, nu
     from src.inference.render import KEYFRAME_NOISE_AUG
 
     if refine_schedule is not None:
-        from .refine_schedule import COMMUNITY
-        if refine_schedule != COMMUNITY or refine_steps != 3:
+        from .refine_schedule import SIGMAS
+        if refine_schedule not in SIGMAS or refine_steps != 3:
             raise ValueError('Independent refinement requires the exact three-step schedule')
     else:
         validate_tail(num_steps, refine_steps)
@@ -97,7 +97,7 @@ def generate_latents(transformer, prompt_embeds, text_token_tags, num_frames, nu
 
     if refine_schedule is not None:
         from .refine_schedule import schedulers
-        video_scheduler, audio_scheduler = schedulers(device)
+        video_scheduler, audio_scheduler = schedulers(device, refine_schedule)
         start = 1
     else:
         video_scheduler, audio_scheduler = scheduler(shift=video_shift), scheduler(shift=audio_shift)

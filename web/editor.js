@@ -787,8 +787,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 }
             }
             if (disposed || closing || epoch !== projectEpoch) return;
-            if (picture) notify(t('Saved the current frame to Edit image > Generate with AI > History.',
-                '已保存当前帧，位于“编辑图片 > AI 生成 > 历史”。'));
+            if (picture) notify(t('Saved the current frame to Edit image > Generate with AI > Works.',
+                '已保存当前帧，位于“编辑图片 > AI 生成 > 作品库”。'));
         } catch (value) {
             if (disposed || epoch !== projectEpoch) return;
             const said = {no_picture: t('There is no picture at this position. Move the playhead onto a clip.', '这个位置没有画面，请把播放头移到片段上。'),
@@ -1801,9 +1801,13 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         attachBar = () => {
         if (bar) return;
         bar = panel.borrowBar({mount: genHost, onSeconds: value => { const field = genbar.duration; if (!field || field.element.hidden || field.input.disabled || !(value > 0)) return; field.input.value = String(Math.round(value)); field.commit(); }, label: () => barLabel || null, disabled: () => !genbar.canGenerate(),
-            submit: async options => { genbar.setText(bar.prompt.value); await genbar.press(options?.allowEmpty === true); }});
+            submit: async options => { genbar.setText(bar.prompt.value); await genbar.press(options?.allowEmpty === true); },
+            onFirstFrame: value => genbar.firstFrame?.set(value)});
         if (bar) {
             genHost.classList.add('fv-ed-genbar-borrowed');
+            // The editor's own first-frame switch is hidden with its bar; the borrowed bar's switch (in its frame pop-up,
+            // where the creation panel keeps it) follows the editor's rule and saves to the edit.
+            genbar.firstFrame?.mirror(next => bar?.firstFrame?.(next));
             element.dataset.barBorrowed = 'true';
             // The guide's editor steps ring the borrowed bar's prompt, media and Generate, not the editor's hidden ones.
             guideBack = [['editor-describe', '[data-fv-guide="describe"]'], ['editor-refs', '.fvs-chip[data-chip="media"]'], ['editor-generate', '[data-fv-guide="generate"]']].flatMap(([mine, selector]) => {
@@ -1830,7 +1834,9 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 if (!bar) return;
                 const selection = state.selection, clips = selection?.kind === 'clip' ? selection.ids.map(id => model.find(state.record, id)).filter(Boolean) : [];
                 const edit = capability.generationSize || generationSize(state.record), again = clips.some(clip => clip.source);
-                const continuing = !again && clips.length > 0 && model.generationBefore(state.record, clips.map(clip => clip.id)).some(Boolean);
+                // Parts that cannot be generated together (apart on the timeline) continue nothing: the bar shows their span unlocked.
+                const continuing = !again && clips.length > 0 && (() => { try { return model.generationBefore(state.record, clips.map(clip => clip.id)).some(Boolean); }
+                    catch (value) { if (value instanceof model.EditError) return false; throw value; } })();
                 const range = selectionRange(), length = range ? range.frames / model.FPS : null; // the span, not a sum: a part's picture and sound are two linked clips over the same frames
                 echo = true;
                 if (clips.length) lent = true;
@@ -1844,7 +1850,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         }
         };
         // Hidden, the editor gives the panel its bar back; shown again, it takes it once more.
-        detachBar = () => { observer?.disconnect(); observer = null; unlisten?.(); unlisten = null; for (const back of guideBack.splice(0)) back(); bar?.release(); bar = null; panel.barActive = false; genHost.classList.remove('fv-ed-genbar-borrowed'); delete element.dataset.barBorrowed; };
+        detachBar = () => { genbar.firstFrame?.mirror(null); observer?.disconnect(); observer = null; unlisten?.(); unlisten = null; for (const back of guideBack.splice(0)) back(); bar?.release(); bar = null; panel.barActive = false; genHost.classList.remove('fv-ed-genbar-borrowed'); delete element.dataset.barBorrowed; };
         cleanupBar = detachBar;
         attachBar();
     }
@@ -2285,10 +2291,21 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             return closePromise;
         },
         // Hidden and kept: the dialog closes (its sheet keeps a closed editor out of sight) and turns inert; saving,
-        // progress and the job watchers go on, so coming back needs nothing redrawn.
+        // progress and the job watchers go on, so coming back needs nothing redrawn. The import list waits (it is
+        // read again on coming back), unless an import it waits for is still on its way.
         kept: false, panel,
         reopen() {
             handle.kept = false;
+            // A blank edit of this tab that nothing was done in follows the creation panel's quality as it is now: a level
+            // chosen there while this view was away applies here too, as one chosen here goes there. An edit with parts,
+            // a saved one, or one with a part queued or generating keeps its own settings. The blank edit stays unsaved.
+            const now = panel.sampling?.(), set = state.record.settings || {};
+            if (now && !state.record.id && state.record.tracks.every(track => !track.clips.length) && !held.length && !jobActive()
+                    && Object.entries(now).some(([key, value]) => set[key] !== value)) {
+                panel.settings = {...panel.settings, ...now};
+                suppressSave = true; try { state.settle(record => model.setSampling(record, now)); } finally { suppressSave = false; }
+                savedContent = content(state.record);
+            }
             resumeCanvasPointer = suspendCanvasPointer(app?.canvas);
             // What the last switch left on the dialog (its fade, the leaving mark) goes, so it shows as it was.
             element.getAnimations?.().forEach(animation => animation.cancel());
@@ -2297,7 +2314,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             const later = [...document.querySelectorAll('dialog[open]')].some(dialog => dialog !== element && element.compareDocumentPosition(dialog) & Node.DOCUMENT_POSITION_FOLLOWING);
             if (!element.isConnected || later) document.body.append(element);
             element.inert = false;
-            attachBar?.();
+            attachBar?.(); library?.resume?.();
             if (!element.open) element.showModal();
             viewChanged('editor'); globalThis.FreeVideoStageLight?.refresh();
             // The tab takes focus after the first frame: focusing now would lay the whole view out a second time before it shows.
@@ -2315,6 +2332,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         // The microphone is let go with the view: an open record bar closes, and a take in progress lands as Stop would.
         recording.hide();
         detachBar?.();
+        // The import list is not read while out of sight, unless an import it waits for is still on its way.
+        library?.suspend?.();
         if (element.open) element.close();
         element.inert = true;
         resumeCanvasPointer(); resumeCanvasPointer = () => {};

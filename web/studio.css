@@ -322,8 +322,5 @@
 .fv-studio:not(.fv-editor):not(.fv-autopilot) .fv-header[data-fit~=least] .fv-guide-entry{display:none}
 /* The first row matches the edit view's (its name field is 40 px), so the wrapped switch stays put when the view changes. */
 .fv-studio:not(.fv-editor):not(.fv-autopilot) .fv-header[data-fit~=small] .fv-wordmark{width:150px}
-.fv-studio:not(.fv-editor):not(.fv-autopilot) .fv-header[data-fit~=compact] .fv-monitor-text{display:none}
-.fv-studio:not(.fv-editor):not(.fv-autopilot) .fv-header[data-fit~=gone] .fv-monitor{display:none}
-.fv-studio:not(.fv-editor):not(.fv-autopilot) .fv-header[data-fit~=compact] .fv-monitor .fv-monitor-trigger{padding:0 8px}
 .fv-studio .fv-run-menu .fv-batch-lines{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 8px 0;cursor:pointer}.fv-studio .fv-run-menu .fv-batch-lines[hidden]{display:none}
 .fv-studio .fv-run-menu .fv-batch-lines input{margin:0;accent-color:var(--fv-accent)}

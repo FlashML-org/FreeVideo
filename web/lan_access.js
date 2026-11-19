@@ -3,6 +3,7 @@ import {agentGet, agentPost} from './agent_session.js';
 import {qrcodegen} from './qrcodegen.js';
 import {listenDialogKey} from './dialog_keys.js';
 import { skin } from './glass/library.js';
+import {userMessage} from './user_message.js';
 const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('./lan_access.css', import.meta.url).href; document.head.append(css);
 const seenKey = 'freevideo.phone.opened';
 export function qrMatrix(link) { return qrcodegen.QrCode.encodeText(link, qrcodegen.QrCode.Ecc.MEDIUM); }
@@ -29,7 +30,7 @@ export function createLanAccess(t, api) {
             if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(state.link);
             else { const area = el('textarea'); area.value = state.link; panel.append(area); area.select(); const ok = document.execCommand('copy'); area.remove(); if (!ok) throw new Error(); }
             copy.textContent = t('Copied', '已复制'); clearTimeout(copied); copied = setTimeout(() => { copy.textContent = t('Copy link', '复制链接'); }, 1500);
-        } catch { fail(); }
+        } catch { fail(t('Could not copy the link. Try again.', '没能复制链接，请重试。')); }
     });
     const passwordRow = el('div', 'fv-lan-password'), passwordState = el('span'), set = button('fv-lan-set', t('Set', '设置'), () => { form.hidden = false; password.focus(); });
     passwordRow.append(passwordState, set);
@@ -58,7 +59,8 @@ export function createLanAccess(t, api) {
     let state = {enabled: false, link: '', password_set: false}, seen = false, disposed = false, writing = false, desired = null, reading = false, timer = null, copied = null, drawn = '', since = 0;
     try { seen = localStorage.getItem(seenKey) === '1'; } catch {}
     const windows = /Win/i.test(globalThis.navigator?.platform || globalThis.navigator?.userAgent || '');
-    function fail() { error.hidden = false; }
+    // The panel's one error line: why the last step failed (a lost connection, or FreeVideo's HTTP status).
+    function fail(text) { error.textContent = text; error.hidden = false; }
     // A toolbar with a transform or blur becomes the frame of fixed children; take its offset back out so they sit by the button.
     function place(node, top, left) {
         node.style.right = ''; node.style.top = `${top}px`; node.style.left = `${left}px`;
@@ -67,8 +69,9 @@ export function createLanAccess(t, api) {
     }
     function position() {
         if (panel.hidden) return;
-        const box = trigger.getBoundingClientRect();
-        place(panel, box.bottom + 8, Math.max(8, Math.min(box.right - 264, window.innerWidth - 272)));
+        // The panel's own width: the glass layer sets it (web/glass/library.css), so the right edge meets the entry's.
+        const box = trigger.getBoundingClientRect(), width = panel.offsetWidth;
+        place(panel, box.bottom + 8, Math.max(8, Math.min(box.right - width, window.innerWidth - 8 - width)));
     }
     function render() {
         // No launcher installation: the switch cannot work from this page, so say why instead of "Please try again".
@@ -86,17 +89,17 @@ export function createLanAccess(t, api) {
         } else if (pending) starting.textContent = t('Opening…', '正在打开…');
         passwordState.textContent = state.password_set ? t('Password: on', '密码：已设置') : t('Password: not set', '密码：未设置');
         set.textContent = state.password_set ? t('Change', '修改') : t('Set', '设置');
-        if (!content.hidden && state.link !== drawn) { try { drawQr(qr, state.link); drawn = state.link; } catch { fail(); } }
+        if (!content.hidden && state.link !== drawn) { try { drawQr(qr, state.link); drawn = state.link; } catch { fail(t('Could not show the QR code. Use Copy link.', '没能显示二维码，请用“复制链接”。')); } }
         position();
     }
     async function read() {
         clearTimeout(timer); if (disposed || panel.hidden || reading) return; reading = true;
         try {
             const response = await agentGet(api, '/freevideo/lan', {signal: AbortSignal.timeout(10000)});
-            if (!response.ok) throw new Error(); const value = await response.json(); if (disposed || writing) return;
+            if (!response.ok) throw Object.assign(new Error(), {status: response.status}); const value = await response.json(); if (disposed || writing) return;
             state = value; if (state.reason || desired === state.enabled && (!desired || state.link)) desired = null;
             error.hidden = true; render();
-        } catch { if (!disposed) fail(); }
+        } catch (failure) { if (!disposed) fail(userMessage(failure?.name === 'TimeoutError' ? new TypeError('Failed to fetch') : failure, t, t('Could not read the phone access status. Try again.', '没能读取手机连接状态，请重试。'))); }
         finally { reading = false; if (!disposed && !panel.hidden) timer = setTimeout(read, document.hidden ? 10000 : 2000); }
     }
     trigger.onpointerenter = trigger.onfocus = () => { if (!panel.hidden) return; const box = trigger.getBoundingClientRect(); tip.hidden = false; place(tip, box.bottom + 8, Math.max(8, Math.min(box.right, window.innerWidth - 8) - tip.offsetWidth)); };
@@ -115,10 +118,10 @@ export function createLanAccess(t, api) {
         try {
             const response = await agentPost(api, '/freevideo/lan', body);
             if (response.status === 409 && (await response.json().catch(() => null))?.error?.code === 'lan_unavailable') { if (!disposed) state = {...state, available: false}; return false; }
-            if (!response.ok) throw new Error();
+            if (!response.ok) throw Object.assign(new Error(), {status: response.status});
             const value = await response.json(); if (disposed) return false;
             if (typeof value.enabled === 'boolean') state = {...state, ...value}; return true;
-        } catch { if (!disposed) fail(); return false; }
+        } catch (failure) { if (!disposed) fail(userMessage(failure, t, t('Could not change phone access. Try again.', '没能更改手机连接设置，请重试。'))); return false; }
         finally { writing = false; if (!disposed) render(); }
     }
     async function changeEnabled() { await open(!(state.enabled || state.starting)); }

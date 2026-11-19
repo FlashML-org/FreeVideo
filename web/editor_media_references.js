@@ -31,7 +31,6 @@ export function mediaReferences(node) {
             const node = media(), linked = name => node?.inputs?.find(i => i.name === name)?.link != null;
             const count = role => rows.filter(row => row.role === role).length;
             const references = count('reference') + ['reference', ...Array.from({length: 7}, (_, i) => 'reference_' + (i + 2)), 'reference_audio'].filter(linked).length;
-            if (references) return t('Choose keyframes or references. Disable unused cards.', '首尾帧与参考模式不能混用，请关闭本次不用的素材。');
             return middleNotice(rows, {first: count('first') + Number(linked('first')), last: count('last') + Number(linked('last')), references, seconds}, t);
         },
         // The length of the video these pictures are for; null while no generate node is connected.

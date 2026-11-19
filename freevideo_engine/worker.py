@@ -100,7 +100,8 @@ def generate(request, resident=None):
                             base_steps=request['engine_options'].get('steps', 8),
                             refine_steps=request['sampling_plan']['refine_steps'] if request['sampling_plan']['enabled'] else 3,
                             staged=request['sampling_plan'].get('staged', False),
-                            scale=request['sampling_plan'].get('scale', 2))
+                            scale=request['sampling_plan'].get('scale', 2),
+                            schedule=request['sampling_plan'].get('refine_schedule') if request.get('upscale_source') else None)
             if request['sampling_plan'] != expected:
                 raise ValueError('Sampling plan does not match the requested canvas and task')
             metrics['sampling_plan'] = expected
@@ -322,6 +323,19 @@ def generate(request, resident=None):
             allocation = metrics['device_memory'].get('effective_allocator_limit_bytes') or request['gpu_budget_bytes']
             if sampling_limit:
                 allocation = min(allocation, sampling_limit)
+            upscale_first = None
+            if request.get('upscale_source'):
+                # Upscale a finished video: its frames, encoded before the video model takes the card,
+                # are the first pass; the latent upscale and the light refinement follow.
+                from .paths import base_path
+                from .work_upscale import first_pass as encode_first_pass
+                metrics.update(sample_stage='video_encode')
+                save(request['metrics'], metrics)
+                print(json.dumps({'event': 'model_load_phase', 'phase': 'Reading the video', 'stage': 'video_encode',
+                                  'epoch': time.time(), 'seconds': time.perf_counter() - started}), flush=True)
+                upscale_first = encode_first_pass(request, torch, base=Path(options.get('base') or base_path()))
+                metrics.update(upscale_first[3], first_pass_load_seconds=upscale_first[2]['encode_seconds'])
+                save(request['metrics'], metrics)
             factory = lambda: Engine(request['cache'], input_cache_dir=request.get('input_cache_dir'),
                                      gpu_allocation_bytes=int(allocation),
                                      **dict(options, canvas=request.get('geometry')))
@@ -446,7 +460,13 @@ def generate(request, resident=None):
                                               completed_steps=sampling_plan['base_steps'],
                                               total=sampling_plan['total_steps'])), flush=True)
                     else:
-                        if request.get('resume_first_pass'):
+                        if upscale_first is not None:
+                            latents, audio, first, _ = upscale_first
+                            upscale_first = None
+                            latents, audio = latents.to('cuda'), audio.to('cuda')
+                            print(json.dumps(dict(event='first_pass_reused', source='finished_video',
+                                                  completed_steps=0, total=sampling_plan['total_steps'])), flush=True)
+                        elif request.get('resume_first_pass'):
                             # Upscale a finished preview: its retained first pass
                             # replaces sampling it again; upscale and refine follow.
                             from .decode_resume import load_first_pass
@@ -498,11 +518,11 @@ def generate(request, resident=None):
                         else:
                             metrics['sample_stage'] = 'latent_upscale'
                             save(request['metrics'], metrics)
-                            print(json.dumps(dict(event='latent_upscale', completed_steps=sampling_plan['base_steps'],
+                            print(json.dumps(dict(event='latent_upscale', completed_steps=sampling_plan['total_steps'] - sampling_plan['refine_steps'],
                                                   total=sampling_plan['total_steps'])), flush=True)
                             from .sampling_progress import elapsed_reports
                             with elapsed_reports(lambda event: print(json.dumps(event), flush=True),
-                                                 dict(event='latent_upscale', completed_steps=sampling_plan['base_steps'],
+                                                 dict(event='latent_upscale', completed_steps=sampling_plan['total_steps'] - sampling_plan['refine_steps'],
                                                       total=sampling_plan['total_steps'])):
                                 tick = time.perf_counter()
                                 if live_budget is not None:
@@ -649,7 +669,7 @@ def generate(request, resident=None):
                                 refine_options['refine_resume'] = dict(step=resumed_progress[0], rows=resumed_progress[1])
                                 metrics['refine_resume'] = dict(steps_reused=resumed_progress[0], source='progress',
                                     scope='Seconds of the reused steps belong to the failed attempt that ran them.')
-                                print(json.dumps(dict(event='refine_resumed', completed_steps=sampling_plan['base_steps'] + resumed_progress[0],
+                                print(json.dumps(dict(event='refine_resumed', completed_steps=sampling_plan['total_steps'] - sampling_plan['refine_steps'] + resumed_progress[0],
                                                       total=sampling_plan['total_steps'])), flush=True)
                             if artifacts:
                                 def refine_checkpoint(done, rows, seconds):
@@ -673,7 +693,7 @@ def generate(request, resident=None):
                             compute_options=second_compute,
                             final_step_callback=None if decoder_cached else read_decoder_ahead,
                             step_callback=memory_diagnostics.complete, sampling_complete_callback=refined_complete,
-                            progress_offset=sampling_plan['base_steps'], progress_total=sampling_plan['total_steps'],
+                            progress_offset=sampling_plan['total_steps'] - sampling_plan['refine_steps'], progress_total=sampling_plan['total_steps'],
                             gpu_reserve_bytes=request.get('gpu_reserve_bytes', 0),
                             budget_refresh=refresh_budget if live_budget is not None else None)
                         sampled = refined(second)

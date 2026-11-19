@@ -1391,10 +1391,11 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
     // Time zero sits a little in from the scrolling area's left edge (the content's margin, editor_tracks.css), so a
     // frame's place in the scrolled area is its pixels plus that lead.
     function scrolledX(frames) { return pixels(frames) + content.offsetLeft; }
+    // The time under the anchor stays under it: time zero sits the content's lead in from the scrolled area's edge.
     function zoom(value, anchor = scroll.clientWidth / 2) {
-        const center = (scroll.scrollLeft + anchor) / state.zoom;
+        const lead = content.offsetLeft, center = (scroll.scrollLeft + anchor - lead) / state.zoom;
         state.setZoom(clamp(value, Number(slider.min), Number(slider.max)));
-        scroll.scrollLeft = Math.max(0, center * state.zoom - anchor);
+        scroll.scrollLeft = Math.max(0, center * state.zoom + lead - anchor);
     }
     function fitAll() {
         if (fit.disabled) return;

@@ -1,0 +1,13 @@
+{
+  "repo": "jhj0517/realesr-general-x4v3",
+  "revision": "7692becfa754463a664911bad7dee11f7ee1ddbb",
+  "source_commit": "685d429c81888252bdb10f56c7754baededc3823",
+  "license": "BSD-3-Clause",
+  "modelscope": {"repo": "muse/realesr-general-x4v3", "revision": "20240108175051"},
+  "github": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-general-x4v3.pth",
+  "files": [{
+    "file": "realesr-general-x4v3.pth",
+    "bytes": 4885111,
+    "sha256": "8dc7edb9ac80ccdc30c3a5dca6616509367f05fbc184ad95b731f05bece96292"
+  }]
+}

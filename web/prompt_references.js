@@ -88,7 +88,7 @@ export function referenceItems(node) {
         }
         stack(sourceFor(node, 'references'));
     }
-    if (refs.length && Object.keys(anchors).length) throw new Error('invalid_media');
+    // Next to references the keyframes are still guides that the prompt does not name: the pictures it names are the references.
     const ordered = refs.length ? refs : ['first','last'].filter(k => anchors[k]).map(k => ({...anchors[k], role: k}));
     const counters = {image: 0, video: 0, audio: 0};
     return ordered.map(item => ({...item, number: ++counters[item.kind],

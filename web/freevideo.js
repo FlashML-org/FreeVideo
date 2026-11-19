@@ -11,6 +11,7 @@ import { openStudio, loraPanel, loraWarning } from "./studio.js";
 import { createGenerationProgress, referenceTrimText, thermalText, sharedGpuText, keepSoundText, encoderFileText, encoderFilePath } from './generation_progress.js';
 import { createProgressConnection } from './progress_connection.js';
 import { notifyCompatibility } from './compatibility.js';
+import { clearWorkflowDrafts, workflowPersist } from './workflow_drafts.js';
 import { startUpdateChecks, productVersion } from './updates.js';
 import { startWhatsNew } from './whatsnew.js';
 import { startWhiteboxWorker } from './whitebox_worker.js';
@@ -31,7 +32,7 @@ import { shareButton } from './share.js';
 import { reportFileName } from './report_issue.js';
 import { rememberPromptDraft, savePromptDraft, trackPromptDraft, watchPromptHistory, promptHistoryRestoring } from './prompt_draft.js';
 import { cleanOptionalWidgets, cleanOptionalPrompt, optionalInputValue, cleanAudioUse } from './optional_inputs.js';
-import { regenerateResult, createSecondPassQueue, enableNode } from './studio_queue.js';
+import { regenerateResult, createSecondPassQueue, enableNode, upscaleWork } from './studio_queue.js';
 import { secondPassAction } from './result_actions.js';
 import { openImageEditor, icon } from './image_editor.js';
 import { imageGenerationSupported } from './image_generation.js';
@@ -41,6 +42,7 @@ import { MAX_MIDDLE, secondsOf, defaultTime, timeProblems, timeRange, problemTex
 import { swapState, requestRows, swapMissing, withPrefix, peopleOf } from './replace_state.js';
 import { swapMissingText } from './replace_person.js';
 import { issueButton } from './issue_button.js';
+import { userMessage } from './user_message.js';
 import { AUDIO_USE, usesOriginal, checkOriginal, checkedLength, failureText, multipleText, createUseSwitch, originalBlocked, stuckText, liftBlock } from './audio_original.js';
 
 const languageOverride = typeof location !== 'undefined'
@@ -60,7 +62,6 @@ style.textContent = `
 .fv-panel[data-freevideo=result]{display:flex;flex-direction:column;justify-content:center}.fv-panel[data-freevideo=result][data-hx-ppr]{justify-content:flex-start}.fv-panel .fv-connected-card{text-align:center;padding:28px 12px;border:1px solid var(--fv-border);border-radius:var(--fv-r-md,12px);color:var(--fv-muted);background:var(--fv-raised)}
 .fv-panel button,.fv-panel select,.fv-panel a{box-sizing:border-box;min-height:var(--fv-h-sm,32px);border:1px solid var(--fv-border);border-radius:var(--fv-r-sm,8px);background:var(--fv-raised);color:var(--fv-ink);padding:5px 10px;font:inherit;font-weight:var(--fv-medium,500);cursor:pointer;text-decoration:none}
 .fv-panel button:hover,.fv-panel a:hover{background:var(--fv-hover)}.fv-panel button:disabled{opacity:.45;cursor:wait}
-.fv-menu-failure{width:min(460px,calc(100vw - 32px));height:auto}.fv-menu-failure::backdrop{background:#0009}
 .fv-panel select{max-width:170px}.fv-panel .fv-toolbar>.fv-select{width:auto}.fv-note[hidden]{display:none}.fv-note{color:var(--fv-muted);font-size:var(--fv-micro,12px);margin:8px 0;white-space:pre-wrap}.fv-error{color:var(--fv-danger)}.fv-panel .fv-depth-only input,.fv-panel .fv-sound input{min-height:0;height:16px}.fv-panel .fv-depth-only{display:flex;align-items:center;gap:6px;margin:0 0 8px;white-space:nowrap;font-size:var(--fv-micro);cursor:pointer}
 .fv-mode{font-size:var(--fv-micro,12px);color:var(--fv-accent)}
 .fv-panel .fv-time{display:flex;align-items:center;gap:8px;margin:8px 0 0}.fv-panel .fv-time input{width:92px;min-height:var(--fv-h-sm,32px);padding:4px 8px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm,8px);background:var(--fv-bg);color:var(--fv-ink);font:inherit;font-size:16px}.fv-panel .fv-time input[aria-invalid=true]{border-color:var(--fv-danger)}.fv-panel .fv-time-error{margin:4px 0 0;color:var(--fv-danger);font-size:var(--fv-micro,12px)}
@@ -310,7 +311,7 @@ function mediaPanel(node, mount = null) {
             latest[index] = {...latest[index], file: result.file, ...(hasOriginal ? {source} : {}), edit: outcome.edit}; update(latest);
             message(hasOriginal ? text('The edited image is saved, and the original is kept.',
                 '编辑后的图片已保存，原图已保留。') : '');
-        } catch (error) { message(error.message, true); }
+        } catch (error) { message(userMessage(error, text, text('Could not save the image. Try again.', '没能保存图片，请重试。')), true); }
         finally { node.isUploading = false; add.disabled = false; addAudio.disabled = false; }
     }
     async function newImage() {
@@ -334,7 +335,7 @@ function mediaPanel(node, mount = null) {
             const latest = read();
             latest.push({file: result.file, name: outcome.name, role: role.value, enabled: true, edit: outcome.edit});
             update(latest);
-        } catch (error) { message(error.message, true); }
+        } catch (error) { message(userMessage(error, text, text('Could not save the image. Try again.', '没能保存图片，请重试。')), true); }
         finally { node.isUploading = false; add.disabled = addAudio.disabled = generateImage.disabled = false; }
     }
     function restoreImage(file) {
@@ -406,7 +407,10 @@ function mediaPanel(node, mount = null) {
         }
         cards.replaceChildren();
         let rows;
-        try { rows = read(); } catch (error) { message(error.message, true); return; }
+        try { rows = read(); } catch (error) {
+            const unreadable = text('The media list cannot be read. Add the media again.', '素材列表无法读取，请重新添加素材。');
+            message(error?.name === 'SyntaxError' ? unreadable : userMessage(error, text, unreadable), true); return;
+        }
         const active = rows.filter(row => row.enabled !== false);
         const linked = name => node.inputs?.find(i => i.name === name)?.link != null;
         // A Generate node that continues a video takes these keyframes as pictures, so they may sit beside references.
@@ -429,7 +433,7 @@ function mediaPanel(node, mount = null) {
         }
         const middleProblem = middleNotice(active, {first, last, references: refs, seconds: videoSeconds()}, text);
         const audioUnlinked = node.widgets?.find(w => w.name === 'audio_use')?.value === 'original' && !linked('reference_audio');
-        message(audioUnlinked ? text('Connect audio to "Reference audio", or set "Audio use" to "reference", before generating.', '请连接“参考音频”，或把“音频用途”改为“参考”后再生成。') : refs > 32 ? text('There are more than 32 references; remove some before generating.', '参考素材超过 32 个，可移除部分后再生成。') : continuing && active.filter(row => row.role === 'reference' && mediaKind(row.file) === 'image').length > 3 ? text('When continuing, only the first 3 images are used.', '接续时只用前 3\u00a0张图片。') : (first || last || middle.length) && continuing ? (middle.length ? middleLabels.continuing(text) : text("When continuing a video, the first and last frames are used as references.", "接续视频时，首尾帧会用作参考图。")) : refs && (first || last || middle.length) ? text("Choose keyframes or references. Disable unused cards.", "首尾帧与参考模式不能混用，请关闭本次不用的素材。") : first > 1 || last > 1 ? text("Keep only one first frame and one last frame enabled.", "首帧和尾帧各只能启用一张图片。") : middleProblem ? middleProblem : middleInfo(active, videoSeconds(), text) ? middleInfo(active, videoSeconds(), text) : "", Boolean(audioUnlinked || refs > 32 || refs && (first || last || middle.length) && !continuing || first > 1 || last > 1 || middleProblem && !continuing));
+        message(audioUnlinked ? text('Connect audio to "Reference audio", or set "Audio use" to "reference", before generating.', '请连接“参考音频”，或把“音频用途”改为“参考”后再生成。') : refs > 32 ? text('There are more than 32 references; remove some before generating.', '参考素材超过 32 个，可移除部分后再生成。') : continuing && active.filter(row => row.role === 'reference' && mediaKind(row.file) === 'image').length > 3 ? text('When continuing, only the first 3 images are used.', '接续时只用前 3\u00a0张图片。') : (first || last || middle.length) && continuing ? (middle.length ? middleLabels.continuing(text) : text("When continuing a video, the first and last frames are used as references.", "接续视频时，首尾帧会用作参考图。")) : first > 1 || last > 1 ? text("Keep only one first frame and one last frame enabled.", "首帧和尾帧各只能启用一张图片。") : middleProblem ? middleProblem : middleInfo(active, videoSeconds(), text) ? middleInfo(active, videoSeconds(), text) : "", Boolean(audioUnlinked || refs > 32 || first > 1 || last > 1 || middleProblem && !continuing));
         if (!rows.length && !connections.childElementCount) cards.append(el("div", text("Drop images or video here", "拖入图片或视频"), "fv-empty"));
         if (!rows.length && connections.childElementCount) cards.append(el('div', text('Media comes from the connected inputs; no upload is needed.', '素材来自已连接的输入，无需上传。'), 'fv-connected-card'));
         rows.forEach((row, index) => {
@@ -562,7 +566,6 @@ function mediaPanel(node, mount = null) {
         if (continues) return '';
         const count = role => rows.filter(row => row.role === role).length;
         const references = count('reference') + referenceInputs.filter(linked).length + Number(linked('reference_audio'));
-        if (references) return text("Choose keyframes or references. Disable unused cards.", "首尾帧与参考模式不能混用，请关闭本次不用的素材。");
         return middleNotice(rows, {first: count('first') + Number(linked('first')), last: count('last') + Number(linked('last')), references, seconds: videoSeconds()}, text);
     }
     serialized.serializeValue = () => {
@@ -598,7 +601,7 @@ function mediaPanel(node, mount = null) {
                 rows.push({file: result.file, ...(result.name || file.name ? {name: result.name || file.name} : {}), role: kind === "image" ? use : "reference", enabled: true}); update(rows);
             }
             if (skipped.length) message(skippedNote(skipped), !usable.length);
-        } catch (error) { message(error.message, true); }
+        } catch (error) { message(userMessage(error, text, text('Could not upload. Try again.', '没能上传，请重试。')), true); }
         finally { uploading = false; node.isUploading = false; add.disabled = false; addAudio.disabled = false; picker.value = ""; audioPicker.value = ''; }
     }
     picker.onchange = () => upload(picker.files);
@@ -826,6 +829,7 @@ function resultPanel(node) {
         fitPanel();
     };
     node.freevideoUpscaleResult = createSecondPassQueue(api, () => node.id, async () => { enableNode(node); return cleanOptionalPrompt(await app.graphToPrompt()); });
+    node.freevideoUpscaleWork = (value, options) => upscaleWork(api, node.id, value, async () => { enableNode(node); return cleanOptionalPrompt(await app.graphToPrompt()); }, options);
     node.freevideoRegenerateResult = async value => {
         if (node.freevideoRegenerating) return;
         node.freevideoRegenerating = true;
@@ -921,24 +925,15 @@ const isFreeVideoNode = id => /^FreeVideo/.test(String(app.graph?.getNodeById(id
 const launchVisit = isLaunchVisit(globalThis.location?.search, globalThis.sessionStorage);
 const inFront = freeVideoInFront(launchVisit);
 
-let menuFailure;
+// A failure here goes to the page check's card, which names the cause, says what to do, and carries the error for the report.
 async function openFromMenu() {
-    menuFailure?.close();
     try {
         const node = (app.graph?._nodes || []).find(isGenerate) || await openFreeVideoWorkflow();
-        if (!node) throw new Error('FreeVideo workflow unavailable');
+        if (!node) throw new Error('The FreeVideo workflow loaded without a FreeVideoGenerate node');
         showStudio(node);
     } catch (error) {
         console.warn('FreeVideo menu:', error);
-        const message = text('Could not complete. Try again.', '没有完成，请重试');
-        const dialog = el('dialog', undefined, 'fv-panel fv-menu-failure'); menuFailure = dialog;
-        dialog.setAttribute('aria-label', 'FreeVideo');
-        const actions = el('div', undefined, 'fv-row');
-        actions.append(issueButton(text, () => ({where: ['Open FreeVideo', '打开 FreeVideo'], message})),
-            button(text('Close', '关闭'), '', () => dialog.close()));
-        dialog.append(el('p', message), actions);
-        dialog.onclose = () => { dialog.remove(); if (menuFailure === dialog) menuFailure = null; };
-        document.body.append(dialog); dialog.showModal();
+        health({type: 'error', where: 'menu', error});
     }
 }
 
@@ -959,7 +954,7 @@ app.registerExtension({
         for (const [where, start] of [['progress', () => progressConnection.start()], ['navigation', () => installNavigation(showStudio, agentInterfaceState(api), {openWorkflow: openFreeVideoWorkflow, recheck: () => agentInterfaceState(api)})],
             ['updates', startUpdateChecks], ['whatsnew', () => startWhatsNew({api, cn, productVersion, inFront})], ['done-notify', () => startDoneNotify({api, text, desktop: desktopNoticeEnabled, isFreeVideoNode,
                 isFreeVideoWorkflow: () => (app.graph?._nodes || []).some(isGenerate)})],
-            ['whitebox', () => startWhiteboxWorker({api})]]) {
+            ['whitebox', () => startWhiteboxWorker({api})], ['workflow-drafts', () => clearWorkflowDrafts({persist: workflowPersist(app)})]]) {
             try { start(); } catch (error) { health({type: 'error', where, error}); }
         }
         window.addEventListener('pagehide', () => savePromptDraft(api, true));

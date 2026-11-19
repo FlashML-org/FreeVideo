@@ -256,13 +256,14 @@ export function holdWhile(open, {ready = null} = {}) {
     switching = token;
     root.dataset.fvSwitching = reduced() ? 'instant' : 'fade';
     nameBar(frontBar()); uniqueNames();
-    let result;
-    const done = () => { if (switching === token) { switching = null; delete root.dataset.fvSwitching; nameBar(null); } };
+    let result, release = () => {};
+    const done = () => { release(); if (switching === token) { switching = null; delete root.dataset.fvSwitching; nameBar(null); } };
     try {
         token.transition = document.startViewTransition(async () => {
             mark.captured = +(performance.now() - mark.press).toFixed(1);
             try { result = open(); } catch (error) { result = Promise.reject(error); }
             await Promise.race([Promise.resolve(result).catch(() => null), sleep(SWITCH_HOLD)]);
+            release = holdFocus();
         });
     } catch (error) { done(); return Promise.resolve().then(open); }
     token.transition.ready.then(async () => {
@@ -276,6 +277,19 @@ export function holdWhile(open, {ready = null} = {}) {
     }, () => {});
     token.transition.finished.then(() => { mark.shown = +(performance.now() - mark.press).toFixed(1); done(); }, done);
     return token.transition.updateCallbackDone.then(() => result, () => result);
+}
+
+// When the held picture starts fading over a panel just opened as a modal dialog, the browser drops the panel's focus
+// to the page and will not take it back until the fade has ended, so its keys (Escape, the arrows) would go nowhere.
+// When the fade ends, focus that fell to the page goes back to what the panel had focused; focus moved on purpose
+// (to another element) is left alone.
+function holdFocus() {
+    const held = document.activeElement;
+    if (!held || held === document.body || held === document.documentElement) return () => {};
+    return () => {
+        const now = document.activeElement;
+        if ((!now || now === document.body) && held.isConnected && !held.closest('[inert]') && (held.tagName !== 'DIALOG' || held.open)) held.focus({preventScroll: true});
+    };
 }
 
 // ── No placeholder at a press ─────────────────────────────────────────────────────────────────────

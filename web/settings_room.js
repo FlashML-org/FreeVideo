@@ -21,6 +21,7 @@ import { createImageGenClient } from './image_generation.js';
 import { IMAGE_MODELS, modelState } from './image_view_models.js';
 import { swapLoraFailureText } from './swap_lora.js';
 import { MODULES } from './health.js';
+import { userMessage } from './user_message.js';
 import { createVerdicts, describeVerdict, feedbackDraft } from './lora_check.js';
 import { feedbackIssueURL } from './feedback.js';
 import { el, icon, tip, button, setText, row, card, groupHead, groupNote, slot, fold, switchify, checkify, segmented, radioList, stepper, field, bar } from './settings_kit.js';
@@ -31,11 +32,41 @@ if (typeof document !== 'undefined') {
     document.head.append(css);
 }
 
-import { cn, t, INSTALLED_HINT, gib, bytesText, atLeast, WAIT_REFUSAL, reportable, failureText, SECTIONS, sectionOf } from './settings_words.js';
+import { cn, t, INSTALLED_HINT, gib, bytesText, atLeast, WAIT_REFUSAL, reportable, failureText, setupError, SECTIONS, sectionOf } from './settings_words.js';
 export { failureText, sectionOf, SECTIONS, bytesText };
 
 let current;
 export const settingsOpen = () => Boolean(current?.open);
+
+// Esc closes Settings at once and a save already sent is not taken back, so it can fail with Settings gone. A warning
+// that lands in one of the closed room's status lines after it closed is shown as a failure notice instead: the
+// setting's name with the line's own words, and a way back to its page (failures also stay in the notification list).
+// Watching starts as Settings starts to close (a failure during the fade is not seen either) and stops after ten
+// minutes; every save answers well before that.
+const LATE_WATCH_MS = 10 * 60 * 1000;
+const lineText = line => { const copy = line.cloneNode(true); copy.querySelectorAll('button, a').forEach(node => node.remove()); return copy.textContent.trim(); };
+function watchLateFailures(room) {
+    const seen = new Map([...room.querySelectorAll('[role=status]')].map(line => [line, lineText(line)]));
+    const report = async (line, text) => {
+        const page = line.closest('section.st-pane'), box = line.closest('.st-card');
+        let head = box?.previousElementSibling;
+        while (head && !head.matches('h3.st-gh')) head = head.previousElementSibling;
+        // The setting's name, then the line's own words; "Open Settings" goes back to its page.
+        const name = head?.textContent.trim() || page?.getAttribute('aria-label') || t('Settings', '设置');
+        const {toast} = await import('./notifications.js');
+        toast(`${name} · ${text}`, {tone: 'fail', action: {label: t('Open Settings', '打开设置'), use: t('Go back to this setting', '回到这项设置'),
+            run: () => openSetup({section: page?.dataset.pane || null})}});
+    };
+    const observer = new MutationObserver(() => {
+        for (const line of room.querySelectorAll('[role=status]')) {
+            const text = lineText(line), before = seen.get(line);
+            seen.set(line, text);
+            if (text && text !== before && /\bis-(warn|fail)\b/.test(line.className)) report(line, text);
+        }
+    });
+    observer.observe(room, {subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['class']});
+    setTimeout(() => observer.disconnect(), LATE_WATCH_MS);
+}
 
 export async function openSetup(options) {
     // A click passes its event here; only a plain object can name a section to show.
@@ -149,9 +180,12 @@ export async function openSetup(options) {
 
     // The shared report button, with this room's hover words.
     const reportTip = node => tip(node, t('Report a problem', '提交问题'), t('Send the problem with its diagnostics', '附上诊断信息提交问题'));
-    const fault = (target, message) => {
-        const text = failureText(message); target.textContent = text;
-        if (text && reportable(message)) target.append(reportTip(issueButton(t, () => ({where: ['Settings / installation', '设置／安装'], message: text}))));
+    // With the caught error passed too, text that only a browser or a program would say is replaced by a plain sentence;
+    // the report keeps what was said before.
+    const fault = (target, message, error, fallback) => {
+        const known = failureText(message), text = error && known === String(message || '') ? userMessage(error, t, fallback) : known;
+        target.textContent = text;
+        if (text && reportable(message)) target.append(reportTip(issueButton(t, () => ({where: ['Settings / installation', '设置／安装'], message: known}))));
     };
 
     // ════════════ Models ════════════
@@ -438,7 +472,8 @@ export async function openSetup(options) {
             const saved = await request('preview-style', {style: wanted});
             applyPreviewStyle(saved.style, saved.chosen === true);
         } catch (error) {
-            previewStatus.textContent = failureText(error.message); previewStatus.className = 'st-slot is-warn';
+            const known = failureText(error.message);
+            previewStatus.textContent = known === String(error.message || '') ? userMessage(error, t, t('Could not save. Try again.', '没能保存，请重试。')) : known; previewStatus.className = 'st-slot is-warn';
         } finally { loopSwitch.disabled = false; choices.removeAttribute('aria-busy'); paintPreview(); }
     };
     previewStatus.textContent = t('Applies at once to the preview on screen, also on the phone page.', '立即应用到屏幕上的预览，手机页面也一样。');
@@ -787,11 +822,13 @@ export async function openSetup(options) {
     dialog.addEventListener('pointerdown', event => { if (!pickerMenu.hidden && !phoneHead.contains(event.target)) closePicker(); });
 
     // ── Closing: Esc (unless a menu inside takes it first) or the close buttons; focus goes back to where it was ──
-    let closing = null;
+    let closing = null, watching = false;
+    const watchAfterClose = () => { if (!watching) { watching = true; watchLateFailures(dialog); } };
     function close() {
         if (closing) return closing;
         closing = new Promise(resolve => {
             if (!dialog.open) { resolve(); return; }
+            watchAfterClose();
             if (sheet.open) sheet.close();
             dialog.dataset.closing = 'true';
             const finish = () => { if (dialog.open) dialog.close(); resolve(); };
@@ -1029,7 +1066,7 @@ export async function openSetup(options) {
     let lastTask = {}, loaded = false, readFailed = false, wantSheet = false, busyLabel = '';
     // A click names what is happening at once, before the server has answered.
     const doing = (en, zh) => { waitSince ??= Date.now(); state.className = 'st-state'; state.textContent = t(en, zh); paintHero(); };
-    const fail = error => { waitSince = undefined; fault(state, error.message); state.className = "st-state is-fail"; if (shown !== 'models' && !busy) { /* The dot on Models says where to look. */ } paintHero(); };
+    const fail = error => { waitSince = undefined; fault(state, error.message, error); state.className = "st-state is-fail"; if (shown !== 'models' && !busy) { /* The dot on Models says where to look. */ } paintHero(); };
     const request = async (action, value) => {
         const response = await api.fetchApi("/freevideo/setup" + (action ? "/" + action : root.value ? '?root='+encodeURIComponent(root.value) : ""), action ? {
             method: "POST", headers: { "Content-Type": "application/json", "X-FreeVideo-Setup": token }, body: JSON.stringify(value || {}),
@@ -1103,7 +1140,7 @@ export async function openSetup(options) {
             // so the progress it points to is visible.
             calibrateWait = WAIT_REFUSAL.test(String(error.message || ''));
             calibrateStatus.className = calibrateWait ? 'st-slot' : 'st-slot is-warn';
-            fault(calibrateStatus, error.message);
+            fault(calibrateStatus, error.message, error, t('Could not start the measurement. Try again.', '没能开始测量，请重试。'));
             if (calibrateWait) poll();
         } finally { calibrateButton.disabled = busy; }
     };
@@ -1130,7 +1167,16 @@ export async function openSetup(options) {
             reserveStatus.replaceChildren(icon('check', 'fv-i'), document.createTextNode(t('Saved · applies to the next generation', '已保存 · 下次生成生效')));
             // The note fades after two seconds.
             savedTimer = setTimeout(() => { reserveStatus.classList.add('is-fade'); savedTimer = setTimeout(clearReserveStatus, 400); }, 2000);
-        } catch (error) { reserveFailure.className = 'st-slot is-warn'; fault(reserveFailure, error.message); }
+        } catch (error) {
+            // As on the compatibility card: a known refusal is already a sentence, a server's own words follow "Save
+            // failed", and a lost connection or browser wording becomes a plain sentence; the report keeps what was said.
+            reserveFailure.className = 'st-slot is-warn';
+            fault(reserveFailure, error.message, error, t('Could not save. Try again.', '没能保存，请重试。'));
+            const said = String(error.message || '').trim(), shown = reserveFailure.firstChild;
+            if (said && setupError(said) === undefined && shown?.nodeType === Node.TEXT_NODE && shown.data === said) {
+                shown.data = t('Save failed: ', '保存失败：') + said;
+            }
+        }
         finally { saveReserve.disabled = false; }
     };
     const SOURCE_NAMES = {official: t('International source', '国际源'), huggingface: t('International source', '国际源'), 'hf-mirror': t('International mirror', '国际镜像'), modelscope: t('China source', '国内源')};
@@ -1335,8 +1381,10 @@ export async function openSetup(options) {
         folderStatus.className = savedMissing ? 'st-slot is-caution' : 'st-slot is-ok';
         folderStatus.replaceChildren(savedFolders);
         if (savedMissing) {
-            // The full path is in the box above; show its start and last folder on one line.
-            const first = missing[0], path = el('span', 'st-path fv-copyable', first.length > 44 ? `${first.slice(0, 14)}…${first.slice(-26)}` : first);
+            // The full path is in the box above; show its start and last folder on one line. The start gives way to the room
+            // there is (cut with an ellipsis), the last 26 characters stay; copying takes the whole path.
+            const first = missing[0], cut = Math.max(0, first.length - 26), path = el('span', 'st-path st-path-cut fv-copyable');
+            path.append(el('span', 'st-path-head', first.slice(0, cut)), el('span', 'st-path-tail', first.slice(cut)));
             path.title = first; folderStatus.append(path);
         }
         return result;
@@ -1345,7 +1393,7 @@ export async function openSetup(options) {
         invalidate(true); busy = true; controls();
         const before = [[...state.childNodes], state.className]; doing('Saving model folders…', '正在保存模型文件夹…');
         try { await saveModelFolders(); }
-        catch (error) { savedFolders = ''; savedMissing = false; fault(folderStatus, error.message); folderStatus.className = 'st-slot is-warn'; }
+        catch (error) { savedFolders = ''; savedMissing = false; fault(folderStatus, error.message, error, t('Could not save the model folders. Try again.', '没能保存模型文件夹，请重试。')); folderStatus.className = 'st-slot is-warn'; }
         finally { busy = false; waitSince = undefined; state.replaceChildren(...before[0]); state.className = before[1]; controls(); }
     };
     headInspect.onclick = () => { if (!busy) inspect.click(); };
@@ -1370,6 +1418,7 @@ export async function openSetup(options) {
         clearTimeout(pollTimer); clearTimeout(monitorTimer); clearTimeout(imageTimer); clearTimeout(swapTimer);
         for (const dispose of disposers) { try { dispose(); } catch { /* Gone already. */ } }
         compat.dispose?.();
+        watchAfterClose();
         dialog.remove(); if (current === dialog) current = undefined;
         if (returnFocus?.isConnected) { try { returnFocus.focus({preventScroll: true}); } catch { /* Focus stays where the browser put it. */ } }
     });

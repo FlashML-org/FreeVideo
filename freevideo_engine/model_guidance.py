@@ -47,9 +47,11 @@ DOWNLOAD_COPY = {
     'error_read': ('FreeVideo does not have permission to read some files in the selected folder. Choose another folder, or download the files again without administrator rights.',
                    'FreeVideo 没有权限读取所选文件夹里的部分文件。请选择其他文件夹，或不使用管理员身份重新下载。'),
     'write_permission': ('this account cannot write to it. Choose another folder.', '当前账户没有写入权限，请换一个文件夹。'),
-    'write_disk_full': ('the drive is full.', '磁盘空间不足。'),
+    'write_disk_full': ('the drive is full. Free up space, or choose a folder on another drive.', '磁盘空间不足。请腾出空间，或换一个其他磁盘上的文件夹。'),
+    'write_in_use': ('a file there is in use by another program. Close that program, then try again.', '该文件夹中有文件被其他程序占用。请关闭该程序后再试。'),
+    'write_missing': ('the folder is no longer there, or its drive was disconnected. Choose the folder again.', '这个文件夹已不存在，或所在磁盘已断开。请重新选择文件夹。'),
     'write_path_long': ('the path is too long. Choose a folder closer to the top of the drive.', '路径太长，请选择层级更浅的文件夹。'),
-    'write_other': ('Choose another folder and try again.', '请换一个文件夹再试一次。'),
+    'write_other': ('the system did not allow the file to be written. Choose another folder and try again.', '系统不允许写入文件。请换一个文件夹再试一次。'),
     'video': NAMES['video'], 'text': NAMES['text'], 'decoder': NAMES['decoder'], 'sampling': NAMES['sampling'],
     'readme': (
         'FreeVideo download list\n'
@@ -106,6 +108,10 @@ def download_write_reason(error, folder):
     if (error.errno == errno.ENAMETOOLONG or winerror == 206
             or winerror == 3 and any(path is not None and len(str(path)) > 260 for path in paths)):
         return 'path_long'
+    if winerror in (32, 33) or error.errno in (errno.EBUSY, errno.ETXTBSY):
+        return 'in_use'
+    if winerror in (2, 3) or error.errno == errno.ENOENT:
+        return 'missing'
     return 'other'
 
 

@@ -7,7 +7,7 @@ if (modules.registerHooks) modules.registerHooks({resolve});
 else modules.register('./editor_test_hooks.mjs', import.meta.url);
 import {mediaName, uploadMedia} from '../web/media_upload.js';
 import {outputDownloadURL, checkedDownload, anchoredNotice, unreadableVideoText} from '../web/output_download.js';
-import {regenerateResult, upscaleResult, createSecondPassQueue, enableNode} from '../web/studio_queue.js';
+import * as studioQueue from '../web/studio_queue.js';
 import {referenceInputs, mediaRows} from '../web/prompt_references.js';
 import {expandCast} from '../web/cast_mention.js';
 import {cleanAudioUse, cleanOptionalPrompt, cleanOptionalWidgets, optionalInputValue} from '../web/optional_inputs.js';
@@ -64,7 +64,7 @@ test('main browser entry registers both views and preserves node hooks', async t
         createElementNS: (namespaceURI, tag) => Object.assign(new Element(tag), {namespaceURI}),
         createRange: () => ({createContextualFragment: () => new Element('span')})};
     const dependencies = {
-        app, api, mediaName, uploadMedia, outputDownloadURL, checkedDownload, anchoredNotice, unreadableVideoText, regenerateResult, upscaleResult, createSecondPassQueue, enableNode, referenceInputs, mediaRows, expandCast, cleanAudioUse, cleanOptionalPrompt, cleanOptionalWidgets, optionalInputValue,
+        app, api, mediaName, uploadMedia, outputDownloadURL, checkedDownload, anchoredNotice, unreadableVideoText, ...studioQueue, referenceInputs, mediaRows, expandCast, cleanAudioUse, cleanOptionalPrompt, cleanOptionalWidgets, optionalInputValue,
         createCastLibrary: options => {
             // notice: the could-not-read line the real library returns for the page to place.
             const cast = {element: new Element('cast'), notice: new Element('notice'), options, destroyed: false, destroy() { this.destroyed = true; }};
@@ -126,9 +126,11 @@ test('main browser entry registers both views and preserves node hooks', async t
         source = source.replace("import { beginWorkspaceRestore, finishWorkspaceRestore, waitForLauncherRestore } from './workspace_restore.js';", 'const {beginWorkspaceRestore,finishWorkspaceRestore,waitForLauncherRestore} = globalThis.__freevideoEntryTest;');
         source = source.replace("import { openEditorView } from './editor_loader.js';", 'const openEditorView = (...args) => globalThis.__freevideoEntryTest.openEditorView?.(...args);');
         source = source.replace("from './issue_button.js'", `from '${new URL('../web/issue_button.js', import.meta.url).href}'`);
+        source = source.replace("from './user_message.js'", `from '${new URL('../web/user_message.js', import.meta.url).href}'`);
         source = source.replace("from './prompt_sections.js'", `from '${new URL('../web/prompt_sections.js', import.meta.url).href}'`);
         source = source.replace("from './fv_select.js'", `from '${new URL('../web/fv_select.js', import.meta.url).href}'`);
         source = source.replace("from './middle_frames.js'", `from '${new URL('../web/middle_frames.js', import.meta.url).href}'`);
+        source = source.replace("from './workflow_drafts.js'", `from '${new URL('../web/workflow_drafts.js', import.meta.url).href}'`);
         source = source
             .replace("import { createErrorPanel, errorText, createErrorReport, adviceFor } from './error_panel.js';", 'const {createErrorPanel,errorText,createErrorReport,adviceFor} = globalThis.__freevideoEntryTest;')
             .replace('import { app } from "../../scripts/app.js";', 'const {app} = globalThis.__freevideoEntryTest;')
@@ -151,8 +153,9 @@ test('main browser entry registers both views and preserves node hooks', async t
             .replace("import { reportFileName } from './report_issue.js';", 'const {reportFileName} = globalThis.__freevideoEntryTest;')
             .replace("import { rememberPromptDraft, savePromptDraft, trackPromptDraft, watchPromptHistory, promptHistoryRestoring } from './prompt_draft.js';", 'const {rememberPromptDraft,savePromptDraft} = globalThis.__freevideoEntryTest; const trackPromptDraft = () => {}; const watchPromptHistory = () => {}; const promptHistoryRestoring = () => false;')
             .replace("import { cleanOptionalWidgets, cleanOptionalPrompt, optionalInputValue, cleanAudioUse } from './optional_inputs.js';", 'const {cleanOptionalWidgets,cleanOptionalPrompt,optionalInputValue,cleanAudioUse} = globalThis.__freevideoEntryTest;')
-            .replace("import { regenerateResult, upscaleResult } from './studio_queue.js';", 'const {regenerateResult,upscaleResult} = globalThis.__freevideoEntryTest;')
-            .replace("import { regenerateResult, createSecondPassQueue, enableNode } from './studio_queue.js';", 'const {regenerateResult,createSecondPassQueue,enableNode} = globalThis.__freevideoEntryTest;')
+            // The queue helpers come from the real module whatever names the page imports: matched by the module, not
+            // by the list of names, which changes with the page.
+            .replace(/import\s*\{([^}]*)\}\s*from\s*'\.\/studio_queue\.js';/, (_, names) => `const {${names}} = globalThis.__freevideoEntryTest;`)
             .replace("import { secondPassAction } from './result_actions.js';", 'const {secondPassAction} = globalThis.__freevideoEntryTest;')
             .replace("import { openImageEditor, icon } from './image_editor.js';", 'const {openImageEditor,icon} = globalThis.__freevideoEntryTest;')
             .replace("import { installNavigation, refreshNavigation, preferredView, collapseWorkspaces, openImage } from './view_navigation.js';", 'const {installNavigation,refreshNavigation,preferredView} = globalThis.__freevideoEntryTest; const collapseWorkspaces = () => { globalThis.__freevideoEntryTest.collapsed = (globalThis.__freevideoEntryTest.collapsed || 0) + 1; }; const openImage = async () => false;')
@@ -349,14 +352,14 @@ test('main browser entry registers both views and preserves node hooks', async t
         dependencies.openFreeVideoWorkflow = async () => { throw new Error('workflow fixture unavailable'); };
         const warn = console.warn; console.warn = () => {};
         try { await entry.function(); } finally { console.warn = warn; }
-        const menuFailure = document.body.children.find(child => child.className?.includes('fv-menu-failure'));
-        assert.ok(menuFailure.open);
-        const menuIssue = menuFailure.children[1].children[0];
-        assert.ok(menuIssue.className.includes('fv-issue-button')); assert.notEqual(menuIssue.hidden, true);
-        await menuIssue.onclick();
-        assert.match(issueURLs.at(-1).searchParams.get('feedback'), /Error: Could not complete\. Try again\./);
+        // A failure goes to the page check's card (health.js), which says why and what to do and carries the error to
+        // the report; the entry opens no dialog of its own (W12).
+        const reported = (window.__freevideoHealth || []).filter(row => row.where === 'menu');
+        assert.equal(reported.length, 1); assert.equal(reported[0].type, 'error');
+        assert.equal(reported[0].error.message, 'workflow fixture unavailable');
+        assert.equal(document.body.children.some(child => child.className?.includes('fv-menu-failure')), false);
         app.graph._nodes = nodes; await entry.function();
-        assert.equal(document.body.children.includes(menuFailure), false, 'successful opening clears the failure and its report button');
+        assert.equal((window.__freevideoHealth || []).filter(row => row.where === 'menu').length, 1, 'a successful opening reports nothing');
         rememberedView = 'editor';
         const restored = [];
         let finishLaunch, finishEditor;
@@ -576,8 +579,9 @@ test('main browser entry registers both views and preserves node hooks', async t
         // The stored file may have a plain name; the item keeps the name the user's file had, for the label.
         assert.deepEqual(JSON.parse(media.widgets[0].value), [{file: 'freevideo/' + 'a'.repeat(32) + '/media.wav', name: 'voice.wav', role: 'reference', enabled: true}]);
         assert.equal(media.isUploading, false);
+        // A connected first frame next to a reference is used together with it.
         media.inputs = [{name: 'first', link: 1}]; media.onConnectionsChange(); await Promise.resolve();
-        assert.match(note.textContent, /Choose keyframes or references/);
+        assert.equal(note.textContent, '');
         media.widgets[0].value = '[]'; media.inputs = []; media.onConnectionsChange(); await Promise.resolve();
         assert.equal(note.textContent, '');
         const imageRole = toolbar.children.find(e => e.tag === 'div' && e.className === 'fv-select')?.children.find(e => e.tag === 'select');

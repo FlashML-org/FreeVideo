@@ -83,6 +83,7 @@ const PATHS = {
     check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
     close: '<path d="m6.5 6.5 11 11M17.5 6.5l-11 11"/>',
     alert: '<path d="M12 4 21 19.5H3z"/><path d="M12 10v4M12 16.8v.01"/>',
+    info: '<circle cx="12" cy="12" r="6.5"/><path d="M12 11.3v4.2M12 8.6v.01"/>',
     download: '<path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14"/>',
     person: '<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/>',
     play: '<path d="M8 5.5v13l10.5-6.5z"/>',
@@ -100,6 +101,8 @@ const PATHS = {
     reload: '<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4h-4"/>',
     history: '<path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.5 4.5v4h4"/><path d="M12 8v4.2l2.6 1.6"/>',
     paste: '<rect x="5.5" y="5" width="13" height="15.5" rx="2.5"/><path d="M9 5V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5V5"/>',
+    enlarge: '<path d="M14 4.5h5.5V10M19.5 4.5 13 11M10 19.5H4.5V14M4.5 19.5 11 13"/>',
+    upscale: '<circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 4.5 4.5M10.5 8v5M8 10.5h5"/>',
     'select-all': '<rect x="4" y="4" width="16" height="16" rx="3" stroke-dasharray="2.6 2.6"/>',
     external: '<path d="M13.5 4.5h6v6M19.5 4.5 11 13"/><path d="M18 14v3.5A2.5 2.5 0 0 1 15.5 20h-9A2.5 2.5 0 0 1 4 17.5v-9A2.5 2.5 0 0 1 6.5 6H10"/>',
 };

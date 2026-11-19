@@ -119,7 +119,8 @@ def first_canvas(target, scale):
     return dict(width=w, height=h, frames=target['frames']), dict(width=lift_w, height=lift_h, frames=target['frames'])
 
 
-def plan(canvas, enabled=True, task='t2va', *, base_steps=8, refine_steps=3, staged=False, scale=2):
+def plan(canvas, enabled=True, task='t2va', *, base_steps=8, refine_steps=3, staged=False, scale=2,
+         schedule=None):
     """Align the smaller canvas, lift, center-crop, then refine at the target.
 
     Odd multiples of 32 need up to 32 extra pixels before the latent crop.
@@ -128,7 +129,8 @@ def plan(canvas, enabled=True, task='t2va', *, base_steps=8, refine_steps=3, sta
     refinement), unless the first pass itself is wanted (a preview or its upscale: staged).
     Memory pressure never changes this math. `scale` below 2 samples a larger
     first pass (SCALES) on canvases of at least 512 on the short side; 2 is the
-    original plan, byte for byte.
+    original plan, byte for byte. `schedule` names another three-step refinement
+    clock (refine_schedule.SIGMAS); None is the community one.
     """
     from .geometry import geometry
     from .media_request import TASKS
@@ -192,10 +194,20 @@ def plan(canvas, enabled=True, task='t2va', *, base_steps=8, refine_steps=3, sta
     if default:
         result['reason'] = '8 steps on a smaller canvas, learned latent upscale, then the original DMD8 schedule tail (2 steps).'
     if refine_steps == 3:
-        from .refine_schedule import COMMUNITY, VIDEO_SIGMAS
+        from .refine_schedule import COMMUNITY, UPSCALE, sigmas
         result.update(version=3, mode='vdn%d-lbh-community3' % base_steps,
-            refine_schedule=COMMUNITY, video_sigmas=list(VIDEO_SIGMAS),
+            refine_schedule=COMMUNITY, video_sigmas=list(sigmas(COMMUNITY)),
             reason='%d steps on a smaller canvas, learned latent upscale, then three independent refinement steps.' % base_steps)
+        if schedule not in (None, COMMUNITY):
+            # Only a finished video is upscaled this way; its first pass is the video itself.
+            if schedule != UPSCALE or not staged:
+                raise ValueError('Unsupported refinement schedule')
+            # Only the three refinement steps are sampled.
+            result.update(staged=True, mode='vdn%d-lbh-upscale3' % base_steps, refine_schedule=UPSCALE,
+                video_sigmas=list(sigmas(UPSCALE)), total_steps=refine_steps,
+                reason='A finished video, learned latent upscale, then three light refinement steps.')
+    elif schedule is not None:
+        raise ValueError('Unsupported refinement schedule')
     if scale != 2 and upscaling:
         # Recorded only off the original factor, so 2x plans (and their cache keys) are unchanged.
         result.update(scale=scale, mode=result['mode'] + '-x%g' % scale,
@@ -225,11 +237,14 @@ def steps(sampling_plan=None):
     base, refine = sampling_plan.get('base_steps'), sampling_plan.get('refine_steps')
     validate_steps(base, refine if enabled else 2, enabled)
     expected = base + refine if enabled else base
+    if enabled and sampling_plan.get('refine_schedule') == 'upscale-sigma3-v1':
+        expected = refine   # a finished video is the first pass: only the refinement is sampled
     if (type(sampling_plan.get('version')) is not int or sampling_plan['version'] not in (1, 2, 3)
             or (sampling_plan['version'] == 1 and (base != 8 or refine != (2 if enabled else 0)))
             or (sampling_plan['version'] == 3 and (not enabled or refine != 3
-                or sampling_plan.get('refine_schedule') != 'community-sigma3-v1'
-                or sampling_plan.get('video_sigmas') != [0.9035, 0.6316, 0.3158, 0.]))
+                or (sampling_plan.get('refine_schedule'), sampling_plan.get('video_sigmas')) not in (
+                    ('community-sigma3-v1', [0.9035, 0.6316, 0.3158, 0.]),
+                    ('upscale-sigma3-v1', [0.30, 0.2097, 0.1049, 0.]))))
             or (not enabled and (type(refine) is not int or refine != 0))
             or type(sampling_plan.get('total_steps')) is not int or sampling_plan['total_steps'] != expected):
         raise ValueError('Invalid sampling step plan')

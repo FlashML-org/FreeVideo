@@ -57,7 +57,7 @@ export function agentConfirmSettings(t, api) {
     };
     async function save(patch) {
         // The control keeps what the user just chose while the save runs; it then shows what the server holds.
-        busy = true; startBox.disabled = longBox.disabled = minutesField.disabled = true; status.textContent = '';
+        busy = true; startBox.disabled = longBox.disabled = minutesField.disabled = true; status.textContent = ''; status.classList.remove('is-warn');
         try {
             const response = await agentSend(api, 'PUT', PATH, patch);
             if (!response.ok) throw new Error('Not saved');
@@ -69,6 +69,7 @@ export function agentConfirmSettings(t, api) {
                 shown = await read();
                 status.textContent = t('Could not save. The setting shown is the one in effect.', '保存失败，下面显示的是当前生效的设置。');
             } catch { status.textContent = t('Could not confirm whether the change was saved.', '无法确认这次修改是否已保存。'); }
+            status.classList.add('is-warn');
         }
         busy = false; render();
     }

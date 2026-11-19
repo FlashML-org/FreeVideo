@@ -672,7 +672,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         event.preventDefault(); event.stopPropagation(); passMenu.open = false; passMenu.querySelector('summary').focus();
         return true;
     }
-    return {element: host, duration, tray, say, downloadFailure, commit, dismiss, press: allowEmpty => press(allowEmpty === true), canGenerate: () => !generate.disabled,
+    return {element: host, duration, firstFrame, tray, say, downloadFailure, commit, dismiss, press: allowEmpty => press(allowEmpty === true), canGenerate: () => !generate.disabled,
         service(value) {
             service = value;
             if (!value && note.contains(retryService)) { retryService.remove(); note.hidden = true; }

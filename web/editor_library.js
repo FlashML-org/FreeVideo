@@ -88,6 +88,7 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
         if (row.state === 'failed') { actions.notify?.(...importFailure(row.reason)); return; }
         const key = `${kind}:${row.id}`;
         if (!pendingAdds.has(key)) pendingAdds.set(key, {plus, project: actions.projectToken?.()});
+        watchImports();
         actions.notify?.(preparing());
     }
     function startPending(items) {
@@ -378,7 +379,7 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
         }
     }
     async function importFiles(files, {at, track, replace = false} = {}) {
-        choose('import');
+        choose('import'); watchImports();
         const place = Number.isSafeInteger(at) && at >= 0 ? {at, ...(['a1', 'a2', 'a3'].includes(track) ? {track, replace} : {})} : null;
         for (const value of files) {
             if (disposed) break;
@@ -400,13 +401,26 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
         }
     }
     file.onchange = () => { importFiles([...file.files]); file.value = ''; };
-    const stop = store.watchImports(items => {
-        for (const item of items) recentImports.delete(item.id);
-        // A list request started before an upload may finish after it.
-        imported = [...recentImports.values(), ...items]; importUnread = items.unreadable || 0; render();
-        placeReady(imported); startPending(imported);
-    });
+    // The import list is read every 2 s while the editor is shown. A hidden (kept) editor reads it only while an
+    // import it waits for is still on its way (sent, asked to be placed, or dropped on the tracks), then stops; it
+    // reads it again at once when it is shown again.
+    let stopImports = null, suspended = false;
+    const waiting = () => uploading.size > 0 || pendingAdds.size > 0 || placing.length > 0;
+    function watchImports() {
+        if (stopImports || disposed) return;
+        stopImports = store.watchImports(items => {
+            for (const item of items) recentImports.delete(item.id);
+            // A list request started before an upload may finish after it.
+            imported = [...recentImports.values(), ...items]; importUnread = items.unreadable || 0; render();
+            placeReady(imported); startPending(imported);
+            if (suspended && !waiting()) { stopImports?.(); stopImports = null; }
+        });
+    }
+    watchImports();
     const stopUsed = state?.subscribe(event => { if (event.type === 'record') updateUsed(); });
     render(); load();
-    return {element: host, importFiles, refresh, dispose() { disposed = true; pendingAdds.clear(); window.removeEventListener('freevideo-result', generated); window.removeEventListener('freevideo-library-deleted', deleted); window.removeEventListener('freevideo-library-restored', restored); host.removeEventListener('scroll', scheduleMore); resize.disconnect(); cancelAnimationFrame(moreFrame); stop(); stopUsed?.(); clearTimeout(retryTimer); finishRetry?.(); }};
+    return {element: host, importFiles, refresh,
+        suspend() { suspended = true; if (!waiting()) { stopImports?.(); stopImports = null; } },
+        resume() { suspended = false; watchImports(); },
+        dispose() { disposed = true; pendingAdds.clear(); window.removeEventListener('freevideo-result', generated); window.removeEventListener('freevideo-library-deleted', deleted); window.removeEventListener('freevideo-library-restored', restored); host.removeEventListener('scroll', scheduleMore); resize.disconnect(); cancelAnimationFrame(moreFrame); stopImports?.(); stopImports = null; stopUsed?.(); clearTimeout(retryTimer); finishRetry?.(); }};
 }

@@ -5,9 +5,10 @@
 // eta_seconds, created_at, started_at, finished_at, prompt, result, failure, cancellable, position, model.
 // Three local fields ride along and are kept in this browser only: view (where to go back to), meta, seen.
 //
-// That endpoint does not exist yet, so the rows come from sources that read today's interfaces: the picture
-// worker's status (imageSource), the progress stream the page already receives (progressSource) and the list
-// of long videos (chainSource). Moving to /freevideo/jobs replaces those three and nothing else.
+// Running and waiting rows come from the live sources: the picture worker's status (imageSource), the progress stream
+// the page already receives (progressSource), the engine's queue (queueSource) and the list of long videos
+// (chainSource). Finished jobs come from one place, the server's own record behind GET /freevideo/jobs
+// (journalSource): it outlives a reload and a restart, and another device sees the same jobs end.
 // No imports: the store and its sources run under Node for the unit tests.
 
 export const LOCAL_KEY = 'freevideo.jobs.local';
@@ -74,7 +75,8 @@ export function createJobStore({now = () => Date.now(), storage = null} = {}) {
     // Merges what a source knows into the row. A finished row stays finished unless the source says it runs
     // again (a long video continued after a stop); a late progress message cannot revive it.
     // force: the store itself puts a row back (a cancel the engine refused).
-    function upsert(patch, {revive = false, force = false} = {}) {
+    // quiet: a job that ended before this page knew of it (journalSource) is listed without a done or failed event.
+    function upsert(patch, {revive = false, force = false, quiet = false} = {}) {
         if (!patch?.id) throw new Error('job_id_required');
         let previous = rows.get(patch.id);
         const before = previous;
@@ -102,8 +104,8 @@ export function createJobStore({now = () => Date.now(), storage = null} = {}) {
         if (patch.view != null) { local[row.id] = plain({...mine, at, view: patch.view}); saveLocal(); }
         const frozen = rows.get(row.id);
         publish({type: before ? 'update' : 'add', row: frozen, previous: before});
-        if (ended && row.status === 'done') fire('done', Object.freeze({...row}));
-        if (ended && row.status === 'failed') fire('failed', Object.freeze({...row}));
+        if (ended && !quiet && row.status === 'done') fire('done', Object.freeze({...row}));
+        if (ended && !quiet && row.status === 'failed') fire('failed', Object.freeze({...row}));
         return frozen;
     }
     // Only this browser's fields: where the job came from, what to show for it, whether it was seen.
@@ -454,4 +456,47 @@ export function chainSource(store, {fetchJson, interval = 3000, idle = 0, setTim
 }
 
 // The page's one store. Sources are attached by task_float.js, which runs in the page.
+// ---------- Jobs that ended, from the server's record (GET /freevideo/jobs) ----------
+// The server writes one line when a generation ends (freevideo_engine/job_record.py): no prompt, no file name, only
+// ids, codes, times and a saved video's library id. A job this page has no row for, that ended within maxAgeMs and that
+// this browser has not seen, is listed as finished, quietly (no notification for news the person already missed). Rows
+// this page already has keep their live source, which ends them itself. The Agent's jobs stay in its own view.
+export function journalSource(store, {fetchJson, storage = null, interval = 30000, maxAgeMs = 6 * 3600e3, now = store.now,
+                                      setTimer = setTimeout, clearTimer = clearTimeout} = {}) {
+    let timer = 0, disposed = false, reading = null;
+    const PREFIX = {video: 'video:', chain: 'chain:'};
+    function idOf(entry) {
+        if (entry.kind === 'image') {
+            // A picture started on this browser keeps its worker key beside the row id (imageSource).
+            const local = Object.entries(readJSON(storage, IMAGE_KEY)).find(([, value]) => value?.job === entry.id);
+            return local ? local[0] : 'image:' + entry.id;
+        }
+        return PREFIX[entry.kind] ? PREFIX[entry.kind] + entry.id : null;
+    }
+    function apply(entry) {
+        if (!entry || typeof entry.id !== 'string' || !FINAL.has(entry.status) || entry.origin === 'agent') return;
+        const id = idOf(entry);
+        if (!id || store.get(id) || store.localOf(id)?.seen) return;
+        const finished = finite(entry.finished_at) ? entry.finished_at * 1000 : null;
+        if (!finished || now() - finished > maxAgeMs) return;
+        store.upsert({id, kind: entry.kind, source: entry.kind, status: entry.status, origin: 'page', cancellable: false, prompt: '',
+            finished_at: finished, ...(finite(entry.created_at) ? {created_at: entry.created_at * 1000} : {}),
+            ...(finite(entry.started_at) ? {started_at: entry.started_at * 1000} : {}),
+            ...(typeof entry.result === 'string' ? {result: {work: entry.result}} : {}),
+            ...(typeof entry.failure === 'string' ? {failure: {code: entry.failure}} : {})}, {quiet: true});
+    }
+    async function read() {
+        if (reading) return reading;
+        reading = (async () => {
+            try { const value = await fetchJson('/freevideo/jobs'); for (const entry of value?.jobs || []) apply(entry); }
+            catch { /* An older engine or a passing error: the live sources still list what runs. */ }
+        })().finally(() => { reading = null; if (!disposed && interval) { clearTimer(timer); timer = setTimer(read, interval); } });
+        return reading;
+    }
+    const source = {refresh: read, dispose() { disposed = true; clearTimer(timer); }};
+    store.addSource('journal', source);
+    void read();
+    return source;
+}
+
 export const jobs = createJobStore({storage: (() => { try { return globalThis.localStorage || null; } catch { return null; } })()});

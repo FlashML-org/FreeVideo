@@ -11,6 +11,7 @@ import time
 import uuid
 
 from . import chain_leads, chain_plan
+from .chain_errors import BLOCK_FIELDS, OUTPUT_FIELDS, block_failure, join_failure
 from . import chain_store as store
 
 REPORT_ID = re.compile(r'[a-f0-9]{32}')
@@ -132,6 +133,7 @@ class ChainRunner:
         # block is made again once, because the engine did not leave the record.
         self.checking, self.redo_lead = set(), set()
         self.progress_messages = {}
+        self.recorded = set()   # chains already written to the finished-job record by this process
         # While a chain's parts are joined: the part being written (0 before the first) and how many there are.
         self.joins = {}
         self.estimates, self.queue, self.active = {}, [], None
@@ -157,6 +159,12 @@ class ChainRunner:
         record['updated'] = self.wall()
         store.save(self.store_dir, record)
         self._index_receipt(record, latest=True)
+        if record['state'] in ('done', 'failed', 'cancelled', 'interrupted') and record['id'] not in self.recorded:
+            from . import job_record
+            # Once per chain while this process runs: the finished-job record keeps the time it first ended.
+            if record['state'] != 'done' or record['output_state'] not in ('pending', 'joining'):
+                self.recorded.add(record['id'])
+                job_record.chain(record, self.store_dir)
 
     def _receipts(self):
         if self.work_receipts is None:
@@ -464,6 +472,8 @@ class ChainRunner:
                                  seconds=None, output=None, report_id=None, error=None,
                                  fraction=0., remaining_seconds=None, continuation=None,
                                  skip_frames=0, skip_audio_samples=0)
+                    for key in BLOCK_FIELDS:
+                        block.pop(key, None)
             split = record.get('split')
             whole = record['snapshot']['prompt'][record['node']]['inputs'].get('text')
             if (split is not None and split['state'] == 'failed' and split['reason'] in ('busy', 'memory')
@@ -479,6 +489,8 @@ class ChainRunner:
             record['state'] = 'queued'
             if record['join']:
                 record['output_error'] = None
+                for key in OUTPUT_FIELDS:
+                    record.pop(key, None)
                 if all(row['state'] == 'done' for row in record['blocks']):
                     self._finish_blocks(record)
                 elif record['output'] is None:
@@ -517,7 +529,8 @@ class ChainRunner:
             identity = source['id']
             while identity in self.records or (Path(self.store_dir) / (identity + '.json')).exists():
                 identity = 'c-' + uuid.uuid4().hex[:12]
-            for key in ('last_report_id', 'last_heartbeat_at', 'output_seams', 'output_unrepaired', 'join_final_state'):
+            for key in ('last_report_id', 'last_heartbeat_at', 'output_seams', 'output_unrepaired', 'join_final_state',
+                        *OUTPUT_FIELDS):
                 record.pop(key, None)
             now = self.wall()
             record.update(id=identity, created=now, state='queued', redo_of=dict(chain=chain_id, block=block_id),
@@ -536,6 +549,8 @@ class ChainRunner:
                              seconds=None, output=None, report_id=None, error=None,
                              fraction=0., remaining_seconds=None, continuation=None,
                              skip_frames=0, skip_audio_samples=0)
+                for key in BLOCK_FIELDS:
+                    block.pop(key, None)
             if text is not None:
                 # Only the new words take the LoRA triggers; the other parts keep their texts as written.
                 probe = dict(node=record['node'], snapshot=deepcopy(record['snapshot']),
@@ -661,6 +676,11 @@ class ChainRunner:
                 if block is not None:
                     return record, block
         return None, None
+
+    def part_of(self, prompt_id):
+        """True when a chain block submitted this host request, in any state: the chain is the job, not the part."""
+        with self.lock:
+            return any(row.get('prompt_id') == prompt_id for record in self.records.values() for row in record['blocks'])
 
     def owns(self, prompt_id):
         """True while a chain block submitted this host request; its order is the chain's."""
@@ -824,6 +844,8 @@ class ChainRunner:
         if not record['join']:
             return final_state
         blocks = store.leading_blocks(record)
+        for key in OUTPUT_FIELDS:  # each path below clears output_error or keeps a done output, which has none
+            record.pop(key, None)
         if not blocks:
             record.update(output=None, output_blocks=0, output_state='pending', output_error=None)
             return final_state
@@ -848,6 +870,8 @@ class ChainRunner:
             block.update(state='pending', prompt_id=None, started=None, finished=None, seconds=None, output=None,
                          report_id=None, error=None, fraction=0., remaining_seconds=None, continuation=None,
                          skip_frames=0, skip_audio_samples=0)
+            for key in BLOCK_FIELDS:
+                block.pop(key, None)
             record['state'] = 'running'
             self.starts.pop(prompt_id, None)
             self.success.pop(prompt_id, None)
@@ -872,6 +896,8 @@ class ChainRunner:
         else:
             block['state'], next_state = 'failed', 'failed'
             block['error'] = status.get('error') or 'Prompt execution failed'
+            # The original text stays in `error` for the technical details and the report; these say it plainly.
+            block.update(block_failure(dict(status, error=block['error'])))
         next_state = 'cancelled' if record['state'] == 'cancelling' else next_state
         record['state'] = self._finish_blocks(record, next_state) if next_state in ('cancelled', 'failed') else next_state
         if record['state'] not in store.ACTIVE:
@@ -1027,7 +1053,7 @@ class ChainRunner:
                         self._start(block)
                         self._save(record)
                     elif status['state'] != 'pending':
-                        self._complete(record, block, dict(state='error', error=str(error)))
+                        self._complete(record, block, dict(state='error', error=str(error), **block_failure(error)))
             return
         if action == 'cancel':
             try:
@@ -1120,7 +1146,7 @@ class ChainRunner:
         texts = [row['inputs']['text'] for row in snapshot['blocks']]
         texts += [row['inputs'].get('text') for row in snapshot['snapshot']['prompt'].values()
                   if isinstance(row, dict) and isinstance(row.get('inputs'), dict)]
-        failure = None
+        failure = failure_fields = None
         promised = kept = 0
         reasons, join_result = [], {}
         try:
@@ -1138,7 +1164,7 @@ class ChainRunner:
                 raise ValueError('Joining did not return a video path')
         except Exception as error:
             message = str(error)
-            failure = message[:300]
+            failure, failure_fields = message[:300], join_failure(error)
             if 'workflow' in message.lower() or any(isinstance(value, str) and value and any(
                     part in message for part in (value, repr(value)[1:-1], json.dumps(value)[1:-1])) for value in texts):
                 failure = 'Joining failed'
@@ -1150,13 +1176,15 @@ class ChainRunner:
             elif cancelled():
                 record['state'] = self._finish_blocks(record, 'cancelled')
             elif failure is not None:
-                record.update(state=final_state, output_state='failed', output_error=failure)
+                record.update(state=final_state, output_state='failed', output_error=failure, **failure_fields)
                 logging.warning('[FreeVideo] Chain joining failed: %s', identity)
             else:
                 # Only the blocks the joined video is made of count, as `_work_lineage` counts them for a record without these fields.
                 lineage, leading = self._lineage(snapshot), store.leading_blocks(snapshot)
                 output_parts = max((lineage[row['id']][0] for row in leading), default=1)
                 output_short = any(lineage[row['id']][1] for row in leading)
+                for key in OUTPUT_FIELDS:
+                    record.pop(key, None)
                 record.update(state=final_state, output=output, output_blocks=len(leading),
                               output_state='done', output_error=None, output_seams=dict(expected=promised, kept=kept),
                               output_parts=output_parts, output_short=output_short)

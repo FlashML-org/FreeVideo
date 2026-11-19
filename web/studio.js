@@ -1,6 +1,5 @@
 import './has_mirror.js';
 import {createLanAccess} from './lan_access.js';
-import {createMonitor} from './monitor_panel.js';
 import { createErrorPanel, errorText, createErrorReport } from './error_panel.js';
 import {createExpandButton} from './editor_expand.js';
 import {allowEmptyPrompt, cleanOptionalPrompt, clonePrompt} from './optional_inputs.js';
@@ -21,7 +20,7 @@ import { issueButton } from './issue_button.js';
 import { skinSelect } from './fv_select.js';
 import { createPreviewScene } from './preview_scene.js?v=20261115-still';
 import { animateDetails, closeDialog } from './motion.js';
-import { openLibrary, setDefaultUpscale, videoThumbnailURL } from './library.js';
+import { openLibrary, setDefaultUpscale, setDefaultUpscaleWork, videoThumbnailURL } from './library.js';
 import { createRecentVideos } from './studio_recent.js';
 import { createAgentActivity } from './agent_activity.js';
 import { createStudioQueue, randomSeed, turnNodeOn } from './studio_queue.js';
@@ -63,7 +62,7 @@ import { firstFrameRow } from './first_frame_row.js';
 import { createReplacePerson, swapMissingText } from './replace_person.js';
 import { swapState, swapMissing, effectiveRows, prepareSwapLora, releaseSwapLora, peopleOf } from './replace_state.js';
 import { swapLoraDownload } from './swap_lora.js';
-import { createStudioChain, chainPosition, chainParts, chainSplit, composePartText, readChainResult, sumPartEstimates, singleRunSnapshot } from './studio_chain.js?v=20261113-connection';
+import { createStudioChain, chainPosition, chainParts, chainSplit, composePartText, readChainResult, sumPartEstimates, singleRunSnapshot } from './studio_chain.js?v=20261117-chain-errors';
 import { activeOriginal, checkOriginal, lockMark, blockOriginal, originalBlocked, usesOriginal, referenceRow, partsNeedTwoPassText } from './audio_original.js';
 import { joiningText, waitingText } from './chain_support.js';
 import { createExtendState, extendText, extendSourceProblem, extendSourceState, readExtendRecord, extendSnapshot, mountExtendThumbnail, videoUnavailableText } from './studio_extend.js';
@@ -77,6 +76,7 @@ import { createPromptLibrary, rememberPrompt } from './prompt_library.js';
 import { createCompare, COMPARE_ICON } from './studio_compare.js';
 import { toast, toastHeight } from './notifications.js';
 import { mediaQueue } from './work_media.js';
+import { userMessage } from './user_message.js';
 
 const languageOverride = typeof location !== 'undefined'
     ? new URLSearchParams(location.search).get('freevideo_lang') : null;
@@ -114,7 +114,7 @@ const el = (tag, label, cls) => { const e = document.createElement(tag); if (lab
 // One line per part of a long video, under the preview. A part that has not started opens in
 // place for editing and saves when it loses focus; the server's reply decides what stays.
 // After the video stops, an ended part can be made again from there on as a new video.
-function createChainPartList(t, save, {onShow = () => {}, onHide = () => {}, redo = async () => {}, resume = async () => {}, playSeam = null} = {}) {
+function createChainPartList(t, save, {onShow = () => {}, onHide = () => {}, redo = async () => {}, resume = async () => {}, onError = () => {}, playSeam = null} = {}) {
     const element = el('div', null, 'fv-chain-parts'); element.hidden = true;
     const rows = new Map(), timers = new Map();
     let editing = null, showing = null;
@@ -157,8 +157,15 @@ function createChainPartList(t, save, {onShow = () => {}, onHide = () => {}, red
         row.starting = true; row.redo.disabled = true; tag(row, t('Starting…', '正在开始…'));
         try { await (row.part.action === 'resume' ? resume() : redo(row.part.id)); }
         catch (error) {
-            if (rows.get(row.part.id) === row) flash(row, error.status === 409 ? t('Another video is generating. Try again when it finishes.', '正在生成别的视频，完成后再试。')
-                : t('Could not start. Try again.', '没能开始，请重试。'), 'error');
+            if (error.status === 409) {
+                if (rows.get(row.part.id) === row) flash(row, t('Another video is generating. Try again when it finishes.', '正在生成别的视频，完成后再试。'), 'error');
+                return;
+            }
+            // The line says the server's own sentence when it gave one; the card carries what failed and a report.
+            const said = (error.said || error.cause?.said);
+            if (rows.get(row.part.id) === row) flash(row, said ? t(said[0], said[1])
+                : t('Could not start. See the details on the picture.', '没能开始，原因见画面上的说明。'), 'error');
+            onError(error);
         } finally { row.starting = false; row.redo.disabled = false; }
     }
     function flash(row, text, kind) {
@@ -366,6 +373,11 @@ export function loraPanel(node, panel, {promptNode = null} = {}) {
     const verdicts = createVerdicts((path, options) => api.fetchApi(path, options));
     let rowChecks = [];
     let focusGrip = null;
+    // The list lives in the node as JSON; a broken list is not a reply from FreeVideo, so it gets its own sentence.
+    const listProblem = error => {
+        const unreadable = t('The LoRA list cannot be read. Add the LoRAs again.', 'LoRA 列表无法读取，请重新添加 LoRA。');
+        return error?.name === 'SyntaxError' ? unreadable : userMessage(error, t, unreadable);
+    };
     const read = () => { const rows = JSON.parse(value(node, 'adapters') || '[]'); if (!Array.isArray(rows) || rows.length > 32) throw new Error(t('Use at most 32 LoRAs', '最多使用 32 个 LoRA')); return rows; };
     function syncPrompt(rows) {
         const targets = new Set([promptNode, ...(node.graph?._nodes || []).filter(target =>
@@ -403,7 +415,7 @@ export function loraPanel(node, panel, {promptNode = null} = {}) {
                 if (trigger.dataset.name === name && !drafts.has(name)) trigger.value = triggerEntry(name).data?.words ?? '';
             }
             note.textContent = rows.map(row => errors.get(row.name)).find(Boolean) || idleNote();
-        } catch (error) { note.textContent = error.message; }
+        } catch (error) { note.textContent = listProblem(error); }
     }
     const write = rows => { if (set(node, 'adapters', JSON.stringify(rows))) { syncPrompt(rows); window.dispatchEvent(new CustomEvent('freevideo-loras', {detail: node.id})); } };
     // A LoRA the model cannot take is switched off here, so it is not sent with the request.
@@ -413,7 +425,7 @@ export function loraPanel(node, panel, {promptNode = null} = {}) {
             const rows = read(); let changed = false;
             for (const row of rows) if (row.name === name && row.enabled !== false && verdicts.peek(name)?.usable === false) { row.enabled = false; changed = true; }
             if (changed) write(rows);
-        } catch (error) { note.textContent = error.message; }
+        } catch (error) { note.textContent = listProblem(error); }
     }
     const reorder = order => {
         const rows = read();
@@ -547,14 +559,14 @@ export function loraPanel(node, panel, {promptNode = null} = {}) {
                 if (known) mark(known);
                 else check(false);
                 list.append(wrap);
-                loadTriggers(row.name).catch(error => { if (!disposed && trigger.isConnected) note.textContent = error.message; });
+                loadTriggers(row.name).catch(error => { if (!disposed && trigger.isConnected) note.textContent = userMessage(error, t, t('Could not read the trigger words. Try again.', '没能读取触发词，请重试。')); });
             });
             if (rows.length > 1) actions.append(clear);
             if (focusGrip != null) { list.querySelector(`.fv-lora-row[data-index="${focusGrip}"] .fv-lora-grip`)?.focus(); focusGrip = null; }
             note.textContent = rows.map(row => errors.get(row.name)).find(Boolean) || idleNote();
         } catch (error) {
             if (error instanceof DOMException) throw error;
-            note.textContent = error.message;
+            note.textContent = listProblem(error);
         }
         finally {
             rendering = false;
@@ -735,7 +747,6 @@ export function openStudio(node, {extendFrom = null} = {}) {
     brand.append(wordmark());
     const tools = el('div', null, 'fv-header-actions');
     const agents = createAgentActivity(t, api, dialog); tools.append(agents.element); cleanup.push(agents.dispose);
-    const monitor = createMonitor(t, api); tools.append(monitor.element); cleanup.push(monitor.dispose);
     const phoneAccess = createLanAccess(t, api); tools.append(phoneAccess.element); cleanup.push(phoneAccess.dispose);
     const versionInfo = createVersionInfo(cn); tools.append(versionInfo.element); cleanup.push(versionInfo.dispose);
     tools.append(guideButton(t), feedbackButton(t), button(t('Settings', '设置'), openSetup, 'fv-quiet'));
@@ -781,8 +792,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const castAssets = () => { const owner = upstream(node, 'media'); const field = owner && widget(owner, 'assets'); return field ? {owner, field} : null; };
     // The library's own upload of a picture goes to the same streaming upload the media panel uses.
     const castUpload = file => uploadMedia(api, file);
-    const castBlocked = reason => ({frames: t('Not available with first and last frames', '首尾帧不能和角色同时使用'),
-        people: t('Up to 3 characters', '最多 3 个角色'), props: t('Up to 2 props', '最多 2 个道具'), full: t('Up to 32 references', '参考素材最多 32 个'),
+    const castBlocked = reason => ({people: t('Up to 3 characters', '最多 3 个角色'), props: t('Up to 2 props', '最多 2 个道具'), full: t('Up to 32 references', '参考素材最多 32 个'),
         continued: t('No room left when continuing', '接续段位置已满')}[reason] || '');
     const castPending = new Map();
     // The feature tour's "try it": one example into this panel's media list, prompt and settings.
@@ -1041,7 +1051,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         if (![...mp.options].some(option => Number(option.value) === pixels)) { const option = el('option', `${pixels.toFixed(2)} MP`); option.value = pixels; mp.append(option); }
         mp.value = String(pixels);
         try { applySize(); if (pixels !== 1) legacyOption?.remove(); status.dataset.error = 'false'; }
-        catch (error) { pixels = previous; mp.value = String(previous); syncResolutionLabel(); status.dataset.error = 'true'; status.textContent = error.message; }
+        catch (error) { pixels = previous; mp.value = String(previous); syncResolutionLabel(); status.dataset.error = 'true'; status.textContent = userMessage(error, t, t('Could not change the resolution. Try again.', '没能更改清晰度，请重试。')); }
     }
     for (const preset of PRESET_PIXELS) {
         const mark = button(String(preset), () => choosePixels(preset), 'fvs-res-tick');
@@ -1309,9 +1319,18 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const firstFrame = firstFrameRow(t, 'fv-first-frame');
     firstFrame.row.hidden = true; fields.after(firstFrame.row);
     firstFrame.input.checked = value(node, 'first_frame_reference') === true;
-    firstFrame.input.onchange = () => { set(node, 'first_frame_reference', firstFrame.input.checked); firstFrame.input.checked = value(node, 'first_frame_reference') === true; };
+    firstFrame.input.onchange = () => {
+        if (borrowed?.firstFrame) { borrowed.onFirstFrame?.(firstFrame.input.checked); return; } // the edit keeps it, not this panel
+        set(node, 'first_frame_reference', firstFrame.input.checked); firstFrame.input.checked = value(node, 'first_frame_reference') === true;
+    };
     let manyParts = false, originalOn = false;
     function updateFirstFrame() {
+        // While the editor borrows the bar, the editor says when the switch applies and what is on.
+        const lent = borrowed?.firstFrame;
+        if (lent) {
+            if (firstFrame.row.hidden !== !lent.shown) firstFrame.row.hidden = !lent.shown;
+            firstFrame.input.checked = lent.checked; firstFrame.setDisabled(Boolean(lent.disabled)); return;
+        }
         // While a new plan is being worked out the row keeps its place.
         const plan = lengthControl.plan; if (plan || !lengthControl.needsPlan) manyParts = plan?.count > 1;
         { const gone = !widget(node, 'first_frame_reference') || !(manyParts || extension.source); if (firstFrame.row.hidden !== gone) firstFrame.row.hidden = gone; }
@@ -1447,7 +1466,12 @@ export function openStudio(node, {extendFrom = null} = {}) {
             if (!linked(node, 'conditioning')) {
                 const media = referenceItems(node), refs = media.filter(r => !r.role);
                 requestRefs = refs;
-                const audio = refs.some(r => r.kind === 'audio'), visual = refs.some(r => r.kind !== 'audio');
+                const audio = refs.some(r => r.kind === 'audio');
+                // Next to references, keyframes are still guides, which the engine counts as pictures.
+                const keyframes = (() => { try { return JSON.parse(value(upstream(node, 'media'), 'assets') || '[]')
+                    .some(r => r.enabled !== false && ['first', 'last'].includes(r.role)); } catch { return false; } })()
+                    || ['first', 'last'].some(name => linked(upstream(node, 'media'), name));
+                const visual = refs.some(r => r.kind !== 'audio') || refs.length > 0 && keyframes;
                 const first = media.some(r => r.role === 'first'), last = media.some(r => r.role === 'last');
                 task = audio ? visual ? 'ref2va_av' : 'ref2va_audio' : visual ? 'ref2va'
                     : first && last ? 'fl2va' : first ? 'i2va' : last ? 'l2va' : 't2va';
@@ -1497,6 +1521,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const previewTools = el('div', null, 'fv-preview-tools');
     // Creations opened from a notification, the palette or search finish a first-pass preview through this node too.
     setDefaultUpscale(value => node.freevideoUpscaleResult(value));
+    setDefaultUpscaleWork((value, options) => node.freevideoUpscaleWork(value, options));
     const worksButton = button('', () => {
         stage.querySelector('video')?.pause(); openLibrary(t, {upscale: value => node.freevideoUpscaleResult(value),
             extend: (saved, options) => openExtendEditor(saved, node, {studio: dialog, ...options}),
@@ -1521,6 +1546,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const partList = createChainPartList(t, (block, text) => chainController.setText(block, composePartText(chainController.state, block, text)), {
         redo: block => { failure.clear(); return chainController.redo(block); },
         resume: () => { failure.clear(); return chainController.resume(); },
+        onError: error => showChainActionError(error),
         playSeam: seconds => playAround(seconds)});
     // Set once the queue buttons exist: "Continue generating" stays hidden while a listed part offers the same.
     let syncResume = () => {};
@@ -1662,6 +1688,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const TALL_EDGE = 48, TALL_RAIL = 122, GRID_MIN = 320;
     let recentCount = () => 0;
     let consoleSnap = {shape: '', held: false};
+    // Set once the failure card exists (below): whether it is on the picture, and the height it needs to read whole.
+    let failureShown = () => false, failureNeed = () => 0;
     const tallChange = () => fitPreview();
     tall?.addEventListener?.('change', tallChange); cleanup.push(() => tall?.removeEventListener?.('change', tallChange));
     function fitTall(gap) {
@@ -1688,20 +1716,26 @@ export function openStudio(node, {extendFrom = null} = {}) {
         if (!(width > 0) || !(room > 0) || !Number.isFinite(previewRatio) || previewRatio <= 0) return;
         const height = Math.max(Math.min(room, 160), Math.min(room, width / previewRatio));
         const fittedWidth = Math.min(width, height * previewRatio), fittedHeight = fittedWidth / previewRatio;
-        stage.style.width = `${fittedWidth}px`; stage.style.height = `${fittedHeight}px`;
+        // A failure card on the picture keeps its cause, next step and buttons whole: the picture widens to the card
+        // (560 px at most) and grows to its height, and the column scrolls if that is taller than the room.
+        const failed = failureShown();
+        const stageWidth = failed ? Math.max(fittedWidth, Math.min(width, 560 + 32)) : fittedWidth;
+        stage.style.width = `${stageWidth}px`;
+        const stageHeight = failed ? Math.max(fittedHeight, failureNeed()) : fittedHeight;
+        stage.style.height = `${stageHeight}px`;
         // The picture, its bar and the status line sit as one block in the middle of the column.
-        previewSpace.style.height = `${fittedHeight}px`;
+        previewSpace.style.height = `${stageHeight}px`;
         // The bar and the status line under the picture keep its width, so their ends line up with the picture's edges.
-        output.style.setProperty('--fvs-stage-w', `${Math.round(fittedWidth)}px`);
+        output.style.setProperty('--fvs-stage-w', `${Math.round(stageWidth)}px`);
         // On a phone the picture block sits just above the console (no empty band between them); wider windows centre it.
-        const free = Math.max(0, Math.floor(room - fittedHeight));
+        const free = Math.max(0, Math.floor(room - stageHeight));
         const marginTop = fit?.grid ? 0 : phone?.matches ? free : Math.floor(free / 2);
         previewSpace.style.marginTop = `${marginTop}px`;
         // The next generation's empty frame stays whole while a tray floats over the picture's lower part: it is fitted
         // and centred in the part left free, and takes the full stage again when the tray closes (200 ms).
         stage.style.translate = '';
         // (A tray shown as a small window beside its button, glass/tray_pop.js, floats over the stage and takes no room.)
-        const openTray = nextShown && body.dataset.traySide !== 'true' ? controls.querySelector('.fvs-tray[open]:not([data-closing]):not([data-fv-pop])') : null;
+        const openTray = nextShown && !failed && body.dataset.traySide !== 'true' ? controls.querySelector('.fvs-tray[open]:not([data-closing]):not([data-fv-pop])') : null;
         if (openTray) {
             const spaceTop = output.getBoundingClientRect().top + parseFloat(style.paddingTop) + marginTop;
             const freeHeight = Math.min(fittedHeight, openTray.getBoundingClientRect().top - spaceTop - 16);
@@ -1711,13 +1745,13 @@ export function openStudio(node, {extendFrom = null} = {}) {
                 stage.style.translate = `0 ${Math.round((freeHeight - fittedHeight) / 2)}px`;
             }
         }
-        stage.dataset.narrow = String((parseFloat(stage.style.width) || fittedWidth) < 220);
+        stage.dataset.narrow = String((parseFloat(stage.style.width) || stageWidth) < 220);
         // The history rail centres on the picture and is never taller than it (read from the layout, not the
         // animated boxes).
         const pictureTop = output.getBoundingClientRect().top - body.getBoundingClientRect().top + parseFloat(style.paddingTop) + marginTop;
         body.style.setProperty('--fvs-stage-top', `${Math.round(pictureTop)}px`);
-        body.style.setProperty('--fvs-stage-h', `${Math.round(fittedHeight)}px`);
-        if (fit?.grid) body.style.setProperty('--fvs-grid-top', `${Math.round(pictureTop + fittedHeight + fit.barRoom + 16)}px`);
+        body.style.setProperty('--fvs-stage-h', `${Math.round(stageHeight)}px`);
+        if (fit?.grid) body.style.setProperty('--fvs-grid-top', `${Math.round(pictureTop + stageHeight + fit.barRoom + 16)}px`);
         else body.style.removeProperty('--fvs-grid-top');
         // The console and the picture are either the same width or clearly apart (at least 24 px a side), never a
         // few pixels off.
@@ -1728,11 +1762,13 @@ export function openStudio(node, {extendFrom = null} = {}) {
             // The console takes the picture's width when a window or picture shape is first fitted, and lets go for good
             // (until that shape changes) once they are 48 px apart: the console's own height moves the picture (the room
             // left under it), so a row of chips right at a wrap would otherwise flip it between the two widths every frame.
-            const shape = `${body.clientWidth}x${body.clientHeight}:${previewRatio}`;
+            // A failure card widens the picture, so the console is matched to the picture as shown, and fitted afresh
+            // when the card comes or goes.
+            const shape = `${body.clientWidth}x${body.clientHeight}:${previewRatio}:${failed}`;
             if (consoleSnap.shape !== shape) consoleSnap = {shape, held: true};
-            consoleSnap.held &&= Math.abs(fittedWidth - natural) < 48 && fittedWidth <= room;
+            consoleSnap.held &&= Math.abs(stageWidth - natural) < 48 && stageWidth <= room;
             const same = consoleSnap.held;
-            if (same) controls.style.setProperty('--fvs-console-w', `${Math.round(fittedWidth)}px`); else controls.style.removeProperty('--fvs-console-w');
+            if (same) controls.style.setProperty('--fvs-console-w', `${Math.round(stageWidth)}px`); else controls.style.removeProperty('--fvs-console-w');
         } else controls.style.removeProperty('--fvs-console-w');
         stage.dataset.short = String(fittedHeight < 150);
         // The history rail centres itself on the stage, above the console.
@@ -1840,8 +1876,25 @@ export function openStudio(node, {extendFrom = null} = {}) {
     failureClose.append(glyph('close', 14)); failureClose.setAttribute('aria-label', t('Close', '关闭'));
     tip(failureClose, t('Close', '关闭'), t('Hide the card and show the picture', '收起这张卡片，显示画面'));
     failureLayer.append(failure.element, failureClose); stage.append(failureLayer);
-    const failureWatch = new MutationObserver(() => { failureLayer.hidden = failure.element.hidden; });
-    failureWatch.observe(failure.element, {attributes: true, attributeFilter: ['hidden']}); cleanup.push(() => failureWatch.disconnect());
+    failureShown = () => !failureLayer.hidden;
+    // The card's whole height (its content, border and the layer's padding), read at the picture's final width.
+    failureNeed = () => { const card = failure.element, pad = parseFloat(getComputedStyle(failureLayer).paddingTop) || 0;
+        return Math.ceil(card.scrollHeight + card.offsetHeight - card.clientHeight + 2 * pad); };
+    let failureFit = 0;
+    const refitFailure = () => { if (!failureFit) failureFit = requestAnimationFrame(() => { failureFit = 0; fitPreview(); }); };
+    cleanup.push(() => cancelAnimationFrame(failureFit));
+    const failureWatch = new MutationObserver(() => {
+        const hidden = failure.element.hidden;
+        if (failureLayer.hidden !== hidden) failureLayer.hidden = hidden;
+        refitFailure();
+    });
+    failureWatch.observe(failure.element, {attributes: true, attributeFilter: ['hidden'], childList: true, subtree: true, characterData: true});
+    cleanup.push(() => failureWatch.disconnect());
+    // Opening its details changes the card's height; a width change is read again once the picture has finished it.
+    failure.element.addEventListener('toggle', refitFailure, true);
+    stage.addEventListener('transitionend', event => { if (event.target === stage && event.propertyName === 'width' && failureShown()) refitFailure(); });
+    const layerWatch = new MutationObserver(refitFailure);
+    layerWatch.observe(failureLayer, {attributes: true, attributeFilter: ['hidden']}); cleanup.push(() => layerWatch.disconnect());
     // With the picture, the result's actions and numbers form one block, centred below the header.
     output.append(el('div', null, 'fv-preview-end'));
     if (node.freevideoFailure) failure.show(node.freevideoFailureReport || node.freevideoFailure, false);
@@ -2260,7 +2313,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const otherUsage = createOtherUsageNotice(runbar, t, api.fetchApi.bind(api));
     cleanup.push(() => otherUsage.dispose());
     runbar.append(requestAssets.element, runrow, addVideoNote, queueActions); controls.append(runbar);
-    const queueError = error => ({
+    // A chain action the server refused with its own sentence says that sentence, not the general "could not continue".
+    const queueError = error => (error?.action && error.said ? t(error.said[0], error.said[1]) : null) || ({
         queue_unavailable: t('Could not read the queue. The loop has stopped; videos already added stay queued.', '暂时读不到队列，循环已停止；已加入的视频还在队列中。'),
         cancel_failed: t('Could not cancel. Try again.', '没有取消成功，请重试。'),
         move_failed: t('Could not move it. Try again.', '没有移动成功，请重试。'),
@@ -2271,7 +2325,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         missing_node: t('This node is disabled or no longer in the workflow.', '该节点已禁用或已从工作流移除。'),
         chain_cancel_failed: t('Could not cancel. Refresh the page and try again.', '没有取消成功，请刷新页面后再试。'),
         chain_resume_failed: t('Could not continue. Refresh the page and try again.', '没有继续生成，请刷新页面后再试。'),
-    }[error?.message] || (error?.said ? t(error.said[0], error.said[1]) : null) || (isNetworkTypeError(error) ? connectionLostText(t) : error?.message) || String(error));
+    }[error?.message] || (error?.said ? t(error.said[0], error.said[1]) : null) || userMessage(error, t));
     let lastQueueError = null, connectionNotice = false;
     watchEngineExit(api).catch(() => {});
     function showQueueError(error) {
@@ -2307,11 +2361,20 @@ export function openStudio(node, {extendFrom = null} = {}) {
             if (record && !disposed && !status.textContent) status.textContent = engineExitText(record, t);
         }).catch(() => {});
     }
+    // A part that did not start says so on its own line; what the server said goes in the card, with a report.
+    function showChainActionError(error) {
+        if (disposed) return;
+        lastQueueError = null;
+        const report = failure.show(error?.cause || error, false, {stage: 'queue', node, graph: app.graph});
+        node.freevideoFailureReport = report; node.freevideoFailure = errorText(report);
+    }
     // A part that stopped is one sentence on the status line; what ComfyUI said goes in the card, as a generation failure.
     function showPartError(error) {
         if (disposed) return;
         status.dataset.error = 'true';
-        status.textContent = error.joining ? t('Could not join the parts. See the details on the picture.', '未能接合各段，原因见画面上的说明。')
+        // The server's plain sentence (a full disk, unreadable storage) when it has one; what failed stays in the card.
+        status.textContent = error.said ? (error.joining ? '' : t(`Part ${error.index + 1}: `, `第 ${error.index + 1} 段：`)) + t(error.said[0], error.said[1])
+            : error.joining ? t('Could not join the parts. See the details on the picture.', '未能接合各段，原因见画面上的说明。')
             : t(`Part ${error.index + 1} could not be generated. See the details on the picture.`, `第 ${error.index + 1} 段未能生成，原因见画面上的说明。`);
         if (lastQueueError === error.message) return;
         lastQueueError = error.message;
@@ -2916,7 +2979,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         if (!open) return false;
         open.open = false; open.querySelector(':scope>summary')?.focus({preventScroll: true}); return true;
     };
-    dialog.addEventListener('cancel', e => { e.preventDefault(); if (!closeMenu() && !compare.close() && !promptLibrary?.hide() && !consoleUI?.dismiss() && !monitor.dismiss() && !recent.dismiss()) closeDialog(dialog); });
+    dialog.addEventListener('cancel', e => { e.preventDefault(); if (!closeMenu() && !compare.close() && !promptLibrary?.hide() && !consoleUI?.dismiss() && !recent.dismiss()) closeDialog(dialog); });
     const dispose = () => { if (disposed) return; disposed = true; borrowed?.release({disposing: true}); blockOriginal('extend', false); blockOriginal('preview', false); for (const f of cleanup) f(); stage.querySelector('video')?.pause(); dialog.remove(); if (current?.dialog === dialog) { current = null; viewChanged('nodes', node); } };
     const onClose = () => {
         // Parked behind the node view: everything stays as it is (closeDialog may have taken this handler while a
@@ -2929,7 +2992,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // same chips and their rules stay in one place. Pressing Generate runs the editor's submission instead; the values
     // come from the same node the bar edits. Release puts everything back as it was.
     let popHolder = null;
-    current.borrow = ({mount, submit, label = null, disabled = null, onSeconds = null, initial = {}, locked = []}) => {
+    current.borrow = ({mount, submit, label = null, disabled = null, onSeconds = null, onFirstFrame = null, initial = {}, locked = []}) => {
         if (borrowed || disposed) return null;
         const outer = mount.closest('dialog') || document.body;
         const home = {parent: controls.parentNode, next: controls.nextSibling};
@@ -2952,10 +3015,12 @@ export function openStudio(node, {extendFrom = null} = {}) {
             // Every setting changed in the bar while it is borrowed (the request is built from these).
             overrides: () => Object.fromEntries(shadow?.get(node) || []),
             setLabel: next => { state.labelFn = next; updateRunButton(); },
+            // {shown, checked, disabled} from the editor; null gives the switch back to this panel's own rule.
+            firstFrame: next => { if (!borrowed) return; borrowed.firstFrame = next || null; updateFirstFrame(); },
             release({disposing = false} = {}) {
                 if (!borrowed) return;
                 borrowed = null; shadow = null;
-                unlock();
+                unlock(); updateFirstFrame();
                 shell.remove();
                 if (!disposing) {
                     if (home.next?.parentNode === home.parent) home.parent.insertBefore(controls, home.next); else home.parent.append(controls);
@@ -2964,7 +3029,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
                 updateRunButton();
             }};
         shadow = new Map();
-        borrowed = {submit, label: () => (state.labelFn ?? label)?.(), disabled, onSeconds, applying: false, release: state.release};
+        borrowed = {submit, label: () => (state.labelFn ?? label)?.(), disabled, onSeconds, onFirstFrame, firstFrame: null, applying: false, release: state.release};
         const unlock = () => {
             for (const control of lockedNow.splice(0)) { control.disabled = false; delete control.dataset.fvLocked; }
             for (const element of [framePicker?.element, stepper?.element]) delete element?.dataset.fvLocked;

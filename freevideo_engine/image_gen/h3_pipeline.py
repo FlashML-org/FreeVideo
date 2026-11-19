@@ -44,7 +44,7 @@ class KeptModels:
     Keeping them saves loading the 21 GB of weights and the pinned planes again, so the next request starts
     sampling after its encoding. A model is kept only while the host can still hold it without squeezing the
     shared encoder and the video model: the cgroup (or the machine) must keep ``HOST_MARGIN`` free after the
-    weights, and a card below ``MIN_KEEP_VRAM`` gives its resident blocks back to the shared GPU (the host copy
+    weights, and at least the floor the next picture asks for (``host_floor``), and a card below ``MIN_KEEP_VRAM`` gives its resident blocks back to the shared GPU (the host copy
     stays). Anything that does not fit is closed, which is what every request did before.
     """
     HOST_MARGIN = 10 * 2**30
@@ -97,7 +97,8 @@ class KeptModels:
         small = min(total, self.budget or total) < self.MIN_KEEP_VRAM
         if role == 'vae' and small:
             return False
-        if role == 'dit' and self.host_room() + held < held + self.HOST_MARGIN:
+        # The same floor take() applies: a model the next picture would give back anyway is not kept.
+        if role == 'dit' and self.host_room() < max(self.HOST_MARGIN, host_floor()):
             return False
         if role == 'dit':
             if small:

@@ -36,6 +36,10 @@ IDLE_IN_USE = {'Windows': {'vram': int(1.2 * GiB), 'ram': 0},
 UNAVAILABLE = {'version': 1, 'status': 'unavailable'}
 
 
+# A still guide's normalized row: no picture size of its own, one canvas grid on every size row.
+GUIDE = ('guide', None, None, None, None)
+
+
 def normalize_references(task, references=None):
     """Panel metadata, never tokens or file identities; immutable cache key.
 
@@ -53,6 +57,12 @@ def normalize_references(task, references=None):
         if not isinstance(row, dict):
             raise ValueError('Invalid reference metadata.')
         kind = row.get('kind')
+        if kind == 'image' and row.get('guide') is True:
+            # A keyframe next to references: a still guide of the canvas size, counted on each size row.
+            if set(row) != {'kind', 'guide'}:
+                raise ValueError('A still guide takes the canvas size; give no width or height.')
+            rows.append(GUIDE)
+            continue
         allowed = {'kind', 'seconds', 'use'} if kind == 'audio' else {'kind', 'width', 'height'}
         if kind == 'video':
             allowed |= {'seconds', 'audio_seconds', 'guide'}
@@ -91,6 +101,8 @@ def normalize_references(task, references=None):
             if seconds > MAX_SECONDS:
                 raise AudioUseError('audio_original_long')
         rows.append((kind, width, height, seconds, audio) + (('original',) if use else ()))
+    if rows and all(row == GUIDE for row in rows):
+        raise ValueError('Still guides go with references; keyframes alone have their own task.')
     if sum(len(row) == 6 for row in rows) > 1:
         raise AudioUseError('audio_original_multiple')
     visual = any(r[0] != 'audio' for r in rows)
@@ -110,8 +122,9 @@ def reference_parameters(references):
     """JSON form of a normalized cache key, also used in notifications."""
     if references is None:
         return None
-    return [{k: v for k, v in zip(('kind', 'width', 'height', 'seconds', 'audio_seconds', 'use'), row)
-             if v is not None} for row in references]
+    return [{'kind': 'image', 'guide': True} if row == GUIDE else
+            {k: v for k, v in zip(('kind', 'width', 'height', 'seconds', 'audio_seconds', 'use'), row) if v is not None}
+            for row in references]
 
 
 def valid_reference_rows(value):
@@ -139,6 +152,11 @@ def _material(canvas, task, references):
     duration = 0.
     limit = reference_frames(canvas)
     for row in references:
+        if row == GUIDE:
+            # Cropped to the canvas and encoded like a still (media_encoding.reference_load).
+            video_rows += patch
+            duration += 5.
+            continue
         kind, width, height, seconds, soundtrack = row[:5]
         if len(row) == 6:
             # Original audio occupies the existing target rows. Keep all

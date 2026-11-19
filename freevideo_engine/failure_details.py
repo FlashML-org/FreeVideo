@@ -26,7 +26,8 @@ IMAGE_PACK_FAILURES = {
     'offline': ('The network is unavailable; the image model could not be downloaded.', '网络不通，无法下载图像模型。'),
     'source_failed': ("The image model download didn't finish. Check your network and try again.", '图像模型没有下载完成，请检查网络后重试。'),
     'integrity_failed': ('The image model files are incomplete or damaged. Repair them in the launcher.', '图像模型文件不完整或已损坏，请在启动器里修复。'),
-    'write_failed': ('The image model files are in use or cannot be written or deleted.', '图像模型文件被占用，或无法写入／删除。'),
+    'write_failed': ('The image model files are in use or cannot be written or deleted. Close programs that may be using them (for example an antivirus scan), check that the model folder can be written to, then try again.',
+                     '图像模型文件被占用，或无法写入／删除。请关闭可能正在使用它们的程序（例如杀毒软件扫描），确认模型文件夹可以写入，然后重试。'),
     'invalid_catalog': ('The image model package version is incompatible; update FreeVideo and try again.', '图像模型包版本不匹配，请更新 FreeVideo 后重试。'),
     'busy': ('Another task is using the image model package; try again when it finishes.', '图像模型包被其他任务占用，完成后再试。'),
     'busy_engine': ('FreeVideo is busy with a task or keeping the image model ready, so the image model cannot be repaired or removed now. Wait for it to finish, or close FreeVideo, then try again.', 'FreeVideo 正在执行任务或保持图像模型就绪，暂时无法修复或删除图像模型。请等待其结束，或关闭 FreeVideo 后再试。'),
@@ -35,7 +36,8 @@ IMAGE_PACK_FAILURES = {
     'needs_repair': ('The image model files are incomplete or damaged; repair them in the launcher.', '图像模型文件不完整或已损坏，请在启动器里修复。'),
     'changed': ('The image model files changed during the check; they were kept, so check again.', '图像模型文件在检查期间发生变化，已保留，请重新检查。'),
     'unsafe_path': ('The image model folder contains a link that cannot be safely changed.', '图像模型目录含有无法安全修改的链接。'),
-    'failed': ('The image model operation stopped; see the diagnostic report for details.', '图像模型操作已停止，详情见诊断报告。'),
+    'failed': ('The image model operation stopped because of an unexpected error. Export the report, then use "Report a problem" and attach it.',
+               '图像模型操作因意外错误停止。请先导出报告，再点击“提交问题”并附上报告。'),
 }
 
 
@@ -738,6 +740,12 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
                       'If ComfyUI is not installed yet, choose "Install ComfyUI".')
         return dict(title='这不是 ComfyUI 文件夹' if zh else "This isn't a ComfyUI folder", detail='',
                     action=action, kind='comfy-folder')
+    if re.search(r'Mac GPU check did not pass|Native GPU checks did not complete', summary):
+        # The native check on macOS (Metal) failed: say so plainly; the report holds what it measured.
+        return dict(title='这台 Mac 的 GPU 检查未通过' if zh else 'This Mac’s GPU check did not pass',
+                    detail=('这台 Mac 的图形处理器未通过 FreeVideo 的运行检查。请先导出报告，再点击“提交问题”并附上报告。' if zh else
+                            'The graphics processor of this Mac did not pass FreeVideo’s check. Export the report, '
+                            'then use "Report a problem" and attach it.'), action='', kind='mac-gpu-check')
     for pattern, kind, title, action in PLACE_RULES:
         if re.search(pattern, summary):
             return dict(title=title[zh], detail='', action=action[zh], kind=kind)
@@ -825,11 +833,11 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
          ("This computer can't continue a video", '这台电脑无法接续视频'),
          ('Continuing a video needs an NVIDIA GPU or a Mac. To make a new video, clear "Continue from video".', '接续视频需要 NVIDIA 显卡或 Mac。要生成新视频，请清空“接着生成”。')),
         (r'Continue from video cannot be used with these settings\. Turn on "Two-pass', 'continuation-passes',
-         ('Continuing needs two-pass acceleration', '接续需要二次采样加速'),
-         ('Turn on "Two-pass acceleration" and turn off the first-pass preview.', '请打开“二次采样加速”，并关闭先出预览。')),
+         ('Continuing needs two-pass acceleration', '接续需要二采加速'),
+         ('Turn on "Two-pass acceleration" and turn off the first-pass preview.', '请打开“二采加速”，并关闭先出预览。')),
         (r'audio_original_passes: ', 'audio-original-passes',
-         ('This audio needs two-pass acceleration', '这段音频需要二次采样加速'),
-         ('Turn on "Two-pass acceleration" or set the audio to "Reference".', '请打开“二次采样加速”，或把音频改选“参考”。')),
+         ('This audio needs two-pass acceleration', '这段音频需要二采加速'),
+         ('Turn on "Two-pass acceleration" or set the audio to "Reference".', '请打开“二采加速”，或把音频改选“参考”。')),
         (r'audio_original_route: ', 'audio-original-route',
          ('"Use as is" is not available here', '这里还不能用“原样使用”'),
          ('Set the audio to "Reference".', '请把音频改选“参考”。')),
@@ -1098,7 +1106,13 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
         # The check printed nothing but its own summary line (once per place that kept it); that line
         # is for the report, not the card. The next step goes under it, as for an unexpected failure.
         return dict(title='暂时未能完成' if zh else 'Couldn’t complete this step',
-                    detail=CHECK_UNFINISHED[zh] + '\n' + UNKNOWN_NEXT_STEP[zh], action='', kind='unknown')
+                    detail=inspection_reason(lines[0], zh) + '\n' + UNKNOWN_NEXT_STEP[zh], action='', kind='unknown')
+    if len(lines) == 1 and re.fullmatch(r'[A-Za-z_][\w.]*(?:Error|Exception|Exit|Interrupt)', lines[0]):
+        # An exception without a message: its name is the only cause there is, so say that and give the next step.
+        name = lines[0].rsplit('.', 1)[-1]
+        detail = ('程序意外停止（%s，无附带说明）。' if zh else 'The program stopped unexpectedly (%s, with no message).') % name
+        return dict(title='暂时未能完成' if zh else 'Couldn’t complete this step',
+                    detail=detail + '\n' + UNKNOWN_NEXT_STEP[zh], action='', kind='unknown')
     causes = [line for line in lines if re.match(r'^(?:[\w.]+(?:Error|Exception):|ERROR[: ]|Failed step:|Setup failed:)', line)]
     detail = causes[-1] if causes else next((line for line in reversed(lines)
         if not line.startswith(('File ', 'Traceback', '^', 'All files retained.', 'Existing files are retained.', 'Rerun the same setup command'))), '')
@@ -1210,6 +1224,20 @@ def _plain_cause(text, exception=None):
     else:
         kind = 'other'
     return PLAIN_CAUSES[kind]
+
+
+def inspection_reason(summary, zh):
+    """How the check ended, from its summary line (comfy_setup.inspection_failed): timed out, crashed, or quiet."""
+    if 'timed out' in summary:
+        return '检查超时，未完成。' if zh else 'The check timed out before it finished.'
+    crashed = re.search(r'exit \d+ \((0x[0-9A-F]{8})\)', summary)
+    if crashed:
+        return (('检查程序崩溃（代码 %s）。' if zh else 'The check program crashed (code %s).') % crashed.group(1))
+    code = re.search(r'exit (-?\d+)', summary)
+    if code and code.group(1) != '0':
+        return (('检查程序退出且无输出（退出码 %s）。' if zh else 'The check program exited without output (exit code %s).')
+                % code.group(1))
+    return CHECK_UNFINISHED[zh]
 
 
 def _step_name(label, zh):

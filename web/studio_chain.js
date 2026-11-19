@@ -28,8 +28,16 @@ export function readChainResult(chain) {
     const last = chain.blocks?.filter(block => block.state === 'done' && block.output).at(-1);
     const joined = chain.output_state === 'done' && typeof chain.output === 'string' && Boolean(chain.output);
     const video = joined ? chain.output : !joining && (failedJoin || stopped) ? last?.output || null : null;
+    const failedBlock = failedJoin || chain.error ? null : chain.blocks?.find(block => block.state === 'failed');
     return {video, joined, joining, partial: Boolean(video) && (!joined || stopped),
-        error: failedJoin ? chain.output_error || 'join_failed' : chain.error || chain.blocks?.find(block => block.state === 'failed')?.error || null};
+        error: failedJoin ? chain.output_error || 'join_failed' : chain.error || failedBlock?.error || null,
+        said: failedJoin ? chainSaid(chain.output_error_code, chain.output_error_en, chain.output_error_zh)
+            : chainSaid(failedBlock?.code, failedBlock?.error_en, failedBlock?.error_zh)};
+}
+// The server's plain sentence for a failure, [English, Chinese], when it has one. A part that only failed to generate
+// keeps the page's own reading of the original error (the error card names the cause better than a general sentence).
+export function chainSaid(code, en, zh) {
+    return code !== 'generation_failed' && typeof en === 'string' && en && typeof zh === 'string' && zh ? [en, zh] : null;
 }
 
 // Before the first part starts the server writes one description per part; until then no part can be changed.
@@ -105,7 +113,9 @@ export function createStudioChain({api, node, onState = () => {}, onProgress = (
         if (response.status === 404 && allowMissing) return null;
         const value = await response.json().catch(() => ({}));
         if (!response.ok) throw Object.assign(new Error(value.error || 'chain_request_failed'), {code: value.code, status: response.status,
-            ...(value.error_zh ? {said: [value.error, value.error_zh]} : {})});
+            ...(value.error_zh ? {said: [value.error, value.error_zh]} : {}),
+            // The original text goes to the technical details of the error card, never to the sentence.
+            ...(typeof value.detail === 'string' && value.detail ? {details: value.detail} : {})});
         return value;
     }
     function progress(message = {}, fresh = false) {
@@ -141,7 +151,8 @@ export function createStudioChain({api, node, onState = () => {}, onProgress = (
         if (active()) progress({}, fresh);
         else if (waiting.length) void promote();
         if (result.error && errorShown !== result.error) {
-            errorShown = result.error; onError(Object.assign(new Error(result.error), {joining: chain.output_state === 'failed', ...chainPosition(chain)}));
+            errorShown = result.error; onError(Object.assign(new Error(result.error), {joining: chain.output_state === 'failed', ...chainPosition(chain),
+                ...(result.said ? {said: result.said} : {})}));
         }
         // Continuing a stopped chain can write the joined video to the path already shown.
         const version = `${chain.blocks?.filter(block => block.state === 'done').length || 0}-${result.joined ? 'joined' : 'part'}`;
@@ -235,7 +246,8 @@ export function createStudioChain({api, node, onState = () => {}, onProgress = (
                     }
                 } catch {} // Keep the last known state; the action still fails visibly.
             }
-            throw Object.assign(new Error(`chain_${action}_failed`), {cause, action, status: cause.status});
+            throw Object.assign(new Error(`chain_${action}_failed`), {cause, action, status: cause.status,
+                ...(cause?.said ? {said: cause.said} : {}), ...(cause?.details ? {details: cause.details} : {})});
         }
     }
     recover();

@@ -6,6 +6,8 @@ import { savedSettings } from './result_reuse.js';
 import { listenDialogKey } from './dialog_keys.js';
 import { isNetworkTypeError, connectionLostText } from './browser_extension.js';
 import { issueButton } from './issue_button.js';
+import { fileFailureText, responseFileReason } from './file_failure.js';
+import { userMessage } from './user_message.js';
 import { applyTasks, toggledTask } from './task_groups.js';
 import { outputDownloadURL } from './output_download.js';
 import { attachContextMenu, openContextMenu, contextMenuOpen, compatView, reducedMotion } from './context_menu.js';
@@ -15,6 +17,8 @@ import { createMetaStore, promptOfRow } from './image_view_history.js';
 import { attach as attachPlayerBar } from './glass/player_bar.js';
 import { hasPictureThumbnail, mediaQueue, pictureThumbnailURL, watchCards } from './work_media.js';
 import { zoomable } from './picture_zoom.js';
+import { createUpscaleOffer, upscale4kOffer } from './upscale_offer.js';
+import { capabilityPoints } from './chain_support.js';
 
 const style = document.createElement('link');
 style.rel = 'stylesheet'; style.href = new URL('./library.css', import.meta.url).href; document.head.append(style);
@@ -388,21 +392,37 @@ function libraryHost() {
 // (a notification, the palette, search, a chat or autopilot job) carries none, so the studio registers its own as the default.
 let defaultUpscale = null;
 export function setDefaultUpscale(run) { defaultUpscale = typeof run === 'function' ? run : null; }
+// ``upscaleWork`` makes a larger copy of a finished video; registered by the studio like the second pass.
+let defaultUpscaleWork = null;
+export function setDefaultUpscaleWork(run) { defaultUpscaleWork = typeof run === 'function' ? run : null; }
+// The longest single request at a size, as the planner admits it now; null when it cannot be told.
+async function admittedFrames(width, height) {
+    for (let tries = 0; tries < 5; tries++) {
+        const response = await api.fetchApi('/freevideo/capabilities?' + new URLSearchParams({width, height}));
+        if (!response.ok) return null;
+        const reply = await response.json();
+        if (reply?.status === 'computing') { await new Promise(done => setTimeout(done, 1000)); continue; }
+        return reply && (!reply.status || reply.status === 'ready') ? capabilityPoints(reply, {width, height}).maxRequestFrames : null;
+    }
+    return null;
+}
 // ``reuse`` is the creation panel's {now, apply}: given, Reuse settings fills that panel from a creation.
 export function openLibrary(t, options = {}) {
     if (parked?.dialog.isConnected !== false && parked && !parked.dialog.open) return parked.reopen(options);
     if (parked?.dialog.open) { parked.reopen(options); return; }
     let {upscale = null, selectedWork = null, extend = null, reuse = null, back: backLabel = null} = options;
     const secondPassRunner = () => upscale || defaultUpscale;
+    const upscaleOffer = createUpscaleOffer(admittedFrames);
     const dialog = el('dialog', null, 'fv-studio fv-library'); opened = dialog;
     let host = libraryHost();
     const hostClosed = () => { if (dialog.open) dialog.close(); };
     // Closing gives the keyboard back to the control that opened the room.
     const opener = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
     // `kind` (text, or a function read when the button is clicked) tells the feedback what the sentence alone cannot.
-    const fault = (target, text, where = ['Creations', '作品库'], kind = null) => {
+    // `error`, when given, is what the report sends instead of the plain sentence shown.
+    const fault = (target, text, where = ['Creations', '作品库'], kind = null, error = null) => {
         target.textContent = text;
-        target.append(issueButton(t, () => ({where, message: text, kind: typeof kind === 'function' ? kind() : kind})));
+        target.append(issueButton(t, () => ({where, message: error?.message || text, kind: typeof kind === 'function' ? kind() : kind})));
     };
     dialog.setAttribute('aria-label', t('Creations', '作品库'));
     const header = el('header', null, 'fv-library-header');
@@ -906,7 +926,7 @@ export function openLibrary(t, options = {}) {
             if (editor && !disposed) { dialog.close(); editor.element?.focus({preventScroll: true}); }
             return editor;
         }
-        catch (error) { fault(notice, error.message, ['Continue video', '延长视频']); }
+        catch (error) { fault(notice, userMessage(error, t, t('Could not open the editor. Try again.', '无法打开剪辑，请重试。')), ['Continue video', '延长视频'], null, error); }
     }
     // Fill the creation panel with a video's prompt, size, length and seed, then go back to it.
     async function reuseSaved(row) {
@@ -958,7 +978,7 @@ export function openLibrary(t, options = {}) {
             await secondPassRunner()(row);
             if (!disposed && selected === workKey(row)) notice.textContent = t('Queued. It appears in "Creations" when done.', '已加入队列，完成后在“作品”里。');
         } catch (error) {
-            if (!disposed && selected === workKey(row)) fault(notice, t('Could not start the second pass: ', '无法继续二采：') + error.message, ['Second pass', '二采']);
+            if (!disposed && selected === workKey(row)) fault(notice, userMessage(error, t, t('Could not start the second pass. Try again.', '没能开始二采，请重试。')), ['Second pass', '二采'], null, error);
             throw error;
         }
     }
@@ -976,8 +996,8 @@ export function openLibrary(t, options = {}) {
         const result = await removeKeys([key]);
         if (result.removed.has(key)) { notice.textContent = ''; return; }
         const skipped = result.skipped.find(item => item.id === row.id);
-        throw Object.assign(new Error(skipped ? refusal(skipped.reason, skipped.kept || []) : t('Could not delete this creation.', '无法删除这条作品。')), {
-            reportable: !skipped || !['foreign-files', 'editor-in-use', 'continuation-in-use', 'in-use'].includes(skipped.reason),
+        throw Object.assign(new Error(skipped ? refusal(skipped.reason, skipped.kept || []) : result.why || t('Could not delete this creation.', '无法删除这条作品。')), {
+            reportable: skipped ? !['foreign-files', 'editor-in-use', 'continuation-in-use', 'in-use'].includes(skipped.reason) : !result.why,
         });
     }
     // --- Selecting several creations ---
@@ -1430,6 +1450,17 @@ export function openLibrary(t, options = {}) {
                     use: ['Finish the full-resolution video', '从预览继续生成全分辨率视频'],
                     disabled: secondPassRunner() ? '' : ['Open the create view first, then run the second pass', '请先打开创作页，再继续二采'],
                     run: () => secondPass(one).then(() => say(t('Queued. It appears in "Creations" when done.', '已加入队列，完成后在“作品”里。')), error => say(t('Could not start the second pass: ', '无法继续二采：') + error.message, true))});
+                // One 1.5× step where this computer can generate it (gap-04a), and the 4K size by a small model (gap-04b):
+                // each shown on its own, the same way.
+                for (const [id, larger, options] of [['upscale', defaultUpscaleWork && upscaleOffer.offer(one), {}],
+                                                     ['upscale-4k', defaultUpscaleWork && upscale4kOffer(one), {to: '4k'}]]) {
+                    if (!larger) continue;
+                    const size = `${larger.width} × ${larger.height}`;
+                    items.push({id, icon: 'upscale', label: [`Upscale to ${size}`, `放大到 ${size}`],
+                        use: ['Make a larger copy as a new creation', '生成一个更大的新作品，原作品不变'],
+                        run: () => defaultUpscaleWork(one, options).then(() => say(t('Queued. It appears in "Creations" when done.', '已加入队列，完成后在“作品”里。')),
+                            error => say(t('Could not start upscaling: ', '无法开始放大：') + error.message, true))});
+                }
                 items.push({id: 'reuse', icon: 'reuse', label: ['Reuse settings', '复用设置'],
                     disabled: one.preview ? ['A first-pass preview: finish it first', '这是一采预览，先继续二采'] : '',
                     run: () => reuseSaved(one)});
@@ -1798,8 +1829,8 @@ export function openLibrary(t, options = {}) {
         // A held picture stays known (the shelf hides it while held), so Undo puts its card straight back; it leaves for
         // good only when the engine has deleted it (freevideo-pictures-deleted).
         const skipped = [];
-        let failed = false, unsaved = false;
-        if (!videoKeys.length) return {removed, skipped, failed};
+        let failed = false, unsaved = false, why = '';
+        if (!videoKeys.length) return {removed, skipped, failed, why};
         const idOf = new Map(videoKeys.map(key => [key, works.get(key)?.id])), ids = videoKeys.map(key => idOf.get(key)).filter(Boolean);
         // Windows keeps a streamed video open; release it before deleting.
         const selectedRow = works.get(selected);
@@ -1835,7 +1866,7 @@ export function openLibrary(t, options = {}) {
                     // or a lost connection may still have been carried out, so the batch is looked up again.
                     const response = await api.fetchApi('/freevideo/library/delete-batch', {method: 'POST',
                         headers: jsonHeaders, body: JSON.stringify({ids: part, batch: name, extend: earlier})});
-                    if (!response.ok) { forgetUndo([name]); throw new Error('failed'); }
+                    if (!response.ok) { why = fileFailureText(await responseFileReason(response), t); forgetUndo([name]); throw new Error('failed'); }
                     const value = await response.json();
                     const gone = new Set(value.deleted || []);
                     // A creation that is already gone from disk only needs to leave the page.
@@ -1865,12 +1896,12 @@ export function openLibrary(t, options = {}) {
             if (selected && !works.has(selected)) clearDetail();
             else if (selectedRow && works.has(selected) && !player && selectedRow.kind !== 'image') mountPlayer(selectedRow);
         }
-        return {removed, skipped, failed};
+        return {removed, skipped, failed, why};
     }
     async function removeSelected() {
         deleting = true; syncSelection();
         const keys = [...picked];
-        const {removed, skipped, failed} = await removeKeys(keys);
+        const {removed, skipped, failed, why} = await removeKeys(keys);
         deleting = false;
         if (disposed) return;
         const kept = new Set(skipped.map(row => row.id));
@@ -1882,7 +1913,7 @@ export function openLibrary(t, options = {}) {
             confirming = false;
             undoFailure = removed.size
                 ? t(`${picked.size} could not be deleted. Try again.`, `还有 ${picked.size} 个没能删除，请重试。`)
-                : t('Could not delete. Try again.', '没能删除，请重试。');
+                : why || t('Could not delete. Try again.', '没能删除，请重试。');
             if (!picked.size) setSelecting(false);
         } else { undoFailure = ''; setSelecting(false); }
         render();
@@ -2029,7 +2060,7 @@ export function openLibrary(t, options = {}) {
                 if (appendPage) tailState = 'failed';
                 else if (error.restart) message.textContent = error.message;
                 else {
-                    fault(message, isNetworkTypeError(error) ? connectionLostText(t) : error.message); retryRead(message);
+                    fault(message, userMessage(error, t, t('Could not read the creations. Try again.', '没能读取作品，请重试。')), undefined, null, error); retryRead(message);
                     for (const ghost of grid.querySelectorAll(':scope > .fv-library-ghost')) ghost.remove();
                 }
             }
@@ -2042,6 +2073,8 @@ export function openLibrary(t, options = {}) {
         if (ok && !disposed && round === loadRound) {
             if (selected && works.has(selected)) select(selected, false);
             render();
+            if (!appendPage) upscaleOffer.forget();
+            void upscaleOffer.prepare(works.values());
             if (!appendPage) { gatherIfNeeded(); if (filter.favorites) void gatherFavorites(); }
             if (filter.query) fetchPrompts();
         }
@@ -2147,7 +2180,7 @@ export function openLibrary(t, options = {}) {
     function viewerMenu(row, key, anchorNode) {
         const outside = new Set(['open', 'select', 'download', 'reuse', 'extend', 'use-prompt', 'image-view']);
         const items = (cardMenuItems(anchorNode, [key], null) || []).filter(item => typeof item === 'string' || !outside.has(item.id));
-        const extra = [{id: 'info', icon: 'alert', label: infoOpen ? ['Hide info', '收起信息'] : ['Info', '信息'], use: ['Prompt and run details', '提示词和运行详情'], key: 'I', run: () => toggleInfo()}];
+        const extra = [{id: 'info', icon: 'info', label: infoOpen ? ['Hide info', '收起信息'] : ['Info', '信息'], use: ['Prompt and run details', '提示词和运行详情'], key: 'I', run: () => toggleInfo()}];
         if (row.kind !== 'image') {
             const share = links.querySelector('.fv-share-trigger'), copy = links.querySelector('.fv-action-copy');
             if (share) extra.unshift({id: 'share', icon: 'globe', label: ['Share', '分享'], use: ['Make a picture or clip to share', '生成可分享的图片或短片'], run: () => share.click()});

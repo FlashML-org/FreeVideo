@@ -184,17 +184,20 @@ def common():
 def generation_media(*, local=False, enhance=False):
     properties = {'first': nullable(media(True, local=local)), 'last': nullable(media(True, local=local)),
                   'references': nullable(array(media(enhance, local=local, early=not enhance), high=8 if enhance else 32))}
-    rules = [{'if': {'required': ['references'], 'properties': {'references': {'type': 'array', 'minItems': 1}}},
-              'then': {'properties': {'first': {'type': 'null'}, 'last': {'type': 'null'}}}}]
+    # A video takes keyframes and references together (each keyframe becomes a still guide on its frame);
+    # the prompt enhancer still describes one layout.
+    rules = [] if not enhance else [{'if': {'required': ['references'], 'properties': {'references': {'type': 'array', 'minItems': 1}}},
+                                     'then': {'properties': {'first': {'type': 'null'}, 'last': {'type': 'null'}}}}]
     if not enhance:
         from ..media_request import MAX_MIDDLE
         properties['middle'] = nullable(array(media(True, local=local, timed=True), high=MAX_MIDDLE, description=
             'Still pictures the video passes through between its first and last frame, each at a time in seconds. '
-            'Needs both first and last, and no references.'))
+            'Needs both first and last; references may be given too.'))
         present = {'required': ['middle'], 'properties': {'middle': {'type': 'array', 'minItems': 1}}}
         rules.append({'if': present, 'then': {'required': ['first', 'last'], 'properties': {
-            'first': {'not': {'type': 'null'}}, 'last': {'not': {'type': 'null'}}, 'references': {'type': ['null', 'array'], 'maxItems': 0}}}})
-    return obj(properties, description='A first or last frame request does not take a voice reference.', allOf=rules)
+            'first': {'not': {'type': 'null'}}, 'last': {'not': {'type': 'null'}}}}})
+    return obj(properties, description=('First, last and middle frames may be given with references; on a Mac use one of the two.'
+                                        if not enhance else 'A first or last frame request does not take a voice reference.'), allOf=rules)
 
 
 def generate(*, local=False):

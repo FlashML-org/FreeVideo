@@ -1,5 +1,12 @@
 import { api } from '../../scripts/api.js';
 import './glass/library.js';
+import {userMessage} from './user_message.js';
+
+// FreeVideo's own reason keeps the lead-in that says what failed; browser or program wording becomes a plain sentence.
+const saveFailure = (error, tt) => { const text = userMessage(error, tt, tt('Could not save. Try again.', '没能保存，请重试。'));
+    return text === String(error?.message ?? '').trim() ? tt('Save failed: ', '保存失败：') + text : text; };
+const readFailure = (error, tt) => { const text = userMessage(error, tt, tt('Could not read the setting. Try again.', '没能读取设置，请重试。'));
+    return text === String(error?.message ?? '').trim() ? tt('The setting could not be read: ', '无法读取设置：') + text : text; };
 
 const languageOverride = typeof location !== 'undefined'
     ? new URLSearchParams(location.search).get('freevideo_lang') : null;
@@ -114,7 +121,7 @@ export function compatibilityCard({t: tt = t, api: client0 = api} = {}) {
             value = {...value, ...saved, level: Number(level.value), automatic: automatic.checked};
             say(tt('Saved · applies to the next generation', '已保存 · 下次生成生效'), 'ok');
             setTimeout(() => { if (status.dataset.kind === 'ok') say(''); paint(); }, 2400);
-        } catch (error) { say(tt('Save failed: ', '保存失败：') + error.message, 'warn'); }
+        } catch (error) { say(saveFailure(error, tt), 'warn'); }
         finally { saving = false; paint(); }
     };
     (async () => {
@@ -123,7 +130,7 @@ export function compatibilityCard({t: tt = t, api: client0 = api} = {}) {
             if (disposed) return;
             if (!value.available) { line.textContent = unavailable(); say(''); paint(); return; }
             level.value = String(value.level); automatic.checked = Boolean(value.automatic); paint();
-        } catch (error) { line.textContent = tt('The setting could not be read: ', '无法读取设置：') + error.message; line.className = 'is-warn'; paint(); }
+        } catch (error) { line.textContent = readFailure(error, tt); line.className = 'is-warn'; paint(); }
     })();
     return {
         element,
@@ -176,7 +183,7 @@ async function openCompatibilitySheet() {
                 if (!saved.available) { status.className = 'fv-failure'; status.textContent = unavailable(); return; }
                 panel.close();
             }
-            catch (error) { status.className = 'fv-failure'; status.textContent = t('Save failed: ', '保存失败：') + error.message; }
+            catch (error) { status.className = 'fv-failure'; status.textContent = saveFailure(error, t); }
             finally {
                 saving = false;
                 for (const control of [slider, automatic, save, cancel, close]) control.disabled = false;
@@ -187,7 +194,7 @@ async function openCompatibilitySheet() {
             }
         }, true);
     } catch (error) {
-        status.textContent = error.message;
+        status.textContent = readFailure(error, t);
         button(panel, t('Close', '关闭'), () => panel.close(), true).focus();
     }
 }

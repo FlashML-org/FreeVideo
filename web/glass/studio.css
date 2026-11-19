@@ -909,7 +909,7 @@ html body .fv-studio.fv-create .fvs-console :is(.fvs-console-prompt,.fv-section,
   .fv-studio.fv-create .fvs-step::after{content:"";position:absolute;top:0;bottom:0;left:calc(50% - var(--fv-touch) / 2);right:calc(50% - var(--fv-touch) / 2)}
   .fv-studio.fv-create .fvs-stepper{height:var(--fv-touch)}
   .fv-studio.fv-create .fvs-console .fv-key-more{width:var(--fv-touch)}
-  .fv-studio.fv-create .fvs-console .fv-runrow:has(>.fv-key-more:not([hidden]))>.fv-primary{padding-right:calc(var(--fv-touch) + var(--fv-sp-4))}}
+  .fv-studio.fv-create .fvs-console .fv-runrow[data-hx-more]>.fv-primary{padding-right:calc(var(--fv-touch) + var(--fv-sp-4))}}
 @media(min-width:761px){
   .fv-studio.fv-create .fvs-console .fv-runrow.fv-at-moved>.fv-key-more{height:calc(2 * var(--fvs-row) + var(--fv-sp-8))}
   .fv-studio.fv-create .fvs-console .fv-runrow.fv-at-moved>.fv-key-more>summary{border-radius:0 var(--fv-rad-ctl) var(--fv-rad-ctl) 0}

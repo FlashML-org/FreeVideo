@@ -1,6 +1,7 @@
 import {retryAgentPost} from './agent_session.js';
 import {issueButton} from './issue_button.js';
 import {tip} from './autopilot_tips.js';
+import {failureAdvice} from './error_panel.js';
 // What agents connected to this FreeVideo are doing. Their requests share the
 // studio's queue, so people can see them, follow progress and stop them.
 const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('./agent_activity.css', import.meta.url).href; document.head.append(css);
@@ -34,9 +35,19 @@ const REASONS = {
     dependency_failed: ['An earlier step did not succeed', '前序任务未成功'],
 };
 
-// Failures without a known cause: the row offers the problem report.
-const UNEXPECTED = ['internal_error', 'generation_failed'];
-
+// The engine's own sentence when it wrote one; otherwise the same advice the studio gives for that error,
+// and for an error nobody has a sentence for yet, its first line, so the row never says only "Did not finish".
+function failureLine(error, t) {
+    // The engine's reason, then its next step when it has one.
+    const next = (said, step, zh) => said && step ? said.replace(/[。.]$/, '') + (zh ? '。' : '. ') + step : said;
+    if (error.error_en && error.error_en !== 'Did not finish')
+        return t(next(error.error_en, error.next_en), next(error.error_zh || error.error_en, error.next_zh, !!error.error_zh));
+    const message = String(error.message || '').trim();
+    const advice = message && failureAdvice(message, t);
+    if (advice && advice.kind !== 'unknown') return [advice.title, advice.action].filter(Boolean).join(t('. ', '，'));
+    const line = message.split(/\r?\n/).find(text => text.trim() && !/^Traceback/.test(text))?.trim().slice(0, 160);
+    return line ? t(`Did not finish: ${line}`, `没有完成：${line}`) : t('Did not finish', '没有完成');
+}
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 function glyph(path) {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -110,21 +121,21 @@ function row(job, t, api, refresh, open, cancellationErrors) {
     const phase = job.status === 'running' ? phaseText(p, t, job.kind) : '';
     if (phase && phase !== status(job, t)) meta.push(phase);
     if (job.status === 'running' && p.remaining_seconds > 0) meta.push(left(p.remaining_seconds, t));
-    const reason = job.status === 'failed' && REASONS[job.error?.code];
+    const failed = job.status === 'failed', error = job.error || {};
+    const reason = failed && REASONS[error.code];
     if (reason) meta.push(t(...reason));
-    else if (job.status === 'failed') {
-        // The engine's reason, then its next step when it has one.
-        const e = job.error || {}, next = (said, step, zh) => said && step ? said.replace(/[。.]$/, '') + (zh ? '。' : '. ') + step : said;
-        meta.push(t(next(e.error_en, e.next_en) || 'Did not finish', next(e.error_zh, e.next_zh, true) || '没有完成'));
-    }
+    else if (failed) meta.push(failureLine(error, t));
     if (job.project) meta.push(job.project);
     const foot = el('div', 'fv-agent-foot');
     const details = el('p', 'fv-agent-meta', meta.join(' · '));
-    if (reason && job.error?.message) details.title = job.error.message;
+    if (failed && error.message) details.title = error.message;
     foot.append(details);
-    const issue = issueButton(t, () => ({where: ['Assistant tasks', '助手任务'], message: details.textContent}));
-    // An unexpected failure can be reported from its row, as its next step says.
-    issue.hidden = !cancellationErrors.has(job.id) && !(job.status === 'failed' && UNEXPECTED.includes(job.error?.code)); foot.append(issue);
+    // A failed task carries what the engine said, so the report can be acted on.
+    const issue = issueButton(t, () => cancellationErrors.has(job.id) || !failed
+        ? {where: ['Assistant tasks', '助手任务'], message: details.textContent}
+        : {where: ['Assistant tasks', '助手任务'], message: error.message || details.textContent,
+           kind: [error.code, error.report_id && `report ${error.report_id}`].filter(Boolean).join(' · ') || null});
+    issue.hidden = !failed && !cancellationErrors.has(job.id); foot.append(issue);
     if (['waiting', 'queued', 'running'].includes(job.status)) {
         const stop = el('button', 'fv-agent-stop', t('Stop', '停止')); stop.type = 'button';
         stop.setAttribute('aria-label', t('Stop ', '停止 ') + title(job, t)); tip(stop, 'stop', t);

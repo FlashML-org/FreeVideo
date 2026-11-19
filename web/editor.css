@@ -255,7 +255,7 @@
 @media(min-width:681px) and (max-width:1279px){.fv-ed-notice{right:32px;max-width:min(560px,calc(100vw - 330px))}}
 .fv-ed-notice .fv-issue-button{margin-left:12px;vertical-align:middle;pointer-events:auto}
 @media(max-width:680px){
- .fv-studio.fv-editor{--fv-ed-generation-row:calc(96px + var(--fv-ed-description-growth,0px) + var(--fv-ed-note-growth,0px));grid-template-columns:minmax(0,1fr);grid-template-rows:auto var(--fv-ed-project-h) minmax(0,1fr) 40px var(--fv-ed-generation-row) 40px 236px;overflow:hidden}
+ .fv-studio.fv-editor{--fv-ed-generation-row:calc(96px + var(--fv-ed-description-growth,0px) + var(--fv-ed-note-growth,0px));grid-template-columns:minmax(0,1fr);grid-template-rows:auto var(--fv-ed-project-h) minmax(0,1fr) 40px minmax(var(--fv-ed-generation-row),auto) 40px 236px;overflow:hidden}
  .fv-editor .fv-header{overflow-x:auto}
  .fv-editor .fv-ed-name{font-size:13px;max-width:112px;flex:1;padding:0 2px}
  .fv-editor .fv-ed-icon{width:28px;flex:none;font-size:20px}
@@ -297,7 +297,7 @@
 
 /* Keep the editor's controls visible instead of clipping them at phone widths. */
 @media(max-width:480px){
- .fv-studio.fv-editor{grid-template-rows:auto var(--fv-ed-project-h) minmax(0,1fr) 40px var(--fv-ed-generation-row) 40px minmax(160px,236px)}
+ .fv-studio.fv-editor{grid-template-rows:auto var(--fv-ed-project-h) minmax(0,1fr) 40px minmax(var(--fv-ed-generation-row),auto) 40px minmax(160px,236px)}
  .fv-studio.fv-editor .fv-header[data-hx-vs]{grid-template-columns:minmax(0,1fr) auto}
  /* One row: undo, split, delete and zoom; editor_toolbar_more.js moves the rest behind ⋯. */
  .fv-ed-duration-word{display:none}
@@ -326,7 +326,7 @@
 /* Narrow window: the picture sits right under the header, the row takes the project's own shape (a
    16:9 project is about 200 px tall at 400 px wide), and whatever height is left goes to the timeline. */
 @media(max-width:680px){
- .fv-studio.fv-editor{grid-template-rows:auto var(--fv-ed-project-h) minmax(0,auto) 40px var(--fv-ed-generation-row) 40px minmax(160px,1fr)}
+ .fv-studio.fv-editor{grid-template-rows:auto var(--fv-ed-project-h) minmax(0,auto) 40px minmax(var(--fv-ed-generation-row),auto) 40px minmax(160px,1fr)}
  .fv-editor .fv-ed-preview{box-sizing:border-box;align-self:start;width:100%;aspect-ratio:var(--fv-ed-project-width,16)/var(--fv-ed-project-height,9);max-height:max(116px,calc(100dvh - 362px - var(--fv-ed-generation-row)));padding-top:12px;padding-bottom:8px}
 }
 
@@ -487,7 +487,7 @@
 
 /* ── Phone (≤680 px): this view's own controls are finger-sized (44 px) ── */
 @media(max-width:680px){
- .fv-studio.fv-editor{--fv-ed-generation-row:calc(108px + var(--fv-ed-description-growth,0px) + var(--fv-ed-note-growth,0px));grid-template-rows:auto var(--fv-ed-project-h) minmax(0,auto) 44px var(--fv-ed-generation-row) 48px minmax(160px,1fr)}
+ .fv-studio.fv-editor{--fv-ed-generation-row:calc(108px + var(--fv-ed-description-growth,0px) + var(--fv-ed-note-growth,0px));grid-template-rows:auto var(--fv-ed-project-h) minmax(0,auto) 44px minmax(var(--fv-ed-generation-row),auto) 48px minmax(160px,1fr)}
  .fv-editor .fv-ed-genbar{padding-top:4px;padding-bottom:4px;row-gap:8px}
  .fv-editor .fv-ed-project-row :is(.fv-ed-name,.fv-ed-export-main,.fv-ed-save-state){height:44px;min-height:44px}
  .fv-editor .fv-ed-project-row .fv-ed-export-main{min-width:56px}

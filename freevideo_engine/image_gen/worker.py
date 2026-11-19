@@ -296,6 +296,7 @@ def serve(pack_dir, *, device='cuda', idle_seconds=45., stream=None, output=None
     h3_factory = h3_factory or load_h3_runner
     moss_factory = moss_factory or load_moss_runner
     runner_model = None
+    factories = {'minimax-h3-image': h3_factory, 'moss-image-sft': moss_factory}
     output_mutex = threading.Lock()
 
     def send(**row):
@@ -337,7 +338,7 @@ def serve(pack_dir, *, device='cuda', idle_seconds=45., stream=None, output=None
                             runner = drop(runner)
                         if load and runner is None:
                             # No progress rows: nothing on the page is waiting for this.
-                            runner = (h3_factory if model == 'minimax-h3-image' else factory)(pack_dir, device)
+                            runner = factories.get(model, factory)(pack_dir, device)
                             runner_model = model
                         warm_up(runner, value, should_stop, send)
                     except Exception as error:
@@ -366,7 +367,7 @@ def serve(pack_dir, *, device='cuda', idle_seconds=45., stream=None, output=None
                         runner = drop(runner)
                     if runner is None:
                         context.timing.enter('load')
-                        runner = {'minimax-h3-image': h3_factory, 'moss-image-sft': moss_factory}.get(model, factory)(pack_dir, device, progress=progress)
+                        runner = factories.get(model, factory)(pack_dir, device, progress=progress)
                         runner_model = model
                     if hasattr(runner, 'last_plan'):
                         runner.last_plan = None

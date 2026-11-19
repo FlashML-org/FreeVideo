@@ -119,9 +119,8 @@ def read(path):
     from .original_audio import original
     original(result)
     if result['references'] and any(result.get(k) for k in ('first', 'last')):
-        raise ValueError('Reference and first/last keyframe layouts cannot be mixed in one request; '
-                         'mark the clip that carries the motion with "guide": true instead')
-    guides = [row for row in result['references'] if row.get('guide')]
+        keyframes_as_guides(result)
+    guides = [row for row in result['references'] if row.get('guide') and row['kind'] == 'video']
     if len(guides) > 1:
         raise ValueError('At most one guide clip per request')
     # The packed layout needs the guide after the other references.
@@ -134,9 +133,40 @@ def read(path):
     return result
 
 
+def keyframes_as_guides(result):
+    """First, last and middle frames next to references become still guides at their frame.
+
+    A reference request has no keyframe anchors; like the native AddGuide node, each keyframe is
+    packed as a one-frame guide on the generated clip's own time origin, after the references.
+    The last frame's index depends on the length, so it is resolved when the media are encoded.
+    The Mac engine has no guide layout and keeps refusing the mix.
+    """
+    import sys
+    if sys.platform == 'darwin':
+        raise ValueError('Reference and first/last keyframe layouts cannot be mixed in one request on this Mac; '
+                         'keep one of the two')
+    rows = [('first', result.pop('first', None), 0)] + \
+        [('middle', row, row['frame']) for row in result.pop('middle', [])] + [('last', result.pop('last', None), LAST)]
+    for keyframe, row, index in rows:
+        if row:
+            info = {k: v for k, v in row.items() if k != 'frame'}
+            result['references'].append(dict(info, kind='image', guide=True, guide_index=index, keyframe=keyframe))
+
+
+# The guide index of a last frame next to references, resolved to frames - 1 once the length is known.
+LAST = 'last'
+
+
+def guide_index(row, frames):
+    """The frame a still guide sits on."""
+    return frames - 1 if row.get('guide_index') == LAST else row.get('guide_index', 0)
+
+
 def validate_middle(media, frames):
     """Each middle keyframe sits strictly between the first frame (0) and the last (frames - 1)."""
-    for row in media.get('middle', []):
+    middle = media.get('middle', []) + [dict(row, frame=row['guide_index']) for row in media.get('references', [])
+                                        if row.get('keyframe') == 'middle']
+    for row in middle:
         if not 1 <= row['frame'] <= frames - 2:
             raise ValueError('Middle keyframe frame %d is outside the %d-frame video; use 1 to %d'
                              % (row['frame'], frames, frames - 2))

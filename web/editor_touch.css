@@ -3,7 +3,7 @@
    A mouse never matches this block, and phones (≤ 480 px) keep their own layout. ── */
 @media (pointer:coarse) and (min-width:481px){
  /* Rows: play row 48, tool row 52. */
- .fv-studio.fv-editor,.fv-studio.fv-editor:has(.fv-ed-genbar[data-voice=true]){grid-template-rows:auto var(--fv-ed-project-h) minmax(96px,1fr) 48px var(--fv-ed-generation-row) 52px var(--fv-ed-timeline-h)}
+ .fv-studio.fv-editor,.fv-studio.fv-editor[data-hx-voice]{grid-template-rows:auto var(--fv-ed-project-h) minmax(96px,1fr) 48px var(--fv-ed-generation-row) 52px var(--fv-ed-timeline-h)}
  .fv-ed-notice-stack{bottom:calc(var(--fv-ed-timeline-h) + 52px + var(--fv-ed-generation-row) + 56px)}
  .fv-ed-gen-tray{bottom:calc(100% + 56px)}
 
@@ -92,6 +92,6 @@
  .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads>.fv-ed-add-audio::after{display:none}
  .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-head>[class$=-track-controls]{display:none}
  .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-head[data-open=true]>[class$=-track-controls]{display:flex;position:absolute;left:calc(100% + 4px);top:50%;transform:translateY(-50%);gap:0;padding:2px;background:var(--fv-card);border:1px solid var(--fv-border);border-radius:var(--fv-r-sm)}
- .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads:has(>[data-open=true]){z-index:9}
+ .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads[data-hx-open]{z-index:9}
  .fv-studio.fv-editor .fv-ed-track-view :is(.fv-ed-audio-track-switch,.fv-ed-text-track-controls button){width:44px;min-width:44px;height:44px;min-height:44px}
 }

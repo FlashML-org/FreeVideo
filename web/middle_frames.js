@@ -69,7 +69,6 @@ export function middleNotice(rows, {first, last, references, seconds}, t) {
     if (!middle.length) return '';
     if (middle.length > MAX_MIDDLE) return labels.tooMany(t);
     if (!first || !last) return labels.needsBoth(t);
-    if (references) return '';
     const problem = timeProblems(middle.map(secondsOf), seconds)[0];
     return problem ? problemText(problem, seconds, t) : '';
 }

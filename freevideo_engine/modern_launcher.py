@@ -136,6 +136,7 @@ def serve_instance(app, session, bridge, name):
 
 
 def create_ui(session, *, show=True, instance=None):
+    from .launcher_session import log_error
     from .windows_ux import taskbar_identity
     taskbar_identity()
     from PySide6.QtCore import QObject, Property, QTimer, QUrl, Signal, Slot, Qt
@@ -195,6 +196,7 @@ def create_ui(session, *, show=True, instance=None):
                 function(*args, **kwargs)
             except Exception:
                 session.error = traceback.format_exc()
+                log_error(session.error)
             self.refresh()
 
         @Slot()
@@ -228,6 +230,7 @@ def create_ui(session, *, show=True, instance=None):
             except Exception:
                 # A failed status read must remain copyable and not kill the UI.
                 session.error = traceback.format_exc()
+                log_error(session.error)
                 from .offline_errors import alias_failure
                 if alias_failure(session.error):
                     # The card says what to do; the details keep the cause.
@@ -350,7 +353,8 @@ def create_ui(session, *, show=True, instance=None):
             for value in urls:
                 url = value if isinstance(value, QUrl) else QUrl(str(value))
                 if not url.isLocalFile():
-                    session.error = session.t('Drop downloaded ZIP files here.', '请拖入已下载到本机的 ZIP 文件。')
+                    # A hint, not a failure: the card stays as it was.
+                    session.action_notice = 'drop_local_zip'
                     self.refresh()
                     return
                 paths.append(url.toLocalFile())

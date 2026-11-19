@@ -291,6 +291,7 @@ const FAILED_AT = Object.freeze({
 // wording belong to report_issue.js, shared with video reports.
 // Queue and size-fit notes, kept with the failure copy for editorial review.
 export const QUEUE_LABELS = Object.freeze({
+    busy: ['Another image is generating. This one starts when it finishes.', '前面有 1 张在生成，完成后自动开始。'],
     image: ['Added to the queue. It starts when the previous one finishes.', '已加入队列，前面的完成后自动开始。'],
     video: ['Queued. It starts when the video finishes.', '已排队，视频生成完后自动开始。'],
 });
@@ -319,7 +320,9 @@ export function imageReportBar(card, report_id, t, {productVersion = () => null,
     const anchor = doc.createElement('button'); anchor.type = 'button';
     anchor.className = 'fv-action fv-action-secondary fv-action-report' + (quiet ? ' fv-image-report-quiet' : '');
     anchor.textContent = t(...download); anchor.title = t(...REPORT_LABELS.description);
-    const issue = issueButton(t, () => ({where: ['Image diagnostic report', '生图诊断报告'], message: t(...REPORT_LABELS.unavailable)}));
+    // On a failure card it is drawn as the card's actions; beside a quiet report link it stays as it was.
+    const issue = issueButton(t, () => ({where: ['Image diagnostic report', '生图诊断报告'], message: t(...REPORT_LABELS.unavailable)}),
+        quiet ? {} : {className: 'fv-action'});
     issue.hidden = true;
     anchor.onclick = async () => {
         if (anchor.disabled) return;
@@ -373,9 +376,10 @@ export function renderImageFailure(host, {error, report_id, stage, step, fitted,
     let bar;
     if (report_id) ({bar} = imageReportBar(card, report_id, t, {productVersion, fetchApi}));
     else {
-        const facts = [[['Error code', '错误码'], error], [['Stage', '阶段'], stage], [['Step', '步骤'], step], [['Memory', '内存'], memory]].filter(([, v]) => v);
+        const facts = [[['Error code', '错误码'], error], [['Stage', '阶段'], stage], [['Step', '步骤'], step || (stage ? '' : 'unreported')], [['Memory', '内存'], memory]].filter(([, v]) => v);
         bar = doc.createElement('div'); bar.className = 'fv-actions';
-        bar.append(issueButton(t, () => ({where: ['Image generation', '图像生成'], message: facts.map(([[en, zh], v]) => `${t(en, zh)}: ${v}`).join('\n')})));
+        // Drawn as the card's other actions (Retry, Download report): their border, focus ring and press.
+        bar.append(issueButton(t, () => ({where: ['Image generation', '图像生成'], message: facts.map(([[en, zh], v]) => `${t(en, zh)}: ${v}`).join('\n')}), {className: 'fv-action'}));
         if (again) bar.prepend(again);
         card.append(bar);
         const details = doc.createElement('details'); details.className = 'fv-image-failure-details';
@@ -554,11 +558,13 @@ export function imageRemainingText(seconds, t) {
 
 // An epoch rejects late uploads/status/results. A generate response arriving
 // after Stop still has to be cancelled, even though its job was not known yet.
+const IMAGE_GEN_BUSY_RETRY_MS = 2000;
+
 export function createImageGenSession({client, prepare, apply, onChange = () => {},
     beforeGenerate = async () => {},
     schedule = setTimeout, unschedule = clearTimeout, store = null,
     visible = () => globalThis.document?.visibilityState !== 'hidden', tasks = null}) {
-    let epoch = 0, timer = null, infoTimer = null, disposed = false, checking = null, unwatch = null;
+    let epoch = 0, timer = null, infoTimer = null, disposed = false, checking = null, unwatch = null, wake = null;
     let state = {info: null, checking: false, running: false, job: null, fraction: 0, remaining: null, stage: '', error: '', report_id: null,
         waiting: '', fitted: null};
     const emit = patch => { state = {...state, ...patch}; if (!disposed) onChange(state); };
@@ -589,7 +595,7 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
     // With the page's job store (tasks): the store polls the engine and keeps the job when the editor closes; the
     // session only follows its row. Done: the result is placed (when this editor is still the one that asked);
     // the store files the picture in the works either way.
-    function follow(current, id, context) {
+    function follow(current, id, context, onBusy = null) {
         const alive = () => current === epoch && !disposed;
         unwatch?.(); let ended = false, off = null;
         const stop = () => { ended = true; off?.(); off = null; if (unwatch === stop) unwatch = null; };
@@ -614,6 +620,7 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
                 }, error => { if (alive()) { forget(); emit({running: false, job: null, waiting: '', stopping: false, ...failed(error)}); } });
                 return;
             }
+            if (onBusy && row.status === 'failed' && row.failure?.code === 'busy') { tasks.placed?.(row); onBusy(); return; }
             forget(); tasks.placed?.(row);
             if (row.status === 'cancelled') emit({running: false, job: null, stage: '', fraction: 0, waiting: '', stopping: false, error: '', report_id: null, memory: ''});
             else { const reason = row.failure || {}; emit({running: false, job: null, waiting: '', stopping: false, ...failed({...reason, code: reason.code || 'generation_failed', step: reason.step || (reason.code ? '' : 'task_row')})}); }
@@ -623,12 +630,13 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
     }
     // One job from its first status to the result. A job taken up again after the page was
     // reloaded (``resumed``) that the service no longer knows ends quietly: there is nothing to say.
-    function track(current, job, context, withImages, resumed = false) {
+    function track(current, job, context, withImages, resumed = false, onBusy = null) {
         const alive = () => current === epoch && !disposed;
         async function poll() {
             try {
                 const row = await client.status(job);
                 if (!alive()) return;
+                if (onBusy && row.state === 'error' && row.error === 'busy') throw failure('busy', row);
                 const fraction = imageGenProgress(row.stage, row.fraction, withImages, row.overall);
                 emit({fraction: Math.max(state.fraction, fraction), stage: row.stage || '', waiting: row.waiting || '',
                     remaining: Number.isFinite(row.remaining_seconds) ? row.remaining_seconds : null,
@@ -642,6 +650,7 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
                 else timer = schedule(() => { timer = null; void poll(); }, IMAGE_GEN_POLL_MS);
             } catch (error) {
                 if (alive()) {
+                    if (onBusy && error.code === 'busy') { void cancelJob(job); onBusy(); return; }
                     forget();
                     if (resumed && (error.code === 'unknown_job' || error.code === 'reload')) {
                         emit({running: false, job: null, fraction: 0, stage: '', waiting: ''});
@@ -654,6 +663,22 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
         }
         timer = schedule(() => { timer = null; void poll(); }, IMAGE_GEN_POLL_MS);
     }
+    // The engine makes one picture at a time: a request that finds it busy waits its turn here and starts by itself.
+    // Stop (a new epoch) ends the wait.
+    // Ends a wait for the engine at once (Stop, closing): the waiting start() then returns instead of hanging.
+    const release = () => { const done = wake; wake = null; done?.(); };
+    async function whenFree(submit, alive, resend = null) {
+        for (;;) {
+            try { return await submit(); } catch (error) {
+                if (error.code !== 'busy') throw error;
+                if (!alive()) return null;
+                emit({waiting: 'busy'});
+                await new Promise(done => { wake = done; timer = schedule(() => { timer = null; wake = null; done(); }, IMAGE_GEN_BUSY_RETRY_MS); });
+                if (!alive()) return null;
+                if (resend && !await resend()) return null;
+            }
+        }
+    }
     async function start(request) {
         if (state.running || disposed || !request.prompt.trim() || !state.info?.installed) return;
         const current = ++epoch;
@@ -661,8 +686,16 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
         emit({running: true, job: null, fraction: 0, stage: request.mode === 'edit' ? 'upload' : '', error: '', report_id: null, memory: '', waiting: '', fitted: null});
         const alive = () => current === epoch && !disposed;
         let sent = [], submitted = false;
+        const gone = new Set();
         // Every picture the page sends is noted as it arrives: a stop after one has gone up still removes it.
-        const uploaded = [], sender = {upload: async file => { const name = await client.upload(file); uploaded.push(name); return name; }};
+        const uploaded = [];
+        // The service has not taken these pictures: they go (once each), whichever path ends the request.
+        const discard = () => {
+            const names = [...new Set([...uploaded, ...sent])].filter(name => !gone.has(name));
+            for (const name of names) gone.add(name);
+            if (names.length) Promise.resolve().then(() => client.discardUploads?.(names)).catch(() => {});
+        };
+        const sender = {upload: async file => { const name = await client.upload(file); uploaded.push(name); return name; }};
         try {
             const {context, images = [], mask} = await prepare(request, alive, sender);
             sent = [...images, ...(mask ? [mask] : [])];
@@ -675,34 +708,68 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
                 ...(request.seed === undefined ? {} : {seed: request.seed}),
                 ...(request.loras === undefined ? {} : {loras: request.loras}),
                 ...(tasks?.purpose ? {purpose: tasks.purpose} : {})};
-            if (tasks) {
-                tasks.startJobSources?.();
-                const {id} = await tasks.jobs.submit('image', request_, {view: tasks.view || 'image-editor',
-                    meta: {...(tasks.meta?.(request, context) || {}), text: request.text ?? request.prompt, withImages, width: context.width, height: context.height},
-                    ...(tasks.client ? {client: tasks.client} : {})});
-                submitted = true;
+            // The engine can turn a request away as busy at submit or while following it: wait and send it again.
+            // A turned-away request has its uploaded pictures removed by the service, so they are sent again before each retry.
+            const resend = async () => {
+                if (!sent.length) return true;
+                const next = await prepare(request, alive, sender);
+                if (!alive()) return false;
+                request_.images = next.images || []; request_.mask = next.mask;
+                sent = [...request_.images, ...(request_.mask ? [request_.mask] : [])];
+                return true;
+            };
+            const again = () => {
                 if (!alive()) return;
-                emit({job: id});
-                try { store?.save({job: id, context, withImages, task: true}); } catch { /* the job is only not picked up again here */ }
-                follow(current, id, context);
-                return;
-            }
-            const row = await client.generate(request_);
-            const {job} = row;
-            if (!job) throw failure(row.error, row.error ? row : {...row, step: 'submit'});
-            submitted = true;
-            if (row.fitted) emit({fitted: row.fitted});
-            if (!alive()) { await cancelJob(job); return; }
-            emit({job});
-            try { store?.save({job, context, withImages}); } catch { /* the job is only not resumed after a reload */ }
-            track(current, job, context, withImages);
+                emit({job: null, waiting: 'busy'});
+                timer = schedule(() => { timer = null; if (alive()) void go(true); }, IMAGE_GEN_BUSY_RETRY_MS);
+            };
+            const go = async (retry = false) => {
+                // The pictures of this attempt are the page's until the service takes the request: a stop or an error
+                // before that, on a first send or a resend alike, removes them.
+                let taken = false;
+                try {
+                    if (retry && !await resend()) return;
+                    if (tasks) {
+                        tasks.startJobSources?.();
+                        const sent_ = await whenFree(() => tasks.jobs.submit('image', request_, {view: tasks.view || 'image-editor',
+                            meta: {...(tasks.meta?.(request, context) || {}), text: request.text ?? request.prompt, withImages, width: context.width, height: context.height},
+                            ...(tasks.client ? {client: tasks.client} : {})}), alive, resend);
+                        if (!sent_) return;
+                        const {id} = sent_;
+                        submitted = taken = true;
+                        if (!alive()) return;
+                        emit({job: id, waiting: ''});
+                        try { store?.save({job: id, context, withImages, task: true}); } catch { /* the job is only not picked up again here */ }
+                        follow(current, id, context, again);
+                        return;
+                    }
+                    const row = await whenFree(async () => {
+                        const answer = await client.generate(request_);
+                        if (!answer.job) throw failure(answer.error, answer.error ? answer : {...answer, step: 'submit'});
+                        return answer;
+                    }, alive, resend);
+                    if (!row) return;
+                    const {job} = row;
+                    submitted = taken = true;
+                    emit({waiting: ''});
+                    if (row.fitted) emit({fitted: row.fitted});
+                    if (!alive()) { await cancelJob(job); return; }
+                    emit({job});
+                    try { store?.save({job, context, withImages}); } catch { /* the job is only not resumed after a reload */ }
+                    track(current, job, context, withImages, false, again);
+                } catch (error) {
+                    if (alive()) emit({running: false, job: null, ...failed(error)});
+                } finally {
+                    if (!taken) discard();
+                }
+            };
+            await go();
         } catch (error) {
             if (alive()) emit({running: false, job: null, ...failed(error)});
         } finally {
             // Stopped, turned away or failed before the service took the request: its pictures go now (a job removes
             // its own when it ends).
-            const names = [...new Set([...uploaded, ...sent])];
-            if (!submitted && names.length) Promise.resolve().then(() => client.discardUploads?.(names)).catch(() => {});
+            if (!submitted) discard();
         }
     }
     // The page was reloaded while a picture was being made: follow the same job and place its result.
@@ -726,11 +793,11 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
         if (tasks) {
             const id = state.job;
             if (!state.running) return Promise.resolve();
-            if (!id) { ++epoch; forget(); emit({running: false, job: null, stage: '', fraction: 0, waiting: '', stopping: false}); return Promise.resolve(); }
+            if (!id) { ++epoch; release(); forget(); emit({running: false, job: null, stage: '', fraction: 0, waiting: '', stopping: false}); return Promise.resolve(); }
             emit({stopping: true});
             return Promise.resolve(tasks.jobs.cancel(id)).catch(() => { emit({stopping: false}); });
         }
-        ++epoch; unschedule(timer); timer = null;
+        ++epoch; unschedule(timer); timer = null; release();
         const job = state.job;
         forget();
         emit({running: false, job: null, stage: '', fraction: 0, error: '', report_id: null, memory: '', waiting: '', fitted: null});
@@ -745,7 +812,7 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
     return {check, start, resume, cancel, pack, clearError: () => emit({error: '', report_id: null, memory: ''}), state: () => state,
         // Closing the editor only stops watching: the picture keeps going on the engine, and the job record stays so
         // opening the same picture again picks it up (resume). Only Stop cancels.
-        dispose() { disposed = true; unschedule(infoTimer); infoTimer = null; ++epoch; unschedule(timer); timer = null; unwatch?.(); unwatch = null; return Promise.resolve(); }};
+        dispose() { disposed = true; unschedule(infoTimer); infoTimer = null; ++epoch; unschedule(timer); timer = null; release(); unwatch?.(); unwatch = null; return Promise.resolve(); }};
 }
 
 // The job being made, kept for this tab only so that a reloaded page can follow it and place the
@@ -986,6 +1053,8 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
         }
         note.hidden = !note.textContent;
         bar.dataset.running = String(state.running);
+        // A queue note is a sentence, not a progress figure: it may wrap (image_editor.css).
+        bar.dataset.waiting = String(!!(state.running && state.waiting) && !pack && !missing && !promptRequired);
         bar.dataset.message = String(!!missing || promptRequired || !!state.error || !!note.textContent);
         bar.dataset.failed = String(!!state.error && !promptRequired);
         bar.dataset.pack = String(!!pack && !pack.reason && !state.error);

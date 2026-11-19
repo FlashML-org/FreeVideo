@@ -149,9 +149,10 @@ class PromptEnvelope:
         allowed = {'text', 'width', 'height', 'seconds', 'seed', 'two_pass', 'base_steps',
                    'refine_steps', 'force_regenerate', 'preview', 'frames', 'step_cache',
                    'upscale_factor', 'refine_from', 'continue_from', 'first_frame_reference',
-                   'voice_reference', 'hide_tail', 'allow_empty_prompt'}
+                   'voice_reference', 'hide_tail', 'allow_empty_prompt', 'upscale_from'}
         if (set(inputs) - allowed or any(isinstance(v, (list, dict)) for v in inputs.values())
-                or inputs.get('refine_from') or inputs.get('step_cache', 'none') != 'none'):
+                or inputs.get('refine_from') or inputs.get('upscale_from')
+                or inputs.get('step_cache', 'none') != 'none'):
             return None
         from .geometry import geometry
         canvas = geometry(inputs.get('width', 1344), inputs.get('height', 768),

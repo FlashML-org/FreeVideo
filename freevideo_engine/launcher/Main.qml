@@ -469,6 +469,11 @@ ApplicationWindow {
                     Layout.fillWidth: true; spacing: 8; Layout.bottomMargin: shortWindow ? 0 : 10
                     FText { objectName: "pageHeading"; horizontalAlignment: Text.AlignHCenter; text: s.page === "launcher" ? t("Your workspace", "工作空间") : s.page === "comfy" ? t("Set up FreeVideo", "安装 FreeVideo") : s.page === "models" ? t("Set up your models", "准备模型") : s.status === "review" ? t("Ready to install", "确认安装") : s.busy ? t("Setting things up", "正在准备 FreeVideo") : t("Continue your setup", "继续安装"); font.pixelSize: win.compact ? 26 : theme.hero; font.weight: Font.DemiBold; font.letterSpacing: -0.6; Layout.fillWidth: true }
                     FText { objectName: "actionNotice"; visible: !!s.action_notice; text: s.action_notice || ""; color: theme.muted; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter }
+                    RowLayout {
+                        objectName: "mainPageAddress"; visible: s.action_notice_key === "update_page_failed" && !!(s.update && s.update.release_page); Layout.fillWidth: true; spacing: 8
+                        FText { text: (s.update && s.update.release_page) || ""; color: theme.text; elide: Text.ElideMiddle; Layout.fillWidth: true }
+                        FButton { text: t("Copy address", "复制地址"); flat: true; implicitHeight: theme.heightSm; onClicked: backend.copy(s.update.release_page) }
+                    }
                 }
 
                 FText { objectName: "operationBusyReason"; visible: !s.can_manage && !s.action_notice; text: s.busy_reason; color: theme.muted; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter }
@@ -488,7 +493,7 @@ ApplicationWindow {
                     }
                     ColumnLayout {
                         id: failureBody; x: 18; y: 18; width: parent.width - 36; spacing: 10
-                        FText { text: s.failure.title || t("Something went wrong", "出现问题"); color: theme.danger; font.weight: Font.DemiBold; Layout.fillWidth: true }
+                        FText { text: s.failure.title || t("Couldn’t complete this step", "暂时未能完成"); color: theme.danger; font.weight: Font.DemiBold; Layout.fillWidth: true }
                         FText { visible: !!(s.failure.detail || s.failure.action); text: s.failure.detail || s.failure.action; color: theme.text; Layout.fillWidth: true }
                         FText { visible: !!s.failure.note; text: s.failure.note || ""; color: theme.muted; Layout.fillWidth: true }
                         // What each download source returned: one short line per source.
@@ -1082,7 +1087,7 @@ ApplicationWindow {
                         }
                         FText { objectName: "imagePackEngineNote"; visible: s.image_pack.engine_state === "running"; text: s.image_pack.engine_note; color: s.image_pack.engine_clicked ? theme.danger : theme.muted; Layout.fillWidth: true }
                         FText { objectName: "imagePackFailureReason"; visible: s.image_pack.install.state === "failed"; text: s.image_pack.detail; color: theme.danger; Layout.fillWidth: true }
-                        FButton { objectName: "imagePackReport"; visible: s.image_pack.install.state === "failed"; text: reportOpened(s.image_pack.detail || "", t("Image pack", "图像模型包")) ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(s.image_pack.detail || "", t("Image pack", "图像模型包")); onClicked: backend.reportProblem(s.image_pack.detail || "", t("Image pack", "图像模型包")) }
+                        FButton { objectName: "imagePackReport"; visible: s.image_pack.install.state === "failed"; text: reportOpened((s.image_pack.detail || "") + (s.image_pack.report_line ? "\n" + s.image_pack.report_line : ""), t("Image pack", "图像模型包")) ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened((s.image_pack.detail || "") + (s.image_pack.report_line ? "\n" + s.image_pack.report_line : ""), t("Image pack", "图像模型包")); onClicked: backend.reportProblem((s.image_pack.detail || "") + (s.image_pack.report_line ? "\n" + s.image_pack.report_line : ""), t("Image pack", "图像模型包")) }
                         Flow {
                             visible: s.image_pack.install.state === "failed" && !!s.image_pack.report_id
                             Layout.fillWidth: true; spacing: 8
@@ -1449,7 +1454,7 @@ ApplicationWindow {
                                             s.cleanup.status === "ready" ? (s.cleanup.bytes > 0 ? t("About ", "约 ") + bytes(s.cleanup.bytes) + t(" can be freed. Models, environments and videos are kept.", " 可清理，保留模型、运行环境和视频。") : t("Nothing to clean.", "暂无可清理的下载缓存。")) :
                                             s.cleanup.status === "complete" ? t("Freed ", "已释放 ") + bytes(s.cleanup.released_bytes || 0) + (s.cleanup.skipped ? t(". Some files changed; check again.", "。部分文件已变化，请重新检查。") : t(".", "。")) :
                                             s.cleanup.status === "busy" ? t("Another task is using these files. Try again when it finishes.", "其他任务正在使用这些文件，完成后可重试。") :
-                                            s.cleanup.status === "error" ? t("Cleanup could not finish. Check again to retry.", "清理未完成，可重新检查后再试。") :
+                                            s.cleanup.status === "error" ? (s.cleanup.message || t("Cleanup could not finish. Check again to retry.", "清理未完成，可重新检查后再试。")) :
                                             t("Installation files kept for repairs. Models, environments and videos are never removed.", "安装时缓存的文件，清理时不会删除模型、运行环境和视频。")
                                     }
                                 }
@@ -1738,7 +1743,12 @@ ApplicationWindow {
                     }
                     FText { objectName: "downloadActionNotice"; visible: !!s.action_notice && s.action_notice !== s.busy_reason; text: s.action_notice || ""; color: theme.muted; Layout.fillWidth: true }
                     FText { objectName: "downloadListError"; visible: text.length > 0; text: s.download_list.error; color: theme.danger; Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: theme.micro + 1 }
-                    FText { objectName: "downloadListRawError"; visible: s.error.length > 0 && !s.download_list.inspection_failed; text: s.error; color: theme.danger; Layout.fillWidth: true; maximumLineCount: 2; elide: Text.ElideRight; font.pixelSize: theme.micro }
+                    // The failure card's own sentence, never the raw error (a traceback's first lines); the card below the dialog has the rest.
+                    RowLayout {
+                        visible: s.error.length > 0 && !s.download_list.inspection_failed; Layout.fillWidth: true; spacing: 8
+                        FText { objectName: "downloadListRawError"; text: (s.failure && (s.failure.detail || s.failure.title)) || t("Couldn’t complete this step", "暂时未能完成"); color: theme.danger; Layout.fillWidth: true; maximumLineCount: 2; elide: Text.ElideRight; font.pixelSize: theme.micro }
+                        FButton { objectName: "downloadListFailureDetails"; text: t("Details and report", "详情与提交问题"); flat: true; implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1; onClicked: modelInfoOpen = false }
+                    }
                 }
             }
             FText { objectName: "downloadBusyReason"; visible: !s.can_manage && (!s.action_notice || s.action_notice === s.busy_reason); text: s.busy_reason; color: theme.muted; Layout.fillWidth: true }
@@ -1850,6 +1860,11 @@ ApplicationWindow {
             spacing: 14
             FText { objectName: "updateActionNotice"; visible: !!s.action_notice; text: s.action_notice || ""; color: theme.muted; Layout.fillWidth: true }
             RowLayout {
+                objectName: "updatePageAddress"; visible: s.action_notice_key === "update_page_failed" && !!(s.update && s.update.release_page); Layout.fillWidth: true; spacing: 8
+                FText { text: (s.update && s.update.release_page) || ""; color: theme.text; elide: Text.ElideMiddle; Layout.fillWidth: true }
+                FButton { text: t("Copy address", "复制地址"); flat: true; implicitHeight: theme.heightSm; onClicked: backend.copy(s.update.release_page) }
+            }
+            RowLayout {
                 Layout.fillWidth: true
                 // An update is named by its version in the notes below; the window has no title for it.
                 FText { visible: !s.update.candidate; text: s.update.engine ? t("Engine update", "引擎更新") : t("Updates", "更新"); font.pixelSize: theme.section + 2; font.weight: Font.DemiBold; Layout.fillWidth: true }
@@ -1867,7 +1882,7 @@ ApplicationWindow {
             }
             FMeter { Layout.fillWidth: true; visible: s.update.status === "downloading"; active: true; fraction: s.update.progress && s.update.progress.total ? s.update.progress.done/s.update.progress.total : -1 }
             FReleaseNotes { objectName: "updateReleaseNotes"; visible: !!availableRelease; Layout.fillWidth: true; room: updateDialog.availableWidth; release: availableRelease; earlier: availableEarlier; zh: s.zh; heading: releaseVersion(availableRelease) }
-            FButton { text: t("Version & release notes", "版本与更新说明"); flat: true; onClicked: releaseNotesOpen = true }
+            FButton { text: t("Version & release notes", "版本与更新说明"); flat: true; Layout.maximumWidth: updateContents.width; onClicked: releaseNotesOpen = true }
             }
             }
             FScrollFade { objectName: "updateDialogFade"; view: updateScroll; barWidth: updateScroll.ScrollBar.vertical.width }

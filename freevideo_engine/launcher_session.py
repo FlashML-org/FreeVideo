@@ -38,6 +38,27 @@ SETTLE_SECONDS = 60
 # a newer release reminds at once.
 SNOOZE_SECONDS = 365 * 24 * 3600
 QUEUE_POLL_SECONDS = 3
+
+
+_last_logged = [None]
+
+
+def log_error(trace, root=None):
+    """Keep every launcher failure on disk, errors/launcher-<ns>.log, so one that is dismissed or never read still leaves a trace.
+
+    Returns the file, or None when the same failure was just written (a refresh that fails every tick) or the disk refuses.
+    """
+    text = plain_text(trace)
+    if not text or text == _last_logged[0]:
+        return None
+    try:
+        path = Path(root or launcher_root()) / 'errors' / ('launcher-' + str(time.time_ns()) + '.log')
+        io_path(path.parent).mkdir(parents=True, exist_ok=True)
+        io_path(path).write_text(text, encoding='utf-8')
+    except OSError:
+        return None
+    _last_logged[0] = text
+    return path
 RECEIPT_POLL_SECONDS = 5
 
 
@@ -46,7 +67,19 @@ ARCHIVE_FAILURES = {
     'changed': ('The file changed after the check, so it was kept.', '文件在检查后有改动，已保留。'),
     'busy': ('An installation or a video is in progress. Try again when it finishes.', '有安装或生成正在进行，完成后可以再删除。'),
     'in-use': ('Another program is using it, or this account does not have permission to delete it.', '正被其他程序使用，或当前账户没有删除权限。'),
-    'failed': ('It could not be deleted.', '未能删除。'),
+    'failed': ('It could not be deleted. Check again; if it happens again, use "Report a problem".',
+               '未能删除。请重新检查；如果再次出现，请点击“提交问题”。'),
+}
+# Storage cleanup by package_cleanup.failure_reason code.
+CLEANUP_FAILURES = {
+    'changed': ('Cleanup stopped because files changed after the check. Check again, then clean.',
+                '检查之后文件有变化，清理已停止。请重新检查后再清理。'),
+    'busy': ('An installation or a video is in progress. Try again when it finishes.', '有安装或生成正在进行，请在完成后再清理。'),
+    'in-use': ('Cleanup could not finish: some files are in use by another program, or this account cannot delete them. '
+               'Close the programs using them, then check again.',
+               '清理未完成：部分文件正被其他程序使用，或当前账户没有删除权限。请关闭正在使用它们的程序，再重新检查。'),
+    'failed': ('Cleanup could not finish because of an unexpected error. Check again; if it happens again, use '
+               '"Report a problem".', '清理因意外错误未完成。请重新检查；如果再次出现，请点击“提交问题”。'),
 }
 # Report exports that failed for a reason the user can act on; anything else keeps its own words.
 EXPORT_FAILURES = {
@@ -56,6 +89,8 @@ EXPORT_FAILURES = {
                'Close that program, or choose another name.',
                '原文件正被其他程序打开或为只读，未被替换。请关闭该程序，或换一个文件名。'),
     'disk': ('Not enough disk space. Free up space, then export again.', '磁盘空间不足，请释放空间后再导出。'),
+    'other': ('The report could not be saved. Choose another folder, or use "Copy details" and paste them into the issue.',
+              '报告未能保存。请换一个文件夹，或改用“复制详情”，把内容贴到问题里。'),
 }
 
 
@@ -1035,7 +1070,7 @@ class Session:
             return dict(installable=False, ready=False, state='missing', visible=False, busy=False,
                         downloaded_bytes=0, verified_bytes=0, total_bytes=total, bytes=total,
                         title=self.t(*title), detail=self.t('Not installed', '未安装'),
-                        install={}, can_act=False, removable_bytes=0, repairable=False, failure={}, report_id=None,
+                        install={}, can_act=False, removable_bytes=0, repairable=False, failure={}, report_id=None, report_line='',
                         engine_state='unknown', engine_note='', engine_clicked=False)
         root, engine = self._image_location()
         try:
@@ -1081,9 +1116,19 @@ class Session:
                     detail=detail, busy=busy, install=active, can_act=not (blocked or busy or value.get('checking')),
                     removable_bytes=removable,
                     repairable=repairable, failure=failure, report_id=active.get('report_id'),
+                    report_line=self._image_pack_report_line(),
                     engine_state=engine_state,
                     engine_note=image_pack_failure('busy_engine', zh=self.language.startswith('zh'))['detail'] if running else '',
                     engine_clicked=running and self.image_engine_clicked)
+
+    def _image_pack_report_line(self):
+        """Where and how the pack operation stopped, for the issue form: stage, code and exception class only."""
+        report = self.image_pack_report()
+        if not report:
+            return ''
+        error = report.get('error') or {}
+        parts = [str(report.get('stage_at_failure') or ''), str(error.get('code') or ''), str(error.get('class') or '')]
+        return 'Image pack: ' + ', '.join(part for part in parts if part)
 
     def image_pack_report(self):
         if self.image_installer:
@@ -1303,7 +1348,9 @@ class Session:
             else:
                 # Setup marks the installation unfinished when it starts; then
                 # Retry on the setup page restores the previous model.
-                upgrade.switch_failed(row.get('error') or self.t('The switch stopped.', '切换未完成。'),
+                upgrade.switch_failed(row.get('error') or self.t(
+                    'The model switch stopped before it finished. Select Retry on the setup page; if it cannot finish, '
+                    'the previous model is restored.', '模型切换未完成。请在安装页点击“重试”；无法完成时会恢复原来的模型。'),
                                       kept=self._installation_ready())
 
     def _browser_url(self, address):
@@ -1884,7 +1931,10 @@ class Session:
         view['release_page'] = release_page(self.updater.current) if self.updater else ''
         if self.updater and self.updater.install_failed and view.get('candidate'):
             # The new app did not go in and the old one is back: the reminder says so.
-            view['status'], view['error'] = 'error', self.t(*ACTION_COPY['update_install_failed'])
+            from .launcher_update import mac_install_failure
+            reason = mac_install_failure(self.updater.install_failed_reason, self.language.startswith('zh'))
+            view['status'], view['error'] = 'error', self.t(*ACTION_COPY['update_install_failed']) + (
+                ('' if self.language.startswith('zh') else ' ') + reason if reason else '')
         key = self.update_key()
         view.update(engine=self.engine_update_pending(), current=__version__,
                     current_release=public_details(self.updater.current) if self.updater else self.release_details,
@@ -2699,6 +2749,9 @@ class Session:
             estimate.append(self.t('Peak disk ~', '磁盘峰值约 ')+disk_space.size_text(sum(d.get('needed_bytes', 0) for d in row['disks'])))
         update = self.update_view()
         probe = self.probe.snapshot()
+        if probe.get('status') == 'failed' and probe.get('error'):
+            from .download_settings import SPEED_TEST_REASONS
+            probe = dict(probe, error=self.t(*SPEED_TEST_REASONS.get(probe.get('reason'), SPEED_TEST_REASONS['other'])))
         speeds = []
         for group, entries in probe.get('sources', {}).items():
             for entry in entries:
@@ -2752,7 +2805,7 @@ class Session:
         if (self.importer.state.get('status') == 'error' and reasons
                 and self.error == self.importer.state.get('error') and failure.get('kind') != 'runtime-alias'):
             from .offline_errors import guidance
-            failure = dict(title=guidance('title', zh),
+            failure = dict(title=guidance('import-title', zh),
                            detail=guidance(reasons[0], zh), action='', kind='offline-write')
         disk = self.disk_view(row, failure)
         if disk and str(failure.get('kind', '')).startswith('disk'):
@@ -2770,6 +2823,8 @@ class Session:
         from .offline_errors import alias_failure
         if alias_failure(cleanup.get('error', '')):
             cleanup['error'] = display_launcher_error(cleanup['error'], zh=zh)
+        elif cleanup.get('status') == 'error':
+            cleanup['message'] = self.t(*CLEANUP_FAILURES.get(cleanup.get('reason'), CLEANUP_FAILURES['failed']))
         model_upgrade = dict(self.upgrade.state, busy=self.upgrade.busy)
         if alias_failure(model_upgrade.get('error', '')):
             model_upgrade['error'] = display_launcher_error(model_upgrade['error'], zh=zh)
@@ -2797,6 +2852,7 @@ class Session:
             page=self.page, status=('review' if offline_review else self.importer.state['status'] if offline_progress
                                     else row.get('status', 'idle')), busy=busy, working=working,
             action_notice=self.t(*ACTION_COPY[self.action_notice]) if self.action_notice else '',
+            action_notice_key=self.action_notice or '',
             setup_pending=bool(self.pending_action) or self.setup_job_wait, setup_job_wait=self.setup_job_wait,
             setup_wait_text=self.t(*ACTION_COPY['setup_job' if self.setup_job_wait else 'setup_queued']),
             can_manage=self.can_manage(), busy_reason=self.t(*ACTION_COPY['busy']),
@@ -2813,8 +2869,9 @@ class Session:
             field_error=dict(self.field_error or {}), retry_kind=self.retry_kind(), notice=self.notice,
             # Qt reads a list as an array; LEVELS is a tuple.
             compatibility=dict(self.compatibility, levels=list(self.compatibility.get('levels') or ())),
-            report=dict(self.report, error=self.t(*EXPORT_FAILURES[self.report['reason']])
-                        if self.report.get('reason') in EXPORT_FAILURES else self.report.get('error', '')),
+            report=dict(self.report, error=self.t(*EXPORT_FAILURES.get(self.report.get('reason') or 'other',
+                                                                         EXPORT_FAILURES['other']))
+                        if self.report.get('status') == 'error' else self.report.get('error', '')),
             models=models, overall=overall, progress=progress, detail=detail,
             progress_text=file_text, remaining_seconds=remaining,
             # The elapsed row is only shown while working. An idle clock would

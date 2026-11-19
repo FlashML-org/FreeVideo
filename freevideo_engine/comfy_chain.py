@@ -12,6 +12,7 @@ from urllib import error, request
 
 from .chain_runner import ChainBusy, ChainPartTooShort, ChainRunner, ChainTooLong
 from . import chain_plan, chain_store
+from .chain_errors import host_unavailable_body, route_body, storage_code
 
 RUNNER = None
 CONTINUE_INPUTS = {'after': 'continue_from', 'before': 'continue_to'}
@@ -451,6 +452,34 @@ def register(host_factory=None):
         except ValueError as failure:
             return response({'error': str(failure), 'code': 'invalid'}, 400)
 
+    def refused(failure, invalid_status=400):
+        """Every refusal of a chain route as JSON: a code, an English and a Chinese sentence, and the original text
+        only in `detail` (technical details and reports). Codes the engine already gives are kept as they are."""
+        if isinstance(failure, KeyError):
+            return response(route_body('unknown_chain', 'Unknown chain or part: %s' % failure), 404)
+        if isinstance(failure, OSError):
+            code = storage_code(failure)
+            logging.warning('[FreeVideo] Long video storage failed (%s): %s', code, failure)
+            return response(route_body(code, '%s: %s' % (type(failure).__name__, failure)), 507 if code == 'disk_full' else 500)
+        if isinstance(failure, ChainBusy):
+            return response(route_body('busy', str(failure)), 409)
+        if isinstance(failure, ChainTooLong):
+            return response({'error': str(failure), 'error_zh': failure.message_zh, 'code': failure.code,
+                             'parts': failure.parts, 'max_parts': failure.limit}, 400)
+        if isinstance(failure, ChainPartTooShort):
+            return response({'error': str(failure), 'error_zh': failure.message_zh, 'code': failure.code,
+                             'min_seconds': failure.limit}, 400)
+        if isinstance(failure, chain_plan.PlanError):
+            return response({'error': str(failure), 'code': failure.code}, 400)
+        if hasattr(failure, 'as_dict'):
+            value = failure.as_dict()
+            if isinstance(value.get('message_zh'), str):
+                value.setdefault('error_zh', value['message_zh'])
+            return response({'error': str(failure), **value}, 400)
+        return response(route_body('invalid', str(failure)), invalid_status)
+
+    STORED = (KeyError, ValueError, OSError)
+
     @server.routes.post('/freevideo/chain/lineage')
     async def lineage(request):
         try:
@@ -466,8 +495,8 @@ def register(host_factory=None):
                 parts, short, known = runner.work_lineage(work['work'])
                 result.append(dict(parts=parts, short=short, known=known))
             return response({'lineage': result})
-        except ValueError as failure:
-            return response({'error': str(failure)}, 400)
+        except (ValueError, OSError) as failure:
+            return refused(failure)
 
     @server.routes.post('/freevideo/chain')
     async def create(request):
@@ -482,23 +511,11 @@ def register(host_factory=None):
             if not fake and os.environ.get('FREEVIDEO_CHAIN_INDEPENDENT') != '1':
                 missing = {key for row in normalized['blocks'] for key in CONTINUE_INPUTS
                            if row[key] is not None} - continuation_directions()
-                if 'after' in missing:
-                    return response({'error': 'Continuing a video is not available in this version'}, 409)
                 if missing:
-                    return response({'error': 'Extending backwards or filling a gap is not available in this version'}, 409)
+                    return response(host_unavailable_body('after' if 'after' in missing else 'other'), 409)
             return response({'chain': await asyncio.to_thread(runner.create, value)})
-        except ChainBusy as failure:
-            return response({'error': str(failure)}, 409)
-        except ChainTooLong as failure:
-            return response({'error': str(failure), 'error_zh': failure.message_zh, 'code': failure.code,
-                             'parts': failure.parts, 'max_parts': failure.limit}, 400)
-        except ChainPartTooShort as failure:
-            return response({'error': str(failure), 'error_zh': failure.message_zh, 'code': failure.code,
-                             'min_seconds': failure.limit}, 400)
-        except chain_plan.PlanError as failure:
-            return response({'error': str(failure), 'code': failure.code}, 400)
-        except ValueError as failure:
-            return response({'error': str(failure), **(failure.as_dict() if hasattr(failure, 'as_dict') else {})}, 400)
+        except (ValueError, OSError) as failure:
+            return refused(failure)
 
     def asking(request):
         # ?client_id=... marks each chain as this page's own or not.
@@ -517,15 +534,15 @@ def register(host_factory=None):
     async def get(request):
         try:
             return response({'chain': runner.get(request.match_info['id'], asking(request))})
-        except KeyError:
-            return response({'error': 'Unknown chain'}, 404)
+        except KeyError as failure:
+            return refused(failure)
 
     @server.routes.post('/freevideo/chain/{id}/cancel')
     async def cancel(request):
         try:
             return response({'chain': runner.cancel(request.match_info['id'])})
-        except KeyError:
-            return response({'error': 'Unknown chain'}, 404)
+        except (KeyError, OSError) as failure:
+            return refused(failure)
 
     @server.routes.post('/freevideo/chain/{id}/blocks/{block}/text')
     async def text(request):
@@ -533,12 +550,8 @@ def register(host_factory=None):
             value = await body(request)
             return response({'chain': runner.set_text(request.match_info['id'], request.match_info['block'],
                                                       value.get('text') if isinstance(value, dict) else None)})
-        except KeyError:
-            return response({'error': 'Unknown chain or part'}, 404)
-        except ChainBusy as failure:
-            return response({'error': str(failure)}, 409)
-        except ValueError as failure:
-            return response({'error': str(failure)}, 400)
+        except STORED as failure:
+            return refused(failure)
 
     @server.routes.post('/freevideo/chain/{id}/blocks/{block}/redo')
     async def redo(request):
@@ -550,28 +563,17 @@ def register(host_factory=None):
                 missing = {key for row in runner.get(identity)['blocks'] for key in CONTINUE_INPUTS
                            if row[key] is not None} - continuation_directions()
                 if missing:
-                    return response({'error': 'Continuing a video is not available in this version'}, 409)
+                    return response(host_unavailable_body('after'), 409)
             return response({'chain': await asyncio.to_thread(runner.redo, identity, block,
                                                               value.get('text'), value.get('client_id'))})
-        except KeyError:
-            return response({'error': 'Unknown chain or part'}, 404)
-        except ChainBusy as failure:
-            return response({'error': str(failure)}, 409)
-        except ChainTooLong as failure:
-            return response({'error': str(failure), 'error_zh': failure.message_zh, 'code': failure.code,
-                             'parts': failure.parts, 'max_parts': failure.limit}, 400)
-        except ChainPartTooShort as failure:
-            return response({'error': str(failure), 'error_zh': failure.message_zh, 'code': failure.code,
-                             'min_seconds': failure.limit}, 400)
-        except ValueError as failure:
-            return response({'error': str(failure)}, 400)
+        except STORED as failure:
+            return refused(failure)
 
     @server.routes.post('/freevideo/chain/{id}/resume')
     async def resume(request):
         try:
             value = await body(request) if request.can_read_body else {}
             return response({'chain': runner.resume(request.match_info['id'], value.get('client_id'))})
-        except KeyError:
-            return response({'error': 'Unknown chain'}, 404)
-        except ValueError as failure:
-            return response({'error': str(failure)}, 409)
+        except STORED as failure:
+            # A chain that cannot be resumed was answered 409, as a conflict with its state; it still is.
+            return refused(failure, invalid_status=409)

@@ -1131,7 +1131,8 @@ class Controller:
                     args[0].get('engine') if args and isinstance(args[0], dict) else None)
                 roots = [('INSTALL', engine)] if engine else []
                 self.state = dict(self.state, status='cancelled' if self.cancelled.is_set() else status,
-                                  error=str(error), exception=exception_details(error), denied=describe(error, roots))
+                                  error=str(error).strip() or type(error).__name__,
+                                  exception=exception_details(error), denied=describe(error, roots))
         self.thread = threading.Thread(target=work, daemon=True)
         self.thread.start()
 
@@ -1162,7 +1163,8 @@ class Controller:
                 self.setup.runner.cancel()
             if not row['busy'] and row['status'] != 'running':
                 if row['status'] != 'complete' and not (row.get('action') == 'plan' and row.get('plan')):
-                    raise RuntimeError(row.get('error') or row.get('tail', '') or 'Installation stopped; completed files are retained.')
+                    raise RuntimeError(row.get('error') or row.get('tail', '') or 'Installation stopped before it finished; completed files are retained. '
+                                       'Select Continue to resume.')
                 if self.cancelled.is_set():
                     raise RuntimeError('Stopped; files retained')
                 return row

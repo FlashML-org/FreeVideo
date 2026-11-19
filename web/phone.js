@@ -1,5 +1,5 @@
 import {chatData, chatPoller, chatDelay, chatReadRequest, emptyChat, chatMerge, chatEntries, newId} from './chat_data.js';
-import {phoneText, jobGroups, mergePhoneJobs, retryWords, queueWords, remainingWords, mediaPath, saveVideo, applyPhoneChain, phonePartWords, phoneJobKey} from './phone_model.js';
+import {phoneText, phoneFailure, jobGroups, mergePhoneJobs, retryWords, queueWords, remainingWords, mediaPath, saveVideo, applyPhoneChain, phonePartWords, phoneJobKey} from './phone_model.js';
 import {wordmark} from './wordmark.js';
 import {applyPreviewStyle, previewStyle, hintWanted, markHintSeen, onPreviewStyle} from './preview_style.js';
 import { skin } from './glass/library.js';
@@ -28,7 +28,7 @@ function renderSheet() {
     const fresh = button('phone-sheet-new', t('New chat', '新对话'), async () => {
         fresh.disabled = true;
         try { const data = await json(await dataLayer.create()); if (!data.session) throw new Error(); closeSheet(); choose(data.session); }
-        catch { closeSheet(); notice(t('Could not start a new chat. Try again.', '没有新建成功，请重试。')); }
+        catch (error) { closeSheet(); notice(phoneFailure(error, t, ['start a new chat', '新建对话'])); }
     });
     const list = el('ul', 'phone-sheet-list');
     for (const row of convRows.some(row => row.id === convCurrent) || !convCurrent ? convRows : [{id: convCurrent}, ...convRows]) {
@@ -134,10 +134,11 @@ compose.onsubmit = async event => {
     try {
         body.attempts = 0;
         const response = await dataLayer.sendMessage(body, {stopped: () => locked || stopped});
-        if (!response?.ok) throw new Error();
+        if (!response) throw Object.assign(new Error(), {unreachable: true});
+        if (!response.ok) throw Object.assign(new Error(), {status: response.status, data: await response.json().catch(() => null)});
         if (version === revision && input.value.trim() === text) { input.value = ''; lastSend = null; }
         await poller.poll();
-    } catch { notice(t('Could not send. Please try again.', '没有发送成功，请重试。')); }
+    } catch (error) { notice(phoneFailure(error, t, ['send', '发送'])); }
     finally { sending = false; grow(); }
 };
 // Large previews play their strip forward as a loop, 4 to 8 frames a second over the video's length. The position
@@ -205,7 +206,7 @@ function renderChat() {
                 const b = button('phone-quiet', approve ? t('Start', '开始') : t('Cancel', '取消'), async () => {
                     const version = revision, session = chat.session; row.querySelectorAll('button').forEach(e => e.disabled = true);
                     try { const answer = await json(await dataLayer.confirm({id: entry.id, approve, ...(session ? {session} : {})})); if (revision === version) { chat.confirms[entry.id] = answer.state; renderChat(); } await poller.poll(); }
-                    catch { row.querySelectorAll('button').forEach(e => e.disabled = false); notice(t('Please try again.', '请重试。')); }
+                    catch (error) { row.querySelectorAll('button').forEach(e => e.disabled = false); notice(phoneFailure(error, t, approve ? ['start', '开始'] : ['cancel', '取消'])); }
                 }); row.append(b);
             }
         } else continue;
@@ -276,7 +277,7 @@ function openResult(job) {
     const download = button('phone-primary', t('Download', '下载'), async () => {
         download.disabled = true; error.hidden = true;
         try { await saveVideo(job, {fetch: api.fetchApi, download(path, filename) { const a = el('a'); a.href = path; a.download = filename; document.body.append(a); a.click(); a.remove(); }}); }
-        catch { error.textContent = t('Please try again.', '请重试。'); error.hidden = false; }
+        catch (failure) { error.textContent = phoneFailure(failure, t, ['download', '下载']); error.hidden = false; }
         finally { download.disabled = false; }
     });
     actions.append(el('p', 'phone-prompt', job.label), download, error); viewer.append(stage, actions); renderShell();

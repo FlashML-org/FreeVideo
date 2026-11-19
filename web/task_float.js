@@ -5,7 +5,7 @@
 import { isNetworkTypeError, connectionLostText } from './browser_extension.js';
 import { api } from '../../scripts/api.js';
 import { app } from '../../scripts/app.js';
-import { jobs, imageSource, progressSource, chainSource, queueSource, ACTIVE, FINAL } from './task_store.js';
+import { jobs, imageSource, progressSource, chainSource, queueSource, journalSource, ACTIVE, FINAL } from './task_store.js';
 import { createImageGenClient, imageGenError, imageReportBar } from './image_generation.js';
 import { saveGeneratedImage } from './image_library.js';
 
@@ -54,6 +54,8 @@ export function startJobSources() {
     }).catch(() => {});
     chainSource(jobs, {fetchJson: async path => { const response = await api.fetchApi(path, {cache: 'no-store'}); if (!response.ok) throw new Error('chains'); return response.json(); },
         cancel: row => api.fetchApi(`/freevideo/chain/${encodeURIComponent(row.id.slice('chain:'.length))}/cancel`, post({})).then(sent)});
+    // Jobs that ended while this page was closed or the engine restarted, from the server's own record.
+    journalSource(jobs, {storage, fetchJson: async path => { const response = await api.fetchApi(path, {cache: 'no-store'}); if (!response.ok) throw new Error('jobs'); return response.json(); }});
     // A finished picture is filed by the store, not by the page that started it, so it lands even with that page closed.
     // (Until the engine files it itself, a tab closed mid-run still misses the card; the picture is in the history.)
     // Two tabs of the same page both follow a picture started in one of them; only the first to see it end files it.

@@ -1814,7 +1814,7 @@ class Installer:
                     elif folder.exists():
                         command.append('--clear')
                     try:
-                        return self.packages(label + '-venv', [*command, folder])
+                        return self.packages(label + '-venv', [*command, folder], wait_busy=False)
                     except RuntimeError as error:
                         # Another program (usually security software scanning the
                         # Python file just unpacked) held it open while uv copied it.
@@ -2007,11 +2007,23 @@ class Installer:
             if active:
                 self.ui.event('progress', key=key, label='Download', detail='', state='complete')
 
-    def packages(self, label, args, family='pypi'):
-        with self.download_notice('download-patient-' + label) as notice:
-            return network.package_command(self.network, family,
-                lambda env, source: self.command(label if source == 'official' else label + '-' + source, args, env=env),
-                self.env, notice=notice)
+    def packages(self, label, args, family='pypi', *, wait_busy=True):
+        from .failure_details import file_in_use
+        for wait in (*ENVIRONMENT_BUSY_WAITS, None):
+            try:
+                with self.download_notice('download-patient-' + label) as notice:
+                    return network.package_command(self.network, family,
+                        lambda env, source: self.command(label if source == 'official' else label + '-' + source, args, env=env),
+                        self.env, notice=notice)
+            except RuntimeError as error:
+                # Security software or an indexer can hold a file uv has just
+                # written or is about to run (the build environment's Python).
+                # No other download source helps; the file is free again shortly.
+                if wait is None or not wait_busy or not file_in_use(error) or self.cancel.is_set():
+                    raise
+                self.ui.write('A file is in use by another program; trying again in %d s.\n' % wait)
+                if self.cancel.wait(wait):
+                    raise
 
     def python_sources(self, names):
         """The GitHub mirror refuses the Python runtime files, so it is tried after a mirror that serves them."""
@@ -2646,11 +2658,23 @@ def install_image_model(engine_root, model_root):
     try:
         image_pack.install(Path(model_root), progress, engine_root=Path(engine_root))
     except image_pack.PackError as error:
-        print('The image model was not downloaded (%s). Download it later from the launcher.' % error.reason, file=sys.stderr)
+        from .failure_details import IMAGE_PACK_FAILURES
+        reason = IMAGE_PACK_FAILURES.get(error.reason, IMAGE_PACK_FAILURES['failed'])[0]
+        print('The image model was not downloaded: %s The video model is ready; download the image model later from '
+              'the launcher.' % reason, file=sys.stderr)
     except (OSError, ValueError, RuntimeError) as error:
-        print('The image model was not downloaded (%s). Download it later from the launcher.' % type(error).__name__, file=sys.stderr)
+        print('The image model was not downloaded: %s The video model is ready; download the image model later from '
+              'the launcher.' % (str(error).strip() or type(error).__name__), file=sys.stderr)
     else:
         print('Image model ready.')
+
+
+def report_hint():
+    """How to report a failed command-line setup: the report command and where to send it."""
+    from .launcher_issue import ISSUE_FORM
+    entry = '.\\freevideo.ps1 diagnose' if platform.system() == 'Windows' else './freevideo diagnose'
+    return ('To report it: run %s and attach the ZIP it saves to a new issue at %s\n'
+            '如需报告：请运行 %s，并将生成的 ZIP 附在 %s 的新问题中。' % (entry, ISSUE_FORM, entry, ISSUE_FORM))
 
 
 def run_main(argv, shown):
@@ -2786,7 +2810,9 @@ def run_main(argv, shown):
         return 1
     except (OSError, ValueError) as error:
         prepare_end(ui, False)
-        print('Setup could not start: ' + str(error), file=sys.stderr)
+        print('Setup could not start: %s\nCheck that the installation folder exists, is writable and has free space, '
+              'then run the same command again.\n%s' % (str(error).strip() or type(error).__name__, report_hint()),
+              file=sys.stderr)
         return 1
     def interrupted(signum, frame):
         raise KeyboardInterrupt('Setup interrupted by signal %s' % signum)
@@ -2828,8 +2854,9 @@ def run_main(argv, shown):
         print('\nSetup complete. Next: %s --root "%s"' % (entry, installer.root))
         return 0
     ui.event('failure', error=installer.state.get('resource_guard') or installer.state['error'])
-    print('\nSetup failed: %s\nAll files retained. Logs: %s\nRerun the same setup command to resume.' %
-          (installer.state.get('resource_guard') or installer.state['error'], installer.run_dir), file=sys.stderr)
+    print('\nSetup failed: %s\nAll files retained. Logs: %s\nRerun the same setup command to resume.\n%s' %
+          (installer.state.get('resource_guard') or installer.state['error'], installer.run_dir, report_hint()),
+          file=sys.stderr)
     return 1
 
 

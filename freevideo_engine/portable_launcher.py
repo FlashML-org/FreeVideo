@@ -6,7 +6,6 @@ import subprocess
 import time
 
 from . import component_licenses, launch_view, portable, processes
-from .comfy_launcher import Launcher
 from .comfy_launcher_runtime import Controller, local_url, loopback_url, matches_listener, matches_server, server_info
 from .monitoring import save
 from .long_paths import io_path, resolved, plain, plain_text
@@ -318,71 +317,6 @@ class PortableController(Controller):
         super().cancel()
         if self.child is not None:
             processes.stop(self.child)
-
-
-class PortableLauncher(Launcher):
-    def __init__(self, window, root):
-        self.bundle_root = Path(plain(resolved(root)))
-        self.consent_path = io_path(self.bundle_root)/'engine/portable-consent.json'
-        controller = PortableController(self.bundle_root)
-        super().__init__(window, controller.source, controller=controller)
-        self.loading_settings = True
-        for name, key in (('comfy', 'root'), ('engine', 'engine'), ('python', 'python'), ('url', 'url')):
-            getattr(self, name).set(controller.selection[key])
-        self.loading_settings = False
-        from .launcher_view import Card, Progress
-        from . import branding as b
-        self.bundle_progress = Card(self.pages[3], padding=b.space(4))
-        body = self.bundle_progress.body
-        self.ttk.Label(body, textvariable=self.phase, style='ProgressTitle.Card.TLabel', anchor='center').pack(fill='x')
-        self.overall_bar = Progress(body); self.overall_bar.pack(fill='x', pady=b.space(2))
-        self.ttk.Label(body, textvariable=self.overall_text, style='Meta.Card.TLabel', anchor='center').pack(fill='x')
-        self.bar = Progress(body, subdued=True); self.bar.pack(fill='x', pady=b.space(2))
-        self.ttk.Label(body, textvariable=self.details, style='Meta.Card.TLabel', wraplength=530).pack(fill='x')
-        self.ttk.Label(body, textvariable=self.current_text, style='Meta.Card.TLabel').pack(fill='x')
-        self.bundle_note = self.ttk.Label(self.pages[3], style='Meta.TLabel', wraplength=600, anchor='center')
-        self.bundle_note.pack(fill='x')
-        self.refresh()
-
-    def changed(self, *_):
-        if self.loading_settings:
-            return
-        self.queue_save()
-        if self.launch_selection and _ and _[0] in (str(self.url), str(self.lan_access)):
-            return  # The shared settings saver applies the connection change.
-        if not self.controller.busy:
-            self.controller.restore({'url': self.url.get(), 'lan_access': self.lan_access.get()})
-            self.launch_selection = dict(self.controller.selection)
-            self.reset_browser()
-            self.refresh()
-
-    def refresh(self):
-        self.wizard_step = 3
-        super().refresh()
-        self.back_button.configure(text=self.t('Settings', '设置'))
-        if not self.consent_path.exists() and not self.controller.busy:
-            self.primary.configure(text=self.t('Accept licenses & start', '同意许可证并启动'))
-        if hasattr(self, 'bundle_progress'):
-            if self.controller.busy:
-                self.bundle_progress.pack(fill='x', before=self.bundle_note)
-            else:
-                self.bundle_progress.pack_forget()
-            note = self.t('Python, ComfyUI and models are included.', '已包含 Python、ComfyUI 和模型。')
-            if not self.consent_path.exists():
-                note += '\n' + self.t('Licenses: models/edge/LICENSE', '许可证：models/edge/LICENSE')
-            self.bundle_note.configure(text=note)
-
-    def act(self):
-        if self.controller.busy:
-            return
-        if not self.consent_path.exists():
-            save(self.consent_path, dict(source_commit=self.controller.bundle['source_commit'], accepted_at=time.time()))
-        self.started = time.monotonic()
-        super().act()
-
-    def back(self):
-        self.show_options()
-
 
 
 def gui(root):
