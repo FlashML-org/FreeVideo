@@ -21,8 +21,10 @@ from .loras import ERRORS as LORA_ERRORS, MESSAGE_ZH as LORA_MESSAGE_ZH
 
 ERRORS = frozenset(('no_memory', 'small_memory', 'busy_video', 'busy', 'pack_missing', 'model_unavailable', 'model_unreadable',
                     'device_unavailable', 'worker_exit', 'timeout', 'cancelled', 'disk_full',
-                    'invalid_request', 'invalid_media', 'invalid_points', 'segment_not_installed', 'generation_failed')) | LORA_ERRORS
-NO_REPORT = frozenset(('small_memory', 'busy', 'invalid_request', 'invalid_media', 'invalid_points', 'segment_not_installed', 'cancelled',
+                    'invalid_request', 'invalid_prompt', 'invalid_dimensions', 'invalid_seed', 'too_many_images', 'output_unwritable',
+                    'invalid_media', 'invalid_points', 'segment_not_installed', 'generation_failed')) | LORA_ERRORS
+NO_REPORT = frozenset(('small_memory', 'busy', 'invalid_request', 'invalid_prompt', 'invalid_dimensions', 'invalid_seed',
+                       'too_many_images', 'output_unwritable', 'invalid_media', 'invalid_points', 'segment_not_installed', 'cancelled',
                        'disk_full')) | LORA_ERRORS
 STAGES = ('start', 'load', 'text', 'encode', 'denoise', 'decode')
 KINDS = ('generate', 'edit', 'cast', 'compose', 'download', 'install')
@@ -41,6 +43,11 @@ MESSAGE_ZH = {
     'disk_full': '保存图片时出错：磁盘空间不够，空出空间后再生成。',
     'generation_failed': '图像生成出错了，请再试一次。',
     'invalid_request': '图片设置有误，请调整后重试。',
+    'invalid_prompt': '提示词为空，或加上图片引用后超过 2000 字。请缩短提示词后重试。',
+    'invalid_dimensions': '图片尺寸超出所选模型支持的范围。请调整尺寸后重试。',
+    'invalid_seed': '随机种子无效。请清空种子或改用较小的整数后重试。',
+    'too_many_images': '参考图超过所选模型支持的数量。请减少参考图后重试。',
+    'output_unwritable': '无法写入保存图片的文件夹（ComfyUI 的 input 目录下的 freevideo-image）。请确认该目录存在、可写，且没有同名文件，然后重试。',
     'invalid_media': '图片无效，请重新选择输入目录中的图片。点选支持不超过 4096×4096 像素总数的图片。',
     'invalid_points': '请选择 1–16 个图片范围内的点，且至少有一个选中点；1 为选中，0 为排除。',
     'segment_not_installed': '点选模型未安装，请先下载点选模型（SAM 2.1 small）。',

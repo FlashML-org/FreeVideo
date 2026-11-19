@@ -21,11 +21,12 @@ import { keepViewSwitchPlace } from './view_switch_place.js';
 import { openReferenceMenu, removeSavedImages } from './image_library.js';
 import { BLANK_CANVAS_AREAS, createImageGenClient, fittedNote, imageGenError, imageRemainingText, imageReportBar, renderImageFailure } from './image_generation.js';
 import { duration } from './generation_progress.js';
+import { randomSeed } from './studio_queue.js';
 import { createPreviewScene } from './preview_scene.js?v=20261115-still';
 import { jobs, ACTIVE, IMAGE_BUSY } from './task_store.js';
 import { confirmStop, startJobSources } from './task_float.js';
 import { el, icon, t, cn, tip, button, section, readStore, writeStore, mod } from './image_view_ui.js';
-import { IMAGE_MODELS, modelPicker, modelState, verifyText } from './image_view_models.js';
+import { IMAGE_MODELS, modelPicker, modelState, verifyText, pausedText } from './image_view_models.js';
 import { RANGES, RATIOS, areaRange, estimateSeconds, machineLimit, presetAt, ratioValue, sizePicker, sizeFor, sizeText, megapixels } from './image_view_size.js';
 import { createMetaStore, createTrash, filterCounts, filterRows, groupRows, historyPanel, sessionPrompts } from './image_view_history.js';
 import { brokenMentions, mentionText, mentionsToEngine, posePrompt, promptMentions, renumberMentions, sketchPrompt } from './image_view_mentions.js';
@@ -76,14 +77,17 @@ export function createFakeImageClient({delay = 600, ready = {'minimax-h3-image':
     references = {'minimax-h3-image': 0, 'qwen-image-2.1-turbo': 4, 'moss-image-sft': 0}, history = [], install = {}, sizes = ['standard', 'high'], fitted = null, bytes = 12.5e9, rate = 5e6} = {}) {
     const items = history.map(row => typeof row === 'string' ? {file: row, name: row.slice(row.lastIndexOf('/') + 1)} : row); let count = 0;
     const jobs = new Map(), state = {...ready}; const loading = new Map(), failed = new Set(Object.keys(install).filter(id => install[id] === 'failed'));
+    // 'paused:<reason>' (busy_video, busy_picture, busy_engine): a download waiting for the card, until Continue.
+    const paused = new Map(Object.keys(install).filter(id => String(install[id]).startsWith('paused')).map(id => [id, install[id].split(':')[1] || 'busy_engine']));
     for (const id of Object.keys(install)) { if (install[id] !== 'ready') state[id] = false; if (install[id] === 'downloading') loading.set(id, Date.now() - bytes / rate * .4); }
     const models = () => IMAGE_MODELS.map(m => ({id: m.id, label: m.name, ready: !!state[m.id], downloading: loading.has(m.id), max_images: references[m.id] ?? 0,
         bytes_total: bytes, bytes_done: loading.has(m.id) ? Math.min(bytes, (Date.now() - loading.get(m.id)) * rate) : failed.has(m.id) ? bytes * .31 : 0,
         install: failed.has(m.id) ? {state: 'failed', done: bytes * .31, total: bytes, reason: 'network', message_en: 'The connection dropped.', message_zh: '网络连接中断了。'}
+            : paused.has(m.id) ? {state: 'paused_for_generation', done: bytes * .2, total: bytes, bytes_per_second: 0, reason: paused.get(m.id)}
             : loading.has(m.id) ? {state: 'running', done: Math.min(bytes, (Date.now() - loading.get(m.id)) * rate), total: bytes} : null}));
     return {
         info: async () => { for (const [id, at] of loading) if (Date.now() - at > bytes / rate) { state[id] = true; loading.delete(id); } return {installed: true, ready: true, max_images: 16, sizes, models: models()}; },
-        packInstall: async id => { failed.delete(id); loading.set(id, Date.now()); return {installed: true, sizes, models: models()}; },
+        packInstall: async id => { failed.delete(id); if (paused.delete(id)) loading.set(id, Date.now() - bytes / rate * .2); else loading.set(id, Date.now()); return {installed: true, sizes, models: models()}; },
         packCancel: async id => { loading.delete(id); return {installed: true, sizes, models: models()}; },
         async generate({prompt, width, height, seed, model, images = []}) {
             if (fail) throw Object.assign(new Error(fail), {code: fail});
@@ -336,8 +340,8 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     const advanced = {get open() { return advGroup.isOpen(); }, set open(value) { advGroup.open(!!value); }};
     const seedInput = el('input'); seedInput.type = 'number'; seedInput.min = '0'; seedInput.max = String(2 ** 53 - 1); seedInput.step = '1';
     seedInput.placeholder = t('New each run', '每次随机'); tip(seedInput, t('Seed', '种子'), t('Empty: new each time; a number repeats a picture', '留空每次不同；填数字可复现同一张'));
-    const dice = button('fv-iv-icon-btn', {iconName: 'dice', name: t('Random seed', '随机种子'), use: t('Back to a new seed each run', '恢复每次随机')});
-    dice.addEventListener('click', () => { seedInput.value = ''; render(); });
+    const dice = button('fv-iv-icon-btn', {iconName: 'dice', name: t('Random seed', '随机种子'), use: t('Fill in a random seed', '填入一个随机种子')});
+    dice.addEventListener('click', () => { seedInput.value = String(randomSeed()); render(); });
     seedInput.addEventListener('input', () => render());
     const seedField = el('label', 'fv-image-seed fv-iv-field fv-iv-field-wide'); seedField.append(el('span', 'fv-iv-field-key', t('Seed', '种子')), seedInput, dice);
     // LoRA: a button whose panel opens beside it; it answers for the model that takes LoRA files.
@@ -851,12 +855,12 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     }
     async function editReference(record) {
         if (record.sketch) { void drawSketch(record); return; }
-        let outcome;
+        let outcome, loadFailed = false;
         try {
-            const {openImageEditor} = await import('./image_editor.js');
+            const {openImageEditor} = await import('./image_editor.js').catch(error => { loadFailed = true; throw error; });
             outcome = await openImageEditor({source: record.original?.url || record.url, name: record.original?.file?.name || record.file?.name || 'reference.png', edit: record.edit || null,
                 role: 'reference', t, resolve: url => url, upload: async blob => client.upload(blob), imageGenClient: client});
-        } catch { say(t('This picture cannot be edited right now.', '这张图暂时无法编辑。')); return; }
+        } catch { say(loadFailed ? t('The image editor did not load. Reload the page and try again.', '图片编辑器没有加载出来。请刷新页面后再试。') : t('This picture could not be read. Choose another picture.', '这张图无法读取。请重新选择一张。')); return; }
         if (!alive || !outcome || !references.includes(record)) return;
         if (outcome.restore) { restoreReference(record); return; }
         if (!outcome.blob) return;
@@ -999,7 +1003,10 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', t('A picture named in the prompt was removed; choose it again with @', '描述里引用的参考图已移除，请用 @ 重新选择'))];
         }
         else if (s.state === 'failed') {
-            kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', [t(`${model.short} download failed.`, `${model.short} 下载失败。`), s.reason].filter(Boolean).join(' '))];
+            kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', t(`${model.short} download failed${s.reason ? ': ' + s.reason.replace(/[.。]$/, '') : ''}. Retry to continue; if it keeps failing, report the problem.`, `${model.short} 下载失败${s.reason ? '：' + s.reason.replace(/[.。]$/, '') : ''}。请重试以继续下载；仍然失败时，请提交问题。`))];
+        } else if (s.state === 'downloading' && s.paused) {
+            // What the download waits for, and that the model row's Continue download runs it now.
+            kind = 'info'; parts = [icon('clock'), el('span', 'fv-iv-slot-tx', t(`${model.short}: ${pausedText(s)}`, `${model.short}：${pausedText(s)}`))];
         } else if (s.state === 'downloading') {
             kind = 'info'; parts = [icon(s.unknown ? 'clock' : 'down'), el('span', 'fv-iv-slot-tx', s.verifying ? (pendingGenerate ? t(`Verifying ${model.short}; it generates when done`, `正在校验 ${model.short}，完成后自动生成`) : t(`Verifying ${model.short}`, `正在校验 ${model.short}`))
                 : pendingGenerate ? t(`Installing ${model.short}; it generates when done`, `正在安装 ${model.short}，完成后自动生成`) : t(`Installing ${model.short}`, `正在安装 ${model.short}`))];
@@ -1068,7 +1075,8 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             goLabel.textContent = t('Stop', '停止'); goSub.textContent = '';
             tip(go, t('Stop', '停止'), t('Cancel this picture; asks first', '取消这一张，会先确认'));
         } else if (s.state === 'downloading') {
-            goLabel.textContent = s.verifying ? verifyText(s) : t(`Installing ${Math.floor(s.fraction * 100)}%`, `正在安装 ${Math.floor(s.fraction * 100)}%`);
+            goLabel.textContent = s.verifying ? verifyText(s) : s.paused ? t(`Paused ${Math.floor(s.fraction * 100)}%`, `已暂停 ${Math.floor(s.fraction * 100)}%`)
+                : t(`Installing ${Math.floor(s.fraction * 100)}%`, `正在安装 ${Math.floor(s.fraction * 100)}%`);
             goSub.textContent = pendingGenerate ? t('then generates', '完成后生成') : '';
             tip(go, pendingGenerate ? t('Generates when installed', '安装完自动生成') : t('Generate when installed', '安装完再生成'), pendingGenerate ? t('Press to not generate after it', '再按一次取消自动生成') : t('Press to generate as soon as it is installed', '按下后，安装完成即自动生成'));
         } else if (s.state === 'missing' || s.state === 'failed') {
@@ -1294,7 +1302,16 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     // Installing from the page: the engine fetches the model; the page watches until it is ready, then generates if asked to.
     async function install() {
         const mine = model.id;
-        try { info = await client.packInstall(mine); } catch (error) { say(imageGenError(error.code, info, t)); return; }
+        try { info = await client.packInstall(mine); } catch (error) {
+            // A failed download says so in its own words; the generation sentences do not describe it.
+            say(error?.code === 'connection_lost'
+                ? t('The download did not start: FreeVideo could not be reached. Start FreeVideo again, then try again.', '下载没有开始：连不上 FreeVideo。请重新启动 FreeVideo 后再试。')
+                : error?.code === 'disk_full'
+                    ? t('The download did not start: the disk is full. Free some space, then download again.', '下载没有开始：磁盘空间不够。空出空间后再下载。')
+                : ['no_memory', 'pack_missing', 'model_unreadable'].includes(error?.code)
+                    ? t('The download did not start: ', '下载没有开始：') + imageGenError(error.code, info, t)
+                    : t('The download did not start. Try again; if it keeps failing, report the problem.', '下载没有开始。请重试；仍然失败请提交问题。')); return;
+        }
         render();
         while (alive && modelState(info, mine).state === 'downloading') {
             await new Promise(r => setTimeout(r, 1500)); try { info = await client.info(); } catch { /* asked again */ } render();
@@ -1432,7 +1449,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             if (!await confirmStop(go, {kind: 'image', queued: jobs.get(mine.id)?.status === 'queued'})) return;
             if (running !== mine) return;
             mine.cancelled = true;
-            if (mine.id) { try { await jobs.cancel(mine.id); } catch (error) { say(isNetworkTypeError(error) ? connectionLostText(t) : t('Could not stop. Try again.', '没有停止成功，请重试。')); } return; }
+            if (mine.id) { try { await jobs.cancel(mine.id); } catch (error) { say(isNetworkTypeError(error) ? connectionLostText(t) : t('Could not stop. Try again; if it keeps failing, report the problem.', '没有停止成功。请重试；仍然失败时，请提交问题。')); } return; }
             running = null; level.hidden = true; render(); drawWorks();
         }
     // ── end run ──
@@ -1487,11 +1504,11 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     // Crop, paint, add text, or change a part with AI in the image editor; the result comes back as Image 1 and into the library.
     async function editPicture(file) {
         if (!file) return;
-        let outcome;
+        let outcome, loadFailed = false;
         try {
-            const {openImageEditor} = await import('./image_editor.js');
+            const {openImageEditor} = await import('./image_editor.js').catch(error => { loadFailed = true; throw error; });
             outcome = await openImageEditor({source: file, name: file, role: 'reference', t, resolve: pictureURL, upload: async blob => client.upload(blob), imageGenClient: client});
-        } catch { say(t('This picture cannot be edited right now.', '这张图暂时无法编辑。')); return; }
+        } catch { say(loadFailed ? t('The image editor did not load. Reload the page and try again.', '图片编辑器没有加载出来。请刷新页面后再试。') : t('This picture could not be read. Choose another picture.', '这张图无法读取。请重新选择一张。')); return; }
         if (!alive || !outcome?.blob) return;
         try {
             const edited = new File([outcome.blob], outcome.name || 'edited.png', {type: outcome.blob.type || 'image/png'});
@@ -1501,7 +1518,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             const record = {file: edited, url: URL.createObjectURL(edited), width: outcome.width, height: outcome.height};
             if (references.length >= most()) URL.revokeObjectURL(record.url); else { changeRefs(() => references.unshift(record)); promptGroup.open(true); }
             render();
-        } catch { say(t('The edited picture could not be saved.', '编辑后的图片没能保存。')); }
+        } catch (error) { say(isNetworkTypeError(error) ? connectionLostText(t) : t('The edited picture could not be saved. Try again; if it keeps failing, report the problem.', '编辑后的图片没能保存。请重试；仍然失败时，请提交问题。')); }
     }
     asReference.addEventListener('click', () => void useAsReference(shownFile, false));
     // Opens downward when it fits inside the stage, otherwise upward over the picture.

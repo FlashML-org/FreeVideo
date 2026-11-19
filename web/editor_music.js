@@ -42,7 +42,7 @@ export function musicFailureText(reason, t) {
         out_of_memory: t('Not enough memory to generate the music. Close other programs that use the graphics card, then generate again.', '生成配乐时内存不足，请关闭其他占用显卡的程序后重新生成。'),
         unsupported: t('Music cannot be generated on this computer yet.', '这台电脑暂不能生成配乐。'),
         missing: t('Generation stopped. Generate again.', '生成已中断，请重新生成。'),
-    }[reason] || t('The music could not be generated. Generate again.', '无法生成配乐，请重新生成。');
+    }[reason] || t('The music could not be generated. Generate again; if it keeps failing, report the problem.', '无法生成配乐。请重新生成；仍然失败时，请提交问题。');
 }
 
 export function createEditorMusic({state, store, t, completeSources = async () => {}, onStatus = () => {}, clock = Date.now, random = Math.random}) {

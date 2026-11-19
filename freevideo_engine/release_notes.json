@@ -1,41 +1,71 @@
 {
   "schema": 1,
-  "product_version": "0.6.4",
+  "product_version": "0.6.5",
+  "important": true,
   "en": {
-    "summary": "Fixes the error MOSS-Image could end with when making a picture; Creations can upscale a video to 4K; first and last frames can be used together with reference pictures; failures explain more; and the Edit view and the launcher have several improvements.",
+    "summary": "Image model downloads no longer pause while the image view only warms a model; export supports 48 and 60 fps; pictures are also saved to the output folder; LoRA choice uses FreeVideo's own menu; and face close-ups and failure messages are improved.",
     "changes": [
-      "Images: MOSS-Image makes pictures again; in 0.6.3 it could end with an error instead; when memory is tight, H3 Image loads its model fresh instead of keeping it and then giving it back; while the engine is busy, a picture from Generate with AI in Edit image waits in line and starts once the previous job ends instead of being refused, and each retry uploads its reference pictures again.",
-      "Creations can upscale a finished 24 fps video by 1.5x or to 4K (3840 wide): the More menu offers it where this computer can generate that size and length, and the picture is kept while the video's own sound is used as it is.",
-      "Failures give the cause and next step, with the original text in the details: a reference video that cannot become depth, an unfinished assistant or Autopilot task, a failed start from the ComfyUI menu, a failed update, long-video failures, a redo or continue not starting, a delete in Creations blocked by a busy file, no permission or a full disk, and the command palette and phone connection; a failed save says Save failed with the server's words, or that the connection dropped; a narrow window shows the whole failure card; Report a problem on a failure card in the Image view looks like Retry.",
-      "Deletion and records are cleaner: deleting a picture for good also removes its prompt from the video prompt history, while a prompt another picture or video still uses stays; managed ComfyUI keeps no workflow drafts in the browser; and the record of finished jobs keeps only ids, short codes and times, never the error text.",
-      "Edit view generation bar: the frame pop-up shows the first-frame reference switch and saves it with the edit's own setting; choosing parts apart on the timeline no longer breaks the bar; on a narrow window Generate stays inside the bar instead of falling under the track toolbar; a blank edit takes the quality level chosen in the creation panel while the editor was away, and a saved edit or one with parts keeps its own.",
-      "Edit view timeline and panel: Ctrl+wheel zoom keeps the time under the pointer in place; with a part that is not generated yet selected, the side panel says it can be adjusted once generated; and a hidden editor no longer reads its import list every 2 seconds, reading it at once when shown again.",
-      "Settings improvements: a model folder that was not found is shown on one line at any width, its start giving way with an ellipsis and its last folder whole, and a copy takes the whole path; a save that fails after Settings was closed is shown as a failure notice with a way back to that setting.",
-      "Launcher and installation: the release-notes button under the notes in the update window wraps at the window's width; the desktop shortcut of a source installation starts the launcher directly; failures in the launcher, installation, downloads and the offline package state the cause, the next step and how to report them; and when another program holds a file that an update or a package installation needs, FreeVideo waits and installs again before reporting an error.",
-      "Creations and menus: Creations opened over a view keeps the keyboard after its opening fade, so Escape and the arrows work at once; the Info item of a creation's menu shows an information mark instead of the warning triangle; and the undo bar and the selection bar at the bottom of Creations are fully opaque, so thumbnails no longer show through at phone width.",
-      "At phone width: an attached picture's remove button in Autopilot keeps its corner size, so tapping a picture that failed to upload retries it instead of removing it; and the phone connection panel sits right below its button, aligned to its right edge and at least 8 pixels from the screen edge.",
-      "Tutorial improvements: after Get started on the featured example the caret is in the Autopilot box, also when the box turns on a moment after the view opens; the System status steps and pictures follow the top bar's status and its Run status panel; and the tutorial book's pictures and text follow the redesigned panels, with Edit view pictures matching the borrowed generation bar, continuing a part adding pictures from Media, and the save-frame notice naming Works.",
-      "First, last and middle frames work together with reference pictures and videos: one generation can use keyframes and references at the same time, and the guide and the tutorial book say so; length and time estimates count each keyframe as one canvas of the size being made."
+      "Image models: a download no longer pauses as if a video were generating when the image view only keeps or warms a model, a paused download says why, and Continue download starts it at once; a model folder or its files may be symbolic links (junctions on Windows) to another drive; a link that leads nowhere or to a damaged or different file says why and what to do next, and only that model fails; MOSS-Image warms up from its own files and renders normally on Windows with less than 24 GB of video memory; and when opened from ComfyUI, H3 Image allocates GPU memory as video generation does.",
+      "Export at 48 or 60 fps: Frame rate in the Export window now offers 48 and 60, with the frames in between made on the graphics card, cuts and still frames kept as they are and the sound copied unchanged; a full disk is reported as a full disk, and plainly too little space is said before the graphics card starts.",
+      "Face pictures of a character after a change of clothes: a Face picture framed too wide is redrawn larger once, a repaint that kept the old clothes is tried again, and when no face box is found the clothes are repainted inside a fixed area.",
+      "Pictures and seeds: each picture made or imported is also copied into the output folder as a file of its own, removed when the picture is deleted for good and switchable off in Settings; the dice next to Seed in the Image view fills in a random seed, and an empty Seed still draws a new one each time.",
+      "Choosing a LoRA: the LoRA choice opens FreeVideo's own menu, where a long list scrolls, typing filters it, LoRAs are grouped by folder and the keyboard works, in the dark and light themes and in narrow windows.",
+      "Failures say why and what to do next, continued: in the Edit view, the Image view, the Create panel, the generation progress card and notifications a failure states the cause and the next step and offers Report a problem, never a raw failure code; an engine stop, a failed model download and a video closed from its history name their reason, and a full disk during a download is named; a LoRA that stores one alpha for layers of different ranks is marked unusable before generation with the reason; an out-of-range picture setting is named.",
+      "Report a problem: for a known failure with a clear fix, that fix is shown first and the report can still be sent after it; the issue text the launcher fills in starts with the display adapter model for every kind of error.",
+      "Edit view subtitles: when the subtitle track holds only an empty line just added, Auto subtitles places the lines it heard without saying they replaced the subtitles there; when the lines there have words, the notice and its Undo are as before."
     ]
   },
   "zh": {
-    "summary": "修复 MOSS-Image 出图报错；作品库可将视频放大到 4K，首帧、尾帧可与参考图同用，失败说明更完整，剪辑视图与启动器多项改进。",
+    "summary": "图像模型下载不再在预热时误停；导出支持 48 和 60 fps；图片同时保存到 output 文件夹；LoRA 选择改用 FreeVideo 自己的菜单，脸部特写与失败说明更完善。",
     "changes": [
-      "图像：修复 0.6.3 中 MOSS-Image 出图时报错的问题；内存紧张时，H3 Image 直接重新载入模型，不再先保留、随后又释放；引擎忙时，编辑图片中的 AI 生成排队等候，前一项完成后自动开始，不再直接拒绝，每次重试都重新上传参考图。",
-      "已完成的 24 fps 视频可在作品库放大 1.5 倍或放大到 4K（3840 宽）：本机能生成该尺寸与时长时，“更多”菜单提供这一项；画面保留，视频原有的声音照原样使用。",
-      "失败时说明原因和下一步（续），原文保留在详情中：仅深度参考视频无法转成深度、助手或 AI 全自动任务未完成、从 ComfyUI 菜单打开失败、更新失败、长视频失败、重做或续接未开始、作品库删除遇到文件占用、无权限或磁盘已满，以及命令面板和手机连接；保存失败写“保存失败”并接服务器原话，连接断开时直接说明；窄窗口里画面上的失败卡完整显示；图像视图失败卡上的“提交问题”与“重试”样式一致。",
-      "删除与记录更干净：彻底删除图片时，它的提示词也从视频提示词历史中清除；其他图片或视频仍在使用的提示词保留；受管理的 ComfyUI 不再在浏览器中保存工作流草稿；已完成任务的记录只保留编号、短代码和时间，不含错误文本。",
-      "剪辑视图的生成栏：帧弹层中显示首帧参考开关，并按所编辑的这一段自己的设置保存；在时间线上分开选取多段时，生成栏不再失效；窄窗下“生成”保持在栏内，不再落到轨道工具栏之下；空白的剪辑沿用离开期间创作面板所选的质量，已保存或已有分段的剪辑保留自己的质量。",
-      "剪辑视图的时间线与面板：Ctrl+滚轮缩放时，指针下的时间点保持不动；未生成的分段被选中时，右侧面板说明“生成后可调整”；暂时离开的剪辑视图不再每 2 秒读取导入列表，回来时立即读取。",
-      "设置改进：找不到的模型文件夹在任何宽度下显示为一行，开头以省略号让位、末级文件夹完整，复制时取完整路径；设置关闭后才失败的保存会以失败提示显示，并可一键回到该设置。",
-      "启动器与安装：更新窗口中说明下方的按钮按窗口宽度换行；源码安装的桌面快捷方式直接打开启动器；启动器、安装、下载与离线包的失败写明原因、下一步和报告方式；更新或安装软件包时遇其他程序占用文件，会等待并重新安装，再报告错误。",
-      "作品库与菜单：在其他视图上方打开作品库后，淡入结束即获得键盘焦点，Esc 与方向键立即可用；“作品”菜单中的“信息”项显示信息图标，不再显示警告三角；作品库底部的撤销条和“已选”操作条完全不透明，手机宽度下不再透出缩略图。",
-      "手机宽度的显示：AI 全自动中附加图片的移除按钮保持原有角标大小，点按上传失败的图片时是重试，而不是移除；手机连接面板在入口正下方、右边对齐，离屏幕边至少 8 像素。",
-      "教程改进：精选示例点“开始使用”后，光标位于 AI 全自动输入框，输入框稍后才打开时也一样；“运行状态”教程的步骤与图片跟随顶栏状态及其运行状态面板；教程书的图文跟随改版后的面板，剪辑视图的图片对应借用的生成栏，续接一段时从“素材”添加图片，保存帧的提示写明“作品库”。",
-      "首帧、尾帧与中间帧可与参考图、参考视频同用：同一次生成中可以同时使用关键帧和参考图、参考视频，使用说明与教程书已相应更新；长度与时间估算按每个关键帧一张同尺寸画布计算。"
+      "图像模型：图像视图只是预热或保留模型时，图像模型下载不再以“视频生成中”暂停，暂停时写明实际原因，可用“继续下载”立即开始；模型文件夹、其子文件夹或模型文件通过符号链接（Windows 上也可用目录联接）放在其他磁盘时照常使用，链接失效或指向损坏、不同的文件时说明原因和下一步，图片页只把该模型标为出错；MOSS-Image 预热只读取自己的模型文件，Windows 上显存小于 24 GB 时可以正常出图；由 ComfyUI 打开时，H3 Image 使用与视频生成相同的显存分配方式。",
+      "导出 48 或 60 fps：导出窗口的“帧率”新增 48 和 60，中间帧在显卡上补出，剪切处和静止画面保持原样，声音原样复制；磁盘写满时直接说明磁盘已满，空间明显不足时在显卡开始工作前就会提示。",
+      "角色更换服装后的脸部特写：脸部特写取景过宽时放大重画一次；重画后仍是原来的衣服时自动重试；识别不到脸部位置时，在固定区域内重画衣服。",
+      "图片保存与种子：生成或导入的图片同时复制一份到 output 文件夹，副本是独立文件，图片永久删除时一并删除，可在设置中关闭；图像视图种子旁的骰子会填入一个随机种子，留空时仍每次随机。",
+      "LoRA 选择：选择 LoRA 时打开 FreeVideo 自己的菜单，长列表可以滚动，输入文字即可筛选，按文件夹分组，可用键盘操作，深色、浅色主题和窄窗口下都能正常使用。",
+      "失败时说明原因和下一步（续）：剪辑视图、图像视图、创作面板、生成进度卡片和通知中的失败都写明原因和下一步并可提交问题，不再显示原始错误代码；引擎停止、模型下载失败、从历史中关闭的视频也说明原因，下载时磁盘已满会直接说明；同一个 alpha 对应不同秩的 LoRA 在生成前即标为不可用并说明原因；图片设置超出范围时分别说明是哪一项。",
+      "提交问题：已知错误且已有明确建议时，先显示该建议，看完仍可继续提交；启动器预填的问题正文对各类错误都以显示适配器型号开头。",
+      "剪辑视图的字幕：字幕轨上只有刚添加的空字幕时，自动字幕直接写入识别结果，不再提示“识别出的字幕已替换原有字幕”；原有字幕带文字时，提示与“撤销”照旧。"
     ]
   },
   "history": [
+    {
+      "product_version": "0.6.4",
+      "en": {
+        "summary": "Fixes the error MOSS-Image could end with when making a picture; Creations can upscale a video to 4K; first and last frames can be used together with reference pictures; failures explain more; and the Edit view and the launcher have several improvements.",
+        "changes": [
+          "Images: MOSS-Image makes pictures again; in 0.6.3 it could end with an error instead; when memory is tight, H3 Image loads its model fresh instead of keeping it and then giving it back; while the engine is busy, a picture from Generate with AI in Edit image waits in line and starts once the previous job ends instead of being refused, and each retry uploads its reference pictures again.",
+          "Creations can upscale a finished 24 fps video by 1.5x or to 4K (3840 wide): the More menu offers it where this computer can generate that size and length, and the picture is kept while the video's own sound is used as it is.",
+          "Failures give the cause and next step, with the original text in the details: a reference video that cannot become depth, an unfinished assistant or Autopilot task, a failed start from the ComfyUI menu, a failed update, long-video failures, a redo or continue not starting, a delete in Creations blocked by a busy file, no permission or a full disk, and the command palette and phone connection; a failed save says Save failed with the server's words, or that the connection dropped; a narrow window shows the whole failure card; Report a problem on a failure card in the Image view looks like Retry.",
+          "Deletion and records are cleaner: deleting a picture for good also removes its prompt from the video prompt history, while a prompt another picture or video still uses stays; managed ComfyUI keeps no workflow drafts in the browser; and the record of finished jobs keeps only ids, short codes and times, never the error text.",
+          "Edit view generation bar: the frame pop-up shows the first-frame reference switch and saves it with the edit's own setting; choosing parts apart on the timeline no longer breaks the bar; on a narrow window Generate stays inside the bar instead of falling under the track toolbar; a blank edit takes the quality level chosen in the creation panel while the editor was away, and a saved edit or one with parts keeps its own.",
+          "Edit view timeline and panel: Ctrl+wheel zoom keeps the time under the pointer in place; with a part that is not generated yet selected, the side panel says it can be adjusted once generated; and a hidden editor no longer reads its import list every 2 seconds, reading it at once when shown again.",
+          "Settings improvements: a model folder that was not found is shown on one line at any width, its start giving way with an ellipsis and its last folder whole, and a copy takes the whole path; a save that fails after Settings was closed is shown as a failure notice with a way back to that setting.",
+          "Launcher and installation: the release-notes button under the notes in the update window wraps at the window's width; the desktop shortcut of a source installation starts the launcher directly; failures in the launcher, installation, downloads and the offline package state the cause, the next step and how to report them; and when another program holds a file that an update or a package installation needs, FreeVideo waits and installs again before reporting an error.",
+          "Creations and menus: Creations opened over a view keeps the keyboard after its opening fade, so Escape and the arrows work at once; the Info item of a creation's menu shows an information mark instead of the warning triangle; and the undo bar and the selection bar at the bottom of Creations are fully opaque, so thumbnails no longer show through at phone width.",
+          "At phone width: an attached picture's remove button in Autopilot keeps its corner size, so tapping a picture that failed to upload retries it instead of removing it; and the phone connection panel sits right below its button, aligned to its right edge and at least 8 pixels from the screen edge.",
+          "Tutorial improvements: after Get started on the featured example the caret is in the Autopilot box, also when the box turns on a moment after the view opens; the System status steps and pictures follow the top bar's status and its Run status panel; and the tutorial book's pictures and text follow the redesigned panels, with Edit view pictures matching the borrowed generation bar, continuing a part adding pictures from Media, and the save-frame notice naming Works.",
+          "First, last and middle frames work together with reference pictures and videos: one generation can use keyframes and references at the same time, and the guide and the tutorial book say so; length and time estimates count each keyframe as one canvas of the size being made."
+        ]
+      },
+      "zh": {
+        "summary": "修复 MOSS-Image 出图报错；作品库可将视频放大到 4K，首帧、尾帧可与参考图同用，失败说明更完整，剪辑视图与启动器多项改进。",
+        "changes": [
+          "图像：修复 0.6.3 中 MOSS-Image 出图时报错的问题；内存紧张时，H3 Image 直接重新载入模型，不再先保留、随后又释放；引擎忙时，编辑图片中的 AI 生成排队等候，前一项完成后自动开始，不再直接拒绝，每次重试都重新上传参考图。",
+          "已完成的 24 fps 视频可在作品库放大 1.5 倍或放大到 4K（3840 宽）：本机能生成该尺寸与时长时，“更多”菜单提供这一项；画面保留，视频原有的声音照原样使用。",
+          "失败时说明原因和下一步（续），原文保留在详情中：仅深度参考视频无法转成深度、助手或 AI 全自动任务未完成、从 ComfyUI 菜单打开失败、更新失败、长视频失败、重做或续接未开始、作品库删除遇到文件占用、无权限或磁盘已满，以及命令面板和手机连接；保存失败写“保存失败”并接服务器原话，连接断开时直接说明；窄窗口里画面上的失败卡完整显示；图像视图失败卡上的“提交问题”与“重试”样式一致。",
+          "删除与记录更干净：彻底删除图片时，它的提示词也从视频提示词历史中清除；其他图片或视频仍在使用的提示词保留；受管理的 ComfyUI 不再在浏览器中保存工作流草稿；已完成任务的记录只保留编号、短代码和时间，不含错误文本。",
+          "剪辑视图的生成栏：帧弹层中显示首帧参考开关，并按所编辑的这一段自己的设置保存；在时间线上分开选取多段时，生成栏不再失效；窄窗下“生成”保持在栏内，不再落到轨道工具栏之下；空白的剪辑沿用离开期间创作面板所选的质量，已保存或已有分段的剪辑保留自己的质量。",
+          "剪辑视图的时间线与面板：Ctrl+滚轮缩放时，指针下的时间点保持不动；未生成的分段被选中时，右侧面板说明“生成后可调整”；暂时离开的剪辑视图不再每 2 秒读取导入列表，回来时立即读取。",
+          "设置改进：找不到的模型文件夹在任何宽度下显示为一行，开头以省略号让位、末级文件夹完整，复制时取完整路径；设置关闭后才失败的保存会以失败提示显示，并可一键回到该设置。",
+          "启动器与安装：更新窗口中说明下方的按钮按窗口宽度换行；源码安装的桌面快捷方式直接打开启动器；启动器、安装、下载与离线包的失败写明原因、下一步和报告方式；更新或安装软件包时遇其他程序占用文件，会等待并重新安装，再报告错误。",
+          "作品库与菜单：在其他视图上方打开作品库后，淡入结束即获得键盘焦点，Esc 与方向键立即可用；“作品”菜单中的“信息”项显示信息图标，不再显示警告三角；作品库底部的撤销条和“已选”操作条完全不透明，手机宽度下不再透出缩略图。",
+          "手机宽度的显示：AI 全自动中附加图片的移除按钮保持原有角标大小，点按上传失败的图片时是重试，而不是移除；手机连接面板在入口正下方、右边对齐，离屏幕边至少 8 像素。",
+          "教程改进：精选示例点“开始使用”后，光标位于 AI 全自动输入框，输入框稍后才打开时也一样；“运行状态”教程的步骤与图片跟随顶栏状态及其运行状态面板；教程书的图文跟随改版后的面板，剪辑视图的图片对应借用的生成栏，续接一段时从“素材”添加图片，保存帧的提示写明“作品库”。",
+          "首帧、尾帧与中间帧可与参考图、参考视频同用：同一次生成中可以同时使用关键帧和参考图、参考视频，使用说明与教程书已相应更新；长度与时间估算按每个关键帧一张同尺寸画布计算。"
+        ]
+      }
+    },
     {
       "product_version": "0.6.3",
       "en": {

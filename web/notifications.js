@@ -73,13 +73,20 @@ export function noteMatchesWorks(note, {ids = [], paths = []} = {}) {
 // A job that has just finished, failed or been cut off becomes one note. A job first seen already finished (the
 // page was closed while it ran) counts only when it finished in the last half hour.
 const NOTE_STATES = new Set(['done', 'failed', 'interrupted']);
+// A person-readable cause only: the raw code is never shown, so an unknown one gives nothing and the line says where to look.
+const reasonOf = failure => {
+    const code = failure?.code;
+    if (code === 'engine_closed') return words(['The engine was closed', '引擎已关闭']);
+    if (code === 'engine_restarted') return words(['The engine restarted', '引擎已重启']);
+    return '';
+};
 export function noteFromJob(row, previous, now = Date.now()) {
     if (!row || !NOTE_STATES.has(row.status)) return null;
     if (previous && previous.status === row.status) return null;
     if (!previous && (!row.finished_at || now - row.finished_at > LATE_MS)) return null;
     return {id: `job:${row.id}:${row.status}`, type: 'job', job: row.id, kind: row.kind || 'video', status: row.status, view: row.view || null,
         prompt: clean(row.meta?.text ?? row.prompt ?? '').slice(0, 140), file: row.result?.file || null, work: row.result?.id || row.result?.work || null, video: row.result?.video || null,
-        reason: clean(row.failure?.message || row.failure?.code || row.failure || ''), at: row.finished_at || now};
+        reason: reasonOf(row.failure), at: row.finished_at || now};
 }
 // The image models' install, between two reads of the image worker's info: a note when one finishes or fails.
 export function installChanges(before = {}, after = {}) {

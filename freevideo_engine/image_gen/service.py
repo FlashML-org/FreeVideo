@@ -23,6 +23,7 @@ import uuid
 from . import image_model, image_pack, keep, progress_model
 from .. import server_mode
 from .loras import ERRORS as LORA_ERRORS, resolve_selection
+from ..disk_space import ran_out
 from ..download_settings import observed_speed
 from ..exit_diagnostics import clean_reading
 from ..monitoring import save
@@ -92,6 +93,24 @@ QUEUE_POLL = .1
 QUEUE_LIMIT = 8
 INVALID_ERRORS = frozenset(('invalid_request', 'invalid_prompt', 'invalid_dimensions', 'invalid_seed',
                             'invalid_media', 'invalid_points', 'too_many_images')) | LORA_ERRORS
+
+
+def native_allocator(env):
+    """``env`` with CUDA's native caching allocator where ComfyUI had chosen the asynchronous one.
+
+    ComfyUI turns ``backend:cudaMallocAsync`` on in its own process and every child inherits it. The video worker
+    names its allocator itself; the picture worker did not, so its card memory was counted by an allocator the
+    placement plan was never measured with."""
+    selected = env.get('PYTORCH_ALLOC_CONF', env.get('PYTORCH_CUDA_ALLOC_CONF'))
+    if not selected or 'cudaMallocAsync' not in selected:
+        return env
+    options = ['backend:native' if option.strip() == 'backend:cudaMallocAsync' else option
+               for option in selected.split(',')]
+    if 'backend:native' not in options:
+        options.insert(0, 'backend:native')
+    value = ','.join(option for option in options if 'cudaMallocAsync' not in option)
+    env.update(PYTORCH_ALLOC_CONF=value, PYTORCH_CUDA_ALLOC_CONF=value)
+    return env
 
 
 def comfy_server():
@@ -268,18 +287,42 @@ class Service:
     def busy(self):
         return self._busy or self.segmenting
 
+    def lease_holder(self):
+        """What holds engine.lock in this process, for a model download deciding whether to wait: 'picture' while a
+        picture is made, 'idle' while the image worker only keeps or warms its model (its session holds the lock
+        for its whole life), None when this process's image worker does not hold it."""
+        with self.mutex:
+            worker = self.worker
+            if self.per_request or worker is None or worker.process.poll() is not None:
+                return None
+            return 'picture' if self._busy else 'idle'
+
+    @staticmethod
+    def pack_checked(call, *args, **kwargs):
+        """(value, problem): a model folder that cannot be read safely (a link leading nowhere) marks that model as
+        failed with the reason and the next step, instead of failing the whole page."""
+        try:
+            return call(*args, **kwargs), None
+        except image_pack.PackError as error:
+            from ..failure_details import image_pack_error_code, image_pack_failure
+            code = image_pack_error_code(error)
+            return None, dict(state='failed', done=0, total=0, bytes_per_second=0, reason=code,
+                              message_en=image_pack_failure(code)['detail'], message_zh=image_pack_failure(code, zh=True)['detail'])
+
     def info(self):
         engine_root, machine = self.installation()
         spec = image_pack.catalog()
-        ready = image_pack.ready(machine['model_root'])
-        downloading = not ready and image_pack.downloading(machine['model_root'], engine_root)
-        return dict(ready=ready, model=spec['repo'], models=self.model_rows(machine, ready, downloading),
-                    checking=not ready and image_pack.checking(machine['model_root']),
+        root = machine['model_root']
+        ready, problem = self.pack_checked(image_pack.ready, root)
+        ready = bool(ready)
+        downloading = not ready and not problem and bool(self.pack_checked(image_pack.downloading, root, engine_root)[0])
+        return dict(ready=ready, model=spec['repo'], models=self.model_rows(machine, ready, downloading, problem),
+                    checking=not ready and image_pack.checking(root),
                     downloading=downloading,
                     bytes=sum(row['bytes'] for row in spec['groups']['image']), busy=self.busy(),
-                    max_images=MAX_IMAGES, sizes=self.size_tiers(machine), install=self.pack_state(ready),
+                    max_images=MAX_IMAGES, sizes=self.size_tiers(machine), install=self.pack_state(ready, problem),
                     face_box=True,
-                    segment=dict(ready=image_pack.ready(machine['model_root'], group='segment'),
+                    segment=dict(ready=bool(self.pack_checked(image_pack.ready, root, group='segment')[0]),
                                  max_points=16, device='cpu',
                                  install=self.segment_installer.state() if self.segment_installer else None),
                     disk_free_bytes=self.disk_free(machine['model_root']),
@@ -287,17 +330,20 @@ class Service:
                     purposes=list(PURPOSES),
                     **({'unified_memory': True} if machine.get('device_backend') == 'mps' else {}))
 
-    def model_rows(self, machine, qwen_ready, qwen_downloading):
+    def model_rows(self, machine, qwen_ready, qwen_downloading, qwen_problem=None):
         """Both picture models for the page: installed, or being fetched with the bytes still to download."""
         root = machine['model_root']
         mac = sys.platform == 'darwin'
-        h3_ready = not mac and image_pack.ready(root, group=H3_GROUP)
-        h3_status = {} if h3_ready or mac else image_pack.status(root, group=H3_GROUP)
+        h3_ready, h3_problem = False, None
+        if not mac:
+            h3_ready, h3_problem = self.pack_checked(image_pack.ready, root, group=H3_GROUP)
+            h3_ready = bool(h3_ready)
+        h3_status = {} if h3_ready or mac or h3_problem else image_pack.status(root, group=H3_GROUP)
         installer = self.h3_installer
         h3_state = None if h3_ready or installer is None else installer.state()
         h3_active = h3_state is not None and h3_state['state'] in ('running', 'paused_for_generation')
-        qwen_state = None if qwen_ready else self.pack_state(False)
-        qwen_status = {} if qwen_ready else image_pack.status(root)
+        qwen_state = None if qwen_ready else self.pack_state(False, qwen_problem)
+        qwen_status = {} if qwen_ready or qwen_problem else image_pack.status(root)
         with self.mutex:
             waiting = list(self.pack_queue)
             active = self._active_pack()
@@ -311,7 +357,7 @@ class Service:
                      checking=bool(h3_status.get('checking')),
                      shared_bytes=sum(r['bytes'] for r in h3_rows if r.get('shared')),
                      blocked_by=active if active == image_model.QWEN and not h3_ready else None,
-                     install=None if mac else queued if image_model.H3 in waiting else self.pack_row(self.h3_installer, h3_ready))]
+                     install=None if mac else queued if image_model.H3 in waiting else self.pack_row(self.h3_installer, h3_ready, h3_problem))]
         if mac:
             rows[0]['unavailable_reason'] = 'platform'
         rows.append(dict(id=image_model.QWEN, label='Qwen-Image 2.1', available=True, ready=qwen_ready, max_images=MAX_IMAGES,
@@ -322,8 +368,9 @@ class Service:
                          shared_bytes=0,
                          blocked_by=active if active == image_model.H3 and not qwen_ready else None,
                          install=queued if image_model.QWEN in waiting else qwen_state))
-        moss_ready = image_pack.ready(root, group=MOSS_GROUP)
-        moss_status = {} if moss_ready else image_pack.status(root, group=MOSS_GROUP)
+        moss_ready, moss_problem = self.pack_checked(image_pack.ready, root, group=MOSS_GROUP)
+        moss_ready = bool(moss_ready)
+        moss_status = {} if moss_ready or moss_problem else image_pack.status(root, group=MOSS_GROUP)
         moss_state = None if moss_ready or self.moss_installer is None else self.moss_installer.state()
         moss_active = moss_state is not None and moss_state['state'] in ('running', 'paused_for_generation')
         moss_rows = image_pack.rows(group=MOSS_GROUP)
@@ -334,7 +381,7 @@ class Service:
                          bytes_needed=moss_status.get('remaining_bytes', 0), shared_bytes=0,
                          blocked_by=active if active not in (None, image_model.MOSS) and not moss_ready else None,
                          install=None if moss_ready else queued if image_model.MOSS in waiting
-                         else self.pack_row(self.moss_installer, moss_ready)))
+                         else self.pack_row(self.moss_installer, moss_ready, moss_problem)))
         if mac:
             rows[-1]['unavailable_reason'] = 'platform'
         return rows
@@ -393,21 +440,27 @@ class Service:
                 total = None
         return ['standard', 'high'] if total and total >= HIGH_SIZE_MIN_TOTAL else ['standard']
 
-    def pack_state(self, ready):
+    def pack_state(self, ready, problem=None):
         """Progress of the Qwen-Image download this page started, in both languages for a failure."""
-        return self.pack_row(self.pack_installer, ready)
+        return self.pack_row(self.pack_installer, ready, problem)
 
     @staticmethod
-    def pack_row(installer, ready):
-        """Progress of one picture-model download; a failure carries both languages and the report id."""
-        if ready or installer is None:
+    def pack_row(installer, ready, problem=None):
+        """Progress of one picture-model download; a failure carries both languages and the report id. A model
+        folder that cannot be read safely shows as that failure unless a download of it is under way."""
+        if ready:
             return None
+        if installer is None or problem and installer.state()['state'] not in ('running', 'paused_for_generation', 'failed'):
+            return problem
         from ..failure_details import image_pack_failure
         value = installer.state()
         row = dict(state=value['state'], done=value.get('done', 0), total=value.get('total', 0),
                    bytes_per_second=round(value.get('bytes_per_second', 0)),
                    **({'phase': 'verify', 'verify_done': value.get('verify_done'), 'verify_total': value.get('verify_total')}
                       if value.get('phase') == 'verify' else {}))
+        if value['state'] == 'paused_for_generation':
+            # What it waits for, in the page's own words: a video, a picture, or another task on the card.
+            row['reason'] = value.get('reason') or 'busy_engine'
         if value['state'] == 'failed':
             row.update(reason=value.get('reason'), message_en=image_pack_failure(value.get('reason'))['detail'],
                        message_zh=image_pack_failure(value.get('reason'), zh=True)['detail'])
@@ -420,13 +473,14 @@ class Service:
         installer = getattr(self, attribute)
         if installer is None or installer.root != root or installer.engine_root != engine_root:
             options = dict(group=self.model_group(model)) if model != image_model.QWEN else {}
-            installer = image_pack.Installer(root, engine_root=engine_root, busy=self.video_busy, **options)
+            installer = image_pack.Installer(root, engine_root=engine_root, busy=self.video_busy, holder=self.lease_holder, **options)
             setattr(self, attribute, installer)
         return installer
 
     def _pack_ready(self, model, root):
+        """Not ready when its folder cannot be read safely either: the download then stops with the reason."""
         group = self.model_group(model)
-        return image_pack.ready(root, group=group) if group else image_pack.ready(root)
+        return bool(self.pack_checked(image_pack.ready, root, **({'group': group} if group else {}))[0])
 
     @staticmethod
     def model_group(model):
@@ -480,9 +534,12 @@ class Service:
                 if action == 'cancel':
                     if installer is not None:
                         installer.cancel()
-                elif not image_pack.ready(root, group=group) and not image_pack.downloading(root, engine_root):
+                elif installer is not None and installer.state()['state'] == 'paused_for_generation':
+                    installer.continue_anyway()
+                elif (not self.pack_checked(image_pack.ready, root, group=group)[0]
+                      and not self.pack_checked(image_pack.downloading, root, engine_root)[0]):
                     if installer is None or installer.root != root or installer.engine_root != engine_root:
-                        installer = image_pack.Installer(root, engine_root=engine_root, busy=self.video_busy, group=group)
+                        installer = image_pack.Installer(root, engine_root=engine_root, busy=self.video_busy, holder=self.lease_holder, group=group)
                         self.segment_installer = installer
                     installer.start('install', background=True)
                 return self.info()
@@ -497,6 +554,9 @@ class Service:
                     installer.cancel()
             elif target in self.pack_queue:
                 pass
+            elif self._paused_installer(target) is not None:
+                # Asked again while it waits for the card: the user wants the download now, beside whatever runs.
+                self._paused_installer(target).continue_anyway()
             elif not self._pack_ready(target, root):
                 other = self._active_pack()
                 if other is not None and other != target:
@@ -507,6 +567,10 @@ class Service:
                 elif not image_pack.downloading(root, engine_root):
                     self._pack_installer(target, root, engine_root).start('install', background=True)
         return self.info()
+
+    def _paused_installer(self, target):
+        installer = {image_model.H3: self.h3_installer, image_model.MOSS: self.moss_installer}.get(target, self.pack_installer)
+        return installer if installer is not None and installer.state()['state'] == 'paused_for_generation' else None
 
     def media_path(self, name):
         """Shared input-name and symlink policy for generation and point selection."""
@@ -528,7 +592,11 @@ class Service:
         output = directory / 'freevideo-image'
         if output.is_symlink() or output.resolve().parent != directory:
             raise ValueError('invalid_media')
-        output.mkdir(exist_ok=True)
+        try:
+            output.mkdir(exist_ok=True)
+        except OSError as error:
+            # A full disk is its own answer; a missing, read-only or occupied folder is not a wrong setting.
+            raise ValueError('disk_full' if ran_out(error) else 'output_unwritable') from None
         return output
 
     def output_path(self, named=False, suffix='.jpg'):
@@ -542,6 +610,71 @@ class Service:
             if not any(os.path.lexists(output / (base + other)) for other in ('.jpg', '.png')):
                 return str(output / (base + suffix))
         raise ValueError('invalid_media')
+
+    def copy_directory(self):
+        """Where the copy of a finished picture goes: the output folder of ComfyUI, in a folder named like the one the
+        pictures are kept in. None when the user switched the copy off or no output folder is known."""
+        try:
+            from ..comfy_bridge import installation_root
+            from ..output_settings import read
+            if not read(installation_root())['image_copy']:
+                return None
+            output = Path(self.folders.get_output_directory()).resolve()
+        except Exception:
+            return None
+        directory = output / 'freevideo-image'
+        if directory.is_symlink() or (directory.exists() and not directory.is_dir()):
+            return None
+        return directory
+
+    def copy_to_output(self, path):
+        """Copy a finished picture into the output folder, as a file of its own (a link would let an edit there change
+        the picture the library keeps). It belongs to the picture: works_deleted removes it. A copy that fails never
+        fails the picture."""
+        try:
+            directory = self.copy_directory()
+            if directory is None:
+                return
+            source = Path(path)
+            target = directory / source.name
+            if source.is_symlink() or not source.is_file() or target.is_symlink():
+                return
+            directory.mkdir(exist_ok=True)
+            temporary = directory / ('.%s.%s.partial' % (source.name, uuid.uuid4().hex[:8]))
+            try:
+                shutil.copyfile(source, temporary)
+                os.replace(temporary, target)
+            finally:
+                temporary.unlink(missing_ok=True)
+        except Exception:
+            logging.warning('[FreeVideo] Could not copy a picture into the output folder.', exc_info=True)
+
+    def forget_copies(self, names):
+        """Remove the copies in the output folder of pictures deleted for good; only the plain file of that name."""
+        try:
+            directory = self.copy_directory_any()
+            if directory is None:
+                return
+            for name in names:
+                target = directory / name.rpartition('/')[2]
+                try:
+                    if target.parent == directory and not target.is_symlink() and target.is_file():
+                        target.unlink()
+                except OSError:
+                    logging.warning('[FreeVideo] Could not remove a picture copy in the output folder.', exc_info=True)
+        except Exception:
+            logging.warning('[FreeVideo] Could not remove the picture copies of deleted pictures.', exc_info=True)
+
+    def copy_directory_any(self):
+        """The copy folder whether or not copying is on now: a picture copied earlier is removed all the same."""
+        try:
+            output = Path(self.folders.get_output_directory()).resolve()
+        except Exception:
+            return None
+        directory = output / 'freevideo-image'
+        if directory.is_symlink() or not directory.is_dir():
+            return None
+        return directory
 
     @staticmethod
     def work_record(value, origin):
@@ -641,6 +774,7 @@ class Service:
             except (OSError, Image.DecompressionBombError, SyntaxError):
                 raise ValueError('invalid_media') from None
             self.note_record(target, record)
+            self.copy_to_output(target)
         finally:
             self.remove_uploads([name])
         return dict(file='freevideo-image/' + target.name, name=target.name)
@@ -764,6 +898,7 @@ class Service:
         names = [name for name in names if isinstance(name, str)]
         if not names:
             return
+        self.forget_copies(names)
         try:
             output = self.output_directory()
             rows = self.made_by(output)
@@ -1367,7 +1502,7 @@ class Service:
                 root, machine = self.installation()
             except (OSError, ValueError):
                 return skipped('pack_missing')
-            if not image_pack.ready(machine['model_root'], group=H3_GROUP if h3 else 'image'):
+            if not image_pack.ready(machine['model_root'], group=self.model_group(model) or 'image'):
                 return skipped('pack_missing')
             from .image_policy import UNIFIED_MIN_TOTAL
             unified = self.unified_total(machine)
@@ -1378,7 +1513,9 @@ class Service:
                 row['files'] = self.warm_files(machine)
                 row['place_encoder'] = self.h3_resident(machine)
             elif level == 'light':
-                row['files'] = self.qwen_files(machine)
+                row['files'] = self.model_files(machine, model)
+            elif model == image_model.MOSS:
+                pass    # a MOSS picture is not planned like Qwen's (no preflight): its warm-up is not either
             else:
                 try:
                     plan = self.preflight(machine, dict(images=[], width=1024, height=1024))
@@ -1479,13 +1616,26 @@ class Service:
                          stop=stop or self.session_stop)
 
     @staticmethod
-    def qwen_files(machine):
-        """The picture model's files to read ahead for a light warm-up of the default model."""
+    def group_files(machine, group):
         try:
-            rows = [image_pack.target(row, machine['model_root']) for row in image_pack.rows(group='image')]
+            rows = [image_pack.target(row, machine['model_root']) for row in image_pack.rows(group=group)]
         except Exception:
             return []
         return [str(item) for item in rows if Path(item).is_file()]
+
+    @classmethod
+    def qwen_files(cls, machine):
+        """The picture model's files to read ahead for a light warm-up of the default model."""
+        return cls.group_files(machine, 'image')
+
+    @classmethod
+    def model_files(cls, machine, model):
+        """The files to read ahead for a picture model: each model's own, from one table."""
+        if model == image_model.H3:
+            return cls.warm_files(machine)
+        if model == image_model.MOSS:
+            return cls.group_files(machine, MOSS_GROUP)
+        return cls.qwen_files(machine)
 
     @staticmethod
     def warm_files(machine):
@@ -2001,7 +2151,7 @@ class Service:
         for name in ('FREEVIDEO_RUNTIME_LOCK_FD', processes.HANDLE_ENV, resident_process.ENV,
                      'FREEVIDEO_PROMPT_PRESTART_WORKER'):
             env.pop(name, None)
-        return env
+        return native_allocator(env)
 
     def takes_video_room(self, machine, model):
         """Whether loading ``model`` now would give back what the kept video worker holds, as a picture session does
@@ -2506,6 +2656,7 @@ class Service:
                     self.keep_forecast(context)
                     self.note_model(path, value.get('model') or image_model.QWEN)
                     self.note_record(path, getattr(context, 'work_record', None))
+                    self.copy_to_output(path)
                     receipts = row.get('receipts')
                     from ..private_refs import hold
                     hold('image:' + path.name, value.get('images') or (), input_root=self.input_directory(),
@@ -2662,6 +2813,12 @@ def register():
             return web.json_response(dict(service.info(), token=token))
         except (OSError, ValueError):
             return web.json_response(dict(error='setup_required'), status=400)
+        except image_pack.PackError as error:
+            # Never an empty 500: the reason and the next step, in both languages.
+            from ..failure_details import image_pack_error_code, image_pack_failure
+            code = image_pack_error_code(error)
+            return web.json_response(dict(error=code, message_en=image_pack_failure(code)['detail'],
+                                          message_zh=image_pack_failure(code, zh=True)['detail']), status=409)
 
     @server.routes.get('/freevideo/image-gen/report/{report_id}')
     async def report(request):

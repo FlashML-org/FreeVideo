@@ -122,8 +122,11 @@ export function editorErrorText(value, t = en => en) {
     if (['timeout', 'timed_out', 'generation_timeout'].includes(code) || /timed?\s*out|timeout|超时/i.test(raw))
         return t(`${stage} timed out. Try again.`, `${stage}时等待超时，请再试一次。`);
     const received = raw || (/^[a-z_]+$/.test(code) ? '' : code);
-    return received ? t(`${generating} failed: ${received}`, `${generating}时出错：${received}`)
-        : t(`${generating} failed. Try again.`, `${generating}时出错，请再试一次。`);
+    if (received) return t(`${generating} failed: ${received}`, `${generating}时出错：${received}`);
+    // No readable text: say what the code names, and where the details are.
+    const named = /^[a-z_]+$/.test(code) ? code : '';
+    return t(`${generating} failed. Try again; if it keeps failing, download the report and report the problem.${named ? ` Error code: ${named}` : ''}`,
+        `${generating}时出错。请重试；仍然失败请下载报告并提交问题。${named ? `错误代码：${named}` : ''}`);
 }
 function exportErrorText(value, t) {
     if (isNetworkTypeError(value)) return connectionLostText(t);
@@ -290,7 +293,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         try {
             if (explainExport()) return;
             if (exportStatus?.state === 'done' && exportMatches()) { await actions.export(); return; }
-            const options = await openExportDialog({parent: element, state, sources: store.sources, t, onError: error});
+            const options = await openExportDialog({parent: element, state, sources: store.sources, t, onError: error, fps: exportFps});
             if (options && !disposed) await actions.export(options);
         } catch (value) { error(value, 'export'); }
     }, 'fv-primary fv-ed-export-main');
@@ -487,7 +490,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             if (said) out(said);
             return {ok: false, reason: code};
         }
-        const text = step === 'generate' ? editorErrorText(value, t) : step === 'export' ? exportErrorText(value, t) : t('Could not complete. Try again.', '没有完成，请重试');
+        const text = step === 'generate' ? editorErrorText(value, t) : step === 'export' ? exportErrorText(value, t) : isNetworkTypeError(value) ? connectionLostText(t) : t('This step did not finish. Try again; if it keeps failing, report the problem.', '这一步没有完成。请重试；仍然失败时，请提交问题。');
         out(text, step === 'export' ? EXPORT_ISSUE : EDITOR_ISSUE, failureKind(site, value)); return {ok: false, reason: code, say: text};
     }
     const store = createEditorStore(api, {t, notify, standIn: given?.generationStandIn, onGenerationChecking: () => { if (!disposed) settleService(); }, onGenerationReady: ready => {
@@ -712,7 +715,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     // Music on the second sound track goes through the same bar; the bar shows a chosen piece's own job.
     const music = createEditorMusic({state, store, t, completeSources, onStatus: () => genbar?.update(barValue)});
     // Dubbing lines of a stretch of speech.
-    let voiceReady = false, voiceInstallable = false;
+    let voiceReady = false, voiceInstallable = false, exportFps = false;
     const generatedSource = value => { const match = /^generated:(.+)$/.exec(String(value || '')); return match ? {kind: 'generated', id: match[1]} : null; };
     // Playing one line: the playhead goes to its start and the picture plays up to its end, then stops.
     let lineStop = null;
@@ -1744,6 +1747,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 if (['source_missing', 'missing_glyphs', 'MissingGlyphs'].includes(value.reason || value.code)) error(value, null, undefined, 'export');
                 else notify(value.reason === 'not_writable' ? t('Export failed: the output folder cannot be written to. Check that the folder can be written to, then retry.', '导出时出错：输出目录不可写。请检查这个文件夹的写入权限后重试。')
                     : value.reason === 'disk_full' ? t('Export failed: the disk is full. Free some space, then export again.', '导出时出错：磁盘空间不够，空出空间后再导出。')
+                    : value.reason === 'interp_download' ? t('Export failed: the model needed for 48/60 fps could not be downloaded. Check the connection and export again, or set the frame rate to 24.', '导出时出错：48/60 帧率需要的模型没能下载。请检查网络后重新导出，或把帧率改为 24。')
+                    : value.reason === 'interp_memory' ? t('Export failed: the graphics card did not have enough free memory for 48/60 fps. Export again after the current generation finishes, or set the frame rate to 24.', '导出时出错：显卡空闲显存不足，无法导出 48/60 帧率。请等当前生成结束后重新导出，或把帧率改为 24。')
                     : value.reason === 'unreadable' ? t('Export failed: a source file cannot be read. Import it again from the library.', '导出时出错：有素材读不出来，请在素材库重新导入。')
                     : t('Export failed. Try again.', '导出时出错，请再试一次。'), EXPORT_ISSUE, failureKind('export', value));
             }
@@ -1758,7 +1763,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         const found = await voiceFeatures(api);
         // An unanswered question changes nothing: the lines stay as they were, and a failed recognition says so.
         if (found.unknown) return voiceReady;
-        voiceReady = found.ready; voiceInstallable = found.install;
+        voiceReady = found.ready; voiceInstallable = found.install; exportFps = found.exportFps;
         if (!disposed) { voice.refresh(); narration.refresh(); if (found.install) voiceInstall.init(); genbar?.update(barValue); }
         return found.ready;
     }

@@ -68,8 +68,15 @@ class _Background:
         self.resume_at = None
         self.paused = False
         self.probed_at, self.probe_gap, self.busy_seen = None, 0., False
+        self.reason = None
 
     def generating(self):
+        """Why the download waits, or None. Only real work waits it: a video this process runs (generation_busy),
+        or a holder of engine.lock that is not known to be idle. This process's own image worker that only keeps or
+        warms its model (lease_idle) holds the lock without using the card for a picture, so the download goes on.
+        After the user asks to continue (resume_anyway), nothing waits it."""
+        if self.installer.resume_anyway.is_set():
+            return None
         if self.installer.generation_busy:
             if self.probed_at is None or time.monotonic() - self.probed_at >= self.probe_gap:
                 began = time.monotonic()
@@ -78,25 +85,27 @@ class _Background:
                 self.probe_gap = max(GENERATION_PROBE_SECONDS,
                                      GENERATION_PROBE_COST_FACTOR * (self.probed_at - began))
             if self.busy_seen:
-                return True
+                return 'busy_video'
         # Probe the existing lease exclusively, without borrowing an inherited
         # descriptor. This also detects shared device work. Release immediately:
         # downloads never hold engine.lock or delay a generation acquiring it.
-        # A holder is the only cross-process signal; non-generation holders also
-        # cause a conservative pause. In-process callers can supply busy().
         path = (Path(self.installer.engine_root) / 'engine.lock'
                 if self.installer.engine_root is not None else None)
         try:
             with runtime_lock(path, inherit=False):
-                return False
+                return None
         except BlockingIOError:
-            return True
+            holder = self.installer.lease_holder() if self.installer.lease_holder else None
+            if holder == 'idle':
+                return None
+            return 'busy_picture' if holder == 'picture' else 'busy_engine'
 
     def check(self):
         if self.stop.is_set():
             raise InterruptedError('cancelled')
-        if self.generating():
-            self.paused = True
+        reason = self.generating()
+        if reason:
+            self.paused, self.reason = True, reason
             self.resume_at = None
             raise _GenerationPause()
 
@@ -109,14 +118,14 @@ class _Background:
             else:
                 if self.paused and self.resume_at is None:
                     self.resume_at = time.monotonic() + GENERATION_RESUME_SECONDS
-                if not self.paused or time.monotonic() >= self.resume_at:
+                if not self.paused or time.monotonic() >= self.resume_at or self.installer.resume_anyway.is_set():
                     self.resume_at = None
                     self.paused = False
                     self.installer._set(state='running', reason=None)
                     return
             # Reached only after the active transfer has been reaped, or at an
             # in-process checkpoint, so paused really means no active download.
-            self.installer._set(state='paused_for_generation', reason='busy_video')
+            self.installer._set(state='paused_for_generation', reason=self.reason or 'busy_engine')
             self.stop.wait(GENERATION_POLL_SECONDS)
 
 
@@ -205,16 +214,49 @@ def base(root=None):
     return Path(root).expanduser().absolute() / 'image_gen'
 
 
-def _path(folder, name):
-    """Refuse links at the pack root or below it, including partials/receipts."""
+def _linked(path):
+    """A symbolic link, or a Windows directory junction (which is_symlink() does not count)."""
+    if path.is_symlink():
+        return True
+    junction = getattr(path, 'is_junction', None)
+    return bool(junction and junction())
+
+
+def _follow(path):
+    """A link people use to keep the models on another drive must lead somewhere that exists."""
+    try:
+        path.resolve(strict=True)
+    except (OSError, RuntimeError) as error:
+        logging.warning('[FreeVideo] An image model link leads nowhere: %s', redacted_launcher_error(str(path)))
+        raise PackError('broken_link', link=str(path)) from error
+
+
+def _path(folder, name, *, kind='record'):
+    """Where `name` lives in the pack. People keep models on another drive with a link, so the pack folder, its
+    subfolders and the weights ('weight') may be links that lead to something that exists. A file FreeVideo writes
+    itself is never a link: a partial or source record ('beside') sits in its weight's folder wherever that is, and
+    any other record (receipts, ownership, the lock, logs, the notice) stays inside the pack folder itself.
+    Names never leave the pack: _relative refuses absolute paths and '..'."""
     relative = _relative(name)
     path = folder
-    if path.is_symlink():
-        raise PackError('unsafe_path')
-    for part in relative.parts:
+    if _linked(path):
+        _follow(path)
+    for index, part in enumerate(relative.parts):
         path /= part
-        if path.is_symlink():
-            raise PackError('unsafe_path')
+        if not _linked(path):
+            continue
+        if index == len(relative.parts) - 1 and kind != 'weight':
+            logging.warning('[FreeVideo] An image model record file is a link: %s', redacted_launcher_error(str(path)))
+            raise PackError('unsafe_path', link=str(path))
+        _follow(path)
+    if kind == 'record' and len(relative.parts) > 1:
+        try:
+            inside = path.parent.resolve().is_relative_to(folder.resolve())
+        except (OSError, RuntimeError):
+            inside = False
+        if not inside:
+            logging.warning('[FreeVideo] An image model record folder leads outside the pack: %s', redacted_launcher_error(str(path)))
+            raise PackError('unsafe_path', link=str(path.parent))
     return path
 
 
@@ -237,14 +279,14 @@ def shared_root(root=None):
 def target(row, root=None):
     if row.get('shared'):
         return shared_root(root) / _relative(row['file'])
-    return _path(base(root), row['file'])
+    return _path(base(root), row['file'], kind='weight')
 
 
 def _side(folder, row, root, suffix):
     """A partial or source record sits next to its file, also for a file outside the pack folder."""
     if row.get('shared'):
         return Path(str(target(row, root)) + suffix)
-    return _path(folder, row['file'] + suffix)
+    return _path(folder, row['file'] + suffix, kind='beside')
 
 
 def _read(folder, name):
@@ -768,6 +810,9 @@ def install(root=None, progress=None, check=None, *, engine_root=None, repair=Fa
                 check()
                 path = target(row, root)
                 if path.exists():
+                    if not row.get('shared') and _linked(path):
+                        # The user's link leads to a different file: neither the link nor that file is ours to replace.
+                        raise PackError('link_mismatch', link=str(path))
                     if not repair or row.get('shared'):
                         raise PackError('needs_repair')
                     approved = model_repair.replacement(path, row, model_repair.read(folder), set())
@@ -790,7 +835,7 @@ def install(root=None, progress=None, check=None, *, engine_root=None, repair=Fa
                 finally:
                     # Completed files and cancellable prefixes have separate identities.
                     for artifact in (partial, affinity):
-                        if not row.get('shared') and may_own[artifact] and _path(folder, artifact.relative_to(folder).as_posix()).is_file():
+                        if not row.get('shared') and may_own[artifact] and _path(folder, artifact.relative_to(folder).as_posix(), kind='beside').is_file():
                             _own(folder, owned, artifact)
                 ledger[str(path)] = provision.file_identity(path, row)
                 save(_path(folder, LEDGER), ledger)
@@ -812,24 +857,29 @@ def repair(root=None, progress=None, check=None, *, engine_root=None, group='ima
     return install(root, progress, check, engine_root=engine_root, repair=True, group=group)
 
 
+def _kinds(group):
+    """The files of a group FreeVideo may remove, by kind for _path: each weight and what resumes its download."""
+    kinds = {}
+    for row in rows(group=group):
+        if not row.get('shared'):
+            kinds.update({row['file']: 'weight', row['file'] + '.partial': 'beside', row['file'] + '.partial.source.json': 'beside'})
+    return kinds
+
+
 def removal_plan(root=None, *, group='image'):
     folder = base(root)
     owned = _read(folder, OWNERSHIP)
     notice = NOTICES[_notice_key(group)][0]
-    allowed = {notice}
-    for row in rows(group=group):
-        if not row.get('shared'):
-            allowed.update((row['file'], row['file'] + '.partial', row['file'] + '.partial.source.json'))
-    for name in allowed:
-        if name == notice:
-            continue
-        _path(folder, name)
+    kinds = _kinds(group)
+    allowed = {notice, *kinds}
+    for name in kinds:
+        _path(folder, name, kind=kinds[name])
     files, skipped = [], []
     for name, stamp in owned.items():
         if name not in allowed or not isinstance(stamp, dict):
             continue
         try:
-            path = _path(folder, name)
+            path = _path(folder, name, kind=kinds.get(name, 'record'))
         except PackError:
             if name != notice:
                 raise
@@ -837,7 +887,8 @@ def removal_plan(root=None, *, group='image'):
             continue
         if not path.exists():
             continue
-        if _owned_intact(path, stamp):
+        # A weight the user replaced with a link is theirs now: neither the link nor what it leads to is removed.
+        if not _linked(path) and _owned_intact(path, stamp):
             files.append(dict(file=name, identity=stamp, bytes=path.stat().st_size))
         else:
             skipped.append(name)
@@ -852,11 +903,12 @@ def remove(root=None, check=None, *, engine_root=None, group='image'):
             plan = removal_plan(root, group=group)
             owned, ledger = _read(folder, OWNERSHIP), _read(folder, LEDGER)
             released, removed = 0, []
+            kinds = _kinds(group)
             for entry in plan['files']:
                 check()
-                path = _path(folder, entry['file'])
+                path = _path(folder, entry['file'], kind=kinds.get(entry['file'], 'record'))
                 stamp = entry['identity']
-                if not _owned_intact(path, stamp):
+                if _linked(path) or not _owned_intact(path, stamp):
                     plan['skipped'].append(entry['file'])
                     continue
                 path.unlink()
@@ -873,10 +925,15 @@ def remove(root=None, check=None, *, engine_root=None, group='image'):
 
 class Installer:
     """One background action per pack; cancel keeps completed files and prefixes."""
-    def __init__(self, root=None, *, engine_root=None, busy=None, group='image'):
+    def __init__(self, root=None, *, engine_root=None, busy=None, group='image', holder=None):
         self.root, self.engine_root = root, engine_root
         self.group = group
+        # busy(): a video this process runs. holder(): what holds engine.lock in this process -- 'picture' (a picture
+        # is being made), 'idle' (the image worker only keeps or warms its model) or None (not this process).
         self.generation_busy = busy
+        self.lease_holder = holder
+        # Set when the user asks to continue a paused download: it then runs beside whatever holds the card.
+        self.resume_anyway = threading.Event()
         self.lock = threading.Lock()
         self.stop = threading.Event()
         self.thread = None
@@ -961,6 +1018,7 @@ class Installer:
             if self.busy:
                 return dict(self.value)
             self.stop = threading.Event()
+            self.resume_anyway.clear()
             self.background = background
             self.samples.clear()
             self.transferred, self.last_done = 0, None
@@ -975,6 +1033,11 @@ class Installer:
 
     def cancel(self):
         self.stop.set()
+        return self.state()
+
+    def continue_anyway(self):
+        """The user asked to go on with a paused download: it no longer waits for this run."""
+        self.resume_anyway.set()
         return self.state()
 
     def _run(self, action, stop, background):

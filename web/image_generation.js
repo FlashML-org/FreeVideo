@@ -205,8 +205,11 @@ export function packView(info, t) {
     const time = rate > 0 && left > 0 ? ' · ' + about(left / rate, t).replace(/^About/, 'about').replaceAll(' ', '\u00a0') : '';
     if (own) {
         const waiting = install.state === 'paused_for_generation';
-        return {loading: true, button: t('Pause', '暂停'), fraction: total > 0 ? Math.min(1, (install.done || 0) / total) : 0,
-            note: waiting ? t('Paused while a video generates', '视频生成中，已暂停')
+        // A paused download offers to continue now; the note says what it waits for.
+        return {loading: true, waiting, button: waiting ? t('Continue download', '继续下载') : t('Pause', '暂停'), fraction: total > 0 ? Math.min(1, (install.done || 0) / total) : 0,
+            note: waiting ? (install.reason === 'busy_video' ? t('Paused while a video generates', '视频生成中，已暂停')
+                : install.reason === 'busy_picture' ? t('Paused while a picture is made', '正在出图，已暂停')
+                : t('Paused while FreeVideo uses the graphics card for another task', 'FreeVideo 正在用显卡做别的任务，已暂停'))
                 : t(`Downloading · ${gb(install.done || 0)}\u00a0GB / ${size}${time}`, `正在下载 · ${gb(install.done || 0)}\u00a0GB / ${size}${time}`)};
     }
     const resume = install.state === 'failed' || install.state === 'cancelled' || install.done > 0;
@@ -235,10 +238,19 @@ export function imageGenError(code, info, t) {
         disk_full: ['Saving the image failed: the disk is full. Free some space, then generate again.', '保存图片时出错：磁盘空间不够，空出空间后再生成。'],
         cancelled: ['Image generation was cancelled.', '已取消图像生成。'],
         invalid_request: ['The image settings are invalid. Adjust them and try again.', '图片设置有误，请调整后重试。'],
+        invalid_prompt: ['The prompt is empty, or longer than 2,000 characters once the picture references are counted. Shorten it and try again.',
+            '提示词为空，或加上图片引用后超过 2000 字。请缩短提示词后重试。'],
+        invalid_dimensions: ['The image size is outside what the chosen model supports. Change the size and try again.', '图片尺寸超出所选模型支持的范围。请调整尺寸后重试。'],
+        invalid_seed: ['The seed is not valid. Clear it or use a smaller whole number, then try again.', '随机种子无效。请清空种子或改用较小的整数后重试。'],
+        too_many_images: ['There are more reference images than the chosen model supports. Remove some and try again.', '参考图超过所选模型支持的数量。请减少参考图后重试。'],
+        output_unwritable: ['The folder that keeps the pictures cannot be written (freevideo-image in the ComfyUI input folder). Check that it exists, is writable and has no file of the same name, then try again.',
+            '无法写入保存图片的文件夹（ComfyUI 的 input 目录下的 freevideo-image）。请确认该目录存在、可写，且没有同名文件，然后重试。'],
         invalid_media: ['The reference image cannot be read. Choose another image.', '参考图读不出来，请换一张图。'],
         reload: ['Image generation was interrupted. Try again.', '图片生成中途被打断，请重试。'],
         engine_error: ['The image engine returned an unreadable answer. Try again; if it keeps failing, report the problem.', '图像引擎返回了无法读取的结果。请重试；仍然失败请提交问题。'],
         connection_lost: ['Lost the connection to FreeVideo. Try again once it is back.', '与 FreeVideo 的连接已断开，恢复后请重试。'],
+        engine_closed: ['FreeVideo stopped answering while this picture was being made. Start FreeVideo again, then generate again.', '生成过程中 FreeVideo 停止了响应。重新启动 FreeVideo 后再生成一次。'],
+        engine_restarted: ['FreeVideo restarted while this picture was being made, so it did not finish. Generate it again.', 'FreeVideo 在生成过程中重新启动，这张图没有完成。请再生成一次。'],
         generation_failed: ['Image generation ran into an error. Try again.', '图像生成出错了，请再试一次。'],
         small_memory: ['This Mac has less than 16 GB of memory and cannot generate pictures.',
             '这台 Mac 的内存不足 16 GB，无法生成图片。'],
@@ -1100,7 +1112,7 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
         const note = el('div', '', 'fv-ie-opt-note fv-ie-gen-note'); note.setAttribute('role', 'status');
         const action = button(t('Generate', '生成'), null, () => {
             const now = session.state(), pack = !now.running && now.info && !now.info.installed ? packView(now.info, t) : null;
-            if (pack) void session.pack(pack.loading ? 'cancel' : 'install');
+            if (pack) void session.pack(pack.loading && !pack.waiting ? 'cancel' : 'install');
             else if (now.running) void stop(); else void start();
         }, 'fv-ie-button fv-ie-primary');
         // Stop asks first (the same glass confirm as everywhere); leaving the editor never stops the job.

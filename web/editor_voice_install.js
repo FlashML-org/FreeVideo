@@ -27,7 +27,7 @@ export function failureText(code, bytes, t) {
     switch (code) {
         case 'disk_space': return {report: true, text: t(`There is not enough disk space. The dubbing model needs about ${sizeText(bytes)}.`, `磁盘空间不足，配音模型需要约 ${sizeText(bytes)}。`)};
         case 'download_failed': case 'network': return {report: true, text: t('The dubbing model could not be downloaded. Check the connection and try again.', '配音模型下载失败，请检查网络后重试。')};
-        default: return {report: true, text: t('The dubbing model could not be installed. Try again.', '配音模型未能安装，请重试。')};
+        default: return {report: true, text: t('The dubbing model could not be installed. Try again; if it keeps failing, report the problem.', '配音模型未能安装。请重试；仍然失败时，请提交问题。')};
     }
 }
 

@@ -15,6 +15,8 @@ export function describeVerdict(verdict, t) {
     else if (verdict.reason === 'shape') reason = t('does not match the current model', '和当前模型的结构不匹配');
     else if (verdict.reason === 'acceleration') reason = t('an acceleration LoRA made for the original model. The FreeVideo model is already accelerated and does not need one',
         '这是为原版模型制作的加速 LoRA。FreeVideo 的模型已经加速，无需此类 LoRA');
+    else if (verdict.reason === 'alpha') reason = t('the file stores one alpha value but its layers have different ranks, so the scale of each layer cannot be determined',
+        '文件只记录了一个 alpha 值，而各层的 rank 不同，无法确定每层的缩放比例');
     // The model family it was made for stays out of the interface (it is in the report draft below).
     else reason = family ? t('made for another model', '这是为其他模型制作的 LoRA') : t('not made for the FreeVideo model', '不适用于 FreeVideo 的模型');
     const summary = verdict.summary || {};
@@ -24,6 +26,7 @@ export function describeVerdict(verdict, t) {
         lines.push(where + t(`expected ${size(verdict.expected)}, file has ${size(verdict.actual)}`, `期望 ${size(verdict.expected)}，文件是 ${size(verdict.actual)}`));
     }
     if (verdict.layer) lines.push(t('Layer: ', '层：') + verdict.layer);
+    if (Array.isArray(verdict.ranks) && verdict.ranks.length) lines.push(t('Ranks: ', 'Rank：') + verdict.ranks.join(', '));
     if (verdict.count > 1) lines.push(t(`${verdict.count} layers do not match`, `共 ${verdict.count} 层不匹配`));
     if (Number.isInteger(summary.keys)) lines.push(t(`${summary.keys} tensors`, `共 ${summary.keys} 个张量`));
     for (const [key, shape] of summary.first || []) lines.push(`${key}  ${size(shape)}`);
@@ -38,7 +41,7 @@ export function feedbackDraft(name, verdict, described, t = (en) => en) {
         `Check result: ${verdict.reason || 'unknown'}${verdict.family ? ` (${verdict.family})` : ''}${described ? `, ${described.reason}` : ''}`].join('\n');
     const summary = verdict.summary || {};
     const diagnostics = JSON.stringify({check: {reason: verdict.reason, family: verdict.family, layer: verdict.layer, block: verdict.block,
-        expected: verdict.expected, actual: verdict.actual, count: verdict.count},
+        expected: verdict.expected, actual: verdict.actual, count: verdict.count, ranks: verdict.ranks},
         header: {keys: summary.keys, first: summary.first, base: summary.base}});
     return {title: (t('[Feedback] LoRA compatibility misjudged: ', '[Feedback] LoRA 兼容判断有误：') + base).slice(0, 120), text, diagnostics};
 }

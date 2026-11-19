@@ -233,7 +233,7 @@ class Setup:
         root = installation_root(self.source)
         if value is None:
             return dict(read(root), available=available())
-        return dict(write(root, value.get('ten_bit')), available=available())
+        return dict(write(root, value.get('ten_bit'), value.get('image_copy')), available=available())
 
     def downloads(self, root=None):
         from .download_settings import read

@@ -43,6 +43,9 @@ DEPTH = row('depth-reference', ('Depth Anything V2 Small code and weights', 'Dep
 UPSCALE = row('frame-upscale', ('Real-ESRGAN realesr-general-x4v3 code and weights', 'Real-ESRGAN realesr-general-x4v3 代码和权重'),
               ('BSD 3-Clause License', 'BSD 三条款许可证'),
               'https://github.com/xinntao/Real-ESRGAN/blob/685d429c81888252bdb10f56c7754baededc3823/LICENSE')
+RIFE = row('frame-interpolation', ('RIFE frame interpolation code and weights', 'RIFE 补帧代码和权重'),
+           ('MIT License', 'MIT 许可证'),
+           'https://github.com/hzwer/Practical-RIFE/blob/bbfd2ea90910789a860ea3e2b32a240cd577b75e/LICENSE')
 
 
 def depth_license():
@@ -51,6 +54,10 @@ def depth_license():
 
 def upscale_license():
     return local(UPSCALE, HERE / 'licenses/Real-ESRGAN-BSD-3-Clause.txt')
+
+
+def rife_license():
+    return local(RIFE, HERE / 'licenses/Practical-RIFE-MIT.txt')
 # Libraries a runtime may carry, found by file name: versioned Windows names and Linux
 # lib*.so.* alike. A CUDA build of Torch counts for CUDA, so a runtime whose CUDA files
 # are named otherwise still lists it.
@@ -135,6 +142,9 @@ def bundle(root, value):
     if any(entry['path'].replace('\\', '/').endswith('freevideo_engine/frame_upscale.py')
            or entry['path'].endswith('realesr-general-x4v3.pth') for entry in value['files']):
         rows.append(upscale_license())
+    if any('freevideo_engine/rife/' in entry['path'].replace('\\', '/')
+           or entry['path'].endswith('rife_v4.25.safetensors') for entry in value['files']):
+        rows.append(rife_license())
     return rows
 
 

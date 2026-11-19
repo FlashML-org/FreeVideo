@@ -1,0 +1,12 @@
+{
+  "repo": "Comfy-Org/Frame-Interpolation",
+  "revision": "aa7009be4d1471ea0bac91d6fe4d7e4b637cbbfc",
+  "source_commit": "bbfd2ea90910789a860ea3e2b32a240cd577b75e",
+  "license": "MIT",
+  "modelscope": {"repo": "Comfy-Org/rife", "revision": "master"},
+  "files": [{
+    "file": "frame_interpolation/rife_v4.25.safetensors",
+    "bytes": 22674688,
+    "sha256": "1505884b9bdae956795430d2a70f7e2317b2abd8f130f8cfdb35a5759f909481"
+  }]
+}

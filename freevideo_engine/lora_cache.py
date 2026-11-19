@@ -20,7 +20,7 @@ import time
 from safetensors.torch import save_file
 import torch
 
-from .lora_names import INT8_UNMERGEABLE, MODULATION, _targets, adapter_keys, int8_skip_reason, resolve_target
+from .lora_names import INT8_UNMERGEABLE, MIXED_RANK_ALPHA, MODULATION, _targets, adapter_keys, int8_skip_reason, resolve_target
 from .tensor_io import open_tensors
 from .media_request import digest, verify_files
 from .monitoring import save
@@ -37,7 +37,7 @@ def index_adapter(row, targets, skipped=None):
             ranks = {source.get_slice(pair['A']).get_shape()[0] for pair in pairs.values() if 'A' in pair
                      and (row.get('alpha') is not None or 'alpha' not in pair)}
             if len(ranks) > 1:
-                raise ValueError('A global alpha cannot identify mixed-rank H3 scaling; provide per-target alpha tensors')
+                raise ValueError(MIXED_RANK_ALPHA + ' (ranks ' + ', '.join(map(str, sorted(ranks))) + ')')
         results = []
         for name, pair in pairs.items():
             if not {'A', 'B'} <= pair.keys():

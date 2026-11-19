@@ -5,7 +5,7 @@ import {detectBrowserExtension, browserExtensionAdvice, extensionSteps, isNetwor
 import {SAMPLING_EFFORTS, STEP_CACHES, UPSCALE_FACTORS, tableLevel} from './sampling_effort.js';
 import {failureIssue, failureStage} from './failure_issue.js';
 import {knownEngineExit} from './engine_exit.js';
-import {focusReportTip, reportIssue, showReportTip} from './report_issue.js';
+import {focusReportTip, hideReportTip, reportIssue, showReportTip} from './report_issue.js';
 import { skin } from './glass/library.js';
 const reports = new WeakSet();
 const captured = new WeakMap();
@@ -86,6 +86,11 @@ const PLAIN_ERRORS = [
         title: ['This LoRA cannot be used', '此 LoRA 无法使用'],
         summary: ['The FreeVideo model is already accelerated and does not need an acceleration LoRA. Turn this LoRA off or remove it, then generate again.',
             'FreeVideo 的模型已经加速，无需加速 LoRA。请关闭或移除此 LoRA 后重新生成。']},
+    {key: 'lora-alpha', message: 'This LoRA stores one alpha value for layers of different ranks, so its strength cannot be determined. Use a copy that stores an alpha for every layer, or one with the same rank on every layer.',
+        prefixes: ['This LoRA stores one alpha value for layers of different ranks'],
+        title: ['This LoRA cannot be used', '此 LoRA 无法使用'],
+        summary: ['This LoRA stores one alpha value, but its layers have different ranks, so the scale of each layer cannot be determined. Turn it off or remove it, then generate again, or use a version that stores an alpha for every layer.',
+            '此 LoRA 只记录了一个 alpha 值，而各层的 rank 不同，无法确定每层的缩放比例。请关闭或移除后重新生成，或换用每层都记录了 alpha 的版本。']},
     {key: 'lora-int8', message: 'This LoRA changes parts of the model that the int8 version cannot merge yet, so it cannot be used for now. LoRAs that change only linear layers work.',
         title: ['This LoRA cannot be used', '此 LoRA 无法使用'],
         summary: ['The int8 version cannot merge the layers this LoRA changes yet. Turn it off or remove it, then generate again.',
@@ -711,7 +716,7 @@ export function createErrorPanel(t, route = null) {
     const privacyInside = document.createElement('p'); privacyInside.className = 'fv-failure-privacy'; privacyInside.hidden = true;
     privacyInside.textContent = t('Paths and typed text are removed.', '已去掉路径和输入的文字。');
     const downloadStatus = document.createElement('p'); downloadStatus.setAttribute('role', 'status');
-    let currentReport = null, githubLora = false;
+    let currentReport = null, githubLora = false, knownAdvice = '', adviceShown = false;
     const disclosure = document.createElement('details'), summary = document.createElement('summary');
     disclosure.className = 'fv-failure-fold';
     const chevron = document.createElement('span'); chevron.className = 'fv-failure-chevron'; chevron.setAttribute('aria-hidden', 'true');
@@ -738,20 +743,31 @@ export function createErrorPanel(t, route = null) {
     // page at once (a page opened after waiting can be blocked as a pop-up).
     let issueModules = null;
     const loadIssueModules = () => import('./feedback.js').then(feedback => import('./updates.js').then(updates => { issueModules = {feedback, updates}; })).catch(() => {});
-    github.onclick = async () => {
-        if (!currentReport) return;
-        // A generation with a diagnostic report goes the report route: save it, then the tip opens the form.
-        if (route?.has() && diagnosticReports.has(currentReport) && !githubLora) {
-            if (focusReportTip(head)) return;
-            try { await route.download(); } catch { return; }
-            showReportTip(head, github, t, {mode: 'downloaded', submit: () => reportIssue(route.fetch, route.version(), {save: false})});
-            return;
-        }
+    const openFeedback = async () => {
         if (!issueModules) await loadIssueModules();
         if (!issueModules) return;
         const draft = failureIssue(currentReport, element.freevideoKind, {lora: githubLora, t, engineExit: knownEngineExit()});
         const url = issueModules.feedback.feedbackIssueURL(draft.text, issueModules.updates.productVersion(), draft.summary, draft.title);
         globalThis.open?.(url, '_blank', 'noopener');
+    };
+    github.onclick = async () => {
+        if (!currentReport) return;
+        // A known error that has its own advice shows it first, once per card; the way on stays one press away.
+        const lead = knownAdvice && !adviceShown ? knownAdvice : '';
+        if (lead) adviceShown = true;
+        if (lead && !(route?.has() && diagnosticReports.has(currentReport) && !githubLora)) {
+            if (!issueModules) await loadIssueModules();
+            showReportTip(head, github, t, {mode: 'advice', lead, proceed: openFeedback});
+            return;
+        }
+        // A generation with a diagnostic report goes the report route: save it, then the tip opens the form.
+        if (route?.has() && diagnosticReports.has(currentReport) && !githubLora) {
+            if (focusReportTip(head)) return;
+            try { await route.download(); } catch { return; }
+            showReportTip(head, github, t, {mode: 'downloaded', lead, submit: () => reportIssue(route.fetch, route.version(), {save: false})});
+            return;
+        }
+        await openFeedback();
     };
     download.onclick = () => {
         if (!currentReport) return;
@@ -791,6 +807,8 @@ export function createErrorPanel(t, route = null) {
         title.textContent = advice.title; explanation.textContent = advice.summary; explanation.hidden = !advice.summary; action.textContent = advice.action;
         element.querySelector('.fv-extension-steps')?.remove();
         if (advice.kind === 'browser-extension') action.after(extensionSteps(advice));
+        knownAdvice = advice.plain && PLAIN_ERRORS.some(error => error.key === advice.kind) ? advice.summary : ''; adviceShown = false;
+        hideReportTip(head);
         element.freevideoKind = advice.kind; reload.hidden = advice.kind !== 'browser-extension';
         if (advice.kind === 'fa4-update') {
             const command = 'freevideo setup --fa4-guard';
@@ -837,7 +855,7 @@ export function createErrorPanel(t, route = null) {
         copy.hidden = generated; copyInside.hidden = !generated; copyInside.textContent = copy.textContent;
         // For a generation failure the note on removed text sits in the technical details, beside the copy button.
         privacy.hidden = generated; privacyInside.hidden = !generated;
-        const lora = ['lora-unusable', 'lora-acceleration', 'lora-int8'].includes(advice.kind);
+        const lora = ['lora-unusable', 'lora-acceleration', 'lora-alpha', 'lora-int8'].includes(advice.kind);
         // An int8 limit is not a judgement, so there is no mistake to report.
         github.hidden = !generated || advice.kind === 'lora-int8'; githubLora = lora;
         github.textContent = lora ? t('Report a mistake', '报告误判') : t('Report a problem', '提交问题');

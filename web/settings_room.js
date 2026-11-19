@@ -18,7 +18,7 @@ import { setMonitorShown, onMonitorShown } from './monitor_panel.js';
 import { preloadMode, setPreloadMode, onPreload } from './preload_setting.js';
 import { createUpdateNotice, releaseNotesInto, productVersion } from './updates.js';
 import { createImageGenClient } from './image_generation.js';
-import { IMAGE_MODELS, modelState } from './image_view_models.js';
+import { IMAGE_MODELS, modelState, pausedText, continueUse } from './image_view_models.js';
 import { swapLoraFailureText } from './swap_lora.js';
 import { MODULES } from './health.js';
 import { userMessage } from './user_message.js';
@@ -485,21 +485,33 @@ export async function openSetup(options) {
     tenSwitch.setAttribute('aria-label', t('Also save a high color depth copy', '同时保存高色深版本'));
     const tenRow = row({iconName: 'film', title: t('Also save a high color depth copy', '同时保存高色深版本'), sub: t('Adds a 10-bit video beside it, for color grading', '另存一份 10 位视频，适合调色'), end: [tenSwitch]});
     tip(tenSwitch, t('High color depth copy', '高色深版本'), t('Adds a 10-bit video beside it, for color grading', '另存一份 10 位视频，适合调色'));
-    const outputCard = card(tenRow.element); const outputHead = groupHead(t('Finished video', '成片'));
-    outputCard.hidden = outputHead.hidden = true;
-    let tenSaved = false;
+    // Every finished picture is also copied into the output folder; the user can switch that off. The 10-bit row stays hidden.
+    const imageSwitch = switchify(el('input')); imageSwitch.type = 'checkbox'; imageSwitch.checked = true;
+    imageSwitch.setAttribute('aria-label', t('Also save pictures to the output folder', '同时将图片保存到 output 文件夹'));
+    const imageRow = row({iconName: 'img', title: t('Also save pictures to the output folder', '同时将图片保存到 output 文件夹'), end: [imageSwitch]});
+    tip(imageSwitch, t('Also save pictures to the output folder', '同时将图片保存到 output 文件夹'));
+    tenRow.element.hidden = true;
+    const outputCard = card(imageRow.element, tenRow.element); const outputHead = groupHead(t('Finished videos and pictures', '成片与图片'));
+    let tenSaved = false, imageSaved = true;
     tenSwitch.onchange = async () => {
         const wanted = tenSwitch.checked; tenSwitch.disabled = true;
         try { tenSaved = (await request('output-settings', {ten_bit: wanted})).ten_bit === true; }
         catch { /* The switch returns to the saved state. */ }
         finally { tenSwitch.checked = tenSaved; tenSwitch.disabled = false; }
     };
+    imageSwitch.onchange = async () => {
+        const wanted = imageSwitch.checked; imageSwitch.disabled = true;
+        try { imageSaved = (await request('output-settings', {image_copy: wanted})).image_copy !== false; }
+        catch { /* The switch returns to the saved state. */ }
+        finally { imageSwitch.checked = imageSaved; imageSwitch.disabled = false; }
+    };
     (async () => {
         try {
             const response = await api.fetchApi('/freevideo/output-settings');
             const value = response.ok ? await response.json() : null;
-            if (value?.available === true) { tenSaved = value.ten_bit === true; tenSwitch.checked = tenSaved; outputCard.hidden = outputHead.hidden = false; }
-        } catch { /* Without an answer the row stays hidden. */ }
+            if (value) { imageSaved = value.image_copy !== false; imageSwitch.checked = imageSaved; }
+            if (value?.available === true) { tenSaved = value.ten_bit === true; tenSwitch.checked = tenSaved; tenRow.element.hidden = false; }
+        } catch { /* Without an answer the picture row shows its default and the 10-bit row stays hidden. */ }
     })();
     const previewFoot = el('div', 'st-foot'); previewFoot.append(previewStatus);
     generation.append(groupHead(t('Preview during generation', '生成中的预览')), card(choices, previewFoot), outputHead, outputCard);
@@ -985,13 +997,21 @@ export async function openSetup(options) {
             } else if (s.state === 'downloading') {
                 meter.hidden = false; meter.set(s.fraction);
                 r.sub.className = 'is-accent';
-                r.sub.textContent = s.paused ? t('Paused while a generation runs', '生成进行中，下载已暂停')
+                r.sub.textContent = s.paused ? pausedText(s)
                     : `${Math.floor(s.fraction * 100)}% · ${gb(s.done)} / ${gb(s.total)} GiB`;
-                act.hidden = false; act.className = 'st-btn'; act.replaceChildren(icon('stop', 'fv-i s'), el('span', 'st-btn-t', t('Stop', '停止')));
-                act.onclick = () => imageAction(id, 'cancel');
-                tip(act, t('Stop', '停止'), t('Stop the download; the part downloaded is kept', '停止下载，已下载的部分会保留'));
+                act.hidden = false;
+                if (s.paused) {
+                    // Waiting for a video or a picture: the user may go on with the download now.
+                    act.className = 'st-btn is-fill'; act.replaceChildren(icon('down', 'fv-i s'), el('span', 'st-btn-t', t('Continue download', '继续下载')));
+                    act.onclick = () => imageAction(id, 'install');
+                    tip(act, t('Continue download', '继续下载'), continueUse());
+                } else {
+                    act.className = 'st-btn'; act.replaceChildren(icon('stop', 'fv-i s'), el('span', 'st-btn-t', t('Stop', '停止')));
+                    act.onclick = () => imageAction(id, 'cancel');
+                    tip(act, t('Stop', '停止'), t('Stop the download; the part downloaded is kept', '停止下载，已下载的部分会保留'));
+                }
             } else if (s.state === 'failed') {
-                r.sub.className = 'is-warn'; r.sub.textContent = s.reason || t('Download failed', '下载失败');
+                r.sub.className = 'is-warn'; r.sub.textContent = t(`${item.model.short} download failed${s.reason ? ': ' + s.reason.replace(/[.。]$/, '') : ''}. Retry to continue; if it keeps failing, report the problem.`, `${item.model.short} 下载失败${s.reason ? '：' + s.reason.replace(/[.。]$/, '') : ''}。请重试以继续下载；仍然失败时，请提交问题。`);
                 act.hidden = false; act.className = 'st-btn is-fill'; act.replaceChildren(icon('retry', 'fv-i s'), el('span', 'st-btn-t', t('Retry', '重试')));
                 act.onclick = () => imageAction(id, 'install');
                 tip(act, t('Retry', '重试'), t('Download again; the part downloaded is kept', '重新下载，已下载的部分会保留'));

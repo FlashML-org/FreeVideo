@@ -14,7 +14,7 @@
 // the card is saved; deleting it there is the only way it goes. The pictures uploaded for the views go when the dialog is left.
 import {createImageGenClient, imagePackUnavailableMessage, renderImageFailure, IMAGE_GEN_INFO_POLL_MS} from './image_generation.js';
 import {createCastGenerator} from './cast_generate.js';
-import {faceCloseUp, dressMaskFile, facesCamera, repaintTook} from './cast_face_crop.js';
+import {faceCloseUp, dressMaskFile, facesCamera, repaintTook, closeUpShare, neutralCloseUp, CLOSEUP_FRAME} from './cast_face_crop.js';
 import {createOtherUsageNotice} from './other_usage.js';
 
 // Generation order per source; the order on screen and on the sheet is SHOW. The first view made is the one the others
@@ -115,12 +115,12 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
             record = {file, url: URL.createObjectURL(file)}; paint(); onChange();
         };
         async function edit() {
-            let outcome;
+            let outcome, loadFailed = false;
             try {
-                const {openImageEditor} = await import('./image_editor.js');
+                const {openImageEditor} = await import('./image_editor.js').catch(error => { loadFailed = true; throw error; });
                 outcome = await openImageEditor({source: record.original?.url || record.url, name: record.file.name || 'picture.png', edit: record.edit || null,
                     role: 'reference', t: tr, resolve: url => url, upload: async blob => client.upload(blob), imageGenClient: client});
-            } catch { attention = tr('This picture cannot be edited right now.', '这张图暂时无法编辑。'); render(); return; }
+            } catch { attention = loadFailed ? tr('The image editor did not load. Reload the page and try again.', '图片编辑器没有加载出来。请刷新页面后再试。') : tr('This picture could not be read. Choose another picture.', '这张图无法读取。请重新选择一张。'); render(); return; }
             if (!outcome || !record || disposed) return;
             if (outcome.restore) { back(); return; }
             if (!outcome.blob) return;
@@ -272,12 +272,12 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
     // A view opens in the image editor; the edited picture takes its place on the card (marked, and Restore puts the
     // made one back). An edited face or front is what the others are redrawn from.
     async function editView(view) {
-        let outcome;
+        let outcome, loadFailed = false;
         try {
-            const {openImageEditor} = await import('./image_editor.js');
+            const {openImageEditor} = await import('./image_editor.js').catch(error => { loadFailed = true; throw error; });
             outcome = await openImageEditor({source: sourceOf(view), name: `${view}.png`, edit: edits[view]?.edit || null,
                 role: 'reference', t: tr, resolve: url => url, upload: async blob => client.upload(blob), imageGenClient: client});
-        } catch { attention = tr('This picture cannot be edited right now.', '这张图暂时无法编辑。'); render(); return; }
+        } catch { attention = loadFailed ? tr('The image editor did not load. Reload the page and try again.', '图片编辑器没有加载出来。请刷新页面后再试。') : tr('This picture could not be read. Choose another picture.', '这张图无法读取。请重新选择一张。'); render(); return; }
         if (!outcome || disposed) return;
         if (outcome.restore) { dropEdit(view); if (leads(view)) faceChanged = true; render(); return; }
         if (!outcome.blob) return;
@@ -316,11 +316,14 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
     // New clothes: the made close-up's collar and shoulders are repainted under a mask drawn from its face box.
     // The masks drawn here (uploaded name → file), so a repaint can be checked against its own mask.
     const masks = new Map();
-    const dressMask = async file => { const mask = await dressMaskFile({client, fetcher, name: file}); if (!mask) return ''; const name = await referenceOf({file: mask}); masks.set(name, mask); return name; };
+    const dressMask = async file => { const mask = await dressMaskFile({client, fetcher, name: file, url: viewURL(file)}); if (!mask) return ''; const name = await referenceOf({file: mask}); masks.set(name, mask); return name; };
     const dressTook = (before, after, mask) => masks.has(mask) ? repaintTook({before: viewURL(before), after: viewURL(after), mask: masks.get(mask)}) : true;
     // A back that came out facing the camera (face-box finds a face looking at it) is drawn once more.
     const facing = file => facesCamera({client, fetcher, name: file});
-    const generator = createCastGenerator({client: draftClient, kind: 'character', views: make, dressMask, dressTook, facing, beforeGenerate: query => otherUsage.check(query), onDiscard: discard,
+    // A close-up framed too wide is drawn once more; a repaint that kept the old clothes is retried from the close-up with its clothes greyed out.
+    const framing = file => closeUpShare({client, fetcher, name: file});
+    const dressNeutral = async file => { const grey = await neutralCloseUp({client, fetcher, name: file, url: viewURL(file)}); return grey ? referenceOf({file: grey}) : ''; };
+    const generator = createCastGenerator({client: draftClient, kind: 'character', views: make, dressMask, dressTook, dressNeutral, facing, framing, framingMin: CLOSEUP_FRAME.min, beforeGenerate: query => otherUsage.check(query), onDiscard: discard,
         onChange: state => {
             render(state);
         }});

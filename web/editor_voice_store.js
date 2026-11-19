@@ -16,7 +16,8 @@ export async function voiceFeatures(api) {
         const response = await agentGet(api, ROOT);
         if (!response.ok) return {ready: false, install: false, unknown: true};
         const features = (await response.json())?.features;
-        return {ready: !!features?.['projects.voice'], install: !!features?.['projects.voice.install']};
+        // The same answer says whether export can make 48/60 fps (it needs the graphics card).
+        return {ready: !!features?.['projects.voice'], install: !!features?.['projects.voice.install'], exportFps: !!features?.['projects.export.fps']};
     } catch { return {ready: false, install: false, unknown: true}; }
 }
 

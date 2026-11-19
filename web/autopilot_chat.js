@@ -333,7 +333,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         input.focus();
         let done = false;
         try { done = (await dataLayer.abandon(session)).ok; } catch {}
-        if (!done && state.session === session) { state = {...state, abandoned: false}; render(); say(t('Could not stop. Click again.', '没能停止，请再点一次。')); }
+        if (!done && state.session === session) { state = {...state, abandoned: false}; render(); say(t('Could not stop. Click again; if it keeps failing, report the problem.', '没能停止。请再点一次；仍然失败时，请提交问题。')); }
     }
     let whiteboxPreview = false;
     try { whiteboxPreview = localStorage.getItem(WHITEBOX_PREVIEW.storageKey) === 'true'; } catch {}
@@ -1108,7 +1108,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         ids.forEach(id => stopping.add(id)); render(); report();
         const results = await Promise.all(ids.map(id => dataLayer.cancel(id)));
         results.forEach((response, index) => { if (!response?.ok) stopping.delete(ids[index]); });
-        if (results.some(response => !response?.ok)) say(t('Could not stop. Click again.', '没能停止，请再点一次。'), true);
+        if (results.some(response => !response?.ok)) say(t('Could not stop. Click again; if it keeps failing, report the problem.', '没能停止。请再点一次；仍然失败时，请提交问题。'), true);
         else say('');
         if (!stopped) { render(); report(); void poll(); }
     }
@@ -1704,7 +1704,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         // Another sentence came first: the page reads it, and this one stays in the box.
         if (error?.code === 'invalid_request') return t('A newer message was sent first. This one was not sent.', '已有更新的消息，此⁠条⁠未⁠发⁠送⁠。');
         if (WAIT_FOR_AGENT.includes(error?.code) || error?.code === 'session_full') return t('Not sent: ', '没发出去：') + failureReason({error}, t);
-        return t('Could not stop. Click again.', '未能停止，请再点一次。');
+        return t('Could not stop. Click again; if it keeps failing, report the problem.', '未能停止。请再点一次；仍然失败时，请提交问题。');
     }
 
     function render(follow = false) {

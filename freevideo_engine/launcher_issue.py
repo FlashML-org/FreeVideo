@@ -55,7 +55,16 @@ def environment_line(version=None, hardware=None):
     return scrub(' · '.join(part for part in parts if part))[:300]
 
 
-def issue_url(error, version=None, title=None, zh=False, environment=''):
+def adapter_line():
+    """The display-adapter line the report ZIP carries: model names only, or that they could not be read."""
+    try:
+        from .display_adapters import adapters, report_line
+        return scrub(report_line(adapters()))[:300]
+    except Exception:
+        return 'Display adapters: not available'
+
+
+def issue_url(error, version=None, title=None, zh=False, environment='', diagnostics=()):
     lines = _lines(error)
     # A successful download-tool check can open the text (its Sysnative "not found" is normal); the cause is not that line.
     from .failure_details import _without_ready_curl_diagnostics
@@ -66,7 +75,10 @@ def issue_url(error, version=None, title=None, zh=False, environment=''):
     report = '\n'.join(lines)
     # The environment line is for triage, so it stays English in either language and is kept whole;
     # only the error text gives way to fit the address.
-    head = (('Environment: ' + scrub(environment).strip() + '\n\n') if str(environment).strip() else '')
+    # The diagnostic lines (adapter model) come first and are kept whole, whatever the error is.
+    notes = [scrub(line).strip() for line in diagnostics if str(line).strip()]
+    head = '\n'.join(([('Environment: ' + scrub(environment).strip())] if str(environment).strip() else []) + notes)
+    head += '\n\n' if head else ''
 
     def fit(limit):
         return head + (report if len(report) <= limit else report[:limit // 3] + '\n...\n' + report[-(limit - limit // 3 - 5):])

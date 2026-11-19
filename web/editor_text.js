@@ -74,7 +74,7 @@ export function createEditorText({element,state,t,actions,adjust,player,toolbar,
     // Once every byte is in, the download is unpacked; the button says so and keeps the width it had, so it does not jump.
     function speechLabel(fraction,phase=null){speech.shown=fraction;const unpacking=fraction!=null&&speech.loading&&phase==='unpack',p=Math.round(Math.min(1,Math.max(0,Number(fraction)||0))*100),size=Math.max(1,Math.round(speech.need/1e6)),text=fraction==null?(speech.need?t(`Auto subtitles · Download ${size} MB`,`自动字幕 · 下载 ${size} MB`):t('Auto subtitles','自动字幕')):unpacking?t('Cancel · Unpacking','取消 · 正在解压'):speech.loading?t(`Cancel · Downloading ${p}%`,`取消 · 下载 ${p}%`):t(`Cancel · ${p}%`,`取消 · ${p}%`);for(const b of speech.buttons){if(unpacking&&!b.style.minWidth&&b.offsetWidth)b.style.minWidth=`min(${b.offsetWidth}px, 100%)`;else if(!unpacking)b.style.minWidth='';b.textContent=text;b.hidden=!(speech.available||speech.need);}}
     function speechEnd(text,where=null){speech.stop?.();speech.stop=null;speech.job=null;speech.busy=false;speech.loading=false;speechLabel(null);if(text)actions.notify?.(text,where);}
-    const speechFailed=()=>t('Could not create subtitles','没能生成字幕'),speechSilent=()=>t('No speech found','没有听到说话声');
+    const speechFailed=()=>t('Could not create subtitles. Try again; if it keeps failing, report the problem.','没能生成字幕。请重试；仍然失败时，请提交问题。'),speechSilent=()=>t('No speech found','没有听到说话声');
     const speechDisk=()=>t('The disk is full. Free some space, then try again.','磁盘空间不足，请清理出空间后重试。');
     // Causes the person can act on are named and carry no issue button; anything else is unexplained.
     const speechReasons={no_sound:speechSilent,language:()=>t('Language not supported yet','暂不支持这种语言'),too_long:()=>t('Auto subtitles work on up to 2 hours of sound.','自动字幕最多处理 2 小时的声音。'),
@@ -87,7 +87,8 @@ export function createEditorText({element,state,t,actions,adjust,player,toolbar,
         speechEnd();if(!cues.length){actions.notify?.(speechSilent());return false;}
         finishInline();commitDraft();
         // Lines already on the subtitle track are replaced in one step; the notice undoes it in one press (E15).
-        const had=state.record.tracks.some(track=>track.kind==='subtitle'&&track.clips.length);
+        // Only lines with words count: an empty one just added by "Add subtitle" is not subtitles the person had.
+        const had=state.record.tracks.some(track=>track.kind==='subtitle'&&track.clips.some(c=>String(c.text||'').trim()));
         if(!apply(t('Auto subtitles','自动字幕'),r=>addSubtitles(r,cues,{replace:true})))actions.notify?.(speechFailed(),SPEECH_ISSUE);
         else if(had){const step=state.step;actions.notify?.(t('The subtitles heard replaced the ones there.','识别出的字幕已替换原有字幕。'),null,null,{label:t('Undo','撤销'),use:t('Bring back the subtitles you had','恢复原来的字幕'),run:()=>{if(state.step===step)actions.undo?.();}});}
         else{const missing=projectMissing(state.record);if(missing.length)actions.notify?.(missingHint([...new Set(missing.flatMap(r=>r.chars))],t));}
@@ -105,7 +106,7 @@ export function createEditorText({element,state,t,actions,adjust,player,toolbar,
                 const ability=done===true?await actions.speech.ability():null;
                 if(run!==speech.run)return;
                 if(ability){speech.available=ability.available;speech.need=ability.need;}
-                if(done!==true||speech.need){speechEnd(done==='disk_space'?speechDisk():t('Could not download. Try again.','没能下载，请再试一次。'),done==='disk_space'?null:SPEECH_ISSUE);return;}
+                if(done!==true||speech.need){speechEnd(done==='disk_space'?speechDisk():t('The speech model could not be downloaded. Check the connection and try again.','语音模型没能下载。请检查网络后再试一次。'),done==='disk_space'?null:SPEECH_ISSUE);return;}
                 if(!speech.available){speechEnd(speechFailed(),SPEECH_ISSUE);return;}
                 speech.loading=false;
             }
@@ -115,7 +116,7 @@ export function createEditorText({element,state,t,actions,adjust,player,toolbar,
             if(!job){speechEnd(speechFailed(),SPEECH_ISSUE);return;}
             speech.job=job.id??null;
             if(speechResult(job))speech.stop=actions.speech.watch(job.id,value=>{if(run!==speech.run)return false;if(!value){speechEnd(speechFailed(),SPEECH_ISSUE);return false;}return speechResult(value);},()=>{if(run===speech.run)speechEnd(speechFailed(),SPEECH_ISSUE);});
-        }catch{if(run===speech.run)speechEnd(speech.loading?t('Could not download. Try again.','没能下载，请再试一次。'):speechFailed(),SPEECH_ISSUE);}
+        }catch{if(run===speech.run)speechEnd(speech.loading?t('The speech model could not be downloaded. Check the connection and try again.','语音模型没能下载。请检查网络后再试一次。'):speechFailed(),SPEECH_ISSUE);}
     }
     function commitDraft(){if(draft){const change=draft.change;apply(t('Text','文字'),change);const c=selectedText();if(c?.text_kind==='text')lastStyle={...styleOf(state.record,c)};}}
     // Editing a text ended. One left without words is taken away; one that never had any leaves no step behind.

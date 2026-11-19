@@ -1098,7 +1098,10 @@ class Session:
             if active.get('action') == 'install' and active.get('phase') == 'verify':
                 detail = self.t('Checking', '正在校验')
         elif active.get('state') == 'paused_for_generation':
-            detail = self.t('Paused while generating', '生成时暂停')
+            # What the download waits for: a video, a picture, or another task holding the graphics card.
+            detail = {'busy_video': self.t('Paused while a video generates', '视频生成中，已暂停'),
+                      'busy_picture': self.t('Paused while a picture is made', '正在出图，已暂停')}.get(
+                active.get('reason'), self.t('Paused: the graphics card is busy', '显卡忙，已暂停'))
         elif active.get('state') == 'cancelled':
             detail = self.t('Paused', '已暂停')
         elif active.get('state') == 'failed':

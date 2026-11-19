@@ -11,7 +11,7 @@ import re
 import struct
 import threading
 
-from .lora_names import INT8_UNMERGEABLE, _targets, adapter_keys, int8_skip_reason, resolve_target, supported
+from .lora_names import INT8_UNMERGEABLE, MIXED_RANK_ALPHA, _targets, adapter_keys, int8_skip_reason, resolve_target, supported
 
 MAX_HEADER_BYTES = 64 * 1024 * 1024
 BLOCKS, REFINER_BLOCKS = 50, 2
@@ -136,14 +136,16 @@ def _block(target):
     return int(found[1]) + 1 if found else None
 
 
-def assess(shapes, *, int8_targets=None, skipped=None):
+def assess(shapes, *, int8_targets=None, skipped=None, metadata=None):
     """None when the adapter fits, else why not: reason 'other-model' (names of another model), 'shape' (our names,
     a different size), 'acceleration' (a step-distillation adapter that replaces the output heads and needs its own
     sampler) or 'format' (not a LoRA we can read; 'layer' names the first tensor that is not a LoRA factor).
     'layer' and the sizes say where. A layer name the table does not list, in a file that matches no other known
     model, is let through.
     With int8_targets, use the installed linear shapes and collect the runtime's
-    skipped patch categories; 'int8-unmergeable' means every patch was skipped."""
+    skipped patch categories; 'int8-unmergeable' means every patch was skipped.
+    With the file's metadata, 'alpha' means one alpha value is stored for factors of different ranks, which the
+    engine refuses because the strength cannot be determined; 'ranks' lists them."""
     keys = list(shapes)
     heads = _head_bank(shapes)
     if heads:
@@ -215,6 +217,10 @@ def assess(shapes, *, int8_targets=None, skipped=None):
     if wrong:
         layer, expected, actual = wrong[0]
         return dict(reason='shape', family=None, layer=layer, block=_block(layer), expected=expected, actual=actual, count=len(wrong))
+    if metadata and 'alpha' in metadata:
+        ranks = sorted({shapes[pair['A']][0] for pair in pairs.values() if 'A' in pair and 'alpha' not in pair})
+        if len(ranks) > 1:
+            return _bad('alpha', keys, ranks=ranks)
     if int8_targets is not None and not applied:
         return _bad('int8-unmergeable', keys)
     return None
@@ -246,7 +252,7 @@ def check_file(path, *, int8_targets=None):
     try:
         shapes, metadata = read_header(path)
         skipped = []
-        problem = assess(shapes, int8_targets=int8_targets, skipped=skipped)
+        problem = assess(shapes, int8_targets=int8_targets, skipped=skipped, metadata=metadata)
         result = {'usable': problem is None, 'reason': None, **(problem or {}), 'summary': summarize(shapes, metadata)}
         if int8_targets is not None:
             result['partial'] = len(skipped)
@@ -286,4 +292,4 @@ def require_usable(path):
     """Stop a request before generation starts when a LoRA cannot work with the model."""
     result = check_installed_file(path)
     if not result['usable']:
-        raise ValueError({'int8-unmergeable': INT8_UNMERGEABLE, 'acceleration': ACCELERATION}.get(result['reason'], UNUSABLE))
+        raise ValueError({'int8-unmergeable': INT8_UNMERGEABLE, 'acceleration': ACCELERATION, 'alpha': MIXED_RANK_ALPHA}.get(result['reason'], UNUSABLE))

@@ -37,16 +37,28 @@ class SafetensorsIndex:
 def read_into(path, offset, length, buffer):
     """Fill ``buffer`` (a contiguous uint8 tensor view) with ``length`` bytes at ``offset``."""
     view = memoryview(buffer.numpy()).cast('B')
-    descriptor = os.open(path, os.O_RDONLY)
-    try:
+    if hasattr(os, 'preadv'):
+        descriptor = os.open(path, os.O_RDONLY)
+        try:
+            got = 0
+            while got < length:
+                count = os.preadv(descriptor, [view[got:length]], offset + got)
+                if count <= 0:
+                    raise EOFError('short read from %s' % path)
+                got += count
+        finally:
+            os.close(descriptor)
+        return length
+    # Platforms without preadv (Windows): each call opens its own unbuffered binary handle, so the reader
+    # threads never share a file position, and the bytes read are the same.
+    with open(path, 'rb', buffering=0) as handle:
+        handle.seek(offset)
         got = 0
         while got < length:
-            count = os.preadv(descriptor, [view[got:length]], offset + got)
-            if count <= 0:
+            count = handle.readinto(view[got:length])
+            if not count:
                 raise EOFError('short read from %s' % path)
             got += count
-    finally:
-        os.close(descriptor)
     return length
 
 

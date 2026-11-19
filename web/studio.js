@@ -18,6 +18,7 @@ import { createPortNotice } from './port_notice.js';
 import { focusReportTip, hideReportTip, reportIssue, reportTipClosed, showReportTip } from './report_issue.js';
 import { issueButton } from './issue_button.js';
 import { skinSelect } from './fv_select.js';
+import { loraMenu } from './lora_menu.js';
 import { createPreviewScene } from './preview_scene.js?v=20261115-still';
 import { animateDetails, closeDialog } from './motion.js';
 import { openLibrary, setDefaultUpscale, setDefaultUpscaleWork, videoThumbnailURL } from './library.js';
@@ -515,7 +516,7 @@ export function loraPanel(node, panel, {promptNode = null} = {}) {
                 select.disabled = strength.disabled = trigger.disabled = row.enabled === false;
                 const remove = button('×', () => { rows.splice(index, 1); write(rows); }); remove.setAttribute('aria-label', t('Remove LoRA', '移除 LoRA'));
                 remove.dataset.fvTipName = t('Remove LoRA', '移除 LoRA'); remove.dataset.fvTipUse = t('Take it off the list; the file stays', '从列表移除，文件不删');
-                wrap.append(enabled, skinSelect(select), strength, remove, trigger, strengthMark);
+                wrap.append(enabled, loraMenu(select, t, pinned).wrap, strength, remove, trigger, strengthMark);
                 wrap.dataset.index = String(index); wrap.dataset.sortable = String(rows.length > 1);
                 if (rows.length > 1) wrap.prepend(sortGrip(wrap, index));
                 const problem = el('div', null, 'fv-lora-problem'); problem.hidden = true; wrap.append(problem);

@@ -5,6 +5,7 @@ Only the two persistence adapters below need that service at integration time.
 """
 import asyncio
 import copy
+import dataclasses
 import errno
 import importlib
 import json
@@ -46,7 +47,8 @@ _RECORD_BYTES = 8 * 1024 * 1024
 class ExportError(Exception):
     """A public reason code; never retain a decoder's path-bearing message."""
     def __init__(self, reason='failed'):
-        self.reason = reason if reason in ('source_missing', 'unreadable', 'disk_full', 'not_writable', 'failed') else 'failed'
+        self.reason = reason if reason in ('source_missing', 'unreadable', 'disk_full', 'not_writable', 'failed',
+                                                 'interp_download', 'interp_memory') else 'failed'
         super().__init__(self.reason)
 
 
@@ -647,6 +649,18 @@ def render(project: dict, resolve, target: Path, *, progress=None, cancelled=Non
     Existing destinations are refused and never removed.
     """
     try:
+        width, height, total, tracks = _layout(project)
+        settings = editor_export_options.effective(options, width, height, total)
+    except Exception:
+        settings = None  # _render_once reports it the usual way
+    if settings is not None and settings.only == 'video' and settings.fps != FPS:
+        return _render_faster(project, resolve, target, settings, tracks.get('v1', []),
+                              progress=progress, cancelled=cancelled)
+    return _render_seams(project, resolve, target, progress=progress, cancelled=cancelled, options=options)
+
+
+def _render_seams(project, resolve, target, *, progress, cancelled, options):
+    try:
         return _render_once(project, resolve, target, progress=progress, cancelled=cancelled,
                             options=options, repair_seams=True)
     except _SeamRepairError:
@@ -655,6 +669,71 @@ def render(project: dict, resolve, target: Path, *, progress=None, cancelled=Non
         _check(cancelled)
     return _render_once(project, resolve, target, progress=progress, cancelled=cancelled,
                         options=options, repair_seams=False)
+
+
+# Share of the progress bar for the 24 fps picture; interpolation and its encode take the rest (measured at 1080p).
+_FIRST_PASS_SHARE = .4
+
+
+def _render_faster(project, resolve, target, settings, clips, *, progress, cancelled):
+    """48/60 fps: the usual 24 fps render to a near-lossless file next to the target, then frame interpolation."""
+    from . import frame_interp
+    target = Path(target)
+    if target.exists() or target.is_symlink():
+        raise ExportError()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    base = target.with_name('.editor-export-24-' + uuid.uuid4().hex + '.mp4')
+    faster = _checked_target(target.with_name('.editor-export-' + uuid.uuid4().hex + '.mp4'))
+    first = (lambda fraction: progress(min(fraction, .99) * _FIRST_PASS_SHARE)) if progress else None
+    published = False
+    try:
+        _render_seams(project, resolve, base, progress=first, cancelled=cancelled,
+                      options=dataclasses.replace(settings, fps=FPS, intermediate=True))
+        _check(cancelled)
+        if _clearly_too_full(base, settings):
+            raise ExportError('disk_full')
+
+        def moved(value):
+            if progress and value.get('stage') == frame_interp.STAGE and value.get('total'):
+                progress(_FIRST_PASS_SHARE + (1 - _FIRST_PASS_SHARE) * .99 * value['done'] / value['total'])
+        try:
+            frame_interp.convert(base, faster, fps=settings.fps, video_options=settings.video_options,
+                                 cuts=frame_interp.cuts_of(clips, settings.start, settings.frames),
+                                 progress=moved, cancelled=cancelled)
+        except frame_interp.InterpolationError as error:
+            raise ExportError(error.code) from error
+        _check(cancelled)
+        _checked_target(faster)
+        with faster.open('r+b') as stream:
+            os.fsync(stream.fileno())
+        _check(cancelled)
+        _checked_target(target)
+        faster.replace(target)
+        published = True
+        if progress:
+            progress(1.)
+        return target
+    except BaseException:
+        if published:
+            target.unlink(missing_ok=True)
+        raise
+    finally:
+        base.unlink(missing_ok=True)
+        faster.unlink(missing_ok=True)
+
+
+def _clearly_too_full(base, settings):
+    """Whether the disk plainly cannot take the faster file, said before the graphics card spends minutes on it.
+
+    The final file is estimated from the near-lossless 24 fps one: more frames, and about half the size for every 6 steps
+    of quality given up. Only half of that is asked for, so a close call is left to the write itself."""
+    from .disk_space import free_bytes
+    try:
+        size, free = base.stat().st_size, free_bytes(base.parent)
+    except (OSError, ValueError):
+        return False
+    crf = int(settings.video_options['crf'])
+    return free < size * settings.fps / FPS * 2 ** ((10 - crf) / 6) / 2
 
 
 def _render_once(project, resolve, target, *, progress, cancelled, options, repair_seams):
