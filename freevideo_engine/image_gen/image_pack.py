@@ -68,8 +68,15 @@ class _Background:
         self.resume_at = None
         self.paused = False
         self.probed_at, self.probe_gap, self.busy_seen = None, 0., False
+        self.reason = None
 
     def generating(self):
+        """Why the download waits, or None. Only real work waits it: a video this process runs (generation_busy),
+        or a holder of engine.lock that is not known to be idle. This process's own image worker that only keeps or
+        warms its model (lease_idle) holds the lock without using the card for a picture, so the download goes on.
+        After the user asks to continue (resume_anyway), nothing waits it."""
+        if self.installer.resume_anyway.is_set():
+            return None
         if self.installer.generation_busy:
             if self.probed_at is None or time.monotonic() - self.probed_at >= self.probe_gap:
                 began = time.monotonic()
@@ -78,25 +85,27 @@ class _Background:
                 self.probe_gap = max(GENERATION_PROBE_SECONDS,
                                      GENERATION_PROBE_COST_FACTOR * (self.probed_at - began))
             if self.busy_seen:
-                return True
+                return 'busy_video'
         # Probe the existing lease exclusively, without borrowing an inherited
         # descriptor. This also detects shared device work. Release immediately:
         # downloads never hold engine.lock or delay a generation acquiring it.
-        # A holder is the only cross-process signal; non-generation holders also
-        # cause a conservative pause. In-process callers can supply busy().
         path = (Path(self.installer.engine_root) / 'engine.lock'
                 if self.installer.engine_root is not None else None)
         try:
             with runtime_lock(path, inherit=False):
-                return False
+                return None
         except BlockingIOError:
-            return True
+            holder = self.installer.lease_holder() if self.installer.lease_holder else None
+            if holder == 'idle':
+                return None
+            return 'busy_picture' if holder == 'picture' else 'busy_engine'
 
     def check(self):
         if self.stop.is_set():
             raise InterruptedError('cancelled')
-        if self.generating():
-            self.paused = True
+        reason = self.generating()
+        if reason:
+            self.paused, self.reason = True, reason
             self.resume_at = None
             raise _GenerationPause()
 
@@ -109,14 +118,14 @@ class _Background:
             else:
                 if self.paused and self.resume_at is None:
                     self.resume_at = time.monotonic() + GENERATION_RESUME_SECONDS
-                if not self.paused or time.monotonic() >= self.resume_at:
+                if not self.paused or time.monotonic() >= self.resume_at or self.installer.resume_anyway.is_set():
                     self.resume_at = None
                     self.paused = False
                     self.installer._set(state='running', reason=None)
                     return
             # Reached only after the active transfer has been reaped, or at an
             # in-process checkpoint, so paused really means no active download.
-            self.installer._set(state='paused_for_generation', reason='busy_video')
+            self.installer._set(state='paused_for_generation', reason=self.reason or 'busy_engine')
             self.stop.wait(GENERATION_POLL_SECONDS)
 
 
@@ -916,10 +925,15 @@ def remove(root=None, check=None, *, engine_root=None, group='image'):
 
 class Installer:
     """One background action per pack; cancel keeps completed files and prefixes."""
-    def __init__(self, root=None, *, engine_root=None, busy=None, group='image'):
+    def __init__(self, root=None, *, engine_root=None, busy=None, group='image', holder=None):
         self.root, self.engine_root = root, engine_root
         self.group = group
+        # busy(): a video this process runs. holder(): what holds engine.lock in this process -- 'picture' (a picture
+        # is being made), 'idle' (the image worker only keeps or warms its model) or None (not this process).
         self.generation_busy = busy
+        self.lease_holder = holder
+        # Set when the user asks to continue a paused download: it then runs beside whatever holds the card.
+        self.resume_anyway = threading.Event()
         self.lock = threading.Lock()
         self.stop = threading.Event()
         self.thread = None
@@ -1004,6 +1018,7 @@ class Installer:
             if self.busy:
                 return dict(self.value)
             self.stop = threading.Event()
+            self.resume_anyway.clear()
             self.background = background
             self.samples.clear()
             self.transferred, self.last_done = 0, None
@@ -1018,6 +1033,11 @@ class Installer:
 
     def cancel(self):
         self.stop.set()
+        return self.state()
+
+    def continue_anyway(self):
+        """The user asked to go on with a paused download: it no longer waits for this run."""
+        self.resume_anyway.set()
         return self.state()
 
     def _run(self, action, stop, background):

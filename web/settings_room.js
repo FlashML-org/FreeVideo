@@ -18,7 +18,7 @@ import { setMonitorShown, onMonitorShown } from './monitor_panel.js';
 import { preloadMode, setPreloadMode, onPreload } from './preload_setting.js';
 import { createUpdateNotice, releaseNotesInto, productVersion } from './updates.js';
 import { createImageGenClient } from './image_generation.js';
-import { IMAGE_MODELS, modelState } from './image_view_models.js';
+import { IMAGE_MODELS, modelState, pausedText, continueUse } from './image_view_models.js';
 import { swapLoraFailureText } from './swap_lora.js';
 import { MODULES } from './health.js';
 import { userMessage } from './user_message.js';
@@ -997,11 +997,19 @@ export async function openSetup(options) {
             } else if (s.state === 'downloading') {
                 meter.hidden = false; meter.set(s.fraction);
                 r.sub.className = 'is-accent';
-                r.sub.textContent = s.paused ? t('Paused while a generation runs', '生成进行中，下载已暂停')
+                r.sub.textContent = s.paused ? pausedText(s)
                     : `${Math.floor(s.fraction * 100)}% · ${gb(s.done)} / ${gb(s.total)} GiB`;
-                act.hidden = false; act.className = 'st-btn'; act.replaceChildren(icon('stop', 'fv-i s'), el('span', 'st-btn-t', t('Stop', '停止')));
-                act.onclick = () => imageAction(id, 'cancel');
-                tip(act, t('Stop', '停止'), t('Stop the download; the part downloaded is kept', '停止下载，已下载的部分会保留'));
+                act.hidden = false;
+                if (s.paused) {
+                    // Waiting for a video or a picture: the user may go on with the download now.
+                    act.className = 'st-btn is-fill'; act.replaceChildren(icon('down', 'fv-i s'), el('span', 'st-btn-t', t('Continue download', '继续下载')));
+                    act.onclick = () => imageAction(id, 'install');
+                    tip(act, t('Continue download', '继续下载'), continueUse());
+                } else {
+                    act.className = 'st-btn'; act.replaceChildren(icon('stop', 'fv-i s'), el('span', 'st-btn-t', t('Stop', '停止')));
+                    act.onclick = () => imageAction(id, 'cancel');
+                    tip(act, t('Stop', '停止'), t('Stop the download; the part downloaded is kept', '停止下载，已下载的部分会保留'));
+                }
             } else if (s.state === 'failed') {
                 r.sub.className = 'is-warn'; r.sub.textContent = t(`${item.model.short} download failed${s.reason ? ': ' + s.reason.replace(/[.。]$/, '') : ''}. Retry to continue; if it keeps failing, report the problem.`, `${item.model.short} 下载失败${s.reason ? '：' + s.reason.replace(/[.。]$/, '') : ''}。请重试以继续下载；仍然失败时，请提交问题。`);
                 act.hidden = false; act.className = 'st-btn is-fill'; act.replaceChildren(icon('retry', 'fv-i s'), el('span', 'st-btn-t', t('Retry', '重试')));

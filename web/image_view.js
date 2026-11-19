@@ -26,7 +26,7 @@ import { createPreviewScene } from './preview_scene.js?v=20261115-still';
 import { jobs, ACTIVE, IMAGE_BUSY } from './task_store.js';
 import { confirmStop, startJobSources } from './task_float.js';
 import { el, icon, t, cn, tip, button, section, readStore, writeStore, mod } from './image_view_ui.js';
-import { IMAGE_MODELS, modelPicker, modelState, verifyText } from './image_view_models.js';
+import { IMAGE_MODELS, modelPicker, modelState, verifyText, pausedText } from './image_view_models.js';
 import { RANGES, RATIOS, areaRange, estimateSeconds, machineLimit, presetAt, ratioValue, sizePicker, sizeFor, sizeText, megapixels } from './image_view_size.js';
 import { createMetaStore, createTrash, filterCounts, filterRows, groupRows, historyPanel, sessionPrompts } from './image_view_history.js';
 import { brokenMentions, mentionText, mentionsToEngine, posePrompt, promptMentions, renumberMentions, sketchPrompt } from './image_view_mentions.js';
@@ -77,14 +77,17 @@ export function createFakeImageClient({delay = 600, ready = {'minimax-h3-image':
     references = {'minimax-h3-image': 0, 'qwen-image-2.1-turbo': 4, 'moss-image-sft': 0}, history = [], install = {}, sizes = ['standard', 'high'], fitted = null, bytes = 12.5e9, rate = 5e6} = {}) {
     const items = history.map(row => typeof row === 'string' ? {file: row, name: row.slice(row.lastIndexOf('/') + 1)} : row); let count = 0;
     const jobs = new Map(), state = {...ready}; const loading = new Map(), failed = new Set(Object.keys(install).filter(id => install[id] === 'failed'));
+    // 'paused:<reason>' (busy_video, busy_picture, busy_engine): a download waiting for the card, until Continue.
+    const paused = new Map(Object.keys(install).filter(id => String(install[id]).startsWith('paused')).map(id => [id, install[id].split(':')[1] || 'busy_engine']));
     for (const id of Object.keys(install)) { if (install[id] !== 'ready') state[id] = false; if (install[id] === 'downloading') loading.set(id, Date.now() - bytes / rate * .4); }
     const models = () => IMAGE_MODELS.map(m => ({id: m.id, label: m.name, ready: !!state[m.id], downloading: loading.has(m.id), max_images: references[m.id] ?? 0,
         bytes_total: bytes, bytes_done: loading.has(m.id) ? Math.min(bytes, (Date.now() - loading.get(m.id)) * rate) : failed.has(m.id) ? bytes * .31 : 0,
         install: failed.has(m.id) ? {state: 'failed', done: bytes * .31, total: bytes, reason: 'network', message_en: 'The connection dropped.', message_zh: '网络连接中断了。'}
+            : paused.has(m.id) ? {state: 'paused_for_generation', done: bytes * .2, total: bytes, bytes_per_second: 0, reason: paused.get(m.id)}
             : loading.has(m.id) ? {state: 'running', done: Math.min(bytes, (Date.now() - loading.get(m.id)) * rate), total: bytes} : null}));
     return {
         info: async () => { for (const [id, at] of loading) if (Date.now() - at > bytes / rate) { state[id] = true; loading.delete(id); } return {installed: true, ready: true, max_images: 16, sizes, models: models()}; },
-        packInstall: async id => { failed.delete(id); loading.set(id, Date.now()); return {installed: true, sizes, models: models()}; },
+        packInstall: async id => { failed.delete(id); if (paused.delete(id)) loading.set(id, Date.now() - bytes / rate * .2); else loading.set(id, Date.now()); return {installed: true, sizes, models: models()}; },
         packCancel: async id => { loading.delete(id); return {installed: true, sizes, models: models()}; },
         async generate({prompt, width, height, seed, model, images = []}) {
             if (fail) throw Object.assign(new Error(fail), {code: fail});
@@ -1001,6 +1004,9 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         }
         else if (s.state === 'failed') {
             kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', t(`${model.short} download failed${s.reason ? ': ' + s.reason.replace(/[.。]$/, '') : ''}. Retry to continue; if it keeps failing, report the problem.`, `${model.short} 下载失败${s.reason ? '：' + s.reason.replace(/[.。]$/, '') : ''}。请重试以继续下载；仍然失败时，请提交问题。`))];
+        } else if (s.state === 'downloading' && s.paused) {
+            // What the download waits for, and that the model row's Continue download runs it now.
+            kind = 'info'; parts = [icon('clock'), el('span', 'fv-iv-slot-tx', t(`${model.short}: ${pausedText(s)}`, `${model.short}：${pausedText(s)}`))];
         } else if (s.state === 'downloading') {
             kind = 'info'; parts = [icon(s.unknown ? 'clock' : 'down'), el('span', 'fv-iv-slot-tx', s.verifying ? (pendingGenerate ? t(`Verifying ${model.short}; it generates when done`, `正在校验 ${model.short}，完成后自动生成`) : t(`Verifying ${model.short}`, `正在校验 ${model.short}`))
                 : pendingGenerate ? t(`Installing ${model.short}; it generates when done`, `正在安装 ${model.short}，完成后自动生成`) : t(`Installing ${model.short}`, `正在安装 ${model.short}`))];
@@ -1069,7 +1075,8 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             goLabel.textContent = t('Stop', '停止'); goSub.textContent = '';
             tip(go, t('Stop', '停止'), t('Cancel this picture; asks first', '取消这一张，会先确认'));
         } else if (s.state === 'downloading') {
-            goLabel.textContent = s.verifying ? verifyText(s) : t(`Installing ${Math.floor(s.fraction * 100)}%`, `正在安装 ${Math.floor(s.fraction * 100)}%`);
+            goLabel.textContent = s.verifying ? verifyText(s) : s.paused ? t(`Paused ${Math.floor(s.fraction * 100)}%`, `已暂停 ${Math.floor(s.fraction * 100)}%`)
+                : t(`Installing ${Math.floor(s.fraction * 100)}%`, `正在安装 ${Math.floor(s.fraction * 100)}%`);
             goSub.textContent = pendingGenerate ? t('then generates', '完成后生成') : '';
             tip(go, pendingGenerate ? t('Generates when installed', '安装完自动生成') : t('Generate when installed', '安装完再生成'), pendingGenerate ? t('Press to not generate after it', '再按一次取消自动生成') : t('Press to generate as soon as it is installed', '按下后，安装完成即自动生成'));
         } else if (s.state === 'missing' || s.state === 'failed') {

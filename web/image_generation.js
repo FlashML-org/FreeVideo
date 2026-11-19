@@ -205,8 +205,11 @@ export function packView(info, t) {
     const time = rate > 0 && left > 0 ? ' · ' + about(left / rate, t).replace(/^About/, 'about').replaceAll(' ', '\u00a0') : '';
     if (own) {
         const waiting = install.state === 'paused_for_generation';
-        return {loading: true, button: t('Pause', '暂停'), fraction: total > 0 ? Math.min(1, (install.done || 0) / total) : 0,
-            note: waiting ? t('Paused while a video generates', '视频生成中，已暂停')
+        // A paused download offers to continue now; the note says what it waits for.
+        return {loading: true, waiting, button: waiting ? t('Continue download', '继续下载') : t('Pause', '暂停'), fraction: total > 0 ? Math.min(1, (install.done || 0) / total) : 0,
+            note: waiting ? (install.reason === 'busy_video' ? t('Paused while a video generates', '视频生成中，已暂停')
+                : install.reason === 'busy_picture' ? t('Paused while a picture is made', '正在出图，已暂停')
+                : t('Paused while FreeVideo uses the graphics card for another task', 'FreeVideo 正在用显卡做别的任务，已暂停'))
                 : t(`Downloading · ${gb(install.done || 0)}\u00a0GB / ${size}${time}`, `正在下载 · ${gb(install.done || 0)}\u00a0GB / ${size}${time}`)};
     }
     const resume = install.state === 'failed' || install.state === 'cancelled' || install.done > 0;
@@ -1102,7 +1105,7 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
         const note = el('div', '', 'fv-ie-opt-note fv-ie-gen-note'); note.setAttribute('role', 'status');
         const action = button(t('Generate', '生成'), null, () => {
             const now = session.state(), pack = !now.running && now.info && !now.info.installed ? packView(now.info, t) : null;
-            if (pack) void session.pack(pack.loading ? 'cancel' : 'install');
+            if (pack) void session.pack(pack.loading && !pack.waiting ? 'cancel' : 'install');
             else if (now.running) void stop(); else void start();
         }, 'fv-ie-button fv-ie-primary');
         // Stop asks first (the same glass confirm as everywhere); leaving the editor never stops the job.

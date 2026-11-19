@@ -286,6 +286,16 @@ class Service:
     def busy(self):
         return self._busy or self.segmenting
 
+    def lease_holder(self):
+        """What holds engine.lock in this process, for a model download deciding whether to wait: 'picture' while a
+        picture is made, 'idle' while the image worker only keeps or warms its model (its session holds the lock
+        for its whole life), None when this process's image worker does not hold it."""
+        with self.mutex:
+            worker = self.worker
+            if self.per_request or worker is None or worker.process.poll() is not None:
+                return None
+            return 'picture' if self._busy else 'idle'
+
     @staticmethod
     def pack_checked(call, *args, **kwargs):
         """(value, problem): a model folder that cannot be read safely (a link leading nowhere) marks that model as
@@ -447,6 +457,9 @@ class Service:
                    bytes_per_second=round(value.get('bytes_per_second', 0)),
                    **({'phase': 'verify', 'verify_done': value.get('verify_done'), 'verify_total': value.get('verify_total')}
                       if value.get('phase') == 'verify' else {}))
+        if value['state'] == 'paused_for_generation':
+            # What it waits for, in the page's own words: a video, a picture, or another task on the card.
+            row['reason'] = value.get('reason') or 'busy_engine'
         if value['state'] == 'failed':
             row.update(reason=value.get('reason'), message_en=image_pack_failure(value.get('reason'))['detail'],
                        message_zh=image_pack_failure(value.get('reason'), zh=True)['detail'])
@@ -459,7 +472,7 @@ class Service:
         installer = getattr(self, attribute)
         if installer is None or installer.root != root or installer.engine_root != engine_root:
             options = dict(group=self.model_group(model)) if model != image_model.QWEN else {}
-            installer = image_pack.Installer(root, engine_root=engine_root, busy=self.video_busy, **options)
+            installer = image_pack.Installer(root, engine_root=engine_root, busy=self.video_busy, holder=self.lease_holder, **options)
             setattr(self, attribute, installer)
         return installer
 
@@ -520,10 +533,12 @@ class Service:
                 if action == 'cancel':
                     if installer is not None:
                         installer.cancel()
+                elif installer is not None and installer.state()['state'] == 'paused_for_generation':
+                    installer.continue_anyway()
                 elif (not self.pack_checked(image_pack.ready, root, group=group)[0]
                       and not self.pack_checked(image_pack.downloading, root, engine_root)[0]):
                     if installer is None or installer.root != root or installer.engine_root != engine_root:
-                        installer = image_pack.Installer(root, engine_root=engine_root, busy=self.video_busy, group=group)
+                        installer = image_pack.Installer(root, engine_root=engine_root, busy=self.video_busy, holder=self.lease_holder, group=group)
                         self.segment_installer = installer
                     installer.start('install', background=True)
                 return self.info()
@@ -538,6 +553,9 @@ class Service:
                     installer.cancel()
             elif target in self.pack_queue:
                 pass
+            elif self._paused_installer(target) is not None:
+                # Asked again while it waits for the card: the user wants the download now, beside whatever runs.
+                self._paused_installer(target).continue_anyway()
             elif not self._pack_ready(target, root):
                 other = self._active_pack()
                 if other is not None and other != target:
@@ -548,6 +566,10 @@ class Service:
                 elif not image_pack.downloading(root, engine_root):
                     self._pack_installer(target, root, engine_root).start('install', background=True)
         return self.info()
+
+    def _paused_installer(self, target):
+        installer = {image_model.H3: self.h3_installer, image_model.MOSS: self.moss_installer}.get(target, self.pack_installer)
+        return installer if installer is not None and installer.state()['state'] == 'paused_for_generation' else None
 
     def media_path(self, name):
         """Shared input-name and symlink policy for generation and point selection."""

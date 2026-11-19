@@ -25,13 +25,23 @@ export function modelState(info, id) {
     const fraction = verifying ? (install.verify_total > 0 ? Math.min(1, (install.verify_done || 0) / install.verify_total) : 0)
         : total > 0 ? Math.min(1, done / total) : 0;
     if (row.downloading || install.state === 'running' || install.state === 'paused_for_generation')
-        return {state: 'downloading', row, total, done, fraction, verifying, paused: install.state === 'paused_for_generation', rate: install.bytes_per_second || 0};
+        return {state: 'downloading', row, total, done, fraction, verifying, paused: install.state === 'paused_for_generation',
+            waitsFor: install.state === 'paused_for_generation' ? install.reason || 'busy_engine' : '', rate: install.bytes_per_second || 0};
     if (install.state === 'failed')
         return {state: 'failed', row, total, done, fraction, reason: t(install.message_en || '', install.message_zh || '') || install.reason || ''};
     return {state: 'missing', row, total, done, fraction, resume: done > 0};
 }
 
 const gb = bytes => (bytes / 1e9).toFixed(1);
+// Why a download waits, as the engine reports it: only a video or a picture being made pauses it, and the user can
+// continue it at once.
+// What pressing Continue download does: the download runs now, beside the video or picture being made.
+export const continueUse = () => t('Download now; a video or picture being made may take longer', '现在就下载；正在进行的生成可能会变慢');
+export function pausedText(state) {
+    return state.waitsFor === 'busy_video' ? t('Paused while a video generates; resumes after it, or continue now', '视频生成中，下载已暂停，之后自动继续，也可以现在继续下载')
+        : state.waitsFor === 'busy_picture' ? t('Paused while a picture is made; resumes after it, or continue now', '正在出图，下载已暂停，出完自动继续，也可以现在继续下载')
+        : t('Paused while FreeVideo uses the graphics card for another task; resumes after it, or continue now', 'FreeVideo 正在用显卡做别的任务，下载已暂停，之后自动继续，也可以现在继续下载');
+}
 // Checking files already on disk: a percentage only when the engine reports one.
 export const verifyText = state => state.unknown ? t('Verifying', '正在校验') : t(`Verifying ${Math.floor(state.fraction * 100)}%`, `正在校验 ${Math.floor(state.fraction * 100)}%`);
 // The size to download, said once: files the video models already have are not fetched again.
@@ -62,14 +72,14 @@ function useOf(model, state) {
             : model.id === 'moss-image-sft' ? t('Pictures from a text prompt', '根据文字提示出图') : t('Fast pictures, up to 4 references', '出图快，最多 4 张参考图'),
         missing: state.row?.blocked_by ? t('Not installed: another model is downloading; this one installs after it, or when you press Generate', '未安装：另一个模型正在下载，完成后才会安装这个，也可点生成')
             : t(`Not installed: Generate installs it first, ${size}`, `未安装：点生成会先安装，${size}`),
-        downloading: state.paused ? t('Paused while a video generates; resumes after it', '视频生成中，下载已暂停，之后自动继续') : state.verifying ? (state.unknown ? t('Verifying the files; usable when done', '正在校验文件，完成后可以使用') : t(`Verifying the files ${Math.floor(state.fraction * 100)}%; usable when done`, `正在校验文件 ${Math.floor(state.fraction * 100)}%，完成后即可使用`)) : t(`Downloading ${Math.floor((state.fraction || 0) * 100)}%; usable when done`, `正在下载 ${Math.floor((state.fraction || 0) * 100)}%，完成后即可使用`),
+        downloading: state.paused ? pausedText(state) : state.verifying ? (state.unknown ? t('Verifying the files; usable when done', '正在校验文件，完成后可以使用') : t(`Verifying the files ${Math.floor(state.fraction * 100)}%; usable when done`, `正在校验文件 ${Math.floor(state.fraction * 100)}%，完成后即可使用`)) : t(`Downloading ${Math.floor((state.fraction || 0) * 100)}%; usable when done`, `正在下载 ${Math.floor((state.fraction || 0) * 100)}%，完成后即可使用`),
         failed: state.reason || t('The download stopped; press Retry', '下载中断了，点重试'),
         unavailable: model.id === 'moss-image-sft' ? t('MOSS-Image needs an NVIDIA graphics card, which this computer does not have. Choose another model', 'MOSS-Image 需要 NVIDIA 显卡，这台电脑没有。请选别的模型')
             : t('This model needs an NVIDIA graphics card, which this computer does not have. Choose another model', '这个模型需要 NVIDIA 显卡，这台电脑没有。请选别的模型'),
         checking: t('Asking the engine', '正在询问引擎'),
     }[state.state];
 }
-const actionOf = state => state.state === 'missing' ? (state.resume ? t('Resume', '继续') : t('Install', '安装')) : state.state === 'failed' ? t('Retry', '重试') : state.state === 'downloading' && !state.verifying ? t('Pause', '暂停') : '';
+const actionOf = state => state.state === 'missing' ? (state.resume ? t('Resume', '继续') : t('Install', '安装')) : state.state === 'failed' ? t('Retry', '重试') : state.state === 'downloading' && state.paused ? t('Continue download', '继续下载') : state.state === 'downloading' && !state.verifying ? t('Pause', '暂停') : '';
 
 // The picker: one row for the chosen model; the list opens below it (above when there is no room), takes the
 // arrow keys, Home, End, Enter and Escape, and scrolls when there are more models than fit.
@@ -104,8 +114,8 @@ export function modelPicker({host, onPick, onInstall, onPause}) {
             row.append(icon('check', 'fv-iv-mopt-mark'), text);
             const act = actionOf(state);
             if (act) {
-                const b = button('fv-iv-text-btn fv-iv-mopt-act', {label: act, name: act, use: useOf(model, state)});
-                b.addEventListener('click', event => { event.stopPropagation(); if (state.state === 'downloading') onPause(model); else onInstall(model); close(false); });
+                const b = button('fv-iv-text-btn fv-iv-mopt-act', {label: act, name: act, use: state.paused ? continueUse() : useOf(model, state)});
+                b.addEventListener('click', event => { event.stopPropagation(); if (state.state === 'downloading' && !state.paused) onPause(model); else onInstall(model); close(false); });
                 row.append(b);
             }
             if (state.state === 'downloading') { const p = el('i', 'fv-iv-mpick-bar'); p.style.setProperty('--p', String(state.fraction || 0)); row.append(p); }
@@ -125,7 +135,7 @@ export function modelPicker({host, onPick, onInstall, onPause}) {
     });
     document.addEventListener('pointerdown', event => { if (!list.hidden && !list.contains(event.target) && !root.contains(event.target)) close(false); }, true);
     addEventListener('resize', () => { if (!list.hidden) place(); });
-    action.addEventListener('click', () => { const model = IMAGE_MODELS.find(m => m.id === last.chosen); const state = modelState(last.info, last.chosen); if (!model) return; if (state.state === 'downloading') onPause(model); else onInstall(model); });
+    action.addEventListener('click', () => { const model = IMAGE_MODELS.find(m => m.id === last.chosen); const state = modelState(last.info, last.chosen); if (!model) return; if (state.state === 'downloading' && !state.paused) onPause(model); else onInstall(model); });
 
     function paint(info, chosen, pending) {
         last = {info, chosen, pending};
@@ -137,7 +147,8 @@ export function modelPicker({host, onPick, onInstall, onPause}) {
         status.hidden = state.state === 'ready' || state.state === 'checking';
         tip(trigger, t('Model', '模型'), t(`${model.name}: ${useOf(model, state)}. Click to choose another`, `${model.name}：${useOf(model, state)}。点开换别的模型`));
         const act = actionOf(state); action.hidden = !act; action.replaceChildren(el('span', 'fv-iv-btn-label', act));
-        if (act) tip(action, state.state === 'downloading' ? t('Pause download', '暂停下载') : state.state === 'failed' ? t('Retry download', '重新下载') : t(`Install ${model.short}`, `安装 ${model.short}`), useOf(model, state));
+        if (act) tip(action, state.paused ? t('Continue download', '继续下载') : state.state === 'downloading' ? t('Pause download', '暂停下载') : state.state === 'failed' ? t('Retry download', '重新下载') : t(`Install ${model.short}`, `安装 ${model.short}`),
+            state.paused ? continueUse() : useOf(model, state));
         bar.hidden = state.state !== 'downloading'; bar.style.setProperty('--p', String(state.fraction || 0));
         if (!list.hidden) { paintList(); place(); }
     }
