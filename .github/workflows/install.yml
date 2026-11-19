@@ -61,6 +61,30 @@ jobs:
             exit 1
           fi
           echo "Publishing v$version"
+  # Linux ARM64 (aarch64), without a GPU: what setup pins for ARM64 installs and runs on a real ARM machine. Pull
+  # requests only; GitHub runs ARM runners for public repositories at no charge. The other jobs are unchanged.
+  installation-arm64:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Private Python from the launcher's ARM64 uv
+        run: |
+          export FREEVIDEO_BOOTSTRAP_ROOT="$RUNNER_TEMP/freevideo-bootstrap"
+          bash -c 'set -e; source scripts/bootstrap_linux.sh; test "$FV_ARCH" = aarch64; fv_install_python
+                   echo "FV_PY=$FREEVIDEO_BOOTSTRAP_ROOT/python/cpython-$FV_PYTHON_VERSION-linux-$FV_ARCH-gnu/bin/python3.12" >> "$GITHUB_ENV"'
+      - name: ARM64 choices in setup
+        run: |
+          "$FV_PY" -c 'import platform; assert platform.machine() == "aarch64", platform.machine()'
+          "$FV_PY" -m unittest -v tests.test_arm64_setup
+      - name: CUDA toolkits, Git and the compiler setup pins for ARM64 install and run
+        run: '"$FV_PY" scripts/check_arm64_setup.py --work "$RUNNER_TEMP/arm64" --fixture "$RUNNER_TEMP/arm64-hardware.json"'
+      - name: Setup plans an ARM64 machine with a GB10-class GPU
+        run: |
+          FREEVIDEO_PYTHON="$FV_PY" ./setup.sh --plan --json --hardware-json "$RUNNER_TEMP/arm64-hardware.json" \
+            --root "$RUNNER_TEMP/freevideo" > "$RUNNER_TEMP/plan.json"
+          "$FV_PY" -c 'import json, sys; errors = json.load(open(sys.argv[1]))["errors"]; assert not errors, errors' "$RUNNER_TEMP/plan.json"
   windows:
     # Built only for a release; pull requests run the installation checks only.
     if: github.event_name == 'workflow_dispatch' && inputs.release
