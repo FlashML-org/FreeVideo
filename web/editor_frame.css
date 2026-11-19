@@ -38,5 +38,7 @@
 .fv-studio.fv-editor .fv-ed-picture-tools button[aria-pressed=true]{background:var(--fv-ctl-hover);color:var(--fv-fg)}
 /* The picture is centred on the window, not on its column (the side panes may differ in width); see editor_player.js. */
 .fv-studio.fv-editor .fv-ed-picture{translate:var(--fv-ed-center-shift,0px) 0}
-/* The empty picture: one line and the next step, centred, in the caption size. */
-.fv-studio.fv-editor .fv-ed-empty-preview-text{margin:0;max-width:32em;font-size:var(--fv-fs-2,13px);line-height:20px;color:var(--fv-fg3)}
+/* The empty picture: the next step, centred, in the caption size; a wrapped line breaks evenly, never leaving one word or character alone. */
+.fv-studio.fv-editor .fv-ed-empty-preview-text{margin:0;max-width:32em;text-wrap:balance;font-size:var(--fv-fs-2,13px);line-height:20px;color:var(--fv-fg3)}
+/* A frame too narrow for the hint shows the icon alone instead of a cut-off sentence (too short is handled in editor.css). */
+@container fv-picture (max-width:120px){.fv-studio.fv-editor .fv-ed-empty-preview-text{display:none}}
