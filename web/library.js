@@ -1284,7 +1284,7 @@ export function openLibrary(t, options = {}) {
     }
     // The shelf swaps by a cross-fade: the old cards stay until the new order is there.
     function transition(change) {
-        if (!document.startViewTransition || reducedMotion() || !dialog.isConnected) { change(); return; }
+        if (!document.startViewTransition || document.documentElement.dataset.fvTransitions === 'off' || reducedMotion() || !dialog.isConnected) { change(); return; }
         grid.style.viewTransitionName = 'fv-library-shelf';
         const done = document.startViewTransition(change);
         done.finished.finally(() => { grid.style.viewTransitionName = ''; });

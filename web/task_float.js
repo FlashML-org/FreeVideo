@@ -728,7 +728,7 @@ export function installTaskFloat() {
     // window's card has its own name so its glass can arrive 60 ms late. Names last one switch.
     const SHARED = 'fv-task-pic', CARD = 'fv-task-card';
     let shared = null; // {mode: 'collapse'|'expand', view, picture}
-    const switching = () => typeof document.startViewTransition === 'function' && !calm();
+    const switching = () => typeof document.startViewTransition === 'function' && document.documentElement.dataset.fvTransitions !== 'off' && !calm();
     const root = document.documentElement;
     function clearShared() {
         if (!shared) return;
