@@ -1053,6 +1053,8 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
         }
         note.hidden = !note.textContent;
         bar.dataset.running = String(state.running);
+        // A queue note is a sentence, not a progress figure: it may wrap (image_editor.css).
+        bar.dataset.waiting = String(!!(state.running && state.waiting) && !pack && !missing && !promptRequired);
         bar.dataset.message = String(!!missing || promptRequired || !!state.error || !!note.textContent);
         bar.dataset.failed = String(!!state.error && !promptRequired);
         bar.dataset.pack = String(!!pack && !pack.reason && !state.error);

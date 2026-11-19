@@ -117,7 +117,7 @@ button.fv-ie-size:hover{background:var(--fv-hover);color:var(--fv-ink)}
 .fv-ie-gen-box[data-folded=true]>.fv-ie-gen-prompt{color:transparent}
 .fv-ie-gen-prompt:disabled{opacity:.5}
 .fv-ie-gen-note{align-self:center;min-width:0;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
-.fv-ie-generation[data-running=true]>.fv-ie-gen-note{white-space:nowrap}
+.fv-ie-generation[data-running=true]:not([data-waiting=true])>.fv-ie-gen-note{white-space:nowrap}
 .fv-ie-generation>.fv-ie-button{grid-column:4;min-height:32px}
 .fv-ie-generation[data-message=true]>.fv-ie-gen-note{max-width:260px}
 /* Image failures use the video's report button and submission card on their own row. */
