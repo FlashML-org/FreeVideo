@@ -376,7 +376,7 @@ export function renderImageFailure(host, {error, report_id, stage, step, fitted,
     let bar;
     if (report_id) ({bar} = imageReportBar(card, report_id, t, {productVersion, fetchApi}));
     else {
-        const facts = [[['Error code', '错误码'], error], [['Stage', '阶段'], stage], [['Step', '步骤'], step], [['Memory', '内存'], memory]].filter(([, v]) => v);
+        const facts = [[['Error code', '错误码'], error], [['Stage', '阶段'], stage], [['Step', '步骤'], step || (stage ? '' : 'unreported')], [['Memory', '内存'], memory]].filter(([, v]) => v);
         bar = doc.createElement('div'); bar.className = 'fv-actions';
         // Drawn as the card's other actions (Retry, Download report): their border, focus ring and press.
         bar.append(issueButton(t, () => ({where: ['Image generation', '图像生成'], message: facts.map(([[en, zh], v]) => `${t(en, zh)}: ${v}`).join('\n')}), {className: 'fv-action'}));
