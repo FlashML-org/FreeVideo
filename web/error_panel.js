@@ -1,7 +1,7 @@
 // Shared by the Studio and graph view. Text only; never render exception HTML.
 import {readOtherUsage, otherUsageText} from './other_usage.js';
 import {pageRepair, repairAction, repairButton} from './repair_hint.js';
-import {detectBrowserExtension, browserExtensionAdvice, extensionSteps, isNetworkTypeError, connectionLostText, engineNotRunning, engineNotRunningText} from './browser_extension.js';
+import {detectBrowserExtension, browserExtensionAdvice, extensionSteps, isNetworkTypeError, connectionLostText, engineNotRunning, engineNotRunningText, isRequestTimeout, requestTimeoutText, requestTimeoutAction} from './browser_extension.js';
 import {SAMPLING_EFFORTS, STEP_CACHES, UPSCALE_FACTORS, tableLevel} from './sampling_effort.js';
 import {failureIssue, failureStage} from './failure_issue.js';
 import {knownEngineExit} from './engine_exit.js';
@@ -325,9 +325,13 @@ export function createErrorReport(detail, context = {}) {
     }
     if (['this-computer', 'local-network', 'other-address', 'host-name', 'unknown'].includes(detail?.connection?.page_address))
         connection.page_address = detail.connection.page_address;
+    // The ComfyUI page's own version, kept only when it is a plain version number: FreeVideo ships one frontend, and a
+    // request the page gives up on (a newer frontend stops waiting after a minute) reads differently on another.
+    const frontendVersion = String(globalThis.__COMFYUI_FRONTEND_VERSION__ ?? '');
     const report = {
         schema: 'freevideo.error-report', schema_version: 1, created_at: new Date().toISOString(),
         stage, message: clean(message),
+        ...(/^\d{1,3}(?:\.\d{1,4}){1,3}(?:[-+][0-9A-Za-z.]{1,20})?$/.test(frontendVersion) ? {frontend_version: frontendVersion} : {}),
         ...(Object.keys(connection).length ? {connection} : {}),
         // Chosen from the original message before redaction removes any input
         // text from it, so a card shown again from this report keeps its advice.
@@ -624,6 +628,11 @@ export function adviceFor(report, t, value) {
         const stopped = engineNotRunning(report.connection);
         Object.assign(advice, {kind: 'connection', title: stopped ? t('FreeVideo has stopped', 'FreeVideo 已停止运行') : t('Lost the connection to FreeVideo', '与 FreeVideo 的连接已断开'),
             summary: stopped ? engineNotRunningText(t) : connectionLostText(t), action: ''});
+    }
+    // A request that was not answered in time: the card says so and what to check, instead of a bare title.
+    if (advice.kind === 'unknown' && ['submission', 'queue'].includes(report.stage)
+        && (isRequestTimeout(value) || report.exception_type === 'TimeoutError')) {
+        Object.assign(advice, {kind: 'timeout', title: t('FreeVideo did not answer in time', 'FreeVideo 未在规定时间内应答'), summary: requestTimeoutText(t), action: requestTimeoutAction(t)});
     }
     if (report.stage === 'submission' && advice.kind === 'unknown') {
         advice.title = t('The task could not be submitted', '任务提交失败');

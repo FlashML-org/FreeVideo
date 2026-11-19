@@ -47,6 +47,20 @@ export function isNetworkTypeError(error) {
     return (type === 'TypeError' || /^TypeError:\s*/i.test(text))
         && /Failed to fetch|fetch failed|NetworkError(?: when attempting to fetch resource)?|network request failed|Load failed/i.test(text);
 }
+// A request the page gave up waiting for: the browser (or ComfyUI's own fetch) aborts it with a TimeoutError,
+// e.g. "Fetch timeout" when POST /prompt is not answered in time. The engine may still have taken the request.
+export function isRequestTimeout(error) {
+    const type = error?.name || error?.exception_type;
+    const text = typeof error === 'string' ? error : string(error?.message) || string(error?.exception_message);
+    return type === 'TimeoutError' || /^TimeoutError:\s*/i.test(text);
+}
+export function requestTimeoutText(t) {
+    return t('The task may already have been accepted.', '任务可能已被接收。');
+}
+// What to do next: the engine may already hold the request, so resubmitting blindly would queue it twice.
+export function requestTimeoutAction(t) {
+    return t('Check the queue, and submit again only if the task is not there.', '请先查看队列，任务不在队列中时再重新提交。');
+}
 // One sentence for a dropped connection (engine closed, network lost); the raw
 // browser wording stays in the technical details.
 export function connectionLostText(t) { return t('Lost the connection to FreeVideo. Try again once it is back.', '与 FreeVideo 的连接已断开，恢复后请重试。'); }
