@@ -13,6 +13,8 @@ import { openShortcuts, shortcutsOpen, closeShortcuts, VIEW_NAMES } from './shor
 import { searchEverything, searchSettled, warmSearch, fillPrompt } from './global_search.js';
 import { openNotifications, latestFinished, toast, visitJob, openWork } from './notifications.js';
 import { jobs } from './task_store.js';
+import { userMessage } from './user_message.js';
+import { openIssue, preloadIssue } from './issue_button.js';
 
 const browser = typeof document !== 'undefined';
 addSheet('palette.css', import.meta.url);
@@ -588,9 +590,22 @@ function execute(command) {
     // The palette is gone and focus is back where it was before the action runs.
     queueMicrotask(async () => {
         try { await command.run({view: currentView(), source: 'palette'}); }
-        catch (error) { console.warn('FreeVideo command:', error); toast(t('Could not complete. Try again.', '没有完成，请重试。'), {tone: 'warn'}); }
+        catch (error) { console.warn('FreeVideo command:', error); commandFailed(command, error); }
     });
 }
+// A known cause (offline, an extension, FreeVideo's own sentence) is the whole notice. An unknown one or a server
+// error names the command and offers a report that carries the raw error and the command id.
+export function commandFailure(command, error, report = openIssue) {
+    const name = words(command.title);
+    const reason = userMessage(error, t, '');
+    const server = /\bHTTP\s*\d{3}\b/.test(String(error?.message ?? error ?? '')) || Number.isInteger(error?.status);
+    if (reason && !server) return [reason, {tone: 'fail'}];
+    // The pill holds one short line beside the button; the server's sentence goes in the detail (the bell keeps both).
+    return [t(`Failed: “${name}”`, `“${name}”没有完成`), {tone: 'fail', ...(reason ? {detail: reason} : {}), action: {
+        label: t('Report', '提交问题'), use: t('Open the feedback form with this error filled in', '打开反馈表，已填好这条错误'),
+        run: () => report(t, {where: ['Command palette', '命令面板'], message: `${name}: ${String(error?.message ?? error ?? '')}`, kind: 'command', facts: {command: command.id}})}}];
+}
+function commandFailed(command, error) { const notice = commandFailure(command, error); if (notice[1].action) preloadIssue(); toast(...notice); }
 function accept() { const command = confirming; confirming = null; drawConfirm(); if (command) execute(command); }
 function drawConfirm() {
     ui.confirm.hidden = !confirming; ui.list.hidden = Boolean(confirming); ui.scopes.hidden = Boolean(confirming);

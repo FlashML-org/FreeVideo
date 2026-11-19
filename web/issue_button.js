@@ -30,6 +30,17 @@ let modules = null;
 const load = () => modules || (modules = Promise.all([import('./feedback.js'), import('./updates.js')])
     .then(([feedback, updates]) => ({feedback, updates})).catch(() => null));
 
+// Opens the prefilled form for `value` ({where, message, kind, facts}); also used by a notice's "Report a problem".
+export async function openIssue(t, value, open = (url, features) => globalThis.open?.(url, '_blank', features)) {
+    const ready = await load();
+    const draft = issueDraft(value, t);
+    // Modules that did not load still leave the blank form reachable.
+    if (!ready) return open(`${ISSUE_FORM}?${new URLSearchParams({template: 'feedback.yml', title: draft.title, feedback: draft.text})}`, 'noopener');
+    open(ready.feedback.feedbackIssueURL(draft.text, ready.updates.productVersion(), draft.summary, draft.title), 'noopener');
+}
+// Starts loading the form's modules ahead of a click.
+export const preloadIssue = () => { load(); };
+
 function icon() {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', '0 0 16 16'); svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('focusable', 'false');
@@ -72,11 +83,7 @@ export function issueButton(t, source, {className = '', route = null, open = (ur
             showReportTip(button.parentElement, button, t, {mode: 'downloaded', submit: () => reportIssue(route.fetch, route.version(), {save: false})});
             return;
         }
-        const ready = await load();
-        const draft = issueDraft(value, t);
-        // Modules that did not load still leave the blank form reachable.
-        if (!ready) return open(`${ISSUE_FORM}?${new URLSearchParams({template: 'feedback.yml', title: draft.title, feedback: draft.text})}`, 'noopener');
-        open(ready.feedback.feedbackIssueURL(draft.text, ready.updates.productVersion(), draft.summary, draft.title), 'noopener');
+        await openIssue(t, value, open);
     };
     return button;
 }
