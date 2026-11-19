@@ -86,6 +86,11 @@ const PLAIN_ERRORS = [
         title: ['This LoRA cannot be used', '此 LoRA 无法使用'],
         summary: ['The FreeVideo model is already accelerated and does not need an acceleration LoRA. Turn this LoRA off or remove it, then generate again.',
             'FreeVideo 的模型已经加速，无需加速 LoRA。请关闭或移除此 LoRA 后重新生成。']},
+    {key: 'lora-alpha', message: 'This LoRA stores one alpha value for layers of different ranks, so its strength cannot be determined. Use a copy that stores an alpha for every layer, or one with the same rank on every layer.',
+        prefixes: ['This LoRA stores one alpha value for layers of different ranks'],
+        title: ['This LoRA cannot be used', '此 LoRA 无法使用'],
+        summary: ['This LoRA stores one alpha value, but its layers have different ranks, so the scale of each layer cannot be determined. Turn it off or remove it, then generate again, or use a version that stores an alpha for every layer.',
+            '此 LoRA 只记录了一个 alpha 值，而各层的 rank 不同，无法确定每层的缩放比例。请关闭或移除后重新生成，或换用每层都记录了 alpha 的版本。']},
     {key: 'lora-int8', message: 'This LoRA changes parts of the model that the int8 version cannot merge yet, so it cannot be used for now. LoRAs that change only linear layers work.',
         title: ['This LoRA cannot be used', '此 LoRA 无法使用'],
         summary: ['The int8 version cannot merge the layers this LoRA changes yet. Turn it off or remove it, then generate again.',
@@ -850,7 +855,7 @@ export function createErrorPanel(t, route = null) {
         copy.hidden = generated; copyInside.hidden = !generated; copyInside.textContent = copy.textContent;
         // For a generation failure the note on removed text sits in the technical details, beside the copy button.
         privacy.hidden = generated; privacyInside.hidden = !generated;
-        const lora = ['lora-unusable', 'lora-acceleration', 'lora-int8'].includes(advice.kind);
+        const lora = ['lora-unusable', 'lora-acceleration', 'lora-alpha', 'lora-int8'].includes(advice.kind);
         // An int8 limit is not a judgement, so there is no mistake to report.
         github.hidden = !generated || advice.kind === 'lora-int8'; githubLora = lora;
         github.textContent = lora ? t('Report a mistake', '报告误判') : t('Report a problem', '提交问题');

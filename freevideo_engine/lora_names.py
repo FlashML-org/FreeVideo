@@ -7,6 +7,9 @@ MODULATION = re.compile(r'transformer_blocks\.\d+\.adaln_proj\.')
 INT8_UNMERGEABLE = ('This LoRA changes parts of the model that the int8 version cannot merge yet, '
                     'so it cannot be used for now. LoRAs that change only linear layers work.')
 
+MIXED_RANK_ALPHA = ('This LoRA stores one alpha value for layers of different ranks, so its strength cannot be determined. '
+                    'Use a copy that stores an alpha for every layer, or one with the same rank on every layer.')
+
 
 # Factor names trainers write: PEFT lora_A/lora_B, Kohya and diffusers
 # lora_down/lora_up, each with or without the trailing ".weight".
