@@ -25,6 +25,7 @@ import {createAdjustPicture} from './editor_adjust_picture.js';
 import {pictureSession} from './editor_picture_session.js';
 import {createPictureTools} from './editor_frame.js';
 import {openExportDialog} from './editor_export_dialog.js';
+import {replaceMode} from './editor_audio_replace.js';
 import {createAudioIntegration, createSpeechSpans, handleAudioShortcut, AUDIO_SHORTCUTS} from './editor_audio.js';
 import {createStemsIntegration} from './editor_stems.js';
 import {createSpeedComponent, readSpeedAudioSamples, handleSpeedKey, speedShortcuts} from './editor_speed.js';
@@ -2205,7 +2206,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if (event.target !== element) return;
         event.preventDefault();
         if (escapeTaken || topDialog() !== element) return;
-        if (dismissPopup(event) || tracks?.cancelGesture() || pictureEdit.cancelDraft()) { tookEscape(); return; }
+        // A pending "replace audio" is an inner layer too: Escape ends it and keeps the selection.
+        if (dismissPopup(event) || tracks?.cancelGesture() || pictureEdit.cancelDraft() || replaceMode(state).cancel()) { tookEscape(); return; }
         if (document.fullscreenElement) { tookEscape(); document.exitFullscreen().catch(() => {}); return; }
         state.select(null, {history: true});
     });
