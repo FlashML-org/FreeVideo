@@ -434,7 +434,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     // `where` marks a failure: the notice then carries the "Report a problem" button and stays longer to be reached.
     // Notices stack (newest last, at most three) instead of a new one wiping out the one being read; each can be closed.
     const noticeTimers = new Set();
-    function notify(text, where = null, kind = null, action = null) {
+    // `report: false` keeps a problem's 20 s and its name but leaves out "Report a problem", for a cause that is not a fault.
+    function notify(text, where = null, kind = null, action = null, {report = true} = {}) {
         if (disposed) return;
         if (!text) { for (const timer of noticeTimers) clearTimeout(timer); noticeTimers.clear(); notices.replaceChildren(); return; }
         const last = notices.lastElementChild;
@@ -443,7 +444,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         const words = el('span', 'fv-ed-notice-text', text);
         // In the project row the line is cut to one row; its hover says it whole.
         words.setAttribute('data-fv-tip-name', where ? t('Problem', '问题') : t('Notice', '提示')); words.setAttribute('data-fv-tip-use', text);
-        if (where) { words.classList.add('fv-copyable'); words.append(issueButton(t, () => ({where, message: text, kind}))); }
+        if (where && report) { words.classList.add('fv-copyable'); words.append(issueButton(t, () => ({where, message: text, kind}))); }
         const close = button('', () => { clearTimeout(timer); noticeTimers.delete(timer); card.remove(); }, 'fv-ed-notice-close');
         close.append(icon('m4 4 8 8M12 4l-8 8')); close.setAttribute('aria-label', t('Close', '关闭'));
         tip(close, {name: t('Close', '关闭'), use: t('Dismiss this notice', '关掉这条提示')});
@@ -710,7 +711,23 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         } finally { startingHeld = false; }
     }
     function completeSources() {
-        return store.getSources(model.references(state.record).map(sourceKey)).then(() => { player.refresh(); tracks?.refresh?.(); });
+        return store.getSources(model.references(state.record).map(sourceKey)).then(() => { player.refresh(); tracks?.refresh?.(); sayMissing(); });
+    }
+    // A picture whose file was moved or deleted stays on the timeline as a grey part; the notice bar says so once for each
+    // such file, however the edit was opened (Iris 11-20). Moving a file is not a fault, so there is no report button.
+    const toldMissing = new Set();
+    function sayMissing() {
+        if (disposed) return;
+        for (const track of state.record.tracks) {
+            if (track.kind !== 'video') continue;
+            for (const clip of track.clips) {
+                const key = clip.source && sourceKey(clip.source), value = key && store.sources.get(key);
+                if (!value?.missing || value._fallback || toldMissing.has(key)) continue;
+                toldMissing.add(key);
+                notify(t('The video file cannot be found. It may have been moved or deleted. Import it again.',
+                    '视频文件找不到了，可能已被移动或删除。请重新导入。'), EDITOR_ISSUE, null, null, {report: false});
+            }
+        }
     }
     // Music on the second sound track goes through the same bar; the bar shows a chosen piece's own job.
     const music = createEditorMusic({state, store, t, completeSources, onStatus: () => genbar?.update(barValue)});
