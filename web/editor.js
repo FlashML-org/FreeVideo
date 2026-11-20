@@ -945,6 +945,11 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         const ids = new Set((job.blocks || []).map(block => block.id));
         const last = state.record.tracks[0].clips.filter(clip => ids.has(clip.id)).sort((a, b) => a.start - b.start).at(-1);
         if (!last || !model.continuesBefore(state.record, last.id) || generationBusy || held.length) return;
+        // Only an open end gets a next part: anything after it on the picture's or its sound's track (such as the rest of
+        // an imported sound the video was made to) would be pushed back by the new part.
+        const pair = model.pair(state.record, last.id), edge = last.start + last.frames;
+        const tracksOf = new Set(pair.map(member => state.record.tracks.find(track => track.clips.includes(member))));
+        if ([...tracksOf].some(track => track.clips.some(clip => !pair.includes(clip) && clip.start >= edge))) return;
         const picked = state.selection;
         if (picked && !(picked.kind === 'clip' && picked.ids.some(id => ids.has(id) || model.find(state.record, id)?.link && ids.has(model.find(state.record, id).link)))) return;
         enterClip(clip => clip.id === last.id, projectEpoch, {select: false});
