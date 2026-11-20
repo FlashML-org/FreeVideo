@@ -1299,7 +1299,7 @@ class ExportQueue:
                     _check(job['stop'].is_set)
                     _checked_target(target, self.root)
                     _save_report(target, job['project'], time.monotonic() - started, options=job['options'])
-                    job.update(state='done', fraction=1., work=work if job['options'].only == 'video' else None,
+                    job.update(state='done', fraction=1., work=work if job['options'].only == 'video' and not job['options'].lossless else None,
                                **editor_export_options.result_file(work, job['options']))
             except Exception as error:
                 # Only this job's UUID folder is owned by the worker.

@@ -1719,8 +1719,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         },
     };
     async function viewExport(value) {
-        // A sound-only export is not a work: it opens as a file the browser plays and can save.
-        if (value.only === 'sound') { if (value.url) window.open(mediaURL(api, value.url), '_blank', 'noopener'); return; }
+        // A sound-only or lossless-sound export is not a work: it opens as a file the browser plays or saves.
+        if (value.only === 'sound' || value.audio === 'lossless') { if (value.url) window.open(mediaURL(api, value.url), '_blank', 'noopener'); return; }
         const module = await import('./library.js');
         module.openLibrary(t, {selectedWork: value.work, extend: async (record, options) => {
             if (await handle.close() === false) throw new Error(saveWarningText.textContent);

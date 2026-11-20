@@ -31,7 +31,7 @@ export const MODULES = ['audio_original.js', 'chat_data.js', 'phone_model.js', '
     'feature_tour_layer.js', 'settings_room.js', 'settings_kit.js', 'settings_words.js',
     'image_works.js', 'cast_photo.js', 'editor_opening.js', 'editor_poster.js', 'topbar_state.js', 'preload_setting.js', 'private_offers.js', 'cast_face_crop.js', 'context_fallback.js', 'studio_warm.js',
     'pose_body.js', 'pose_props.js', 'pose_stage.js', 'pose_tool.js', 'release_media.js', 'ui_speed.js',
-    'lora_menu.js', 'upscale_offer.js', 'user_message.js', 'workflow_drafts.js', 'comfy_templates.js'];
+    'lora_menu.js', 'upscale_offer.js', 'user_message.js', 'workflow_drafts.js'];
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 let visibleAt = 0;
 async function waitForVisible() {

@@ -17,14 +17,21 @@ class ExportOptions:
     # Above 24 the picture is first rendered at 24 fps (intermediate) and then interpolated.
     fps: int = 24
     intermediate: bool = False
+    # 'lossless': the mixed sound is kept as 16-bit ALAC in a .mov beside the picture, outside the library.
+    audio: str = 'compatible'
 
     @property
     def filename(self):
-        return 'audio.' + self.sound_format if self.only == 'sound' else 'video.mp4'
+        return 'audio.' + self.sound_format if self.only == 'sound' else 'video.mov' if self.lossless else 'video.mp4'
+
+    @property
+    def lossless(self):
+        return self.only == 'video' and self.audio == 'lossless'
 
     @property
     def container(self):
-        return 'wav' if self.only == 'sound' and self.sound_format == 'wav' else 'mp4'
+        return ('wav' if self.only == 'sound' and self.sound_format == 'wav'
+                else 'mov' if self.lossless else 'mp4')
 
     @property
     def container_options(self):
@@ -40,7 +47,7 @@ class ExportOptions:
 
     @property
     def audio_codec(self):
-        return 'pcm_s16le' if self.container == 'wav' else 'aac'
+        return 'pcm_s16le' if self.container == 'wav' else 'alac' if self.lossless else 'aac'
 
     def status(self):
         return dict(width=self.width, height=self.height, frames=self.frames,
@@ -48,7 +55,8 @@ class ExportOptions:
                     range=dict(start=self.start, frames=self.frames),
                     sound_format=self.sound_format if self.only == 'sound' else None,
                     **({'subtitles': 'none'} if self.only == 'video' and self.subtitles == 'none' else {}),
-                    **({'fps': self.fps} if self.only == 'video' and self.fps != 24 else {}))
+                    **({'fps': self.fps} if self.only == 'video' and self.fps != 24 else {}),
+                    **({'audio': 'lossless'} if self.lossless else {}))
 
 
 FRAME_RATES = (24, 48, 60)
@@ -56,13 +64,13 @@ FRAME_RATES = (24, 48, 60)
 
 def validate(options, width, height, frames):
     """Validate wire values once; the queue passes the immutable result to render."""
-    if not isinstance(options, dict) or set(options) - {'short', 'quality', 'range', 'only', 'sound_format', 'subtitles', 'fps'}:
+    if not isinstance(options, dict) or set(options) - {'short', 'quality', 'range', 'only', 'sound_format', 'subtitles', 'fps', 'audio'}:
         raise ValueError('Invalid export options')
     if 'short' in options and (type(options['short']) is not int
                               or not 144 <= options['short'] <= 4320 or options['short'] % 2):
         raise ValueError('Invalid export short side')
     for key, allowed in (('quality', ('high', 'standard', 'small')), ('only', ('sound',)),
-                         ('sound_format', ('m4a', 'wav')), ('subtitles', ('burn', 'none'))):
+                         ('sound_format', ('m4a', 'wav')), ('subtitles', ('burn', 'none')), ('audio', ('lossless',))):
         if key in options and (type(options[key]) is not str or options[key] not in allowed):
             raise ValueError('Invalid export ' + key)
     start, count = 0, frames
@@ -86,7 +94,8 @@ def validate(options, width, height, frames):
     if max(output_width, output_height) > 8192:
         raise ValueError('Export picture is too large')
     return ExportOptions(output_width, output_height, start, count, quality=options.get('quality', 'high'),
-                         subtitles=options.get('subtitles', 'burn'), fps=options.get('fps', 24))
+                         subtitles=options.get('subtitles', 'burn'), fps=options.get('fps', 24),
+                         audio=options.get('audio', 'compatible'))
 
 
 def effective(options, width, height, frames):
@@ -108,10 +117,12 @@ def frame_tracks(tracks, start, number):
 
 
 def sound_samples(mixed, options):
-    if options.container != 'wav':
+    if options.container not in ('wav', 'mov'):
         return mixed, 'fltp'
     import numpy as np
     samples = np.clip(np.rint(mixed.T * 32768), -32768, 32767).astype(np.int16)
+    if options.container == 'mov':
+        return np.ascontiguousarray(samples.T), 's16p'  # ALAC takes planar 16-bit
     return np.ascontiguousarray(samples.reshape(1, -1)), 's16'
 
 
@@ -126,6 +137,8 @@ def report_values(report, options):
     if options.only == 'video' and options.fps != 24:
         # The picture has fps times as many frames per second; the length stays the same.
         report['geometry'].update(fps=options.fps, frames=-(-options.frames * options.fps // 24))
+    if options.lossless:
+        report['encoding'].update(audio_codec='alac', bits_per_sample=16)
     if options.only == 'sound':
         report.pop('video', None)
         report['audio'] = dict(format=options.sound_format)
@@ -138,7 +151,7 @@ def report_values(report, options):
 
 
 def result_file(work, options):
-    """Use ComfyUI's existing output media route; audio is not a library video."""
+    """Use ComfyUI's existing output media route; audio is not a library video, nor is a lossless .mov."""
     path = PurePosixPath('FreeVideo') / work / options.filename
     return dict(path=path.as_posix(), url='/view?' + urlencode(
         dict(filename=path.name, subfolder=str(path.parent), type='output')))
