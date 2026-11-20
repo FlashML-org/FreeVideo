@@ -756,8 +756,8 @@ export const TUTORIAL_CHAPTERS = [
             en: ['Choose "Creations" at the start of the recent videos below the preview.', 'Pick a video to play it, or choose "Continue" to continue it in the Edit view.', 'In a creation\'s details, choose the heart to add it to favorites. Above the list, choose "Favorites" to see only those, or "All" to see every creation.', 'For a finished file, choose "Export" in the Edit view.', 'In the export window choose the range, quality and content. For smoother motion, choose 48 or 60 under "Frame rate"; the graphics card makes the frames in between. Then choose "Export".'],
         },
         limits: {
-            zh: ['删除作品前会确认；被剪辑使用的作品不能删除。', '导出窗口每次打开时，“内容”默认选“画面和声音”，“画质”默认选“高”。', '导出过程中取消不会留下不完整的文件。', '导出窗口没有“帧率”时，这台电脑不支持 48 和 60 帧导出。'],
-            en: ['FreeVideo asks before deleting a video, and a video used in an edit cannot be deleted.', 'The export window always opens with "Video and audio" as the content and "High" as the quality.', 'Cancelling an export leaves no unfinished file.', 'When the export window has no "Frame rate", this computer cannot export at 48 or 60 fps.'],
+            zh: ['删除作品前会确认；被剪辑使用的作品不能删除。', '导出窗口每次打开时，“内容”默认选“画面和声音”，“画质”默认选“高”；窗口里没有“帧率”时，这台电脑不支持 48 和 60 帧导出。', '导出过程中取消不会留下不完整的文件。'],
+            en: ['FreeVideo asks before deleting a video, and a video used in an edit cannot be deleted.', 'The export window always opens with "Video and audio" as the content and "High" as the quality; when it has no "Frame rate", this computer cannot export at 48 or 60 fps.', 'Cancelling an export leaves no unfinished file.'],
         },
     },
     {
