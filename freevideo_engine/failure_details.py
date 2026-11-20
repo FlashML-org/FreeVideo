@@ -634,7 +634,7 @@ def source_lines(lines, zh=False):
 # Graphics card families that all predate compute capability 8.0 (Ampere), by the name the driver reports.
 BELOW_COMPUTE_FLOOR = re.compile(
     r'\b(?:GeForce\s+)?(?:GT|GTS|GTX)\s*\d'            # GeForce 8 to GTX 16 series, including GT 730
-    r'|\bGeForce\s+(?:RTX\s*)?20[0-9]0\b'               # RTX 20 series (Turing)
+    r'|\bGeForce\s+(?:RTX\s*)?20[0-46-9]0\b'            # RTX 20 series (Turing); the laptop RTX 2050 is Ampere and stays supported
     r'|\bGeForce\s+(?:8|9|2|3)\d{2,3}\s*(?:GT|GS|M)?\b'  # older numbered GeForce cards
     r'|\bTITAN\s*(?:X|V|Xp|RTX|Black|Z)?\b'
     r'|\bQuadro\s+(?:RTX\s*)?[KMPT]?\d'
