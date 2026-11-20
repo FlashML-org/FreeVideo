@@ -560,6 +560,12 @@ export function installShell({cover: wantCover = false} = {}) {
         import('./glass/stage_light.js').catch(error => console.warn('FreeVideo stage light:', error));
     }
     // FreeVideo's own right-click menu wherever a part has none of its own (text boxes, links, the empty page).
+    // ComfyUI's Templates window: Chinese words for its search box and first category, and the light theme.
+    if (!document.querySelector('link[data-fv-sheet="comfy-templates"]')) {
+        const sheet = document.createElement('link'); sheet.rel = 'stylesheet'; sheet.dataset.fvSheet = 'comfy-templates';
+        sheet.href = new URL('./comfy_templates.css', import.meta.url).href; document.head.append(sheet);
+    }
+    import('./comfy_templates.js').then(({watchTemplates}) => watchTemplates()).catch(error => console.warn('FreeVideo templates:', error));
     import('./context_fallback.js').catch(error => console.warn('FreeVideo menu:', error));
     guardTitle(); watchHead(); quietSplash();
     for (const type of SWITCH_INPUT) globalThis.addEventListener?.(type, pressDuringSwitch, {capture: true, passive: false});
