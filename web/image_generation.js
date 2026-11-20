@@ -61,6 +61,9 @@ export function blankCanvasSize(ratio, sizes = null, tier = 'standard') {
     const units = Math.floor(Math.sqrt(side ** 2 / (w * h * 32 ** 2)));
     return {width: w * units * 32, height: h * units * 32};
 }
+// The step word a caller names for a failure that carries no step. A failure with a reason of its own needs none; the
+// catch-all generation_failed, with no stage and no report either, names where it was caught instead of "unreported".
+export const originStep = (error, word) => error?.step || (!error?.code || (error.code === 'generation_failed' && !error.stage && !error.report_id) ? word : '');
 const failure = (code, info = {}) => Object.assign(new Error(code || 'generation_failed'), {
     code: code || 'generation_failed', report_id: info.report_id || null, stage: info.stage || '',
     fitted: info.fitted || null, memory: info.memory || '',
@@ -75,7 +78,7 @@ export function createImageGenClient(fetchImpl = globalThis.fetch.bind(globalThi
         try { response = await fetchImpl(path, options); } catch (error) { throw failure(error instanceof TypeError ? 'connection_lost' : 'engine_error', {stage: 'start'}); }
         try { value = await response.json(); } catch { throw failure('engine_error', {stage: 'start'}); }
         if (!response.ok || value[p.error] && !value[p.phase] && !value.state)
-            throw failure(value[p.error], value[p.error] ? value : {...value, step: `http_${response.status}`});
+            throw failure(value[p.error], {...value, step: originStep({...value, code: value[p.error]}, `http_${response.status}`)});
         return value;
     }
     async function post(action, value, retried = false) {
@@ -638,7 +641,7 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
             if (onBusy && row.status === 'failed' && row.failure?.code === 'busy') { tasks.placed?.(row); onBusy(); return; }
             forget(); tasks.placed?.(row);
             if (row.status === 'cancelled') emit({running: false, job: null, stage: '', fraction: 0, waiting: '', stopping: false, error: '', report_id: null, memory: ''});
-            else { const reason = row.failure || {}; emit({running: false, job: null, waiting: '', stopping: false, ...failed({...reason, code: reason.code || 'generation_failed', step: reason.step || (reason.code ? '' : 'task_row')})}); }
+            else { const reason = row.failure || {}; emit({running: false, job: null, waiting: '', stopping: false, ...failed({...reason, code: reason.code || 'generation_failed', step: originStep(reason, 'task_row')})}); }
         }, {id});
         // The row may have ended before subscribe returned.
         if (ended) { off(); off = null; }
@@ -760,7 +763,7 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
                     }
                     const row = await whenFree(async () => {
                         const answer = await client.generate(request_);
-                        if (!answer.job) throw failure(answer.error, answer.error ? answer : {...answer, step: 'submit'});
+                        if (!answer.job) throw failure(answer.error, {...answer, step: originStep({...answer, code: answer.error}, 'submit')});
                         return answer;
                     }, alive, resend);
                     if (!row) return;

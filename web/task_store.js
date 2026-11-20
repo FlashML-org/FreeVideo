@@ -249,6 +249,12 @@ export function imageSource(store, {client, storage = null, poll = 500, now = st
             if (own && own !== client) clients.set(id, own);
             store.upsert({id, kind: 'image', source: 'image', status: 'submitting', prompt: meta.text ?? request.prompt ?? '', model: request.model || null,
                 view, meta: {...meta, ...(own?.standIn === true ? {standIn: true} : {})}, percent: 0});
+            // A refusal that carries only the catch-all code, with no stage or report, names the submit step; any other keeps its own.
+            const stepped = (value, code) => {
+                // The same rule as originStep in image_generation.js (this file takes no imports).
+                const step = value?.step || (!code || (code === 'generation_failed' && !value?.stage && !value?.report_id) ? 'submit' : '');
+                return value instanceof Error ? Object.assign(value, {step}) : {...value, step};
+            };
             const refuse = (code, value) => {
                 clients.delete(id);
                 if (IMAGE_BUSY.has(code)) store.drop(id); else store.upsert({id, status: 'failed', failure: {code, ...pick(value)}});
@@ -256,8 +262,8 @@ export function imageSource(store, {client, storage = null, poll = 500, now = st
             };
             let reply;
             try { reply = await mine.generate(request); }
-            catch (error) { throw refuse(error?.code || 'generation_failed', error?.code ? error : error instanceof Error ? Object.assign(error, {step: 'submit'}) : {step: 'submit'}); }
-            if (!reply?.job) throw refuse(reply?.error || 'generation_failed', reply?.error ? reply : {...reply, step: 'submit'});
+            catch (error) { throw refuse(error?.code || 'generation_failed', stepped(error, error?.code)); }
+            if (!reply?.job) throw refuse(reply?.error || 'generation_failed', stepped(reply, reply?.error));
             keys[id] = {job: reply.job, model: request.model || null, withImages: Boolean(meta.withImages), created_at: store.get(id)?.created_at || now(), view};
             save();
             // Stopped while the request was on its way: the engine gets the cancel now that the job has a key.

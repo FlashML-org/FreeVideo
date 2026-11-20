@@ -13,7 +13,7 @@ import {closeDialog} from './motion.js';
 import { estimatedFraction, remainingAbove, remainingShown, createDiagnosticReportControl } from './generation_progress.js';
 import {createErrorReport, failureAdvice, failureFold} from './error_panel.js';
 import {canDeleteConversation, canRenameConversation, conversationMenu, emptyConversations, hasConversations, mergeConversations, removeConversation, runningElsewhere, selectConversation} from './autopilot_conversations.js';
-import {renderImageFailure} from './image_generation.js';
+import {renderImageFailure, originStep} from './image_generation.js';
 import {issueButton} from './issue_button.js';
 import {about} from './request_assets.js';
 import {showEmptyPrompt} from './empty_prompt_notice.js';
@@ -1426,7 +1426,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                     // "Send again" leads the card's own action row; its label and state are set below with the others.
                     const host = el('div');
                     const card = renderImageFailure(host, {error: job.error?.code || 'generation_failed', report_id: job.error?.report_id,
-                        stage: job.error?.stage, step: job.error?.step || (job.error?.code ? '' : 'agent_job'), memory: job.error?.memory}, t,
+                        stage: job.error?.stage, step: originStep(job.error, 'agent_job'), memory: job.error?.memory}, t,
                         {productVersion, fetchApi: (path, options) => api.fetchApi(path, options),
                             retry: retry ? {label: AGAIN.resend, onClick: () => retry?.()} : null});
                     item.replaceChildren(host);
