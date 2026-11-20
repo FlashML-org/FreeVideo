@@ -1382,6 +1382,21 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         const seed = seedInput.value === '' ? undefined : Number(seedInput.value);
         // The boxes as they are now (MOSS only); the frame gives way to the picture being made.
         const boxes = layoutActive() ? layout.request() : [], drawn = boxes.length ? layout.snapshot().filter(item => item.line.trim()) : null;
+        // The words the engine will read (the picture marks written out, the pictures listed): it takes 1 to 2,000 characters of them.
+        const engineSeed = seed ?? Math.floor(Math.random() * 1e9);
+        const sentWords = () => boxes.length && !prompt.value.trim() ? layout.caption() : engineText(engineSeed);
+        // False, with the reason said, when the engine would refuse the words; asked again after a rewrite that was still running has finished.
+        const fits = () => {
+            const length = sentWords().trim() ? sentWords().length : 0;
+            if (length > 0 && length <= 2000) return true;
+            note.dataset.kind = '';
+            say(length > 2000
+                ? t(`With the picture references counted, the prompt is over 2,000 characters. Shorten it by ${length - 2000} and try again.`,
+                    `加上图片引用后，提示词超过 2000 字。请缩短 ${length - 2000} 字后重试。`)
+                : t('The prompt has only picture references and no words. Describe the picture you want, then try again.', '提示词里只有图片引用，没有文字。请写上要生成的画面后重试。'));
+            return false;
+        };
+        if (!fits()) { prompt.focus(); return; }
         layoutOn = false;
         say(''); note.dataset.kind = ''; failure = null; const mine = running = {cancelled: false}, withImages = references.length > 0, sent = size(), tierNow = tier;
         render(); drawWorks(); progressLine.textContent = progressSub.textContent = ''; runReport.replaceChildren(); runReport.dataset.id = ''; doneReport.replaceChildren(); lastReport = null;
@@ -1392,6 +1407,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             for (const r of references.slice(0, cap_(model))) names.push(await client.upload(r.file));
             if (mine.cancelled) return;
             if (!enhancerOff() && await enhancer.beforeGenerate() === false) { say(''); if (running === mine) running = null; level.hidden = true; render(); drawWorks(); return; }
+            if (!fits()) { if (running === mine) running = null; level.hidden = true; render(); drawWorks(); fits(); prompt.focus(); return; }
             startJobSources();
             const loras = loraRow.value(model.id);
             let id;
@@ -1399,7 +1415,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             for (;;) {
                 try {
                     // With boxes and no description, the boxes' lines describe the whole picture.
-                    const words = boxes.length && !prompt.value.trim() ? layout.caption() : engineText(seed ?? Math.floor(Math.random() * 1e9));
+                    const words = sentWords();
                     ({id} = await jobs.submit('image', {prompt: words, ...sent, model: model.id, remember: true, images: names, ...(seed === undefined ? {} : {seed}), ...(loras.length ? {loras} : {}), ...(boxes.length ? {layout: boxes} : {})},
                         {view: 'image', client, meta: {text: prompt.value, withImages, tier: tierNow, width: sent.width, height: sent.height, ...(drawn ? {layout: drawn} : {})}}));
                     break;

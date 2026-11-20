@@ -918,7 +918,7 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
         // The button is only marked unavailable, so a click while the service is being checked is turned away here.
         const now = session.state();
         if (now.checking || !now.info?.installed) return;
-        if (!prompt.trim()) {
+        if (!prompt.trim() || prompt.length > 2000) {
             promptRequired = true; update();
             if (mounted) {
                 const {input} = mounted;
@@ -1057,7 +1057,10 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
             mounted.failureKey = null;
             note.textContent = pack ? pack.note
                 : missing ? imagePackUnavailableMessage(state.info, t)
-                : promptRequired ? t('Enter a prompt first.', '请先填写提示词。')
+                // A trigger word a LoRA adds in front can take the prompt past what the engine accepts.
+                : promptRequired ? (prompt.length > 2000
+                    ? t(`The prompt is over 2,000 characters. Shorten it by ${prompt.length - 2000} and try again.`, `提示词超过 2000 字。请缩短 ${prompt.length - 2000} 字后重试。`)
+                    : t('Enter a prompt first.', '请先填写提示词。'))
                 : state.running && state.waiting ? t(...(QUEUE_LABELS[state.waiting] || QUEUE_LABELS.image))
                 : state.running && state.fitted ? t(...memoryWords([`Not enough GPU memory. Retrying at ${state.fitted.width}\u00a0×\u00a0${state.fitted.height}`,
                     `显存不足，改用 ${state.fitted.width}\u00a0×\u00a0${state.fitted.height} 重试`], state.info?.unified_memory)) + ' · ' + percent
@@ -1144,7 +1147,7 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
         input.addEventListener('blur', () => grow());
         input.oninput = () => {
             prompt = input.value;
-            if (prompt.trim()) promptRequired = false;
+            if (prompt.trim() && prompt.length <= 2000) promptRequired = false;
             clearAttention(); session.clearError(); grow();
         };
         input.onkeydown = event => {
