@@ -939,11 +939,13 @@ export function openLibrary(t, options = {}) {
         if (!saved) { say(t('This video kept no prompt to reuse.', '这条视频没有保存可复用的提示词。'), true); return; }
         try { reuseNow().apply(saved); if (reuse) closeDialog(dialog); } catch { say(t('Could not fill in the settings. Try again.', '没能填入设置，请重试。'), true); }
     }
+    // A cover with other videos folded under it is named "N results" by the fold (task_groups.js); names loading later keep that.
+    const foldedCover = card => card.classList.contains('fv-task-head') && card.hasAttribute('aria-expanded');
     const cardLabel = row => [workName(row), row.favorite ? t('Favorite', '已收藏') : ''].filter(Boolean).join(' · ');
     function syncFavorite(row) {
         const card = cards.get(workKey(row)), badge = card?.querySelector('.fv-library-favorite');
         if (badge) badge.hidden = !row.favorite;
-        card?.setAttribute('aria-label', cardLabel(row));
+        if (card && !foldedCover(card)) card.setAttribute('aria-label', cardLabel(row));
     }
     async function saveFavorite(row, favorite, quiet = false) {
         const id = row.id || row.video.replace(/^FreeVideo\//, '').replace(/\/video\.mp4$/, '');
@@ -1056,7 +1058,8 @@ export function openLibrary(t, options = {}) {
         // A card is its picture and its name; size and length stay in the details.
         card.children[1].textContent = workName(row);
         card.children[2].textContent = '';
-        card.setAttribute('aria-label', cardLabel(row)); cardTip(card, row);
+        if (!foldedCover(card)) card.setAttribute('aria-label', cardLabel(row));
+        cardTip(card, row);
     }
     function wantPrompt(row) {
         if (!row?.id || row.kind === 'image' || prompts.has(row.id) || promptAsked.has(row.id)) return;
