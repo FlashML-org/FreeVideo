@@ -76,3 +76,8 @@ engine-gpu-*.lock
 *.gguf
 /out/
 !freevideo_engine/frame_preview_decoder.safetensors
+
+# Local agent service: address and access token written at run time
+/agent/endpoint.json
+/agent/token
+/agent/.token-*.tmp
