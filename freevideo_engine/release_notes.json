@@ -1,34 +1,69 @@
 {
   "schema": 1,
-  "product_version": "0.6.5",
-  "important": true,
+  "product_version": "0.6.6",
+  "important": false,
   "en": {
-    "summary": "Image model downloads no longer pause while the image view only warms a model; export supports 48 and 60 fps; pictures are also saved to the output folder; LoRA choice uses FreeVideo's own menu; and face close-ups and failure messages are improved.",
+    "summary": "0.6.6 gives more control over MOSS-Image pictures and makes them faster on smaller graphics cards, lets a reference video lend only its layout, explains more failures with a next step, and makes the Edit view easier to use in narrow windows and view switches smoother on slower computers.",
     "changes": [
-      "Image models: a download no longer pauses as if a video were generating when the image view only keeps or warms a model, a paused download says why, and Continue download starts it at once; a model folder or its files may be symbolic links (junctions on Windows) to another drive; a link that leads nowhere or to a damaged or different file says why and what to do next, and only that model fails; MOSS-Image warms up from its own files and renders normally on Windows with less than 24 GB of video memory; and when opened from ComfyUI, H3 Image allocates GPU memory as video generation does.",
-      "Export at 48 or 60 fps: Frame rate in the Export window now offers 48 and 60, with the frames in between made on the graphics card, cuts and still frames kept as they are and the sound copied unchanged; a full disk is reported as a full disk, and plainly too little space is said before the graphics card starts.",
-      "Face pictures of a character after a change of clothes: a Face picture framed too wide is redrawn larger once, a repaint that kept the old clothes is tried again, and when no face box is found the clothes are repainted inside a fixed area.",
-      "Pictures and seeds: each picture made or imported is also copied into the output folder as a file of its own, removed when the picture is deleted for good and switchable off in Settings; the dice next to Seed in the Image view fills in a random seed, and an empty Seed still draws a new one each time.",
-      "Choosing a LoRA: the LoRA choice opens FreeVideo's own menu, where a long list scrolls, typing filters it, LoRAs are grouped by folder and the keyboard works, in the dark and light themes and in narrow windows.",
-      "Failures say why and what to do next, continued: in the Edit view, the Image view, the Create panel, the generation progress card and notifications a failure states the cause and the next step and offers Report a problem, never a raw failure code; an engine stop, a failed model download and a video closed from its history name their reason, and a full disk during a download is named; a LoRA that stores one alpha for layers of different ranks is marked unusable before generation with the reason; an out-of-range picture setting is named.",
-      "Report a problem: for a known failure with a clear fix, that fix is shown first and the report can still be sent after it; the issue text the launcher fills in starts with the display adapter model for every kind of error.",
-      "Edit view subtitles: when the subtitle track holds only an empty line just added, Auto subtitles places the lines it heard without saying they replaced the subtitles there; when the lines there have words, the notice and its Undo are as before."
+      "More control over picture layout: draw boxes with Layout in the Image view and give each one a line of description to place each part of the picture. Words in quotation marks are written into the picture.",
+      "MOSS-Image is faster on smaller graphics cards: a 1024-pixel picture on a 12 GB card is made much faster, with exactly the same result as before.",
+      "A reference video can lend only its layout: with Composition only, the new video follows the layout of the reference video, not its motion or colours.",
+      "Original sound plays on phones: an MP3 used as the original sound stays an MP3 in the finished video, so phones and system players can play it.",
+      "Frames saved in the Edit view also go to the output folder: with Also save pictures to the output folder on in Settings, a frame saved in the Edit view is copied there as well.",
+      "More failures explain what happened and what to do next, including a task that gets no answer after it is submitted, a picture the assistant cannot start and a Git error during setup.",
+      "Smoother on slower computers: with fewer processor cores or slow view switches, FreeVideo turns off the switch animation, and the library and short clips play more smoothly.",
+      "The Edit view is easier to use in a narrow window: the preview and buttons no longer cover each other, and the tracks and the update bar are shown in full.",
+      "Dialogs and tips are easier to read: their text is no longer disturbed by what lies behind them, and a hover tip appears only when a name is cut short.",
+      "Fields are easier to fill in: a number typed outside its range is brought back into range with a note under the field. An emptied LoRA strength returns to the strength in use.",
+      "Tutorial additions: how to export at 48 or 60 fps, and how to use MOSS-Image layout boxes."
     ]
   },
   "zh": {
-    "summary": "图像模型下载不再在预热时误停；导出支持 48 和 60 fps；图片同时保存到 output 文件夹；LoRA 选择改用 FreeVideo 自己的菜单，脸部特写与失败说明更完善。",
+    "summary": "0.6.6 让 MOSS-Image 出图更可控，在显存较小的显卡上也更快；参考视频可以只沿用构图；更多失败会说明原因和下一步；窄窗口下的剪辑视图和低配电脑上的视图切换更顺畅。",
     "changes": [
-      "图像模型：图像视图只是预热或保留模型时，图像模型下载不再以“视频生成中”暂停，暂停时写明实际原因，可用“继续下载”立即开始；模型文件夹、其子文件夹或模型文件通过符号链接（Windows 上也可用目录联接）放在其他磁盘时照常使用，链接失效或指向损坏、不同的文件时说明原因和下一步，图片页只把该模型标为出错；MOSS-Image 预热只读取自己的模型文件，Windows 上显存小于 24 GB 时可以正常出图；由 ComfyUI 打开时，H3 Image 使用与视频生成相同的显存分配方式。",
-      "导出 48 或 60 fps：导出窗口的“帧率”新增 48 和 60，中间帧在显卡上补出，剪切处和静止画面保持原样，声音原样复制；磁盘写满时直接说明磁盘已满，空间明显不足时在显卡开始工作前就会提示。",
-      "角色更换服装后的脸部特写：脸部特写取景过宽时放大重画一次；重画后仍是原来的衣服时自动重试；识别不到脸部位置时，在固定区域内重画衣服。",
-      "图片保存与种子：生成或导入的图片同时复制一份到 output 文件夹，副本是独立文件，图片永久删除时一并删除，可在设置中关闭；图像视图种子旁的骰子会填入一个随机种子，留空时仍每次随机。",
-      "LoRA 选择：选择 LoRA 时打开 FreeVideo 自己的菜单，长列表可以滚动，输入文字即可筛选，按文件夹分组，可用键盘操作，深色、浅色主题和窄窗口下都能正常使用。",
-      "失败时说明原因和下一步（续）：剪辑视图、图像视图、创作面板、生成进度卡片和通知中的失败都写明原因和下一步并可提交问题，不再显示原始错误代码；引擎停止、模型下载失败、从历史中关闭的视频也说明原因，下载时磁盘已满会直接说明；同一个 alpha 对应不同秩的 LoRA 在生成前即标为不可用并说明原因；图片设置超出范围时分别说明是哪一项。",
-      "提交问题：已知错误且已有明确建议时，先显示该建议，看完仍可继续提交；启动器预填的问题正文对各类错误都以显示适配器型号开头。",
-      "剪辑视图的字幕：字幕轨上只有刚添加的空字幕时，自动字幕直接写入识别结果，不再提示“识别出的字幕已替换原有字幕”；原有字幕带文字时，提示与“撤销”照旧。"
+      "图片构图更可控：在图像视图中用“布局”画框，并为每个框写一句描述，即可指定画面中各部分的位置。引号中的文字会直接写进画面。",
+      "MOSS-Image 在显存较小的显卡上更快：12 GB 显卡生成 1024 像素的图片明显加快，画面与之前完全相同。",
+      "参考视频可以只沿用构图：选择“仅参考构图”时，生成的视频沿用参考视频的构图，不沿用其动作和颜色。",
+      "MP3 原声可在手机上直接播放：作为原声的 MP3 在成片中保持原样，手机和系统播放器均可直接播放。",
+      "剪辑视图保存的画面也会存入 output 文件夹：开启设置中的“同时将图片保存到 output 文件夹”后，在剪辑视图中保存的画面同样会复制到 output 文件夹。",
+      "更多失败会说明原因和下一步：任务提交后无应答、助手请求的图片无法开始、安装时 Git 出错，都会说明发生了什么以及接下来该怎么做。",
+      "低配电脑上更流畅：处理器核心较少或视图切换较慢时，FreeVideo 会自动关闭切换动画，作品库和短视频播放更加顺畅。",
+      "窄窗口下的剪辑视图更易用：预览与按钮不再互相遮挡，轨道和更新栏均完整显示。",
+      "对话框和提示更易阅读：对话框与提示的文字不再受背景内容干扰，悬停提示只在名称显示不全时出现。",
+      "输入更省心：数字框中输入超出范围的值时，会自动改回范围内并给出提示。清空 LoRA 强度后，会恢复为正在使用的强度。",
+      "教程补充：新增导出 48 或 60 fps 视频的方法，以及 MOSS-Image 布局框的用法。"
     ]
   },
   "history": [
+    {
+      "product_version": "0.6.5",
+      "en": {
+        "summary": "Image model downloads no longer pause while the image view only warms a model; export supports 48 and 60 fps; pictures are also saved to the output folder; LoRA choice uses FreeVideo's own menu; and face close-ups and failure messages are improved.",
+        "changes": [
+          "Image models: a download no longer pauses as if a video were generating when the image view only keeps or warms a model, a paused download says why, and Continue download starts it at once; a model folder or its files may be symbolic links (junctions on Windows) to another drive; a link that leads nowhere or to a damaged or different file says why and what to do next, and only that model fails; MOSS-Image warms up from its own files and renders normally on Windows with less than 24 GB of video memory; and when opened from ComfyUI, H3 Image allocates GPU memory as video generation does.",
+          "Export at 48 or 60 fps: Frame rate in the Export window now offers 48 and 60, with the frames in between made on the graphics card, cuts and still frames kept as they are and the sound copied unchanged; a full disk is reported as a full disk, and plainly too little space is said before the graphics card starts.",
+          "Face pictures of a character after a change of clothes: a Face picture framed too wide is redrawn larger once, a repaint that kept the old clothes is tried again, and when no face box is found the clothes are repainted inside a fixed area.",
+          "Pictures and seeds: each picture made or imported is also copied into the output folder as a file of its own, removed when the picture is deleted for good and switchable off in Settings; the dice next to Seed in the Image view fills in a random seed, and an empty Seed still draws a new one each time.",
+          "Choosing a LoRA: the LoRA choice opens FreeVideo's own menu, where a long list scrolls, typing filters it, LoRAs are grouped by folder and the keyboard works, in the dark and light themes and in narrow windows.",
+          "Failures say why and what to do next, continued: in the Edit view, the Image view, the Create panel, the generation progress card and notifications a failure states the cause and the next step and offers Report a problem, never a raw failure code; an engine stop, a failed model download and a video closed from its history name their reason, and a full disk during a download is named; a LoRA that stores one alpha for layers of different ranks is marked unusable before generation with the reason; an out-of-range picture setting is named.",
+          "Report a problem: for a known failure with a clear fix, that fix is shown first and the report can still be sent after it; the issue text the launcher fills in starts with the display adapter model for every kind of error.",
+          "Edit view subtitles: when the subtitle track holds only an empty line just added, Auto subtitles places the lines it heard without saying they replaced the subtitles there; when the lines there have words, the notice and its Undo are as before."
+        ]
+      },
+      "zh": {
+        "summary": "图像模型下载不再在预热时误停；导出支持 48 和 60 fps；图片同时保存到 output 文件夹；LoRA 选择改用 FreeVideo 自己的菜单，脸部特写与失败说明更完善。",
+        "changes": [
+          "图像模型：图像视图只是预热或保留模型时，图像模型下载不再以“视频生成中”暂停，暂停时写明实际原因，可用“继续下载”立即开始；模型文件夹、其子文件夹或模型文件通过符号链接（Windows 上也可用目录联接）放在其他磁盘时照常使用，链接失效或指向损坏、不同的文件时说明原因和下一步，图片页只把该模型标为出错；MOSS-Image 预热只读取自己的模型文件，Windows 上显存小于 24 GB 时可以正常出图；由 ComfyUI 打开时，H3 Image 使用与视频生成相同的显存分配方式。",
+          "导出 48 或 60 fps：导出窗口的“帧率”新增 48 和 60，中间帧在显卡上补出，剪切处和静止画面保持原样，声音原样复制；磁盘写满时直接说明磁盘已满，空间明显不足时在显卡开始工作前就会提示。",
+          "角色更换服装后的脸部特写：脸部特写取景过宽时放大重画一次；重画后仍是原来的衣服时自动重试；识别不到脸部位置时，在固定区域内重画衣服。",
+          "图片保存与种子：生成或导入的图片同时复制一份到 output 文件夹，副本是独立文件，图片永久删除时一并删除，可在设置中关闭；图像视图种子旁的骰子会填入一个随机种子，留空时仍每次随机。",
+          "LoRA 选择：选择 LoRA 时打开 FreeVideo 自己的菜单，长列表可以滚动，输入文字即可筛选，按文件夹分组，可用键盘操作，深色、浅色主题和窄窗口下都能正常使用。",
+          "失败时说明原因和下一步（续）：剪辑视图、图像视图、创作面板、生成进度卡片和通知中的失败都写明原因和下一步并可提交问题，不再显示原始错误代码；引擎停止、模型下载失败、从历史中关闭的视频也说明原因，下载时磁盘已满会直接说明；同一个 alpha 对应不同秩的 LoRA 在生成前即标为不可用并说明原因；图片设置超出范围时分别说明是哪一项。",
+          "提交问题：已知错误且已有明确建议时，先显示该建议，看完仍可继续提交；启动器预填的问题正文对各类错误都以显示适配器型号开头。",
+          "剪辑视图的字幕：字幕轨上只有刚添加的空字幕时，自动字幕直接写入识别结果，不再提示“识别出的字幕已替换原有字幕”；原有字幕带文字时，提示与“撤销”照旧。"
+        ]
+      }
+    },
     {
       "product_version": "0.6.4",
       "en": {
