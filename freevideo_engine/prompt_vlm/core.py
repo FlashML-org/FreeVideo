@@ -101,6 +101,37 @@ def vision_mlp(self, x):
     return out
 
 
+_gqa = {}
+
+
+def expand_kv_heads(torch, device):
+    """True when grouped-query attention must be given expanded key/value heads on this card.
+
+    With an empty mask (a prefill) Transformers calls SDPA with enable_gqa=True, which only the flash
+    kernel serves. A build without it (PyTorch's Windows builds have none) runs the math kernel, which
+    holds the whole score matrix: 3.6 GiB for 3463 tokens, growing with the square of the prompt, so an
+    8 GB card ran out of memory inside the first forward pass. With the heads expanded first, the
+    memory-efficient and cuDNN kernels serve the call in 28 MiB. Where flash serves it, nothing changes.
+    The answer is read once per process and card from PyTorch's own check for flash attention on a tiny
+    grouped call (it respects the build, the card, the dtype and the switches), and applied by the caller."""
+    if device in _gqa:
+        return _gqa[device]
+    try:
+        q = torch.zeros(1, 4, 16, 128, dtype=torch.bfloat16, device=device)
+        kv = torch.zeros(1, 2, 16, 128, dtype=torch.bfloat16, device=device)
+        params = torch.backends.cuda.SDPAParams(q, kv, kv, None, 0., True, True)
+        _gqa[device] = not torch.backends.cuda.can_use_flash_attention(params, False)
+    except (AttributeError, TypeError, RuntimeError):
+        _gqa[device] = False    # a torch without this check keeps the call as it was
+    return _gqa[device]
+
+
+def use_expanded_kv_heads():
+    """Make Transformers' SDPA attention expand the key/value heads itself (its own repeat_kv)."""
+    from transformers.integrations import sdpa_attention
+    sdpa_attention.use_gqa_in_sdpa = lambda attention_mask, key, value: False
+
+
 def prepare(model, each_layer=None):
     """Transform before accelerate installs placement/offload hooks.
 
