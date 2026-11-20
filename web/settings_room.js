@@ -892,12 +892,26 @@ export async function openSetup(options) {
         else (dialog.querySelector('.st-ni[aria-current=page]') || closeButton).focus();
     });
     // 'repair': a failure card's "Open settings" lands on Check installation, the first step its hint names.
+    // The card's button is hidden while the installer state is still being read (and the page head's one stands in
+    // when the models are ready), and it is hidden again while a check starts, so for a few seconds each repaint puts
+    // the focus back on whichever one shows; a key or click of the person's own ends that.
+    let spotWait = 0;
     function spotlight() {
         show('models');
-        inspect.scrollIntoView({block: 'center'});
-        inspect.focus({preventScroll: true});
-        inspect.classList.add('is-spot'); setTimeout(() => inspect.classList.remove('is-spot'), 2400);
+        clearTimeout(spotWait);
+        spotWait = setTimeout(() => { spotWait = 0; }, 6000);
+        landSpot();
     }
+    function landSpot() {
+        const target = headInspect.hidden ? inspect : headInspect;
+        if (target.hidden || !dialog.open) return false;
+        if (target === document.activeElement) return true;
+        target.scrollIntoView({block: 'center'});
+        target.focus({preventScroll: true, focusVisible: true});  // a mouse click on Open settings still gets the ring
+        target.classList.add('is-spot'); setTimeout(() => target.classList.remove('is-spot'), 2400);
+        return true;
+    }
+    for (const type of ['keydown', 'pointerdown']) dialog.addEventListener(type, () => { clearTimeout(spotWait); spotWait = 0; }, true);
 
     // ── Hover tips for the installer's actions ──
     for (const [control, name, purpose] of [
@@ -1127,6 +1141,7 @@ export async function openSetup(options) {
         reviewPlan.hidden = kind !== 'plan' && kind !== 'problem';
         setText(reviewPlan, kind === 'problem' ? t('See problems', '查看问题') : t('Review plan', '查看计划'));
         inspect.hidden = busy || kind === 'loading';
+        if (spotWait) landSpot();
         const extraCount = extra.value.split('\n').map(s => s.trim()).filter(Boolean).length;
         state.hidden = kind === 'busy' || (kind === 'ready' && !state.textContent);
         if (kind === 'none' && !state.textContent) state.textContent = t('Check first: models already on this computer are used as they are.', '先检查一遍，电脑上已有的模型会直接使用。');
