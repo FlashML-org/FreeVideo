@@ -1417,8 +1417,10 @@ export async function openSetup(options) {
             // The full path is in the box above; show its start and last folder on one line. The start gives way to the room
             // there is (cut with an ellipsis), the last 26 characters stay; copying takes the whole path.
             const first = missing[0], cut = Math.max(0, first.length - 26), path = el('span', 'st-path st-path-cut fv-copyable');
-            path.append(el('span', 'st-path-head', first.slice(0, cut)), el('span', 'st-path-tail', first.slice(cut)));
-            cutTip(path, first); folderStatus.append(path);
+            const head = el('span', 'st-path-head', first.slice(0, cut));
+            path.append(head, el('span', 'st-path-tail', first.slice(cut)));
+            // The cut is in the start (the line itself never overflows), so that is what decides the whole-path tip.
+            cutTip(path, first, head); folderStatus.append(path);
         }
         return result;
     }

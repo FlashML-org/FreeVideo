@@ -66,6 +66,8 @@
 :root:root section.fv-failure p{font-size:var(--fv-fs-2,13px);line-height:1.6;margin:var(--fv-sp-4,4px) 0;color:var(--fv-fg2)}
 :root:root section.fv-failure .fv-failure-next{color:var(--fv-fg);font-weight:500}
 :root:root section.fv-failure .fv-failure-privacy,:root:root section.fv-failure .fv-failure-location{font-size:var(--fv-fs-1,12px);color:var(--fv-fg3)}
+/* The other programs' use of the card says what was measured, quietly: the privacy line's colour, its own size (Iris). */
+:root:root section.fv-failure .fv-other-usage-failure{color:var(--fv-fg3)}
 :root:root section.fv-failure :is(.fv-failure-cause,textarea,.fv-failure-location){-webkit-user-select:text;user-select:text}
 :root:root section.fv-failure textarea{border-color:var(--fv-line2);background:var(--fv-ctl-bg);color:var(--fv-fg);font-size:var(--fv-fs-1,12px);border-radius:var(--fv-r-sm)}
 :root:root section.fv-failure button,:root:root .fv-failure-footer button,:root:root .fv-failure-buttons>button{border-color:var(--fv-line2);border-radius:var(--fv-r-sm);background:var(--fv-ctl-bg);color:var(--fv-fg);font-size:var(--fv-fs-2,13px)}

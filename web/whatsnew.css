@@ -56,6 +56,9 @@
 .fv-whatsnew-top.fv-whatsnew-ed.fv-studio.fv-editor{overflow:hidden;background:var(--fv-card);transition:height .24s var(--fv-ease)}
 .fv-whatsnew-top .fv-ed-genbar,.fv-whatsnew-top .fv-ed-record{grid-column:auto;grid-row:auto;box-sizing:border-box;min-height:56px}
 .fv-whatsnew-top .fv-ed-genbar[hidden],.fv-whatsnew-top .fv-ed-record[hidden]{display:none}
+/* The bar is as tall as its content at every width, with the 8 px gap above the tracks the wide layout has (editor.css):
+   the narrow editor's height:100% would size it to the box around it and push a bar that wraps to two rows 4 px over the ruler. */
+.fv-whatsnew-top.fv-whatsnew-ed .fv-ed-genbar{height:auto;margin-bottom:8px}
 .fv-whatsnew-top .fv-ed-record-end{justify-content:flex-end;align-items:center}
 .fv-whatsnew-top .fv-ed-record-side{align-items:center;color:var(--fv-muted)}
 .fv-whatsnew-top .fv-ed-description-box{flex:1}
@@ -128,6 +131,8 @@
 @media (prefers-reduced-motion:no-preference){.fv-whatsnew-typed i{animation:fv-whatsnew-caret 1s steps(1) infinite}}
 @keyframes fv-whatsnew-caret{50%{opacity:0}}
 :root:root .fv-whatsnew .fv-whatsnew-list{display:grid;grid-template-columns:1fr 1fr;gap:var(--fv-sp-8,8px) var(--fv-sp-24,24px);margin:var(--fv-sp-16,16px) var(--fv-sp-24,24px) 0;padding:0;list-style:none;font-size:var(--fv-fs-2,13px);line-height:20px}
+/* A plain list (no numbers: the picture page) stays one column at every width, as before the redesign (Iris). */
+:root:root .fv-whatsnew .fv-whatsnew-list[data-plain]{grid-template-columns:1fr}
 :root:root .fv-whatsnew .fv-whatsnew-list li{display:flex;gap:var(--fv-sp-8,8px);color:var(--fv-fg2,var(--fv-ink))}
 :root:root .fv-whatsnew .fv-whatsnew-list li::before{content:'';flex:none;width:16px;height:16px;margin-top:2px;background:var(--fv-accent-ink,var(--fv-accent));
   -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 8.5l3 3 6-7'/%3E%3C/svg%3E") center/contain no-repeat;
