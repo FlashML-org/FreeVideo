@@ -121,13 +121,52 @@ def uv_file_arguments(command, cwd=None):
     return result, str(folder)
 
 
-def bootstrap_versions(value, system=None):
+# Linux processors setup installs on, by the names platform.machine() and uname -m give them.
+LINUX_MACHINES = {'x86_64': 'x86_64', 'amd64': 'x86_64', 'aarch64': 'aarch64', 'arm64': 'aarch64'}
+
+
+def linux_machine(machine=None):
+    """'x86_64' or 'aarch64' for a Linux processor setup installs on; None for any other."""
+    return LINUX_MACHINES.get(str(platform.machine() if machine is None else machine).lower())
+
+
+def setup_supported(system, machine):
+    """Setup installs on Linux x86_64 or ARM64 and on native Windows x64."""
+    machine = str(machine or '').lower()
+    return (system == 'Linux' and linux_machine(machine) is not None
+            or system == 'Windows' and machine in ('x86_64', 'amd64'))
+
+
+def uv_folder(machine=None):
+    """The folder the Linux uv archive unpacks to under <root>/tools for this processor."""
+    return 'uv-%s-unknown-linux-gnu' % (linux_machine(machine) or 'x86_64')
+
+
+def conda_lock(value, machine=None):
+    """A conda-forge lock (micromamba and packages) for this Linux processor: its linux_aarch64 section on ARM64."""
+    if linux_machine(machine) == 'aarch64' and 'linux_aarch64' in value:
+        return dict(value, **value['linux_aarch64'])
+    return value
+
+
+def conda_triple(machine=None):
+    """The prefix conda-forge's GCC gives its compilers on this Linux processor."""
+    return '%s-conda-linux-gnu' % (linux_machine(machine) or 'x86_64')
+
+
+def bootstrap_versions(value, system=None, machine=None):
     result = dict(value, target_system=system or platform.system())
     if result['target_system'] == 'Darwin':
         from .macos_bootstrap import versions
         return versions(value)
     if result['target_system'] == 'Windows':
         result['uv'] = result['windows']['uv']
+    elif result['target_system'] == 'Linux':
+        result['target_machine'] = linux_machine(machine) or 'x86_64'
+        if result['target_machine'] == 'aarch64':
+            # ARM64 servers (and GB10) take NVIDIA's linux-sbsa toolkit archives of the same versions.
+            result['uv'] = result['linux_aarch64']['uv']
+            result['cuda_toolkits'] = result['linux_aarch64']['cuda_toolkits']
     return result
 
 

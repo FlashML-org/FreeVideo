@@ -217,7 +217,7 @@ let installed = false;
 export function installA11y() {
     if (installed || globalThis.__fvA11y || !doc?.addEventListener) return;
     installed = globalThis.__fvA11y = true;
-    sheet('a11y'); sheet('selection');
+    sheet('a11y'); sheet('selection'); sheet('slider');
     // Window capture, registered at start: dialog_keys.js stops keys there for the views that route their own.
     globalThis.addEventListener('keydown', event => { onTab(event); onEscape(event); onSelectAll(event); }, true);
     doc.addEventListener('focusin', event => { skipUnseen(event); fitRing(doc.activeElement); markMedia(event); hostRing(doc.activeElement); }, true);

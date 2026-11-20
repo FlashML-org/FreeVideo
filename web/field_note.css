@@ -1,0 +1,5 @@
+/* The line under a number field that says a typed value was brought into range (field_note.js). */
+.fv-field-why{margin:4px 0 0;font-size:12px;line-height:1.5;color:var(--fv-fg3,var(--fv-muted));text-align:left}
+.fv-field-why[hidden]{display:none}
+/* In the creation panel's settings tray each number box sits at the right of its row; the line starts under the box. */
+.fv-studio.fv-create .fvs-tray.fv-at .fv-field-why{width:var(--fv-at-w);max-width:100%;margin-left:auto;box-sizing:border-box}

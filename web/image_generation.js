@@ -105,11 +105,11 @@ export function createImageGenClient(fetchImpl = globalThis.fetch.bind(globalThi
     return {
         info, offers,
         // purpose: what the picture is for (for example 'cast-draft'), passed through as given.
-        async generate({prompt, width, height, images = [], mask, seed, loras, cast_view, model, remember, purpose}) {
+        async generate({prompt, width, height, images = [], mask, seed, loras, cast_view, model, remember, purpose, layout}) {
             const value = await post('generate', {...(model ? {model} : {}), [p.prompt]: prompt, [p.width]: width, [p.height]: height,
                 [p.images]: images, ...(mask ? {[p.mask]: mask} : {}), ...(seed === undefined ? {} : {[p.seed]: seed}),
                 ...(loras === undefined ? {} : {[p.loras]: loras}), ...(cast_view === 'back' ? {cast_view} : {}), ...(remember === true ? {remember} : {}),
-                ...(typeof purpose === 'string' && purpose ? {purpose} : {})});
+                ...(typeof purpose === 'string' && purpose ? {purpose} : {}), ...(Array.isArray(layout) && layout.length ? {layout} : {})});
             return {...value, job: value[p.job]};
         },
         async status(job, model) {
@@ -245,6 +245,9 @@ export function imageGenError(code, info, t) {
         too_many_images: ['There are more reference images than the chosen model supports. Remove some and try again.', '参考图超过所选模型支持的数量。请减少参考图后重试。'],
         output_unwritable: ['The folder that keeps the pictures cannot be written (freevideo-image in the ComfyUI input folder). Check that it exists, is writable and has no file of the same name, then try again.',
             '无法写入保存图片的文件夹（ComfyUI 的 input 目录下的 freevideo-image）。请确认该目录存在、可写，且没有同名文件，然后重试。'],
+        invalid_layout: ['A layout box cannot be used. Draw it larger or change its words, then generate again.', '有一个布局框用不了。请把它画大一些或改一下文字，再生成。'],
+        too_many_boxes: ['A layout takes at most 8 boxes. Delete one, then generate again.', '布局最多 8 个框。请删掉一个，再生成。'],
+        layout_too_long: ['The words in the layout are too long. Shorten the lines in the boxes, then generate again.', '布局里的文字太长。请把框里的话写短一些，再生成。'],
         invalid_media: ['The reference image cannot be read. Choose another image.', '参考图读不出来，请换一张图。'],
         reload: ['Image generation was interrupted. Try again.', '图片生成中途被打断，请重试。'],
         engine_error: ['The image engine returned an unreadable answer. Try again; if it keeps failing, report the problem.', '图像引擎返回了无法读取的结果。请重试；仍然失败请提交问题。'],

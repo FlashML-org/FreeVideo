@@ -1,5 +1,7 @@
 // Text UI owns its controls, preview overlays and secondary menus. Timeline
 // editing remains in editor_tracks/model/select and the shared history.
+import { cutTip } from './cut_tip.js';
+import { setTip } from './editor_tracks_tips.js';
 import * as model from './editor_model.js';
 import {FONT_KEYS} from './fonts.js';
 import {row, button, slider, number, segmented, toggle} from './editor_adjust.js';
@@ -279,8 +281,8 @@ export function createEditorText({element,state,t,actions,adjust,player,toolbar,
         let badge=item.element.querySelector('.fv-ed-text-overflow');
         const over=ready&&metrics&&c.text_kind==='subtitle'&&textLayout(metrics,c.text,styleOf(r,c),'subtitle',r.width,r.height).overTwo;
         if(over&&!badge){badge=el('span','fv-ed-text-overflow','⚠\uFE0E');badge.setAttribute('aria-label',overTwoHint(t));item.element.append(badge);}
-        if(badge){badge.hidden=!over;badge.title=overTwoHint(t);}
-        item.element.title=over?overTwoHint(t):c.text;
+        if(badge){badge.hidden=!over;setTip(badge,{name:overTwoHint(t)});}
+        cutTip(item.element,over?overTwoHint(t):c.text,item.element,{always:!!over});
     }
     actions.textClip=updateClip;
     // Track switches stay out of undo (Q9); earlier snapshots get the same switch.

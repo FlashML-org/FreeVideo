@@ -1,6 +1,7 @@
 // The Autopilot view's side panels. The conversation stays in the middle column; the right panel lists every task
 // of the chat being read (what is being made first, then the finished ones, newest first), each with its prompt,
 // time and state, searchable, and below it the details of the one picked. Pure helpers are exported for tests.
+import { setTip } from './tip_words.js';
 import {tip} from './autopilot_tips.js';
 
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
@@ -247,7 +248,7 @@ export function createSideRail(t, handlers = {}) {
         dPreview.style.setProperty('--p', String((fraction || 0) * 100));
         put(dPrompt, row.prompt || ''); dPrompt.hidden = !row.prompt;
         dPrompt.dataset.source = row.promptSource || 'request';
-        dPrompt.title = row.promptSource === 'job' ? t('Prompt', '提示词') : t('What you asked for', '你提出的要求');
+        setTip(dPrompt, {name: row.promptSource === 'job' ? t('Prompt', '提示词') : t('What you asked for', '你提出的要求')});
         dFacts.replaceChildren(...fact(t('Kind', '类型'), job.kind === 'image' ? t('Picture', '图片') : job.kind === 'production' ? t('Film', '成片') : t('Video', '视频')),
             ...fact(t('Size', '尺寸'), job.width > 0 && job.height > 0 ? `${job.width} × ${job.height}` : ''),
             ...fact(t('Length', '时长'), job.seconds > 0 ? t(`${job.seconds} s`, `${job.seconds} 秒`) : ''),

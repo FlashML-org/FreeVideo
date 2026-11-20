@@ -566,11 +566,16 @@ class Engine:
                step_callback=None, sampling_complete_callback=None, initial_latents=None, refine_steps=None, refine_schedule=None,
                allow_smaller_canvas=False, progress_offset=0, progress_total=None,
                pass_cache_budget_bytes=None, gpu_reserve_bytes=0, pass_resident_blocks=None,
-               budget_refresh=None, continuation=None, refine_resume=None, refine_checkpoint=None):
+               budget_refresh=None, continuation=None, refine_resume=None, refine_checkpoint=None,
+               video_mask=None):
         from src.inference.render import load_prompt, generate_latents
         from .geometry import geometry, sampler_for_canvas
         from . import frame_preview
         refining = initial_latents is not None
+        if video_mask is not None and (continuation is not None or refining):
+            raise ValueError('Redrawing part of a clip cannot be combined with a continuation or a refinement')
+        if video_mask is not None and tuple(video_mask['video'].shape[-2:]) != (height // 16, width // 16):
+            raise ValueError('The clip to redraw does not match the sampled picture size')
         if continuation is not None:
             from .continuation import validate_route
             # Audio references are admitted below, after inspecting the encoded modalities.
@@ -856,6 +861,7 @@ class Engine:
         # offloader and the progress hooks leave.
         from contextlib import nullcontext
         from .continuation import sampling
+        from .video_mask import sampling as mask_sampling
         planned, watch = self.config, None
         source = getattr(budget_refresh, 'pressure', None)
         if source is not None:
@@ -882,10 +888,12 @@ class Engine:
             if active_steps == 1:
                 trigger_prefetch()
             with progress.layers(self.transformer.transformer_blocks), self.device_backend.make_offloader(
-                    self.offload_layers, prefetch=self.prefetch, weight_source=self.stream_weight_source) as offloader, sampling(
+                    self.offload_layers, prefetch=self.prefetch, weight_source=self.stream_weight_source) as offloader, (
+                    mask_sampling(self.transformer, video_mask, seed, self.device_backend.device)
+                    if video_mask is not None else sampling(
                     self.transformer, continuation, seed, self.device_backend.device,
                     **({'video_offset': continuation_offset} if continuation_offset else {}),
-                    **({'audio_offset': continuation_audio_offset} if continuation_audio_offset else {})) as prefix, \
+                    **({'audio_offset': continuation_audio_offset} if continuation_audio_offset else {}))) as prefix, \
                     (watch.layers(self.transformer.transformer_blocks) if watch is not None else nullcontext()), \
                     frame_preview.observing(latent_frames=canvas.get('latent_frames'), frame_h=height // 32,
                                             frame_w=width // 32, step_offset=progress_offset,

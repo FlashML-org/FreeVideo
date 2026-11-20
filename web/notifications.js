@@ -4,6 +4,8 @@
 // floating window does (a finished job opens where it was made, a failed one opens its failure card).
 // The list is kept in this browser (freevideo.notifications, 50 rows, a week). Also here: toast(), one short line
 // at the bottom of the window for things the command layer has to say.
+import { cutTip } from './cut_tip.js';
+import { setTip } from './tip_words.js';
 import { t, words, CN, glyph, floatingHost, reducedMotion, EASE, addSheet, openContextMenu } from './context_menu.js';
 import { jobs, ACTIVE, FINAL } from './task_store.js';
 
@@ -485,7 +487,7 @@ function buildToast(item, more) {
     const icon = document.createElement('span'); icon.className = 'fv-toast-ic'; icon.innerHTML = glyph(spec.icon); box.append(icon);
     const msg = document.createElement('span'); msg.className = 'fv-toast-msg'; msg.textContent = spec.text;
     if (spec.detail) { const small = document.createElement('small'); small.textContent = spec.detail; msg.append(small); }
-    msg.title = [spec.text, spec.detail].filter(Boolean).join(' · ');
+    cutTip(msg, [spec.text, spec.detail].filter(Boolean).join(' · '));
     box.append(msg);
     if (spec.action) {
         const act = document.createElement('button'); act.type = 'button'; act.className = 'fv-toast-act';
@@ -495,7 +497,7 @@ function buildToast(item, more) {
         act.onclick = () => { queue.close(item); try { spec.action.run(); } catch (error) { console.warn('FreeVideo notice action:', error); } };
         box.append(act);
     }
-    if (more > 0) { const chip = document.createElement('span'); chip.className = 'fv-toast-more'; chip.textContent = `+${more}`; chip.title = t(`${more} more after this`, `后面还有 ${more} 条`); box.append(chip); }
+    if (more > 0) { const chip = document.createElement('span'); chip.className = 'fv-toast-more'; chip.textContent = `+${more}`; setTip(chip, {name: t(`${more} more after this`, `后面还有 ${more} 条`)}); box.append(chip); }
     if (!spec.sticky) { const ring = lifeRing(); ring.style.setProperty('--life', `${spec.ms}ms`); box.append(ring); }
     const close = document.createElement('button'); close.type = 'button'; close.className = 'fv-toast-x'; close.innerHTML = glyph('close', 14);
     close.setAttribute('aria-label', t('Close', '关闭'));

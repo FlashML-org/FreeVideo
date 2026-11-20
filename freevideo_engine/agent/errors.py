@@ -168,6 +168,16 @@ IMAGE_REASONS = {
     'invalid_media': ('The reference image could not be read. Choose another one.',
                       '参考图读不出来，请换一张。'),
     'invalid_request': ('The image settings are invalid. Adjust them and try again.', '图片设置有误，请调整后重试。'),
+    'invalid_prompt': ('The prompt is empty, or longer than 2,000 characters once the picture references are counted. Shorten it and try again.',
+                       '提示词为空，或加上图片引用后超过 2000 字。请缩短提示词后重试。'),
+    'invalid_dimensions': ('The image size is outside what the chosen model supports. Change the size and try again.',
+                           '图片尺寸超出所选模型支持的范围。请调整尺寸后重试。'),
+    'invalid_seed': ('The seed is not valid. Clear it or use a smaller whole number, then try again.',
+                     '随机种子无效。请清空种子或改用较小的整数后重试。'),
+    'too_many_images': ('There are more reference images than the chosen model supports. Remove some and try again.',
+                        '参考图超过所选模型支持的数量。请减少参考图后重试。'),
+    'output_unwritable': ('The folder that keeps the pictures cannot be written (freevideo-image in the ComfyUI input folder). Check that it exists, is writable and has no file of the same name, then try again.',
+                          '无法写入保存图片的文件夹（ComfyUI 的 input 目录下的 freevideo-image）。请确认该目录存在、可写，且没有同名文件，然后重试。'),
     'busy': ('Another picture is being generated. Try again when it finishes.', '已有一张图在生成，完成后再试。'),
     'cancelled': ('The picture was cancelled.', '已取消这张图片。'),
 }
@@ -181,7 +191,7 @@ def image_failure(code, report_id=None):
     valid = isinstance(report_id, str) and re.fullmatch(r'[0-9a-f]{32}', report_id)
     return dict(reason=dict(en=en, zh=zh), report_id=report_id if valid and code not in LORA_ERRORS and code not in (
         'busy', 'cancelled', 'invalid_request', 'invalid_media', 'invalid_prompt', 'invalid_dimensions',
-        'invalid_seed', 'too_many_images', 'disk_full') else None)
+        'invalid_seed', 'too_many_images', 'disk_full', 'output_unwritable') else None)
 
 
 # Recovery is a function of the committed task and phase, not just an error code.
@@ -208,6 +218,7 @@ IMAGE_ERRORS = {
     'generation_failed': IMAGE_REASONS['generation_failed'][0],
     'worker_exit': 'The image worker stopped before finishing this picture.',
     'disk_full': IMAGE_REASONS['disk_full'][0],
+    'output_unwritable': 'The folder that keeps the pictures cannot be written; tell the user to check that the freevideo-image folder in the input directory exists, is writable and has no file of the same name, then submit again with a new ref.',
     'cancelled': 'The picture job was cancelled.',
 }
 IMAGE_REASONS.update({code: (LORA_MESSAGE_EN[code], LORA_MESSAGE_ZH[code]) for code in LORA_ERRORS})
@@ -342,6 +353,7 @@ FAILURE_REASONS_ZH = {
     'invalid_output': '生成的结果无法读取或保存',
     'storage_unavailable': '任务记录或素材无法写入磁盘',
     'disk_full': '磁盘空间不够，图片没能保存',
+    'output_unwritable': '保存图片的文件夹无法写入',
     'submit_interrupted': '提交生成时服务中断，尚未确认任务是否开始',
     'timeout': '生成等了太久没有结果',
     'invalid_media': '参考素材无法读取',
@@ -449,6 +461,7 @@ FAILURE_REASONS_EN = {
     'invalid_output': 'The result could not be read or saved',
     'storage_unavailable': 'The task record or media could not be written to disk',
     'disk_full': 'Saving the image failed: the disk is full',
+    'output_unwritable': 'The folder that keeps the pictures cannot be written',
     'submit_interrupted': 'The service stopped during submission, so it is not confirmed whether the task started',
     'timeout': 'Generation took too long without a result',
     'invalid_media': 'The reference media could not be read',
@@ -547,6 +560,11 @@ FAILURE_NEXT_ZH = {
     'stems_download_failed': '检查网络连接后再试',
     'voice_model_missing': '先安装配音模型',
     'no_speech': '选择有人说话的一段声音',
+    'invalid_prompt': '缩短图片描述后再试',
+    'invalid_dimensions': '调整图片尺寸后再试',
+    'invalid_seed': '清空种子或改用较小的整数后再试',
+    'too_many_images': '减少参考图后再试',
+    'output_unwritable': '确认输入目录下的 freevideo-image 文件夹存在、可写且没有同名文件后再试',
 }
 FAILURE_NEXT_EN = {
     'generation_failed': 'If it happens again, use "Report a problem"',
@@ -574,6 +592,11 @@ FAILURE_NEXT_EN = {
     'stems_download_failed': 'Check the network connection, then try again',
     'voice_model_missing': 'Install the dubbing model first',
     'no_speech': 'Choose a stretch of sound with someone speaking',
+    'invalid_prompt': 'Shorten the description, then try again',
+    'invalid_dimensions': 'Change the picture size, then try again',
+    'invalid_seed': 'Clear the seed or use a smaller whole number, then try again',
+    'too_many_images': 'Remove some reference pictures, then try again',
+    'output_unwritable': 'Check that the freevideo-image folder in the input directory exists, is writable and has no file of the same name, then try again',
 }
 FAILURE_MESSAGES_ZH = {
     'The previous video is too short to continue; it needs to be at least 1.7 s long.': '接续的上一段视频太短，至少需要 1.7 秒',

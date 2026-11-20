@@ -312,7 +312,8 @@ def probe(family, name, spec, versions, timeout, env, *, measure_speed=False):
             url = wheel_link(base + '/packaging/', r'^packaging-26\.3-py3-none-any\.whl$', timeout, env)
         elif family.startswith('torch-'):
             _, cuda, version = family.split('-')
-            target = r'win_amd64' if versions.get('target_system') == 'Windows' else r'(?:manylinux[^/]*|linux)_x86_64'
+            target = (r'win_amd64' if versions.get('target_system') == 'Windows'
+                      else r'(?:manylinux[^/]*|linux)_' + ('aarch64' if versions.get('target_machine') == 'aarch64' else 'x86_64'))
             url = wheel_link(base + '/' + cuda + '/torch/', r'^torch-' + re.escape(version + '+' + cuda) + r'-cp312-cp312-' + target + r'\.whl$', timeout, env)
         elif family == 'models':
             settings = spec['models']
@@ -1824,6 +1825,22 @@ def remove_earlier_replaced(target, keep):
             pass  # Held by another program; a later replacement tries again.
 
 
+REPOSITORY_RETRY_SECONDS = (1, 3, 10)
+
+
+def repository_missing(error):
+    """Git's answer when the folder `git init` just made is not a repository."""
+    text = str(error).lower()
+    return 'not in a git directory' in text or 'not a git repository' in text
+
+
+def repository_missing_message(target):
+    return ('FreeVideo could not keep the Git repository it created for %s: its files disappeared right after Git '
+            'wrote them. Another program on this computer, such as security software, or the drive may be removing '
+            'or blocking them. Allow FreeVideo\'s folder in that program or install to another drive, then retry '
+            'installation.' % Path(target).name)
+
+
 def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None):
     """Fetch only the pinned commit, atomically; never reset existing checkouts.
 
@@ -1895,7 +1912,31 @@ def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None)
             execute(target.name + '-init-' + name, ['git', 'init', '--quiet', work])
             # Never depend on a user's global CRLF conversion or long-path
             # settings when constructing the exact official patched tree.
-            execute(target.name + '-line-endings', ['git', '-C', work, 'config', 'core.autocrlf', 'false'])
+            try:
+                execute(target.name + '-line-endings', ['git', '-C', work, 'config', 'core.autocrlf', 'false'])
+            except RuntimeError as error:
+                if not repository_missing(error):
+                    raise
+                # Git reported success for `init`, yet the repository is not there: something
+                # removed or blocked its files right after they were written. Start the
+                # repository again a few times before giving up with a plain explanation.
+                for pause in REPOSITORY_RETRY_SECONDS:
+                    event(network, category='git', source=name, route=route, file=target.name, action='repository-missing',
+                          commit=commit, wait_seconds=pause)
+                    try:
+                        remove_tree(work)
+                    except OSError:
+                        pass  # Held by another program; init below reports it if it matters.
+                    time.sleep(pause)
+                    execute(target.name + '-init-' + name, ['git', 'init', '--quiet', work])
+                    try:
+                        execute(target.name + '-line-endings', ['git', '-C', work, 'config', 'core.autocrlf', 'false'])
+                        break
+                    except RuntimeError as again:
+                        if not repository_missing(again):
+                            raise
+                else:
+                    raise RuntimeError(repository_missing_message(target)) from error
             execute(target.name + '-long-paths', ['git', '-C', work, 'config', 'core.longpaths', 'true'])
             if sparse:
                 # The patterns file with cone mode off is what `sparse-checkout

@@ -523,6 +523,10 @@ def _run(args):
         return freeze_continuation(value) if continuation_directory is not None else value
 
     frames = getattr(args, 'frames', None)
+    redo_sound = getattr(args, 'redo_sound', None)
+    if redo_sound is not None:
+        from .redo_audio import probe as redo_probe
+        frames = redo_probe(redo_sound)
     continue_from = getattr(args, 'continue_from', None)
     continue_anchor = getattr(args, 'continue_anchor', None)
     if continue_anchor is not None and continue_from is None:
@@ -1156,6 +1160,8 @@ def _run(args):
                        'sampling_plan': sampling_plan, 'upscaler_checkpoint': upscaler_checkpoint,
                        'automatic_pass_cache': not bool(args.profile),
                        'metrics': str(destination.with_suffix('.engine.json'))}
+            if redo_sound is not None:
+                request['redo_audio'] = {'video': str(Path(redo_sound).resolve())}
             if continuation is not None:
                 request['continuation'] = continuation
             if hide_tail_frames:

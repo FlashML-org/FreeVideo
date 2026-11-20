@@ -1,3 +1,4 @@
+import { setTip } from './tip_words.js';
 import {retryAgentPost} from './agent_session.js';
 import {issueButton} from './issue_button.js';
 import {tip} from './autopilot_tips.js';
@@ -128,7 +129,7 @@ function row(job, t, api, refresh, open, cancellationErrors) {
     if (job.project) meta.push(job.project);
     const foot = el('div', 'fv-agent-foot');
     const details = el('p', 'fv-agent-meta', meta.join(' · '));
-    if (failed && error.message) details.title = error.message;
+    if (failed && error.message) setTip(details, {name: error.message});
     foot.append(details);
     // A failed task carries what the engine said, so the report can be acted on.
     const issue = issueButton(t, () => cancellationErrors.has(job.id) || !failed

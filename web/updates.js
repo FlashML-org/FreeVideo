@@ -328,7 +328,7 @@ export function createUpdateNotice(cn) {
         element.hidden = !text;
         element.classList.toggle('fv-update-working', busy);
         label.textContent = text;
-        if (reason) label.title = reason; else label.removeAttribute('title');
+        label.removeAttribute('title'); if (reason) label.setAttribute('data-fv-tip-name', reason); else label.removeAttribute('data-fv-tip-name');
         // A cause that does not fit leaves only the prefix; the tooltip still has it.
         const fit = () => { if (cause && label.textContent === text && label.scrollWidth > label.clientWidth + 1) label.textContent = short; };
         if (cause) { fit(); globalThis.requestAnimationFrame?.(fit); }

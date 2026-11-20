@@ -45,7 +45,8 @@ def platform_key():
     if sys.platform == 'darwin':
         return 'macos-arm64' if machine in ('arm64', 'aarch64') else 'macos-x86_64' if machine == 'x86_64' else None
     if sys.platform.startswith('linux'):
-        return 'linux-x86_64' if machine in ('x86_64', 'amd64') else None
+        # Linux ARM64 (GB10, GH200): the dubbing runtime has its rows; the speech wheel row comes once it is built.
+        return 'linux-x86_64' if machine in ('x86_64', 'amd64') else 'linux-aarch64' if machine in ('aarch64', 'arm64') else None
     return None
 
 

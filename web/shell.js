@@ -24,6 +24,37 @@ const listeners = new Set();
 // The compatibility view (Settings → 兼容界面) counts as reduced motion: views switch at once.
 const reduced = () => root.dataset.glass === 'solid' || root.classList.contains('lite') || globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
 
+// View transitions (the picture held while a view comes to the front) cost main-thread time on every switch, so they
+// are for machines that carry them: "auto" (default) switches them off at four cores or fewer, or when the first two
+// switches after the first took over 400 ms to lay out (this session only); a stored "on" or "off" overrides both. Off, a switch just
+// runs (no held picture); the pages that name pictures for it (task_float, the library shelf) follow the same flag.
+const TRANSITIONS = 'freevideo.transitions', SLOW_CORES = 4, SLOW_SWITCH_MS = 400, SLOW_SAMPLES = 2;
+const stored = key => { try { return localStorage.getItem(key); } catch { return null; } };
+const keep = (key, value) => { try { localStorage.setItem(key, value); } catch { /* This page only. */ } };
+export const transitionMode = () => { const mode = stored(TRANSITIONS); return mode === 'on' || mode === 'off' ? mode : 'auto'; };
+export function transitionsOn(mode = transitionMode()) {
+    if (mode !== 'auto') return mode === 'on';
+    const cores = globalThis.navigator?.hardwareConcurrency;
+    return !(cores > 0 && cores <= SLOW_CORES) && !slowNow;
+}
+function applyTransitions() { root.dataset.fvTransitions = transitionsOn() ? 'on' : 'off'; }
+export function setTransitions(mode) {
+    if (mode !== 'auto' && mode !== 'on' && mode !== 'off') return;
+    keep(TRANSITIONS, mode);
+    if (mode === 'auto') { slowNow = false; slowSeen.length = 0; switchesSeen = 0; }
+    applyTransitions();
+}
+// The second and third switches of an "auto" machine (the first loads modules and is skipped): both slow → off from the
+// next switch on, for this session. A fast machine's cold switches measure 150-360 ms, so the bar sits at 400.
+const slowSeen = [];
+let slowNow = false, switchesSeen = 0;
+function noteSwitch(ms) {
+    if (transitionMode() !== 'auto' || slowNow || slowSeen.length >= SLOW_SAMPLES || !(ms >= 0) || ++switchesSeen < 2) return;
+    slowSeen.push(ms);
+    if (slowSeen.length === SLOW_SAMPLES && slowSeen.every(value => value > SLOW_SWITCH_MS)) { slowNow = true; applyTransitions(); }
+}
+const canTransit = () => typeof document.startViewTransition === 'function' && root.dataset.fvTransitions !== 'off';
+
 export const currentView = () => view;
 export function onView(listener) { listeners.add(listener); return () => listeners.delete(listener); }
 
@@ -249,7 +280,7 @@ function riseOver(token, {shift = true} = {}) {
 //   FreeVideoShell.holdWhile(() => openLibrary(...), {ready: libraryShown})
 // Without view transitions (or during a view switch) open() simply runs.
 export function holdWhile(open, {ready = null} = {}) {
-    if (typeof document.startViewTransition !== 'function' || switching) return Promise.resolve().then(open);
+    if (!canTransit() || switching) return Promise.resolve().then(open);
     const mark = {target: 'panel', from: view, press: performance.now()}, log = globalThis.__fvSwitches ||= [];
     log.push(mark); if (log.length > 10) log.shift();
     const token = {target: view, mark, animating: false, panel: true};
@@ -298,11 +329,11 @@ function holdFocus() {
 // it is ready within a few frames and rises over the held picture at once; what is new arrives in place afterwards.
 
 export function switchView(target, run) {
-    if (switching && !switching.animating && typeof document.startViewTransition === 'function') return retarget(switching, target);
+    if (switching && !switching.animating) return retarget(switching, target);
     if (target === view) return run();
     const from = view, leaving = markLeaving(from);
     const unmark = () => { if (leaving) delete leaving.dataset.fvLeaving; };
-    if (typeof document.startViewTransition !== 'function') { try { return run(); } finally { unmark(); } }
+    if (!canTransit()) { switching?.transition?.skipTransition?.(); try { return run(); } finally { unmark(); } }
     switching?.transition?.skipTransition?.();
     // Phase times of the last switches (ms since the press), for tests/shell_switch_check.py.
     const mark = {target, from, press: performance.now()}, log = globalThis.__fvSwitches ||= [];
@@ -350,6 +381,7 @@ export function switchView(target, run) {
             }
             nameBar(frontBar());
             at('ready');
+            noteSwitch(mark.ready);
             riseOver(token);
         }, () => {});
         token.transition.ready.catch(() => at('skipped'));
@@ -511,6 +543,7 @@ export function installShell({cover: wantCover = false} = {}) {
     if (globalThis.FreeVideoShell?.installed) return globalThis.FreeVideoShell;
     root.dataset.theme ||= 'dark';
     try { if (localStorage.getItem('freevideo.glass') === 'solid') root.dataset.glass = 'solid'; } catch { /* Glass stays on. */ }
+    applyTransitions();
     // Says once, with a button to Settings, when the interface runs slowly here (ui_speed.js); never switches by itself.
     import('./ui_speed.js').then(({watchSpeed}) => watchSpeed()).catch(() => {});
     try { if (localStorage.getItem('freevideo.material') === 'glass' || new URLSearchParams(location.search).get('freevideo_material') === 'glass') root.dataset.fvMaterial = 'glass'; } catch { /* Calm. */ }
@@ -527,6 +560,12 @@ export function installShell({cover: wantCover = false} = {}) {
         import('./glass/stage_light.js').catch(error => console.warn('FreeVideo stage light:', error));
     }
     // FreeVideo's own right-click menu wherever a part has none of its own (text boxes, links, the empty page).
+    // ComfyUI's Templates window: Chinese words for its search box and first category, and the light theme.
+    if (!document.querySelector('link[data-fv-sheet="comfy-templates"]')) {
+        const sheet = document.createElement('link'); sheet.rel = 'stylesheet'; sheet.dataset.fvSheet = 'comfy-templates';
+        sheet.href = new URL('./comfy_templates.css', import.meta.url).href; document.head.append(sheet);
+    }
+    import('./comfy_templates.js').then(({watchTemplates}) => watchTemplates()).catch(error => console.warn('FreeVideo templates:', error));
     import('./context_fallback.js').catch(error => console.warn('FreeVideo menu:', error));
     guardTitle(); watchHead(); quietSplash();
     for (const type of SWITCH_INPUT) globalThis.addEventListener?.(type, pressDuringSwitch, {capture: true, passive: false});
@@ -573,6 +612,6 @@ export function installShell({cover: wantCover = false} = {}) {
         event.stopImmediatePropagation();
         try { dialog.showModal(); } catch (error) { console.warn('FreeVideo view reopen:', error); }
     }, true);
-    globalThis.FreeVideoShell = {installed: true, view: currentView, onView, go, overlayHost, viewDialog, VIEWS, hideCover, settleShell, setTheme, setGlass, setMaterial, setLook, switchView, switching: isSwitching, toastHost, statusAnchor, holdWhile};
+    globalThis.FreeVideoShell = {installed: true, view: currentView, onView, go, overlayHost, viewDialog, VIEWS, hideCover, settleShell, setTheme, setGlass, setTransitions, transitionMode, transitionsOn, setMaterial, setLook, switchView, switching: isSwitching, toastHost, statusAnchor, holdWhile};
     return globalThis.FreeVideoShell;
 }

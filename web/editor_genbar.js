@@ -1,4 +1,5 @@
 // The editor owns its generation controls; progress can use the optional component.
+import { cutTip } from './cut_tip.js';
 import {createFirstFrameSwitch} from './editor_first_frame.js';
 import {createDurationField} from './editor_duration.js';
 import {createEditorReferences} from './editor_references.js';
@@ -364,7 +365,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
                 ['fv-ed-gen-stage', stage], ['fv-ed-gen-time', time]];
             const shown = spans.filter(([, text]) => text).map(([cls, text], index) => [cls, index ? ` · ${text}` : text]);
             hint.replaceChildren(...shown.map(([cls, text]) => el('span', cls, text)));
-            hint.title = shown.map(([, text]) => text).join('');
+            cutTip(hint, shown.map(([, text]) => text).join(''));
         }
         duration.update(busy);
         firstFrame.update(busy);

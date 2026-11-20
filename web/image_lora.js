@@ -5,6 +5,7 @@ import {reconcileLoraTriggers} from './lora_triggers.js';
 import {createVerdicts} from './lora_check.js';
 import {loraMenu} from './lora_menu.js';
 import {userMessage} from './user_message.js';
+import {fieldNote} from './field_note.js';
 
 export const IMAGE_LORA_LIMIT = 8, IMAGE_LORA_STRENGTH = 2;
 const STORE = 'freevideo_image_loras';
@@ -121,13 +122,14 @@ export function createImageLoras({t, fetchApi, el = domEl, getPrompt = () => '',
                 if (verdicts.peek(row.name)?.usable === false) row.enabled = true;
                 on.checked = row.enabled !== false; check(); changed();
             };
+            // A strength past ±2 becomes ±2 and the line under the row says so; an empty box goes back to the last strength, said the same way.
+            const strengthNote = fieldNote(strength, {t, place: () => wrap});
             strength.onchange = () => {
-                const value = Number(strength.value);
-                if (strength.value === '' || !(Math.abs(value) <= IMAGE_LORA_STRENGTH)) {
-                    strength.setCustomValidity(t(`Enter a value from -${IMAGE_LORA_STRENGTH} to ${IMAGE_LORA_STRENGTH}.`, `请输入 -${IMAGE_LORA_STRENGTH} 到 ${IMAGE_LORA_STRENGTH} 之间的数。`));
-                    strength.reportValidity(); return;
+                if (!strengthNote.settle()) {
+                    if (strength.value !== '') return;
+                    const kept = row.strength ?? 1; strength.value = String(kept); strengthNote.say(t(`Back to ${kept}`, `已恢复为 ${kept}`)); return;
                 }
-                strength.setCustomValidity(''); row.strength = value; changed();
+                row.strength = Number(strength.value); changed();
             };
             remove.onclick = () => { rows.splice(index, 1); render(); changed(); };
             trigger.onchange = async () => {

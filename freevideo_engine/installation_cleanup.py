@@ -9,6 +9,7 @@ import stat
 import sys
 import threading
 
+from .environments import uv_folder
 from .locking import runtime_lock
 from .storage import fingerprint
 from .long_paths import io_path, resolved, plain
@@ -76,7 +77,7 @@ def uv_path(root):
     root = checked_real_path(root)
     root = resolved(root) if root != selected else io_path(root)
     relative = ('uv.exe' if os.name == 'nt' else 'uv' if sys.platform == 'darwin'
-                else 'uv-x86_64-unknown-linux-gnu/uv')
+                else uv_folder() + '/uv')
     path = root / 'tools' / relative
     return Path(plain(path)) if local_path(root, path) and path.is_file() else None
 

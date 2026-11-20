@@ -65,9 +65,13 @@ def read_into(path, offset, length, buffer):
 class DiskLayerStream:
     """Serve ``layers`` (modules with the same parameter shapes) from ``index``; ``key(i, name)`` names a tensor."""
 
-    def __init__(self, layers, index, key, device, ahead=READ_AHEAD, threads=READ_THREADS):
+    def __init__(self, layers, index, key, device, ahead=READ_AHEAD, threads=READ_THREADS, keep=()):
         self.layers, self.index, self.key, self.device = list(layers), index, key, torch.device(device)
         self.ahead, self.bytes_read = ahead, 0
+        # Layers in ``keep`` are read once and stay on the card; the others are streamed each time they run.
+        self.keep = {i for i in keep if 0 <= i < len(self.layers)}
+        self.order = [i for i in range(len(self.layers)) if i not in self.keep]
+        self.pos = {i: p for p, i in enumerate(self.order)}
         self.pool = ThreadPoolExecutor(threads)
         self.ready = {}
         self.pinned = self.device.type == 'cuda'
@@ -78,7 +82,10 @@ class DiskLayerStream:
         self.slot_kind = []
         self.free = {}
         self.kinds = []
-        for layer in self.layers:
+        for i, layer in enumerate(self.layers):
+            if i in self.keep:
+                self.kinds.append(None)
+                continue
             params = dict(layer.named_parameters())
             kind = tuple((n, tuple(p.shape), p.dtype) for n, p in params.items())
             self.kinds.append(kind)
@@ -92,12 +99,30 @@ class DiskLayerStream:
         self.events = {}
         self.handles = []
         for i, layer in enumerate(self.layers):
+            if i in self.keep:
+                self._load_kept(i)
+                continue
             for module in layer.modules():
                 for name, param in list(module.named_parameters(recurse=False)):
                     setattr(module, name, torch.nn.Parameter(
                         torch.empty(0, device=self.device, dtype=param.dtype), requires_grad=False))
             self.handles.append(layer.register_forward_pre_hook(self._before(i)))
             self.handles.append(layer.register_forward_hook(self._after(i)))
+
+    def _load_kept(self, i):
+        """Read a kept layer's weights straight onto the card; it never leaves."""
+        layer = self.layers[i]
+        for module_name, module in layer.named_modules():
+            for name, param in list(module.named_parameters(recurse=False)):
+                full = name if not module_name else module_name + '.' + name
+                path, offset, length = self.index.locate(self.key(i, full))
+                host = torch.empty(param.shape, dtype=param.dtype)
+                if length != host.numel() * host.element_size():
+                    raise ValueError('%s in %s holds %d bytes, the model expects %d; wrong dtype or shape'
+                                     % (self.key(i, full), path, length, host.numel() * host.element_size()))
+                read_into(path, offset, length, host.view(torch.uint8).reshape(-1))
+                self.bytes_read += length
+                setattr(module, name, torch.nn.Parameter(host.to(self.device), requires_grad=False))
 
     def _read(self, i, slot):
         out = self.slots[slot]
@@ -119,18 +144,20 @@ class DiskLayerStream:
         return slot
 
     def _kick(self, j):
-        if 0 <= j < len(self.layers) and j not in self.ready:
+        if j not in self.keep and 0 <= j < len(self.layers) and j not in self.ready:
             slot = self._take_slot(j)
             self.ready[j] = (slot, self.pool.submit(self._read, j, slot))
 
     def _before(self, i):
         def hook(module, args, kwargs=None):
-            for j in [j for j in self.ready if not i <= j <= i + self.ahead]:
+            window = set(self.order[self.pos[i]:self.pos[i] + self.ahead + 1])
+            for j in [j for j in self.ready if j not in window]:
                 slot, future = self.ready.pop(j)
                 future.result()
                 self.free[self.kinds[j]].append(slot)
-            for j in range(i, i + self.ahead + 1):
-                if j == i or (0 <= j < len(self.layers) and self.free[self.kinds[j]]):
+            start = self.pos[i]
+            for j in self.order[start:start + self.ahead + 1]:
+                if j == i or self.free[self.kinds[j]]:
                     self._kick(j)
             slot, future = self.ready.pop(i)
             future.result()

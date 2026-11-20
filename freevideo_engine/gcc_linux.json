@@ -111,5 +111,110 @@
       "sha256": "b928c30ddcb0e3f544c6eade8352737e6e610e263276b90232db6a578ef899d8",
       "bytes": 118849
     }
-  ]
+  ],
+  "linux_aarch64": {
+    "micromamba": {
+      "version": "2.9.0-0",
+      "url": "https://github.com/mamba-org/micromamba-releases/releases/download/2.9.0-0/micromamba-linux-aarch64",
+      "sha256": "9f93b974adcb4d166996af969b6cd371287d1a3e52733704727884d9b74cb7a7",
+      "bytes": 22020296
+    },
+    "packages": [
+      {
+        "path": "noarch/libgcc-devel_linux-aarch64-14.4.0-ha8b83fe_107.conda",
+        "sha256": "eb11561edaf5000b9015b7c56e5f820045c49bbdfd4baee4db6e05124601236f",
+        "bytes": 2351053
+      },
+      {
+        "path": "noarch/libstdcxx-devel_linux-aarch64-14.4.0-hc896aa5_107.conda",
+        "sha256": "553dccd5120898d6827fc2d3401e1451734124c50713b2352ab7d8d5134c7aa5",
+        "bytes": 17504825
+      },
+      {
+        "path": "noarch/kernel-headers_linux-aarch64-5.14.0-h05a177a_3.conda",
+        "sha256": "2b7a5ee2d377ce1d923870c3e235360ea401fd8a8f086d88ef6b56c986eae725",
+        "bytes": 1381767
+      },
+      {
+        "path": "noarch/tzdata-2026e-h5d301ff_0.conda",
+        "sha256": "2b7ca858879f183ce2dcc65b300f48a0133d5430550f35b23d80d405a0788dbf",
+        "bytes": 119208
+      },
+      {
+        "path": "noarch/sysroot_linux-aarch64-2.34-h96c1060_3.conda",
+        "sha256": "5a7bd6d0e34aa517aef68f902659f65090c7a022cb194114cca858efa6faacd0",
+        "bytes": 40329553
+      },
+      {
+        "path": "linux-aarch64/libgomp-16.2.0-h8acb6b2_7.conda",
+        "sha256": "4406fd67c5beeb99b9372f9bf07aa3e40ca141e337eceebac3ff64aa72799494",
+        "bytes": 617342
+      },
+      {
+        "path": "linux-aarch64/libzlib-1.3.2-hdc9db2a_3.conda",
+        "sha256": "76efa6cc9d7e6f5ee3bbca0939f64054af2bdfb3c3632531f8e633cf6c2ea41e",
+        "bytes": 70108
+      },
+      {
+        "path": "linux-aarch64/_openmp_mutex-4.5-20_gnu.conda",
+        "sha256": "a2527b1d81792a0ccd2c05850960df119c2b6d8f5fdec97f2db7d25dc23b1068",
+        "bytes": 28926
+      },
+      {
+        "path": "linux-aarch64/zstd-1.5.7-h9d15635_7.conda",
+        "sha256": "427fd14bcb3b8659796fecc682716617409350fb5a98e5b7b47558a10d1a2fc7",
+        "bytes": 615477
+      },
+      {
+        "path": "linux-aarch64/libgcc-16.2.0-h205dda4_7.conda",
+        "sha256": "eae7a3449d5a3b5351c5427137c076cc3fc826645c7bfc42dc10772b783826f1",
+        "bytes": 627793
+      },
+      {
+        "path": "linux-aarch64/ld_impl_linux-aarch64-2.46.1-default_h1979696_103.conda",
+        "sha256": "516808982ad26ebdc4a9d8f71ee86ea55d0bc95382b7bca80620e0ac220971f3",
+        "bytes": 905349
+      },
+      {
+        "path": "linux-aarch64/libstdcxx-16.2.0-hef695bb_7.conda",
+        "sha256": "b241a3acfa9cdb1359112864a1241225533c92642de3000d52ae65ef5d3a9786",
+        "bytes": 6236630
+      },
+      {
+        "path": "linux-aarch64/binutils_impl_linux-aarch64-2.46.1-default_h5f4c503_103.conda",
+        "sha256": "1827893f9d6aa13794196b1820b8003bfff0105774a323a61026a16cec6dc66d",
+        "bytes": 4911258
+      },
+      {
+        "path": "linux-aarch64/libsanitizer-14.4.0-h5c092e3_7.conda",
+        "sha256": "5ef0faf52db0eada4807e209e1b6d8d4ed554efc1e2e9d4007d7d243dbbac917",
+        "bytes": 7100341
+      },
+      {
+        "path": "linux-aarch64/binutils_linux-aarch64-2.46.1-default_hf1166c9_103.conda",
+        "sha256": "60e63ac488aac474f8a22ea465d317daa02fccd039cca75e288bd0fc37e8745a",
+        "bytes": 36474
+      },
+      {
+        "path": "linux-aarch64/gcc_impl_linux-aarch64-14.4.0-hcd8d054_7.conda",
+        "sha256": "e0a3109cb1c8f83704d0b76c5ee8a56bf34fad16f6e884dae416712f753638dc",
+        "bytes": 69832767
+      },
+      {
+        "path": "linux-aarch64/gxx_impl_linux-aarch64-14.4.0-h66ee75d_7.conda",
+        "sha256": "cb6bdf99cc59dd5916ec55097d26f612ae3899c744270933d8883dd5a80af799",
+        "bytes": 14385294
+      },
+      {
+        "path": "linux-aarch64/gcc_linux-aarch64-14.4.0-hab84b30_4.conda",
+        "sha256": "5d4694c664cc813f1223ef837101daa10e489f2fd93287a2f7f6e336c717afbb",
+        "bytes": 29693
+      },
+      {
+        "path": "linux-aarch64/gxx_linux-aarch64-14.4.0-h927cbce_4.conda",
+        "sha256": "6d892017504ef9635e85181136dfdbb749bdd1a487289e7b4fa2208471bbd466",
+        "bytes": 28134
+      }
+    ]
+  }
 }

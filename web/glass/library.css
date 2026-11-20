@@ -1,8 +1,8 @@
 /* Glass for the dialogs, cards and popovers of settings, versions, what's new, feedback, failures, the tutorial,
    feature cards, the character editor and phone access. Loaded after each module's own sheet (glass/library.js), it
    points the old dark tokens (--fv-bg, --fv-ink, …) at the shell's glass tokens inside these surfaces, so their own
-   rules follow light and dark, and gives every one the same material: a level-3 glass sheet over a veil that covers
-   the whole window. Solid when transparency is reduced, unsupported or switched off. */
+   rules follow light and dark, and gives every one the same material: an opaque sheet in the glass tint over a veil
+   that covers the whole window, so nothing moving behind a dialog shows through it. */
 :root:root :is(.fv-setup,.fv-release-notes,.fv-whatsnew,.fv-feature-tour,.fv-cast-dialog,.fv-failure-dialog,.fv-tutorial-book,.fv-book-zoom,
   .fv-lan-panel,.fv-lan-tip,.fv-guide-bubble,.fv-health,.fv-report-tip,.phone-confirm){
   --fv-bg:rgb(var(--fv-solid3));--fv-canvas:rgb(var(--fv-solid2));--fv-card:var(--fv-ctl-bg);--fv-raised:var(--fv-ctl-hover);--fv-hover:var(--fv-ctl-hover);
@@ -19,13 +19,11 @@
 /* The sheets: one material, one radius, one shadow. Radii follow the shell's ladder from the outside in: sheets
    var(--fv-r-lg), popovers and cards on them var(--fv-r-md), buttons, fields and pictures var(--fv-r-sm). */
 :root:root :is(dialog.fv-setup,dialog.fv-release-notes,dialog.fv-whatsnew,dialog.fv-feature-tour,dialog.fv-cast-dialog,dialog.fv-failure-dialog,dialog.fv-tutorial-book,dialog.phone-confirm){
-  border:1px solid var(--fv-edge);border-radius:var(--fv-r-lg);background:rgb(var(--fv-tint) / var(--fv-a3));
-  -webkit-backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%);backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%);
+  border:1px solid var(--fv-edge);border-radius:var(--fv-r-lg);background:rgb(var(--fv-tint));-webkit-backdrop-filter:none;backdrop-filter:none;
   box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh3);color:var(--fv-fg)}
 /* Popovers and cards that float over a view. */
 :root:root :is(.fv-lan-panel,.fv-guide-bubble,.fv-health,.fv-report-tip){
-  border:1px solid var(--fv-edge);border-radius:var(--fv-rad-pop);background:rgb(var(--fv-tint) / var(--fv-a3));
-  -webkit-backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%);backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%);
+  border:1px solid var(--fv-edge);border-radius:var(--fv-rad-pop);background:rgb(var(--fv-tint));-webkit-backdrop-filter:none;backdrop-filter:none;
   box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh3);color:var(--fv-fg)}
 :root:root .fv-lan-tip{border:1px solid var(--fv-edge);border-radius:var(--fv-r-md);background:rgb(var(--fv-solid3));color:var(--fv-fg);box-shadow:var(--fv-sh2)}
 /* The veil under a sheet covers the whole window (no grey ring, no ComfyUI showing through). */

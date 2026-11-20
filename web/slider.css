@@ -1,0 +1,21 @@
+/* One slider look for FreeVideo's own surfaces, on every platform (the browser's own is drawn by the system and differs):
+   a 4 px track, a round accent knob. Scope as in a11y.css; the zero-specificity :where lets a view's own sizes (the touch 44 px
+   rows, the image editor's filled track, the chat seek) keep winning.
+   No filled part (Chrome cannot draw one; Firefox would, so neither does): the knob shows the value. Mixed-value sliders hide the knob in editor_audio.css. */
+:where(body [class^="fv-"],body [class*=" fv-"],body [class^="sgf"],body [class*=" sgf"],body [data-fv-tip-scope]) :where(input[type=range]),
+:where(body input[type=range]:is([class^="fv-"],[class*=" fv-"],[class^="sgf"],[class*=" sgf"])){
+  -webkit-appearance:none;appearance:none;background:transparent;height:16px;margin:0;cursor:pointer}
+:where(body [class^="fv-"],body [class*=" fv-"],body [class^="sgf"],body [class*=" sgf"],body [data-fv-tip-scope]) :where(input[type=range]):disabled,
+:where(body input[type=range]:is([class^="fv-"],[class*=" fv-"],[class^="sgf"],[class*=" sgf"])):disabled{opacity:.5;cursor:default}
+:where(body [class^="fv-"],body [class*=" fv-"],body [class^="sgf"],body [class*=" sgf"],body [data-fv-tip-scope]) :where(input[type=range])::-webkit-slider-runnable-track,
+:where(body input[type=range]:is([class^="fv-"],[class*=" fv-"],[class^="sgf"],[class*=" sgf"]))::-webkit-slider-runnable-track{
+  height:4px;border-radius:2px;background:var(--fv-line2,var(--fv-border,rgb(255 255 255 / .14)))}
+:where(body [class^="fv-"],body [class*=" fv-"],body [class^="sgf"],body [class*=" sgf"],body [data-fv-tip-scope]) :where(input[type=range])::-moz-range-track,
+:where(body input[type=range]:is([class^="fv-"],[class*=" fv-"],[class^="sgf"],[class*=" sgf"]))::-moz-range-track{
+  height:4px;border-radius:2px;background:var(--fv-line2,var(--fv-border,rgb(255 255 255 / .14)))}
+:where(body [class^="fv-"],body [class*=" fv-"],body [class^="sgf"],body [class*=" sgf"],body [data-fv-tip-scope]) :where(input[type=range])::-webkit-slider-thumb,
+:where(body input[type=range]:is([class^="fv-"],[class*=" fv-"],[class^="sgf"],[class*=" sgf"]))::-webkit-slider-thumb{
+  -webkit-appearance:none;appearance:none;width:14px;height:14px;margin-top:-5px;border:0;border-radius:50%;background:var(--fv-accent);box-shadow:0 1px 3px rgb(0 0 0 / .35)}
+:where(body [class^="fv-"],body [class*=" fv-"],body [class^="sgf"],body [class*=" sgf"],body [data-fv-tip-scope]) :where(input[type=range])::-moz-range-thumb,
+:where(body input[type=range]:is([class^="fv-"],[class*=" fv-"],[class^="sgf"],[class*=" sgf"]))::-moz-range-thumb{
+  width:14px;height:14px;border:0;border-radius:50%;background:var(--fv-accent);box-shadow:0 1px 3px rgb(0 0 0 / .35)}

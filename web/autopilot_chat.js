@@ -1,5 +1,7 @@
 // The conversation with the connected agent: what the user says, what the agent answers, and the agent's jobs as
 // cards at the place they happened. Reads and sends use the page session; the agent's token never enters the page.
+import { cutTip } from './cut_tip.js';
+import { setTip } from './tip_words.js';
 import {agentGet, agentPost, retryAgentPost} from './agent_session.js';
 import {emptyFrameIcon} from './empty_frame.js';
 import {ATTACH, attachmentURL, pickPictures, pictureGone, picturesOf, releasePicture, releasePictures, thumbnail, uploadPicture} from './chat_attachments.js';
@@ -516,7 +518,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
     // The line says the message is too long until the words fit.
     let tooLong = false;
     const TOO_LONG = () => t('This message is too long; shorten it or send it in two parts', '这条消息太长，请缩短或分成两条发送');
-    function say(text, failure = false) { if (text !== TOO_LONG()) tooLong = false; quoted(notice, text); notice.title = text || ''; notice.hidden = !text; noticeIssue.hidden = !text || !failure; noticeAction.hidden = true; noticeAction.run = null; }
+    function say(text, failure = false) { if (text !== TOO_LONG()) tooLong = false; quoted(notice, text); cutTip(notice, text || ''); notice.hidden = !text; noticeIssue.hidden = !text || !failure; noticeAction.hidden = true; noticeAction.run = null; }
     function receipt(text, label, key, run) {
         say(text); noticeAction.textContent = label; noticeAction.run = run; noticeAction.hidden = false; tip(noticeAction, key, t);
     }
@@ -1252,7 +1254,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         const draw = (next, fraction = null) => {
             put(chip, statusText(next, t, fraction)); chip.dataset.state = statusKey(next);
             const said = words(); put(prompt, said); prompt.hidden = !said;
-            prompt.title = said ? t('Prompt', '提示词') : '';
+            setTip(prompt, said ? {name: t('Prompt', '提示词')} : {});
             put(when, localTime(statusKey(next) === 'done' && next.finished_at ? next.finished_at : next.created_at, t)); when.hidden = !when.textContent;
         };
         return {head, name, meta, chip, draw};

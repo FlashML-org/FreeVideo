@@ -324,7 +324,8 @@ dialog.fv-set .st-mrow .st-re .st-btn{min-width:72px}
 
 /* ── The plan sheet (g3, modal over the room) ── */
 dialog.fv-set .st-dlg{position:fixed;inset:0;margin:auto;width:min(600px,calc(100vw - 2 * var(--st-gap)));height:fit-content;max-height:calc(100dvh - 2 * var(--fv-sp-32));padding:0;
-  flex-direction:column;border-radius:var(--fv-rad-console);overflow:hidden;color:var(--fv-fg)}
+  flex-direction:column;border-radius:var(--fv-rad-console);overflow:hidden;color:var(--fv-fg);
+  background:rgb(var(--fv-tint));-webkit-backdrop-filter:none;backdrop-filter:none}
 dialog.fv-set .st-dlg[open]{display:flex}
 dialog.fv-set .st-dlg::backdrop{background:var(--fv-scrim,rgb(3 4 6 / .6))}
 @media (prefers-reduced-motion:no-preference){

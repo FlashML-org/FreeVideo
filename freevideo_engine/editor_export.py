@@ -1120,6 +1120,19 @@ def _picture_folder():
     return folder
 
 
+def _copy_to_output(path):
+    """A saved frame is a picture like the ones the image page makes: with "Also save pictures to the output folder" on,
+    it is copied there under the same name, by the image service's own copy (its switch, its link checks, its removal
+    when the picture is deleted for good). Off, or without the service, nothing happens and nothing is said."""
+    try:
+        from .image_gen.service import get_service
+        service = get_service()
+    except Exception:
+        return
+    if service is not None:
+        service.copy_to_output(path)
+
+
 def store_picture(pixels):
     """Write a frame as a lossless PNG named like the pictures the image editor lists (image-YYYYMMDD-HHMMSS-NN.png)."""
     from PIL import Image
@@ -1138,6 +1151,7 @@ def store_picture(pixels):
                 publish(temporary, target)
             except FileExistsError:
                 continue
+            _copy_to_output(target)
             return dict(file='freevideo-image/' + target.name, name=target.name,
                         width=int(pixels.shape[1]), height=int(pixels.shape[0]))
         raise ExportError()

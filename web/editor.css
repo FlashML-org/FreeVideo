@@ -21,6 +21,10 @@
 .fv-editor .fv-ed-genbar>.fv-ed-duration.fv-ed-beside-leaving[hidden]{display:block!important;pointer-events:none}
 .fv-editor button:where(:not(.fv-header button)){height:36px;min-height:0;border-radius:var(--fv-r-sm);font:500 13px/1.4 var(--fv-font);white-space:nowrap}
 .fv-editor .fv-header{grid-column:1/-1;position:sticky;top:0;z-index:6;background:var(--fv-bg)}
+/* The update bar the creative panel brings along is one more grid row below the timeline: as wide as the window and kept at its bottom edge while the view scrolls, never past it. */
+.fv-studio.fv-editor>.fv-pop-holder>.fv-update-notice,.fv-studio.fv-editor>.fv-update-notice{grid-column:1/-1;grid-row:8;position:sticky;bottom:0;z-index:6}
+/* On a narrow window the name and the close button share the first row and the buttons sit on one row below. */
+@media(max-width:680px){.fv-studio.fv-editor>.fv-pop-holder>.fv-update-notice,.fv-studio.fv-editor>.fv-update-notice{padding:8px 14px;justify-content:flex-start}.fv-studio.fv-editor>.fv-pop-holder>.fv-update-notice>span,.fv-studio.fv-editor>.fv-update-notice>span{flex:1 1 calc(100% - 60px);min-width:0;white-space:normal;order:0}.fv-studio.fv-editor>.fv-pop-holder>.fv-update-notice .fv-update-close,.fv-studio.fv-editor>.fv-update-notice .fv-update-close{order:1;margin-left:auto}.fv-studio.fv-editor>.fv-pop-holder>.fv-update-notice>:not(span):not(.fv-update-close),.fv-studio.fv-editor>.fv-update-notice>:not(span):not(.fv-update-close){order:2}}
 .fv-editor>:not(.fv-header){font-size:13px;line-height:1.4}
 .fv-editor .fv-brand{position:relative}.fv-editor .fv-brand>.fv-wordmark{flex-shrink:0}
 .fv-editor .fv-header-actions{min-width:0;height:100%}.fv-editor .fv-header-actions>button,.fv-editor .fv-ed-export-box>button{flex:none}
@@ -69,8 +73,9 @@
 .fv-ed-source-card .fv-issue-button{font-size:11px;min-height:28px;max-width:100%}
 .fv-editor .fv-ed-preview{grid-column:2;grid-row:3;min-width:0;min-height:0;display:grid;place-items:center;padding:16px;overflow:hidden;background:var(--fv-bg);container-type:size}
 .fv-ed-picture{position:relative;width:min(100cqw,calc(100cqh * var(--fv-ed-width,16) / var(--fv-ed-height,9)));aspect-ratio:var(--fv-ed-width,16)/var(--fv-ed-height,9);background:#000;border-radius:var(--fv-r-sm);overflow:hidden}
-.fv-ed-picture[data-empty=true]{background:var(--fv-card);border:1px dashed color-mix(in srgb,var(--fv-ink) 28%,transparent)}
+.fv-ed-picture[data-empty=true]{container:fv-picture/size;background:var(--fv-card);border:1px dashed color-mix(in srgb,var(--fv-ink) 28%,transparent)}
 .fv-ed-empty-preview{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--fv-muted);font-size:13px;text-align:center;padding:16px}
+@container fv-picture (max-height:124px){.fv-ed-empty-preview-text{display:none}}
 .fv-ed-empty-preview svg{width:24px;height:24px;flex:none;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
 .fv-editor .fv-ed-preview-close{position:absolute;top:8px;right:8px;width:28px;height:28px;padding:0;z-index:2;background:var(--fv-card);border:1px solid var(--fv-border);color:var(--fv-muted)}
 .fv-ed-preview-close svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round}
@@ -255,7 +260,7 @@
 @media(min-width:681px) and (max-width:1279px){.fv-ed-notice{right:32px;max-width:min(560px,calc(100vw - 330px))}}
 .fv-ed-notice .fv-issue-button{margin-left:12px;vertical-align:middle;pointer-events:auto}
 @media(max-width:680px){
- .fv-studio.fv-editor{--fv-ed-generation-row:calc(96px + var(--fv-ed-description-growth,0px) + var(--fv-ed-note-growth,0px));grid-template-columns:minmax(0,1fr);grid-template-rows:auto var(--fv-ed-project-h) minmax(0,1fr) 40px minmax(var(--fv-ed-generation-row),auto) 40px 236px;overflow:hidden}
+ .fv-studio.fv-editor{--fv-ed-generation-row:calc(96px + var(--fv-ed-description-growth,0px) + var(--fv-ed-note-growth,0px));grid-template-columns:minmax(0,1fr);grid-template-rows:auto var(--fv-ed-project-h) minmax(0,1fr) 40px minmax(var(--fv-ed-generation-row),auto) 40px 236px;overflow:hidden auto}
  .fv-editor .fv-header{overflow-x:auto}
  .fv-editor .fv-ed-name{font-size:13px;max-width:112px;flex:1;padding:0 2px}
  .fv-editor .fv-ed-icon{width:28px;flex:none;font-size:20px}
@@ -325,8 +330,8 @@
 /* Narrow window: the picture sits right under the header, the row takes the project's own shape (a
    16:9 project is about 200 px tall at 400 px wide), and whatever height is left goes to the timeline. */
 @media(max-width:680px){
- .fv-studio.fv-editor{grid-template-rows:auto var(--fv-ed-project-h) minmax(0,auto) 40px minmax(var(--fv-ed-generation-row),auto) 40px minmax(160px,1fr)}
- .fv-editor .fv-ed-preview{box-sizing:border-box;align-self:start;width:100%;aspect-ratio:var(--fv-ed-project-width,16)/var(--fv-ed-project-height,9);max-height:max(116px,calc(100dvh - 362px - var(--fv-ed-generation-row)));padding-top:12px;padding-bottom:8px}
+ .fv-studio.fv-editor{grid-template-rows:auto var(--fv-ed-project-h) minmax(136px,auto) 40px minmax(var(--fv-ed-generation-row),auto) 40px minmax(160px,1fr)}
+ .fv-editor .fv-ed-preview{box-sizing:border-box;align-self:start;width:100%;aspect-ratio:var(--fv-ed-project-width,16)/var(--fv-ed-project-height,9);max-height:min(100%,max(136px,calc(100dvh - 362px - var(--fv-ed-generation-row))));padding-top:12px;padding-bottom:8px}
 }
 
 /* ── Layout that never moves (Iris E1, E8; CEO 11-14 "生成前会先下载……把下面的轨挤下去") ──
@@ -486,7 +491,7 @@
 
 /* ── Phone (≤680 px): this view's own controls are finger-sized (44 px) ── */
 @media(max-width:680px){
- .fv-studio.fv-editor{--fv-ed-generation-row:calc(108px + var(--fv-ed-description-growth,0px) + var(--fv-ed-note-growth,0px));grid-template-rows:auto var(--fv-ed-project-h) minmax(0,auto) 44px minmax(var(--fv-ed-generation-row),auto) 48px minmax(160px,1fr)}
+ .fv-studio.fv-editor{--fv-ed-generation-row:calc(108px + var(--fv-ed-description-growth,0px) + var(--fv-ed-note-growth,0px));grid-template-rows:auto var(--fv-ed-project-h) minmax(136px,auto) 44px minmax(var(--fv-ed-generation-row),auto) 48px minmax(160px,1fr)}
  .fv-editor .fv-ed-genbar{padding-top:4px;padding-bottom:4px;row-gap:8px}
  .fv-editor .fv-ed-project-row :is(.fv-ed-name,.fv-ed-export-main,.fv-ed-save-state){height:44px;min-height:44px}
  .fv-editor .fv-ed-project-row .fv-ed-export-main{min-width:56px}

@@ -1671,7 +1671,8 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
         elif export_inputs:
             send_progress({'label': 'Retaining and checking input media', 'timing_phase': 'encoding'})
             extra = export_inputs(run, canvas) or {}
-            if any(row.get('depth') is True for row in (extra.get('media') or {}).get('references', [])):
+            from .depth_reference import uses_conversion
+            if uses_conversion(extra.get('media')):
                 from .depth_reference import prepare_media
                 def release_depth_models():
                     if release_models:

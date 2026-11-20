@@ -1,3 +1,4 @@
+import { cutTip } from './cut_tip.js';
 import { api } from '../../scripts/api.js';
 import { closeDialog } from './motion.js';
 import { resultActions, previewBadge, icon } from './result_actions.js';
@@ -617,9 +618,9 @@ export function openLibrary(t, options = {}) {
     const tagRow = el('div', null, 'fv-library-tag-row');
     const stats = el('div', null, 'fv-stats'); stats.hidden = true;
     stats.setAttribute('aria-label', t('Generation statistics', '生成统计'));
-    const budget = el('div', '', 'fv-budget');
+    const budget = el('div', '', 'fv-budget'), sound = el('div', '', 'fv-budget');
     const run = el('details', null, 'fv-library-run'); run.hidden = true;
-    const runSummary = el('summary', t('Run details', '运行详情')); run.append(runSummary, stats, budget);
+    const runSummary = el('summary', t('Run details', '运行详情')); run.append(runSummary, stats, budget, sound);
     tip(runSummary, t('Run details', '运行详情'), t('Time and memory this generation used', '这次生成的用时和内存'));
     const links = el('div', null, 'fv-result-links');
     const notice = el('p', '', 'fv-library-message fv-library-notice'); notice.setAttribute('role', 'status');
@@ -755,7 +756,7 @@ export function openLibrary(t, options = {}) {
     }
     function clearDetail() {
         releasePlayer(); selected = null; frame.replaceChildren(); links.replaceChildren(); tagRow.replaceChildren(); date.textContent = geometry.textContent = '';
-        stats.hidden = true; stats.replaceChildren(); budget.textContent = ''; run.hidden = true; detail.dataset.empty = 'true';
+        stats.hidden = true; stats.replaceChildren(); budget.textContent = ''; sound.textContent = ''; run.hidden = true; detail.dataset.empty = 'true';
     }
     function mountPlayer(row) {
         releasePlayer(); frame.replaceChildren();
@@ -890,7 +891,7 @@ export function openLibrary(t, options = {}) {
             const seconds = Number(pictureFacts.get(row.file)?.seconds);
             stats.replaceChildren();
             if (seconds > 0) { const item = el('div', null, 'fv-stat'); item.append(el('strong', t(`${seconds} s`, `${seconds} 秒`)), el('span', t('Time', '用时'))); stats.append(item); }
-            stats.hidden = !stats.childElementCount; budget.textContent = ''; run.hidden = stats.hidden;
+            stats.hidden = !stats.childElementCount; budget.textContent = ''; sound.textContent = ''; run.hidden = stats.hidden;
             if (reveal) dialog.dataset.detail = 'true'; return;
         }
         // These are the saved generation's measurements, including when the
@@ -911,7 +912,10 @@ export function openLibrary(t, options = {}) {
         stats.hidden = row.preview || ![row.sample_seconds, row.request_seconds, row.vram_peak_bytes, row.ram_peak_bytes].some(measured);
         budget.textContent = !row.preview && measured(row.gpu_budget_bytes)
             ? `${t('VRAM budget', '可用显存预算')} ${number(row.gpu_budget_bytes, 2 ** 30, 'GiB')} · ${t('Device', '显卡总量')} ${number(row.gpu_total_bytes, 2 ** 30, 'GiB')}` : '';
-        run.hidden = stats.hidden && !budget.textContent;
+        // Sound that could not be kept as it was: what it is stored as, and that the original stays.
+        const stored = row.original_audio?.stored_as;
+        sound.textContent = typeof stored === 'string' && stored ? `${t('Sound', '声音')} ${stored} · ${t('original kept', '原声已保留')}` : '';
+        run.hidden = stats.hidden && !budget.textContent && !sound.textContent;
         if (reveal) dialog.dataset.detail = 'true';
     }
     // Continue a video into a longer one: the editor opens on it and the room closes.
@@ -1069,7 +1073,7 @@ export function openLibrary(t, options = {}) {
             const key = workKey(row);
             labelCard(key, sort === 'new' || sort === 'old');
             if (selected === key) showPrompt(row);
-            if (viewing === key) { const name = viewer.querySelector('.fv-library-viewer-name'); if (name) name.title = name.textContent = viewerName(row); }
+            if (viewing === key) { const name = viewer.querySelector('.fv-library-viewer-name'); if (name) { name.textContent = viewerName(row); cutTip(name, name.textContent); } }
         }
         promptWorkers--;
     }
@@ -1284,7 +1288,7 @@ export function openLibrary(t, options = {}) {
     }
     // The shelf swaps by a cross-fade: the old cards stay until the new order is there.
     function transition(change) {
-        if (!document.startViewTransition || reducedMotion() || !dialog.isConnected) { change(); return; }
+        if (!document.startViewTransition || document.documentElement.dataset.fvTransitions === 'off' || reducedMotion() || !dialog.isConnected) { change(); return; }
         grid.style.viewTransitionName = 'fv-library-shelf';
         const done = document.startViewTransition(change);
         done.finished.finally(() => { grid.style.viewTransitionName = ''; });
@@ -2237,7 +2241,7 @@ export function openLibrary(t, options = {}) {
         full.classList.add('fv-library-viewer-full');
         const close = viewerButton(t('Exit full screen', '退出全屏'), t('Back to the library', '回到作品库'), line('close'), () => exitFull(), 'Esc');
         close.classList.add('fv-library-viewer-close');
-        const name = el('strong', viewerName(row), 'fv-library-viewer-name'); name.title = name.textContent;
+        const name = el('strong', viewerName(row), 'fv-library-viewer-name'); cutTip(name, name.textContent);
         const words = el('div', null, 'fv-library-viewer-words'); words.append(name, spec);
         bottom.append(words, viewerActions(row, key), info, full, close);
         const main = el('div', null, 'fv-library-viewer-main'), stage = el('div', null, 'fv-library-viewer-stage');

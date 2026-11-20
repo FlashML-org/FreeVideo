@@ -1,6 +1,7 @@
 // The bar under the picture: what the picture is and where it sits in the history on the left, what can be done
 // with it on the right. The run's numbers and notes fold into Details, so the bar keeps one line and the picture
 // never moves when a note arrives.
+import { cutTip } from './cut_tip.js';
 import {tip} from './studio_console.js';
 
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
@@ -71,7 +72,7 @@ export function createStageBar(t, {details = [], onStep = () => {}}) {
             if (parts?.length) summaryMeta.replaceChildren(...parts.map(part => { const block = el('span', 'fvs-summary-part', part.text); block.dataset.part = part.key; return block; }));
             else summaryMeta.textContent = text || '';
             summaryMeta.hidden = !text; fitFacts();
-            summary.title = full || [name, text].filter(Boolean).join(' · ');
+            cutTip(summary, full || [name, text].filter(Boolean).join(' · '), summary, {always: !!full});
         },
         setHistory(index, count) {
             history.hidden = !(count > 1) || index < 0;

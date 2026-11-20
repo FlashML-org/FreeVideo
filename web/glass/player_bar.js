@@ -53,11 +53,18 @@ export function attach(video, host, {compact = false, t = words} = {}) {
     bar.append(play, track, time, sound);
 
     let frame = 0, shownTime = '', shownPercent = '', shownPlay = '', shownSound = '';
-    // Runs every frame while the video plays. Only the fill moves each frame; the time and the percentage are written
-    // when they change (once a second), because each new text node makes the page restyle the whole view around it.
+    // Runs every frame while the video plays, but writes only what changed: the fill moves once it has moved two pixels
+    // of the rail and at least 50 ms have passed (at most 20 a second; every write restyles and repaints the view around
+    // it, ~50 a second when written per frame), and at once when the video is paused, seeks or loops back. The time and
+    // the percentage are written when their text changes (once a second).
+    let railWidth = 0, shownAt = -1, shownStamp = 0;
+    if (typeof ResizeObserver === 'function') new ResizeObserver(() => { railWidth = rail.clientWidth; shownAt = -1; }).observe(rail);
     const draw = () => {
-        const at = video.duration ? video.currentTime / video.duration : 0;
-        fill.style.transform = `scaleX(${at})`;
+        const now = video.currentTime, stamp = performance.now();
+        const at = video.duration ? now / video.duration : 0;
+        if (!railWidth) railWidth = rail.clientWidth;
+        const moved = Math.abs(now - shownAt) / (video.duration || 1) * railWidth;
+        if (video.paused || now < shownAt || shownAt < 0 || (moved >= 2 && stamp - shownStamp >= 50)) { shownAt = now; shownStamp = stamp; fill.style.transform = `scaleX(${at})`; }
         const percent = String(Math.round(at * 100));
         if (percent !== shownPercent) { shownPercent = percent; track.setAttribute('aria-valuenow', percent); }
         const clockText = `${clock(video.currentTime)} / ${clock(video.duration)}`;
@@ -66,12 +73,15 @@ export function attach(video, host, {compact = false, t = words} = {}) {
         cancelAnimationFrame(frame);
         if (!video.paused && video.isConnected) frame = requestAnimationFrame(draw);
     };
+    let shownPlayName = '', shownSoundName = '';
     const sync = () => {
         const playGlyph = video.paused ? 'play' : 'pause', soundGlyph = video.muted ? 'muted' : 'sound';
         if (playGlyph !== shownPlay) { shownPlay = playGlyph; play.replaceChildren(glyph(playGlyph)); }
-        const name = video.paused ? t('Play', '播放') : t('Pause', '暂停'); play.setAttribute('aria-label', name); play.dataset.fvTipName = name;
+        const name = video.paused ? t('Play', '播放') : t('Pause', '暂停');
+        if (name !== shownPlayName) { shownPlayName = name; play.setAttribute('aria-label', name); play.dataset.fvTipName = name; }
         if (soundGlyph !== shownSound) { shownSound = soundGlyph; sound.replaceChildren(glyph(soundGlyph)); }
-        const what = video.muted ? t('Sound on', '打开声音') : t('Sound off', '关闭声音'); sound.setAttribute('aria-label', what); sound.dataset.fvTipName = what;
+        const what = video.muted ? t('Sound on', '打开声音') : t('Sound off', '关闭声音');
+        if (what !== shownSoundName) { shownSoundName = what; sound.setAttribute('aria-label', what); sound.dataset.fvTipName = what; }
     };
     const seek = event => { const box = track.getBoundingClientRect(); if (video.duration && box.width) video.currentTime = Math.max(0, Math.min(1, (event.clientX - box.left) / box.width)) * video.duration; draw(); };
     const down = event => { track.setPointerCapture(event.pointerId); seek(event); track.addEventListener('pointermove', seek); };

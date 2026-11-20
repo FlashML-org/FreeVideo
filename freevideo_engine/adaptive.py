@@ -831,7 +831,7 @@ def complete_observation(metrics, canvas, output, artifacts, telemetry):
     output_frames = expected - hidden
     original_audio = metrics.get('original_audio')
     if original_audio is not None:
-        if (not isinstance(original_audio, dict) or original_audio.get('sample_identical') is not True
+        if (not isinstance(original_audio, dict) or original_audio.get('mode') not in ('stream_copy', 'aac320')
                 or type(original_audio.get('samples_per_channel')) is not int
                 or type(original_audio.get('sample_rate')) is not int
                 or original_audio['samples_per_channel'] <= 0 or original_audio['sample_rate'] <= 0):

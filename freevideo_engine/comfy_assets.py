@@ -94,18 +94,22 @@ def resolve_assets(serialized, input_directory):
     root = Path(input_directory).resolve()
     result = {}
     for row in rows:
-        if not isinstance(row, dict) or set(row) - {'file', 'role', 'enabled', 'cast', 'early_steps', 'sound', 'guide', 'voice_only', 'keep_source_audio', 'depth',
+        if not isinstance(row, dict) or set(row) - {'file', 'role', 'enabled', 'cast', 'early_steps', 'sound', 'guide', 'voice_only', 'keep_source_audio', 'depth', 'lines',
                                                     'use', 'range', 'segment', 'seconds'}:
             raise ValueError('Invalid media item')
         if 'seconds' in row and (row.get('role') != 'middle' or type(row['seconds']) not in (int, float)
                                  or not math.isfinite(row['seconds']) or row['seconds'] <= 0):
             raise ValueError('seconds is a positive time on a middle frame')
-        if 'depth' in row:
-            if type(row['depth']) is not bool:
-                raise ValueError('Media depth must be a boolean')
-            if (row.get('role') != 'reference' or not isinstance(row.get('file'), str)
-                    or media_kind(row['file']) != 'video'):
-                raise ValueError('depth is only allowed on video references')
+        # Depth only and lines only: what of a reference video the model follows (one of them at most).
+        for key in ('depth', 'lines'):
+            if key in row:
+                if type(row[key]) is not bool:
+                    raise ValueError('Media %s must be a boolean' % key)
+                if (row.get('role') != 'reference' or not isinstance(row.get('file'), str)
+                        or media_kind(row['file']) != 'video'):
+                    raise ValueError('%s is only allowed on video references' % key)
+        if row.get('depth') is True and row.get('lines') is True:
+            raise ValueError('Choose depth only or lines only, not both')
         # The character an @ mention added the row for; a continued part keeps one picture per character.
         if 'cast' in row and (set(row['cast'] if isinstance(row['cast'], dict) else ('?',)) not in ({'id'}, {'id', 'setting'}, {'id', 'prop'})
                               or not isinstance(row['cast']['id'], str) or not 0 < len(row['cast']['id']) <= 128
@@ -140,6 +144,8 @@ def resolve_assets(serialized, input_directory):
             reference = {'kind': kind, 'path': str(path), **audio_fields}
             if row.get('depth') is True:
                 reference.update(depth=True, early_steps=3)
+            elif row.get('lines') is True:
+                reference.update(lines=True, early_steps=3)
             if cast_id(row) is not None:
                 reference['cast'] = cast_id(row)   # only a continued part reads it (comfy_media.continued)
                 if is_setting(row):

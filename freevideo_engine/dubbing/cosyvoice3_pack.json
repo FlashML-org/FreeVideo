@@ -96,6 +96,35 @@
           "path": "db/f3/3996583dd2906297a637af12114deddf7658af6e683fedb83be061983fb5/protobuf-7.36.2-cp310-abi3-manylinux2014_x86_64.whl"
         }
       ],
+      "linux-aarch64": [
+        {
+          "name": "onnxruntime",
+          "version": "1.31.1",
+          "license": "MIT",
+          "file": "onnxruntime-1.31.1-cp312-cp312-manylinux_2_28_aarch64.whl",
+          "bytes": 21420803,
+          "sha256": "0b9a492176886992e0e875f06bc0367e333f5fff11711a2d642e18b02f3009cc",
+          "path": "ba/e4/1ed1a7a5f4702d899091fa2b976d377995250c307326ec8dc9ae6378aa13/onnxruntime-1.31.1-cp312-cp312-manylinux_2_28_aarch64.whl"
+        },
+        {
+          "name": "flatbuffers",
+          "version": "25.12.19",
+          "license": "Apache-2.0",
+          "file": "flatbuffers-25.12.19-py2.py3-none-any.whl",
+          "bytes": 26661,
+          "sha256": "7634f50c427838bb021c2d66a3d1168e9d199b0607e6329399f04846d42e20b4",
+          "path": "e8/2d/d2a548598be01649e2d46231d151a6c56d10b964d94043a335ae56ea2d92/flatbuffers-25.12.19-py2.py3-none-any.whl"
+        },
+        {
+          "name": "protobuf",
+          "version": "7.36.2",
+          "license": "BSD-3-Clause",
+          "file": "protobuf-7.36.2-cp310-abi3-manylinux2014_aarch64.whl",
+          "bytes": 344219,
+          "sha256": "e11e1f0180583a2af89db6a2ecd9e8dc40aa6d2988ca175bfd0e6d12ea72d74e",
+          "path": "b6/ea/91fdf7c2b8bbd49cde056f00a9df6773532987e1c00fe2830b895af95c7e/protobuf-7.36.2-cp310-abi3-manylinux2014_aarch64.whl"
+        }
+      ],
       "windows-x64": [
         {
           "name": "onnxruntime",

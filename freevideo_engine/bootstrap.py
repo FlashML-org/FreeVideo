@@ -31,7 +31,7 @@ from .monitoring import save, load_ledger
 from .install_tuning import build_parallelism, required_models, cache_compatible, wheel_key
 from .terminal_ui import TerminalUI, LogProgress
 from .locking import runtime_lock, LOCK_ENV
-from .environments import (ENVIRONMENTS, environment_names, select_layout, role_pythons, constraints_file,
+from .environments import (ENVIRONMENTS, environment_names, select_layout, role_pythons, constraints_file, setup_supported, uv_folder, conda_lock, conda_triple,
                            bootstrap_versions, uv_file_arguments, uv_build_environment)
 from . import disk_space
 from . import network
@@ -655,18 +655,21 @@ def plan(args, *, local_progress=None, stage=None):
         from .macos_bootstrap import preflight
         snapshot, resources, errors = preflight(args, fixture, ram_gib=ram_gib, vram_gib=vram_gib)
         system, windows_target, layout = 'Darwin', False, 'unified'
+        target_machine = None
         cache_format = dict(capability=None, scale_granularity='int8_convrot')
         prepared_format = 'int8_convrot'
     else:
-        if not args.hardware_json and (platform.system() not in ('Linux', 'Windows') or platform.machine().lower() not in ('x86_64', 'amd64')):
-            raise RuntimeError('One-click setup supports Linux x86_64 and native Windows x64.')
+        if not args.hardware_json and not setup_supported(platform.system(), platform.machine()):
+            raise RuntimeError('One-click setup supports Linux x86_64 or ARM64 and native Windows x64.')
         snapshot = json.loads(args.hardware_json.read_text(encoding='utf-8')) if args.hardware_json else inventory(args.gpu)
         warnings.extend(snapshot.get('warnings', []))
         hardware = Hardware.from_dict(snapshot['hardware'])
         errors = []
-        if snapshot.get('machine', '').lower() not in ('x86_64', 'amd64') or hardware.system not in ('Linux', 'Windows'):
-            errors.append('This installer supports Linux x86_64 and native Windows x64.')
+        if not setup_supported(hardware.system, snapshot.get('machine', '')):
+            errors.append('This installer supports Linux x86_64 or ARM64 and native Windows x64.')
         windows_target = hardware.system == 'Windows'
+        # A replayed snapshot (--hardware-json) plans for its own processor, not this machine's.
+        target_machine = snapshot.get('machine') or None
         if windows_target and layout != 'unified':
             errors.append('Native Windows uses the unified environment. Rerun with --environment unified.')
             layout = 'unified'
@@ -883,7 +886,7 @@ def plan(args, *, local_progress=None, stage=None):
     dependencies = dependency_status(root, layout, system)
     environments_ready = all(r['exists'] and not r['missing'] and not r['mismatched'] for r in dependencies.values())
     python_version = None if mac_target else bootstrap_versions(
-        json.loads((PACKAGE / 'bootstrap_versions.json').read_text(encoding='utf-8')), system)['python']
+        json.loads((PACKAGE / 'bootstrap_versions.json').read_text(encoding='utf-8')), system, target_machine)['python']
     linux_target = not mac_target and not windows_target
     environment_gib = environment_allowance_gib(dependencies, mac=mac_target, layout=layout, python_version=python_version,
                                                 linux=linux_target)
@@ -924,7 +927,7 @@ def plan(args, *, local_progress=None, stage=None):
     if stage:
         stage('Testing download sources')
     networking = network.plan(json.loads((PACKAGE / 'dependencies.json').read_text(encoding='utf-8')),
-        bootstrap_versions(json.loads((PACKAGE / 'bootstrap_versions.json').read_text(encoding='utf-8')), system), layout,
+        bootstrap_versions(json.loads((PACKAGE / 'bootstrap_versions.json').read_text(encoding='utf-8')), system, target_machine), layout,
         mode=getattr(args, 'network', 'auto'), timeout=getattr(args, 'network_timeout', 5),
         offline=bool(args.hardware_json or errors),
         git_available=not mac_target or bool(args.hardware_json) or native_git_available(),
@@ -1276,8 +1279,8 @@ def prepare_uv(system, root, uv_spec, networking, env, fetch):
         except OSError:
             shutil.copyfile(previous, archive)
     fetch(uv_spec['url'], archive, uv_spec['sha256'])
-    unpack_folder(archive, root / 'tools', 'uv-x86_64-unknown-linux-gnu')
-    return root / 'tools' / 'uv-x86_64-unknown-linux-gnu' / 'uv'
+    unpack_folder(archive, root / 'tools', uv_folder())
+    return root / 'tools' / uv_folder() / 'uv'
 
 
 def unpack_folder(archive, destination, name):
@@ -2185,7 +2188,7 @@ class Installer:
         `env` is empty when the system compiler is used; `identity` names the compiler in the wheel cache key.
         A portable compiler is only installed when a build is needed (see install_compiler_linux).
         """
-        spec = json.loads((PACKAGE / 'gcc_linux.json').read_text(encoding='utf-8'))
+        spec = conda_lock(json.loads((PACKAGE / 'gcc_linux.json').read_text(encoding='utf-8')))
         below = spec['host_compiler_below'].get(cuda)
         # Without any system g++, FreeVideo's own compiler builds Sage2.
         if not shutil.which('g++', path=self.env['PATH']):
@@ -2199,9 +2202,9 @@ class Installer:
 
     def install_compiler_linux(self):
         """GCC from conda-forge, pinned by package hashes, for a system compiler newer than the toolkit accepts."""
-        spec = json.loads((PACKAGE / 'gcc_linux.json').read_text(encoding='utf-8'))
+        spec = conda_lock(json.loads((PACKAGE / 'gcc_linux.json').read_text(encoding='utf-8')))
         prefix = self.root / 'tools' / ('gcc-' + spec['version'])
-        triple = 'x86_64-conda-linux-gnu'
+        triple = conda_triple()
         compilers = {'CC': prefix / 'bin' / (triple + '-gcc'), 'CXX': prefix / 'bin' / (triple + '-g++')}
         receipt, content = prefix / '.freevideo-gcc.json', {k: spec[k] for k in ('version', 'packages')}
         if not (receipt.is_file() and json.loads(receipt.read_text(encoding='utf-8')) == content
@@ -2258,7 +2261,7 @@ class Installer:
         self.install_git_conda('git_linux.json', 'git-linux', self.fetch_git_linux)
 
     def install_git_conda(self, filename, folder, fetch, wrapper=False):
-        spec = json.loads((PACKAGE / filename).read_text(encoding='utf-8'))
+        spec = conda_lock(json.loads((PACKAGE / filename).read_text(encoding='utf-8')))
         prefix = self.root / 'tools' / ('git-' + spec['version'])
         executable = prefix / 'bin' / 'git'
         receipt, content = prefix / '.freevideo-git.json', {k: spec[k] for k in ('version', 'packages')}

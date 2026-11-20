@@ -8,10 +8,11 @@ import os
 from pathlib import Path
 
 from . import network
+from .environments import uv_folder
 from .long_paths import io_path
 
 PACKAGE = Path(__file__).resolve().parent
-TOOL = {'Windows': 'uv.exe', 'Darwin': 'uv', 'Linux': 'uv-x86_64-unknown-linux-gnu/uv'}
+TOOL = {'Windows': 'uv.exe', 'Darwin': 'uv', 'Linux': uv_folder() + '/uv'}
 # The sources each system's pinned uv comes from; nothing else is probed.
 FAMILIES = {'Windows': ('pypi', 'github'), 'Darwin': ('pypi',), 'Linux': ('github',)}
 

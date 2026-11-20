@@ -82,12 +82,12 @@ export const TUTORIAL_CHAPTERS = [
             alt: {zh: '图像视图：描述框、比例与清晰度、“生成”和图片下方的“⋯”已用红框标出。', en: 'The Images view, with the prompt, the shape and clarity, "Generate" and the "⋯" below the picture outlined in red.'},
         },
         steps: {
-            zh: ['点顶部的“图像视图”。', '在“描述画面”中写下主体、场景和风格；图中要出现的文字，用引号写出原文。', '在“画幅与尺寸”中选择比例，再在“尺寸”中选择“4M”（约 400 万像素）或“16M”（约 1600 万像素）。显存为 8 GB 的显卡，选“4M”。', '点“生成”。图片显示在中间，并加入右侧的作品列表；图片下方一行写明生成它的模型、尺寸和比例。用图片下方一行的图标下载、打开文件夹或复制提示词。', '在“AI 全自动”中，连接助手 后说“画一张……”，助手只生成图片，不生成视频；完成后点“打开”查看，点“下载”保存。'],
-            en: ['Choose "Images" at the top.', 'In "Describe the picture", write the subject, the place and the style. Put any words that should appear in the picture in quotation marks, exactly as written.', 'Under "Frame & size", choose the shape, then choose "4M" (about 4 megapixels) or "16M" (about 16 megapixels) under "Size". On a graphics card with 8 GB of memory, choose "4M".', 'Choose "Generate". The picture appears in the middle and is added to the works on the right. The line below it names the model that made it, with its size and shape. Use the icons in the line below it to download it, open its folder or copy the prompt.', 'In Autopilot, connect an assistant and say "Draw a picture of …". The assistant makes only the picture, not a video. When it finishes, choose "Open" to view it and "Download" to save it.'],
+            zh: ['点顶部的“图像视图”。', '在“描述画面”中写下主体、场景和风格；图中要出现的文字，用引号写出原文。', '在“画幅与尺寸”中选择比例，再在“尺寸”中选择“4M”（约 400 万像素）或“16M”（约 1600 万像素）。显存为 8 GB 的显卡，选“4M”。', '点“生成”。图片显示在中间，并加入右侧的作品列表；图片下方一行写明生成它的模型、尺寸和比例。用图片下方一行的图标下载、打开文件夹或复制提示词。图片也会另存一份到 output 文件夹，在“设置”中可以关闭。', '在“AI 全自动”中，连接助手 后说“画一张……”，助手只生成图片，不生成视频；完成后点“打开”查看，点“下载”保存。'],
+            en: ['Choose "Images" at the top.', 'In "Describe the picture", write the subject, the place and the style. Put any words that should appear in the picture in quotation marks, exactly as written.', 'Under "Frame & size", choose the shape, then choose "4M" (about 4 megapixels) or "16M" (about 16 megapixels) under "Size". On a graphics card with 8 GB of memory, choose "4M".', 'Choose "Generate". The picture appears in the middle and is added to the works on the right. The line below it names the model that made it, with its size and shape. Use the icons in the line below it to download it, open its folder or copy the prompt. A copy of the picture is also saved to the output folder; this can be switched off in Settings.', 'In Autopilot, connect an assistant and say "Draw a picture of …". The assistant makes only the picture, not a video. When it finishes, choose "Open" to view it and "Download" to save it.'],
         },
         limits: {
-            zh: ['未安装图像模型时，“生成”显示为“下载模型”，点它下载；和视频共用的文件不重复下载。', '加参考图见“用参考图生成图片”。', '“高清”用时更长；显存不足时，出错卡片上可点“改用标准并重试”。'],
-            en: ['Without a picture model installed, "Generate" reads "Download model"; choose it to download. Files shared with video are not downloaded again.', 'For reference pictures, see "Make a picture from reference pictures".', '"High" takes longer. If memory runs short, choose "Retry at Standard" on the error card.'],
+            zh: ['未安装图像模型时，“生成”显示为“下载模型”，点它下载；和视频共用的文件不重复下载。', '加参考图见“用参考图生成图片”。选 MOSS 时，点描述框下方的“布局”，在画框上拖出框，每个框写一句放什么。框管位置和大致大小，不会把东西拉伸到填满框。', '“高清”用时更长；显存不足时，出错卡片上可点“改用标准并重试”。'],
+            en: ['Without a picture model installed, "Generate" reads "Download model"; choose it to download. Files shared with video are not downloaded again.', 'For reference pictures, see "Make a picture from reference pictures". When MOSS is selected, choose "Layout" below the description, drag boxes on the frame and write what goes in each one. A box sets where a thing goes and roughly how big it is; it does not stretch the thing to fill the box.', '"High" takes longer. If memory runs short, choose "Retry at Standard" on the error card.'],
         },
     },
     {
@@ -752,12 +752,12 @@ export const TUTORIAL_CHAPTERS = [
             alt: {zh: '“作品库”：第一条作品已用红框标出。', en: 'Your creations, with the first video outlined in red.'},
         },
         steps: {
-            zh: ['点预览下方最近作品开头的“作品库”。', '选择一条视频，可播放，或点“接着生成”在剪辑视图中继续。', '在作品详情中点爱心图标收藏；列表上方选“收⁠藏”只看收藏的作品，选“全⁠部”看所有作品。', '需要成片时，在“剪辑视图”点“导⁠出”。', '在导出窗口选择范围、画质和内容，再点“导⁠出”。'],
-            en: ['Choose "Creations" at the start of the recent videos below the preview.', 'Pick a video to play it, or choose "Continue" to continue it in the Edit view.', 'In a creation\'s details, choose the heart to add it to favorites. Above the list, choose "Favorites" to see only those, or "All" to see every creation.', 'For a finished file, choose "Export" in the Edit view.', 'In the export window choose the range, quality and content, then choose "Export".'],
+            zh: ['点预览下方最近作品开头的“作品库”。', '选择一条视频，可播放，或点“接着生成”在剪辑视图中继续。', '在作品详情中点爱心图标收藏；列表上方选“收⁠藏”只看收藏的作品，选“全⁠部”看所有作品。', '需要成片时，在“剪辑视图”点“导⁠出”。', '在导出窗口选择范围、画质和内容；要更流畅的画面时，在“帧率”中选 48 或 60，中间的画面由显卡补出。再点“导⁠出”。'],
+            en: ['Choose "Creations" at the start of the recent videos below the preview.', 'Pick a video to play it, or choose "Continue" to continue it in the Edit view.', 'In a creation\'s details, choose the heart to add it to favorites. Above the list, choose "Favorites" to see only those, or "All" to see every creation.', 'For a finished file, choose "Export" in the Edit view.', 'In the export window choose the range, quality and content. For smoother motion, choose 48 or 60 under "Frame rate"; the graphics card makes the frames in between. Then choose "Export".'],
         },
         limits: {
-            zh: ['删除作品前会确认；被剪辑使用的作品不能删除。', '导出窗口每次打开时，“内容”默认选“画面和声音”，“画质”默认选“高”。', '导出过程中取消不会留下不完整的文件。'],
-            en: ['FreeVideo asks before deleting a video, and a video used in an edit cannot be deleted.', 'The export window always opens with "Video and audio" as the content and "High" as the quality.', 'Cancelling an export leaves no unfinished file.'],
+            zh: ['删除作品前会确认；被剪辑使用的作品不能删除。', '导出窗口每次打开时，“内容”默认选“画面和声音”，“画质”默认选“高”；窗口里没有“帧率”时，这台电脑不支持 48 和 60 帧导出。', '导出过程中取消不会留下不完整的文件。'],
+            en: ['FreeVideo asks before deleting a video, and a video used in an edit cannot be deleted.', 'The export window always opens with "Video and audio" as the content and "High" as the quality; when it has no "Frame rate", this computer cannot export at 48 or 60 fps.', 'Cancelling an export leaves no unfinished file.'],
         },
     },
     {

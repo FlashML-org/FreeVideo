@@ -22,7 +22,7 @@ export const MODULES = ['audio_original.js', 'chat_data.js', 'phone_model.js', '
     'empty_prompt_notice.js', 'feature_tour.js', 'feature_tour_content.js', 'howto.js', 'swap_lora.js', 'sound_bubble.js', 'tour_goto.js', 'tour_try.js', 'tutorial_book.js', 'tutorial_book_content.js',
     'shell.js', 'tooltip.js', 'tooltip_copy.js',
     'library_meta.js', 'cast_room.js',
-    'editor_tracks_tips.js',
+    'editor_tracks_tips.js', 'tip_words.js', 'cut_tip.js', 'field_note.js', 'image_view_layout.js',
     'task_store.js', 'task_float.js',
     'image_view_ui.js', 'image_view_size.js', 'image_view_models.js', 'image_view_history.js', 'image_view_prompts.js', 'image_view_compare.js', 'image_view_queue.js', 'image_view_mentions.js', 'image_view_warm.js', 'image_view_viewer.js', 'image_view_lora.js',
     'palette.js', 'picture_zoom.js', 'global_search.js', 'notifications.js', 'shortcuts.js', 'context_menu.js',
@@ -31,7 +31,7 @@ export const MODULES = ['audio_original.js', 'chat_data.js', 'phone_model.js', '
     'feature_tour_layer.js', 'settings_room.js', 'settings_kit.js', 'settings_words.js',
     'image_works.js', 'cast_photo.js', 'editor_opening.js', 'editor_poster.js', 'topbar_state.js', 'preload_setting.js', 'private_offers.js', 'cast_face_crop.js', 'context_fallback.js', 'studio_warm.js',
     'pose_body.js', 'pose_props.js', 'pose_stage.js', 'pose_tool.js', 'release_media.js', 'ui_speed.js',
-    'lora_menu.js', 'upscale_offer.js', 'user_message.js', 'workflow_drafts.js'];
+    'lora_menu.js', 'upscale_offer.js', 'user_message.js', 'workflow_drafts.js', 'comfy_templates.js'];
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 let visibleAt = 0;
 async function waitForVisible() {

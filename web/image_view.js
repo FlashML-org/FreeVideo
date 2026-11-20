@@ -22,6 +22,7 @@ import { openReferenceMenu, removeSavedImages } from './image_library.js';
 import { BLANK_CANVAS_AREAS, createImageGenClient, fittedNote, imageGenError, imageRemainingText, imageReportBar, renderImageFailure } from './image_generation.js';
 import { duration } from './generation_progress.js';
 import { randomSeed } from './studio_queue.js';
+import { createLayout } from './image_view_layout.js';
 import { createPreviewScene } from './preview_scene.js?v=20261115-still';
 import { jobs, ACTIVE, IMAGE_BUSY } from './task_store.js';
 import { confirmStop, startJobSources } from './task_float.js';
@@ -39,6 +40,7 @@ import { preloadMode } from './preload_setting.js';
 import { openPictureViewer } from './image_view_viewer.js';
 import { LORA_MODEL, imageViewLora } from './image_view_lora.js';
 import { hasPictureThumbnail, mediaQueue, pictureThumbnailURL } from './work_media.js';
+import { fieldNote } from './field_note.js';
 
 export { IMAGE_MODELS, RATIOS };
 for (const name of ['./image_view.css']) {
@@ -89,10 +91,10 @@ export function createFakeImageClient({delay = 600, ready = {'minimax-h3-image':
         info: async () => { for (const [id, at] of loading) if (Date.now() - at > bytes / rate) { state[id] = true; loading.delete(id); } return {installed: true, ready: true, max_images: 16, sizes, models: models()}; },
         packInstall: async id => { failed.delete(id); if (paused.delete(id)) loading.set(id, Date.now() - bytes / rate * .2); else loading.set(id, Date.now()); return {installed: true, sizes, models: models()}; },
         packCancel: async id => { loading.delete(id); return {installed: true, sizes, models: models()}; },
-        async generate({prompt, width, height, seed, model, images = []}) {
+        async generate({prompt, width, height, seed, model, images = [], layout}) {
             if (fail) throw Object.assign(new Error(fail), {code: fail});
             if (images.length > (references[model] ?? 0)) return {error: 'too_many_images'};
-            const job = 'fake-' + ++count; jobs.set(job, {at: Date.now(), prompt, width, height, seed, model}); (this.requests ||= []).push({prompt, width, height, seed, model, images}); return {job};
+            const job = 'fake-' + ++count; jobs.set(job, {at: Date.now(), prompt, width, height, seed, model}); (this.requests ||= []).push({prompt, width, height, seed, model, images, ...(layout ? {layout} : {})}); return {job};
         },
         async status(job) {
             const row = jobs.get(job); if (!row) throw Object.assign(new Error('unknown_job'), {code: 'unknown_job'});
@@ -207,6 +209,8 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     if (info?.models && !offers(model)) model = IMAGE_MODELS.find(offers) || model;
     let ratio = sizes.ratio || '1:1', area = sizes[model.id] || RANGES[model.id].presets.standard, locked = sizes.locked !== false, tier = 'standard';
     const promptOf = {};
+    // The boxes a MOSS picture was made with, while this page is open (as its prompt is).
+    const layoutOf = {};
     // A picture's words: from this page's memory (made while it is open) or the engine's record of it; never the browser's store.
     const promptFor = file => promptOf[file] || sessionPrompts.get(file) || rows.find(r => r.file === file)?.prompt || '';
     // running: the job this page shows ({id} once the store has it); the job itself belongs to the store and outlives the page.
@@ -287,11 +291,13 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         },
         restore: text => text.replace(/<Picture (\d+)>/g, (_, n) => mentionText(n)).replace(/<Subject (\d+)>/g, (_, n) => subject(Number(n)))});
     let enhancerReady = false;
-    const enhancerOff = () => false;
+    // A MOSS layout is sent as boxes the engine writes into the prompt: a rewrite would rewrite them as prose and drop
+    // them (the official template keeps its rewrite off with boxes), so with boxes the words go as written.
+    const enhancerOff = () => layoutActive();
     enhancer.element.classList.add('fv-image-enhance');
     // Expand: the same quiet reading and editing panel as the studio and the editing view; it writes back live.
     const expand = createExpandButton({t, textarea: prompt, onGenerate: () => go.click(),
-        canGenerate: () => !running && modelState(info, model.id).state === 'ready' && (!!prompt.value.trim() || references.length > 0), onDraft: () => render()});
+        canGenerate: () => !running && modelState(info, model.id).state === 'ready' && hasWords(), onDraft: () => render()});
     enhancer.model.read().then(value => { enhancerReady = value?.ready === true; render(); fitSoon(); }).catch(() => {});
     const promptBar = el('div', 'fv-iv-prompt-bar');
     const promptCount = el('span', 'fv-iv-prompt-count');
@@ -302,9 +308,12 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     const sketchAdd = button('fv-iv-text-btn fv-iv-sketch-tool', {iconName: 'edit', label: t('Sketch', '画草图'), name: t('Draw a sketch', '画草图'),
         use: t('Draw the layout on a blank canvas of this frame; it becomes Image 1', '在当前画幅的空白画布上画出构图，作为图 1')});
     sketchAdd.addEventListener('click', () => void drawSketch());
+    // MOSS layout: in the place of References and Sketch (MOSS takes neither), boxes drawn on the next picture's frame.
+    const layoutAdd = button('fv-iv-text-btn fv-iv-layout-tool', {iconName: 'layout', label: t('Layout', '布局')}); const layoutCount = el('span', 'fv-iv-ref-count'); layoutAdd.append(layoutCount);
+    tip(layoutAdd, t('Layout', '布局')); layoutAdd.addEventListener('click', () => toggleLayout());
     // Prompt enhancement is a key in this row beside References and Sketch, lit while on (no switch row of its own).
     enhancer.chip.classList.add('fv-iv-text-btn', 'fv-iv-enhance-tool'); enhancer.chip.querySelector('span')?.classList.add('fv-iv-btn-label');
-    promptBar.append(refAdd, sketchAdd, enhancer.chip, el('span', 'fv-iv-grow'), promptCount, expand.element);
+    promptBar.append(refAdd, sketchAdd, layoutAdd, enhancer.chip, el('span', 'fv-iv-grow'), promptCount, expand.element);
     // The row stays on one line inside the panel, Expand at the same inset as the box: when its words do not fit (a
     // narrow panel, longer words), its keys keep their icons only (their hover cards still name them). Measured again
     // whenever the row's own contents change (the count near the limit), not only when the panel is resized.
@@ -344,6 +353,9 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     dice.addEventListener('click', () => { seedInput.value = String(randomSeed()); render(); });
     seedInput.addEventListener('input', () => render());
     const seedField = el('label', 'fv-image-seed fv-iv-field fv-iv-field-wide'); seedField.append(el('span', 'fv-iv-field-key', t('Seed', '种子')), seedInput, dice);
+    // A seed past its range becomes its end (or a whole number), and the line under the field says so.
+    const seedNote = fieldNote(seedInput, {t, place: () => seedField});
+    seedInput.addEventListener('change', () => { if (seedInput.value !== '') seedNote.settle(); });
     // LoRA: a button whose panel opens beside it; it answers for the model that takes LoRA files.
     const loraRow = imageViewLora({host: dialog, fetchApi: (path, options) => api.fetchApi(path, options),
         modelName: () => IMAGE_MODELS.find(m => m.id === LORA_MODEL)?.name || 'Qwen-Image 2.1', onChange: () => render()});
@@ -410,6 +422,22 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     const failHost = el('div', 'fv-image-fail fv-iv-fail fv-glass fv-g3'); failHost.setAttribute('role', 'alert');
     const draftNote = el('div', 'fv-iv-draft'), draftSize = el('b'), draftHint = el('span'); draftNote.append(draftSize, draftHint); draftNote.hidden = true;
     pic.append(sceneHost, picture, stepFrame, block, draftNote, meter);
+    // MOSS layout: the boxes live on the empty frame of the next picture (the draft), whose shape is the one made.
+    const MOSS = 'moss-image-sft';
+    const isMoss = () => model.id === MOSS;
+    let layoutOn = false;
+    const layout = createLayout({host: pic, layer: dialog, onChange: () => render()});
+    if (keptDraft?.layout?.length) layout.set(keptDraft.layout);
+    // Boxes with words go with a MOSS picture; with another model they stay on the page, unseen and unsent.
+    function layoutActive() { return isMoss() && layout.filled() > 0; }
+    function hasWords() { return !!prompt.value.trim() || references.length > 0 || layoutActive(); }
+    function toggleLayout(on = !layoutOn) {
+        if (!isMoss()) return;
+        layoutOn = !!on;
+        if (layoutOn) { if (running && !browsing) leaveRun(); startDraft(); }
+        else if (shownFile) { draft = false; draftPreview = null; }
+        render();
+    }
     frame.append(pic, grid, failHost);
     // The caption row (facts, Edit, reference, star, download, more) is where the hand goes after a picture: the floating window keeps off it.
     const cap = el('div', 'fv-iv-cap fv-image-actions sgf-avoid');
@@ -429,7 +457,14 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     const more = el('div', 'fv-iv-menu fv-image-more fv-glass fv-g3'); more.hidden = true; more.setAttribute('role', 'menu');
     const menuItem = (iconName, text, use, onClick, cls = '') => { const b = el('button', 'fv-iv-menu-item ' + cls); b.type = 'button'; b.setAttribute('role', 'menuitem'); b.append(icon(iconName), el('span', '', text)); tip(b, text, use); b.addEventListener('click', () => { more.hidden = true; onClick(); }); return b; };
     const copyPrompt = () => { const text = promptFor(shownFile); try { void navigator.clipboard?.writeText(text); } catch { /* the clipboard may be refused */ } };
-    const usePromptItem = menuItem('prompt', t('Use prompt', '使用提示词'), t('Put its prompt back in the box', '把它的提示词填回描述框'), () => { const text = promptFor(shownFile); if (text) { prompt.value = text; prompt.dispatchEvent(new Event('input', {bubbles: true})); promptGroup.open(true); } });
+    const usePromptItem = menuItem('prompt', t('Use prompt', '使用提示词'), t('Put its prompt back in the box', '把它的提示词填回描述框'), () => usePrompt(shownFile));
+    // For MOSS the boxes are part of the prompt: they come back with the words, and MOSS is chosen.
+    function usePrompt(file) {
+        const text = promptFor(file), boxes = layoutOf[file];
+        if (!text && !boxes) return;
+        prompt.value = text; prompt.dispatchEvent(new Event('input', {bubbles: true})); promptGroup.open(true);
+        if (boxes) { const moss = IMAGE_MODELS.find(m => m.id === MOSS); if (moss && model.id !== MOSS) chooseModel(moss); layout.set(boxes); }
+    }
     more.append(menuItem('folder', t('Open folder', '打开文件夹'), t('Show the pictures on this computer', '在电脑上打开保存图片的文件夹'), () => void openFolder()),
         menuItem('copy', t('Copy prompt', '复制提示词'), t('Copy the words this picture was made from', '复制这张图的提示词'), copyPrompt), usePromptItem,
         menuItem('trash', t('Delete', '删除'), t('Move to recently deleted; can be undone', '移到最近删除，可以撤销'), () => deleteFiles([shownFile]), 'fv-iv-danger'));
@@ -455,6 +490,8 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         if (w) parts.push(row(t('Size', '尺寸'), `${w} × ${h} · ${megapixels(w * h)} MP`));
         if (m.seconds) parts.push(row(t('Time', '用时'), t(`${m.seconds} s`, `${m.seconds} 秒`)));
         if (m.seed) parts.push(row(t('Seed', '种子'), String(m.seed)));
+        const drawn = layoutOf[shownFile]?.length;
+        if (drawn) parts.push(row(t('Layout', '布局'), t(`${drawn} ${drawn === 1 ? 'box' : 'boxes'}`, `${drawn} 个框`)));
         // Where it came from (an edit of another work): its thumbnail and name, opening it on the stage.
         if (m.source) {
             const name = String(m.source).slice(String(m.source).lastIndexOf('/') + 1), there = rows.find(r => r.file === m.source || r.name === name);
@@ -466,13 +503,13 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             line.append(el('span', 'fv-iv-info-k', t('Source', '来源')), go); parts.push(line);
         }
         if (!text) parts.push(el('p', 'fv-iv-info-none', t('Prompts are not kept in this browser; one shows while the page that made the picture is open.', '提示词不保存在浏览器里，只在生成它的页面打开期间显示。')));
-        if (text) {
+        if (text || drawn) {
             const acts = el('div', 'fv-iv-info-acts');
             const copy = button('fv-iv-text-btn', {iconName: 'copy', label: t('Copy prompt', '复制提示词'), name: t('Copy prompt', '复制提示词'), use: t('Copy the words this picture was made from', '复制这张图的提示词')});
             copy.addEventListener('click', copyPrompt);
             const reuse = button('fv-iv-text-btn', {iconName: 'prompt', label: t('Use prompt', '使用提示词'), name: t('Use prompt', '使用提示词'), use: t('Put its prompt back in the box', '把它的提示词填回描述框')});
-            reuse.addEventListener('click', () => { prompt.value = text; prompt.dispatchEvent(new Event('input', {bubbles: true})); promptGroup.open(true); if (narrowQuery.matches || tallQuery.matches) setPanel('left', true); });
-            acts.append(copy, reuse); parts.push(acts);
+            reuse.addEventListener('click', () => { usePrompt(shownFile); if (narrowQuery.matches || tallQuery.matches) setPanel('left', true); });
+            acts.append(...(text ? [copy] : []), reuse); parts.push(acts);
         }
         if (!shownFile) { const e = el('div', 'fv-iv-empty fv-iv-empty-small'); e.append(icon('info'), el('span', '', t('Pick a picture to see its facts', '选一张图片查看信息'))); parts.splice(0, parts.length, e); }
         infoPop.replaceChildren(...parts);
@@ -1086,7 +1123,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             // The size is said once, on its own chip; Generate says only how long it may take.
             goLabel.textContent = t('Generate', '生成'); goSub.textContent = est ? t(`about ${est} s`, `约 ${est} 秒`) : '';
             tip(go, t('Generate', '生成'), t(`Makes a ${sizeText(now)} picture`, `生成一张 ${sizeText(now)} 的图片`), `${mod}+Enter`);
-            if (!prompt.value.trim() && !references.length) go.dataset.fvTipWhy = t('Describe the picture first', '先写一句描述');
+            if (!hasWords()) go.dataset.fvTipWhy = t('Describe the picture first', '先写一句描述');
         }
         // With no time (or size) to say beside it, the word sits alone in the middle of the key.
         go.dataset.eta = String(!!goSub.textContent);
@@ -1118,6 +1155,11 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         cards.paint(info, model.id, pendingGenerate);
         loraRow.paint(model.id);
         drawReferences();
+        // MOSS takes neither references nor a sketch: Layout takes their place in the row.
+        const moss = isMoss(); refAdd.hidden = sketchAdd.hidden = moss; layoutAdd.hidden = !moss;
+        if (!moss) layoutOn = false;
+        layoutCount.textContent = layout.count() ? String(layout.count()) : '';
+        layoutAdd.setAttribute('aria-pressed', String(layoutOn));
         const tooMany = over() > 0, busy = !!running;
         // No words inside the empty box (the group says what it is for), except beside a sketch: what it shows is known only
         // from the words (a stick figure is a person when the words say so), so the empty box asks for them.
@@ -1168,7 +1210,10 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         frame.dataset.state = stage.dataset.state = state; paintCover();
         frame.dataset.loading = String(state === 'waiting' || (state === 'done' && picture.dataset.loaded !== 'true'));
         picture.hidden = state !== 'done'; stepFrame.hidden = state !== 'running' || !stepURL; block.hidden = state !== 'running'; failHost.hidden = state !== 'failed'; grid.hidden = state !== 'blank';
-        sceneHost.hidden = state !== 'running'; draftNote.hidden = state !== 'draft';
+        if (state !== 'draft') layoutOn = false;
+        layout.show(state === 'draft' && layoutOn && isMoss()); stage.dataset.layout = String(layout.shown);
+        // With boxes on the frame its size and estimate would be crossed by their lines (Iris 11-19): they show without.
+        sceneHost.hidden = state !== 'running'; draftNote.hidden = state !== 'draft' || (layout.shown && layout.count() > 0);
         // While running the caption keeps its room unseen, so a step picture and the finished one sit in the same place.
         // The caption row also waits for the picture's shape: it takes the frame's width, so it shows at its final one.
         // A work whose file is gone keeps its row (without the actions that need the picture), so it can still be deleted here.
@@ -1216,7 +1261,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             for (const b of [editThis, asReference]) { if (full) b.dataset.fvTipWhy = why; else delete b.dataset.fvTipWhy; }
             const fav = meta.isFav(shownFile); favBtn.setAttribute('aria-pressed', String(fav));
             tip(favBtn, fav ? t('Remove star', '取消收藏') : t('Star', '收藏'), fav ? t('Take it out of favourites', '移出收藏') : t('Keep it in favourites', '加入收藏'), 'F');
-            const known = promptFor(shownFile); usePromptItem.hidden = !known; copyInline.hidden = useInline.hidden = !known;
+            const known = promptFor(shownFile) || layoutOf[shownFile]; usePromptItem.hidden = useInline.hidden = !known; copyInline.hidden = !promptFor(shownFile);
             // The line under the picture is about the picture shown: the model that made it, its size, its shape and the time it took.
             const width = picture.naturalWidth && picture.dataset.file === shownFile ? picture.naturalWidth : shown?.width || 0, height = picture.naturalWidth && picture.dataset.file === shownFile ? picture.naturalHeight : shown?.height || 0;
             const madeBy = IMAGE_MODELS.find(m => m.id === (shown?.model || rows.find(r => r.file === shownFile)?.model))?.name;
@@ -1265,7 +1310,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             tip(b, t('Generating', '正在生成'), t('Show its progress', '查看进度')); b.addEventListener('click', () => returnToRun()); return b; })() : null;
         railThumbs.replaceChildren(...(runThumb ? [runThumb] : []), ...live.slice(0, runThumb ? 5 : 6).map(r => { const b = el('button', 'fv-iv-rail-thumb'); b.type = 'button'; const i = el('img'); i.alt = ''; i.draggable = false; i.src = thumbURL(r.file); b.append(i); b.classList.toggle('fv-iv-current', r.file === shownFile); tip(b, t('Show', '显示'), t('Put it on the stage', '在中间显示')); b.addEventListener('click', () => showFile(r.file)); return b; }));
     }
-    function showFile(file) { if (!file) return; if (running && !browsing) leaveRun(); draft = false; draftPreview = null; shownFile = file; if (historyLoaded) queueMicrotask(rememberView); started = 0; if (!running) failure = null; compare = null; render(); drawWorks(); }
+    function showFile(file) { if (!file) return; if (running && !browsing) leaveRun(); layoutOn = false; draft = false; draftPreview = null; shownFile = file; if (historyLoaded) queueMicrotask(rememberView); started = 0; if (!running) failure = null; compare = null; render(); drawWorks(); }
     // ← → step through the works shown (not while comparing); the works column follows without jumping.
     function step(by) {
         if (compare) return; const list = visible(), at = list.findIndex(r => r.file === shownFile); const target = list[at + by]; if (!target) return;
@@ -1332,8 +1377,12 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     // Uploads and the prompt step stay with the page; once the worker has the job, the store follows it.
     async function generate() {
         if (over()) { blockOver(); return; }
-        if (!seedInput.checkValidity()) { advanced.open = true; seedInput.reportValidity(); return; }
+        if (seedInput.value !== '' && !seedNote.settle()) { advanced.open = true; return; }
+        if (!seedInput.checkValidity()) { advanced.open = true; seedNote.say(t('Enter a whole number, or leave it empty', '请输入整数，或留空')); seedInput.focus(); return; }
         const seed = seedInput.value === '' ? undefined : Number(seedInput.value);
+        // The boxes as they are now (MOSS only); the frame gives way to the picture being made.
+        const boxes = layoutActive() ? layout.request() : [], drawn = boxes.length ? layout.snapshot().filter(item => item.line.trim()) : null;
+        layoutOn = false;
         say(''); note.dataset.kind = ''; failure = null; const mine = running = {cancelled: false}, withImages = references.length > 0, sent = size(), tierNow = tier;
         render(); drawWorks(); progressLine.textContent = progressSub.textContent = ''; runReport.replaceChildren(); runReport.dataset.id = ''; doneReport.replaceChildren(); lastReport = null;
         level.hidden = false; level.dataset.counted = 'false'; level.style.setProperty('--fv-progress', '0');
@@ -1349,8 +1398,10 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             // The engine makes one picture at a time: a second request waits its turn here and starts by itself; Stop cancels the wait.
             for (;;) {
                 try {
-                    ({id} = await jobs.submit('image', {prompt: engineText(seed ?? Math.floor(Math.random() * 1e9)), ...sent, model: model.id, remember: true, images: names, ...(seed === undefined ? {} : {seed}), ...(loras.length ? {loras} : {})},
-                        {view: 'image', client, meta: {text: prompt.value, withImages, tier: tierNow, width: sent.width, height: sent.height}}));
+                    // With boxes and no description, the boxes' lines describe the whole picture.
+                    const words = boxes.length && !prompt.value.trim() ? layout.caption() : engineText(seed ?? Math.floor(Math.random() * 1e9));
+                    ({id} = await jobs.submit('image', {prompt: words, ...sent, model: model.id, remember: true, images: names, ...(seed === undefined ? {} : {seed}), ...(loras.length ? {loras} : {}), ...(boxes.length ? {layout: boxes} : {})},
+                        {view: 'image', client, meta: {text: prompt.value, withImages, tier: tierNow, width: sent.width, height: sent.height, ...(drawn ? {layout: drawn} : {})}}));
                     break;
                 } catch (error) {
                     if (error.code !== 'busy') throw error;
@@ -1409,7 +1460,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         unwatch?.(); unwatch = null; running = null; level.hidden = true; clearStep(); delete canvas.dataset.fvTaskId;
         jobs.markSeen(row.id);
         if (row.status === 'done' && row.result?.file) {
-            shownFile = row.result.file; promptOf[shownFile] = row.meta?.text ?? row.prompt ?? '';
+            shownFile = row.result.file; promptOf[shownFile] = row.meta?.text ?? row.prompt ?? ''; if (row.meta?.layout) layoutOf[shownFile] = row.meta.layout;
             started = Math.max(1, Math.round(((row.finished_at || Date.now()) - (row.started_at || row.created_at || Date.now())) / 1000));
             const reportId = row.meta?.report_id; lastReport = reportId ? {file: shownFile, id: reportId} : null;
             failure = null; jobs.dismiss(row.id);
@@ -1471,13 +1522,13 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         // The model on show is not one this computer offers (a remembered H3 Image on a Mac): the press moves to the one it offers.
         else if (!offers(model) && IMAGE_MODELS.some(offers)) { chooseModel(IMAGE_MODELS.find(offers)); go.onclick(); }
         // A model being installed: Generate says whether the picture follows the install.
-        else if (loading()) { pendingGenerate = !pendingGenerate && (!!prompt.value.trim() || references.length > 0); if (!prompt.value.trim() && !references.length) { promptGroup.open(true); prompt.focus(); } render(); }
+        else if (loading()) { pendingGenerate = !pendingGenerate && hasWords(); if (!hasWords()) { promptGroup.open(true); prompt.focus(); } render(); }
         // A model not installed: installs it, then generates.
-        else if (missing() || modelState(info, model.id).state === 'failed') { pendingGenerate = !!prompt.value.trim() || references.length > 0; void install(); }
-        else if (!prompt.value.trim() && !references.length) { promptGroup.open(true); prompt.focus(); }
+        else if (missing() || modelState(info, model.id).state === 'failed') { pendingGenerate = hasWords(); void install(); }
+        else if (!hasWords()) { promptGroup.open(true); prompt.focus(); }
         else void generate();
     };
-    go.addEventListener('click', () => { if (drawer === 'left' && go.dataset.state === 'ready' && (prompt.value.trim() || references.length)) { drawer = ''; paintPanels(); } }, {capture: true});
+    go.addEventListener('click', () => { if (drawer === 'left' && go.dataset.state === 'ready' && hasWords()) { drawer = ''; paintPanels(); } }, {capture: true});
     prompt.addEventListener('input', () => { growPrompt(); render(); });
     // Getting the model ready before Generate is pressed (nothing of it shows): being here a few seconds loads the model
     // where the card has free room for it (eager loading; the engine reads the files ahead where it would take the
@@ -1585,7 +1636,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     // Keys: the page's own, never while typing.
     const onKeys = event => {
         const typing = event.target.closest?.('input,textarea,[contenteditable=true]');
-        if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { if (!running && (prompt.value.trim() || references.length)) { event.preventDefault(); go.click(); } return; }
+        if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { if (!running && hasWords()) { event.preventDefault(); go.click(); } return; }
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f' && !typing) { event.preventDefault(); setPanel('right', true); setRightTab('works'); works.focusSearch(); return; }
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z' && !typing && undoNote) { event.preventDefault(); restoreWorks(undoNote.files); undoNote = null; drawWorks(); render(); return; }
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a' && selecting && !typing) { event.preventDefault(); visible().forEach(r => picked.add(r.file)); drawWorks(); render(); return; }
@@ -1607,6 +1658,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     // Escape steps back one layer at a time; the view itself closes last.
     dialog.addEventListener('cancel', event => {
         event.preventDefault();
+        if (layout.tookEscape() || layout.escape()) return;
         if (!more.hidden) more.hidden = true;
         else if (!keysPop.hidden) { keysPop.hidden = true; keysBtn.setAttribute('aria-pressed', 'false'); }
         else if (drawer) { drawer = ''; paintPanels(); }
@@ -1627,9 +1679,10 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         window.removeEventListener('freevideo-works-removed', onWorksRemoved); window.removeEventListener('freevideo-works-restored', onWorksRestored); window.removeEventListener('pagehide', onPageHide); window.removeEventListener('freevideo-works-added', onWorksAdded);
         window.removeEventListener('freevideo-works-removed', onWorksGone);
         // Kept for the next time the view opens on this page (the pictures as files; their addresses are made again).
-        keptDraft = {prompt: prompt.value, caret: prompt.selectionStart ?? prompt.value.length,
+        keptDraft = {prompt: prompt.value, caret: prompt.selectionStart ?? prompt.value.length, layout: layout.snapshot(),
             references: references.map(({url, original, ...rest}) => ({...rest, ...(original ? {original: {file: original.file, width: original.width, height: original.height}} : {})}))};
         references.forEach(r => { if (r.original) URL.revokeObjectURL(r.original.url); });
+        layout.dispose();
         // Deleted pictures waiting for their undo window go now: nothing is left half-deleted behind a closed page.
         void trash.flush(); trash.dispose(); loraRow.dispose();
         // ── run: tasks owns this block (job store) ──

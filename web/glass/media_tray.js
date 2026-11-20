@@ -34,12 +34,12 @@ function markCard(card) {
     }
     // A tile with more to set than its use (a middle frame's time, a video's depth and sound, audio) is three squares
     // wide: the picture, and its settings beside it.
-    card.dataset.fvMtWide = String(Boolean(card.querySelector(':scope > :is(.fv-time,.fv-depth-only,.fv-sound,audio.fv-preview)')));
+    card.dataset.fvMtWide = String(Boolean(card.querySelector(':scope > :is(.fv-time,.fv-depth-only,.fv-lines-only,.fv-sound,audio.fv-preview)')));
     const rows = [...card.children].filter(child => child.classList.contains('fv-row'));
     const controls = rows.length > 1 ? rows.at(-1) : null;
     // Edited is a small mark on the picture; its words stay as the mark's name.
     const edited = card.querySelector('.fv-edited');
-    if (edited && !edited.title) { edited.title = edited.textContent; edited.setAttribute('role', 'img'); edited.setAttribute('aria-label', edited.textContent); }
+    if (edited && !edited.hasAttribute('role')) { edited.setAttribute('role', 'img'); edited.setAttribute('aria-label', edited.textContent); }
     if (!controls || controls.classList.contains('fv-mt-rest')) return;
     controls.classList.add('fv-mt-rest');
     const buttons = [...controls.querySelectorAll(':scope > button')], keys = document.createElement('div');

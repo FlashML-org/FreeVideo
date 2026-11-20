@@ -1,5 +1,6 @@
 import {capabilityPoints, interpolate} from './chain_support.js';
 import {issueButton} from './issue_button.js';
+import {fieldNote} from './field_note.js';
 import {buildPlanRequest, readLengthPlan, classifyPlanError, singleLimitSeconds, defaultBlockSeconds} from './length_plan.js?v=20261027-length';
 
 export const LENGTH_PROPERTIES = Object.freeze({seconds: 'freevideo_seconds', single: 'freevideo_single', block: 'freevideo_block_seconds'});
@@ -28,7 +29,8 @@ export async function readLengthCapability(api, context, signal, onReply = () =>
 // onEditor and onAutopilot are the creation panel's own view-switch actions; autopilot says whether that tab shows.
 export function createStudioLength({api, node, seconds, advanced, fields, t, field, setSeconds,
     onChange = () => {}, capability = readLengthCapability, delay = 220, capabilityTimeout = 10000,
-    onEditor = () => {}, onAutopilot = () => {}, autopilot = false, promptModel = null}) {
+    onEditor = () => {}, onAutopilot = () => {}, autopilot = false, promptModel = null,
+    settleSeconds = () => seconds.checkValidity()}) {
     // Writing a value an element already has still wakes every observer, so only real changes are written.
     const put = (target, key, value) => { if (target[key] !== value) target[key] = value; };
     const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; };
@@ -172,7 +174,9 @@ export function createStudioLength({api, node, seconds, advanced, fields, t, fie
     function schedule() { const version = revision; timer = setTimeout(() => { timer = null; pending = calculate(version); }, delay); }
     single.onchange = () => { remember(LENGTH_PROPERTIES.single, single.checked); edited = true; invalidate(); schedule(); };
     block.oninput = () => { edited = blockEdited = true; invalidate(); schedule(); };
-    block.onchange = () => { if (block.reportValidity()) remember(LENGTH_PROPERTIES.block, Number(block.value)); };
+    // A part length past its range becomes its end, and the line under the field says so.
+    const blockNote = fieldNote(block, {t});
+    block.onchange = () => { if (blockNote.settle()) remember(LENGTH_PROPERTIES.block, Number(block.value)); };
     reset.onclick = () => {
         delete node.properties[LENGTH_PROPERTIES.block]; node.graph?.change(); submitted = false;
         planLimits = limits;
@@ -181,7 +185,8 @@ export function createStudioLength({api, node, seconds, advanced, fields, t, fie
     const input = () => { submitted = false; planLimits = limits; edited = false; invalidate(); schedule(); };
     seconds.addEventListener('input', input);
     function commit({report = true, exact = false} = {}) {
-        const valid = report ? seconds.reportValidity() : seconds.checkValidity();
+        // Reported: a length out of range is brought in and said in the console's line (settleSeconds).
+        const valid = report ? settleSeconds() : seconds.checkValidity();
         if (!seconds.value || !valid) return false;
         const value = !exact && total() > 30 ? Math.round(total()) : total(); seconds.value = value;
         if (value > 60) remember(LENGTH_PROPERTIES.seconds, value);

@@ -1,7 +1,7 @@
 // Shared by the Studio and graph view. Text only; never render exception HTML.
 import {readOtherUsage, otherUsageText} from './other_usage.js';
 import {pageRepair, repairAction, repairButton} from './repair_hint.js';
-import {detectBrowserExtension, browserExtensionAdvice, extensionSteps, isNetworkTypeError, connectionLostText, engineNotRunning, engineNotRunningText} from './browser_extension.js';
+import {detectBrowserExtension, browserExtensionAdvice, extensionSteps, isNetworkTypeError, connectionLostText, engineNotRunning, engineNotRunningText, isRequestTimeout, requestTimeoutText, requestTimeoutAction} from './browser_extension.js';
 import {SAMPLING_EFFORTS, STEP_CACHES, UPSCALE_FACTORS, tableLevel} from './sampling_effort.js';
 import {failureIssue, failureStage} from './failure_issue.js';
 import {knownEngineExit} from './engine_exit.js';
@@ -325,9 +325,13 @@ export function createErrorReport(detail, context = {}) {
     }
     if (['this-computer', 'local-network', 'other-address', 'host-name', 'unknown'].includes(detail?.connection?.page_address))
         connection.page_address = detail.connection.page_address;
+    // The ComfyUI page's own version, kept only when it is a plain version number: FreeVideo ships one frontend, and a
+    // request the page gives up on (a newer frontend stops waiting after a minute) reads differently on another.
+    const frontendVersion = String(globalThis.__COMFYUI_FRONTEND_VERSION__ ?? '');
     const report = {
         schema: 'freevideo.error-report', schema_version: 1, created_at: new Date().toISOString(),
         stage, message: clean(message),
+        ...(/^\d{1,3}(?:\.\d{1,4}){1,3}(?:[-+][0-9A-Za-z.]{1,20})?$/.test(frontendVersion) ? {frontend_version: frontendVersion} : {}),
         ...(Object.keys(connection).length ? {connection} : {}),
         // Chosen from the original message before redaction removes any input
         // text from it, so a card shown again from this report keeps its advice.
@@ -354,7 +358,7 @@ export function createErrorReport(detail, context = {}) {
 // Failures of turning a reference video into depth (freevideo_engine/depth_reference.py), most specific first.
 const RETRY_REPORT = ['Try again. If it happens again, choose "Report a problem" to send us the report.', '请重试。再次出现时，请点击“提交问题”，把报告发给我们。'];
 const REFERENCE_FAILURES = [
-    [/Source video (?:frame count )?changed during depth (?:conversion|inspection)/i,
+    [/Source video (?:frame count )?changed during depth (?:conversion|inspection)|reference video changed while it was being turned into lines/i,
         'reference-changed', ['The reference video changed', '参考视频在转换时被改动'],
         ['The reference video file changed while FreeVideo was converting it.', '转换参考视频的过程中，这个文件被改动了。'],
         ['Try again, and leave the file unchanged until the video is generated.', '请重试，并在生成完成前保持该文件不变。']],
@@ -370,11 +374,11 @@ const REFERENCE_FAILURES = [
         'reference-vram', ['Not enough GPU memory for depth', '显存不足，无法提取深度'],
         ['Extracting depth needs free GPU memory, and other programs were using it.', '提取深度需要空闲显存，当时被其他程序占用。'],
         ['Close other programs that use the GPU, then try again.', '请关闭其他占用显卡的程序，然后重试。']],
-    [/Depth reference needs 1 GiB working RAM|Depth reference stopped to preserve 1 GiB/i,
+    [/Depth reference needs 1 GiB working RAM|Depth reference stopped to preserve 1 GiB|Turning the reference video into lines stopped to keep 1 GiB/i,
         'reference-ram', ['Not enough memory to convert the reference video', '内存不足，参考视频未能转换完成'],
         ['FreeVideo stopped converting the reference video to keep the computer responsive.', '为保证电脑正常运行，FreeVideo 停止了参考视频的转换。'],
         ['Close other programs or use a shorter reference video, then try again.', '请关闭其他程序或换一段更短的参考视频，然后重试。']],
-    [/Not enough disk space to stage depth frames/i,
+    [/Not enough disk space to stage (?:depth|line) frames/i,
         'reference-disk', ['Not enough disk space', '磁盘空间不足'],
         ['Converting the reference video needs temporary space on the drive that holds FreeVideo\'s data.', '转换参考视频需要在 FreeVideo 数据所在的磁盘上临时占用一些空间。'],
         ['Free some space on that drive, then try again.', '请在该磁盘上腾出一些空间，然后重试。']],
@@ -383,9 +387,9 @@ const REFERENCE_FAILURES = [
         // Raised when the depth step starts on a computer set up for the GPU, but the graphics driver offers none to it.
         ['When depth extraction started, the graphics driver did not make the GPU available.', '开始提取深度时，显卡驱动未提供可用的显卡。'],
         ['Restart FreeVideo and try again. If it happens again, choose "Report a problem" to send us the report.', '请重启 FreeVideo 后重试。再次出现时，请点击“提交问题”，把报告发给我们。']],
-    [/Depth reference worker exited with code|Depth reference cache unexpectedly contains|Depth reference output dimensions|Depth model returned invalid|Depth reference device must be/i,
+    [/(?:Depth|Line) reference worker exited with|Depth reference worker exited with code|Depth reference cache unexpectedly contains|Depth reference output dimensions|Depth model returned invalid|Depth reference device must be/i,
         'reference-failed', ['The reference video could not be converted', '参考视频未能转换'],
-        ['Turning the reference video into depth stopped unexpectedly.', '把参考视频转成深度时意外中止。'], RETRY_REPORT],
+        ['Converting the reference video stopped unexpectedly.', '参考视频转换时意外中止。'], RETRY_REPORT],
 ];
 
 // Match explicit failure signatures, not a guessed GPU/RAM capacity. Keep the
@@ -624,6 +628,11 @@ export function adviceFor(report, t, value) {
         const stopped = engineNotRunning(report.connection);
         Object.assign(advice, {kind: 'connection', title: stopped ? t('FreeVideo has stopped', 'FreeVideo 已停止运行') : t('Lost the connection to FreeVideo', '与 FreeVideo 的连接已断开'),
             summary: stopped ? engineNotRunningText(t) : connectionLostText(t), action: ''});
+    }
+    // A request that was not answered in time: the card says so and what to check, instead of a bare title.
+    if (advice.kind === 'unknown' && ['submission', 'queue'].includes(report.stage)
+        && (isRequestTimeout(value) || report.exception_type === 'TimeoutError')) {
+        Object.assign(advice, {kind: 'timeout', title: t('FreeVideo did not answer in time', 'FreeVideo 未在规定时间内应答'), summary: requestTimeoutText(t), action: requestTimeoutAction(t)});
     }
     if (report.stage === 'submission' && advice.kind === 'unknown') {
         advice.title = t('The task could not be submitted', '任务提交失败');

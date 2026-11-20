@@ -3,6 +3,7 @@
 // versions put in ComfyUI's input folder under the user's own file names, which cannot be told apart from the user's own
 // files, so each one goes only when the user chooses it. Built with the settings kit so it reads like the rest of the
 // page. An engine older than this page has none of these calls: the whole group then stays hidden and nothing is asked.
+import { cutTip } from './cut_tip.js';
 import { el, icon, tip, button, row, card, groupHead, fold, segmented } from './settings_kit.js';
 import { privacyOffered } from './private_offers.js';
 
@@ -110,7 +111,7 @@ export function privacySettings(t, api) {
         if (!items.length) { nothingOld(true); return; }
         for (const item of items) {
             const cell = el('figure', 'st-private-cell'), image = el('img'), caption = el('figcaption', '', item.name);
-            image.src = view(item.name); image.alt = ''; image.loading = 'lazy'; caption.title = item.name;
+            image.src = view(item.name); image.alt = ''; image.loading = 'lazy'; cutTip(caption, item.name);
             const remove = button(t('Delete', '删除'));
             confirming(remove, t('Delete', '删除'), t('Confirm', '确认删除'), async () => {
                 try {
