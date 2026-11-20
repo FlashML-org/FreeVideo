@@ -258,7 +258,7 @@
    columns — mute, solo, lock — at the same x on every row; a row without solo leaves that cell empty. The Audio 2 key
    sits in the same columns as a head: its sign in the icon column, its words in the name column. */
 @media(min-width:521px){
-  .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-head{display:grid;grid-template-columns:16px minmax(0,1fr) 84px;align-items:center;column-gap:8px;padding:0 4px 0 12px;justify-content:stretch}
+  .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-head{display:grid;grid-template-columns:16px minmax(0,1fr) 84px;align-items:center;column-gap:6px;padding:0 2px 0 12px;justify-content:stretch}
   /* The icon column shows each track's icon (editor_audio.css hid them when the heads had no columns). */
   .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-head>svg{grid-column:1;display:block;width:16px;height:16px;color:var(--fv-fg3)}
   .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-head>span:first-of-type{grid-column:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -268,8 +268,8 @@
   .fv-studio.fv-editor .fv-ed-track-view .fv-ed-audio-track-switch[data-flag=solo]{grid-column:2}
   .fv-studio.fv-editor .fv-ed-track-view :is(.fv-ed-audio-track-switch,.fv-ed-text-track-controls button)[data-flag=locked]{grid-column:3}
   .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads>.fv-ed-add-audio{display:flex;gap:0;align-items:center;justify-content:flex-start;
-    left:0;width:100%;margin:0;padding:0 4px 0 12px;border-radius:0;text-align:left;font-size:0;color:var(--fv-fg3)}
-  .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads>.fv-ed-add-audio::before{content:attr(data-sign);display:grid;place-items:center;flex:none;width:16px;height:16px;margin-right:8px;font-size:14px;line-height:1}
+    left:0;width:100%;margin:0;padding:0 2px 0 12px;border-radius:0;text-align:left;font-size:0;color:var(--fv-fg3)}
+  .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads>.fv-ed-add-audio::before{content:attr(data-sign);display:grid;place-items:center;flex:none;width:16px;height:16px;margin-right:6px;font-size:14px;line-height:1}
   .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads>.fv-ed-add-audio::after{content:attr(data-label);min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fv-fs-1,12px);line-height:16px}
   .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads>.fv-ed-add-audio:hover:not(:disabled){background:var(--fv-ctl-bg);color:var(--fv-fg)}
 }
