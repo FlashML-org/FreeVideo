@@ -165,6 +165,8 @@ function row(job, t, api, refresh, open, cancellationErrors) {
     body.append(foot);
     if (cancellationErrors.has(job.id)) details.textContent = cancellationErrors.get(job.id);
     item.append(body);
+    // What this row was drawn from: a poll that brings the same task back keeps this very element (see renderPanel).
+    item.__fvDrawn = JSON.stringify([job, cancellationErrors.get(job.id) ?? null]);
     return item;
 }
 // Running first, then the rest in the order they will run; finished ones after, newest first.
@@ -177,16 +179,18 @@ function rows(jobs, t, api, refresh, open, cancellationErrors) {
     const items = active.map(job => row(job, t, api, refresh, open, cancellationErrors));
     if (done.length) {
         const divider = el('li', 'fv-agent-divider', t('Last 30 minutes', '最近 30 分钟'));
-        divider.setAttribute('role', 'presentation');
+        divider.setAttribute('role', 'presentation'); divider.__fvDrawn = divider.textContent;
         items.push(divider, ...done.map(job => row(job, t, api, refresh, open, cancellationErrors)));
     }
     return items;
 }
 // A re-render keeps keyboard focus on the same control.
+// Rows already in place stay where they are (moving one would drop the pointer's hover and the tip on it).
 function refill(root, list, items) {
     const focused = root.contains(document.activeElement) ? document.activeElement : null;
     const key = focused && [focused.closest('[data-job]')?.dataset.job, focused.className];
-    list.replaceChildren(...items);
+    items.forEach((item, index) => { if (list.children[index] !== item) list.insertBefore(item, list.children[index] || null); });
+    while (list.children.length > items.length) list.lastElementChild.remove();
     return key;
 }
 
@@ -209,16 +213,24 @@ export function createAgentActivity(t, api, host, {interval = [1500, 8000], open
     function renderPanel() {
         const header = el('header');
         header.append(el('h2', null, t('Assistant tasks', '助手的任务')));
-        const list = el('ol');
-        const key = refill(panel, list, rows(data.jobs, t, api, poll, job => { setOpen(false); open(job); }, cancellationErrors));
+        // A row whose task has not changed since the last poll stays the same element, so the hover tip on it (the
+        // engine's message on a failed task) is not taken away by the next poll while other tasks run.
+        const list = panel.querySelector(':scope > ol') || el('ol');
+        // A poll must not move a list the reader has scrolled.
+        const scrolled = list.scrollTop;
+        const place = node => node.dataset.job ? 'job:' + node.dataset.job : node.className;
+        const before = new Map([...list.children].map(node => [place(node), node]));
+        const fresh = rows(data.jobs, t, api, poll, job => { setOpen(false); open(job); }, cancellationErrors)
+            .map(node => { const kept = before.get(place(node)); return kept && kept.__fvDrawn === node.__fvDrawn ? kept : node; });
+        const key = refill(panel, list, fresh);
         const unreadable = Number.isSafeInteger(data.unreadable) && data.unreadable > 0 ? data.unreadable : 0;
         const skipped = el('div', 'fv-agent-unreadable', unreadable > 0
             ? t(`${unreadable} ${unreadable === 1 ? 'job' : 'jobs'} could not be read`, `另有 ${unreadable} 个任务无法读取`) : '');
         skipped.hidden = !unreadable;
-        // A poll must not move a list the reader has scrolled.
-        const scrolled = panel.querySelector('ol')?.scrollTop || 0;
-        panel.replaceChildren();
-        panel.append(header, list, skipped);
+        if (list.parentNode === panel) {
+            panel.querySelector(':scope > header')?.replaceWith(header);
+            panel.querySelector(':scope > .fv-agent-unreadable')?.replaceWith(skipped);
+        } else panel.replaceChildren(header, list, skipped);
         list.scrollTop = scrolled;
         if (key) (panel.querySelector(`[data-job="${key[0]}"] .${key[1].split(' ')[0]}`) || panel).focus?.();
     }
