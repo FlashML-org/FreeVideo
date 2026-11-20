@@ -68,20 +68,18 @@ class DiskLayerStream:
     def __init__(self, layers, index, key, device, ahead=READ_AHEAD, threads=READ_THREADS, keep=()):
         self.layers, self.index, self.key, self.device = list(layers), index, key, torch.device(device)
         self.ahead, self.bytes_read = ahead, 0
+        self.pin_failed = False
         # Layers in ``keep`` are read once and stay on the card; the others are streamed each time they run.
         self.keep = {i for i in keep if 0 <= i < len(self.layers)}
         self.order = [i for i in range(len(self.layers)) if i not in self.keep]
         self.pos = {i: p for p, i in enumerate(self.order)}
         self.pool = ThreadPoolExecutor(threads)
         self.ready = {}
-        self.pinned = self.device.type == 'cuda'
-        self.copy_stream = torch.cuda.Stream(self.device) if self.pinned else None
+        self.pinned = self._wants_pinned()
         # Layers of one kind share a ring of buffers; a model that mixes kinds (attention and linear-attention
         # layers) gets one ring per kind, so a layer is only ever read into a buffer of its own shape.
-        self.slots = []
-        self.slot_kind = []
-        self.free = {}
         self.kinds = []
+        self.kind_params = {}
         for i, layer in enumerate(self.layers):
             if i in self.keep:
                 self.kinds.append(None)
@@ -89,13 +87,22 @@ class DiskLayerStream:
             params = dict(layer.named_parameters())
             kind = tuple((n, tuple(p.shape), p.dtype) for n, p in params.items())
             self.kinds.append(kind)
-            if kind not in self.free:
-                self.free[kind] = []
-                for _ in range(ahead + 3):
-                    self.free[kind].append(len(self.slots))
-                    self.slots.append({n: torch.empty(p.shape, dtype=p.dtype, pin_memory=self.pinned)
-                                       for n, p in params.items()})
-                    self.slot_kind.append(kind)
+            self.kind_params.setdefault(kind, params)
+        try:
+            self._build_ring()
+        except (RuntimeError, MemoryError):
+            if not self.pinned:
+                raise
+            # The system would not lock that many pages (Windows limits locked memory and counts it against the
+            # commit limit): serve the same layers from ordinary host buffers. The bytes read and the result are
+            # the same; only the copy to the card is no longer asynchronous.
+            self.slots, self.slot_kind, self.free = [], [], {}
+            release = getattr(torch._C, '_host_emptyCache', None)
+            if release is not None:
+                release()  # give back the locked pages the failed ring already held
+            self.pinned = False
+            self.pin_failed = True
+            self._build_ring()
         self.events = {}
         self.handles = []
         for i, layer in enumerate(self.layers):
@@ -108,6 +115,21 @@ class DiskLayerStream:
                         torch.empty(0, device=self.device, dtype=param.dtype), requires_grad=False))
             self.handles.append(layer.register_forward_pre_hook(self._before(i)))
             self.handles.append(layer.register_forward_hook(self._after(i)))
+
+    def _wants_pinned(self):
+        return self.device.type == 'cuda'
+
+    def _build_ring(self):
+        self.slots = []
+        self.slot_kind = []
+        self.free = {}
+        for kind, params in self.kind_params.items():
+            self.free[kind] = []
+            for _ in range(self.ahead + 3):
+                self.free[kind].append(len(self.slots))
+                self.slots.append({n: torch.empty(p.shape, dtype=p.dtype, pin_memory=self.pinned)
+                                   for n, p in params.items()})
+                self.slot_kind.append(kind)
 
     def _load_kept(self, i):
         """Read a kept layer's weights straight onto the card; it never leaves."""
