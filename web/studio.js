@@ -3012,6 +3012,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
     dialog.addEventListener('cancel', e => { e.preventDefault(); if (!closeMenu() && !compare.close() && !promptLibrary?.hide() && !consoleUI?.dismiss() && !recent.dismiss()) closeDialog(dialog); });
     const dispose = () => { if (disposed) return; disposed = true; borrowed?.release({disposing: true}); blockOriginal('extend', false); blockOriginal('preview', false); for (const f of cleanup) f(); stage.querySelector('video')?.pause(); dialog.remove(); if (current?.dialog === dialog) { current = null; viewChanged('nodes', node); } };
     const onClose = () => {
+        // The browser's own close event of a switch comes with the next frame; if the panel was opened again before it
+        // (back from the node view at once), that late event is not a close and must not take the panel away.
+        if (dialog.open) return;
         // Parked behind the node view: everything stays as it is (closeDialog may have taken this handler while a
         // switch held the frames, so it is put back for the real close later).
         if (dialog.dataset.fvParked === 'true') { stage.querySelector('video')?.pause(); warm?.cancel(); dialog.onclose = onClose; return; }
