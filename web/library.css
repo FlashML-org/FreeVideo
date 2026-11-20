@@ -397,7 +397,11 @@ dialog.fv-studio.fv-library::backdrop{background:var(--lib-page)}
 :root dialog.fv-studio.fv-library[data-fv-embedded=true][open]{animation:fv-library-appear var(--fv-dur-2,200ms) var(--fv-ease-out)}
 .fv-library a.fv-library-menu-item{text-decoration:none}
 .fv-library-stack{position:absolute;left:var(--fv-sp-8,8px);bottom:var(--fv-sp-8,8px);display:inline-flex;align-items:center;min-width:24px;height:20px;padding:0 var(--fv-sp-4,4px);border-radius:var(--fv-r-sm);
-  background:rgb(0 0 0 / .55);color:#fff;font-size:var(--fv-fs-1,12px);font-weight:600;pointer-events:none}
+  background:rgb(0 0 0 / .55);color:#fff;font-size:var(--fv-fs-1,12px);font-weight:600;cursor:pointer}
+/* A press area of at least 24 x 24 around the 20 px mark; the look stays. */
+.fv-library-stack::after{content:'';position:absolute;inset:-2px -2px}
+.fv-library-stack[aria-expanded=true]{background:var(--fv-accent-fill,#2f7bff);color:#fff}
+.fv-library-stack:focus-visible{outline:2px solid #fff;outline-offset:2px;box-shadow:0 0 0 4px rgb(0 0 0 / .6)} /* white ring with a dark outer ring: it reads on any cover and on the pressed blue, in both themes */
 .fv-library-stack::before{content:'';flex:none;width:8px;height:8px;margin-right:var(--fv-sp-4,4px);border:1.5px solid currentColor;border-radius:var(--fv-r-xs);box-shadow:2px -2px 0 -1px rgb(0 0 0 / .55),2px -2px 0 0 currentColor}
 .fv-library-stack[hidden]{display:none}
 .fv-library .fv-library-selection-actions button:disabled{opacity:.45;cursor:default}
@@ -482,7 +486,6 @@ dialog.fv-studio.fv-library::backdrop{background:var(--lib-page)}
 .fv-library .fv-library-check:hover{border-color:#fff;background:rgb(0 0 0 / .55)}
 .fv-library-hover{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;pointer-events:none;transition:opacity var(--fv-dur-1,160ms) var(--fv-ease-out,ease-out)}
 .fv-library-hover[data-on=true]{opacity:1}
-.fv-library-stack{cursor:pointer}
 
 .fv-library-viewer{--fv-fg:#f3f5f8;--fv-fg2:rgb(243 245 248 / .78);--fv-fg3:rgb(243 245 248 / .56);--fv-line:rgb(255 255 255 / .08);--fv-line2:rgb(255 255 255 / .14);
   --fv-ctl-bg:rgb(255 255 255 / .06);--fv-ctl-hover:rgb(255 255 255 / .1);background:#0b0c0e;color:var(--fv-fg);color-scheme:dark;animation:fv-library-viewer-in 140ms var(--fv-ease-out,ease-out)}

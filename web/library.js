@@ -1011,6 +1011,12 @@ export function openLibrary(t, options = {}) {
     const ordered = () => [...grid.querySelectorAll('.fv-library-card')];
     // The videos of one task fold under the newest; one task is unfolded at a time, and picking shows every card.
     let unfolded = null;
+    // The task of this video unfolds (its others show under it) or folds back; only a task's newest video has the mark.
+    function toggleTask(row) {
+        if (!row?.video) return;
+        unfolded = toggledTask(rows, ordered().map(item => item.dataset.key).filter(isVideo).map(item => works.get(item)?.video), row.video, unfolded);
+        fold();
+    }
     function fold() {
         const order = ordered().map(card => card.dataset.key).filter(isVideo).map(key => works.get(key)?.video).filter(Boolean);
         if (!order.some(video => rows.get(video)?.task === unfolded)) unfolded = null;
@@ -1018,10 +1024,26 @@ export function openLibrary(t, options = {}) {
         const heads = applyTasks({cards: byVideo, rows, order, open: unfolded, selecting, selected: works.get(selected)?.video ?? null, t, label: video => cardLabel(rows.get(video))});
         for (const [video, card] of byVideo) {
             if (!card) continue;
-            const head = heads.get(video), folded = head && !card.classList.contains('fv-task-open') && !selecting;
+            // The count mark on a task's newest video is the one control for the fold: pressed while the task is unfolded
+            // (Iris), pressed again it folds. The others of an unfolded task carry none; while picking, every video shows.
+            const head = heads.get(video), shownMark = head && !selecting, unfoldedNow = card.classList.contains('fv-task-open');
             let stack = card.querySelector('.fv-library-stack');
-            if (folded && !stack) { stack = el('span', null, 'fv-library-stack'); card.querySelector('.fv-library-picture')?.append(stack); }
-            if (stack) { stack.hidden = !folded; if (folded) stack.textContent = String(head.videos.length); }
+            if (shownMark && !stack) {
+                stack = el('span', null, 'fv-library-stack'); stack.setAttribute('role', 'button'); stack.tabIndex = 0;
+                stack.onkeydown = event => {
+                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                    event.preventDefault(); event.stopPropagation(); toggleTask(works.get(card.dataset.key));
+                };
+                card.querySelector('.fv-library-picture')?.append(stack);
+            }
+            if (stack) {
+                stack.hidden = !shownMark;
+                if (shownMark) {
+                    stack.textContent = String(head.videos.length);
+                    stack.setAttribute('aria-expanded', String(unfoldedNow));
+                    stack.setAttribute('aria-label', t(`${head.videos.length} videos from this task`, `同一任务的 ${head.videos.length} 个视频`));
+                }
+            }
         }
         countDays();
     }
@@ -1107,10 +1129,7 @@ export function openLibrary(t, options = {}) {
                 pick(key, event.shiftKey); return;
             }
             if (selecting) { pick(key, event.shiftKey); return; }
-            if (isVideo(key) && event.target.closest?.('.fv-library-stack')) {
-                unfolded = toggledTask(rows, ordered().map(item => item.dataset.key).filter(isVideo).map(item => works.get(item)?.video), row.video, unfolded);
-                fold(); return;
-            }
+            if (isVideo(key) && event.target.closest?.('.fv-library-stack')) { toggleTask(row); return; }
             if (layout === 'stage') select(key, false); else openViewer(key);
         }, 'fv-library-card');
         card.dataset.key = key; card.dataset.kind = row.kind === 'image' ? 'image' : 'video';
