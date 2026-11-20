@@ -4,7 +4,7 @@ import { closeDialog } from './motion.js';
 import { resultActions, previewBadge, icon } from './result_actions.js';
 import { videoUnavailableText, canExtend } from './studio_extend.js';
 import { savedSettings } from './result_reuse.js';
-import { listenDialogKey } from './dialog_keys.js';
+import { listenDialogKey, topDialog } from './dialog_keys.js';
 import { isNetworkTypeError, connectionLostText } from './browser_extension.js';
 import { issueButton } from './issue_button.js';
 import { fileFailureText, responseFileReason } from './file_failure.js';
@@ -920,7 +920,9 @@ export function openLibrary(t, options = {}) {
     }
     // Continue a video into a longer one: the editor opens on it and the room closes.
     async function extendSaved(saved) {
-        const isCurrent = () => !disposed && dialog.open && dialog.dataset.closing !== 'true' && works.has(workKey(saved));
+        // Still this room's own step: open, in front (a share or delete dialog opened meanwhile keeps its place, as on the
+        // result bar), and the work still listed.
+        const isCurrent = () => !disposed && dialog.open && dialog.dataset.closing !== 'true' && topDialog() === dialog && works.has(workKey(saved));
         if (!isCurrent()) return;
         player?.pause();
         const run = extend || (async (record, options) => (await import('./studio.js')).openExtendEditor(record, undefined, options));
