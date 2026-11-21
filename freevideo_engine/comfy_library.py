@@ -392,6 +392,120 @@ def video_download(output_directory, identity, *, workflow=False):
     return copy, name, copy
 
 
+ZIP_MOST_ITEMS = 500
+
+
+class _ZipSink:
+    """An unseekable target for zipfile: each take() hands over what was written since the last one."""
+    def __init__(self):
+        self.parts = []
+
+    def write(self, data):
+        self.parts.append(bytes(data))
+        return len(data)
+
+    def flush(self):
+        pass
+
+    def take(self):
+        data, self.parts = b''.join(self.parts), []
+        return data
+
+
+def zip_plan(output_directory, input_directory, items):
+    """Which of the asked-for works can be packed: ``([(kind, key, arcname)], [left out])``.
+
+    A video is named by its saved id and a picture by its file in the image engine's own folder; anything else,
+    a repeat, or a work that cannot be read now is left out (and named in the zip's skipped.txt)."""
+    if not isinstance(items, list) or not items or len(items) > ZIP_MOST_ITEMS:
+        raise ValueError('Invalid selection')
+    from .work_thumbnails import FOLDER, PICTURE
+    plan, left, seen, taken = [], [], set(), set()
+    for item in items:
+        if not isinstance(item, dict):
+            raise ValueError('Invalid selection')
+        kind = item.get('kind')
+        key = item.get('id') if kind == 'video' else item.get('file') if kind == 'image' else None
+        if not isinstance(key, str):
+            raise ValueError('Invalid selection')
+        if (kind, key) in seen:
+            continue
+        seen.add((kind, key))
+        try:
+            if kind == 'video':
+                path = _video(output_directory, key)
+                _report(path)
+                if not path.stat().st_size:
+                    raise ValueError('Video is empty')
+                stamp = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).strftime('%Y%m%d_%H%M%S')
+                name = 'videos/FreeVideo_%s_%s.mp4' % (stamp, key.split('/')[-1][:12])
+            else:
+                leaf = key.rpartition('/')[2]
+                if not PICTURE.fullmatch(leaf) or key != FOLDER + '/' + leaf:
+                    raise ValueError('Invalid picture')
+                info = os.lstat(Path(input_directory) / FOLDER / leaf)
+                if not stat.S_ISREG(info.st_mode):
+                    raise ValueError('Picture is not a plain file')
+                name = 'images/' + leaf
+        except (OSError, ValueError):
+            left.append(key)
+            continue
+        base, dot, extension = name.rpartition('.')
+        number = 1
+        while name in taken:
+            number += 1
+            name = '%s-%d.%s' % (base, number, extension)
+        taken.add(name)
+        plan.append((kind, key, name))
+    return plan, left
+
+
+def zip_stream(output_directory, input_directory, plan, left, *, workflow=False, copies=None):
+    """The bytes of one zip of the planned works, produced piece by piece (stored, not recompressed, zip64).
+
+    Every video's copy without the prompt and workflow is deleted as soon as it is written, also when the
+    generator is closed half way. A work that cannot be read by now is added to skipped.txt at the end.
+    ``copies``, when given, receives the path of each copy as it is made, for a caller that has to delete them itself."""
+    import zipfile
+    from .work_thumbnails import FOLDER
+    sink = _ZipSink()
+    left = list(left)
+    with zipfile.ZipFile(sink, 'w', zipfile.ZIP_STORED, allowZip64=True) as archive:
+        for kind, key, name in plan:
+            copy, started = None, False
+            try:
+                if kind == 'video':
+                    path, _, copy = video_download(output_directory, key, workflow=workflow)
+                    if copy is not None and copies is not None:
+                        copies.append(copy)
+                else:
+                    path = Path(input_directory) / FOLDER / key.rpartition('/')[2]
+                    if not stat.S_ISREG(os.lstat(path).st_mode):
+                        raise ValueError('Picture is not a plain file')
+                with open(path, 'rb') as source:
+                    mtime = time.localtime(os.fstat(source.fileno()).st_mtime)[:6]
+                    entry = zipfile.ZipInfo(name, date_time=max(mtime, (1980, 1, 1, 0, 0, 0)))
+                    entry.compress_type = zipfile.ZIP_STORED
+                    entry.external_attr = 0o644 << 16
+                    with archive.open(entry, 'w', force_zip64=True) as target:
+                        started = True
+                        while True:
+                            chunk = source.read(1024 * 1024)
+                            if not chunk:
+                                break
+                            target.write(chunk)
+                            yield sink.take()
+            except (OSError, ValueError, TypeError):
+                left.append(key + ' (only part of it is in this zip)' if started else key)
+            finally:
+                if copy is not None:
+                    copy.unlink(missing_ok=True)
+            yield sink.take()
+        if left:
+            archive.writestr('skipped.txt', 'These works could not be read and are not in this zip:\n' + '\n'.join(left) + '\n')
+    yield sink.take()
+
+
 # What a FreeVideo request writes into its own run folder, including the
 # prompt-enhancement record and the staging copy monitoring.save keeps when
 # Windows would not let it replace a JSON record. A creation whose folder
@@ -1845,6 +1959,59 @@ def register():
         except (OSError, ValueError, TypeError):
             raise web.HTTPBadRequest(text='Invalid selection') from None
         return web.json_response(dict(sizes=result), headers={'Cache-Control': 'no-store'})
+
+    @server.routes.post('/freevideo/library/download-zip')
+    async def download_zip(request):
+        # One zip of several works. The page posts a form (so the browser streams the answer straight to disk) with
+        # the choice in its ``payload`` field; a JSON body is read the same way.
+        try:
+            if request.content_type == 'application/json':
+                body = await request.json()
+            else:
+                body = json.loads((await request.post()).get('payload'))
+            if not isinstance(body, dict):
+                raise ValueError('Invalid selection')
+            output, source = folder_paths.get_output_directory(), folder_paths.get_input_directory()
+            plan, left = await asyncio.to_thread(zip_plan, output, source, body.get('items'))
+        except (OSError, ValueError, TypeError):
+            raise web.HTTPBadRequest(text='Invalid selection') from None
+        if not plan:
+            raise web.HTTPNotFound(text='Saved works unavailable')
+        if body.get('check') is True:
+            # What the page asks before posting the form: the answer to a form lands in a hidden frame, where an error
+            # would be seen by no one.
+            return web.json_response(dict(ready=len(plan), skipped=len(left)), headers={'Cache-Control': 'no-store'})
+        stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        response = web.StreamResponse(headers={'Content-Type': 'application/zip', 'Cache-Control': 'private, no-store',
+                                               'Content-Disposition': 'attachment; filename="FreeVideo_%s.zip"' % stamp,
+                                               'X-FreeVideo-Skipped': str(len(left))})
+        copies = []
+        pieces = zip_stream(output, source, plan, left, workflow=body.get('workflow') is True, copies=copies)
+        try:
+            await response.prepare(request)
+            while True:
+                chunk = await asyncio.to_thread(next, pieces, None)
+                if chunk is None:
+                    break
+                if chunk:
+                    await response.write(chunk)
+            await response.write_eof()
+        finally:
+            # Also when the browser cancelled: the copies without the prompt and workflow are deleted.
+            for _ in range(600):
+                try:
+                    await asyncio.to_thread(pieces.close)
+                    break
+                except ValueError:  # still reading its last piece in another thread
+                    await asyncio.sleep(0.1)
+            else:
+                logging.warning('FreeVideo is still preparing a video for a cancelled zip download; its copy is removed when done.')
+            for copy in copies:
+                try:
+                    await asyncio.to_thread(copy.unlink, missing_ok=True)
+                except OSError:
+                    pass  # Still open (Windows): the generator removes it itself once it returns.
+        return response
 
     @server.routes.get('/freevideo/library/download')
     async def download(request):

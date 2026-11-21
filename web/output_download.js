@@ -17,13 +17,67 @@ export function workflowToggle(t, onChange = () => {}) {
 
 // The server supplies the download name and streams the existing file, keeping
 // large videos out of a browser-side Blob and preserving playback/asset paths.
+const SAVED_VIDEO = /^FreeVideo\/(\d{4}-\d{2}-\d{2}\/[a-f0-9]{32})\/video\.mp4$/;
+// The library id (YYYY-MM-DD/<32 hex>) of a saved video file, or null for any other file.
+export const outputVideoId = file => SAVED_VIDEO.exec(typeof file === 'string' ? file : '')?.[1] ?? null;
 export function outputDownloadPath(file) {
-    const saved = /^FreeVideo\/(\d{4}-\d{2}-\d{2}\/[a-f0-9]{32})\/video\.mp4$/.exec(file);
+    const saved = SAVED_VIDEO.exec(file);
     if (saved) return '/freevideo/library/download?' + new URLSearchParams({id: saved[1], ...(exportKeepsWorkflow() ? {workflow: '1'} : {})});
     const split = file.lastIndexOf('/');
     return '/view?' + new URLSearchParams({filename: file.slice(split + 1), subfolder: split < 0 ? '' : file.slice(0, split), type: 'output'});
 }
 export const outputDownloadURL = (api, file) => api.apiURL(outputDownloadPath(file));
+
+// Several library works as one zip file. The browser posts a hidden form into a hidden frame, so the zip streams
+// straight to disk (no Blob) and the page stays where it is. One request holds at most ZIP_LIMIT works; more go as
+// further requests, one after another. A video that is not a saved library video has no id and is left out.
+export const ZIP_LIMIT = 500;
+export function zipItems(rows) {
+    const items = [];
+    for (const row of rows) {
+        if (row?.kind === 'image') { if (typeof row.file === 'string' && row.file) items.push({kind: 'image', file: row.file}); continue; }
+        const id = outputVideoId(row?.video);
+        if (id) items.push({kind: 'video', id});
+    }
+    return items;
+}
+export function zipPayloads(rows, workflow = exportKeepsWorkflow()) {
+    const items = zipItems(rows), payloads = [];
+    for (let at = 0; at < items.length; at += ZIP_LIMIT) payloads.push({items: items.slice(at, at + ZIP_LIMIT), workflow: Boolean(workflow)});
+    return payloads;
+}
+// What each request can pack right now, asked before the form is posted (the answer to a form lands in a hidden frame,
+// where an error would be seen by no one): [{ready, skipped}] in order; a refusal or any non-answer counts as nothing ready.
+export async function checkZips(api, payloads) {
+    const answers = [];
+    for (const payload of payloads) {
+        try {
+            const response = await api.fetchApi('/freevideo/library/download-zip', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({...payload, check: true})});
+            const body = response.ok ? await response.json() : null;
+            answers.push({ready: Number(body?.ready) || 0, skipped: Number(body?.skipped) || 0});
+        } catch { answers.push({ready: 0, skipped: 0, failed: true}); }
+    }
+    return answers;
+}
+let zipFrames = 0;
+export function postZip(api, payload, {doc = document, keep = 600000} = {}) {
+    const name = `fv-zip-${Date.now().toString(36)}-${++zipFrames}`;
+    const frame = doc.createElement('iframe'); frame.name = name; frame.hidden = true; frame.setAttribute('aria-hidden', 'true'); frame.tabIndex = -1;
+    const form = doc.createElement('form'); form.method = 'post'; form.action = api.apiURL('/freevideo/library/download-zip'); form.target = name; form.hidden = true;
+    const field = doc.createElement('input'); field.type = 'hidden'; field.name = 'payload'; field.value = JSON.stringify(payload);
+    form.append(field); doc.body.append(frame, form);
+    form.submit(); form.remove();
+    // The frame stays while the browser takes the file, then goes.
+    setTimeout(() => frame.remove(), keep);
+}
+// Sends every payload, about a second apart; resolves when the last one is submitted.
+export async function postZips(api, payloads, {doc = document, wait = ms => new Promise(resolve => setTimeout(resolve, ms)), gap = 1000, alive = () => true, keep} = {}) {
+    for (let at = 0; at < payloads.length; at++) {
+        if (at) { await wait(gap); if (!alive()) return; }
+        postZip(api, payloads[at], keep === undefined ? {doc} : {doc, keep});
+    }
+}
 
 // 'ok'; 'missing' only when the server answered 404 or 410; 'unknown' when offline, timed out or any other answer.
 export async function fileState(api, path) {

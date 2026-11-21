@@ -10,7 +10,7 @@ import { issueButton } from './issue_button.js';
 import { fileFailureText, responseFileReason } from './file_failure.js';
 import { userMessage } from './user_message.js';
 import { applyTasks, toggledTask } from './task_groups.js';
-import { outputDownloadURL } from './output_download.js';
+import { outputDownloadURL, zipPayloads, checkZips, postZips } from './output_download.js';
 import { attachContextMenu, openContextMenu, contextMenuOpen, compatView, reducedMotion } from './context_menu.js';
 import { createMeta, createPictureBin, dayOf, inOrderPictures, matches, needsEverything, pictureRow, readView, saveView,
     sortRows, workKey, TAG_COLORS } from './library_meta.js';
@@ -584,16 +584,23 @@ export function openLibrary(t, options = {}) {
     tip(barCancel, t('Cancel', '取消'), t('Keep these creations', '不删除，保留这些作品'), 'Esc');
     const barFavorite = button('', () => favoritePicked(), 'fv-quiet fv-library-bar-favorite');
     barFavorite.append(line('heart'), el('span', t('Favorite', '收藏')));
+    barFavorite.setAttribute('aria-label', t('Favorite', '收藏'));
     tip(barFavorite, t('Favorite', '收藏'), t('Add the selected creations to Favorites', '把选中的作品加入收藏'));
     const barTag = button('', () => openTagMenu(barTag, [...picked]), 'fv-quiet fv-library-bar-tag');
     barTag.append(line('tag'), el('span', t('Tag', '标签')));
+    barTag.setAttribute('aria-label', t('Tag', '标签'));
     tip(barTag, t('Tag', '标签'), t('Add or remove tags on the selection', '给选中的作品加上或去掉标签'));
     const barDelete = button('', () => confirmDelete(), 'fv-library-danger');
     tip(barDelete, t('Delete', '删除'), t('Delete the selection; undo for 10 seconds', '删除选中的作品，10 秒内可撤销'), 'Delete');
+    const barDownload = button('', () => downloadPicked(), 'fv-quiet fv-library-bar-download');
+    barDownload.append(line('download'), el('span', t('Download', '下载')));
+    barDownload.setAttribute('aria-label', t('Download', '下载'));
+    tip(barDownload, t('Download', '下载'), t('Save the picked works as a zip file', '将所选作品保存为压缩包'));
     const barCompare = button('', () => { const keys = [...picked]; if (keys.length === 2) openCompare(keys); }, 'fv-quiet fv-library-bar-compare');
     barCompare.append(line('compare'), el('span', t('Compare', '对比')));
+    barCompare.setAttribute('aria-label', t('Compare', '对比'));
     tip(barCompare, t('Compare', '对比'), t('See two creations side by side or with a slider', '并排或用滑块对比两个作品'));
-    barActions.append(barFavorite, barTag, barCompare, barCancel, barDelete);
+    barActions.append(barFavorite, barTag, barCompare, barDownload, barCancel, barDelete);
     bar.append(barLabel, barText, barActions);
     // The undo note and the selection bar share one sticky dock so they stack instead of covering each other.
     const dock = el('div', null, 'fv-library-dock'); dock.append(undoBar, bar);
@@ -1470,8 +1477,7 @@ export function openLibrary(t, options = {}) {
         if (one) {
             items.push('-');
             items.push({id: 'download', icon: 'download', label: one.kind === 'image' ? ['Download picture', '下载图片'] : ['Download video', '下载视频'], run: () => {
-                const link = el('a'); link.href = one.kind === 'image' ? pictureURL(one) : outputDownloadURL(api, one.video); link.download = one.kind === 'image' ? (one.name || '') : '';
-                document.body.append(link); link.click(); link.remove();
+                downloadOne(one);
             }});
             if (one.kind !== 'image') {
                 if (one.preview) items.push({id: 'second-pass', icon: 'history', label: ['Run second pass', '继续二采'],
@@ -1617,11 +1623,11 @@ export function openLibrary(t, options = {}) {
         if (fetchSizes) wantedSizes();
         const about = size == null ? '' : ` · ${t('about', '约')} ${gb(size)}`;
         barActions.hidden = false;
-        barCancel.hidden = !confirming; barFavorite.hidden = barTag.hidden = barCompare.hidden = confirming;
+        barCancel.hidden = !confirming; barFavorite.hidden = barTag.hidden = barCompare.hidden = barDownload.hidden = confirming;
         barCompare.disabled = count !== 2 || deleting;
         if (count !== 2) barCompare.dataset.fvTipWhy = t('Select exactly two creations', '正好选中两个作品时可用'); else delete barCompare.dataset.fvTipWhy;
         const why = count ? '' : t('Select creations first', '先选择作品');
-        for (const control of [barFavorite, barTag, barDelete]) { if (why) control.dataset.fvTipWhy = why; else delete control.dataset.fvTipWhy; }
+        for (const control of [barFavorite, barTag, barDownload, barDelete]) { if (why) control.dataset.fvTipWhy = why; else delete control.dataset.fvTipWhy; }
         if (confirming) {
             barLabel.textContent = t(`Delete ${count} ${count === 1 ? 'creation' : 'creations'}?${size == null ? '' : ` About ${gb(size)}.`}`, `删除 ${count} 个作品？${size == null ? '' : `共约 ${gb(size)}。`}`);
             barText.textContent = t('They can be brought back for 10 seconds.', '10 秒内可以撤销。');
@@ -1632,7 +1638,7 @@ export function openLibrary(t, options = {}) {
             barText.textContent = '';
             barDelete.textContent = count ? t(`Delete ${count}`, `删除 ${count} 个`) + about : t('Delete', '删除');
             barDelete.disabled = deleting || !count;
-            barFavorite.disabled = barTag.disabled = deleting || !count;
+            barFavorite.disabled = barTag.disabled = barDownload.disabled = deleting || !count;
         }
         barLabel.hidden = !barLabel.textContent; barText.hidden = !barText.textContent;
         stageFollowsSelection();
@@ -1691,6 +1697,33 @@ export function openLibrary(t, options = {}) {
         if (disposed) return;
         for (const card of ordered()) picked.add(card.dataset.key);
         confirming = false; syncSelection();
+    }
+    // One work: the file itself. Several: one zip file, posted so the browser streams it to disk; notes the count.
+    function downloadOne(row) {
+        const link = el('a'); link.href = row.kind === 'image' ? pictureURL(row) : outputDownloadURL(api, row.video); link.download = row.kind === 'image' ? (row.name || '') : '';
+        document.body.append(link); link.click(); link.remove();
+    }
+    async function downloadPicked() {
+        const chosen = [...picked].map(key => works.get(key)).filter(Boolean);
+        if (!chosen.length || deleting) return;
+        if (chosen.length === 1) { downloadOne(chosen[0]); return; }
+        const asked = zipPayloads(chosen);
+        if (!asked.length) { say(t('These works cannot be downloaded.', '这些作品无法下载。'), true); return; }
+        let answers;
+        try { answers = await checkZips(api, asked); } catch { answers = asked.map(() => ({ready: 0, skipped: 0, failed: true})); }
+        const payloads = asked.filter((_, at) => answers[at].ready > 0);
+        const count = answers.reduce((sum, answer) => sum + answer.ready, 0);
+        const left = chosen.length - count;
+        if (!payloads.length) {
+            say(answers.some(answer => answer.failed) ? t('Could not start the download. Try again.', '无法开始下载，请重试。')
+                : t('These works cannot be read.', '无法读取这些作品。'), true);
+            return;
+        }
+        const zips = payloads.length > 1 ? t(` in ${payloads.length} zip files`, `，分成 ${payloads.length} 个压缩包`) : '';
+        const missing = left > 0 ? t(`, ${left} could not be read`, `，其中 ${left} 个无法读取`) : '';
+        say(t(`Downloading ${count} ${count === 1 ? 'work' : 'works'}${zips}${missing}`, `正在下载 ${count} 个作品${zips}${missing}`), left > 0);
+        try { await postZips(api, payloads, {alive: () => !disposed}); }
+        catch { say(t('Could not start the download. Try again.', '无法开始下载，请重试。'), true); }
     }
     async function favoritePicked() {
         const keys = [...picked], value = !keys.every(key => works.get(key)?.favorite);
