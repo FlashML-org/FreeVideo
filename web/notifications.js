@@ -137,7 +137,7 @@ const ago = (at, cn = CN) => {
 };
 export function noteWords(note, cn = CN) {
     const w = pair => words(pair, cn);
-    if (note.type === 'toast') return {title: note.title || w(['Notice', '提醒']), sub: note.reason || w(['Did not finish', '没有完成'])};
+    if (note.type === 'toast') return {title: note.title || w(['Notice', '提醒']), sub: note.reason || (note.status === 'notice' ? '' : w(['Did not finish', '没有完成']))};
     if (note.type === 'agent') return {title: note.title || w(['Assistant task', '助手任务']), sub: note.reason || w(['See why', '查看原因'])};
     if (note.type === 'install') {
         return note.status === 'done' ? {title: w([`${note.label} is installed`, `${note.label} 已安装`]), sub: w(['Ready to use', '可以使用了'])}
@@ -147,7 +147,7 @@ export function noteWords(note, cn = CN) {
     const head = note.status === 'done' ? w([`${kind} finished`, `${kind}生成完成`]) : note.status === 'failed' ? w([`${kind} failed`, `${kind}生成失败`]) : w([`${kind} stopped`, `${kind}生成中断`]);
     return {title: note.prompt || head, sub: note.prompt ? head : note.status === 'done' ? w(['In Creations', '已放进作品库']) : note.reason || w(['See why', '查看原因'])};
 }
-const ICON = {done: 'check', failed: 'alert', interrupted: 'alert'};
+const ICON = {done: 'check', failed: 'alert', interrupted: 'alert', notice: 'alert'};
 
 // ── The page part ──
 let notes = null, panel = null, bells = new Set(), installs = {}, installTimer = 0, liveRows = [];
@@ -201,7 +201,10 @@ async function openNote(note) {
     closeNotifications({focus: false});
     store().markRead(note.id);
     // A notice of a page message has nowhere to go; reading it was the point.
-    if (note.type === 'toast') return;
+    if (note.type === 'toast') {
+        if (note.setup) { const {openSetup} = await import('./setup.js'); openSetup({section: note.setup}); }
+        return;
+    }
     if (note.type === 'install') { await globalThis.FreeVideoShell?.go?.('image').catch(() => {}); return; }
     if (note.type === 'agent') {
         try { if (globalThis.FreeVideoShell?.view?.() !== 'autopilot') await globalThis.FreeVideoShell?.go?.('autopilot'); } catch { /* The view did not open: stay. */ }
@@ -399,7 +402,7 @@ export function mountNotices(element, options = {}) {
 }
 export function noticeState() {
     const rows = store().list();
-    return {unread: rows.filter(row => !row.read).length, failed: rows.filter(row => !row.read && row.status !== 'done').length, running: jobs.active().length};
+    return {unread: rows.filter(row => !row.read).length, failed: rows.filter(row => !row.read && row.status !== 'done' && row.status !== 'notice').length, running: jobs.active().length};
 }
 const noticeListeners = new Set();
 export function onNotices(fn) { noticeListeners.add(fn); fn(noticeState()); return () => noticeListeners.delete(fn); }
@@ -433,7 +436,9 @@ async function checkInstalls() {
 function refreshLive() { liveRows = liveItems(); syncBells(); if (notificationsOpen()) drawPanel(); refreshMounts(); }
 
 // ── toast(): notices and undo bars (glob.css §9) ──
-// toast(text, {tone, detail, icon, ms, sticky, action: {label, run, use, key}}) → {close()}
+// toast(text, {tone, detail, icon, ms, sticky, keep: {id, setup, title, sub}, action: {label, run, use, key}}) → {close()}
+//   keep: a notice that must not be missed is also kept in the notification list until closed there; setup is the
+//   settings section its row opens; title and sub, when given, are the row's shorter words (the toast keeps its text).
 //   tone: 'ok' | 'info' | 'caution' | 'warn' | 'fail'; detail: a second, quieter part of the line.
 //   Lives 5 s, 8 s with an action (an undo); sticky ones (failures by default) stay until closed.
 // One shows at a time, in the top bar's right column (a bottom strip above the view's own bar under 720 px, at
@@ -451,6 +456,7 @@ export function toastSpec(message, options = {}) {
     const long = tone === 'fail' || options.sticky === true;
     const given = Number.isFinite(options.ms) && options.ms > 0 ? options.ms : 0;
     return {text: words(message), detail: words(options.detail || ''), tone, icon: options.icon || TONE_ICON[tone] || 'check', action,
+        keep: options.keep && typeof options.keep === 'object' ? {id: String(options.keep.id || ''), setup: String(options.keep.setup || ''), title: String(options.keep.title || ''), sub: String(options.keep.sub || '')} : null,
         sticky: false, ms: long ? Math.max(given, UNDO_LIFE) : given || (action ? UNDO_LIFE : TOAST_LIFE)};
 }
 // The queue, apart from the page: show(next) when the visible one goes; "+N" is the waiting count.
@@ -554,6 +560,7 @@ function showToast(item, more) {
     runTimer(item);
     toastResized();
     if (item.spec.tone === 'fail') store().add({id: `toast:${Date.now()}`, type: 'toast', status: 'failed', title: item.spec.text, reason: item.spec.detail, at: Date.now()});
+    else if (item.spec.keep) store().add({id: item.spec.keep.id || `toast:${Date.now()}`, type: 'toast', status: 'notice', title: item.spec.keep.title || item.spec.text, reason: item.spec.keep.sub || item.spec.detail || (item.spec.action ? words(item.spec.action.label) : ''), setup: item.spec.keep.setup || null, at: Date.now()});
 }
 // On a phone strip a message that wraps beside its controls takes its own row (notifications.css, is-stacked).
 function stackLong(el) {
