@@ -1,4 +1,4 @@
-"""Contiguous D2H head groups with double-buffered CPU projection tiles."""
+"""Contiguous D2H head groups, joined into projection tiles on the device."""
 import collections
 import contextlib
 import torch
@@ -123,8 +123,6 @@ class HeadReadouts:
         self.dtype = dtype
         self.tile_rows = tile_rows
         self.groups = [torch.empty((self.capacity, width), dtype=dtype, pin_memory=True) for width in head_widths]
-        self.tiles = [torch.empty((tile_rows, sum(head_widths)), dtype=dtype, pin_memory=True) for _ in range(2)]
-        self.events = [None, None]
         self.copies = LockedCopies()
 
     def supports(self, rows, head_widths, dtype, tile_rows):
@@ -137,19 +135,22 @@ class HeadReadouts:
 
     def project(self, module, output, rows):
         # The caller synchronizes once after all D2H groups have been written.
-        stream = torch.cuda.current_stream(output.device)
-        for index, start in enumerate(range(0, rows, self.tile_rows)):
-            slot = index % 2
-            if self.events[slot] is not None:
-                self.events[slot].synchronize()
+        # Each group's rows of a tile are contiguous on the host, so they go to the
+        # device as they are and the tile is joined there. Joining it on the host,
+        # one strided copy per group and tile, kept the processor busy for most of
+        # the second pass at 1344x768x362 while the device waited (about 200k
+        # small copies a step). The tile holds the same values in the same rows,
+        # so the projection is unchanged bit for bit. The host-to-device copies and
+        # the next layer's device-to-host stores share the current stream, so a
+        # group is not overwritten before its rows have been read.
+        width = sum(self.widths)
+        for start in range(0, rows, self.tile_rows):
             count = min(self.tile_rows, rows - start)
-            tile = self.tiles[slot][:count]
+            device_values = torch.empty((count, width), dtype=self.dtype, device=output.device)
             offset = 0
-            for group, width in zip(self.groups, self.widths):
-                tile[:, offset:offset + width].copy_(group[start:start + count])
-                offset += width
-            device_values = self.copies.to_device(tile, output.device)
-            done = torch.cuda.Event()
-            done.record(stream)
-            self.events[slot] = done
+            for group, group_width in zip(self.groups, self.widths):
+                part = self.copies.to_device(group[start:start + count], output.device)
+                device_values[:, offset:offset + group_width].copy_(part)
+                del part
+                offset += group_width
             yield slice(start, start + count), module(device_values)
