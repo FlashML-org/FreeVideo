@@ -124,7 +124,8 @@ def released(model, row):
     if model == 'image' and event['reason'] == 'video_start' and enabled():
         # Until the picture worker can stay through a video, it comes back once the video is done.
         threading.Thread(target=_after_video, name='freevideo-server-rewarm', daemon=True).start()
-    if event['action'] == 'released':
+    # A trim keeps the worker but gives the video model back (a picture's room, host memory): it comes back as well.
+    if event['action'] == 'released' or (event['action'] == 'trimmed' and model == 'video'):
         try:
             from . import rewarm
             rewarm.after_release(model, event['reason'], row.get('held'), row.get('worker_rss_bytes'))
@@ -210,9 +211,12 @@ def warm(models=('video', 'image'), policy='resident'):
 
 def recent_models(ops):
     """The kinds of model to load at start from the last operations ('image' or 'video', oldest first): the kinds
-    used lately, the video side first; the video side alone when nothing has been used yet."""
-    used = set(ops)
-    return tuple(kind for kind in ('video', 'image') if kind in used) or ('video',)
+    used lately, the one used last first; the video side alone when nothing has been used yet."""
+    order = []
+    for kind in reversed(ops):
+        if kind in ('video', 'image') and kind not in order:
+            order.append(kind)
+    return tuple(order) or ('video',)
 
 
 def warm_at_start():
@@ -255,22 +259,38 @@ def _start(models, beside):
     return dict(state='loading', reason=None)
 
 
-def _load(models, videos, images, beside=False):
+def _video_fits():
+    """Whether the video side fits now beside what the card and host memory hold (as rewarm reads it)."""
     try:
-        if 'video' in models:
-            answer = videos.warm(dict(level='full', mode='eager'))
-            if answer.get('warm') == 'loading' and videos.thread is not None:
-                videos.thread.join()
-        if 'image' in models and images is not None:
-            try:
-                info = images.installed_models()
-            except Exception:
-                info = ()
-            model = image_model(info)
-            if model is not None:
-                images.warm(dict(model=model, level='full', mode='eager', beside=True) if beside
-                            else dict(model=model, level='full', mode='eager'))
-                images.wait_warm(600.)
+        from .rewarm import Probe
+        return Probe('video').room() is not None
+    except Exception:
+        logging.warning('[FreeVideo] Reading the room for the video model failed', exc_info=True)
+        return False
+
+
+def _load(models, videos, images, beside=False):
+    """Load ``models`` in their order; with ``beside`` (a desktop), each after the first only into room that is
+    free beside it, so where both do not fit the one used last keeps the card."""
+    try:
+        for index, kind in enumerate(models):
+            later = beside and index > 0
+            if kind == 'video':
+                if later and not _video_fits():
+                    continue
+                answer = videos.warm(dict(level='full', mode='eager'))
+                if answer.get('warm') == 'loading' and videos.thread is not None:
+                    videos.thread.join()
+            elif kind == 'image' and images is not None:
+                try:
+                    info = images.installed_models()
+                except Exception:
+                    info = ()
+                model = image_model(info)
+                if model is not None:
+                    images.warm(dict(model=model, level='full', mode='eager', beside=True) if later
+                                else dict(model=model, level='full', mode='eager'))
+                    images.wait_warm(600.)
     except Exception:
         logging.warning('[FreeVideo] Server warm-up failed', exc_info=True)
     finally:

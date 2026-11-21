@@ -1,7 +1,9 @@
 """Bringing a model back once the room it gave up is free again.
 
 Where idle models stay loaded (``server_mode.keeps_idle``: Linux and Windows), a model lets go when another program
-needs the card or host memory runs short, and the picture model when a video needs its room. Without this, it stayed
+needs the card or host memory runs short, the picture model when a video needs its room, and the video model when a
+picture needs its room (the encoder stays). Where both do not fit, the one used last keeps the card: the other waits
+for room beside it. Without this, it stayed
 unloaded until the next job asked for it and paid the whole load then. Now, once that room is free again and has
 stayed free for QUIET_SECONDS, the same model is loaded in the background as a warm-up would load it:
 
@@ -31,7 +33,7 @@ QUIET_MOST_SECONDS = 15 * 60.
 HOST_SPARE_BYTES = 1 << 30
 # The releases that only made room: the model would have stayed. Others (closed, worker_exit, finished, a job's own
 # trim, an unreadable card) are not undone.
-REASONS = dict(image=('crowded', 'video_start'), video=('other_program_gpu', 'host_memory_low'))
+REASONS = dict(image=('crowded', 'video_start'), video=('other_program_gpu', 'host_memory_low', 'image_model'))
 # A warm-up that did not start because a job got there first: try again once it is done.
 BUSY = ('busy', 'video_busy')
 
@@ -152,9 +154,27 @@ class Probe:
     def loaded(self):
         from .resident_process import OWNER
         if self.model == 'video':
-            return OWNER.process is not None and OWNER.process.poll() is None
+            if OWNER.process is None or OWNER.process.poll() is not None:
+                return False
+            # With settings to preload, the video model itself, not only the worker with its encoder.
+            return self.preload() is None or 'engine' in self.held_roles()
         _, images = self.services()
         return images.worker_alive() and images.loaded_model is not None
+
+    def preload(self):
+        if self.model != 'video':
+            return None
+        from . import engine_preload
+        return engine_preload.recall()
+
+    def held_roles(self):
+        """The models the video worker holds; empty while it is busy or cannot be read."""
+        from . import resident_process
+        try:
+            answer = resident_process.status({resident_process.ENV: str(resident_process.OWNER.endpoint)})
+        except Exception:
+            return set()
+        return {row.get('role') for row in (answer or {}).get('models') or [] if isinstance(row, dict)}
 
     def machine(self):
         videos, images = self.services()
@@ -163,19 +183,28 @@ class Probe:
     def need(self, machine):
         """Card bytes the model needs free: its files plus the picture reserve."""
         from .image_gen import image_model, keep
+        extra = 0
         if self.model == 'video':
             from .video_warm import encoder_file
-            files = encoder_file(machine)
+            files = [] if 'encoder' in self.held_roles() else encoder_file(machine)
+            value = self.preload()
+            extra = value['card_bytes'] if value else 0
         else:
             _, images = self.services()
             files = images.model_files(machine, self.held)
-        size = sum(os.path.getsize(item) for item in files)
+        size = sum(os.path.getsize(item) for item in files) + extra
         return size + keep.RESERVE_BYTES if size > 0 else None
 
     def host_least(self):
         """Host memory the model's worker keeps free once it holds the model: below it, it lets go again."""
         from .resident_process import host_margin
         if self.model == 'video':
+            value = self.preload()
+            if value:
+                from .resident_models import GiB
+                # The video model's host weights beside the next encoder's start, as the worker settles after a video.
+                pinned = int(float(value['engine_options'].get('pin_host_gb') or 0) * 1e9)
+                return max(host_margin(), 8 * GiB + pinned)
             return host_margin()
         from .image_gen import image_model, keep
         if self.held == image_model.H3:
