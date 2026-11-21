@@ -805,10 +805,24 @@ def package_environment(network, family, name, environ=None, *, route=None, retr
     return env
 
 
+# Keep in sync with the certificate words in slow_download_failure, fv_certificate_failure
+# (scripts/bootstrap_linux.sh) and Test-FreeVideoCertificateFailure (windows_bootstrap.ps1).
+_CERTIFICATE_KEYWORDS = (
+    'certificate verify failed', 'certificate_verify_failed',
+    'invalid peer certificate', 'unknown issuer',
+)
+
+
+def _certificate_failure(detail):
+    detail = detail.lower()
+    return any(word in detail for word in _CERTIFICATE_KEYWORDS)
+
+
 def download_command(network, family, run, env=None, *, category=None, extra_sources=(), notice=None, reorder=None):
     """Run a source/route callback with the same bounded policy for uv and pip.
 
-    Callbacks receive (source, route, retry_mode); each builds its child env from
+    Callbacks receive (source, route, retry_mode) and a native_tls keyword, True only for
+    the single same-route retry after a certificate failure; each builds its child env from
     the original environment, so our fast defaults never become user overrides.
     """
     category = category or family
@@ -856,8 +870,30 @@ def download_command(network, family, run, env=None, *, category=None, extra_sou
                               result='success', attempts=len(attempts)-round_start+1)
                     return result
                 except (RuntimeError, subprocess.CalledProcessError) as error:
-                    attempt = dict(_package_attempt(error, name, route, source_host(family, name, env),
-                                                    time.monotonic() - started), retry_mode=retry_mode)
+                    elapsed = time.monotonic() - started
+                    detail, _ = _package_failure(error)
+                    native_retry = False
+                    # A certificate this machine's system store trusts but uv's bundled roots do not
+                    # (an antivirus or proxy that inspects HTTPS): ask the same route once more
+                    # with the system store. Verification stays on; the first error is kept.
+                    if _certificate_failure(detail):
+                        native_retry = True
+                        event(network, category=category, source=name, route=route,
+                              action=operation + '-system-certificates', **retry_details)
+                        try:
+                            result = run(name, route, retry_mode, native_tls=True)
+                            source_health(network, family, name, True)
+                            route_health(network, family, name, route)
+                            if retry_mode == 'patient':
+                                event(network, category=category, action='download-round-result', retry_mode=retry_mode,
+                                      result='success', attempts=len(attempts)-round_start+1)
+                            return result
+                        except (RuntimeError, subprocess.CalledProcessError):
+                            pass
+                    attempt = dict(_package_attempt(error, name, route, source_host(family, name, env), elapsed),
+                                   retry_mode=retry_mode)
+                    if native_retry:
+                        attempt['system_certificates_tried'] = True
                     attempts.append(attempt)
                     event(network, category=category, source=name, route=route, action=operation + '-failed',
                           error_type=attempt['error_type'], returncode=attempt['returncode'],
@@ -888,8 +924,10 @@ def download_command(network, family, run, env=None, *, category=None, extra_sou
 
 
 def package_command(network, family, run, env=None, *, notice=None):
-    def attempt(name, route, retry_mode):
+    def attempt(name, route, retry_mode, native_tls=False):
         attempt_env = package_environment(network, family, name, env, route=route, retry_mode=retry_mode)
+        if native_tls:
+            attempt_env['UV_NATIVE_TLS'] = '1'
         # Private markers retain per-source/route logs; no package configuration.
         attempt_env['FREEVIDEO_PACKAGE_SOURCE'] = name
         attempt_env['FREEVIDEO_PACKAGE_ROUTE'] = route

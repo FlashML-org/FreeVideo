@@ -144,6 +144,22 @@ try {
                       -Arguments @('python', 'install', '--no-bin', '--no-registry', '--no-progress', '--color', 'never', $versions.python) `
                       -LogPath $bootstrapLog -Label $pythonLabel `
                       -Direct:($proxyRoute -eq 'direct') -OutputTail ([ref]$pythonOutput)
+                  if ($pythonExit -ne 0 -and (Test-FreeVideoCertificateFailure $pythonOutput)) {
+                      $originalOutput = $pythonOutput
+                      $originalExit = $pythonExit
+                      $retryOutput = ''
+                      $retryExit = Invoke-FreeVideoBootstrapCommand -Executable $uv `
+                          -Arguments @('--native-tls', 'python', 'install', '--no-bin', '--no-registry', '--no-progress', '--color', 'never', $versions.python) `
+                          -LogPath $bootstrapLog -Label ($pythonLabel + ', system certificates') `
+                          -Direct:($proxyRoute -eq 'direct') -OutputTail ([ref]$retryOutput)
+                      if ($retryExit -eq 0) {
+                          $pythonExit = 0
+                          $pythonOutput = $retryOutput
+                      } else {
+                          $pythonExit = $originalExit
+                          $pythonOutput = $originalOutput
+                      }
+                  }
                   if ($pythonExit -eq 0) { $installed = $true; break }
                   if (Test-FreeVideoAccessDenied $pythonOutput) { $deniedRoutes[$route] = $true }
                   elseif (Test-FreeVideoSlowDownloadFailure $pythonOutput) { $slowRoutes[$route] = $true }

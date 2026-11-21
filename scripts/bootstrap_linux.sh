@@ -16,6 +16,12 @@ esac
 fv_note() { printf 'FreeVideo: %s\n' "$*" >&2; }
 fv_fail() { fv_note "$*"; return 1; }
 
+# Match network._certificate_failure and slow_download_failure certificate keywords.
+fv_certificate_failure() {
+    local detail="${1,,}"
+    [[ "$detail" =~ certificate\ verify\ failed|certificate_verify_failed|invalid\ peer\ certificate|unknown\ issuer ]]
+}
+
 # Match network.slow_download_failure: unavailable artifacts and local errors
 # may try another source, but must not earn a longer download round.
 fv_slow_download_failure() {
@@ -346,6 +352,30 @@ fv_install_python() (
               [[ -z "$attempt_detail" ]] || printf '%s\n' "$attempt_detail" >&2
               fv_fail "Could not retain Python installation output. Check $FREEVIDEO_BOOTSTRAP_ROOT/bootstrap.log and retry the same command."
               exit 1
+          fi
+          if (( python_exit != 0 )) && fv_certificate_failure "$attempt_detail"; then
+              local retry_log='' retry_detail='' retry_exit=0
+              local orig_exit=$python_exit orig_detail="$attempt_detail"
+              [[ -z "$attempt_dir" ]] || retry_log=$(mktemp "$attempt_dir/output.XXXXXX" 2>/dev/null) || retry_log=''
+              printf 'Python source %s: retrying with the system certificate store\n' "$attempt" >>"$FREEVIDEO_BOOTSTRAP_ROOT/bootstrap.log"
+              if UV_HTTP_TIMEOUT="${UV_HTTP_TIMEOUT-$timeout}" UV_HTTP_RETRIES="${UV_HTTP_RETRIES-$retries}" \
+                  UV_PYTHON_INSTALL_MIRROR="$source" fv_with_route "$route" "$uv" --native-tls --no-config \
+                  python install --no-bin --no-registry --no-progress --color never "$FV_PYTHON_VERSION" 2>&1 | \
+                  tee -a -- "${retry_log:-/dev/null}" >>"$FREEVIDEO_BOOTSTRAP_ROOT/bootstrap.log"; then
+                  pipe_status=("${PIPESTATUS[@]}")
+              else
+                  pipe_status=("${PIPESTATUS[@]}")
+              fi
+              retry_exit=${pipe_status[0]}
+              [[ -z "$retry_log" ]] || retry_detail=$(tail -n 12 -- "$retry_log")
+              [[ -z "$retry_log" ]] || rm -f -- "$retry_log"
+              if (( retry_exit == 0 )); then
+                  python_exit=0
+                  attempt_detail="$retry_detail"
+              else
+                  python_exit=$orig_exit
+                  attempt_detail="$orig_detail"
+              fi
           fi
           if (( python_exit == 0 )); then
               fv_python_ok "$UV_PYTHON_INSTALL_DIR/cpython-$FV_PYTHON_VERSION-linux-$FV_ARCH-gnu/bin/python3.12" && exit 0
