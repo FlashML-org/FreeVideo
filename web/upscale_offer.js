@@ -7,11 +7,13 @@ export function upscaleSize(width, height) {
     return {width: width * 3 / 2, height: height * 3 / 2};
 }
 
-// The work's own picture: finished (not a preview), 24 fps and of a known length.
+// The work's own picture: finished (not a preview), 24 fps, of a known length and with its saved request.
 export function upscaleSource(row) {
     const g = row?.geometry || {};
     if (!row || row.kind === 'image' || row.preview) return null;
     if ((g.fps ?? 24) !== 24 || !Number.isSafeInteger(g.frames) || g.frames < 1) return null;
+    // One step resamples with the prompt and seed saved with the work: a merged video has neither (4K does not need them).
+    if (row.saved_request === false) return null;
     const size = upscaleSize(g.width, g.height);
     return size && {...size, frames: g.frames};
 }

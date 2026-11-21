@@ -273,6 +273,8 @@ def list_videos(output_directory, *, before=None, limit=24, favorite=None):
             if key[1] + '/video.mp4' in tokens:
                 summary['report_id'] = tokens[key[1] + '/video.mp4']
             folders[key[1]], reports[key[1]] = path.parent, report
+            # A video made without a request of its own (the editor's merged export) can go to 4K but not up one step.
+            summary['saved_request'] = (path.parent / 'comfy-request.json').is_file()
             rows.append(dict(summary, id=key[1], bytes=info.st_size, favorite=is_favorite,
                              created_at=datetime.fromtimestamp(info.st_mtime, timezone.utc).isoformat(),
                              cursor=str(key[0]) + ':' + key[1]))

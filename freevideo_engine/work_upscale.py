@@ -11,7 +11,7 @@ from fractions import Fraction
 from pathlib import Path
 
 FACTOR = 1.5
-NOT_A_WORK = ('Choose a finished FreeVideo video to upscale', '请选择一个已完成的 FreeVideo 视频来放大。')
+from .frame_upscale import NotUpscalable
 
 
 def size(width, height):
@@ -23,28 +23,35 @@ def size(width, height):
 
 
 def work_request(output_directory, relative):
-    """A finished, non-preview FreeVideo work in this output folder: (video, saved state)."""
+    """A finished, non-preview FreeVideo work in this output folder: (video, saved state). One step needs the
+    prompt and seed saved with the work, so a video without a saved request is refused."""
     if not isinstance(relative, str) or not relative.strip():
-        raise ValueError(NOT_A_WORK[0])
+        raise NotUpscalable('outside')
     output_root = Path(output_directory).resolve()
     video = (output_root / relative).resolve()
     try:
         video.relative_to(output_root / 'FreeVideo')
     except ValueError:
-        raise ValueError(NOT_A_WORK[0]) from None
+        raise NotUpscalable('outside') from None
+    if not video.is_file():
+        raise NotUpscalable('missing')
     path = video.parent / 'comfy-request.json'
     try:
         state = json.loads(path.read_text(encoding='utf-8')) if path.is_file() else {}
     except (OSError, ValueError):
         state = {}
     geometry = state.get('geometry') if isinstance(state, dict) else None
-    if (not isinstance(state, dict) or state.get('status') != 'complete' or state.get('preview')
-            or Path(state.get('output', '')).resolve() != video or not isinstance(geometry, dict)
-            or geometry.get('fps') != 24 or size(geometry.get('width'), geometry.get('height')) is None
-            or type(state.get('seed')) is not int):
-        raise ValueError(NOT_A_WORK[0])
-    if not video.is_file():
-        raise ValueError(NOT_A_WORK[0])
+    if (not isinstance(state, dict) or not isinstance(geometry, dict) or type(state.get('seed')) is not int
+            or Path(state.get('output') or '').resolve() != video):
+        raise NotUpscalable('no_request')
+    if state.get('status') != 'complete':
+        raise NotUpscalable('unfinished')
+    if state.get('preview'):
+        raise NotUpscalable('preview')
+    if geometry.get('fps') != 24:
+        raise NotUpscalable('fps')
+    if size(geometry.get('width'), geometry.get('height')) is None:
+        raise NotUpscalable('size_step')
     return video, state
 
 
@@ -62,19 +69,23 @@ def source(path):
     import av
     path = Path(path).expanduser().resolve()
     if path.suffix.lower() != '.mp4' or not path.is_file():
-        raise ValueError(NOT_A_WORK[0])
+        raise NotUpscalable('missing')
     try:
         with av.open(str(path)) as container:
             if len(container.streams.video) != 1 or not container.streams.audio:
-                raise ValueError(NOT_A_WORK[0])
+                raise NotUpscalable('streams')
             stream = container.streams.video[0]
             rate = stream.average_rate or stream.guessed_rate
             width, height = stream.codec_context.width, stream.codec_context.height
             frames = sum(1 for _ in container.demux(stream) if _.size)
     except (av.error.FFmpegError, OSError) as error:
-        raise ValueError(NOT_A_WORK[0]) from error
-    if rate is None or Fraction(rate) != 24 or size(width, height) is None or frames <= 0:
-        raise ValueError(NOT_A_WORK[0])
+        raise NotUpscalable('missing') from error
+    if frames <= 0:
+        raise NotUpscalable('missing')
+    if rate is None or Fraction(rate) != 24:
+        raise NotUpscalable('fps')
+    if size(width, height) is None:
+        raise NotUpscalable('size_step')
     return dict(output=str(path), sha256=_digest(path), bytes=path.stat().st_size,
                 width=width, height=height, frames=frames, fps=24)
 
@@ -130,7 +141,7 @@ def _frames(path, width, height, count):
             pixels[index] = image
             index += 1
     if not index:
-        raise ValueError(NOT_A_WORK[0])
+        raise NotUpscalable('missing')
     pixels[index:] = pixels[index - 1]
     return pixels, index
 
