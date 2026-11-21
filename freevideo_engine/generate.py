@@ -105,7 +105,9 @@ def child(command, env, descriptor, log, *, ram_budget_bytes=None, gpu=None, on_
                     sample = memory.sample(process.pid)
                     telemetry.setdefault('ram_start', sample)
                     telemetry['ram_last'] = sample
-                    pressure = inference_pressure(sample, ram_budget_bytes, minimum_available_bytes,
+                    # A callable gives a floor that follows the worker's stage (the Mac engine child).
+                    floor = minimum_available_bytes() if callable(minimum_available_bytes) else minimum_available_bytes
+                    pressure = inference_pressure(sample, ram_budget_bytes, floor,
                                                   budget_is_estimate=ram_budget_is_estimate)
                     telemetry['ram_guard'] = pressure
                     if pressure['reasons'] and not pressure['enforced_reasons']:

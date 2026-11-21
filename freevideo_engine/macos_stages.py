@@ -14,6 +14,7 @@ import traceback
 
 from . import processes, step_resume
 from .locking import LOCK_ENV, runtime_lock
+from .macos_compute import FLOOR_FAILURE
 from .monitoring import save
 
 
@@ -43,11 +44,16 @@ METAL_FAILURE = '[METAL] Command buffer execution failed'
 
 
 def memory_exhausted(stage, observed):
-    """A sampling pass that stopped because MPS reached its allocator limit or Metal failed a command buffer."""
-    # The physical RAM floor protects the whole machine, and the outer guard also ends the request.
+    """A sampling pass that stopped because MPS reached its allocator limit, Metal failed a command
+    buffer or available RAM fell below the worker's own floor.
+
+    A fresh process with the smallest partitions and no retained layers retries once, keeping a
+    finished first pass. Its own floor check and the request-level tripwire (lower than the
+    worker's floor) still end a pass that cannot fit."""
     message = str(observed.get('error_message', ''))
     return (stage in ('first-pass', 'refinement') and observed.get('success') is False
-            and ('MPS backend out of memory' in message or METAL_FAILURE in message))
+            and ('MPS backend out of memory' in message or METAL_FAILURE in message
+                 or FLOOR_FAILURE in message))
 
 
 def joined_admission(engine, value):

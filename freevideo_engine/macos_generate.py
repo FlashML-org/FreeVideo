@@ -23,6 +23,21 @@ from .music_request import without_music
 from .paths import data_root
 
 GiB = 2**30
+from .macos_compute import ENGINE_TRIPWIRE_BYTES, request_floor
+
+
+def engine_floor(receipt, resource):
+    """A floor read afresh at each guard sample from the stage controller's receipt.
+
+    No readable receipt (not yet written, half written) keeps the full floor."""
+    def floor():
+        try:
+            phase = json.loads(Path(receipt).read_text(encoding='utf-8')).get('phase')
+        except (OSError, ValueError, AttributeError):
+            phase = None
+        return request_floor(phase, resource.get('engine_tripwire_bytes', ENGINE_TRIPWIRE_BYTES),
+                             resource['emergency_floor_bytes'])
+    return floor
 
 
 def policy(args, memory=None):
@@ -70,7 +85,7 @@ def policy(args, memory=None):
         encoder_bytes=allocator,
         ram_budget_bytes=capacity if getattr(args, 'ram_gib', None) is not None else working,
         ram_budget_is_estimate=getattr(args, 'ram_gib', None) is None,
-        emergency_floor_bytes=GiB, query_chunk=128, ff_chunk=256, projection_chunk=256,
+        emergency_floor_bytes=GiB, engine_tripwire_bytes=ENGINE_TRIPWIRE_BYTES, query_chunk=128, ff_chunk=256, projection_chunk=256,
         weight_decoder='metal', encoder_weight_decoder='metal', cpu_operator_fallback=False,
         sampling_lifetime='auto',
         scope='Live unified-memory bounds and eligible cross-pass weight retention; not proof of workload capacity.')
@@ -236,7 +251,8 @@ def run(args):
                 return child([sys.executable, '-m', module, '--request', str(request)],
                     env, descriptor, output.with_suffix('.' + name + '.log'),
                     ram_budget_bytes=resource['ram_budget_bytes'],
-                    minimum_available_bytes=resource['emergency_floor_bytes'],
+                    minimum_available_bytes=(engine_floor(output.with_suffix('.engine.json'), resource)
+                                             if name == 'engine' else resource['emergency_floor_bytes']),
                     ram_budget_is_estimate=resource['ram_budget_is_estimate'])
             if adapters:
                 report['phase'] = 'lora'
