@@ -24,11 +24,19 @@ from . import image_model, image_pack, keep, progress_model
 from .. import server_mode
 from .loras import ERRORS as LORA_ERRORS, resolve_selection
 from ..disk_space import ran_out
+
+
 from ..download_settings import observed_speed
 from ..exit_diagnostics import clean_reading
 from ..monitoring import save
 from .failure import (Context, classify_exception, HOST_MESSAGE_ZH, host_memory_shortage, ERRORS, FailureError, MESSAGE_ZH, NO_REPORT, STAGES, UNIFIED_MESSAGE_ZH,
                       classify_exception)
+
+def write_refused(error):
+    """Whether an OSError says a folder or file cannot be written (no permission, read-only volume, in use)."""
+    import errno
+    return isinstance(error, PermissionError) or getattr(error, 'errno', None) in (errno.EACCES, errno.EPERM, errno.EROFS)
+
 
 BODY_LIMIT = 64 * 1024
 CANCEL_GRACE = 5.
@@ -774,7 +782,12 @@ class Service:
                         publish(temporary, target)
                     finally:
                         temporary.unlink(missing_ok=True)
-            except (OSError, Image.DecompressionBombError, SyntaxError):
+            except (OSError, Image.DecompressionBombError, SyntaxError) as error:
+                # A full disk or a folder that cannot be written is not a wrong picture: each has its own answer.
+                if isinstance(error, OSError) and ran_out(error):
+                    raise ValueError('disk_full') from None
+                if isinstance(error, OSError) and write_refused(error):
+                    raise ValueError('output_unwritable') from None
                 raise ValueError('invalid_media') from None
             self.note_record(target, record)
             self.copy_to_output(target)
@@ -2849,6 +2862,10 @@ def register():
             code = image_pack_error_code(error)
             return web.json_response(dict(error=code, message_en=image_pack_failure(code)['detail'],
                                           message_zh=image_pack_failure(code, zh=True)['detail']), status=409)
+        except Exception:
+            # A damaged model folder or pack record must not turn into a plain-text 500 that blocks every later action.
+            logging.getLogger(__name__).exception('image info failed')
+            return web.json_response(dict(error='model_unreadable', message_zh=MESSAGE_ZH['model_unreadable']), status=500)
 
     @server.routes.get('/freevideo/image-gen/report/{report_id}')
     async def report(request):
@@ -2954,11 +2971,32 @@ def register():
             code = str(error)
             if code in ('unknown_job', 'closed'):
                 result = dict(error=code)
-            else:
+            elif isinstance(error, ValueError):
                 code = code if code in ERRORS else 'invalid_request'
                 result = dict(phase='failed', error=code, report_id=None, stage='start')
                 if code in MESSAGE_ZH:
                     result['message_zh'] = MESSAGE_ZH[code]
+            else:
+                # An OSError is not one of the request checks: a disk, a folder or a file went wrong, or something unexpected did.
+                # It says what it is and carries a report, instead of being called a wrong setting.
+                logging.getLogger(__name__).exception('image action failed')
+                if isinstance(error, OSError) and ran_out(error):
+                    reason = 'disk_full'
+                elif isinstance(error, OSError) and write_refused(error):
+                    reason = 'output_unwritable'
+                else:
+                    reason = classify_exception(error)
+                try:
+                    context = Context(request.match_info.get('action', ''), value if isinstance(value, dict) else {})
+                    result = service.failed(reason, context, error=error)
+                    result.setdefault('error', reason)
+                    if result['error'] in MESSAGE_ZH:
+                        result.setdefault('message_zh', MESSAGE_ZH[result['error']])
+                except Exception:
+                    result = dict(phase='failed', error=reason, report_id=None, stage='start')
+                    if reason in MESSAGE_ZH:
+                        result['message_zh'] = MESSAGE_ZH[reason]
+                return web.json_response(result, status=500)
             return web.json_response(result, status=400)
         except Exception as error:
             # Any other fault still answers in JSON with a reason code, the stage and a report, so the page can show

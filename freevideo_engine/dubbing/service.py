@@ -17,6 +17,7 @@ import time
 import uuid
 
 from . import backends, pack
+from ..disk_space import ran_out
 from ..prompt_vlm.service import Worker
 
 OUTPUT = 'freevideo-dubbing'
@@ -335,8 +336,11 @@ class Service:
             self.progress(dict(phase='failed', error=error.reason))
         except Exception as error:
             reason = str(error)
+            if reason not in KNOWN:
+                logging.warning('[FreeVideo] Dubbing job %s failed: %s', action, type(error).__name__, exc_info=True)
             self.progress(dict(phase='failed', exception=type(error).__name__,
-                               error=reason if reason in KNOWN else 'download_failed' if action == 'install'
+                               error=reason if reason in KNOWN else 'disk_space' if isinstance(error, OSError) and ran_out(error)
+                               else 'download_failed' if action == 'install'
                                else 'dub_failed'))
         finally:
             if self.stop.is_set():
@@ -565,4 +569,6 @@ def register():
                 result = service.start(name, value)
             return web.json_response(result)
         except (ValueError, OSError) as error:
+            if isinstance(error, OSError):
+                logging.warning('[FreeVideo] Dubbing request failed: %s', type(error).__name__, exc_info=True)
             return web.json_response(dict(error=str(error) if str(error) in CODES else 'invalid_media'), status=400)

@@ -87,6 +87,11 @@ class JobError(Exception):
         self.code, self.message, self.details = code, message, details
 
     def view(self):
+        if self.details.get('show') is True:
+            # A fixed sentence written at the raise site (no path, name or backend text): it is the reason.
+            return errors.build(self.code, validation=True, message=self.message, details=[],
+                                retry_after_seconds=self.details.get('retry_after_seconds'),
+                                kind=self.details.get('kind'), report_id=self.details.get('report_id'))
         return errors.build(self.code, details=self.details.get('details'),
                             owner=self.details.get('owner'),
                             retry_after_seconds=self.details.get('retry_after_seconds'),
@@ -1797,6 +1802,9 @@ class Jobs:
         except specs.SpecError as error:
             failure = ('failed', dict(code='invalid_request', message=str(error), details=error.errors))
         except Exception as error:  # noqa: BLE001 - a job must always end with a reason
+            # The request_id in the user's message is searched in the log: record the cause under it.
+            logging.getLogger(__name__).exception('agent job %s (%s) failed unexpectedly, request %s',
+                                                  row.get('id'), row.get('kind'), row.get('request_id'))
             failure = ('failed', dict(code='internal_error', message='%s: %s' % (
                 type(error).__name__, str(error)[:2000])))
         finally:

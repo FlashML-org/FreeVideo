@@ -34,7 +34,7 @@ def run_stems(jobs, row, *, poll=.5):
         raise JobError('stems_failed', 'The clip media is not readable', kind='stems') from error
     source = found['audio']
     if source is None:
-        raise JobError('stems_failed', 'The clip has no sound', kind='stems')
+        raise JobError('stems_failed', 'The clip has no sound', kind='stems', show=True)
     folder = '%s/%s-%s' % (FOLDER, row['id'], secrets.token_hex(4))
     out = port.output_path(folder + '/dialogue.mp4', create=True).parent
 

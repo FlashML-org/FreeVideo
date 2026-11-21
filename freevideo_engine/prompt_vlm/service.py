@@ -13,6 +13,7 @@ import time
 import uuid
 
 from . import assets, rules
+from ..disk_space import ran_out
 
 # How long a rewrite that does not fit waits for other programs to free the
 # GPU (the page names them) before it fails; the user can cancel meanwhile.
@@ -514,8 +515,11 @@ class Service:
             self.progress(dict(phase='failed', error='busy'))
         except Exception as error:
             known = {'disk_space', 'ram_space', 'unreadable_video', 'rewrite_failed', 'split_failed', 'worker_exit', 'timeout', 'worker_cleanup_failed'}
+            if str(error) not in known and not isinstance(error, rules.InvalidOutput):
+                logging.warning('[FreeVideo] Prompt model job %s failed: %s', action, type(error).__name__, exc_info=True)
             self.progress(dict(phase='failed', error='invalid_output' if isinstance(error, rules.InvalidOutput)
                                else str(error) if str(error) in known
+                               else 'disk_space' if isinstance(error, OSError) and ran_out(error)
                                else 'download_failed' if action == 'install'
                                else 'ask_failed' if action == 'ask' else 'split_failed' if action == 'split' else 'reverse_failed' if action == 'reverse'
                                else 'rewrite_failed',
@@ -895,6 +899,8 @@ def register():
                 result = service.start(name, value)
             return web.json_response(result)
         except (ValueError, OSError) as error:
+            if isinstance(error, OSError):
+                logging.warning('[FreeVideo] Prompt model request failed: %s', type(error).__name__, exc_info=True)
             codes = {'invalid_request', 'invalid_prompt', 'invalid_duration', 'too_many_images',
                      'unsupported_media', 'mixed_media', 'busy', 'model_missing', 'consent_required', 'unknown_job'}
             return web.json_response(dict(error=str(error) if str(error) in codes else 'invalid_media'), status=400)
