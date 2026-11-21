@@ -484,11 +484,18 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
     const phone = typeof matchMedia === 'function' ? matchMedia('(max-width: 680px)') : null;
     const fitNote = () => {
         if (disposed) return;
-        const line = phone?.matches && !note.hidden ? Math.ceil(note.getBoundingClientRect().height) + 8 : 0;
+        // On a wide window the line sits on the bar's row; when its sentence would be cut, or the description would be pressed
+        // under 140 px, it takes a row of its own above the bar, as it does on a phone (editor.css [data-note-row]).
+        host.removeAttribute('data-note-row');
+        if (!phone?.matches && !note.hidden) {
+            const words = note.querySelector('.fv-ed-gen-note-text');
+            if ((words && words.scrollWidth > words.clientWidth) || input.getBoundingClientRect().width < 140) host.setAttribute('data-note-row', 'true');
+        }
+        const line = (phone?.matches || host.hasAttribute('data-note-row')) && !note.hidden ? Math.ceil(note.getBoundingClientRect().height) + 8 : 0;
         host.closest('.fv-editor')?.style.setProperty('--fv-ed-note-growth', `${line}px`);
     };
     const noteResize = typeof ResizeObserver === 'function' ? new ResizeObserver(fitNote) : null;
-    noteResize?.observe(note); phone?.addEventListener?.('change', fitNote); fitNote();
+    noteResize?.observe(note); noteResize?.observe(host); noteResize?.observe(input); phone?.addEventListener?.('change', fitNote); fitNote();
     // The box shows the description of the planned parts chosen and is written to them when the choice moves
     // on, the box is left or Generate is pressed. What is typed with no part or range chosen goes to the next
     // part chosen that has no description yet.

@@ -2202,7 +2202,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if (event.target !== element) return;
         event.preventDefault();
         if (escapeTaken || topDialog() !== element) return;
-        if (dismissPopup(event) || tracks?.cancelGesture()) { tookEscape(); return; }
+        if (dismissPopup(event) || tracks?.cancelGesture() || pictureEdit.cancelDraft()) { tookEscape(); return; }
+        if (document.fullscreenElement) { tookEscape(); document.exitFullscreen().catch(() => {}); return; }
         state.select(null, {history: true});
     });
     const stopKeys = isolateDialogKeys(element, (event, inside) => {
@@ -2220,7 +2221,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if (event.key.toLowerCase() === 'escape') {
             if (escapeTaken) { event.preventDefault(); return; }
             if (dismissPopup(event)) { tookEscape(); return; }
-            if (tracks?.cancelGesture()) { event.preventDefault(); tookEscape(); return; }
+            if (tracks?.cancelGesture() || pictureEdit.cancelDraft()) { event.preventDefault(); tookEscape(); return; }
             if (document.fullscreenElement) { event.preventDefault(); tookEscape(); document.exitFullscreen().catch(() => {}); return; }
         }
         if (recording.keyboard(event)) return;

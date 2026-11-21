@@ -68,6 +68,8 @@ export function createExpandButton({t = en => en, textarea, onGenerate, canGener
     // window (Studio) routes them to what listenDialogKey registered; the editor's calls the box's onkeydown (the genbar's calls undoKeys).
     // Each reaches the same function, and a key it has handled is not handled again.
     const stopStepKeys = listenDialogKey(textarea, 'keydown', stepKeys);
+    // Where the writer left off (text, scroll and caret) for the next visit to the same text.
+    let reading = {text: null, top: 0, from: 0, to: 0};
     const writable = () => !textarea.disabled && !textarea.readOnly;
     const allowed = () => writable() && !pending && !!canGenerate();
     const counted = () => {
@@ -87,8 +89,11 @@ export function createExpandButton({t = en => en, textarea, onGenerate, canGener
     }
     // Every edit in the panel reaches the small box at once (there is nothing to save).
     function commit() {
-        if (!dialog || !textarea.isConnected || !writable() || large.value === textarea.value) return;
+        if (!dialog || !textarea.isConnected || !writable()) return;
+        // The caret and selection of the large box are the small box's too.
+        if (large.value === textarea.value) { textarea.setSelectionRange?.(large.selectionStart, large.selectionEnd); return; }
         textarea.value = large.value; seen = textarea.value;
+        textarea.setSelectionRange?.(large.selectionStart, large.selectionEnd);
         textarea.dispatchEvent(new Event('input', {bubbles: true}));
     }
     // Ctrl/⌘+Enter still generates (said in the hover help only); the panel closes once the run is asked for.
@@ -102,7 +107,7 @@ export function createExpandButton({t = en => en, textarea, onGenerate, canGener
             pending = false;
             if (notice) {
                 notice.textContent = typeof reason === 'string' ? reason : '';
-                if (!notice.textContent) close();
+                if (!notice.textContent) close(); else if (!large.value.trim()) large.focus();
             }
             sync();
         }
@@ -112,6 +117,7 @@ export function createExpandButton({t = en => en, textarea, onGenerate, canGener
         commit();
         if (startText !== null && textarea.value !== startText) { undone.push({before: startText, after: textarea.value}); redone.length = 0; }
         startText = null;
+        reading = {text: large.value, top: large.scrollTop, from: textarea.selectionStart, to: textarea.selectionEnd};
         const current = dialog; dialog = large = notice = count = null;
         cleanups.splice(0).forEach(stop => stop());
         current.oncancel = current.onclose = null;
@@ -182,9 +188,16 @@ export function createExpandButton({t = en => en, textarea, onGenerate, canGener
         const stop = event => event.stopPropagation();
         for (const type of ['pointerdown', 'pointerup', 'pointermove', 'mousedown', 'mouseup', 'mousemove', 'click', 'dblclick', 'wheel', 'contextmenu']) dialog.addEventListener(type, stop);
         parent.append(dialog); counted(); sync(); dialog.showModal();
-        // The caret goes to the end of the text, which is scrolled into view.
-        const end = large.value.length;
-        large.focus(); large.setSelectionRange?.(end, end); large.scrollTop = large.scrollHeight;
+        // The caret and selection are the small box's (a box never given one has them at the end); the caret's line is centred, not
+        // pressed to an edge, unless the same text is being returned to, which opens where it was left.
+        const from = textarea.selectionStart ?? large.value.length, to = textarea.selectionEnd ?? large.value.length;
+        if (reading.text === large.value && reading.from === from && reading.to === to) { large.focus(); large.setSelectionRange?.(from, to); large.scrollTop = reading.top; }
+        else {
+            const full = large.value; large.value = full.slice(0, to);
+            large.scrollTop = 0; const above = large.scrollHeight, view = large.clientHeight; large.value = full;
+            const top = above <= view ? 0 : above - view / 2;
+            large.focus(); large.setSelectionRange?.(from, to); large.scrollTop = top;
+        }
     }
     element.onclick = open;
     textarea.addEventListener('input', sync); textarea.addEventListener('change', sync);

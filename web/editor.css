@@ -1,5 +1,5 @@
 /* Share the studio shell and header geometry; only the editor rows differ. */
-.fv-studio.fv-editor{--fv-ed-project-h:44px;--fv-ed-generation-row:calc(60px + var(--fv-ed-description-growth,0px));--fv-ed-timeline-h:clamp(220px,calc(100dvh - 640px),320px);overflow:hidden auto;display:grid;grid-template-columns:264px minmax(0,1fr);grid-template-rows:auto var(--fv-ed-project-h) minmax(96px,1fr) 40px var(--fv-ed-generation-row) 40px var(--fv-ed-timeline-h);animation:none;scrollbar-width:thin;scrollbar-color:var(--fv-border) transparent}
+.fv-studio.fv-editor{--fv-ed-project-h:44px;--fv-ed-generation-row:calc(60px + var(--fv-ed-description-growth,0px) + var(--fv-ed-note-growth,0px));--fv-ed-timeline-h:clamp(220px,calc(100dvh - 640px),320px);overflow:hidden auto;display:grid;grid-template-columns:264px minmax(0,1fr);grid-template-rows:auto var(--fv-ed-project-h) minmax(96px,1fr) 40px var(--fv-ed-generation-row) 40px var(--fv-ed-timeline-h);animation:none;scrollbar-width:thin;scrollbar-color:var(--fv-border) transparent}
 @media(min-width:1280px){.fv-studio.fv-editor{grid-template-columns:264px minmax(0,1fr) 264px}}
 .fv-editor *{box-sizing:border-box}
 .fv-editor [hidden]{display:none!important}
@@ -476,6 +476,12 @@
 .fv-ed-genbar>.fv-ed-gen-note[data-hx-issue]{white-space:nowrap;overflow:hidden;display:flex;align-items:center;gap:8px}
 .fv-ed-genbar>.fv-ed-gen-note .fv-issue-button{flex:none;margin-left:0}
 @media(max-width:680px){.fv-ed-genbar>.fv-ed-gen-note{order:-1;flex:1 1 100%;max-width:none}}
+.fv-ed-genbar[data-note-row]{flex-wrap:wrap;align-content:flex-start;row-gap:8px}
+.fv-ed-genbar[data-note-row]>.fv-ed-gen-note{order:-1;flex:1 1 100%;max-width:none}
+/* On a row of its own the sentence wraps rather than being cut. */
+.fv-ed-genbar[data-note-row]>.fv-ed-gen-note[data-hx-issue],.fv-ed-genbar[data-note-row]>.fv-ed-gen-note{white-space:normal;overflow:visible;text-overflow:clip;height:auto}
+.fv-ed-genbar[data-note-row]>.fv-ed-gen-note .fv-ed-gen-note-text{white-space:normal;overflow:visible;text-overflow:clip}
+@media(max-width:680px){.fv-ed-genbar>.fv-ed-gen-note[data-hx-issue],.fv-ed-genbar>.fv-ed-gen-note{white-space:normal;overflow:visible;text-overflow:clip;height:auto}.fv-ed-genbar>.fv-ed-gen-note .fv-ed-gen-note-text{white-space:normal;overflow:visible;text-overflow:clip}}
 /* Under the press: what downloads first (its hover names it and its size). */
 .fv-ed-generate-time.fv-ed-generate-download::before{content:"↓ "}
 .fv-ed-generate-time{opacity:1}
