@@ -1879,6 +1879,21 @@ def repository_missing_message(target):
             'installation.' % Path(target).name)
 
 
+def windows_store_retry(error):
+    """Whether a failed Git fetch is worth one more try with the Windows certificate store.
+
+    A Git built with OpenSSL trusts only the certificates in its own bundle. A program that
+    inspects HTTPS traffic (security software, a company or school proxy) signs it with a root
+    that only the Windows store holds, so the browser works and Git reports an unknown issuer.
+    Git's other backend (Schannel) reads the Windows store; the check itself stays on.
+    """
+    text = str(error).lower()
+    # Git's own wording is "SSL certificate OpenSSL verify result" in newer builds and "SSL certificate
+    # problem" in older ones; a Schannel Git already reads the store and names itself in its errors.
+    return (is_windows() and failure_reason(error)[0] == 'tls' and 'certificate' in text
+            and not any(word in text for word in ('schannel', 'sec_e_', 'crypt_e_')))
+
+
 def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None):
     """Fetch only the pinned commit, atomically; never reset existing checkouts.
 
@@ -1989,8 +2004,23 @@ def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None)
             original = env
             env = dict(env, GIT_CONFIG_PARAMETERS=' '.join(filter(None, (
                 env.get('GIT_CONFIG_PARAMETERS', '').strip(), git_parameter('remote.origin.url=' + endpoint)))))
+            fetch = ['git', '-C', work, '-c', 'fetch.fsckObjects=true', 'fetch', '--depth=1', '--no-tags', 'origin', commit]
             try:
-                execute(target.name + '-fetch-' + name, ['git', '-C', work, '-c', 'fetch.fsckObjects=true', 'fetch', '--depth=1', '--no-tags', 'origin', commit])
+                try:
+                    execute(target.name + '-fetch-' + name, fetch)
+                except RuntimeError as first:
+                    if not windows_store_retry(first):
+                        raise
+                    event(network, category='git', source=name, route=route, file=target.name, action='certificate-store-retry',
+                          reason='windows-certificate-store')
+                    try:
+                        execute(target.name + '-fetch-windows-store-' + name,
+                                fetch[:3] + ['-c', 'http.sslBackend=schannel'] + fetch[3:])
+                    except RuntimeError as second:
+                        # A Git without that backend says so in words that say nothing about the
+                        # download; the first error stays the one reported then.
+                        unsupported = 'unsupported ssl backend' in str(second).lower()
+                        raise second if failure_reason(second)[0] == 'tls' and not unsupported else first from None
             finally:
                 env = original
             execute(target.name + '-checkout', ['git', '-C', work, 'checkout', '--detach', commit])
