@@ -24,7 +24,6 @@ import { createPreviewScene } from './preview_scene.js?v=20261115-still';
 import { animateDetails, closeDialog } from './motion.js';
 import { openLibrary, setDefaultUpscale, setDefaultUpscaleWork, videoThumbnailURL } from './library.js';
 import { createRecentVideos } from './studio_recent.js';
-import { createAgentActivity } from './agent_activity.js';
 import { createStudioQueue, randomSeed, turnNodeOn } from './studio_queue.js';
 import { isNetworkTypeError, connectionLostText, wrappedFetchOnly } from './browser_extension.js';
 import { newEngineExit, engineExitText, watchEngineExit } from './engine_exit.js';
@@ -755,7 +754,6 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const header = el('header', null, 'fv-header'), brand = el('div', null, 'fv-brand');
     brand.append(wordmark());
     const tools = el('div', null, 'fv-header-actions');
-    const agents = createAgentActivity(t, api, dialog); tools.append(agents.element); cleanup.push(agents.dispose);
     const phoneAccess = createLanAccess(t, api); tools.append(phoneAccess.element); cleanup.push(phoneAccess.dispose);
     const versionInfo = createVersionInfo(cn); tools.append(versionInfo.element); cleanup.push(versionInfo.dispose);
     tools.append(guideButton(t), feedbackButton(t), button(t('Settings', '设置'), openSetup, 'fv-quiet'));

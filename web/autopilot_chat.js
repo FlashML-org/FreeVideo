@@ -647,6 +647,13 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         const target = focus && item.querySelector(focus);
         (target || item).focus?.({preventScroll: true});
     }
+    // A note of a failed task in the top bar's status panel opens that task's card (its cause, next step and report).
+    const openTaskCard = event => {
+        const id = event.detail?.id; if (!id) return;
+        const look = left => { if (findCard(id)) showCard(id, '.fv-chat-retry:not([hidden]), .fv-report-button, button'); else if (left > 0 && !stopped) setTimeout(() => look(left - 1), 150); else if (!stopped) say(t('That task is no longer in this conversation.', '这条任务已经不在当前对话里了。')); };
+        look(20);
+    };
+    window.addEventListener('freevideo-agent-task-open', openTaskCard);
     side_ = createSideRail(t, {
         pick: id => showCard(id),
         stop: id => void cancelJobs([id]),
@@ -2095,6 +2102,6 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         },
         stop() { closeMenu(); stopped = true; for (const [session, timer] of undoing) { clearTimeout(timer); finishDelete(session); } tab(); dismissImage?.(); closed.abort(); clearInterval(moving); clearTimeout(timer); timer = null;
             document.removeEventListener('visibilitychange', visible); document.removeEventListener('pointerdown', outside, true);
-            stopMenuKeys(); stopSlash?.(); history.dispose(); window.removeEventListener('resize', resize); list.removeEventListener('scroll', listScroll);
+            stopMenuKeys(); stopSlash?.(); history.dispose(); window.removeEventListener('resize', resize); window.removeEventListener('freevideo-agent-task-open', openTaskCard); list.removeEventListener('scroll', listScroll);
             log.querySelectorAll('video').forEach(video => video.pause()); }};
 }

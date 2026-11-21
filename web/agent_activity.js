@@ -38,6 +38,10 @@ const REASONS = {
 
 // The engine's own sentence when it wrote one; otherwise the same advice the studio gives for that error,
 // and for an error nobody has a sentence for yet, its first line, so the row never says only "Did not finish".
+export function failureReason(job, t) {
+    const error = job?.error || {}, reason = REASONS[error.code];
+    return (reason ? t(...reason) : failureLine(error, t)).replace(/\s+/g, ' ').trim();
+}
 function failureLine(error, t) {
     // The engine's reason, then its next step when it has one.
     const next = (said, step, zh) => said && step ? said.replace(/[。.]$/, '') + (zh ? '。' : '. ') + step : said;
@@ -97,7 +101,7 @@ function status(job, t) {
     if (job.status === 'waiting') return job.waiting_for ? t('Waiting for earlier tasks', '等待前面的任务') : t('Waiting for the GPU', '等待显卡');
     return {succeeded: t('Done', '已完成'), failed: t('Failed', '失败'), cancelled: t('Cancelled', '已取消')}[job.status] || job.status;
 }
-function title(job, t) {
+export function title(job, t) {
     const name = NAMES[job.kind] || NAMES.generate;
     return job.label || (t(name[0], name[1]) + (job.take ? ' · ' + t(`Take ${job.take}`, `第 ${job.take} 条`) : ''));
 }

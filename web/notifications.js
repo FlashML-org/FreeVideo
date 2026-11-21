@@ -91,6 +91,14 @@ export function noteFromJob(row, previous, now = Date.now()) {
         reason: reasonOf(row.failure), at: row.finished_at || now};
 }
 // The image models' install, between two reads of the image worker's info: a note when one finishes or fails.
+// A failed assistant task: one note with the task's name and its cause; it opens the failure card in the conversation.
+export function noteFromAgent(job, {title: name = '', reason = ''} = {}, now = Date.now()) {
+    if (!job?.id || job.status !== 'failed') return null;
+    const finished = Date.parse(job.finished_at || '') || 0;
+    if (!finished || now - finished > LATE_MS) return null;
+    return {id: `agent:${job.id}:failed`, type: 'agent', job: job.id, status: 'failed', view: 'autopilot', title: String(name).slice(0, 140), reason: String(reason).slice(0, 160), at: finished};
+}
+export function addAgentNote(note) { if (note && !store().has(note.id)) store().add(note); }
 export function installChanges(before = {}, after = {}) {
     const notes = [];
     for (const [id, now] of Object.entries(after)) {
@@ -130,6 +138,7 @@ const ago = (at, cn = CN) => {
 export function noteWords(note, cn = CN) {
     const w = pair => words(pair, cn);
     if (note.type === 'toast') return {title: note.title || w(['Notice', '提醒']), sub: note.reason || w(['Did not finish', '没有完成'])};
+    if (note.type === 'agent') return {title: note.title || w(['Assistant task', '助手任务']), sub: note.reason || w(['See why', '查看原因'])};
     if (note.type === 'install') {
         return note.status === 'done' ? {title: w([`${note.label} is installed`, `${note.label} 已安装`]), sub: w(['Ready to use', '可以使用了'])}
             : {title: w([`${note.label} did not install`, `${note.label} 安装失败`]), sub: note.reason || w(['Open Images to try again', '打开图像视图重试'])};
@@ -194,6 +203,11 @@ async function openNote(note) {
     // A notice of a page message has nowhere to go; reading it was the point.
     if (note.type === 'toast') return;
     if (note.type === 'install') { await globalThis.FreeVideoShell?.go?.('image').catch(() => {}); return; }
+    if (note.type === 'agent') {
+        try { if (globalThis.FreeVideoShell?.view?.() !== 'autopilot') await globalThis.FreeVideoShell?.go?.('autopilot'); } catch { /* The view did not open: stay. */ }
+        dispatchEvent(new CustomEvent('freevideo-agent-task-open', {detail: {id: note.job}}));
+        return;
+    }
     const row = jobs.get(note.job);
     if (note.status === 'done' && await openWork({kind: note.kind, view: note.view, file: note.file || row?.result?.file, work: note.work || row?.result?.id || row?.result?.work, video: note.video || row?.result?.video})) return;
     await visitJob({id: note.job, view: note.view || row?.view, kind: note.kind});

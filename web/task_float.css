@@ -133,6 +133,7 @@
 /* the stop question anchored to a view's own Stop button: the same second layer */
 .sgf.sgf-confirm { z-index: calc(var(--fv-z-float, 2000) + 1); }
 .sgf.sgf-confirm .sgf-sheet { position: static; width: 300px; }
+.sgf.sgf-confirm p { text-wrap: balance; }
 
 /* the corner it will land in while dragging */
 .sgf-slot { z-index: calc(var(--fv-z-float, 2000) - 1); box-sizing: border-box; border-radius: var(--fv-r-lg); pointer-events: none;
