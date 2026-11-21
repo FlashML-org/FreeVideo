@@ -88,7 +88,8 @@ class VideoWarmer:
             self.last = (self.prepare(root, machine, halt) if level == 'full'
                          else self.read_ahead(root, machine, encoder=True))
         except Exception as error:
-            logging.warning('[FreeVideo] Video warm-up failed: %s', type(error).__name__)
+            from .failure_details import raised_at
+            logging.warning('[FreeVideo] Video warm-up failed: %s at %s', type(error).__name__, raised_at(error))
             self.last = dict(state='failed', reason=type(error).__name__)
 
     def read_ahead(self, root, machine, *, encoder):

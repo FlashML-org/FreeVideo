@@ -1203,6 +1203,20 @@ _NETWORK_MODULES = ('socket', 'ssl', 'http.', 'urllib.', 'requests.', 'urllib3.'
 _OWN_TYPES = {'ValueError', 'RuntimeError', 'TimeoutError'}
 
 
+def raised_at(error):
+    """Where an exception was raised, for a log line that leaves out its message (which can carry paths or prompt
+    text): the innermost frame as file name, line and function, and FreeVideo's own innermost frame when that differs."""
+    import traceback
+    frames = traceback.extract_tb(getattr(error, '__traceback__', None))
+    if not frames:
+        return 'an unknown place'
+
+    def place(frame):
+        return '%s:%s in %s' % (Path(frame.filename).name, frame.lineno, frame.name)
+    own = next((frame for frame in reversed(frames) if 'freevideo_engine' in Path(frame.filename).parts), None)
+    return place(frames[-1]) if own in (None, frames[-1]) else '%s (from %s)' % (place(frames[-1]), place(own))
+
+
 def _raised_by_freevideo(exception):
     """The launcher's record says FreeVideo's own code raised this, in its own words: the first exception is one of
     the types it raises itself, carries no OS error number, and its innermost frame (when known) is FreeVideo's."""

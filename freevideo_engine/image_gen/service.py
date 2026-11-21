@@ -2390,7 +2390,9 @@ class Service:
                                         if self._busy and placed.get('state') != 'ready':
                                             placed = dict(placed, state='stopped', reason='A picture was asked for')
                                 except Exception as error:  # noqa: BLE001
-                                    logging.warning('[FreeVideo] Encoder placement for the warm-up failed: %s', type(error).__name__)
+                                    from ..failure_details import raised_at
+                                    logging.warning('[FreeVideo] Encoder placement for the warm-up failed: %s at %s',
+                                                    type(error).__name__, raised_at(error))
                                     placed = dict(state='failed', reason='Encoder placement failed')
                                 with self.mutex:
                                     self.warm_placement = {k: placed.get(k) for k in ('state', 'reason', 'elapsed_seconds')}
