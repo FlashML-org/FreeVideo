@@ -8,6 +8,7 @@
 import { setTip } from './tip_words.js';
 import { cutTip } from './cut_tip.js';
 import { api } from "../../scripts/api.js";
+import './fv_select.js';
 import { compatibilityCard } from './compatibility.js';
 import { listenDialogKey } from './dialog_keys.js';
 import { animateDetails } from './motion.js';

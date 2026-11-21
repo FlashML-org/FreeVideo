@@ -1,4 +1,5 @@
 import { api } from '../../scripts/api.js';
+import './fv_select.js';
 import './glass/library.js';
 import {userMessage} from './user_message.js';
 

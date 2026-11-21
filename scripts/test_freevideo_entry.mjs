@@ -37,6 +37,7 @@ class Element {
     removeAttribute(name) { delete this.attributes[name]; }
     addEventListener() {}
     removeEventListener() {}
+    focus() {}
     querySelector() { return null; }
     querySelectorAll() { return []; }
     getClientRects() { return this.unrendered ? [] : [{}]; }

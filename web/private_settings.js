@@ -5,6 +5,7 @@
 // page. An engine older than this page has none of these calls: the whole group then stays hidden and nothing is asked.
 import { cutTip } from './cut_tip.js';
 import { el, icon, tip, button, row, card, groupHead, fold, segmented } from './settings_kit.js';
+import './fv_select.js';
 import { privacyOffered } from './private_offers.js';
 
 const amount = bytes => bytes >= 1e9 ? (bytes / 1e9).toFixed(1) + ' GB' : (bytes / 1e6).toFixed(1) + ' MB';
