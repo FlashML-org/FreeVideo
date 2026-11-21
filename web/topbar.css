@@ -12,6 +12,8 @@ html body .fv-topbar.fv-topbar.fv-topbar{
   margin:0;padding:env(safe-area-inset-top,0px) var(--fv-tb-pad) 0!important;flex:none;overflow:visible;
   border:0!important;background:transparent!important;box-shadow:none!important;
   font:400 var(--fv-fs-2)/1.5 var(--fv-font);color:var(--fv-fg);-webkit-user-select:none;user-select:none}
+/* The editor scrolls under its bar: keep it pinned and opaque. */
+html body .fv-editor .fv-header.fv-topbar.fv-topbar.fv-topbar{position:sticky;top:0;z-index:9;background:var(--fv-bg)!important}
 html body .fv-topbar.fv-topbar.fv-topbar:is([data-fv-fit="1"],[data-fv-fit="2"]){column-gap:var(--fv-sp-8)}
 html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"]{--fv-tb-pad:calc(var(--fv-sp-12) + max(env(safe-area-inset-left,0px),env(safe-area-inset-right,0px)));column-gap:var(--fv-sp-8)}
 /* The node view: the toolbar is a full-width strip across the top of the window (moved here from shell.css), and the
