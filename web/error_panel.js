@@ -588,7 +588,8 @@ export function failureAdvice(value, t, known = knownError(value)) {
             ['Restart FreeVideo and generate again.', '请重启 FreeVideo 后重新生成。']);
     // The generation process ended without a Python error: it crashed or was ended from outside. The code
     // names which (freevideo_engine/failure_details.py generation_failure prints "(exit N)"); the number stays in the details.
-    const exit = /FreeVideo generation failed \(exit (-?\d+)\)/.exec(text);
+    // A "Cause:" line means the process did report an error (a named one that no row above knows): it is not an unexplained exit.
+    const exit = /^Cause: /m.test(text) ? null : /FreeVideo generation failed \(exit (-?\d+)\)/.exec(text);
     if (exit) {
         const code = Number(exit[1]);
         const killed = code === 137 || code === -9 || code === 3221225786;
