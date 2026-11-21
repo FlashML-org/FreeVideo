@@ -552,9 +552,9 @@ UNSUPPORTED_VENDOR = (
 
 # The system lists an NVIDIA card but no driver answers.
 DRIVER_FOR_LISTED_CARD = (
-    ('No NVIDIA driver was found',
+    ('No driver is installed for the NVIDIA graphics card',
      'Install the NVIDIA driver, version 580 or newer, restart the computer, then click "Retry installation".'),
-    ('未找到 NVIDIA 显卡驱动',
+    ('NVIDIA 显卡未安装驱动',
      '请安装 580 或更新版本的 NVIDIA 显卡驱动，重启电脑后点击“重试安装”。'))
 
 
