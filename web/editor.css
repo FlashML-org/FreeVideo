@@ -604,6 +604,30 @@
 .fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-chips{gap:6px}
 @media(max-width:1439px){.fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-chips{gap:4px}}
 .fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-chips>.fvs-chip-spacer{min-width:0}
+/* Where the chips would wrap beside the Generate block (a narrow window; English words are longer), the key stands
+   beside the description instead and the chips take the full width on one line. The description's tools move from
+   the key's column to the strip under the text, next to the key, and the text shows two lines while it is not being
+   typed in, so the console is no taller than before. */
+@media(max-width:1365px){
+  .fv-editor:lang(zh) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console .fvs-chips{grid-column:1/-1}
+  .fv-editor:lang(zh) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console>.fv-runbar{grid-row:1/span 2}
+  .fv-editor:lang(zh) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console-prompt{display:flex;flex-direction:column}
+  .fv-editor:lang(zh) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console-prompt>.fv-section{flex:1 1 auto;display:flex;flex-direction:column}
+  .fv-editor:lang(zh) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console-prompt>.fv-section>.fv-enhance{flex:1 1 auto}
+  .fv-editor:lang(zh) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console-prompt .fv-enhance>.fv-prompt-editor{flex:1 1 auto;padding-bottom:32px;box-sizing:border-box}
+  .fv-editor:lang(zh) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console .fv-prompt-tools{top:auto;bottom:0;right:0}
+  .fv-editor:lang(zh) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console .fv-prompt-editor textarea:not(:focus){max-height:48px}
+}
+@media(max-width:1439px){
+  .fv-editor:lang(en) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console .fvs-chips{grid-column:1/-1}
+  .fv-editor:lang(en) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console>.fv-runbar{grid-row:1/span 2}
+  .fv-editor:lang(en) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console-prompt{display:flex;flex-direction:column}
+  .fv-editor:lang(en) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console-prompt>.fv-section{flex:1 1 auto;display:flex;flex-direction:column}
+  .fv-editor:lang(en) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console-prompt>.fv-section>.fv-enhance{flex:1 1 auto}
+  .fv-editor:lang(en) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console-prompt .fv-enhance>.fv-prompt-editor{flex:1 1 auto;padding-bottom:32px;box-sizing:border-box}
+  .fv-editor:lang(en) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console .fv-prompt-tools{top:auto;bottom:0;right:0}
+  .fv-editor:lang(en) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console .fv-prompt-editor textarea:not(:focus){max-height:48px}
+}
 .fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-step-value{min-width:40px}
 .fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-chip:not(.fv-reference-trigger,[data-chip=advanced],.fvs-stepper){padding:0 10px}
 @media(max-height:820px){.fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console .fv-prompt-editor textarea{max-height:48px}}
