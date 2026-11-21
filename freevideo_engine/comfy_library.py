@@ -1019,7 +1019,10 @@ def _forget_works(root, facts):
 
 
 def _forget_results(identities, root):
-    """A result-cache row naming a deleted creation can no longer be reused."""
+    """A result-cache row naming a deleted creation can no longer be reused, and the record of finished jobs in the
+    output folder keeps no line naming it."""
+    from . import jobs_journal
+    jobs_journal.forget(identities, root=root.parent)
     for index in (root / '.result-cache').glob('*.json'):
         try:
             if index.stat().st_size <= 1024 * 1024 and json.loads(index.read_text(encoding='utf-8')).get('id') in identities:
