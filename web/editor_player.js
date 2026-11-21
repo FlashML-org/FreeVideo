@@ -9,6 +9,7 @@ import {createAudioPreview, isOriginalSound} from './editor_audio.js';
 import {previewSpeed, speedAudioFrame, separateSpeedAudio} from './editor_speed.js';
 import {sourceFrame, percent} from './editor_speed_model.js';
 import {applyTip} from './editor_tracks_tips.js';
+import {createPlayBar} from './fv_player.js';
 import {setAttr, setData, setDisabled, setHidden, setText} from './dom_quiet.js';
 const el = (tag, cls) => { const e = document.createElement(tag); if (cls) e.className = cls; return e; };
 export function audioSeconds(clip, sourceFrame) {
@@ -428,7 +429,8 @@ export function createEditorPlayer(host, transport, {state, sources, api, t, err
         raf = requestAnimationFrame(tick);
     }
     const pictureLayout = record => JSON.stringify([record.width, record.height, record.tracks, record.replacements]);
-    function clearPreview() { if (preview) { preview.onended = null; preview.pause(); preview.removeAttribute('src'); preview.load(); preview.remove(); preview = null; } previewSize = previewProject = null; setHidden(closePreview, true); }
+    let previewBar = null;
+    function clearPreview() { if (preview) { previewBar?.destroy(); previewBar = null; preview.onended = null; preview.pause(); preview.removeAttribute('src'); preview.load(); preview.remove(); preview = null; } previewSize = previewProject = null; setHidden(closePreview, true); }
     closePreview.onclick = () => { clearPreview(); render(); };
     function play() {
         if (disposed || playing || playButton.disabled) return;
@@ -518,13 +520,13 @@ export function createEditorPlayer(host, transport, {state, sources, api, t, err
             if (disposed) return;
             const previousSize = previewSize || {width: state.record.width, height: state.record.height};
             pause(); clearPreview(); const metadata = sources.get(sourceKey(source)); if (!metadata?.video && !metadata?.audio) { render(); return; }
-            preview = el(metadata.video ? 'video' : 'audio', 'fv-ed-source-preview'); preview.controls = true; preview.playsInline = true;
+            preview = el(metadata.video ? 'video' : 'audio', 'fv-ed-source-preview'); preview.playsInline = true;
             if (metadata.video && Number.isFinite(metadata.width) && Number.isFinite(metadata.height) && metadata.width >= 2 && metadata.height >= 2)
                 previewSize = {width: metadata.width, height: metadata.height};
             else if (!metadata.video) previewSize = previousSize;
             previewProject = pictureLayout(state.record);
             preview.onended = () => { clearPreview(); render(); };
-            preview.src = mediaURL(api, metadata.video || metadata.audio); frame.append(preview); closePreview.hidden = false; render(); preview.play().catch(() => {});
+            preview.src = mediaURL(api, metadata.video || metadata.audio); frame.append(preview); previewBar = createPlayBar(preview, t); previewBar.bar.classList.add('fv-player-over'); frame.append(previewBar.bar); closePreview.hidden = false; render(); preview.play().catch(() => {});
         },
         dispose() { disposed = true; playing = false; centring?.disconnect(); opening?.disconnect(); if (typeof window !== 'undefined') window.removeEventListener?.('resize', centre); chainRequest?.abort(); removeChains(); cancelAnimationFrame(raf); unsubscribe(); stopPictureEdit(); clearPreview(); audioPreview.dispose();
             allMedia().forEach(media => { media.pause(); media.onloadedmetadata = media.onerror = null; media.removeAttribute('src'); delete media.dataset.source; media.load(); media.remove(); }); playButton.onclick = closePreview.onclick = null; picturePreview.dispose(); pictureGuide.dispose(); audioContext?.close().catch(() => {}); },

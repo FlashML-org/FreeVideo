@@ -90,7 +90,7 @@
 .fv-ed-picture>img.fv-ed-poster[data-gone=true]{opacity:0}
 .fv-ed-picture>img.fv-ed-poster[hidden]{display:none}
 @media(prefers-reduced-motion:reduce){.fv-ed-picture>img.fv-ed-poster{transition:none}}
-.fv-ed-picture>audio.fv-ed-source-preview{display:block;position:absolute;bottom:0;left:0;width:100%}
+.fv-ed-picture>audio.fv-ed-source-preview{display:none}
 .fv-ed-transport{grid-column:2;grid-row:4;display:flex;align-items:center;justify-content:center;gap:12px}
 .fv-editor .fv-ed-play{width:36px;height:36px;border-radius:var(--fv-r-pill);padding:0;background:transparent}
 .fv-ed-time{font-size:13px;font-variant-numeric:tabular-nums;font-family:ui-monospace,monospace;min-width:100px}

@@ -1,0 +1,21 @@
+/* Play bar for a video or audio element (fv_player.js). */
+.fv-player-bar{container-type:inline-size;display:flex;align-items:center;gap:4px;width:100%;box-sizing:border-box;min-height:44px;padding:0 6px;color:var(--fv-ink,#e8e8e8);background:var(--fv-card,#1b1b1f);border-radius:var(--fv-r-md,8px);font:12px var(--fv-font,system-ui)}
+.fv-player-key{display:grid;place-items:center;flex:none;width:44px;height:44px;min-height:44px;padding:0;border:0;border-radius:var(--fv-r-md,8px);background:transparent;color:inherit;cursor:pointer}
+.fv-player-key:hover{background:var(--fv-ctl-bg,#ffffff14)}
+.fv-player-key svg{width:20px;height:20px;fill:currentColor;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.fv-player-track{position:relative;display:flex;align-items:center;flex:1;min-width:0;height:44px;cursor:pointer;touch-action:none;border-radius:var(--fv-r-md,8px)}
+.fv-player-rail{position:relative;display:block;width:100%;height:4px;border-radius:2px;background:var(--fv-border,#ffffff2a)}
+.fv-player-done{position:absolute;left:0;top:0;bottom:0;border-radius:2px;background:var(--fv-accent-ink,#66b6ff)}
+.fv-player-track::after{content:"";position:absolute;left:var(--fv-player-at,0%);top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:var(--fv-accent-ink,#66b6ff)}
+.fv-player-track[aria-disabled=true]{opacity:.5;cursor:default}
+.fv-player-sound{margin-left:-4px}
+.fv-player-time{flex:none;min-width:8.5ch;padding:0 8px;text-align:right;color:var(--fv-muted,#9a9aa3);font-variant-numeric:tabular-nums;white-space:nowrap}
+video.fv-player-video{cursor:pointer}
+@media(max-width:480px){.fv-player-time{min-width:0;padding:0 4px;font-size:11px}}
+.fv-player-over{position:absolute;left:0;right:0;bottom:0;width:auto;z-index:3;border-radius:0 0 var(--fv-r-sm,6px) var(--fv-r-sm,6px);background:linear-gradient(transparent,#000b);color:#fff}
+.fv-player-over[hidden]{display:none}
+.fv-player-over .fv-player-time{color:#ffffffcc}
+.fv-player-over .fv-player-rail{background:#ffffff40}
+audio:has(+ .fv-player-bar){display:none}
+/* Too narrow for a progress bar that can be seen or dragged (a short clip's card): leave the keys and the time, not a lone dot. */
+@container (max-width:210px){.fv-player-track{display:none}.fv-player-time{margin-left:auto}}

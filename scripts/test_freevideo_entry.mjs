@@ -35,6 +35,8 @@ class Element {
     replaceChildren(...children) { this.children = [...children]; }
     setAttribute(name, value) { this.attributes[name] = value; }
     removeAttribute(name) { delete this.attributes[name]; }
+    addEventListener() {}
+    removeEventListener() {}
     querySelector() { return null; }
     querySelectorAll() { return []; }
     getClientRects() { return this.unrendered ? [] : [{}]; }
@@ -128,6 +130,7 @@ test('main browser entry registers both views and preserves node hooks', async t
         source = source.replace("from './issue_button.js'", `from '${new URL('../web/issue_button.js', import.meta.url).href}'`);
         source = source.replace("from './user_message.js'", `from '${new URL('../web/user_message.js', import.meta.url).href}'`);
         source = source.replace("from './prompt_sections.js'", `from '${new URL('../web/prompt_sections.js', import.meta.url).href}'`);
+        source = source.replace("from './fv_player.js'", `from '${new URL('../web/fv_player.js', import.meta.url).href}'`);
         source = source.replace("from './fv_select.js'", `from '${new URL('../web/fv_select.js', import.meta.url).href}'`);
         source = source.replace("from './tip_words.js'", `from '${new URL('../web/tip_words.js', import.meta.url).href}'`);
         source = source.replace("from './cut_tip.js'", `from '${new URL('../web/cut_tip.js', import.meta.url).href}'`);
