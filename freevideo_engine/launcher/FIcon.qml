@@ -12,6 +12,7 @@ Canvas {
         var c = getContext("2d"); c.reset(); c.scale(width/24, height/24)
         c.strokeStyle = ink; c.lineWidth = 1.6; c.lineCap = "round"; c.lineJoin = "round"; c.beginPath()
         if (kind === "folder") { c.moveTo(3,7); c.lineTo(3,19); c.lineTo(21,19); c.lineTo(21,7); c.lineTo(12,7); c.lineTo(10,4); c.lineTo(3,4); c.closePath() }
+        else if (kind === "chevron-down") { c.moveTo(5,9); c.lineTo(12,16); c.lineTo(19,9) }
         else if (kind === "play") { c.moveTo(8,4); c.lineTo(20,12); c.lineTo(8,20); c.closePath() }
         else if (kind === "terminal") { c.rect(2,4,20,16); c.moveTo(6,9); c.lineTo(9,12); c.lineTo(6,15); c.moveTo(12,15); c.lineTo(17,15) }
         else if (kind === "download") { c.moveTo(12,3); c.lineTo(12,15); c.moveTo(7,10); c.lineTo(12,15); c.lineTo(17,10); c.moveTo(4,16); c.lineTo(4,21); c.lineTo(20,21); c.lineTo(20,16) }

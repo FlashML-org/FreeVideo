@@ -14,6 +14,9 @@ ApplicationWindow {
     property var downloadExpanded: ({})
     Connections { target: backend; function onChanged() { win.s = backend.state } }
     property bool settingsOpen: false
+    // Any dialog open: a hover tip of the page behind it is closed (the pointer stays on its control under the shade).
+    readonly property bool dialogShown: adalnDialog.visible || settings.visible || modelDialog.visible || archivesDialog.visible || updateDialog.visible
+        || releaseNotesPopup.visible || diskDialogOpen || licensesOpen || cleanupConfirm || releaseConfirm || closePending || closeChoice !== "" || !!s.notice
     property bool terminalOpen: false
     property bool lanPasswordEditing: false
     function firstLanLink() { return s.access_links && s.access_links.length ? s.access_links[0] : "" }
@@ -454,10 +457,11 @@ ApplicationWindow {
             }
         }
         ScrollView {
+            ScrollBar.vertical: FScrollBar {}
+            ScrollBar.horizontal: FScrollBar { policy: ScrollBar.AlwaysOff }
             id: scroll; objectName: "pageScroll"
             anchors.top: header.bottom; anchors.bottom: footer.top; width: parent.width
             clip: true; contentWidth: availableWidth
-            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
             ColumnLayout {
                 id: page
                 width: Math.min(scroll.availableWidth - (win.narrow ? 24 : win.compact ? 36 : 64), 820)
@@ -538,6 +542,8 @@ ApplicationWindow {
                             }
                         }
                         ScrollView {
+                            ScrollBar.vertical: FScrollBar {}
+                            ScrollBar.horizontal: FScrollBar {}
                             visible: errorDetailsOpen && !notAFault; Layout.fillWidth: true; Layout.preferredHeight: Math.min(160, errorText.implicitHeight+10); clip: true
                             TextArea { id: errorText; objectName: "failureDetails"; text: s.error; readOnly: true; selectByMouse: true; wrapMode: Text.Wrap; color: theme.muted; font.family: theme.mono; font.pixelSize: theme.micro; background: null; textFormat: TextEdit.PlainText }
                         }
@@ -594,7 +600,8 @@ ApplicationWindow {
                             Layout.fillWidth: true; spacing: 8
                             FField { objectName: "installationPath"; Layout.fillWidth: true; value: s.form.new_comfy ? s.form.destination : s.form.comfy; placeholderText: t("Choose a folder", "选择文件夹"); enabled: s.can_manage; onEditingFinished: backend.edit(s.form.new_comfy ? "destination" : "comfy", text)
                                 // Keep the recognizable end visible; hovering reveals the whole path.
-                                hoverEnabled: true; ToolTip.text: text; ToolTip.delay: 500; ToolTip.visible: hovered && text.length > 0 }
+                                hoverEnabled: true
+                                FToolTip { objectName: "installationPathTooltip"; text: parent.text; delay: 500; visible: parent.hovered && parent.text.length > 0 && !win.dialogShown } }
                             FButton { objectName: "installationBrowse"; text: t("Browse…", "浏览…"); enabled: s.can_manage; implicitHeight: theme.height + 4; onClicked: backend.browse(s.form.new_comfy ? "destination" : "comfy") }
                         }
                         FText { visible: !s.form.new_comfy; text: t("Uses your existing Python when available. A separate environment loads only FreeVideo.", "优先使用已有 Python；独立环境仅加载 FreeVideo。"); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
@@ -1203,11 +1210,8 @@ ApplicationWindow {
                 Layout.fillWidth: true; spacing: 6
                 FIcon { kind: "terminal"; ink: theme.muted; Layout.preferredWidth: 16; Layout.preferredHeight: 16 }
                 FText { text: t("Terminal", "终端"); font.pixelSize: theme.micro; font.weight: Font.DemiBold; color: theme.muted; Layout.rightMargin: 8 }
-                ComboBox {
-                    visible: s.logs.length > 1; model: s.logs; textRole: "label"; Layout.fillWidth: true; Layout.maximumWidth: 260; implicitHeight: 30
-                    font.pixelSize: theme.micro
-                    palette.button: theme.raised; palette.buttonText: theme.text; palette.window: theme.surface; palette.windowText: theme.text
-                    palette.base: theme.surface; palette.text: theme.text; palette.highlight: theme.accentSubtle; palette.highlightedText: theme.text; palette.dark: theme.muted; palette.mid: theme.border; palette.light: theme.raised
+                FComboBox {
+                    visible: s.logs.length > 1; model: s.logs; textRole: "label"; Layout.fillWidth: true; Layout.maximumWidth: 260
                     onActivated: backend.terminal(s.logs[currentIndex].path)
                 }
                 Item { Layout.fillWidth: true }
@@ -1221,6 +1225,8 @@ ApplicationWindow {
             }
             FText { Layout.fillWidth: true; font.pixelSize: theme.micro; color: theme.muted; text: t("Copy or export the full log with private information hidden.", "可复制或导出完整日志，隐私信息已隐藏。") }
             ScrollView {
+                ScrollBar.vertical: FScrollBar {}
+                ScrollBar.horizontal: FScrollBar {}
                 id: terminalScroll; Layout.fillWidth: true; Layout.fillHeight: true; clip: true
                 TextArea {
                     id: terminalText; objectName: "terminalText"; text: s.log || t("Activity will appear here after startup.", "启动后将在这里显示运行记录。"); textFormat: TextEdit.PlainText
@@ -1262,12 +1268,13 @@ ApplicationWindow {
                 options: [{value: "downloads", label: t("Downloads", "下载")}, {value: "general", label: t("Preferences", "偏好")}, {value: "advanced", label: t("Environment", "环境")}]
             }
             ScrollView {
+                ScrollBar.vertical: FScrollBar {}
+                ScrollBar.horizontal: FScrollBar { policy: ScrollBar.AlwaysOff }
                 id: settingsScroll
                 Layout.fillWidth: true; Layout.fillHeight: true; contentWidth: availableWidth; clip: true
                 // The list never scrolls sideways; its hidden bar would take the clicks along the bottom edge.
-                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
                 ColumnLayout {
-                    width: settingsScroll.availableWidth; spacing: 18
+                    width: settingsScroll.availableWidth - settingsScroll.ScrollBar.vertical.width; spacing: 18
                     FText { objectName: "settingsActionNotice"; visible: !!s.action_notice && s.action_notice !== s.busy_reason; text: s.action_notice || ""; color: theme.muted; Layout.fillWidth: true }
                     FText { objectName: "settingsBusyReason"; visible: (!s.can_manage || !s.can_cleanup) && (!s.action_notice || s.action_notice === s.busy_reason); text: s.busy_reason; color: theme.muted; Layout.fillWidth: true }
                     ColumnLayout {
@@ -1656,12 +1663,14 @@ ApplicationWindow {
         contentItem: ColumnLayout {
             id: modelContent; spacing: 12
             ScrollView {
+                ScrollBar.vertical: FScrollBar {}
+                ScrollBar.horizontal: FScrollBar {}
                 id: modelScroll; objectName: "downloadListScroll"
                 Layout.fillWidth: true; Layout.fillHeight: true; Layout.minimumWidth: 0; Layout.minimumHeight: 0
                 implicitHeight: downloadBody.implicitHeight
                 clip: true; contentWidth: availableWidth
                 ColumnLayout {
-                    id: downloadBody; width: modelScroll.availableWidth; spacing: 12
+                    id: downloadBody; width: modelScroll.availableWidth - modelScroll.ScrollBar.vertical.width; spacing: 12
                     FText { text: downloads.copy.title; font.pixelSize: theme.section + 2; font.weight: Font.DemiBold; Layout.fillWidth: true }
                     FText { objectName: "downloadListTotal"; visible: downloads.available; text: downloads.total; font.weight: Font.DemiBold; color: theme.accent; Layout.fillWidth: true }
                     FText { objectName: "videoModelGuide"; text: downloads.copy.guide; color: theme.muted; Layout.fillWidth: true; font.pixelSize: theme.micro + 1 }
@@ -1779,9 +1788,11 @@ ApplicationWindow {
         contentItem: ColumnLayout {
             spacing: 14
             ScrollView {
+                ScrollBar.vertical: FScrollBar {}
+                ScrollBar.horizontal: FScrollBar {}
                 id: archivesScroll; Layout.fillWidth: true; Layout.fillHeight: true; clip: true; contentWidth: availableWidth
                 ColumnLayout {
-                    id: archivesContents; width: archivesScroll.availableWidth; spacing: 14
+                    id: archivesContents; width: archivesScroll.availableWidth - archivesScroll.ScrollBar.vertical.width; spacing: 14
                     FText { objectName: "archivesDialogTitle"; text: s.archives_dialog.title; font.pixelSize: theme.section + 2; font.weight: Font.DemiBold; Layout.fillWidth: true }
                     FText {
                         objectName: "archivesDialogText"; color: theme.muted; Layout.fillWidth: true
@@ -1802,7 +1813,7 @@ ApplicationWindow {
                                     color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true
                                     wrapMode: Text.NoWrap; elide: Text.ElideMiddle; maximumLineCount: 1
                                     MouseArea { id: folderHover; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.NoButton }
-                                    ToolTip { objectName: "archivesFolderTooltip-" + archiveGroup.index; text: archiveGroup.modelData.folder; visible: folderHover.containsMouse; delay: 300 }
+                                    FToolTip { objectName: "archivesFolderTooltip-" + archiveGroup.index; text: archiveGroup.modelData.folder; visible: folderHover.containsMouse && parent.truncated; delay: 300 }
                                 }
                                 Repeater {
                                     model: archiveGroup.modelData.files
@@ -1852,6 +1863,8 @@ ApplicationWindow {
                 zh: s.zh; radius: theme.radiusLg; maxHeight: Math.round(win.height * 0.4)
             }
             ScrollView {
+                ScrollBar.vertical: FScrollBar {}
+                ScrollBar.horizontal: FScrollBar {}
             id: updateScroll; Layout.fillWidth: true; Layout.fillHeight: true; clip: true; contentWidth: availableWidth
             ColumnLayout {
             // Clear of the scroll bar's strip whether or not the bar shows, so no line runs under it and the width never
@@ -1903,10 +1916,11 @@ ApplicationWindow {
         contentItem: ColumnLayout {
             spacing: 14
             ScrollView {
+                ScrollBar.vertical: FScrollBar { policy: licenseScroll.overflows ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff }
+                ScrollBar.horizontal: FScrollBar {}
                 id: licenseScroll; objectName: "licensesScroll"; Layout.fillWidth: true; Layout.fillHeight: true; clip: true; contentWidth: availableWidth
                 // Shown whenever the list runs past the window, so a row below the last divider is not missed.
                 readonly property bool overflows: height > 0 && licenseContents.implicitHeight > height
-                ScrollBar.vertical.policy: overflows ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
                 ColumnLayout {
                     // Clear of the scroll bar, so it never covers a link.
                     id: licenseContents; width: licenseScroll.availableWidth - (licenseScroll.overflows ? 14 : 0); spacing: 12
@@ -1982,6 +1996,8 @@ ApplicationWindow {
                 zh: s.zh; radius: theme.radiusLg; maxHeight: Math.round(win.height * 0.4)
             }
             ScrollView {
+                ScrollBar.vertical: FScrollBar {}
+                ScrollBar.horizontal: FScrollBar {}
                 Layout.fillWidth: true; Layout.fillHeight: true
                 id: releaseScroll; clip: true; contentWidth: availableWidth
                 ColumnLayout {
