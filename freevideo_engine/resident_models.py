@@ -158,6 +158,39 @@ def pinned_cpu_storages(model, *, committed=False):
     return storages
 
 
+def host_bytes(model):
+    """Host bytes releasing ``model`` would give back: its CPU-side tensors, counted once per storage, plus a
+    parked engine's copy. None when they cannot be read (an object without parameters), so the caller treats the
+    model as one that may hold host memory."""
+    total = parked_bytes(model)
+    if hasattr(model, 'transformer'):
+        model = model.transformer
+    elif hasattr(model, 'cond_stage_model'):
+        model = model.cond_stage_model
+    if model is None:
+        return total
+    if not callable(getattr(model, 'parameters', None)) or not callable(getattr(model, 'buffers', None)):
+        return None
+    storages = {}
+    for tensor in list(model.parameters()) + list(model.buffers()):
+        if tensor.device.type != 'cpu':
+            continue
+        try:
+            storage = tensor.untyped_storage()
+            storages[storage.data_ptr()] = storage.nbytes()
+        except (NotImplementedError, RuntimeError):
+            return None
+    return total + sum(storages.values())
+
+
+def gpu_only(model):
+    """Whether ``model`` sits wholly on the card: releasing it frees card memory and no host memory."""
+    try:
+        return gpu_bytes(model) > 0 and host_bytes(model) == 0
+    except (AttributeError, RuntimeError, TypeError):
+        return False
+
+
 def is_parked(model):
     """Whether an engine handed its GPU weights to host memory with park()."""
     return type(getattr(model, 'parked', None)) is list
@@ -338,6 +371,11 @@ class ModelBank:
                                    released_gpu_bytes=released, seconds=time.perf_counter() - started))
         return True
 
+    def keep_on_card(self, role, stage):
+        self.decisions.append(dict(action='keep', role=role, gpu_bytes=gpu_bytes(self.entries[role]['model']),
+                                   reason='Host memory is short for the %s, but this model holds only card memory'
+                                   % stage))
+
     def clear(self, reason='Request failed or session configuration changed'):
         self.converted_store.clear()
         for role in list(self.entries):
@@ -393,6 +431,10 @@ class ModelBank:
             if self.ram_fits(need):
                 break
             if role in self.entries:
+                if gpu_only(self.entries[role]['model']):
+                    # On the card only: releasing it gives the host nothing back.
+                    self.keep_on_card(role, 'next request')
+                    continue
                 self.drop(role, 'Retained weights leave no host room for the next request')
                 if role == 'engine':
                     need = 8*GiB + int(pinned)
@@ -535,6 +577,11 @@ class ModelBank:
             if available() >= extra and fits():
                 break
             if other == role:
+                continue
+            if available() >= extra and gpu_only(self.entries[other]['model']):
+                # Only host memory is short, and this model holds none: releasing it would empty the card and
+                # give the host nothing back.
+                self.keep_on_card(other, role)
                 continue
             if is_parked(self.entries[other]['model']):
                 # A parked engine holds no GPU memory; only RAM releases it.
