@@ -535,6 +535,24 @@ def _without_ready_curl_diagnostics(text):
     return ''.join(lines)
 
 
+COMFY_FOLDER_STEPS = '如需下载新的副本，请将此文件夹改名或移走，然后点“重试安装”；如需按原样继续使用，请选择“使用已有 ComfyUI”。'
+
+
+def comfy_folder_refused(text):
+    """The Chinese text for comfy_source's refusal of a ComfyUI folder with edited files or another version, or ''."""
+    edited = re.search(r'Some files in the ComfyUI folder (.+?) differ from the version FreeVideo needs\. '
+                       r'Changed files \((\d+)\): (.+?)(?:, and (\d+) more)?\. FreeVideo left the folder unchanged\.', text)
+    if edited:
+        folder, count, names, more = edited.groups()
+        listed = '、'.join(names.split(', ')) + ('，另有 %s 个' % more if more else '')
+        return ('ComfyUI 文件夹 %s 中有文件与 FreeVideo 所需的版本不同。内容有改动的文件（%s 个）：%s。FreeVideo 未改动该文件夹。'
+                % (folder, count, listed)) + COMFY_FOLDER_STEPS
+    other = re.search(r'The ComfyUI folder (.+?) holds a different version from the one FreeVideo needs\. FreeVideo left the folder unchanged\.', text)
+    if other:
+        return 'ComfyUI 文件夹 %s 是另一个版本，与 FreeVideo 所需的版本不同。FreeVideo 未改动该文件夹。' % other.group(1) + COMFY_FOLDER_STEPS
+    return ''
+
+
 def model_mismatch_package(value, zh=False):
     """Keep only the package's display name before diagnostic paths are redacted."""
     from .model_repair import MISMATCH_PATH
@@ -751,6 +769,10 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
                     detail=('这台 Mac 的图形处理器未通过 FreeVideo 的运行检查。请先导出报告，再点击“提交问题”并附上报告。' if zh else
                             'The graphics processor of this Mac did not pass FreeVideo’s check. Export the report, '
                             'then use "Report a problem" and attach it.'), action='', kind='mac-gpu-check')
+    if zh:
+        refused = comfy_folder_refused(text)
+        if refused:
+            return dict(title='暂时未能完成', detail=refused, action='', kind='unknown')
     for pattern, kind, title, action in PLACE_RULES:
         if re.search(pattern, summary):
             return dict(title=title[zh], detail='', action=action[zh], kind=kind)
