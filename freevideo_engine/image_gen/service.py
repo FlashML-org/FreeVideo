@@ -49,6 +49,8 @@ PAGE_UPLOAD_KEEP = 24 * 3600.
 WARM_LEVELS = ('light', 'full')
 # How long after registration a server starts loading its models (ComfyUI finishes starting meanwhile).
 START_DELAY_SECONDS = 5.
+# How often the host memory of a picture worker waiting between jobs is read.
+HOST_READ_SECONDS = 5.
 # How long a step of a server-mode session (a trim of the video worker, an encoder placement) waits for the lease.
 LEASE_WAIT_SECONDS = 30.
 WARM_MODES = ('eager', 'conservative')
@@ -2258,6 +2260,8 @@ class Service:
         self.habit_root = root
         session = None
         started_resident = False
+        # The most host memory the worker tree took while it waited between jobs, for bringing it back (rewarm).
+        host_seen, host_read_at = 0, 0.
         failure = 'worker_exit'
         failure_error = None
         try:
@@ -2345,6 +2349,10 @@ class Service:
                             value = self.requests.get(timeout=.05)
                         except queue.Empty:
                             self.drain_warm(session)
+                            if time.monotonic() - host_read_at >= HOST_READ_SECONDS:
+                                host_read_at = time.monotonic()
+                                host_seen = max(host_seen, resident_process.worker_memory(
+                                    session.process.pid).get('worker_rss_bytes') or 0)
                             with self.mutex:
                                 if session.process.poll() is not None and self.requests.empty():
                                     self.session_stop.set()
@@ -2444,7 +2452,8 @@ class Service:
                                                  if session is not None and session.process.poll() == 0 else 'worker_exit')
                     self.end_reason = None
                     # The model it held comes back when the release only made room (rewarm).
-                    server_mode.released('image', dict(action='released', reason=reason, held=self.loaded_model))
+                    server_mode.released('image', dict(action='released', reason=reason, held=self.loaded_model,
+                                                       worker_rss_bytes=host_seen or None))
                     if started_resident and not resident_process.OWNER.active and not server_mode.coresident():
                         # The picture session started this worker only to hold the encoder between pictures
                         # (with co-residency it stays: it is the video worker too).

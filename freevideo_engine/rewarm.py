@@ -6,7 +6,9 @@ unloaded until the next job asked for it and paid the whole load then. Now, once
 stayed free for QUIET_SECONDS, the same model is loaded in the background as a warm-up would load it:
 
 - only into room that is free: the card holds the model's files and the picture reserve beside everything on it now,
-  and host memory keeps its margin; the other model is never trimmed to make room for it;
+  and host memory holds what the model's worker took the last time it held the model, plus the least host memory
+  that worker keeps free (below it the worker lets go again at once); the other model is never trimmed to make room
+  for it;
 - never while a video, a picture or a warm-up runs, or once the model is loaded again by other means;
 - at most RELOADS_PER_HOUR times an hour per model, so a program that comes and goes does not make it load over and
   over, and only for LIMIT_SECONDS after the release.
@@ -36,15 +38,16 @@ _generation = {}
 _reloads = {}
 
 
-def after_release(model, reason, held=None):
-    """``model`` ('video' or 'image') was released for ``reason``; ``held`` is the picture model it held. Starts the
-    wait to bring it back and returns the thread, or None when this release is not one to undo."""
+def after_release(model, reason, held=None, host_bytes=None):
+    """``model`` ('video' or 'image') was released for ``reason``; ``held`` is the picture model it held and
+    ``host_bytes`` the host memory its worker took while it held it (None: not known). Starts the wait to bring it
+    back and returns the thread, or None when this release is not one to undo."""
     from . import server_mode
     if reason not in REASONS.get(model, ()) or not server_mode.keeps_idle():
         return None
     if model == 'image' and (not held or (reason == 'video_start' and server_mode.enabled())):
         return None
-    probe = Probe(model, held, reason)
+    probe = Probe(model, held, reason, host_bytes)
     if not probe.ready():
         return None
     with _mutex:
@@ -116,8 +119,9 @@ def watch(probe, generation, *, clock=time.monotonic, sleep=time.sleep):
 
 class Probe:
     """What the wait reads and does for one model; the tests replace it."""
-    def __init__(self, model, held=None, reason=None):
+    def __init__(self, model, held=None, reason=None, host_bytes=None):
         self.model, self.held, self.reason = model, held, reason
+        self.host_bytes = host_bytes if type(host_bytes) is int and host_bytes > 0 else 0
 
     def services(self):
         from . import server_mode
@@ -164,11 +168,22 @@ class Probe:
         size = sum(os.path.getsize(item) for item in files)
         return size + keep.RESERVE_BYTES if size > 0 else None
 
+    def host_least(self):
+        """Host memory the model's worker keeps free once it holds the model: below it, it lets go again."""
+        from .resident_process import host_margin
+        if self.model == 'video':
+            return host_margin()
+        from .image_gen import image_model, keep
+        if self.held == image_model.H3:
+            from .image_gen.h3_pipeline import host_floor
+            return max(host_margin(), host_floor())
+        return max(host_margin(), keep.HOST_LEAST_BYTES)
+
     def room(self):
         """The card's used bytes when the model fits now beside everything on it, else None."""
         from .background_room import available_memory
-        from .resident_process import OWNER, gpu_memory, host_margin
-        if available_memory() < host_margin() + HOST_SPARE_BYTES:
+        from .resident_process import OWNER, gpu_memory
+        if available_memory() < self.host_bytes + self.host_least() + HOST_SPARE_BYTES:
             return None
         machine = self.machine()
         if self.model == 'image' and OWNER.process is not None and OWNER.process.poll() is None:

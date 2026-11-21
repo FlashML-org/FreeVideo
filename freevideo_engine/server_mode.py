@@ -127,7 +127,7 @@ def released(model, row):
     if event['action'] == 'released':
         try:
             from . import rewarm
-            rewarm.after_release(model, event['reason'], row.get('held'))
+            rewarm.after_release(model, event['reason'], row.get('held'), row.get('worker_rss_bytes'))
         except Exception:
             logging.warning('[FreeVideo] Could not wait to bring the %s model back', model, exc_info=True)
     for callback in listeners:
