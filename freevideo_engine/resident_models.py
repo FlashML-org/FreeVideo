@@ -272,6 +272,12 @@ class ModelBank:
         self.decisions = []
         self.evictions = []
         self.eviction_count = 0
+        # The video model a warm-up loaded with the last video's settings (engine_preload), until a video takes it
+        # or it goes; and what each preload became (hit or miss), as the evictions.
+        self.preloaded = None
+        self.preloads = []
+        self.engine_card_bytes = None
+        self.preload_count = 0
         from .streamed_weights import ConvertedStore
         # Converted decoder layers streamed from the checkpoint; rebuilt on demand.
         self.converted_store = ConvertedStore()
@@ -294,6 +300,7 @@ class ModelBank:
         if ram_budget_is_estimate is not None:
             self.ram_budget_is_estimate = bool(ram_budget_is_estimate)
         self.decisions = []
+        self.engine_card_bytes = None
 
     def take(self, role, identity):
         entry = self.entries.get(role)
@@ -346,6 +353,18 @@ class ModelBank:
         self.evictions = (self.evictions + [dict(seq=self.eviction_count, role=role, reason=reason, at=time.time(),
                                                  released_gpu_bytes=self.decisions[-1]['released_gpu_bytes'])]
                           )[-EVICTIONS_KEPT:]
+        if role == 'engine' and self.preloaded is not None:
+            self.preload_outcome('dropped', reason=reason)
+
+    def preload_outcome(self, outcome, **detail):
+        """What the preloaded video model became: 'hit', 'miss' (with what differed) or 'dropped' before any video."""
+        row = dict(seq=self.preload_count + 1, outcome=outcome, at=time.time(),
+                   waited_seconds=round(time.time() - self.preloaded['at'], 1), **detail)
+        self.preload_count += 1
+        self.preloaded = None
+        self.preloads = (self.preloads + [row])[-EVICTIONS_KEPT:]
+        self.decisions.append(dict(action='preload_' + outcome, role='engine', **detail))
+        print(json.dumps(dict(event='video_model_preload', **row)), flush=True)
 
     def park(self, role, reason, ram_need=2*GiB):
         """Release only an idle engine's GPU weights and keep its host side.
@@ -629,7 +648,12 @@ class ModelBank:
                         plan={name: options.get(name) for name in (*ENGINE_PASS_OPTIONS, 'resident_blocks')}))
 
     def engine_key(self, request):
-        """What a kept engine must share with a request to serve it, as opposed to engine_peak_key().
+        """What a kept engine must share with a request to serve it (engine_parts), as opposed to engine_peak_key()."""
+        return key(ModelBank.engine_parts(request))
+
+    @staticmethod
+    def engine_parts(request):
+        """The parts of engine_key, by name.
 
         The tiling and pipelining of a pass (head, window, feed-forward and projection chunks,
         prefetch) change neither the weights nor where they live, and every request re-applies
@@ -645,9 +669,9 @@ class ModelBank:
             if request['engine_options'].get(name):
                 options[name + '_on'] = True
         options.pop('resident_blocks', None)
-        return key(dict(cache=file_identity(Path(request['cache'])/'manifest.json'),
-                        options=options, geometry=request.get('geometry'),
-                        inputs=request.get('input_cache_dir')))
+        return dict(cache=file_identity(Path(request['cache'])/'manifest.json'),
+                    options=options, geometry=request.get('geometry'),
+                    inputs=request.get('input_cache_dir'))
 
     @staticmethod
     def resident_blocks_serve(retained, wanted):
@@ -661,6 +685,7 @@ class ModelBank:
         return wanted - RESIDENT_BLOCK_SHORTFALL <= retained <= wanted
 
     def engine(self, request, factory):
+        preloaded = self.preloaded
         identity = self.engine_peak_key(request)
         options, canvas = request['engine_options'], request.get('geometry', {})
         reuse_identity = self.engine_key(request)
@@ -736,9 +761,27 @@ class ModelBank:
             moved = found.unpark()
             self.decisions.append(dict(action='unpark', role='engine', moved_bytes=moved,
                                        seconds=time.perf_counter() - started))
+        if preloaded is not None:
+            # The preloaded model is the one held until a request takes or drops it.
+            if hit:
+                self.preload_outcome('hit')
+            else:
+                # Dropped just now for other settings, block count or host allowance: this request loads its own.
+                from .engine_preload import differences
+                changed = differences(preloaded['parts'], self.engine_parts(request))
+                row = self.preloads[-1] if self.preloaded is None and self.preloads else None
+                if row is not None and row['outcome'] == 'dropped':
+                    row.update(outcome='miss', differs=changed)
+                    print(json.dumps(dict(event='video_model_preload', **row)), flush=True)
+                else:
+                    self.preloaded = preloaded
+                    self.preload_outcome('miss', differs=changed)
         if found is None:
             found = factory()
             self.put('engine', reuse_identity, found)
+        # What it takes on the card, kept for a later preload of the same settings (engine_preload) even when a later
+        # stage of this request releases it.
+        self.engine_card_bytes = gpu_bytes(found)
         memo = getattr(found, 'refined_text_memo', None)
         if isinstance(memo, dict):
             cached = self.take('conditioning', identity)
@@ -828,7 +871,7 @@ class ModelBank:
     def snapshot(self):
         if not torch.cuda.is_initialized():
             return dict(reclaimable_gpu_bytes=0, reclaimable_ram_bytes=0, gpu_uuid=None, models=[],
-                        evictions=list(self.evictions))
+                        evictions=list(self.evictions), preloads=list(self.preloads))
         uuid = str(getattr(device_properties(torch), 'uuid', ''))
         if uuid and not uuid.startswith(('GPU-', 'MIG-')):
             uuid = 'GPU-' + uuid
@@ -859,4 +902,4 @@ class ModelBank:
                     ram_credit_scope='Owned pinned model storage and parked engine weights; deduplicated, reclaimable on eviction. No mapped-page or swap credit; commit only for private storage.',
                     gpu_uuid=uuid, models=[dict(role=role, gpu_bytes=gpu_bytes(entry['model']))
                                            for role, entry in self.entries.items()], decisions=self.decisions,
-                    evictions=list(self.evictions))
+                    evictions=list(self.evictions), preloads=list(self.preloads))

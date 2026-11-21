@@ -405,6 +405,7 @@ class SessionOwner:
         self.decisions = []
         # (worker pid, last eviction number) already recorded from the worker's status.
         self.evictions_seen = (None, 0)
+        self.preloads_seen = (None, 0)
         atexit.register(self.close)
 
     def record(self, **row):
@@ -434,6 +435,31 @@ class SessionOwner:
                         role=str(row.get('role')), detail=text[:200], pid=pid,
                         released_gpu_bytes=row.get('released_gpu_bytes'),
                         **({'at': row['at']} if isinstance(row.get('at'), (int, float)) else {}))
+        self.note_preloads(answer, pid)
+        return new
+
+    def note_preloads(self, answer, pid):
+        """Log what each preloaded video model became (engine_preload): used by the next video, not used because it
+        asked for other settings, or released before any video."""
+        rows = answer.get('preloads')
+        if not isinstance(rows, list):
+            return []
+        with self.mutex:
+            seen = self.preloads_seen[1] if self.preloads_seen[0] == pid else 0
+            new = [row for row in rows if isinstance(row, dict) and type(row.get('seq')) is int and row['seq'] > seen]
+            if new:
+                self.preloads_seen = (pid, max(row['seq'] for row in new))
+        for row in new:
+            outcome = row.get('outcome')
+            if outcome == 'hit':
+                logging.info('[FreeVideo] Preloaded video model: hit, the video used it (loaded %.0f s before)',
+                             float(row.get('waited_seconds') or 0))
+            elif outcome == 'miss':
+                logging.info('[FreeVideo] Preloaded video model: miss, the video asked for other settings (%s)',
+                             ', '.join(str(name) for name in row.get('differs') or []) or 'unknown')
+            else:
+                logging.info('[FreeVideo] Preloaded video model released before any video: %s',
+                             str(row.get('reason') or '')[:200])
         return new
 
     def take_decisions(self):

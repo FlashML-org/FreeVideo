@@ -212,16 +212,18 @@ class IdleEncoder:
 
 
 def watch(endpoint, worker_request, environment, descriptor, result_path, cancelled, ram_budget_bytes, result, memory,
-          *, started=None, held=None, stop=None):
+          *, started=None, held=None, stop=None, module='freevideo_engine.encode_worker',
+          capability='encoder-weight-preload'):
     """Run one weights-only request in the resident worker under ``descriptor`` and watch it until it ends; the
     worker is appended to ``held`` as soon as it exists, so the caller can stop it. ``stop`` (an event) cancels it
-    like the cancel file. Returns its metrics."""
+    like the cancel file. ``module`` and ``capability``: the encoder's placement, or the video model's preload
+    (freevideo_engine.worker, 'engine-preload'). Returns its metrics."""
     from .resident_process import RemoteProcess
     from .system import inference_headroom, inference_memory_sample, windows
     worker = RemoteProcess(endpoint,
-        [sys.executable, '-B', '-m', 'freevideo_engine.encode_worker', '--request', str(worker_request)],
+        [sys.executable, '-B', '-m', module, '--request', str(worker_request)],
         environment, descriptor, result_path.with_name(result_path.stem+'-worker.log'),
-        required_capabilities=('encoder-weight-preload',))
+        required_capabilities=(capability,))
     if held is not None:
         held.append(worker)
     if started is not None:
