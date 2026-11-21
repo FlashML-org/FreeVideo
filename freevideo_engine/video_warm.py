@@ -141,7 +141,7 @@ class VideoWarmer:
         from .kernel_capabilities import available_backends
         from .policy import choose
         hardware = detect()
-        policy = choose(hardware, available_backends=available_backends(hardware), allow_capacity_trial=True)
+        policy = choose(hardware, available_backends=available_backends(hardware, lease=descriptor), allow_capacity_trial=True)
         environment = dict(environment)
         environment.pop(resident_process.ENV, None)
         return place_now(endpoint, dict(encoder=machine.get('encoder'), comfy_root=machine.get('comfy_root'),

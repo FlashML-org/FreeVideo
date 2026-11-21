@@ -1620,7 +1620,7 @@ class Service:
         if endpoint is None:
             return dict(state='skipped', reason='no resident worker')
         hardware = detect()
-        policy = choose(hardware, available_backends=available_backends(hardware), allow_capacity_trial=True)
+        policy = choose(hardware, available_backends=available_backends(hardware, lease=descriptor), allow_capacity_trial=True)
         directory = Path(endpoint).parent
         environment = dict(env, PYTHONPATH=str(source_root()))
         environment.pop(resident_process.ENV, None)
