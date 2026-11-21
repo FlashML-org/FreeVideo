@@ -2271,7 +2271,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if (!menu.hidden && !menu.contains(event.target) && event.target !== title) menu.hidden = true;
     });
     // A page kept for going back (bfcache) keeps its history, so its takes stay.
-    const leaving = event => { player.pause(); rememberView(); if (queue.dirty) queue.flush(); if (!event?.persisted) releaseTakes({keepalive: true}); };
+    const leaving = event => { player.pause(); rememberView(); if (queue.dirty) queue.flush(); if (!event?.persisted) { releaseTakes({keepalive: true}); store.releaseLease(); } };
     window.addEventListener('pagehide', leaving);
     // A workflow without FreeVideo nodes came to the front: the editing view makes way (unsaved edits stay open).
     const collapse = () => { void handle.close(); };
