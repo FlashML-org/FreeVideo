@@ -10,8 +10,9 @@ stayed free for QUIET_SECONDS, the same model is loaded in the background as a w
   that worker keeps free (below it the worker lets go again at once); the other model is never trimmed to make room
   for it;
 - never while a video, a picture or a warm-up runs, or once the model is loaded again by other means;
-- at most RELOADS_PER_HOUR times an hour per model, so a program that comes and goes does not make it load over and
-  over, and only for LIMIT_SECONDS after the release.
+- after a quiet time that doubles with each return of the same model in the last hour (QUIET_SECONDS, then twice
+  that, up to QUIET_MOST_SECONDS), so a program that comes and goes does not make it load over and over, yet the
+  model still comes back; and only for LIMIT_SECONDS after the release.
 
 Each return is recorded beside the releases (``server_mode.releases``) with action 'reloaded'. Macs and
 FREEVIDEO_KEEP_MODELS=off keep the earlier behaviour. In server mode the picture model's return after a video stays
@@ -25,7 +26,8 @@ import time
 POLL_SECONDS = 2.
 QUIET_SECONDS = 30.
 LIMIT_SECONDS = 6 * 3600.
-RELOADS_PER_HOUR = 3
+# The longest quiet time, reached after several returns within the hour.
+QUIET_MOST_SECONDS = 15 * 60.
 HOST_SPARE_BYTES = 1 << 30
 # The releases that only made room: the model would have stayed. Others (closed, worker_exit, finished, a job's own
 # trim, an unreadable card) are not undone.
@@ -57,11 +59,13 @@ def after_release(model, reason, held=None, host_bytes=None):
     return thread
 
 
-def _allowed(model, now):
+def quiet_seconds(model, now):
+    """How long the room must stay free and still before ``model`` comes back: QUIET_SECONDS, doubled for each
+    return of it in the last hour, at most QUIET_MOST_SECONDS."""
     with _mutex:
         recent = [at for at in _reloads.get(model, ()) if now - at < 3600.]
         _reloads[model] = recent
-        return len(recent) < RELOADS_PER_HOUR
+    return min(QUIET_SECONDS * 2 ** len(recent), QUIET_MOST_SECONDS)
 
 
 def _count(model, now):
@@ -98,7 +102,7 @@ def watch(probe, generation, *, clock=time.monotonic, sleep=time.sleep):
         if since is None or abs(now_used - used) >= OTHER_GPU_GROWTH:
             since, used = now, now_used
             continue
-        if now - since < QUIET_SECONDS or not _allowed(model, now):
+        if now - since < quiet_seconds(model, now):
             continue
         try:
             answer = probe.load() or {}
