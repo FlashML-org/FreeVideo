@@ -1544,6 +1544,7 @@ class Service:
                 self.loading_full = True
             if not alive:
                 self.session_stop = threading.Event()
+                self.end_reason = None
                 self.requests = queue.Queue()
                 self.thread = threading.Thread(target=self.work, args=(root, machine),
                                                name='freevideo-image-gen', daemon=True)
@@ -1682,6 +1683,7 @@ class Service:
         self._busy = True
         if self.thread is None or not self.thread.is_alive():
             self.session_stop = threading.Event()
+            self.end_reason = None
             self.requests = queue.Queue()
             self.thread = threading.Thread(target=self.work, args=(root, machine),
                                            name='freevideo-image-gen', daemon=True)
@@ -2068,7 +2070,10 @@ class Service:
                 server_mode.note_keep('image', True, reason='video_start')
                 return False
             self.yielding = True
-            self.end_reason = 'video_start' if not only_idle else 'lease_needed'
+            if self.thread is not None and self.thread.is_alive():
+                # Only a session that is running ends for this; with none, a reason left here would be given to the
+                # next session's end, whatever ended it.
+                self.end_reason = 'video_start' if not only_idle else 'lease_needed'
             self.segment_stop.set()
             self.stop.set()
             self.session_stop.set()
