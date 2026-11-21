@@ -111,6 +111,8 @@ class BackgroundCompile:
                 record(self.root, 'not_started', reason='foreground_work', final=final)
                 processes.stop(process, grace=STOP_GRACE)
                 row['stop_seconds'] = time.monotonic() - tick
+            elif gave_way(process):
+                return None
             # Every process of the tree holds the lease; once it is free the
             # tree is gone, even when the top process had already exited. On a
             # timeout the request reports the busy lease. One deadline for all.
@@ -193,7 +195,9 @@ class BackgroundCompile:
             with self.guard:
                 # A stop in progress holds the guard and has marked the row.
                 stopped = row.get('stopped')
-                if not stopped and self.process is process:
+                if not stopped and self.process is process and gave_way(process):
+                    self.process = None
+                elif not stopped and self.process is process:
                     # Ended by itself: confirm its tree let go before forgetting
                     # it, so a later stop never waits on someone else's lease.
                     row['released'] = self._released(time.monotonic() + RELEASE_SECONDS)
@@ -210,6 +214,17 @@ class BackgroundCompile:
                 # The child normally wrote the resource reason. Keep it even
                 # if the child exited before publishing diagnostic status.
                 record(self.root, 'not_started')
+
+
+def gave_way(process):
+    """The compile exited because the card or the memory was taken (BUSY_EXIT).
+
+    Its supervisor (the Linux and Mac process hosts, the Windows Job closed by poll) ends every descendant before this
+    code is passed on, so the tree is gone. A lease still held belongs to whoever took the card, such as a warm-up
+    or a kept picture model, and a stop must not wait for it: a starting video stops those after this returns.
+    """
+    from .precompile import BUSY_EXIT
+    return process.poll() == BUSY_EXIT
 
 
 COMPILE = BackgroundCompile()
