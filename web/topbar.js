@@ -16,8 +16,10 @@ import { createVersionInfo } from './updates.js';
 import { paletteButton, openCreations } from './palette.js';
 import { wordmark } from './wordmark.js';
 import { jobs, ACTIVE } from './task_store.js';
+import { createAgentTasks } from './agent_tasks.js';
+import { title as agentTitle, failureReason } from './agent_activity.js';
 import { isNetworkTypeError, connectionLostText } from './browser_extension.js';
-import { onNotices, mountNotices, markNoticesRead } from './notifications.js';
+import { onNotices, mountNotices, markNoticesRead, noteFromAgent, addAgentNote } from './notifications.js';
 import { CN, t0, words, capsuleState, capsuleWords, machineLine, machineFigures, isFailure, FIGURES_KEY, figuresShown } from './topbar_state.js';
 export { CN, words, capsuleState, machineLine };
 
@@ -61,6 +63,9 @@ function tip(element, name, use, key = '') {
 }
 
 // ── The status capsule (TOPBAR.md §4; its state in topbar_state.js) ──
+// The AI assistant's tasks count with the others: a task row each, and the capsule's number.
+const agentTasks = createAgentTasks(api);
+const allJobs = () => [...jobs.list(), ...agentTasks.rows()];
 let online = true;
 const capsules = new Set();
 if (browser) {
@@ -137,7 +142,7 @@ function bump(capsule) {
 }
 function renderCapsule(capsule) {
     const before = capsule.isConnected ? capsule.getBoundingClientRect().width : 0;
-    const list = jobs.list(), active = list.filter(row => ACTIVE.has(row.status)).length, finished = list.filter(row => row.status === 'done').length;
+    const list = allJobs(), active = list.filter(row => ACTIVE.has(row.status)).length, finished = list.filter(row => row.status === 'done').length;
     const seen = capsule.fvCapsule.seen;
     if (seen && (active > seen.active || finished > seen.finished)) bump(capsule);
     capsule.fvCapsule.seen = {active, finished};
@@ -192,7 +197,12 @@ function fitCapsuleWidth(capsule) {
     return natural > 0 ? Math.ceil(natural / 4 - 0.01) * 4 : 0;
 }
 function syncCapsules() { for (const capsule of [...capsules]) { if (capsule.isConnected) renderCapsule(capsule); } }
-if (browser) jobs.subscribe(() => syncCapsules());
+if (browser) { jobs.subscribe(() => syncCapsules()); agentTasks.subscribe(() => { noteAgentFailures(); syncCapsules(); }); void agentTasks.refresh(); }
+// A failed assistant task becomes a notice (its name and cause), the same as a failed generation: it counts on the capsule.
+function noteAgentFailures() {
+    const t = t0;
+    for (const job of agentTasks.failed()) addAgentNote(noteFromAgent(job, {title: agentTitle(job, t), reason: failureReason(job, t)}));
+}
 // Subscribed once everything it calls is defined (it answers at once with the current state).
 if (browser) onNotices(state => { const before = notices?.unread || 0; notices = state; syncCapsules(); if (!before && state.unread) noticeHint(); });
 
@@ -253,6 +263,7 @@ function statusCapsule(t) {
 let activity = null;
 const SECONDS = (t, value) => { const s = Math.max(1, Math.round(value)); return s < 120 ? t(`about ${s} s`, `约 ${s} 秒`) : t(`about ${Math.round(s / 60)} min`, `约 ${Math.round(s / 60)} 分钟`); };
 function jobTitle(row, t) {
+    if (row.source === 'agent') return agentTitle(row.job, t);
     const text = String(row.meta?.text ?? row.prompt ?? '').replace(/\s+/g, ' ').trim();
     return text || ({image: t('Picture', '图片'), video: t('Video', '视频'), chain: t('Long video', '长视频')}[row.kind] || t('Task', '任务'));
 }
@@ -303,6 +314,7 @@ function buildActivity(t) {
         close();
         const view = row.view || (row.kind === 'image' ? 'image' : 'studio');
         try { if (globalThis.FreeVideoShell?.view?.() !== view) await globalThis.FreeVideoShell?.go?.(view); } catch { /* The view did not open: stay. */ }
+        if (row.source === 'agent') return;
         globalThis.dispatchEvent?.(new CustomEvent('freevideo-task-stage-open', {detail: {view, id: row.id}}));
         if (row.status === 'done' || isFailure(row)) jobs.markSeen?.(row.id);
     };
@@ -347,7 +359,7 @@ function buildActivity(t) {
             stop.onclick = async event => {
                 event.stopPropagation(); stopLost.delete(row.id);
                 // The question sits in this panel, so answering it keeps the panel (and the rest of the list) open.
-                try { const {confirmStop} = await import('./task_float.js'); if (await confirmStop(stop, {kind: row.kind === 'image' ? 'image' : 'video', queued, host: box})) await jobs.cancel(row.id); }
+                try { const {confirmStop} = await import('./task_float.js'); if (await confirmStop(stop, {kind: row.kind === 'image' ? 'image' : 'video', queued, host: box, agent: row.source === 'agent'})) await (row.source === 'agent' ? agentTasks.cancel(row.agentId) : jobs.cancel(row.id)); }
                 catch (error) {
                     // The row stays as it is; a lost connection is named where its view label is.
                     if (isNetworkTypeError(error)) { stopLost.set(row.id, Date.now()); drawTasks(); setTimeout(() => { if (isOpen()) drawTasks(); }, LOST_MS + 50); }
@@ -358,9 +370,12 @@ function buildActivity(t) {
         return line;
     };
     const drawTasks = () => {
-        const list = jobs.list().filter(row => ACTIVE.has(row.status)).sort((a, b) => (b.status === 'running') - (a.status === 'running'));
+        const list = allJobs().filter(row => ACTIVE.has(row.status)).sort((a, b) => (b.status === 'running') - (a.status === 'running'));
         heading(tasks, t('Tasks', '任务'));
         if (list.length) tasks.append(...list.map(taskRow)); else tasks.append(el('p', 'fv-tb-act-empty', t('Nothing is running.', '没有进行中的任务。')));
+        // Assistant tasks the engine could not read are counted, not hidden.
+        const unreadable = agentTasks.unreadable();
+        if (unreadable) tasks.append(el('p', 'fv-tb-act-empty fv-tb-act-unreadable', t(`${unreadable} ${unreadable === 1 ? 'job' : 'jobs'} could not be read`, `另有 ${unreadable} 个任务无法读取`)));
         drawFoot();
     };
     // 3 · This computer: video memory in large figures, then temperature, load and free disk, right-aligned.
@@ -392,6 +407,8 @@ function buildActivity(t) {
         try {
             if (!notesMount) {
                 notesMount = mountNotices(notesList, {live: false, limit: 6});
+                // Opening a notice leaves the panel, so what it leads to is not left behind it.
+                notesList.addEventListener('click', event => { if (event.target.closest('.fv-note') && !event.target.closest('.fv-note-x, [data-act]')) close(); });
                 // An empty section does not show (only rows count, not the list's own empty state).
                 new MutationObserver(() => { notes.hidden = !notesList.querySelector('.fv-note'); }).observe(notesList, {childList: true, subtree: true});
             }
@@ -449,10 +466,11 @@ function buildActivity(t) {
     }
     const isOpen = () => { try { return box.matches(':popover-open'); } catch { return !box.hidden; } };
     jobs.subscribe(() => { if (isOpen()) drawTasks(); });
+    agentTasks.subscribe(() => { if (isOpen()) drawTasks(); });
     box.addEventListener('toggle', async event => {
         anchor?.setAttribute('aria-expanded', String(event.newState === 'open'));
         if (event.newState !== 'closed') return;
-        clearTimeout(timer); confirming = false;
+        clearTimeout(timer); confirming = false; agentTasks.watch(false);
         // What was shown in Notices has been seen.
         if (notesShown) { notesShown = false; markNoticesRead(); }
     });
@@ -467,7 +485,7 @@ function buildActivity(t) {
     return {box, isOpen, close,
         show(capsule) {
             anchor = capsule; machineState = machine; confirming = false;
-            drawTasks(); drawComputer(); void drawNotes();
+            drawTasks(); drawComputer(); void drawNotes(); agentTasks.watch(true);
             (capsule.closest('dialog[open]') || document.body).append(box);
             try { box.showPopover ? box.showPopover() : (box.hidden = false); } catch { box.hidden = false; }
             place();

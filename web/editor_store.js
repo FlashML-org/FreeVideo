@@ -265,6 +265,12 @@ export function createEditorStore(api, {t = en => en, notify = () => {}, onGener
     const store = {
         sources, cache,
         activateProject,
+        // The page is going away for good: give the lease back now, so deleting this edit from the next page is not refused for up to a minute.
+        releaseLease() {
+            const id = activeProject; if (!id) return;
+            activeProject = null; clock.clearTimeout(sessionTimer); sessionTimer = null;
+            try { Promise.resolve(request('/freevideo/editor/project/session', {...post({id, session: session.session, release: true}), keepalive: true})).catch(() => {}); } catch {}
+        },
         get uploading() { return uploads.size > 0; },
         // What deleting this edit also removes (media only it uses). Empty when the server cannot say.
         async residue(id) {

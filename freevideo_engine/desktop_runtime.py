@@ -274,6 +274,55 @@ def materialize_source(bundle=None, destination=None):
         shutil.rmtree(stage, ignore_errors=True)
 
 
+ENTRY_SCRIPT = 'freevideo.ps1'
+
+
+def entry_ready(source, name=ENTRY_SCRIPT):
+    try:
+        return (io_path(source) / name).is_file() and (io_path(source) / name).stat().st_size > 0
+    except OSError:
+        return False
+
+
+def restore_entry(source, name=ENTRY_SCRIPT):
+    """Put back one entry script that vanished from a deployed source folder after the launcher started.
+
+    The copy comes only from the launcher's own built-in files (or the verified update overlay),
+    checked against the recorded hash; nothing is downloaded. Returns whether the script is usable."""
+    if entry_ready(source, name):
+        return True
+    try:
+        bootstrap = None
+        origin = expected = None
+        if getattr(sys, 'frozen', False):
+            from .top_level_modules import update_modules
+            bootstrap = update_modules()[2]
+        active = getattr(bootstrap, 'ACTIVE', None)
+        if active and resolved(Path(plain(active['source']))) == resolved(Path(plain(source))):
+            expected = active['manifest']['files'].get(name, {}).get('sha256')
+            held = io_path(active['folder']) / 'files' / name
+            origin = held if held.is_file() else io_path(Path(sys._MEIPASS) / 'engine-source') / name
+        elif getattr(sys, 'frozen', False):
+            origin = io_path(Path(sys._MEIPASS) / 'engine-source') / name
+            record = json.loads((io_path(source) / 'launcher-source.json').read_text(encoding='utf-8'))
+            expected = record['sha256'].get(name)
+        if origin is None or not expected or not origin.is_file():
+            return False
+        data = origin.read_bytes()
+        if hashlib.sha256(data).hexdigest() != expected:
+            return False
+        target = io_path(source) / name
+        stage = target.with_name(name + '.' + uuid.uuid4().hex[:8] + '.tmp')
+        try:
+            stage.write_bytes(data)
+            os.replace(stage, target)
+        finally:
+            stage.unlink(missing_ok=True)
+    except Exception:
+        return False
+    return entry_ready(source, name)
+
+
 def preflight_json(output):
     decoder = json.JSONDecoder()
     for offset, character in enumerate(output):
@@ -341,6 +390,12 @@ class Runner:
         with awake():
             self._run_awake(action, root, arguments)
 
+    def entry_script(self):
+        """The file in the source folder that command() starts, or None when it starts no script."""
+        if windows():
+            return ENTRY_SCRIPT
+        return None if sys.platform == 'darwin' else 'freevideo'
+
     def command(self, root, arguments):
         powershell = Path(os.environ.get('SystemRoot', r'C:\Windows')) / 'System32/WindowsPowerShell/v1.0/powershell.exe'
         return [str(powershell), '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
@@ -362,6 +417,10 @@ class Runner:
         try:
             run.mkdir(parents=True)
             command = self.command(root, arguments)
+            entry = self.entry_script()
+            # Only a command that really starts the script needs it (the ComfyUI host runs from Python directly).
+            if entry and str(self.source / entry) in command and not restore_entry(self.source, entry):
+                raise RuntimeError('FreeVideo could not find %s in %s' % (entry, plain(self.source)))
             save(run / 'status.json', dict(action=action, command=command, root=str(root), status='running'))
             self.events.put(('started', plain(run)))
             env = self.environment(root)

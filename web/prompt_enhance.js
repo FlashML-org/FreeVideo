@@ -232,6 +232,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
             ? t(`${lengthOf(error, true)}; enhancement supports up to 12,000. Shorten it or use the original.`, `${lengthOf(error, false)}，增强最多支持 12,000 字符，请精简或使用原文。`)
             : t('Enter a prompt of up to 12,000 characters.', '请输入不超过 12,000 字符的提示词。'),
         invalid_output: t('The rewrite was incomplete. Retry or use the original.', '改写结果不完整，请重试或使用原文。'),
+        invalid_request: t('Rewriting does not support this model or aspect ratio. Change it or use the original.', '当前模型或画幅不支持改写，请更换或使用原文。'),
         context_length: t('The scene is too long for this model. Shorten it or use the original.', '内容超出改写模型容量，请精简或使用原文。'),
         out_of_memory: holderNames(error?.holders)
             ? t(`Not enough graphics memory to rewrite. In use: ${holderNames(error.holders)}. Close the listed programs and rewrite again, or use the original.`,
@@ -255,6 +256,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
             ? t(`${lengthOf(error, true)}; rewriting supports up to 12,000. Shorten it before rewriting again.`, `${lengthOf(error, false)}，改写最多支持 12,000 字符，精简后可再改写。`)
             : t('Rewriting supports prompts of up to 12,000 characters.', '改写只支持不超过 12,000 字符的提示词。'),
         invalid_output: t('The rewrite was incomplete.', '改写结果不完整。'),
+        invalid_request: t('Rewriting does not support this model or aspect ratio.', '当前模型或画幅不支持改写。'),
         context_length: t('The scene is too long for the rewrite model.', '内容超出改写模型容量。'),
         out_of_memory: holderNames(error?.holders)
             ? t(`Not enough graphics memory to rewrite. In use: ${holderNames(error.holders)}. Close the listed programs before rewriting again.`,

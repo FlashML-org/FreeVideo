@@ -237,3 +237,9 @@ function Get-FreeVideoUv {
     }
     throw "uv download failed on all sources. Partial files retained. See $LogPath and retry."
 }
+
+function Test-FreeVideoCertificateFailure {
+    param([string]$Detail)
+    # Match network._certificate_failure and slow_download_failure certificate keywords.
+    return ($Detail -match 'certificate verify failed|certificate_verify_failed|invalid peer certificate|unknown issuer')
+}

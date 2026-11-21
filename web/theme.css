@@ -38,7 +38,6 @@
 :where(.fv-studio,.fv-setup,.fv-panel) :is(input,select,textarea,button){font-family:inherit}
 :where(.fv-studio,.fv-setup,.fv-panel) :is(button,a,summary){touch-action:manipulation}
 :where(.fv-studio,.fv-setup,.fv-panel) button{appearance:none}
-:where(.fv-studio,.fv-setup,.fv-panel) :focus-visible{outline:2px solid var(--fv-accent);outline-offset:3px}
 /* A modal takes focus itself while it fills; its controls carry the ring. */
 :where(.fv-studio,.fv-setup,.fv-failure-dialog):focus-visible{outline:none}
 :where(.fv-studio,.fv-setup,.fv-panel) progress{accent-color:var(--fv-accent);appearance:none;height:6px;border:0;border-radius:var(--fv-r-pill);overflow:hidden;background:var(--fv-raised)}
@@ -63,6 +62,7 @@
 /* The name reads from the left like any field; .fv-studio button would otherwise centre it. */
 .fv-select-menu-host>.fv-select-trigger{display:flex;align-items:center;justify-content:flex-start;width:100%;max-width:100%;min-height:var(--fv-h-sm,32px);padding:4px 34px 4px 10px;border:1px solid var(--fv-border);border-radius:var(--fv-r-sm,8px);background:var(--fv-raised);color:var(--fv-ink);font:inherit;text-align:left;cursor:pointer}
 .fv-select-menu-host>.fv-select-trigger:hover:not(:disabled){background:var(--fv-hover)}.fv-select-menu-host>.fv-select-trigger:disabled{opacity:.5;cursor:default}
+.fv-select-menu-host>.fv-select-trigger{justify-content:flex-start;text-align:left}
 .fv-select-face{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fv-select-menu{position:fixed;z-index:60;box-sizing:border-box;max-width:calc(100vw - 16px);overflow:auto;padding:6px;background:var(--fv-card);color:var(--fv-ink);border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);font:13px var(--fv-font)}
 .fv-select-menu[hidden]{display:none}
@@ -171,5 +171,5 @@
 }
 /* A long menu list: a filter box stays on top while the items scroll. */
 .fv-select-search{position:sticky;top:-6px;z-index:1;margin:-6px -6px 4px;padding:6px;background:var(--fv-card)}
-.fv-select-search input{box-sizing:border-box;width:100%;min-height:30px;padding:3px 8px;border:1px solid var(--fv-border);border-radius:var(--fv-r-xs);background:var(--fv-raised);color:var(--fv-ink);font:inherit}
+.fv-select-search input{box-sizing:border-box;width:100%;min-height:30px;padding:3px 8px;border:1px solid var(--fv-border);border-radius:var(--fv-r-xs);background:color-mix(in srgb,var(--fv-ink) 5%,var(--fv-card));color:var(--fv-ink);font:inherit}
 .fv-select-empty{padding:8px 10px;color:var(--fv-muted)}

@@ -194,6 +194,7 @@ def _encode(module, folder, prompts, device, placement, stats):
     stats['encode_s'] = round(time.time() - started, 2)
     if stream is not None:
         stats['encoder_read_gib'] = round(stream.bytes_read / 2**30, 2)
+        stats['encoder_pinned'] = stream.pinned
         stream.close()
     return out
 
@@ -312,6 +313,7 @@ def generate(prompt, width, height, seed, progress=None, cancel=None, *, folder,
             paired.close()
         if stream is not None:
             stats['dit_read_gib'] = round(stream.bytes_read / 2**30, 2)
+            stats['dit_pinned'] = stream.pinned
             stream.close()
         scheduler.step = original_step
         torch.cuda.empty_cache()

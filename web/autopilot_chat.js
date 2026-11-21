@@ -13,7 +13,7 @@ import {closeDialog} from './motion.js';
 import { estimatedFraction, remainingAbove, remainingShown, createDiagnosticReportControl } from './generation_progress.js';
 import {createErrorReport, failureAdvice, failureFold} from './error_panel.js';
 import {canDeleteConversation, canRenameConversation, conversationMenu, emptyConversations, hasConversations, mergeConversations, removeConversation, runningElsewhere, selectConversation} from './autopilot_conversations.js';
-import {renderImageFailure} from './image_generation.js';
+import {renderImageFailure, originStep} from './image_generation.js';
 import {issueButton} from './issue_button.js';
 import {about} from './request_assets.js';
 import {showEmptyPrompt} from './empty_prompt_notice.js';
@@ -647,6 +647,13 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         const target = focus && item.querySelector(focus);
         (target || item).focus?.({preventScroll: true});
     }
+    // A note of a failed task in the top bar's status panel opens that task's card (its cause, next step and report).
+    const openTaskCard = event => {
+        const id = event.detail?.id; if (!id) return;
+        const look = left => { if (findCard(id)) showCard(id, '.fv-chat-retry:not([hidden]), .fv-report-button, button'); else if (left > 0 && !stopped) setTimeout(() => look(left - 1), 150); else if (!stopped) say(t('That task is no longer in this conversation.', '这条任务已经不在当前对话里了。')); };
+        look(20);
+    };
+    window.addEventListener('freevideo-agent-task-open', openTaskCard);
     side_ = createSideRail(t, {
         pick: id => showCard(id),
         stop: id => void cancelJobs([id]),
@@ -1426,7 +1433,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                     // "Send again" leads the card's own action row; its label and state are set below with the others.
                     const host = el('div');
                     const card = renderImageFailure(host, {error: job.error?.code || 'generation_failed', report_id: job.error?.report_id,
-                        stage: job.error?.stage, step: job.error?.step || (job.error?.code ? '' : 'agent_job'), memory: job.error?.memory}, t,
+                        stage: job.error?.stage, step: originStep(job.error, 'agent_job'), memory: job.error?.memory}, t,
                         {productVersion, fetchApi: (path, options) => api.fetchApi(path, options),
                             retry: retry ? {label: AGAIN.resend, onClick: () => retry?.()} : null});
                     item.replaceChildren(host);
@@ -2095,6 +2102,6 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         },
         stop() { closeMenu(); stopped = true; for (const [session, timer] of undoing) { clearTimeout(timer); finishDelete(session); } tab(); dismissImage?.(); closed.abort(); clearInterval(moving); clearTimeout(timer); timer = null;
             document.removeEventListener('visibilitychange', visible); document.removeEventListener('pointerdown', outside, true);
-            stopMenuKeys(); stopSlash?.(); history.dispose(); window.removeEventListener('resize', resize); list.removeEventListener('scroll', listScroll);
+            stopMenuKeys(); stopSlash?.(); history.dispose(); window.removeEventListener('resize', resize); window.removeEventListener('freevideo-agent-task-open', openTaskCard); list.removeEventListener('scroll', listScroll);
             log.querySelectorAll('video').forEach(video => video.pause()); }};
 }

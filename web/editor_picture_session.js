@@ -50,6 +50,14 @@ export function pictureSession(state, t) {
             if (session.canEdit(find(state.record, id))) state.apply(t('Video', '画面'), r => setPicture(r, id, {...PICTURE_DEFAULTS, ...fields})); emit();
         },
         cancel,
+        // Escape stops a preview drag, and that is the whole of that key press (the editor then leaves the selection alone).
+        // A number box of the picture page takes its own Escape (clearing what was typed or its correction) the same way.
+        cancelDraft() {
+            if (draft) { cancel(); return true; }
+            const box = document.activeElement;
+            if (box?.tagName === 'INPUT' && box.type !== 'range' && box.closest?.('.fv-ed-adjust-picture') && box.onkeydown) { box.onkeydown(new KeyboardEvent('keydown', {key: 'Escape'})); return true; }
+            return false;
+        },
         change(id, fields) { cancel(); if (!session.canEdit(find(state.record, id))) return; state.apply(t('Video', '画面'), r => setPicture(r, id, fields)); },
         keyboard(event) {
             const input = event.target?.closest?.('.fv-ed-adjust-picture') && event.target?.tagName === 'INPUT';

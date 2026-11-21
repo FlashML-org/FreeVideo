@@ -3,7 +3,7 @@
 // dialog's Save waits for all five. Pictures are made one by one through the page's image client
 // and stay in the input folder; the dialog puts them on the card.
 import { setTip } from './tip_words.js';
-import {createImageGenClient, imageGenProgress, imagePackUnavailableMessage, renderImageFailure,
+import {createImageGenClient, imageGenProgress, imagePackUnavailableMessage, renderImageFailure, originStep,
     IMAGE_GEN_POLL_MS, IMAGE_GEN_INFO_POLL_MS} from './image_generation.js';
 import {createImageLoras} from './image_lora.js';
 import {createOtherUsageNotice} from './other_usage.js';
@@ -20,7 +20,7 @@ const VIEW_TITLES = Object.freeze({
 
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 const failureOf = error => ({error: error?.code || 'generation_failed', report_id: error?.report_id || null,
-    stage: error?.stage || '', step: error?.step || (error?.code ? '' : 'cast'), fitted: error?.fitted || null, memory: error?.memory || '', other_usage: error?.other_usage || null});
+    stage: error?.stage || '', step: originStep(error, 'cast'), fitted: error?.fitted || null, memory: error?.memory || '', other_usage: error?.other_usage || null});
 const randomSeed = () => crypto.getRandomValues(new Uint32Array(1))[0] >>> 1;
 
 // From a photo: the face close-up comes first, from the photo alone; the front is then made from the photo (<Picture 1>)
@@ -225,7 +225,7 @@ export function createCastGenerator({client, kind = 'character', views = null, f
     }
     // A sent request until its picture is made (the picture's name), or null when the run was stopped.
     async function waitFor(row, alive, progress) {
-        if (!row.job) throw Object.assign(new Error(row.error || 'generation_failed'), {code: row.error, report_id: row.report_id, memory: row.memory, step: row.error ? '' : 'submit'});
+        if (!row.job) throw Object.assign(new Error(row.error || 'generation_failed'), {code: row.error, report_id: row.report_id, memory: row.memory, step: originStep({code: row.error, report_id: row.report_id}, 'submit')});
         if (!alive()) { await cancelJob(row.job); return null; }
         job = row.job;
         for (;;) {

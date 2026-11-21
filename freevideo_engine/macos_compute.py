@@ -20,6 +20,22 @@ PREFETCH_BYTES = 512 << 20        # total bound for one layer, including LoRA si
 RESIDENT_LIMIT = 50
 RETENTION_HEADROOM = 4 * GiB
 GROUPS = (56, 28, 14, 8, 4)
+# A sampling worker stops itself below this much available RAM, and a fresh
+# worker with the smallest partitions retries once. The request-level guard
+# must act only after that: a tripwire at the same 1 GiB ended a request
+# 77 minutes in, at 0.76 GiB, before the worker's recoverable stop could run.
+WORKER_FLOOR_BYTES = GiB
+FLOOR_FAILURE = 'physical RAM emergency floor'
+ENGINE_TRIPWIRE_BYTES = GiB * 3 // 4
+SAMPLING_PHASES = ('first-pass', 'refinement')
+
+
+def request_floor(phase, tripwire=ENGINE_TRIPWIRE_BYTES, floor=GiB):
+    """Request-level floor for the engine child: lower only while a sampling worker runs.
+
+    That worker checks the 1 GiB floor itself and can retry once; decoding and
+    the other stages cannot recover, so they keep the full floor."""
+    return tripwire if phase in SAMPLING_PHASES else floor
 
 
 def working_bytes(tokens, group, *, ff_chunk=4096, window_bytes=1 << 29, frames=72):

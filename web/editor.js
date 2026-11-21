@@ -25,6 +25,7 @@ import {createAdjustPicture} from './editor_adjust_picture.js';
 import {pictureSession} from './editor_picture_session.js';
 import {createPictureTools} from './editor_frame.js';
 import {openExportDialog} from './editor_export_dialog.js';
+import {replaceMode} from './editor_audio_replace.js';
 import {createAudioIntegration, createSpeechSpans, handleAudioShortcut, AUDIO_SHORTCUTS} from './editor_audio.js';
 import {createStemsIntegration} from './editor_stems.js';
 import {createSpeedComponent, readSpeedAudioSamples, handleSpeedKey, speedShortcuts} from './editor_speed.js';
@@ -434,7 +435,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     // `where` marks a failure: the notice then carries the "Report a problem" button and stays longer to be reached.
     // Notices stack (newest last, at most three) instead of a new one wiping out the one being read; each can be closed.
     const noticeTimers = new Set();
-    function notify(text, where = null, kind = null, action = null) {
+    // `report: false` keeps a problem's 20 s and its name but leaves out "Report a problem", for a cause that is not a fault.
+    function notify(text, where = null, kind = null, action = null, {report = true} = {}) {
         if (disposed) return;
         if (!text) { for (const timer of noticeTimers) clearTimeout(timer); noticeTimers.clear(); notices.replaceChildren(); return; }
         const last = notices.lastElementChild;
@@ -443,7 +445,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         const words = el('span', 'fv-ed-notice-text', text);
         // In the project row the line is cut to one row; its hover says it whole.
         words.setAttribute('data-fv-tip-name', where ? t('Problem', '问题') : t('Notice', '提示')); words.setAttribute('data-fv-tip-use', text);
-        if (where) { words.classList.add('fv-copyable'); words.append(issueButton(t, () => ({where, message: text, kind}))); }
+        if (where && report) { words.classList.add('fv-copyable'); words.append(issueButton(t, () => ({where, message: text, kind}))); }
         const close = button('', () => { clearTimeout(timer); noticeTimers.delete(timer); card.remove(); }, 'fv-ed-notice-close');
         close.append(icon('m4 4 8 8M12 4l-8 8')); close.setAttribute('aria-label', t('Close', '关闭'));
         tip(close, {name: t('Close', '关闭'), use: t('Dismiss this notice', '关掉这条提示')});
@@ -710,7 +712,23 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         } finally { startingHeld = false; }
     }
     function completeSources() {
-        return store.getSources(model.references(state.record).map(sourceKey)).then(() => { player.refresh(); tracks?.refresh?.(); });
+        return store.getSources(model.references(state.record).map(sourceKey)).then(() => { player.refresh(); tracks?.refresh?.(); sayMissing(); });
+    }
+    // A picture whose file was moved or deleted stays on the timeline as a grey part; the notice bar says so once for each
+    // such file, however the edit was opened (Iris 11-20). Moving a file is not a fault, so there is no report button.
+    const toldMissing = new Set();
+    function sayMissing() {
+        if (disposed) return;
+        for (const track of state.record.tracks) {
+            if (track.kind !== 'video') continue;
+            for (const clip of track.clips) {
+                const key = clip.source && sourceKey(clip.source), value = key && store.sources.get(key);
+                if (!value?.missing || value._fallback || toldMissing.has(key)) continue;
+                toldMissing.add(key);
+                notify(t('The video file cannot be found. It may have been moved or deleted. Import it again.',
+                    '视频文件找不到了，可能已被移动或删除。请重新导入。'), EDITOR_ISSUE, null, null, {report: false});
+            }
+        }
     }
     // Music on the second sound track goes through the same bar; the bar shows a chosen piece's own job.
     const music = createEditorMusic({state, store, t, completeSources, onStatus: () => genbar?.update(barValue)});
@@ -945,6 +963,11 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         const ids = new Set((job.blocks || []).map(block => block.id));
         const last = state.record.tracks[0].clips.filter(clip => ids.has(clip.id)).sort((a, b) => a.start - b.start).at(-1);
         if (!last || !model.continuesBefore(state.record, last.id) || generationBusy || held.length) return;
+        // Only an open end gets a next part: anything after it on the picture's or its sound's track (such as the rest of
+        // an imported sound the video was made to) would be pushed back by the new part.
+        const pair = model.pair(state.record, last.id), edge = last.start + last.frames;
+        const tracksOf = new Set(pair.map(member => state.record.tracks.find(track => track.clips.includes(member))));
+        if ([...tracksOf].some(track => track.clips.some(clip => !pair.includes(clip) && clip.start >= edge))) return;
         const picked = state.selection;
         if (picked && !(picked.kind === 'clip' && picked.ids.some(id => ids.has(id) || model.find(state.record, id)?.link && ids.has(model.find(state.record, id).link)))) return;
         enterClip(clip => clip.id === last.id, projectEpoch, {select: false});
@@ -1719,8 +1742,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         },
     };
     async function viewExport(value) {
-        // A sound-only export is not a work: it opens as a file the browser plays and can save.
-        if (value.only === 'sound') { if (value.url) window.open(mediaURL(api, value.url), '_blank', 'noopener'); return; }
+        // A sound-only or lossless-sound export is not a work: it opens as a file the browser plays or saves.
+        if (value.only === 'sound' || value.audio === 'lossless') { if (value.url) window.open(mediaURL(api, value.url), '_blank', 'noopener'); return; }
         const module = await import('./library.js');
         module.openLibrary(t, {selectedWork: value.work, extend: async (record, options) => {
             if (await handle.close() === false) throw new Error(saveWarningText.textContent);
@@ -1803,6 +1826,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     // borrow from, the editor's bar is shown as before.
     if (panel.borrowBar) {
         let observer = null, arranged = false, unlisten = null, echo = false, lent = false, home = '', arrangeNow = null; // the subscription below outlives one borrow, so what it reads is kept out here
+        // The description here shows two or three lines: away from it, it reads from the start, not from wherever the caret left it.
+        const fromStart = event => { if (event.target instanceof HTMLTextAreaElement && event.target.closest('.fv-prompt-editor')) event.target.scrollTop = 0; };
         attachBar = () => {
         if (bar) return;
         bar = panel.borrowBar({mount: genHost, onSeconds: value => { const field = genbar.duration; if (!field || field.element.hidden || field.input.disabled || !(value > 0)) return; field.input.value = String(Math.round(value)); field.commit(); }, label: () => barLabel || null, disabled: () => !genbar.canGenerate(),
@@ -1810,6 +1835,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             onFirstFrame: value => genbar.firstFrame?.set(value)});
         if (bar) {
             genHost.classList.add('fv-ed-genbar-borrowed');
+            genHost.addEventListener('focusout', fromStart);
             // The editor's own first-frame switch is hidden with its bar; the borrowed bar's switch (in its frame pop-up,
             // where the creation panel keeps it) follows the editor's rule and saves to the edit.
             genbar.firstFrame?.mirror(next => bar?.firstFrame?.(next));
@@ -1855,7 +1881,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         }
         };
         // Hidden, the editor gives the panel its bar back; shown again, it takes it once more.
-        detachBar = () => { genbar.firstFrame?.mirror(null); observer?.disconnect(); observer = null; unlisten?.(); unlisten = null; for (const back of guideBack.splice(0)) back(); bar?.release(); bar = null; panel.barActive = false; genHost.classList.remove('fv-ed-genbar-borrowed'); delete element.dataset.barBorrowed; };
+        detachBar = () => { genbar.firstFrame?.mirror(null); observer?.disconnect(); observer = null; unlisten?.(); unlisten = null; for (const back of guideBack.splice(0)) back(); bar?.release(); bar = null; panel.barActive = false; genHost.classList.remove('fv-ed-genbar-borrowed'); genHost.removeEventListener('focusout', fromStart); delete element.dataset.barBorrowed; };
         cleanupBar = detachBar;
         attachBar();
     }
@@ -2180,7 +2206,9 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if (event.target !== element) return;
         event.preventDefault();
         if (escapeTaken || topDialog() !== element) return;
-        if (dismissPopup(event) || tracks?.cancelGesture()) { tookEscape(); return; }
+        // A pending "replace audio" is an inner layer too: Escape ends it and keeps the selection.
+        if (dismissPopup(event) || tracks?.cancelGesture() || pictureEdit.cancelDraft() || replaceMode(state).cancel()) { tookEscape(); return; }
+        if (document.fullscreenElement) { tookEscape(); document.exitFullscreen().catch(() => {}); return; }
         state.select(null, {history: true});
     });
     const stopKeys = isolateDialogKeys(element, (event, inside) => {
@@ -2198,7 +2226,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if (event.key.toLowerCase() === 'escape') {
             if (escapeTaken) { event.preventDefault(); return; }
             if (dismissPopup(event)) { tookEscape(); return; }
-            if (tracks?.cancelGesture()) { event.preventDefault(); tookEscape(); return; }
+            if (tracks?.cancelGesture() || pictureEdit.cancelDraft()) { event.preventDefault(); tookEscape(); return; }
             if (document.fullscreenElement) { event.preventDefault(); tookEscape(); document.exitFullscreen().catch(() => {}); return; }
         }
         if (recording.keyboard(event)) return;
@@ -2245,7 +2273,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if (!menu.hidden && !menu.contains(event.target) && event.target !== title) menu.hidden = true;
     });
     // A page kept for going back (bfcache) keeps its history, so its takes stay.
-    const leaving = event => { player.pause(); rememberView(); if (queue.dirty) queue.flush(); if (!event?.persisted) releaseTakes({keepalive: true}); };
+    const leaving = event => { player.pause(); rememberView(); if (queue.dirty) queue.flush(); if (!event?.persisted) { releaseTakes({keepalive: true}); store.releaseLease(); } };
     window.addEventListener('pagehide', leaving);
     // A workflow without FreeVideo nodes came to the front: the editing view makes way (unsaved edits stay open).
     const collapse = () => { void handle.close(); };
@@ -2402,6 +2430,16 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         skeleton.remove();
         tracks = module.createTracks(tracksHost, {state, sources: store.sources, t, actions, blockProgress});
         listeners.push(notes.attach(tracks.element));
+        // The timeline takes the room its rows need, up to its usual height (more rows scroll inside it); the rest goes to the picture.
+        const trackContent = tracks.element.querySelector('.fv-ed-track-content'), trackScroll = tracks.element.querySelector('.fv-ed-track-scroll');
+        if (trackContent && trackScroll && typeof ResizeObserver === 'function') {
+            const fitTracks = () => {
+                const around = tracksHost.getBoundingClientRect().height - trackScroll.clientHeight; // the ruler's inset and the scroll bar
+                if (around >= 0 && trackContent.offsetHeight) element.style.setProperty('--fv-ed-tracks-fit', `${Math.ceil(trackContent.offsetHeight + around)}px`);
+            };
+            const watchTracks = new ResizeObserver(fitTracks); watchTracks.observe(trackContent); watchTracks.observe(tracksHost);
+            listeners.push(() => watchTracks.disconnect()); fitTracks();
+        }
         transportControls.attachTracks(tracks, module.snapFrame);
         if (api.addEventListener && api.removeEventListener) {
             progressConnection = createProgressConnection(api, receiveProgress); progressConnection.start();

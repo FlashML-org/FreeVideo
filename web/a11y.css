@@ -34,6 +34,9 @@ html[data-fv-shell=nodes] canvas[tabindex]:not([tabindex="-1"]):focus-visible{ou
 /* A view dialog takes focus itself while it opens; it never wears the ring. */
 :is(dialog.fv-studio,[data-fv-surface=view]):focus-visible{outline:none!important}
 
+/* Focus returned by script after a mouse press (a view switch) is not keyboard focus: no ring until a key is pressed. */
+:root body [data-fv-pointer-focus=true]:focus-visible{outline:none!important}
+
 /* Windows high contrast: the system colour, always visible. */
 @media (forced-colors:active){
   :where(body [class^="fv-"],body [class*=" fv-"]) :focus-visible{outline:2px solid Highlight!important}

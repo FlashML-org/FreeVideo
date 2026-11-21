@@ -1,5 +1,6 @@
 """Collect the current installation's evidence into a local, redacted report."""
 import json
+import re
 from pathlib import Path
 
 from .long_paths import io_path, resolved, plain_data, plain_errors
@@ -40,7 +41,7 @@ def collect(root, since):
         # Python and Git downloads in the setup run, and ComfyUI dependency
         # preparation in launcher/host-runs. The command output remains in the
         # local manual bundle.
-        package_attempts = []
+        package_attempts, native_tls_sources = [], []
         folders = [run]
         host_root = root / 'launcher' / 'host-runs'
         if host_root.is_dir():
@@ -51,9 +52,11 @@ def collect(root, since):
                 if folder != run and folder.stat().st_mtime < since - 1:
                     continue
                 package_attempts += source_failures(folder / 'network.jsonl')
+                native_tls_sources += native_tls_fallbacks(folder / 'network.jsonl')
             except OSError:
                 continue
-        return plain_data(dict(state=state, samples=rows, package_attempts=package_attempts[-16:]))
+        return plain_data(dict(state=state, samples=rows, package_attempts=package_attempts[-16:],
+                               native_tls_fallback=list(dict.fromkeys(native_tls_sources))[-8:]))
     except (OSError, ValueError, KeyError, TypeError):
         return {}
 
@@ -80,6 +83,29 @@ def source_failures(path):
                 item.get('category') == 'git' and item.get('action') == 'fallback' and 'error_class' in item):
             rows.append({key: item[key] for key in SOURCE_KEYS if key in item})
     return rows[-16:]
+
+
+def native_tls_fallbacks(path):
+    """The names of the sources where setup retried a download with the system certificate store.
+
+    Only the source name is read, and only as a short lowercase word: nothing else of the event is kept."""
+    with io_path(path).open('rb') as stream:
+        size = stream.seek(0, 2)
+        stream.seek(max(0, size - 256 * 1024))
+        lines = stream.read(256 * 1024).splitlines()
+    if size > 256 * 1024:
+        lines = lines[1:]
+    names = []
+    for line in lines:
+        try:
+            item = d.mapping(json.loads(line))
+        except (ValueError, UnicodeError):
+            continue
+        action, source = item.get('action'), item.get('source')
+        if (isinstance(action, str) and action.endswith('-system-certificates')
+                and isinstance(source, str) and re.fullmatch(r'[a-z0-9_.-]{1,40}', source)):
+            names.append(source)
+    return names
 
 
 def _errors(rows):
@@ -161,6 +187,12 @@ def enrich(result, value):
             if key in row and (key == 'returncode' or isinstance(row[key], (str, int, float, bool))):
                 item[key] = row[key]
         result['errors'].append(item)
+    # Only a fixed phrase and the source name: the certificate, its issuer and the machine stay out of the report.
+    notes = [dict(note='native-tls fallback used', source=name)
+             for name in d.sequence(value.get('native_tls_fallback'))[:8]
+             if isinstance(name, str) and re.fullmatch(r'[a-z0-9_.-]{1,40}', name)]
+    if notes:
+        result['notes'] = notes
     result['diagnostic_revision'] = 6
     return result
 

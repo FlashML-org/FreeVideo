@@ -240,23 +240,27 @@ const raise = element => { try { if (element.matches(':popover-open')) element.h
 // ---------- the stop question, anchored to any button (the floating window's own, or a view's Stop) ----------
 // host: where the question goes (a panel it belongs to, so a press on it does not close that panel); by default the
 // open dialog the button is in, or the page.
-export function confirmStop(anchor, {kind = 'video', queued = false, host = null} = {}) {
+export function confirmStop(anchor, {kind = 'video', queued = false, host = null, agent = false} = {}) {
     return new Promise(resolve => {
         const box = el('div', 'sgf sgf-confirm'); box.setAttribute('popover', 'manual'); box.dataset.fvTipScope = '';
         const sheet = el('div', 'sgf-sheet'); sheet.setAttribute('role', 'alertdialog');
         const title = el('b', null), text = el('p', null);
         title.textContent = queued ? t('Remove from the queue?', '取消排队？') : t('Stop generating?', '停止生成？');
-        text.textContent = queued ? t('It has not started; it will not be made.', '这项还没有开始，取消后不会生成。')
+        if (agent) {
+            title.textContent = queued ? t('Remove from the queue?', '取消排队？') : t('Stop this step?', '停止这一步？');
+            text.textContent = queued ? t('It has not started; it will not run.', '这一步还没有开始，取消后不会进行。')
+                : t('What this step has made so far is not kept. Finished works stay.', '这一步做到一半的不会保留，已经完成的作品不受影响。');
+        } else text.textContent = queued ? t('It has not started; it will not be made.', '这项还没有开始，取消后不会生成。')
             : kind === 'image' ? t('This picture will not be kept.', '这张图不会保留。') : t('What has been made so far is not kept. Queued jobs go on.', '已生成的部分不会保留，排队的任务照常进行。');
         const ask = el('div', 'sgf-ask'), acts = el('div', 'sgf-acts');
         const keep = el('button', 'pill line'), stop = el('button', 'pill danger');
-        keep.type = stop.type = 'button'; keep.textContent = t('Keep going', '继续生成'); stop.textContent = queued ? t('Remove', '取消排队') : t('Stop', '停止');
-        tip(keep, t('Keep going', '继续生成'), t('Close this and keep generating', '不停止，接着生成'), 'Esc');
-        tip(stop, stop.textContent, queued ? t('Take it out of the queue', '从队列里拿掉这一项') : t('Stop it now; nothing is kept', '立即停止，不保留结果'));
+        keep.type = stop.type = 'button'; keep.textContent = agent ? t('Keep going', '继续') : t('Keep going', '继续生成'); stop.textContent = queued ? t('Remove', '取消排队') : t('Stop', '停止');
+        tip(keep, keep.textContent, agent ? t('Close this and let the step go on', '不停止，让这一步接着做') : t('Close this and keep generating', '不停止，接着生成'), 'Esc');
+        tip(stop, stop.textContent, queued ? t('Take it out of the queue', '从队列里拿掉这一项') : agent ? t('Stop this step now; what it made so far is not kept', '立即停止这一步，做到一半的不保留') : t('Stop it now; nothing is kept', '立即停止，不保留结果'));
         acts.append(keep, stop); ask.append(title, text, acts); sheet.append(ask); box.append(sheet);
         (host || anchor.closest('dialog[open]') || document.body).append(box); raise(box);
         const a = anchor.getBoundingClientRect(), w = 300, h = box.offsetHeight || 132;
-        const x = Math.min(innerWidth - w - 12, Math.max(12, a.left + a.width / 2 - w / 2)), above = a.top - h - 10 > 12;
+        const x = Math.min(innerWidth - w - 12, Math.max(12, a.left + a.width / 2 - w / 2)), above = a.bottom + 10 + h > innerHeight - 12 && a.top - h - 10 > 12;   // below the button; above only where below does not fit
         box.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(above ? a.top - h - 10 : a.bottom + 10)}px, 0)`;
         box.dataset.corner = above ? 'b' : 't';
         let done = false;

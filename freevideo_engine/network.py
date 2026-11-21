@@ -805,10 +805,24 @@ def package_environment(network, family, name, environ=None, *, route=None, retr
     return env
 
 
+# Keep in sync with the certificate words in slow_download_failure, fv_certificate_failure
+# (scripts/bootstrap_linux.sh) and Test-FreeVideoCertificateFailure (windows_bootstrap.ps1).
+_CERTIFICATE_KEYWORDS = (
+    'certificate verify failed', 'certificate_verify_failed',
+    'invalid peer certificate', 'unknown issuer',
+)
+
+
+def _certificate_failure(detail):
+    detail = detail.lower()
+    return any(word in detail for word in _CERTIFICATE_KEYWORDS)
+
+
 def download_command(network, family, run, env=None, *, category=None, extra_sources=(), notice=None, reorder=None):
     """Run a source/route callback with the same bounded policy for uv and pip.
 
-    Callbacks receive (source, route, retry_mode); each builds its child env from
+    Callbacks receive (source, route, retry_mode) and a native_tls keyword, True only for
+    the single same-route retry after a certificate failure; each builds its child env from
     the original environment, so our fast defaults never become user overrides.
     """
     category = category or family
@@ -856,8 +870,30 @@ def download_command(network, family, run, env=None, *, category=None, extra_sou
                               result='success', attempts=len(attempts)-round_start+1)
                     return result
                 except (RuntimeError, subprocess.CalledProcessError) as error:
-                    attempt = dict(_package_attempt(error, name, route, source_host(family, name, env),
-                                                    time.monotonic() - started), retry_mode=retry_mode)
+                    elapsed = time.monotonic() - started
+                    detail, _ = _package_failure(error)
+                    native_retry = False
+                    # A certificate this machine's system store trusts but uv's bundled roots do not
+                    # (an antivirus or proxy that inspects HTTPS): ask the same route once more
+                    # with the system store. Verification stays on; the first error is kept.
+                    if _certificate_failure(detail):
+                        native_retry = True
+                        event(network, category=category, source=name, route=route,
+                              action=operation + '-system-certificates', **retry_details)
+                        try:
+                            result = run(name, route, retry_mode, native_tls=True)
+                            source_health(network, family, name, True)
+                            route_health(network, family, name, route)
+                            if retry_mode == 'patient':
+                                event(network, category=category, action='download-round-result', retry_mode=retry_mode,
+                                      result='success', attempts=len(attempts)-round_start+1)
+                            return result
+                        except (RuntimeError, subprocess.CalledProcessError):
+                            pass
+                    attempt = dict(_package_attempt(error, name, route, source_host(family, name, env), elapsed),
+                                   retry_mode=retry_mode)
+                    if native_retry:
+                        attempt['system_certificates_tried'] = True
                     attempts.append(attempt)
                     event(network, category=category, source=name, route=route, action=operation + '-failed',
                           error_type=attempt['error_type'], returncode=attempt['returncode'],
@@ -888,8 +924,10 @@ def download_command(network, family, run, env=None, *, category=None, extra_sou
 
 
 def package_command(network, family, run, env=None, *, notice=None):
-    def attempt(name, route, retry_mode):
+    def attempt(name, route, retry_mode, native_tls=False):
         attempt_env = package_environment(network, family, name, env, route=route, retry_mode=retry_mode)
+        if native_tls:
+            attempt_env['UV_NATIVE_TLS'] = '1'
         # Private markers retain per-source/route logs; no package configuration.
         attempt_env['FREEVIDEO_PACKAGE_SOURCE'] = name
         attempt_env['FREEVIDEO_PACKAGE_ROUTE'] = route
@@ -1841,6 +1879,21 @@ def repository_missing_message(target):
             'installation.' % Path(target).name)
 
 
+def windows_store_retry(error):
+    """Whether a failed Git fetch is worth one more try with the Windows certificate store.
+
+    A Git built with OpenSSL trusts only the certificates in its own bundle. A program that
+    inspects HTTPS traffic (security software, a company or school proxy) signs it with a root
+    that only the Windows store holds, so the browser works and Git reports an unknown issuer.
+    Git's other backend (Schannel) reads the Windows store; the check itself stays on.
+    """
+    text = str(error).lower()
+    # Git's own wording is "SSL certificate OpenSSL verify result" in newer builds and "SSL certificate
+    # problem" in older ones; a Schannel Git already reads the store and names itself in its errors.
+    return (is_windows() and failure_reason(error)[0] == 'tls' and 'certificate' in text
+            and not any(word in text for word in ('schannel', 'sec_e_', 'crypt_e_')))
+
+
 def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None):
     """Fetch only the pinned commit, atomically; never reset existing checkouts.
 
@@ -1951,8 +2004,23 @@ def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None)
             original = env
             env = dict(env, GIT_CONFIG_PARAMETERS=' '.join(filter(None, (
                 env.get('GIT_CONFIG_PARAMETERS', '').strip(), git_parameter('remote.origin.url=' + endpoint)))))
+            fetch = ['git', '-C', work, '-c', 'fetch.fsckObjects=true', 'fetch', '--depth=1', '--no-tags', 'origin', commit]
             try:
-                execute(target.name + '-fetch-' + name, ['git', '-C', work, '-c', 'fetch.fsckObjects=true', 'fetch', '--depth=1', '--no-tags', 'origin', commit])
+                try:
+                    execute(target.name + '-fetch-' + name, fetch)
+                except RuntimeError as first:
+                    if not windows_store_retry(first):
+                        raise
+                    event(network, category='git', source=name, route=route, file=target.name, action='certificate-store-retry',
+                          reason='windows-certificate-store')
+                    try:
+                        execute(target.name + '-fetch-windows-store-' + name,
+                                fetch[:3] + ['-c', 'http.sslBackend=schannel'] + fetch[3:])
+                    except RuntimeError as second:
+                        # A Git without that backend says so in words that say nothing about the
+                        # download; the first error stays the one reported then.
+                        unsupported = 'unsupported ssl backend' in str(second).lower()
+                        raise second if failure_reason(second)[0] == 'tls' and not unsupported else first from None
             finally:
                 env = original
             execute(target.name + '-checkout', ['git', '-C', work, 'checkout', '--detach', commit])

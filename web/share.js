@@ -5,6 +5,7 @@ import {fontCSS as bundledFontCSS, fontLoaded, loadFont} from './fonts.js';
 import {shareLayout} from './share_layout.js';
 import {videoUnavailableText} from './studio_extend.js';
 import {issueButton} from './issue_button.js';
+import {createPlayBar} from './fv_player.js';
 import {userMessage} from './user_message.js';
 import {exportKeepsWorkflow, workflowToggle} from './output_download.js';
 import {fileFailureText, responseFileReason} from './file_failure.js';
@@ -113,10 +114,11 @@ export async function openShare(record,t){
     const abort=new AbortController();
     const panel=el('div','fv-share-body'),preview=el('div','fv-share-preview'),canvas=el('canvas'),player=el('video');
     canvas.setAttribute('aria-label',t('Sharing image preview','分享图预览'));
-    player.loop=true;player.playsInline=true;player.muted=true;player.controls=true;player.preload='none';player.hidden=true;
+    player.loop=true;player.playsInline=true;player.muted=true;player.preload='none';player.hidden=true;
     const split=record.video.lastIndexOf('/');
     player.src=api.apiURL('/view?'+new URLSearchParams({filename:record.video.slice(split+1),subfolder:record.video.slice(0,split),type:'output'}));
-    preview.append(player,canvas);panel.append(preview);
+    const playBar=createPlayBar(player,t);playBar.bar.classList.add('fv-player-over');playBar.bar.hidden=true;
+    preview.append(player,canvas,playBar.bar);panel.append(preview);
     const footer=el('footer','fv-share-footer'),message=el('span','fv-share-status');message.setAttribute('role','status');
     const problem=issueButton(t,()=>({where:['Share','分享'],message:message.textContent}));problem.hidden=true;
     const say=(text,fault=false)=>{message.textContent=text;problem.hidden=!fault||!text;if(fault&&text)dialog.dataset.error='true';else delete dialog.dataset.error;};
@@ -141,7 +143,7 @@ export async function openShare(record,t){
         if(!ready)return;
         say(kind==='video'&&videoFailed?videoUnavailableText(t):'',kind==='video'&&videoFailed);
         drawShareCard(canvas,kind==='image'?first:null,logo,metadata,t);
-        player.hidden=kind!=='video';
+        player.hidden=kind!=='video';playBar.bar.hidden=kind!=='video';
         if(kind==='video')player.play().catch(error=>{if(!['AbortError','NotAllowedError'].includes(error.name))videoError();});else player.pause();
     };
     for(const [name,label] of [['image',t('Image','图片')],['video',t('Video','视频')]]){
@@ -196,7 +198,7 @@ export async function openShare(record,t){
         finally{clearInterval(watch);busy=false;if(!disposed){save.disabled=false;keep.input.disabled=false;cancel.hidden=true;delete dialog.dataset.busy;tabs.querySelectorAll('button').forEach(b=>b.disabled=false);}}
     }
     dialog.addEventListener('cancel',event=>{event.preventDefault();closeDialog(dialog);});
-    dialog.onclose=()=>{disposed=true;clearInterval(watch);abort.abort();exportRequest?.abort();player.pause();player.removeAttribute('src');player.load();dialog.remove();if(opened===dialog)opened=null;};
+    dialog.onclose=()=>{disposed=true;clearInterval(watch);abort.abort();exportRequest?.abort();player.pause();playBar.destroy();player.removeAttribute('src');player.load();dialog.remove();if(opened===dialog)opened=null;};
     // Start focus on the dialog itself, not with a focus ring on the first tab.
     document.body.append(dialog);dialog.showModal();dialog.focus();slide();message.textContent=t('Preparing preview…','正在准备预览…');
     try{
@@ -209,6 +211,8 @@ export async function openShare(record,t){
         shape=drawShareCard(canvas,null,logo,metadata,t);template=canvas.toDataURL('image/png').split(',')[1];
         preview.style.aspectRatio=`${shape.width}/${shape.height}`;
         player.style.cssText=`left:${shape.rect[0]/shape.width*100}%;top:0;width:${shape.rect[2]/shape.width*100}%;height:${shape.rect[3]/shape.height*100}%`;
+        // The play bar sits on the picture only, not on the info strip the card draws below it.
+        playBar.bar.style.cssText=`left:${shape.rect[0]/shape.width*100}%;width:${shape.rect[2]/shape.width*100}%;right:auto;bottom:auto;top:calc(${shape.rect[3]/shape.height*100}% - 44px)`;
         ready=true;choose(kind);save.disabled=false;
     }catch(error){if(!disposed)say(userMessage(error,t,t('Preview unavailable. Close and try again.','预览暂时无法读取，请关闭后重试。')),true);}
 }

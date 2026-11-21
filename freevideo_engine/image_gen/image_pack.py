@@ -14,6 +14,7 @@ from contextlib import ExitStack, contextmanager
 import errno
 import json
 import logging
+import os
 import platform
 from pathlib import Path, PurePosixPath
 import re
@@ -261,19 +262,36 @@ def _path(folder, name, *, kind='record'):
 
 
 def shared_root(root=None):
-    """Where setup puts the video text encoder (<encoder_dir>/text_encoders/...), which H3 Image uses as is."""
+    """Where setup puts the video text encoder (<encoder_dir>/text_encoders/...), which H3 Image uses as is.
+
+    The folder setup recorded wins, also when the caller names the model folder (almost every caller does): an
+    encoder folder chosen apart from the model folder is only in machine.json. The record counts for the model
+    folder it was written for; any other model folder keeps the encoder folder beside it. Without a named folder an
+    explicit FREEVIDEO_MODEL_ROOT decides (the portable build sets it for its own process, so with a named folder
+    the record is judged by the folder alone)."""
+    from ..paths import data_root, installed_model_root
+    try:
+        machine = json.loads((data_root() / 'machine.json').read_text(encoding='utf-8'))
+        saved = machine['encoder_model_root']
+        if isinstance(saved, str) and saved:
+            if root is None and not os.environ.get('FREEVIDEO_MODEL_ROOT'):
+                return Path(saved).expanduser()
+            if root is not None and _same_folder(machine.get('model_root'), root):
+                return Path(saved).expanduser()
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
     if root is None:
-        import os
-        from ..paths import data_root, installed_model_root
-        if not os.environ.get('FREEVIDEO_MODEL_ROOT'):
-            try:
-                saved = json.loads((data_root() / 'machine.json').read_text(encoding='utf-8'))['encoder_model_root']
-                if isinstance(saved, str) and saved:
-                    return Path(saved).expanduser()
-            except (OSError, ValueError, KeyError, TypeError):
-                pass
         root = installed_model_root()
     return Path(root).expanduser().absolute().parent / 'encoder'
+
+
+def _same_folder(first, second):
+    # Compared as text after normalising (case and slash direction on Windows), not with samefile: the recorded model
+    # folder may sit on a drive that is not mounted right now, and samefile raises for a folder that is not there.
+    try:
+        return os.path.normcase(os.path.abspath(Path(first).expanduser())) == os.path.normcase(os.path.abspath(Path(second).expanduser()))
+    except (TypeError, ValueError, OSError):
+        return False
 
 
 def target(row, root=None):

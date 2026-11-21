@@ -2061,9 +2061,11 @@ class Installer:
                         return
         custom = self.env.get('UV_PYTHON_INSTALL_MIRROR') if self.network.get('mode') != 'official' else None
         isolation = ['--no-bin', '--no-registry']
-        def attempt(source, route, retry_mode):
+        def attempt(source, route, retry_mode, native_tls=False):
             env = network.download_environment(
                 network.route_environment(self.network, 'github', source, self.env, route), retry_mode)
+            if native_tls:
+                env['UV_NATIVE_TLS'] = '1'
             env['UV_PYTHON_INSTALL_MIRROR'] = (custom if source == 'user-python' else network.PYTHON_MIRRORS[source]
                                                if source in network.PYTHON_MIRRORS else
                                                network.source_url('github', source, self.env) + '/astral-sh/python-build-standalone/releases/download')

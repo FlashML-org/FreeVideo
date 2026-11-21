@@ -426,6 +426,12 @@ def load_model(folder, torch, stats, checkpoint):
                 raise ValueError('ram_space')
             model = dispatch_model(model, mapping)
             device = 'cuda:%d' % card if any(v == card for v in mapping.values()) else 'cpu'
+    if torch.cuda.is_available():
+        # Windows builds have no flash attention: keep the prefill off the math kernel (see core.expand_kv_heads).
+        expanded = core.expand_kv_heads(torch, 'cuda:%d' % card)
+        if expanded:
+            core.use_expanded_kv_heads()
+        stats['attention_kv_heads'] = 'expanded' if expanded else 'grouped'
     stats.update(load_seconds=time.monotonic() - loading, placement_seconds=time.monotonic() - placing,
                  accelerations=['merged_gate_up', 'per_image_sdpa', 'chunked_vision_mlp', 'merged_qkv'],
                  backend='freetoken-portable-ops+transformers',

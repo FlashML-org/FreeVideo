@@ -13,6 +13,7 @@ import os
 import time
 
 from . import frame_preview
+from .macos_compute import FLOOR_FAILURE, WORKER_FLOOR_BYTES
 from .macos_conditions import BLOCK_SECONDS_SCOPE, runtime_conditions
 from .sampling_progress import SamplingProgress
 
@@ -560,8 +561,8 @@ class Engine:
         previous_kernel_calls = {name: dict(counts) for name, counts in
                                  getattr(self, 'kernel_stats', {}).items()}
         def host_guard(module, inputs):
-            if system_memory()['available_bytes'] < 2**30:
-                raise MemoryError('MPS generation reached the 1 GiB physical RAM emergency floor')
+            if system_memory()['available_bytes'] < WORKER_FLOOR_BYTES:
+                raise MemoryError('MPS generation reached the 1 GiB ' + FLOOR_FAILURE)
         guards = [module.register_forward_pre_hook(host_guard, prepend=True) for module, _, _, _ in self.specs]
         try:
             with torch.no_grad():

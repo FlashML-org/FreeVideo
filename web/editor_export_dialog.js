@@ -5,7 +5,7 @@ import {selectedRange} from './editor_transport_model.js';
 import {isolateDialogKeys, listenDialogKey, routeDialogKey} from './dialog_keys.js';
 
 export const EXPORT_SETTINGS_KEY = 'freevideo.editor.export-settings';
-const defaults = {short: null, quality: 'high', range: 'whole', only: null, sound_format: 'm4a', fps: 24};
+const defaults = {short: null, quality: 'high', range: 'whole', only: null, sound_format: 'm4a', fps: 24, audio: null};
 export const FRAME_RATES = [24, 48, 60];
 const active = new WeakSet();
 const style = document.createElement('link');
@@ -49,6 +49,8 @@ function settings(record, selection, value, {remembered = false, fps = true} = {
         range: value.range === 'selected' && exportRange(record, selection) ? 'selected' : 'whole',
         only: !remembered && value.only === 'sound' ? 'sound' : null,
         sound_format: value.sound_format === 'wav' ? 'wav' : 'm4a',
+        // Like sound-only, lossless is not remembered: it makes a .mov outside the library, so it is chosen each time.
+        audio: !remembered && value.audio === 'lossless' ? 'lossless' : null,
         // 48/60 only where this machine can make the frames in between.
         fps: fps && FRAME_RATES.includes(value.fps) ? value.fps : defaults.fps,
     };
@@ -61,6 +63,7 @@ export function exportOptions(record, selection, value) {
         if (clean.quality !== 'high') options.quality = clean.quality;
         if (clean.short != null) options.short = clean.short;
         if (clean.fps !== defaults.fps) options.fps = clean.fps;
+        if (clean.audio === 'lossless' && hasSound(record, clean.range === 'selected' ? exportRange(record, selection) : null)) options.audio = 'lossless';
     }
     if (clean.range === 'selected') options.range = exportRange(record, selection);
     return options;
@@ -121,6 +124,8 @@ export async function openExportDialog({parent, state, sources, t = en => en, on
     group('quality', t('Quality', '画质'), [['high', t('High', '高')], ['standard', t('Standard', '标准')], ['small', t('Small file', '省空间')]]);
     // Without a graphics card the group is left out, not shown greyed.
     if (fps) group('fps', t('Frame rate', '帧率'), FRAME_RATES.map(rate => [rate, String(rate)]));
+    // Without sound in the range or with audio only the group is greyed, not hidden, so the window keeps its height.
+    group('audio', t('Sound', '声音'), [[null, t('Compatible', '通用')], ['lossless', t('Lossless', '无损')]]);
     group('range', t('Range', '范围'), [['whole', t('Whole edit', '整条')], ['selected', t('Selected range', '选中的范围')]]);
     const contentRow = group('only', t('Content', '内容'), [[null, t('Video and audio', '画面和声音')], ['sound', t('Audio only', '只声音')]]);
     const formatRow = group('sound_format', t('Audio only', '只声音'), [['m4a', 'M4A'], ['wav', 'WAV']], contentRow);
@@ -149,13 +154,14 @@ export async function openExportDialog({parent, state, sources, t = en => en, on
     function update() {
         if (!exportRange(state.record, state.selection)) value.range = 'whole';
         const audible = hasSound(state.record, chosenRange());
-        if (!audible) value.only = null;
+        if (!audible) { value.only = null; value.audio = null; }
         const sound = value.only === 'sound';
         for (const {name, controls, choices} of groups) [...controls.children].forEach((node, i) => {
             node.setAttribute('aria-pressed', String(value[name] === choices[i][0]));
             node.disabled = sound && ['short', 'quality', 'fps'].includes(name)
                 || name === 'range' && choices[i][0] === 'selected' && !exportRange(state.record, state.selection)
-                || name === 'only' && choices[i][0] === 'sound' && !audible;
+                || name === 'only' && choices[i][0] === 'sound' && !audible
+                || name === 'audio' && (sound || !audible);
         });
         formatRow.hidden = !sound;
         const range = chosenRange(), parts = affected(), n = parts.length;
@@ -169,7 +175,7 @@ export async function openExportDialog({parent, state, sources, t = en => en, on
         // Same rounding as the player's total, so one edit never reads 0:31 there and 0:32 here.
         const total = model.exportFrames(state.record), part = range && !(range.start === 0 && range.frames === total);
         const time = part ? `${transportTime(range.start)} – ${transportTime(range.start + range.frames)}` : transportTime(total);
-        summary.textContent = `${time} · ${sound ? value.sound_format.toUpperCase() : `${size.width} × ${size.height}`}`;
+        summary.textContent = `${time} · ${sound ? value.sound_format.toUpperCase() : `${size.width} × ${size.height}`}${!sound && value.audio === 'lossless' ? ' · MOV' : ''}`;
     }
     let closed = false;
     const cleanups = [];

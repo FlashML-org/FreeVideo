@@ -105,7 +105,9 @@ def child(command, env, descriptor, log, *, ram_budget_bytes=None, gpu=None, on_
                     sample = memory.sample(process.pid)
                     telemetry.setdefault('ram_start', sample)
                     telemetry['ram_last'] = sample
-                    pressure = inference_pressure(sample, ram_budget_bytes, minimum_available_bytes,
+                    # A callable gives a floor that follows the worker's stage (the Mac engine child).
+                    floor = minimum_available_bytes() if callable(minimum_available_bytes) else minimum_available_bytes
+                    pressure = inference_pressure(sample, ram_budget_bytes, floor,
                                                   budget_is_estimate=ram_budget_is_estimate)
                     telemetry['ram_guard'] = pressure
                     if pressure['reasons'] and not pressure['enforced_reasons']:
@@ -208,6 +210,38 @@ def low_memory_mode(engine):
     return None
 
 
+# After the idle worker exits, the driver hands its video memory back a moment
+# later, and a fresh measurement taken at once can still count it as used.
+GPU_RETURN_SLACK = 512 * 2**20
+GPU_RETURN_RISE = 64 * 2**20
+GPU_RETURN_PATIENCE = 3.0
+GPU_RETURN_LIMIT = 20.0
+
+
+def await_released_gpu(raw, expected_free, detect, *, clock=time.monotonic, pause=time.sleep):
+    """Measure again until the video memory the released worker held is free.
+
+    Gives up when the free amount has stopped rising for GPU_RETURN_PATIENCE
+    seconds (something else holds the memory) or after GPU_RETURN_LIMIT, and
+    returns the latest measurement either way, so a card that never recovers
+    is planned from what it really has. Nothing waits when it is already back.
+    """
+    target = expected_free - GPU_RETURN_SLACK
+    first = clock()
+    best, rose, polls = raw.vram_free, first, 0
+    while raw.vram_free < target:
+        now = clock()
+        if now - rose >= GPU_RETURN_PATIENCE or now - first >= GPU_RETURN_LIMIT:
+            break
+        pause(.25)
+        raw = detect()
+        polls += 1
+        if raw.vram_free > best + GPU_RETURN_RISE:
+            best, rose = raw.vram_free, clock()
+    return raw, dict(polls=polls, seconds=clock() - first, expected_free_bytes=expected_free,
+                     free_bytes=raw.vram_free, recovered=raw.vram_free >= target)
+
+
 def automatic_profile(args, canvas, *, stage, evidence, descriptor=None, environment=None):
     """Plan with idle-cache accounting; reclaim once if it prevents admission."""
     from .hardware import detect
@@ -215,8 +249,12 @@ def automatic_profile(args, canvas, *, stage, evidence, descriptor=None, environ
     from .kernel_capabilities import available_backends
     from .resident_process import credit, release_idle_cache, ENV, SessionRestarted
     environment = os.environ if environment is None else environment
+    released = None
     for attempt in range(2):
         raw = detect()
+        if released is not None:
+            released_row, expected_free = released
+            raw, released_row['recovery']['gpu_return'] = await_released_gpu(raw, expected_free, detect)
         encoding_stage = stage == 'before-encoding' and bool(getattr(args, 'prompt_file', None))
         hardware, state = credit(raw, environment, reuse_encoder=encoding_stage)
         row = dict(stage=stage, raw=raw.to_dict(), adjusted=hardware.to_dict(), idle_cache=state)
@@ -383,6 +421,9 @@ def automatic_profile(args, canvas, *, stage, evidence, descriptor=None, environ
                 row['recovery'] = release_idle_cache(environment, lease)
             except SessionRestarted:
                 row['recovery'] = dict(released=True, reason='Old worker already confirmed stopped')
+        idle_gpu = (state or {}).get('reclaimable_gpu_bytes')
+        if type(idle_gpu) is int and idle_gpu > 0 and row['recovery'].get('released'):
+            released = (row, min(raw.vram_total, raw.vram_free + idle_gpu))
         environment.pop(ENV, None)
         os.environ.pop(ENV, None)
 

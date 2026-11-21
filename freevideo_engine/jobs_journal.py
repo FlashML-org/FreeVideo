@@ -6,6 +6,7 @@ A write that fails is logged and never reaches the job; a damaged file reads as 
 import json
 import logging
 import math
+import os
 import re
 import threading
 import time
@@ -63,9 +64,43 @@ def _recent(rows, now):
     return kept[-LIMIT:]
 
 
+_SWEPT = set()
+
+
+def _sweep(root):
+    """Once per process and output folder: a row naming a saved video that is no longer in the library goes. This
+    clears rows left by deletions made before the record forgot them. Nothing is dropped while the library folder
+    itself is missing (an unplugged drive) or any check fails other than "not found", and a row without a video is kept. Caller holds _LOCK. Never raises."""
+    key = str(root)
+    if key in _SWEPT:
+        return
+    _SWEPT.add(key)
+    try:
+        library = io_path(root / 'FreeVideo')
+        if not library.is_dir() or not io_path(root / NAME).is_file():
+            return
+        os.listdir(library)  # a library that cannot be listed is not known to be empty
+        rows = _rows(root)
+        kept = []
+        for row in rows:
+            if 'result' in row:
+                try:
+                    (library / row['result'] / 'video.mp4').stat()
+                except FileNotFoundError:
+                    continue
+                except OSError:
+                    return  # no permission, a drive going away: the answer is open, so nothing is dropped
+            kept.append(row)
+        if len(kept) != len(rows):
+            monitoring.save(root / NAME, dict(jobs=kept))
+    except Exception:
+        _LOG.warning('The finished-job record could not be updated.', exc_info=True)
+
+
 def read(*, root):
     """The recorded jobs, oldest first; an unreadable file gives an empty list."""
     with _LOCK:
+        _sweep(root)
         return _recent(_rows(root), time.time())
 
 
@@ -83,6 +118,21 @@ def append(row, *, root):
             monitoring.save(root / NAME, dict(jobs=_recent(rows, now)))
     except Exception:
         _LOG.warning('The finished-job record could not be written.', exc_info=True)
+
+
+def forget(results, *, root):
+    """A saved video the user deleted for good: the rows naming it go, so no line of the record points at it. Never raises."""
+    try:
+        results = {value for value in results if isinstance(value, str)}
+        if not results or not io_path(root / NAME).is_file():
+            return
+        with _LOCK:
+            rows = _rows(root)
+            kept = [row for row in rows if row.get('result') not in results]
+            if len(kept) != len(rows):
+                monitoring.save(root / NAME, dict(jobs=kept))
+    except Exception:
+        _LOG.warning('The finished-job record could not be updated.', exc_info=True)
 
 
 def mark_interrupted(*, root):

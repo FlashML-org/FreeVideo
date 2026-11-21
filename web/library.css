@@ -170,7 +170,7 @@ dialog.fv-studio.fv-library::backdrop{background:var(--lib-page)}
   background:transparent;color:var(--fv-fg2);font-size:var(--fv-fs-2,13px);font-weight:500;box-shadow:none}
 .fv-library .fv-library-selection-actions button[hidden]{display:none}
 .fv-library .fv-library-selection-actions button:hover:not(:disabled){background:var(--fv-ctl-hover);color:var(--fv-fg)}
-.fv-library .fv-library-selection-actions .fv-library-danger,.fv-library .fv-library-danger{background:#c8353a;color:#fff;font-weight:600;padding:0 var(--fv-sp-16,16px)}
+.fv-library .fv-library-selection-actions .fv-library-danger,.fv-library .fv-library-danger{background:#c8353a;color:#fff;font-weight:600;padding:0 var(--fv-sp-16,16px);white-space:nowrap}
 .fv-library .fv-library-selection-actions .fv-library-danger:hover:not(:disabled){background:#d4434a;color:#fff}
 .fv-library .fv-library-undo{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:var(--fv-sp-4,4px) var(--fv-sp-12,12px);margin:0;min-height:40px;padding:var(--fv-sp-4,4px) var(--fv-sp-8,8px) var(--fv-sp-4,4px) var(--fv-sp-16,16px);
   border-radius:var(--fv-r-pill);font-size:var(--fv-fs-2,13px);color:var(--fv-fg);max-width:100%;box-sizing:border-box}
@@ -368,7 +368,7 @@ dialog.fv-studio.fv-library::backdrop{background:var(--lib-page)}
   .fv-library[data-detail=true] .fv-library-detail{display:flex}.fv-library[data-detail=true] :is(.fv-library-collection,.fv-library-side){display:none}
   .fv-library .fv-library-selection{flex-wrap:wrap}
   .fv-library .fv-library-selection-actions{width:100%;justify-content:flex-end}
-  .fv-library .fv-library-selection-actions button:not(.fv-library-danger)>span{display:none}
+  .fv-library .fv-library-selection-actions button:not(.fv-library-danger)>span:not(.fv-lib-icon){display:none}
 }
 .fv-library-prompt{display:flex;flex-direction:column;gap:var(--fv-sp-4,4px)}
 .fv-library-prompt[hidden]{display:none}
@@ -397,7 +397,11 @@ dialog.fv-studio.fv-library::backdrop{background:var(--lib-page)}
 :root dialog.fv-studio.fv-library[data-fv-embedded=true][open]{animation:fv-library-appear var(--fv-dur-2,200ms) var(--fv-ease-out)}
 .fv-library a.fv-library-menu-item{text-decoration:none}
 .fv-library-stack{position:absolute;left:var(--fv-sp-8,8px);bottom:var(--fv-sp-8,8px);display:inline-flex;align-items:center;min-width:24px;height:20px;padding:0 var(--fv-sp-4,4px);border-radius:var(--fv-r-sm);
-  background:rgb(0 0 0 / .55);color:#fff;font-size:var(--fv-fs-1,12px);font-weight:600;pointer-events:none}
+  background:rgb(0 0 0 / .55);color:#fff;font-size:var(--fv-fs-1,12px);font-weight:600;cursor:pointer}
+/* A press area of at least 24 x 24 around the 20 px mark; the look stays. */
+.fv-library-stack::after{content:'';position:absolute;inset:-2px -2px}
+.fv-library-stack[aria-expanded=true]{background:var(--fv-accent-fill,#2f7bff);color:#fff}
+.fv-library-stack:focus-visible{outline:2px solid #fff;outline-offset:2px;box-shadow:0 0 0 4px rgb(0 0 0 / .6)} /* white ring with a dark outer ring: it reads on any cover and on the pressed blue, in both themes */
 .fv-library-stack::before{content:'';flex:none;width:8px;height:8px;margin-right:var(--fv-sp-4,4px);border:1.5px solid currentColor;border-radius:var(--fv-r-xs);box-shadow:2px -2px 0 -1px rgb(0 0 0 / .55),2px -2px 0 0 currentColor}
 .fv-library-stack[hidden]{display:none}
 .fv-library .fv-library-selection-actions button:disabled{opacity:.45;cursor:default}
@@ -482,7 +486,6 @@ dialog.fv-studio.fv-library::backdrop{background:var(--lib-page)}
 .fv-library .fv-library-check:hover{border-color:#fff;background:rgb(0 0 0 / .55)}
 .fv-library-hover{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;pointer-events:none;transition:opacity var(--fv-dur-1,160ms) var(--fv-ease-out,ease-out)}
 .fv-library-hover[data-on=true]{opacity:1}
-.fv-library-stack{cursor:pointer}
 
 .fv-library-viewer{--fv-fg:#f3f5f8;--fv-fg2:rgb(243 245 248 / .78);--fv-fg3:rgb(243 245 248 / .56);--fv-line:rgb(255 255 255 / .08);--fv-line2:rgb(255 255 255 / .14);
   --fv-ctl-bg:rgb(255 255 255 / .06);--fv-ctl-hover:rgb(255 255 255 / .1);background:#0b0c0e;color:var(--fv-fg);color-scheme:dark;animation:fv-library-viewer-in 140ms var(--fv-ease-out,ease-out)}
@@ -610,6 +613,8 @@ dialog.fv-library .fv-library-picture>img[data-loaded=true]{opacity:1}
 .fv-library[data-layout=stage] .fv-library-selection .fv-library-bar-compare{display:none}
 .fv-library[data-layout=stage] .fv-library-selection-actions{display:flex;flex-wrap:wrap;gap:var(--fv-sp-4,4px);width:100%}
 .fv-library[data-layout=stage] .fv-library-selection-actions button{flex:1;height:32px;min-height:32px;padding:0 var(--fv-sp-8,8px);font-size:var(--fv-fs-1,12px)}
+.fv-library[data-layout=stage] .fv-library-selection-actions button:not(.fv-library-danger){padding:0 10px}
+.fv-library[data-layout=stage] .fv-library-selection-actions button:not(.fv-library-danger)>span:not(.fv-lib-icon){display:none}
 /* Three or four compared on the stage: a 2 x 2, each whole. */
 .fv-library-viewer[data-mode=grid] .fv-library-compare-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:var(--fv-sp-8,8px);padding:56px var(--fv-sp-24,24px) var(--fv-sp-24,24px);min-height:0}
 .fv-library-viewer[data-mode=grid] .fv-library-compare-cell{position:relative;display:grid;min-height:0;margin:0;place-items:center}

@@ -1,40 +1,77 @@
 {
   "schema": 1,
-  "product_version": "0.6.6",
-  "important": false,
+  "product_version": "0.6.7",
+  "important": true,
   "en": {
-    "summary": "0.6.6 gives more control over MOSS-Image pictures and makes them faster on smaller graphics cards, lets a reference video lend only its layout, explains more failures with a next step, and makes the Edit view easier to use in narrow windows and view switches smoother on slower computers.",
+    "summary": "0.6.7 improves prompt enhancement for MOSS-Image, lets merged videos be upscaled, offers lossless sound on export, gives videos, audio and dropdowns FreeVideo's own play bar and menu, makes the Edit view smoother, explains more failures, and cleans up more thoroughly when a work is deleted.",
     "changes": [
-      "More control over picture layout: draw boxes with Layout in the Image view and give each one a line of description to place each part of the picture. Words in quotation marks are written into the picture.",
-      "MOSS-Image is faster on smaller graphics cards: a 1024-pixel picture on a 12 GB card is made much faster, with exactly the same result as before.",
-      "A reference video can lend only its layout: with Composition only, the new video follows the layout of the reference video, not its motion or colours.",
-      "Original sound plays on phones: an MP3 used as the original sound stays an MP3 in the finished video, so phones and system players can play it.",
-      "Frames saved in the Edit view also go to the output folder: with Also save pictures to the output folder on in Settings, a frame saved in the Edit view is copied there as well.",
-      "More failures explain what happened and what to do next, including a task that gets no answer after it is submitted, a picture the assistant cannot start and a Git error during setup.",
-      "Smoother on slower computers: with fewer processor cores or slow view switches, FreeVideo turns off the switch animation, and the library and short clips play more smoothly.",
-      "The Edit view is easier to use in a narrow window: the preview and buttons no longer cover each other, and the tracks and the update bar are shown in full.",
-      "Dialogs and tips are easier to read: their text is no longer disturbed by what lies behind them, and a hover tip appears only when a name is cut short.",
-      "Fields are easier to fill in: a number typed outside its range is brought back into range with a note under the field. An emptied LoRA strength returns to the strength in use.",
-      "Tutorial additions: how to export at 48 or 60 fps, and how to use MOSS-Image layout boxes."
+      "Prompt enhancement for MOSS-Image: with MOSS-Image, prompts are enhanced the way Qwen-Image's are; when the service refuses an enhancement request, the cause is named.",
+      "Prompt enhancement is steadier on smaller graphics cards: on cards with less video memory, such as 8 GB, enhancing a prompt no longer fails for lack of video memory.",
+      "Steadier use of Qwen-Image and MOSS-Image together: on a 12 GB card, making a picture with Qwen-Image and then switching to MOSS-Image no longer fails for lack of memory.",
+      "Upscale takes merged videos: a merged video can be upscaled to the largest size, and a video that cannot be enlarged says why.",
+      "Sound format on export: the export window adds a Sound option beside the frame rate, Compatible or Lossless. Lossless exports a .mov with uncompressed sound; it is not available with Audio only or for a range without sound.",
+      "One play bar and one menu: videos and audio use FreeVideo's own play bar, where a click plays or pauses a video and long audio and video can be dragged to any point; every dropdown in FreeVideo pages opens the FreeVideo menu instead of the system list.",
+      "A smoother Edit view: the preview has more room, the Media, LoRA and Advanced windows are no longer covered by the timeline, the buttons stay on one line in a narrow window, and Escape during a replace-audio step cancels only the replacement.",
+      "Over-long prompts are explained first: in the Image view and the Edit view, a prompt over the engine's limit says by how much before it is submitted, instead of being refused afterwards.",
+      "More failures explain what happened: a picture failure names the step where it failed, and a picture moved or deleted in the Edit view is named with a way to import it again.",
+      "More accurate graphics card notices: the laptop GeForce RTX 2050 is no longer listed as an unsupported card, and an old driver shows the driver update notice.",
+      "Steadier on a Mac with tight memory: when a Mac runs short of memory midway, generation retries once in a way that uses less memory instead of stopping.",
+      "Cleaner deletion: related traces in pictures, uploads, thumbnails and logs are removed, and deleted videos no longer appear in the finished-task record."
     ]
   },
   "zh": {
-    "summary": "0.6.6 让 MOSS-Image 出图更可控，在显存较小的显卡上也更快；参考视频可以只沿用构图；更多失败会说明原因和下一步；窄窗口下的剪辑视图和低配电脑上的视图切换更顺畅。",
+    "summary": "0.6.7 改进 MOSS-Image 的提示词增强，合并后的视频可以放大，导出可选无损声音；播放条和下拉菜单统一为 FreeVideo 自己的样式，剪辑视图更顺手，更多失败会说明原因，删除作品时清理得更干净。",
     "changes": [
-      "图片构图更可控：在图像视图中用“布局”画框，并为每个框写一句描述，即可指定画面中各部分的位置。引号中的文字会直接写进画面。",
-      "MOSS-Image 在显存较小的显卡上更快：12 GB 显卡生成 1024 像素的图片明显加快，画面与之前完全相同。",
-      "参考视频可以只沿用构图：选择“仅参考构图”时，生成的视频沿用参考视频的构图，不沿用其动作和颜色。",
-      "MP3 原声可在手机上直接播放：作为原声的 MP3 在成片中保持原样，手机和系统播放器均可直接播放。",
-      "剪辑视图保存的画面也会存入 output 文件夹：开启设置中的“同时将图片保存到 output 文件夹”后，在剪辑视图中保存的画面同样会复制到 output 文件夹。",
-      "更多失败会说明原因和下一步：任务提交后无应答、助手请求的图片无法开始、安装时 Git 出错，都会说明发生了什么以及接下来该怎么做。",
-      "低配电脑上更流畅：处理器核心较少或视图切换较慢时，FreeVideo 会自动关闭切换动画，作品库和短视频播放更加顺畅。",
-      "窄窗口下的剪辑视图更易用：预览与按钮不再互相遮挡，轨道和更新栏均完整显示。",
-      "对话框和提示更易阅读：对话框与提示的文字不再受背景内容干扰，悬停提示只在名称显示不全时出现。",
-      "输入更省心：数字框中输入超出范围的值时，会自动改回范围内并给出提示。清空 LoRA 强度后，会恢复为正在使用的强度。",
-      "教程补充：新增导出 48 或 60 fps 视频的方法，以及 MOSS-Image 布局框的用法。"
+      "提示词增强适配 MOSS-Image：使用 MOSS-Image 时，提示词按 Qwen-Image 的改写方式增强；改写请求被服务拒绝时，会说明原因。",
+      "提示词增强在显存较小的显卡上更稳：在 8 GB 等显存较小的显卡上，提示词增强不再因显存不足而失败。",
+      "先后使用 Qwen-Image 和 MOSS-Image 更稳：12 GB 显存的显卡上，先用 Qwen-Image 出图再换 MOSS-Image，不再因内存不足而失败。",
+      "视频放大支持合并后的视频：合并后的视频可以放大到最大尺寸；无法放大的视频会说明原因。",
+      "导出可选声音格式：导出窗口在帧率旁新增“声音”选项，可选“通用”或“无损”。选择“无损”时导出为 .mov 文件，声音不压缩；内容选“只声音”或所选范围没有声音时不可选。",
+      "播放条和下拉菜单统一：视频和音频使用 FreeVideo 自己的播放条，点击视频即可播放或暂停，长音频和视频可拖动进度；页面中的所有下拉选择都使用 FreeVideo 菜单，不再弹出系统列表。",
+      "剪辑视图更顺手：预览更宽敞，“素材”“LoRA”“高级选项”窗口不再被时间线遮住，窄窗口下按钮保持在一行，替换声音时按 Esc 只取消替换。",
+      "提示词过长时先说明：图像视图和剪辑视图中，超过引擎限制的提示词在提交前就会提示超出多少，不再提交后才被拒绝。",
+      "更多失败会说明原因：图片失败会指出出错的步骤；剪辑中的图片被移动或删除时，会说明并给出重新导入的办法。",
+      "显卡提示更准确：笔记本 GeForce RTX 2050 不再被列为不支持的显卡，驱动过旧时会显示更新驱动的提示。",
+      "Mac 内存紧张时更稳：Mac 生成中途内存不足时，会自动换一种更省内存的方式重试一次，不再直接停止。",
+      "删除作品清理更干净：图片、上传文件、缩略图和日志中的相关残留一并清除，已删除的视频不再出现在已完成任务记录中。"
     ]
   },
   "history": [
+    {
+      "product_version": "0.6.6",
+      "en": {
+        "summary": "0.6.6 gives more control over MOSS-Image pictures and makes them faster on smaller graphics cards, lets a reference video lend only its layout, explains more failures with a next step, and makes the Edit view easier to use in narrow windows and view switches smoother on slower computers.",
+        "changes": [
+          "More control over picture layout: draw boxes with Layout in the Image view and give each one a line of description to place each part of the picture. Words in quotation marks are written into the picture.",
+          "MOSS-Image is faster on smaller graphics cards: a 1024-pixel picture on a 12 GB card is made much faster, with exactly the same result as before.",
+          "A reference video can lend only its layout: with Composition only, the new video follows the layout of the reference video, not its motion or colours.",
+          "Original sound plays on phones: an MP3 used as the original sound stays an MP3 in the finished video, so phones and system players can play it.",
+          "Frames saved in the Edit view also go to the output folder: with Also save pictures to the output folder on in Settings, a frame saved in the Edit view is copied there as well.",
+          "More failures explain what happened and what to do next, including a task that gets no answer after it is submitted, a picture the assistant cannot start and a Git error during setup.",
+          "Smoother on slower computers: with fewer processor cores or slow view switches, FreeVideo turns off the switch animation, and the library and short clips play more smoothly.",
+          "The Edit view is easier to use in a narrow window: the preview and buttons no longer cover each other, and the tracks and the update bar are shown in full.",
+          "Dialogs and tips are easier to read: their text is no longer disturbed by what lies behind them, and a hover tip appears only when a name is cut short.",
+          "Fields are easier to fill in: a number typed outside its range is brought back into range with a note under the field. An emptied LoRA strength returns to the strength in use.",
+          "Tutorial additions: how to export at 48 or 60 fps, and how to use MOSS-Image layout boxes."
+        ]
+      },
+      "zh": {
+        "summary": "0.6.6 让 MOSS-Image 出图更可控，在显存较小的显卡上也更快；参考视频可以只沿用构图；更多失败会说明原因和下一步；窄窗口下的剪辑视图和低配电脑上的视图切换更顺畅。",
+        "changes": [
+          "图片构图更可控：在图像视图中用“布局”画框，并为每个框写一句描述，即可指定画面中各部分的位置。引号中的文字会直接写进画面。",
+          "MOSS-Image 在显存较小的显卡上更快：12 GB 显卡生成 1024 像素的图片明显加快，画面与之前完全相同。",
+          "参考视频可以只沿用构图：选择“仅参考构图”时，生成的视频沿用参考视频的构图，不沿用其动作和颜色。",
+          "MP3 原声可在手机上直接播放：作为原声的 MP3 在成片中保持原样，手机和系统播放器均可直接播放。",
+          "剪辑视图保存的画面也会存入 output 文件夹：开启设置中的“同时将图片保存到 output 文件夹”后，在剪辑视图中保存的画面同样会复制到 output 文件夹。",
+          "更多失败会说明原因和下一步：任务提交后无应答、助手请求的图片无法开始、安装时 Git 出错，都会说明发生了什么以及接下来该怎么做。",
+          "低配电脑上更流畅：处理器核心较少或视图切换较慢时，FreeVideo 会自动关闭切换动画，作品库和短视频播放更加顺畅。",
+          "窄窗口下的剪辑视图更易用：预览与按钮不再互相遮挡，轨道和更新栏均完整显示。",
+          "对话框和提示更易阅读：对话框与提示的文字不再受背景内容干扰，悬停提示只在名称显示不全时出现。",
+          "输入更省心：数字框中输入超出范围的值时，会自动改回范围内并给出提示。清空 LoRA 强度后，会恢复为正在使用的强度。",
+          "教程补充：新增导出 48 或 60 fps 视频的方法，以及 MOSS-Image 布局框的用法。"
+        ]
+      }
+    },
     {
       "product_version": "0.6.5",
       "en": {

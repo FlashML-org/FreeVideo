@@ -1,5 +1,5 @@
 /* Share the studio shell and header geometry; only the editor rows differ. */
-.fv-studio.fv-editor{--fv-ed-project-h:44px;--fv-ed-generation-row:calc(60px + var(--fv-ed-description-growth,0px));--fv-ed-timeline-h:clamp(220px,calc(100dvh - 640px),320px);overflow:hidden auto;display:grid;grid-template-columns:264px minmax(0,1fr);grid-template-rows:auto var(--fv-ed-project-h) minmax(96px,1fr) 40px var(--fv-ed-generation-row) 40px var(--fv-ed-timeline-h);animation:none;scrollbar-width:thin;scrollbar-color:var(--fv-border) transparent}
+.fv-studio.fv-editor{--fv-ed-project-h:44px;--fv-ed-generation-row:calc(60px + var(--fv-ed-description-growth,0px) + var(--fv-ed-note-growth,0px));--fv-ed-timeline-h:min(clamp(220px,calc(100dvh - 640px),320px),max(160px,var(--fv-ed-tracks-fit,320px)));overflow:hidden auto;display:grid;grid-template-columns:264px minmax(0,1fr);grid-template-rows:auto var(--fv-ed-project-h) minmax(96px,1fr) 40px var(--fv-ed-generation-row) 40px var(--fv-ed-timeline-h);animation:none;scrollbar-width:thin;scrollbar-color:var(--fv-border) transparent}
 @media(min-width:1280px){.fv-studio.fv-editor{grid-template-columns:264px minmax(0,1fr) 264px}}
 .fv-editor *{box-sizing:border-box}
 .fv-editor [hidden]{display:none!important}
@@ -90,7 +90,7 @@
 .fv-ed-picture>img.fv-ed-poster[data-gone=true]{opacity:0}
 .fv-ed-picture>img.fv-ed-poster[hidden]{display:none}
 @media(prefers-reduced-motion:reduce){.fv-ed-picture>img.fv-ed-poster{transition:none}}
-.fv-ed-picture>audio.fv-ed-source-preview{display:block;position:absolute;bottom:0;left:0;width:100%}
+.fv-ed-picture>audio.fv-ed-source-preview{display:none}
 .fv-ed-transport{grid-column:2;grid-row:4;display:flex;align-items:center;justify-content:center;gap:12px}
 .fv-editor .fv-ed-play{width:36px;height:36px;border-radius:var(--fv-r-pill);padding:0;background:transparent}
 .fv-ed-time{font-size:13px;font-variant-numeric:tabular-nums;font-family:ui-monospace,monospace;min-width:100px}
@@ -476,6 +476,12 @@
 .fv-ed-genbar>.fv-ed-gen-note[data-hx-issue]{white-space:nowrap;overflow:hidden;display:flex;align-items:center;gap:8px}
 .fv-ed-genbar>.fv-ed-gen-note .fv-issue-button{flex:none;margin-left:0}
 @media(max-width:680px){.fv-ed-genbar>.fv-ed-gen-note{order:-1;flex:1 1 100%;max-width:none}}
+.fv-ed-genbar[data-note-row]{flex-wrap:wrap;align-content:flex-start;row-gap:8px}
+.fv-ed-genbar[data-note-row]>.fv-ed-gen-note{order:-1;flex:1 1 100%;max-width:none}
+/* On a row of its own the sentence wraps rather than being cut. */
+.fv-ed-genbar[data-note-row]>.fv-ed-gen-note[data-hx-issue],.fv-ed-genbar[data-note-row]>.fv-ed-gen-note{white-space:normal;overflow:visible;text-overflow:clip;height:auto}
+.fv-ed-genbar[data-note-row]>.fv-ed-gen-note .fv-ed-gen-note-text{white-space:normal;overflow:visible;text-overflow:clip}
+@media(max-width:680px){.fv-ed-genbar>.fv-ed-gen-note[data-hx-issue],.fv-ed-genbar>.fv-ed-gen-note{white-space:normal;overflow:visible;text-overflow:clip;height:auto}.fv-ed-genbar>.fv-ed-gen-note .fv-ed-gen-note-text{white-space:normal;overflow:visible;text-overflow:clip}}
 /* Under the press: what downloads first (its hover names it and its size). */
 .fv-ed-generate-time.fv-ed-generate-download::before{content:"↓ "}
 .fv-ed-generate-time{opacity:1}
@@ -586,6 +592,45 @@
 
 /* The creation panel's own bar stands in for the description, size, duration and quality controls (editor.js). */
 .fv-ed-genbar.fv-ed-genbar-borrowed{height:auto;flex-wrap:wrap;align-content:flex-start;align-items:flex-start}
+/* The borrowed bar is the creation panel's console with its own frame: the editor adds no second frame around it, and no
+   backdrop filter, which would make the bar the box its windows (Media, LoRA, Advanced) are placed in and drop them onto the timeline. */
+.fv-editor .fv-ed-genbar.fv-ed-genbar-borrowed{padding:0;border:0;background:none;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none}
+/* The picture is what the editor is for: here the description keeps two lines, growing to three, and scrolls past that
+   (its expand key opens the full box). */
+.fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console .fv-prompt-editor textarea{min-height:48px;max-height:72px;padding-block:0;box-sizing:border-box}
+/* One row of keys under it where the window allows: slightly closer keys and a narrower Generate. A short window keeps
+   the description at two lines. */
+.fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create{--fvs-key-w:140px}
+.fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-chips{gap:6px}
+@media(max-width:1439px){.fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-chips{gap:4px}}
+.fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-chips>.fvs-chip-spacer{min-width:0}
+/* Where the chips would wrap beside the Generate block (a narrow window; English words are longer), the key stands
+   beside the description instead and the chips take the full width on one line. The description's tools move from
+   the key's column to the strip under the text, next to the key, and the text shows two lines while it is not being
+   typed in, so the console is no taller than before. */
+@media(max-width:1365px){
+  .fv-editor:lang(zh) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console .fvs-chips{grid-column:1/-1}
+  .fv-editor:lang(zh) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console>.fv-runbar{grid-row:1/span 2}
+  .fv-editor:lang(zh) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console-prompt{display:flex;flex-direction:column}
+  .fv-editor:lang(zh) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console-prompt>.fv-section{flex:1 1 auto;display:flex;flex-direction:column}
+  .fv-editor:lang(zh) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console-prompt>.fv-section>.fv-enhance{flex:1 1 auto}
+  .fv-editor:lang(zh) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console-prompt .fv-enhance>.fv-prompt-editor{flex:1 1 auto;padding-bottom:32px;box-sizing:border-box}
+  .fv-editor:lang(zh) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console .fv-prompt-tools{top:auto;bottom:0;right:0}
+  .fv-editor:lang(zh) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console .fv-prompt-editor textarea:not(:focus){max-height:48px}
+}
+@media(max-width:1439px){
+  .fv-editor:lang(en) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console .fvs-chips{grid-column:1/-1}
+  .fv-editor:lang(en) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console>.fv-runbar{grid-row:1/span 2}
+  .fv-editor:lang(en) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console-prompt{display:flex;flex-direction:column}
+  .fv-editor:lang(en) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console-prompt>.fv-section{flex:1 1 auto;display:flex;flex-direction:column}
+  .fv-editor:lang(en) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console-prompt>.fv-section>.fv-enhance{flex:1 1 auto}
+  .fv-editor:lang(en) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console-prompt .fv-enhance>.fv-prompt-editor{flex:1 1 auto;padding-bottom:32px;box-sizing:border-box}
+  .fv-editor:lang(en) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console .fv-prompt-tools{top:auto;bottom:0;right:0}
+  .fv-editor:lang(en) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console .fv-prompt-editor textarea:not(:focus){max-height:48px}
+}
+.fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-step-value{min-width:40px}
+.fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-chip:not(.fv-reference-trigger,[data-chip=advanced],.fvs-stepper){padding:0 10px}
+@media(max-height:820px){.fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console .fv-prompt-editor textarea{max-height:48px}}
 .fv-ed-genbar-borrowed>.fv-ed-refs,.fv-ed-genbar-borrowed>.fv-ed-description-box,.fv-ed-genbar-borrowed>.fv-ed-duration,.fv-ed-genbar-borrowed>.fv-ed-first-frame,.fv-ed-genbar-borrowed>.fv-ed-generate,.fv-ed-genbar-borrowed>.fv-ed-pass-options{display:none!important}
 .fv-ed-genbar-borrowed>.fv-borrowed{flex:1 1 100%;min-width:0;position:static;display:block;width:auto;height:auto;max-height:none;padding:0;border:0;background:none;box-shadow:none;transform:none;inset:auto}
 .fv-ed-genbar-borrowed>.fv-borrowed>.fv-body{display:block;position:static;width:auto;height:auto;padding:0}

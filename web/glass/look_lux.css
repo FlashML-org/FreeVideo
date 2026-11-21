@@ -203,12 +203,18 @@ html[data-fv-lux]:root dialog.fv-studio.fv-image .fv-iv-panel{
 }
 html[data-fv-lux]:root dialog.fv-studio.fv-image .fv-iv-panel{isolation:isolate}
 /* The edit view: its library and its generate bar are the same L1 glass; the preview and the tracks keep their own
-   ground, and nothing here draws over a clip. The assistant view's two side panels likewise. */
-html[data-fv-lux]:root dialog.fv-studio.fv-editor :is(.fv-ed-library,.fv-ed-genbar),
+   ground, and nothing here draws over a clip. The assistant view's two side panels likewise. A bar borrowed from the
+   creation panel brings its own glass, and a backdrop filter on its holder would drop its windows onto the timeline. */
+html[data-fv-lux]:root dialog.fv-studio.fv-editor :is(.fv-ed-library,.fv-ed-genbar:not(.fv-ed-genbar-borrowed)),
 html[data-fv-lux]:root dialog.fv-studio.fv-autopilot :is(.fv-chat-rail,.fv-chat-side){
   background:var(--lx-g1)!important;
   -webkit-backdrop-filter:var(--lx-blur1)!important;backdrop-filter:var(--lx-blur1)!important;
 }
+/* The adjust panel docks as the same L1 glass from 1280 px; below that it is a drawer floating over the picture and is opaque. */
+@media(min-width:1280px){html[data-fv-lux]:root dialog.fv-studio.fv-editor .fv-ed-adjust-host{
+  background:var(--lx-g1)!important;-webkit-backdrop-filter:var(--lx-blur1)!important;backdrop-filter:var(--lx-blur1)!important}}
+@media(max-width:1279px){html[data-fv-lux]:root dialog.fv-studio.fv-editor .fv-ed-adjust-host{
+  background:var(--lx-s1)!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}}
 /* Fields and blocks in the image view: the chip face. */
 html[data-fv-lux]:root dialog.fv-studio.fv-image :is(.fv-iv-mpick,.fv-iv-search,.fv-iv-seg,.fv-iv-prompt,.fv-iv-field){background:var(--lx-chip);box-shadow:inset 0 0 0 1px var(--lx-chip-edge)!important}
 html[data-fv-lux]:root dialog.fv-studio.fv-image .fv-iv-prompt:focus-within{box-shadow:inset 0 0 0 1px var(--fv-accent-line)!important}
@@ -221,7 +227,7 @@ html[data-fv-lux]:not([data-theme=light]):root dialog.fv-studio.fv-image .fv-iv-
 html[data-fv-lux][data-theme=light]:root dialog.fv-studio.fv-create .fv-stage{box-shadow:0 24px 50px -30px rgb(30 40 60 / .35)!important}
 
 /* ── 10. Glass off, and stillness ───────────────────────────────────────────────────────────────────────────── */
-:is(html[data-glass=solid],html.lite)[data-fv-lux]:root dialog.fv-studio :is(.fvs-console,.fv-recent,.fvs-rail,.fv-iv-panel,.fv-view-switch,.fv-tb-cap,.fv-ed-library,.fv-ed-genbar,.fv-chat-rail,.fv-chat-side){
+:is(html[data-glass=solid],html.lite)[data-fv-lux]:root dialog.fv-studio :is(.fvs-console,.fv-recent,.fvs-rail,.fv-iv-panel,.fv-view-switch,.fv-tb-cap,.fv-ed-library,.fv-ed-adjust-host,.fv-ed-genbar,.fv-chat-rail,.fv-chat-side){
   -webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:var(--lx-s1)!important;
 }
 :is(html[data-glass=solid],html.lite)[data-fv-lux]:root :is(dialog.fv-studio .fvs-tray[open],dialog.fv-studio .fvs-info-panel,.fvp.fvp-pop){
@@ -230,7 +236,7 @@ html[data-fv-lux][data-theme=light]:root dialog.fv-studio.fv-create .fv-stage{bo
 /* Glass off also means a weak machine: the light stays, and stays still. */
 :is(html[data-glass=solid],html.lite)[data-fv-lux]{--lx-in-play:paused!important}
 @media (prefers-reduced-transparency:reduce){
-  html[data-fv-lux]:root dialog.fv-studio :is(.fvs-console,.fv-recent,.fvs-rail,.fv-iv-panel,.fv-view-switch,.fv-tb-cap,.fv-ed-library,.fv-ed-genbar,.fv-chat-rail,.fv-chat-side){-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:var(--lx-s1)!important}
+  html[data-fv-lux]:root dialog.fv-studio :is(.fvs-console,.fv-recent,.fvs-rail,.fv-iv-panel,.fv-view-switch,.fv-tb-cap,.fv-ed-library,.fv-ed-adjust-host,.fv-ed-genbar,.fv-chat-rail,.fv-chat-side){-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:var(--lx-s1)!important}
   html[data-fv-lux]:root :is(dialog.fv-studio .fvs-tray[open],dialog.fv-studio .fvs-info-panel,.fvp.fvp-pop){-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:var(--lx-s2)!important}
 }
 @media (prefers-reduced-motion:reduce){

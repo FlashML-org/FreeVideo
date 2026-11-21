@@ -216,8 +216,14 @@ print(json.dumps(dict(name=name.value.decode('utf-8'), capability=[major.value, 
 
 
 def _static_cache_path():
+    """One saved copy per interpreter. The host (ComfyUI's Python) and the engine's own Python both probe, and the
+    saved key names the interpreter: sharing one file, each overwrote the other's copy, so nearly every video
+    request paid the full torch probe again (1.3-4 s, a new process importing torch and starting CUDA)."""
+    import hashlib
+    import sys
     from .paths import data_root
-    return data_root() / 'tuning' / 'hardware-static.json'
+    name = hashlib.sha256(sys.executable.encode('utf-8', 'surrogatepass')).hexdigest()[:16]
+    return data_root() / 'tuning' / ('hardware-static-%s.json' % name)
 
 
 def _static_key(observed):

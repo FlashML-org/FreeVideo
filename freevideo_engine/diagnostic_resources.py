@@ -830,6 +830,11 @@ def planning(rows):
         item['idle_cache']['accounting'] = numbers(idle.get('ram_accounting'),
             ('raw_available_bytes', 'credited_available_bytes', 'pinned_model_bytes',
              'reused_encoder_working_bytes'))
+        returned = mapping(mapping(row.get('recovery')).get('gpu_return'))
+        if returned:
+            # How long the card took to give back the released worker's video memory.
+            item['gpu_return'] = dict(numbers(returned, ('polls', 'seconds', 'expected_free_bytes', 'free_bytes')),
+                                      recovered=returned.get('recovered') is True)
         kernels = mapping(row.get('attention_backends'))
         if kernels:
             # Whether the attention choice rested on this GPU's own kernel checks.

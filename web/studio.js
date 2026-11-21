@@ -24,7 +24,6 @@ import { createPreviewScene } from './preview_scene.js?v=20261115-still';
 import { animateDetails, closeDialog } from './motion.js';
 import { openLibrary, setDefaultUpscale, setDefaultUpscaleWork, videoThumbnailURL } from './library.js';
 import { createRecentVideos } from './studio_recent.js';
-import { createAgentActivity } from './agent_activity.js';
 import { createStudioQueue, randomSeed, turnNodeOn } from './studio_queue.js';
 import { isNetworkTypeError, connectionLostText, wrappedFetchOnly } from './browser_extension.js';
 import { newEngineExit, engineExitText, watchEngineExit } from './engine_exit.js';
@@ -91,7 +90,9 @@ const shownMessage = error => isNetworkTypeError(error) ? connectionLostText(t) 
 // The usual LoRA strength range is -4 to 4; a value the user types by hand may go further, up to 100.
 const LORA_USUAL = 4, LORA_LIMIT = 100;
 let loraRangeCount = 0;
-function loraStrengthBox(initial, commit) {
+// `said` ({text}) is the line under the box that outlives the list being drawn again: every change writes the list, which
+// rebuilds its rows, so the row remembers what its line said and shows it again until the next edit.
+function loraStrengthBox(initial, commit, said = null) {  // said: {text, value, name}
     const input = document.createElement('input'), mark = document.createElement('span');
     input.type = 'number'; input.step = '.05'; input.min = String(-LORA_LIMIT); input.max = String(LORA_LIMIT); input.value = initial;
     const note = fieldNote(input, {t, place: () => mark.isConnected ? mark : null});
@@ -104,12 +105,15 @@ function loraStrengthBox(initial, commit) {
     // A strength past ±100 becomes ±100, and the line under it says so.
     // An emptied box goes back to the strength in use, and the line says so.
     let kept = String(initial);
-    input.oninput = sync; input.onchange = () => {
-        if (input.value === '' && kept !== '') { input.value = kept; sync(); note.say(t(`Back to ${kept}`, `已恢复为 ${kept}`)); return; }
-        const ok = note.settle(); sync(); if (ok) { kept = input.value; commit(); }
+    input.oninput = () => { if (said) said.text = ''; sync(); }; input.onchange = () => {
+        if (input.value === '' && kept !== '') { input.value = kept; sync(); note.say(t(`Back to ${kept}`, `已恢复为 ${kept}`)); mark.hidden = true; return; }
+        const ok = note.settle(); sync();
+        if (said) { said.text = note.line && !note.line.hidden ? note.line.textContent : ''; said.value = Number(input.value); }
+        if (note.line && !note.line.hidden) mark.hidden = true; // one line under the box: this one replaces the range note until the next input
+        if (ok) { kept = input.value; commit(); }
     };
     sync();
-    return {input, mark};
+    return {input, mark, restore: () => { if (said?.text && said.value === Number(input.value)) { note.say(said.text); mark.hidden = true; } }};
 }
 const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('./studio.css', import.meta.url).href; document.head.append(css);
 const effortCss = document.createElement('link'); effortCss.rel = 'stylesheet'; effortCss.href = new URL('./sampling_effort.css', import.meta.url).href; document.head.append(effortCss);
@@ -381,6 +385,7 @@ export function loraPanel(node, panel, {promptNode = null} = {}) {
     const idleNote = () => (skipped ? t(skipped === 1 ? ' 1 other LoRA file in the folder is not in .safetensors format and is not listed.' : ` ${skipped} other LoRA files in the folder are not in .safetensors format and are not listed.`, ` 文件夹中另有 ${skipped} 个 LoRA 文件不是 .safetensors 格式，未列出。`) : '');
     const verdicts = createVerdicts((path, options) => api.fetchApi(path, options));
     let rowChecks = [];
+    const strengthSaid = new Map(); // row index -> {text}: the "At most 100" line of its strength box
     let focusGrip = null;
     // The list lives in the node as JSON; a broken list is not a reply from FreeVideo, so it gets its own sentence.
     const listProblem = error => {
@@ -439,7 +444,7 @@ export function loraPanel(node, panel, {promptNode = null} = {}) {
     const reorder = order => {
         const rows = read();
         if (order.length !== rows.length || order.every((from, to) => from === to)) return;
-        write(order.map(from => rows[from]));
+        strengthSaid.clear(); write(order.map(from => rows[from]));
     };
     // The grip moves the whole row with the pointer; arrow keys do the same one step at a time.
     function sortGrip(wrap, index) {
@@ -482,6 +487,7 @@ export function loraPanel(node, panel, {promptNode = null} = {}) {
             rowChecks = [];
             list.replaceChildren(); clear.remove();
             const rows = read();
+            for (const key of [...strengthSaid.keys()]) if (key >= rows.length) strengthSaid.delete(key);
             syncPrompt(rows);
             rows.forEach((row, index) => {
                 const wrap = el('div', null, 'fv-lora-row'); wrap.dataset.enabled = String(row.enabled !== false);
@@ -497,7 +503,10 @@ export function loraPanel(node, panel, {promptNode = null} = {}) {
                     if (verdicts.peek(row.name)?.usable === false) row.enabled = true;
                     row.name = select.value; rememberLora(row.name); write(rows);
                 };
-                const {input: strength, mark: strengthMark} = loraStrengthBox(row.strength ?? 1, () => { if (strength.value !== '') { row.strength = Number(strength.value); write(rows); } });
+                if (!strengthSaid.has(index)) strengthSaid.set(index, {text: '', value: null, name: row.name});
+                // A line belongs to the model and strength it was said for: another model in this place, or a strength set from outside, drops it.
+                { const said = strengthSaid.get(index); if (said.name !== row.name || said.value !== Number(row.strength ?? 1)) { said.text = ''; said.name = row.name; } }
+                const {input: strength, mark: strengthMark, restore: restoreStrengthNote} = loraStrengthBox(row.strength ?? 1, () => { if (strength.value !== '') { row.strength = Number(strength.value); write(rows); } }, strengthSaid.get(index));
                 strength.setAttribute('aria-label', t('LoRA strength', 'LoRA 强度'));
                 const trigger = el('input', null, 'fv-lora-trigger'); trigger.type = 'text'; trigger.maxLength = 300;
                 trigger.dataset.name = row.name;
@@ -522,7 +531,7 @@ export function loraPanel(node, panel, {promptNode = null} = {}) {
                     }
                 };
                 select.disabled = strength.disabled = trigger.disabled = row.enabled === false;
-                const remove = button('×', () => { rows.splice(index, 1); write(rows); }); remove.setAttribute('aria-label', t('Remove LoRA', '移除 LoRA'));
+                const remove = button('×', () => { rows.splice(index, 1); strengthSaid.clear(); write(rows); }); remove.setAttribute('aria-label', t('Remove LoRA', '移除 LoRA'));
                 remove.dataset.fvTipName = t('Remove LoRA', '移除 LoRA'); remove.dataset.fvTipUse = t('Take it off the list; the file stays', '从列表移除，文件不删');
                 wrap.append(enabled, loraMenu(select, t, pinned).wrap, strength, remove, trigger, strengthMark);
                 wrap.dataset.index = String(index); wrap.dataset.sortable = String(rows.length > 1);
@@ -568,6 +577,7 @@ export function loraPanel(node, panel, {promptNode = null} = {}) {
                 if (known) mark(known);
                 else check(false);
                 list.append(wrap);
+                if (list.isConnected) restoreStrengthNote();
                 loadTriggers(row.name).catch(error => { if (!disposed && trigger.isConnected) note.textContent = userMessage(error, t, t('Could not read the trigger words. Try again.', '没能读取触发词，请重试。')); });
             });
             if (rows.length > 1) actions.append(clear);
@@ -755,7 +765,6 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const header = el('header', null, 'fv-header'), brand = el('div', null, 'fv-brand');
     brand.append(wordmark());
     const tools = el('div', null, 'fv-header-actions');
-    const agents = createAgentActivity(t, api, dialog); tools.append(agents.element); cleanup.push(agents.dispose);
     const phoneAccess = createLanAccess(t, api); tools.append(phoneAccess.element); cleanup.push(phoneAccess.dispose);
     const versionInfo = createVersionInfo(cn); tools.append(versionInfo.element); cleanup.push(versionInfo.dispose);
     tools.append(guideButton(t), feedbackButton(t), button(t('Settings', '设置'), openSetup, 'fv-quiet'));
@@ -3012,6 +3021,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
     dialog.addEventListener('cancel', e => { e.preventDefault(); if (!closeMenu() && !compare.close() && !promptLibrary?.hide() && !consoleUI?.dismiss() && !recent.dismiss()) closeDialog(dialog); });
     const dispose = () => { if (disposed) return; disposed = true; borrowed?.release({disposing: true}); blockOriginal('extend', false); blockOriginal('preview', false); for (const f of cleanup) f(); stage.querySelector('video')?.pause(); dialog.remove(); if (current?.dialog === dialog) { current = null; viewChanged('nodes', node); } };
     const onClose = () => {
+        // The browser's own close event of a switch comes with the next frame; if the panel was opened again before it
+        // (back from the node view at once), that late event is not a close and must not take the panel away.
+        if (dialog.open) return;
         // Parked behind the node view: everything stays as it is (closeDialog may have taken this handler while a
         // switch held the frames, so it is put back for the real close later).
         if (dialog.dataset.fvParked === 'true') { stage.querySelector('video')?.pause(); warm?.cancel(); dialog.onclose = onClose; return; }

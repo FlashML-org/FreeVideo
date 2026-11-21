@@ -76,7 +76,6 @@
 .sgf.sgf :where(button, a) { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0; min-height: 0; min-width: 0; border-radius: 0;
   display: inline-flex; align-items: center; justify-content: center; gap: 0; box-shadow: none; filter: none; transition: none; text-decoration: none; cursor: pointer; font-weight: inherit; }
 .sgf.sgf.sgf :where(button, a):is(:hover, :active) { filter: none; border-color: transparent; }
-.sgf.sgf :where(button, a):focus-visible { outline: 2px solid color-mix(in srgb, #1B94FC 70%, transparent); outline-offset: 2px; }
 .sgf .sgf-n { height: 28px; padding: 0 4px 0 8px; border-radius: var(--fv-r-lg); display: inline-flex; align-items: center; gap: 0; font-size: 12px; font-weight: 600; color: var(--f-fg); background: var(--f-ctl); transition: background-color 160ms; }
 .sgf .sgf-n:hover, .sgf .sgf-n[aria-expanded=true] { background: var(--f-ctl-h); }
 .sgf .sgf-n svg { width: 14px; height: 14px; color: var(--f-fg2); }
@@ -133,6 +132,7 @@
 /* the stop question anchored to a view's own Stop button: the same second layer */
 .sgf.sgf-confirm { z-index: calc(var(--fv-z-float, 2000) + 1); }
 .sgf.sgf-confirm .sgf-sheet { position: static; width: 300px; }
+.sgf.sgf-confirm p { text-wrap: balance; }
 
 /* the corner it will land in while dragging */
 .sgf-slot { z-index: calc(var(--fv-z-float, 2000) - 1); box-sizing: border-box; border-radius: var(--fv-r-lg); pointer-events: none;

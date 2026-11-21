@@ -177,7 +177,8 @@ def hold(runner, idle_seconds=keep.IDLE_SECONDS):
 
 
 def drop(runner):
-    """Close the runner and hand its memory back; returns None for the caller's variable."""
+    """Close the runner and hand its card memory back; returns None for the caller's variable. The caller still holds the
+    runner while this runs, so its locked host pages are only returned by release_memory(), called once the variable is None."""
     runner.close()
     import gc
     gc.collect()
@@ -185,6 +186,17 @@ def drop(runner):
     if torch is not None and torch.cuda.is_available():
         torch.cuda.empty_cache()
     return None
+
+
+def release_memory():
+    """Collect, then return the card's and the host's cached memory: torch keeps freed locked (pinned) pages cached, and they stay charged to the process, so the next model loaded in this worker would find them still taken."""
+    import gc
+    gc.collect()
+    torch = sys.modules.get('torch')
+    if torch is not None and torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        from ..torch_compat import empty_host_cache
+        empty_host_cache(torch)
 
 
 # The process the server's whole process tree starts from, in server mode (see server_mode); None on the desktop.
@@ -336,6 +348,7 @@ def serve(pack_dir, *, device='cuda', idle_seconds=45., stream=None, output=None
                         # A light warm-up only reads files ahead: it neither loads nor drops a model.
                         if load and runner is not None and runner_model != model:
                             runner = drop(runner)
+                            release_memory()
                         if load and runner is None:
                             # No progress rows: nothing on the page is waiting for this.
                             runner = factories.get(model, factory)(pack_dir, device)
@@ -345,6 +358,7 @@ def serve(pack_dir, *, device='cuda', idle_seconds=45., stream=None, output=None
                         print('image worker warm-up failed: %s' % type(error).__name__, file=sys.stderr, flush=True)
                         if runner is not None and not getattr(runner, 'at_boundary', lambda: True)():
                             runner = drop(runner)
+                            release_memory()
                 wait, crowding = idle_wait(runner, value.get('keep_seconds'), idle_seconds,
                                            at_least=max(keep.WARM_SECONDS, until - time.monotonic()))
                 continue
@@ -365,6 +379,7 @@ def serve(pack_dir, *, device='cuda', idle_seconds=45., stream=None, output=None
                     if runner is not None and runner_model != model:
                         # One model's weights at a time on the card.
                         runner = drop(runner)
+                        release_memory()
                     if runner is None:
                         context.timing.enter('load')
                         runner = factories.get(model, factory)(pack_dir, device, progress=progress)
@@ -468,11 +483,7 @@ def serve(pack_dir, *, device='cuda', idle_seconds=45., stream=None, output=None
                         except Exception as error:
                             print('image runner close failed: %s' % type(error).__name__, file=sys.stderr, flush=True)
                     runner = None
-                    import gc
-                    gc.collect()
-                    torch = sys.modules.get('torch')
-                    if torch is not None and torch.cuda.is_available():
-                        torch.cuda.empty_cache()
+                    release_memory()
                 with inbox.mutex:
                     inbox.busy = False
                     if result is not None:

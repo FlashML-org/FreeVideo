@@ -44,6 +44,7 @@ import { MAX_MIDDLE, secondsOf, defaultTime, timeProblems, timeRange, problemTex
 import { swapState, requestRows, swapMissing, withPrefix, peopleOf } from './replace_state.js';
 import { swapMissingText } from './replace_person.js';
 import { issueButton } from './issue_button.js';
+import { createPlayBar } from './fv_player.js';
 import { userMessage } from './user_message.js';
 import { AUDIO_USE, usesOriginal, checkOriginal, checkedLength, failureText, multipleText, createUseSwitch, originalBlocked, stuckText, liftBlock } from './audio_original.js';
 
@@ -503,8 +504,8 @@ function mediaPanel(node, mount = null) {
                     }, {once: true});
                 }
             } else {
-                preview.controls = true; preview.preload = "metadata"; if (kind === "video") { preview.muted = true; preview.playsInline = true; }
-                card.append(preview);
+                preview.preload = "metadata"; if (kind === "video") { preview.muted = true; preview.playsInline = true; }
+                card.append(preview, createPlayBar(preview, text).bar);
             }
             let showLength = () => {};
             if (kind === "video" && row.role === "reference") {

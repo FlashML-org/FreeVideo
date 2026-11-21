@@ -528,7 +528,8 @@ IMAGE_OUTPUT_TOKENS = 1024
 # Each picture model gets the rewriting its own authors publish: MiniMax's caption expansion for H3 Image (its
 # edit variant when there are reference pictures), Qwen-Image's prompt polish for Qwen (its edit variant with
 # references). The pictures go in as <Picture N> in upload order, as the generation reads them.
-IMAGE_MODELS = {'minimax-h3-image': 16, 'qwen-image-2.1-turbo': 4}  # model: reference pictures it takes
+# model: reference pictures it takes. MOSS-Image takes none and is rewritten with Qwen-Image's text rewriting (image_style).
+IMAGE_MODELS = {'minimax-h3-image': 16, 'qwen-image-2.1-turbo': 4, 'moss-image-sft': 0}
 # The published instructions alone are 3.4k-7.7k tokens; 16 pictures at image_tokens(16) add 4.8k more.
 IMAGE_INPUT_TOKENS = 14000
 PROSE_PICTURE = re.compile(r'(?<![<\w])[Pp]icture (\d{1,2})(?![>\w])')
