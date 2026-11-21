@@ -15,7 +15,7 @@
       "Over-long prompts are explained first: in the Image view and the Edit view, a prompt over the engine's limit says by how much before it is submitted, instead of being refused afterwards.",
       "More failures explain what happened: a picture failure names the step where it failed, and a picture moved or deleted in the Edit view is named with a way to import it again.",
       "More accurate graphics card notices: the laptop GeForce RTX 2050 is no longer listed as an unsupported card, and an old driver shows the driver update notice.",
-      "Steadier on a Mac with tight memory: when memory is tight on a Mac, generation no longer fails midway; it retries once in a way that uses less memory.",
+      "Steadier on a Mac with tight memory: when a Mac runs short of memory midway, generation retries once in a way that uses less memory instead of stopping.",
       "Cleaner deletion: related traces in pictures, uploads, thumbnails and logs are removed, and deleted videos no longer appear in the finished-task record."
     ]
   },
@@ -32,7 +32,7 @@
       "提示词过长时先说明：图像视图和剪辑视图中，超过引擎限制的提示词在提交前就会提示超出多少，不再提交后才被拒绝。",
       "更多失败会说明原因：图片失败会指出出错的步骤；剪辑中的图片被移动或删除时，会说明并给出重新导入的办法。",
       "显卡提示更准确：笔记本 GeForce RTX 2050 不再被列为不支持的显卡，驱动过旧时会显示更新驱动的提示。",
-      "Mac 内存紧张时更稳：Mac 内存紧张时，生成不再中途失败，会自动换一种更省内存的方式重试一次。",
+      "Mac 内存紧张时更稳：Mac 生成中途内存不足时，会自动换一种更省内存的方式重试一次，不再直接停止。",
       "删除作品清理更干净：图片、上传文件、缩略图和日志中的相关残留一并清除，已删除的视频不再出现在已完成任务记录中。"
     ]
   },
