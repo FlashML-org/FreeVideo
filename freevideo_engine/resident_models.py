@@ -29,6 +29,8 @@ ENGINE_CHUNK_SWITCHES = ('head_chunk', 'ff_chunk', 'projection_chunk')
 ENGINE_ARITHMETIC_OPTIONS = ('head_chunk', 'projection_chunk')
 # Resident blocks that a kept engine may lack against the plan and still be reused.
 RESIDENT_BLOCK_SHORTFALL = 2
+# Models given back by the bank itself, kept for the worker's status (decisions are cleared with each request).
+EVICTIONS_KEPT = 20
 
 
 def retention_order(history):
@@ -268,6 +270,8 @@ class ModelBank:
         # An automatic plan's RAM budget is an estimate (see system.ram_budget_is_estimate).
         self.ram_budget_is_estimate = False
         self.decisions = []
+        self.evictions = []
+        self.eviction_count = 0
         from .streamed_weights import ConvertedStore
         # Converted decoder layers streamed from the checkpoint; rebuilt on demand.
         self.converted_store = ConvertedStore()
@@ -338,6 +342,10 @@ class ModelBank:
                                    encoder_discarded_without_cpu_copy=encoder_discarded,
                                    host_cache_released=host_cache_released,
                                    released_gpu_bytes=max(0, before - torch.cuda.memory_allocated())))
+        self.eviction_count += 1
+        self.evictions = (self.evictions + [dict(seq=self.eviction_count, role=role, reason=reason, at=time.time(),
+                                                 released_gpu_bytes=self.decisions[-1]['released_gpu_bytes'])]
+                          )[-EVICTIONS_KEPT:]
 
     def park(self, role, reason, ram_need=2*GiB):
         """Release only an idle engine's GPU weights and keep its host side.
@@ -819,7 +827,8 @@ class ModelBank:
 
     def snapshot(self):
         if not torch.cuda.is_initialized():
-            return dict(reclaimable_gpu_bytes=0, reclaimable_ram_bytes=0, gpu_uuid=None, models=[])
+            return dict(reclaimable_gpu_bytes=0, reclaimable_ram_bytes=0, gpu_uuid=None, models=[],
+                        evictions=list(self.evictions))
         uuid = str(getattr(device_properties(torch), 'uuid', ''))
         if uuid and not uuid.startswith(('GPU-', 'MIG-')):
             uuid = 'GPU-' + uuid
@@ -849,4 +858,5 @@ class ModelBank:
                     memory=memory, gpu_capacity=gpu_capacity,
                     ram_credit_scope='Owned pinned model storage and parked engine weights; deduplicated, reclaimable on eviction. No mapped-page or swap credit; commit only for private storage.',
                     gpu_uuid=uuid, models=[dict(role=role, gpu_bytes=gpu_bytes(entry['model']))
-                                           for role, entry in self.entries.items()], decisions=self.decisions)
+                                           for role, entry in self.entries.items()], decisions=self.decisions,
+                    evictions=list(self.evictions))

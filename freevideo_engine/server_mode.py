@@ -300,6 +300,7 @@ def state():
     alive = owner.process is not None and owner.process.poll() is None and owner.endpoint
     if alive and not owner.active:
         answer = resident_process.status({resident_process.ENV: str(owner.endpoint)})
+        owner.note_evictions(answer)
         with _mutex:
             if isinstance(answer, dict):
                 _held[:] = [(owner.process.pid, row) for row in answer.get('models') or [] if isinstance(row, dict)]

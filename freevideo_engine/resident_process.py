@@ -8,6 +8,7 @@ history, cancellation, or the Windows process tree supervisor. No public port.
 import atexit
 from dataclasses import replace
 import json
+import logging
 import os
 from pathlib import Path
 import secrets
@@ -30,6 +31,8 @@ GiB = 2**30
 # for the card back. A failed request without a queued part releases it as
 # before; a next part already on its way is held for HOLD_SECONDS.
 HOLD_SECONDS = 90.
+# How often a held idle worker is asked what it gave back by itself.
+STATUS_SECONDS = 10.
 AGENT_HOLD_SECONDS = 30.
 KEEP_IDLE_SECONDS = None
 OTHER_GPU_GROWTH = 512 * 2**20
@@ -400,6 +403,8 @@ class SessionOwner:
         self.generation = 0
         self.idle_since = None
         self.decisions = []
+        # (worker pid, last eviction number) already recorded from the worker's status.
+        self.evictions_seen = (None, 0)
         atexit.register(self.close)
 
     def record(self, **row):
@@ -410,6 +415,26 @@ class SessionOwner:
             from . import server_mode
             server_mode.released('video', row)
         return row
+
+    def note_evictions(self, answer):
+        """Record the models the worker gave back by itself (inside a request, to make room for a stage) from a
+        status ``answer``, as trims: without this only the worker knew the card had been emptied."""
+        rows = answer.get('evictions') if isinstance(answer, dict) else None
+        if not isinstance(rows, list):
+            return []
+        with self.mutex:
+            pid = self.process.pid if self.process is not None else None
+            seen = self.evictions_seen[1] if self.evictions_seen[0] == pid else 0
+            new = [row for row in rows if isinstance(row, dict) and type(row.get('seq')) is int and row['seq'] > seen]
+            if new:
+                self.evictions_seen = (pid, max(row['seq'] for row in new))
+        for row in new:
+            text = str(row.get('reason') or '')
+            self.record(action='trimmed', reason='host_memory_low' if 'host' in text.lower() else 'worker_made_room',
+                        role=str(row.get('role')), detail=text[:200], pid=pid,
+                        released_gpu_bytes=row.get('released_gpu_bytes'),
+                        **({'at': row['at']} if isinstance(row.get('at'), (int, float)) else {}))
+        return new
 
     def take_decisions(self):
         """Keep or release decisions since the previous request, for its report."""
@@ -502,8 +527,18 @@ class SessionOwner:
 
     def _watch(self, generation, since, hold, gpu):
         placing = False
+        read_at = time.monotonic()
         while True:
             time.sleep(.5)
+            if time.monotonic() - read_at >= STATUS_SECONDS and not self.preloading():
+                read_at = time.monotonic()
+                with self.mutex:
+                    endpoint = self.endpoint if not self.active else None
+                if endpoint:
+                    try:
+                        self.note_evictions(status({ENV: str(endpoint)}))
+                    except Exception:
+                        logging.warning('[FreeVideo] Reading what the video worker gave back failed', exc_info=True)
             # Our own idle preload grows the card; only another program's growth counts,
             # so the reference is read again once placement has ended.
             unreadable = False
