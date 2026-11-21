@@ -514,6 +514,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
     input.oninput = () => { typed(); render(); };
     input.onblur = () => { if (dirty) { commit(); bind(); } };
     input.onkeydown = event => {
+        expand.undoKeys(event);  // the editor hands this box its keys here, before its own shortcuts
         if (event.key !== 'Enter' || event.isComposing || event.keyCode === 229) return;
         // ⌘/Ctrl+Enter generates, as in the creative panel and the image view; Enter alone starts a new line.
         if ((event.ctrlKey || event.metaKey) && !event.shiftKey) {

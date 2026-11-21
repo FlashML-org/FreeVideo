@@ -36,6 +36,38 @@ export function createExpandButton({t = en => en, textarea, onGenerate, canGener
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     path.setAttribute('d', 'M14 4h6v6M20 4l-7 7M10 20H4v-6M4 20l7-7'); svg.append(path); element.append(svg);
     let dialog = null, large = null, notice = null, count = null, seen = '', pending = false, disposed = false, cleanups = [];
+    // The small box is written as a whole while the panel is open, which ends its own undo history; so each panel session is one
+    // step of the box's own, undone and redone from the box with the usual keys (a person who typed in the box afterwards keeps the native ones).
+    let startText = null; const undone = [], redone = [];
+    const setText = value => { textarea.value = value; seen = value; textarea.dispatchEvent(new Event('input', {bubbles: true})); };
+    const stepKeys = event => {
+        if (event.target !== textarea || event.defaultPrevented) return;
+        if (!(event.ctrlKey || event.metaKey) || event.altKey || event.isComposing) return;
+        // The letter the layout types, so QWERTZ (Z on the physical Y key) is right; only a non-Latin layout, whose keys type other
+        // letters, falls back to the physical key.
+        const typed = event.key.toLowerCase();
+        const key = /^[a-z]$/.test(typed) ? typed : event.code === 'KeyZ' ? 'z' : event.code === 'KeyY' ? 'y' : typed;
+        if (key === 'z' && !event.shiftKey) {
+            const step = undone.at(-1);
+            if (step && textarea.value === step.after) { event.preventDefault(); event.stopPropagation(); setText(step.before); redone.push(undone.pop()); }
+        } else if ((key === 'z' && event.shiftKey) || key === 'y') {
+            const step = redone.at(-1);
+            if (step && textarea.value === step.before) { event.preventDefault(); event.stopPropagation(); setText(step.after); undone.push(redone.pop()); }
+        }
+    };
+    // What the person typed in the box themself (script writes carry no input type) is a step too, taken in when a session opens.
+    let typing = null;
+    const watchTyping = event => {
+        if (!event.isTrusted || !event.inputType) return;
+        if (!typing) typing = {before: typingBefore, after: textarea.value}; else typing.after = textarea.value;
+    };
+    let typingBefore = textarea.value;
+    const markBefore = () => { if (!typing) typingBefore = textarea.value; };
+    textarea.addEventListener('beforeinput', markBefore); textarea.addEventListener('input', watchTyping);
+    // On the box itself, and nowhere else: a listener on the window would stay after the box is gone. A dialog that takes its keys at the
+    // window (Studio) routes them to what listenDialogKey registered; the editor's calls the box's onkeydown (the genbar's calls undoKeys).
+    // Each reaches the same function, and a key it has handled is not handled again.
+    const stopStepKeys = listenDialogKey(textarea, 'keydown', stepKeys);
     const writable = () => !textarea.disabled && !textarea.readOnly;
     const allowed = () => writable() && !pending && !!canGenerate();
     const counted = () => {
@@ -78,6 +110,8 @@ export function createExpandButton({t = en => en, textarea, onGenerate, canGener
     function close() {
         if (!dialog) return;
         commit();
+        if (startText !== null && textarea.value !== startText) { undone.push({before: startText, after: textarea.value}); redone.length = 0; }
+        startText = null;
         const current = dialog; dialog = large = notice = count = null;
         cleanups.splice(0).forEach(stop => stop());
         current.oncancel = current.onclose = null;
@@ -89,6 +123,9 @@ export function createExpandButton({t = en => en, textarea, onGenerate, canGener
     function open() {
         sync();
         if (disposed || element.disabled || dialog) return;
+        startText = textarea.value;
+        if (typing && typing.after === startText && typing.before !== typing.after) { undone.push({before: typing.before, after: typing.after}); redone.length = 0; }
+        typing = null;
         dialog = el('dialog', 'fv-ed-expand-dialog');
         dialog.dataset.fvOwnTab = ''; // Tab cycles its three controls below; a11y.js stands aside
         dialog.setAttribute('role', 'dialog'); dialog.setAttribute('aria-modal', 'true');
@@ -154,9 +191,10 @@ export function createExpandButton({t = en => en, textarea, onGenerate, canGener
     const observer = typeof MutationObserver === 'function' ? new MutationObserver(sync) : null;
     observer?.observe(textarea, {attributes: true, attributeFilter: ['disabled', 'readonly']});
     sync();
-    return {element, open, close, commit, get isOpen() { return !!dialog; }, dispose() {
+    return {element, open, close, commit, undoKeys: stepKeys, get isOpen() { return !!dialog; }, dispose() {
         close(); disposed = true; observer?.disconnect();
         textarea.removeEventListener('input', sync); textarea.removeEventListener('change', sync);
+        stopStepKeys(); textarea.removeEventListener('beforeinput', markBefore); textarea.removeEventListener('input', watchTyping);
         element.onclick = null; element.remove();
     }};
 }
