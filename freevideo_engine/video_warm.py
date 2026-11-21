@@ -212,11 +212,14 @@ class VideoWarmer:
 
     def stop(self, timeout=8.):
         """A video or a picture starts, or the page left: the warm-up stops; the file read stops with IDLE.stop()."""
+        from .idle_encoder import KEPT_YIELD_SECONDS
         with self.mutex:
             thread, halt = self.thread, self.halt
         halt.set()
         if thread is not None and thread is not threading.current_thread():
-            thread.join(timeout=timeout)
+            # The placement's watch() decides its yield time (longer while the worker keeps video models); this
+            # only bounds a warm-up that hangs.
+            thread.join(timeout=max(timeout, KEPT_YIELD_SECONDS + 2.))
         return dict(warm='cancelled')
 
 

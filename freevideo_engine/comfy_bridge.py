@@ -22,9 +22,10 @@ from .comfy_environment import isolated_environment
 from .monitoring import save
 
 
-# Longer than the idle encoder's yield window (YIELD_SECONDS plus its join slack), so a speculative
-# warm-up of the previous request on the same device releases the lease before the wait runs out.
-DEVICE_LEASE_WAIT_SECONDS = 20.
+# Longer than the longest yield window of a speculative placement (idle_encoder.KEPT_YIELD_SECONDS when the
+# worker keeps video models, plus its join slack), so a warm-up of the previous request on the same device
+# releases the lease before the wait runs out.
+DEVICE_LEASE_WAIT_SECONDS = 30.
 
 
 @contextlib.contextmanager

@@ -55,6 +55,35 @@ class PreloadCancelled(Exception):
 # these seconds. One native transfer in flight cannot be interrupted, and on a
 # slow disk a single large weight takes longer than a second.
 YIELD_SECONDS = 6.
+# The same while the worker keeps video models: stopping it then also drops them, and the video loads them again
+# (about 30 s or more). The encoder's build is one native call that cannot stop midway (a few seconds).
+KEPT_YIELD_SECONDS = 20.
+
+
+def kept_models(endpoint):
+    """Roles and card bytes of the models other than the encoder that the resident worker at ``endpoint`` keeps."""
+    from .resident_process import ENV, status
+    try:
+        held = status({ENV: str(endpoint)})
+        return {str(row.get('role')): int(row.get('gpu_bytes') or 0) for row in held.get('models') or []
+                if row.get('role') != 'encoder'}
+    except Exception:
+        return {}  # Unknown: the usual yield time.
+
+
+def stop_unyielding(worker, kept, result):
+    """Stop a worker whose cancelled request did not yield in time. The models it kept go with it: they are noted in
+    ``result`` and, in the process that owns the worker, recorded as a release."""
+    try:
+        worker.stop_request(grace=.5)
+    except Exception:
+        pass  # The caller stops it again and reports what failed.
+    if kept:
+        roles, released = sorted(kept), sum(kept.values())
+        result.update(released_roles=roles, released_gpu_bytes=released)
+        from .resident_process import OWNER
+        if OWNER.process is not None:
+            OWNER.record(action='released', reason='preload_did_not_yield', roles=roles, released_gpu_bytes=released)
 
 
 @contextmanager
@@ -134,7 +163,8 @@ class IdleEncoder:
                 if self.process is not None and self.process.poll() is None:
                     processes.stop(self.process, grace=1.)
         if self.thread is not None:
-            self.thread.join(timeout=YIELD_SECONDS+2.)
+            # The controller's watch() gives the worker its yield time; this only bounds a controller that hangs.
+            self.thread.join(timeout=KEPT_YIELD_SECONDS+2.)
             if self.thread.is_alive():
                 # A blocked disk read/native copy is not indefinitely allowed
                 # to delay the next prompt. The controller stops the real GPU
@@ -217,9 +247,17 @@ def watch(endpoint, worker_request, environment, descriptor, result_path, cancel
     """Run one weights-only request in the resident worker under ``descriptor`` and watch it until it ends; the
     worker is appended to ``held`` as soon as it exists, so the caller can stop it. ``stop`` (an event) cancels it
     like the cancel file. ``module`` and ``capability``: the encoder's placement, or the video model's preload
-    (freevideo_engine.worker, 'engine-preload'). Returns its metrics."""
+    (freevideo_engine.worker, 'engine-preload').
+
+    Every speculative request in the resident worker is watched here, so this is the one place that decides how long
+    a cancelled request has to yield: KEPT_YIELD_SECONDS while the worker keeps video models, else YIELD_SECONDS, and
+    under live RAM pressure no more than YIELD_SECONDS. Past that the worker is stopped (stop_unyielding) and
+    PreloadCancelled raised. Returns its metrics."""
     from .resident_process import RemoteProcess
     from .system import inference_headroom, inference_memory_sample, windows
+    # What the worker keeps before this request: the request only adds the encoder or the video model it loads.
+    kept = kept_models(endpoint)
+    patience = KEPT_YIELD_SECONDS if kept else YIELD_SECONDS
     worker = RemoteProcess(endpoint,
         [sys.executable, '-B', '-m', module, '--request', str(worker_request)],
         environment, descriptor, result_path.with_name(result_path.stem+'-worker.log'),
@@ -228,19 +266,22 @@ def watch(endpoint, worker_request, environment, descriptor, result_path, cancel
         held.append(worker)
     if started is not None:
         started(worker.pid)
-    cancel_started = None
+    cancel_started, pressed = None, False
     while worker.poll() is None:
         sample = memory.sample(worker.pid)
         used = inference_memory_sample(sample)
         if used is None or used > ram_budget_bytes or inference_headroom(sample) < (2 if windows() else 1)*2**30:
             cancelled.touch(exist_ok=True)
             result.update(state='released', reason='Live RAM pressure interrupted speculative loading')
+            pressed = True
         if stop is not None and stop.is_set() and not cancelled.exists():
             cancelled.touch(exist_ok=True)
             result.update(state='released', reason='Another task took the card')
         if cancelled.exists():
             cancel_started = cancel_started or time.monotonic()
-            if time.monotonic()-cancel_started > YIELD_SECONDS:
+            # Live RAM pressure never waits longer than the usual yield time.
+            if time.monotonic()-cancel_started > (min(patience, YIELD_SECONDS) if pressed else patience):
+                stop_unyielding(worker, kept, result)
                 raise PreloadCancelled('Preload did not yield promptly; stop the worker before foreground work')
         try:
             worker.wait(timeout=.1)
@@ -260,7 +301,7 @@ def place_now(endpoint, encoding, *, descriptor, environment, directory, gpu_bud
     ``encoding`` names the encoder recipe only (encoder, comfy_root, model_paths): no prompt or picture is sent.
     ``stop`` (set when a picture is asked for, or a video or another task takes the card) and live RAM pressure
     cancel it: a speculative placement does not page in its weights ahead and can take longer than the picture's own
-    load of the encoder, so a picture never waits for it."""
+    load of the encoder, so a picture never waits for it. watch() decides how long it has to yield."""
     from .ram import ProcessMemory
     from .resident_process import ENV
     directory = Path(directory)
@@ -279,7 +320,8 @@ def place_now(endpoint, encoding, *, descriptor, environment, directory, gpu_bud
         return dict(result, reason='Another task took the card')
     try:
         result.update(watch(endpoint, worker_request, environment, descriptor, result_path, cancelled,
-                            ram_budget_bytes, result, memory, held=held, stop=stop), resources=memory.result())
+                            ram_budget_bytes, result, memory, held=held, stop=stop),
+                      resources=memory.result())
     except BaseException as error:
         if held:
             try:
