@@ -302,7 +302,7 @@ class Service:
 
     def start(self, action, value):
         received_epoch = time.time()
-        if action not in ('install', 'rewrite', 'ask', 'split'):
+        if action not in ('install', 'rewrite', 'ask', 'split', 'reverse'):
             raise ValueError('invalid_request')
         if self.busy():
             raise ValueError('busy')
@@ -318,6 +318,16 @@ class Service:
             if not assets.settle(root):
                 raise ValueError('model_missing')
             value = rules.split_request(value)
+        elif action == 'reverse':
+            if not assets.settle(root):
+                raise ValueError('model_missing')
+            value = rules.reverse_request(value)
+            from ..comfy_assets import media_kind, resolve_assets
+            resolved = resolve_assets(json.dumps([dict(file=value['file'], role='reference')]), self.input_directory())
+            path = resolved['references'][0]['path']
+            if media_kind(path) != 'video':
+                raise ValueError('unsupported_media')
+            value['path'] = path
         else:
             if not assets.settle(root):
                 raise ValueError('model_missing')
@@ -452,6 +462,16 @@ class Service:
         for row in value.get('media', ()):
             row.pop('optional', None)
 
+    def reverse_frames(self, value, folder):
+        """Evenly spaced frames of the video with their times; the worker picks how many fit its budget."""
+        self.check()
+        try:
+            from ..agent.media import sample_frames
+            rows = sample_frames(value.pop('path'), folder, count=value['frames'], max_side=640)
+        except Exception:
+            raise ValueError('unreadable_video') from None
+        value['frame_files'] = [dict(path=row['path'], seconds=float(row['seconds'])) for row in rows]
+
     def work(self, root, machine, action, value):
         from ..locking import runtime_lock
         from ..monitoring import save
@@ -483,8 +503,11 @@ class Service:
                     self.progress(dict(phase='complete'))
                 else:
                     with tempfile.TemporaryDirectory(prefix='freevideo-prompt-', ignore_cleanup_errors=True) as frames:
-                        self.video_frames(value, frames)
-                        self.infer(root, machine, descriptor, value, wait=action == 'rewrite')
+                        if action == 'reverse':
+                            self.reverse_frames(value, frames)
+                        else:
+                            self.video_frames(value, frames)
+                        self.infer(root, machine, descriptor, value, wait=action in ('rewrite', 'reverse'))
         except InterruptedError:
             self.progress(dict(phase='cancelled'))
         except BlockingIOError:
@@ -494,7 +517,7 @@ class Service:
             self.progress(dict(phase='failed', error='invalid_output' if isinstance(error, rules.InvalidOutput)
                                else str(error) if str(error) in known
                                else 'download_failed' if action == 'install'
-                               else 'ask_failed' if action == 'ask' else 'split_failed' if action == 'split'
+                               else 'ask_failed' if action == 'ask' else 'split_failed' if action == 'split' else 'reverse_failed' if action == 'reverse'
                                else 'rewrite_failed',
                                exception=type(error).__name__,
                                **({'output_rejection': error.details} if isinstance(error, rules.InvalidOutput) else {})))
@@ -760,6 +783,8 @@ class Service:
                     rules.validate_parts(result.get('parts'), value)
                 elif value.get('mode') == 'image':
                     rules.validate_image(result.get('text'), value)
+                elif value.get('mode') == 'reverse':
+                    rules.validate_reverse(result.get('text'), value)
                 else:
                     try:
                         rules.validate_output(result.get('text'), value)
@@ -863,7 +888,7 @@ def register():
                 running, pending = server.prompt_queue.get_current_queue()
                 if running or pending:
                     raise ValueError('busy')
-                if name in ('ask', 'split', 'rewrite'):
+                if name in ('ask', 'split', 'rewrite', 'reverse'):
                     # A moved modified time is checked by content here, off the event loop;
                     # start() then finds the remembered answer.
                     await asyncio.to_thread(assets.settle, service.installation()[0])

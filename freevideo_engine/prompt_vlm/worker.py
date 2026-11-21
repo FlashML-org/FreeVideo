@@ -273,7 +273,7 @@ def placement(weights, int8_saving, kv, allocator_budget):
     return 'bf16' if weights <= room else 'int8' if weights - int8_saving <= room else None
 
 
-def gpu_plan(weights, stored, free, input_tokens, answer_tokens, text_only):
+def gpu_plan(weights, stored, free, input_tokens, answer_tokens, text_only, extra=0, vision_gpu_only=False):
     """The GPU placement for `free` allocator bytes, or None when none fits.
 
     Best first: bf16 or int8 resident, then int8 with the later layers streamed
@@ -286,7 +286,7 @@ def gpu_plan(weights, stored, free, input_tokens, answer_tokens, text_only):
     vision = sum(row['bytes'] for name, row in stored.items() if name.startswith('model.visual.'))
     saving = int8.saved_bytes(stored)
     def fit(answer, on_host):
-        kv = kv_bytes(stored, input_tokens, answer)
+        kv = kv_bytes(stored, input_tokens, answer) + extra
         size = weights - vision if on_host else weights
         plan = dict(kv=kv, positions=kv_positions(input_tokens, answer), vision_on_host=on_host,
                     vision_bytes=vision if on_host else 0, keep=None, host_bytes=0)
@@ -302,6 +302,9 @@ def gpu_plan(weights, stored, free, input_tokens, answer_tokens, text_only):
     if text_only:
         # The tower is never read: it takes neither GPU nor host memory.
         options = ((None, True), (answer_tokens, True))
+    elif vision_gpu_only:
+        # Many frames through the tower on the CPU would take minutes: lower the frames instead (reverse prompt).
+        options = ((None, False),)
     else:
         options = ((None, False), (None, True))
     for answer, on_host in dict.fromkeys(options):
@@ -311,13 +314,13 @@ def gpu_plan(weights, stored, free, input_tokens, answer_tokens, text_only):
     return None
 
 
-def gpu_needed(weights, stored, free, input_tokens, answer_tokens, text_only):
+def gpu_needed(weights, stored, free, input_tokens, answer_tokens, text_only, extra=0, vision_gpu_only=False):
     """The fewest allocator bytes, to 32 MiB, for which gpu_plan finds a placement."""
     step = 32 * 2**20
-    low, high = free // step, -(-(weights + 2 * kv_bytes(stored, input_tokens) + WORKING_VRAM) // step)
+    low, high = free // step, -(-(weights + 2 * kv_bytes(stored, input_tokens) + extra + WORKING_VRAM) // step)
     while low + 1 < high:
         middle = (low + high) // 2
-        if gpu_plan(weights, stored, middle * step, input_tokens, answer_tokens, text_only):
+        if gpu_plan(weights, stored, middle * step, input_tokens, answer_tokens, text_only, extra, vision_gpu_only):
             high = middle
         else:
             low = middle
@@ -348,8 +351,9 @@ def load_model(folder, torch, stats, checkpoint):
         free = min(free, admission.get('effective_allocator_limit_bytes') or free)
         tokens = reserved_tokens(stats)
         answer = stats.get('answer_tokens', OUTPUT_TOKENS)
+        video = (stats.get('video_vram_bytes', 0), bool(stats.get('video_frames')))
         def place(budget):
-            return gpu_plan(weights, shapes, budget, tokens, answer, not stats.get('image_count'))
+            return gpu_plan(weights, shapes, budget, tokens, answer, not stats.get('image_count'), *video)
         # Plan against what is left after the CUDA context and kernels, which the allocator's
         # limit does not cover; the Windows limit already leaves the 256 MiB growth reserve.
         extra = min(max(0, int(stats.get('extra_vram_reserve_bytes') or 0)), 4 * 2**30)
@@ -389,12 +393,12 @@ def load_model(folder, torch, stats, checkpoint):
             # about 0.2 tokens/s and hit the request deadline, so say so at once.
             # The service waits for this much to become free before trying again.
             answer = stats.get('answer_tokens', OUTPUT_TOKENS)
-            stats['gpu_free_needed_bytes'] = gpu_needed(weights, shapes, free, tokens, answer, not stats.get('image_count'))
+            stats['gpu_free_needed_bytes'] = gpu_needed(weights, shapes, free, tokens, answer, not stats.get('image_count'), *video)
             # The report names the figure for a text-only request and for one with images; this
             # request's own kind may fit at the free memory shown, so these start from zero.
             stats.update(placement_refused='gpu_free_below_floor',
                          gpu_free_needed_text_only_bytes=gpu_needed(weights, shapes, 0, tokens, answer, True),
-                         gpu_free_needed_with_images_bytes=gpu_needed(weights, shapes, 0, tokens, answer, False))
+                         gpu_free_needed_with_images_bytes=gpu_needed(weights, shapes, 0, tokens, answer, False, *video))
             raise ValueError('out_of_memory')
     stats['ram_required_bytes'] = (RESIDENT_RAM + host_bytes + vision_bytes) if resident else MAPPED_RAM
     available = stats['available_memory_at_start_bytes' if resident else 'available_memory_before_load_bytes']
@@ -475,6 +479,8 @@ def run(folder, value, *, stats=None):
         return split(folder, value, stats)
     if value.get('mode') == 'image':
         return image(folder, value, stats)
+    if value.get('mode') == 'reverse':
+        return reverse(folder, value, stats)
     return rewrite(folder, value, stats)
 
 
@@ -527,6 +533,94 @@ def image(folder, value, stats):
         raise
     stats['stage'] = 'complete'
     emit(phase='complete', text=caption, diagnostics=dict(stats))
+
+
+# Peak graphics memory grew by about 0.04 GiB per 640 px frame (Qwen3-VL-4B, 8 to 32 frames, measured 11-19).
+VIDEO_FRAME_VRAM = 48 * 2**20
+VIDEO_SIDES = (640, 480, 384)
+
+
+def video_inputs(processor, frames, side, question):
+    """Frames shown with their times: Qwen3-VL turns each pair of frames into one group and prefixes its time."""
+    import numpy as np
+    from PIL import Image
+    from transformers.video_utils import VideoMetadata
+    pictures = []
+    for row in frames:
+        with Image.open(row['path']) as source:
+            picture = source.convert('RGB')
+        picture.thumbnail((side, side))
+        pictures.append(np.asarray(picture))
+    clip = np.stack(pictures)
+    times = [row['seconds'] for row in frames]
+    scale = 100  # indices at 100 per second reproduce the sampled times
+    metadata = VideoMetadata(total_num_frames=int(times[-1] * scale) + 1, fps=float(scale), duration=float(times[-1]),
+                             frames_indices=[round(t * scale) for t in times], width=clip.shape[2], height=clip.shape[1])
+    messages = [{'role': 'user', 'content': [{'type': 'video'}, {'type': 'text', 'text': question}]}]
+    text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    return processor(text=[text], videos=[clip], video_metadata=[metadata], do_sample_frames=False, return_tensors='pt')
+
+
+def pick_frames(frames, build, budget):
+    """(frames, side, inputs) for the largest request that fits the token budget: fewer frames first (down to 8, always
+    spread over the whole clip), then smaller ones. None when even the smallest does not fit."""
+    for side in VIDEO_SIDES:
+        count = len(frames)
+        while True:
+            picked = [frames[round(i * (len(frames) - 1) / max(1, count - 1))] for i in range(count)]
+            inputs = build(picked, side)
+            if inputs.input_ids.shape[-1] <= budget:
+                return picked, side, inputs
+            if count <= 8:
+                break
+            count = max(8, count - 4)
+    return None
+
+
+def reverse(folder, value, stats):
+    """Describe a video from its frames, ask where the camera moves, and give both back with the caller's spoken lines."""
+    from .rules import (REVERSE_CAMERA, REVERSE_CAMERA_TOKENS, REVERSE_DESCRIBE, REVERSE_INPUT_TOKENS,
+                        REVERSE_OUTPUT_TOKENS, reverse_text)
+    stats.update(stage='imports', pid=os.getpid(), mode='reverse', frame_files=len(value['frame_files']),
+                 answer_tokens=REVERSE_OUTPUT_TOKENS, dtype='bfloat16', attention='sdpa', kv_cache='dynamic',
+                 backend='transformers', accelerations=[], persistent_model=False)
+    torch, checkpoint = begin(stats)
+    from transformers import AutoProcessor
+    checkpoint('preprocess')
+    preparing = time.monotonic()
+    processor = AutoProcessor.from_pretrained(folder, local_files_only=True, trust_remote_code=False)
+    # Frames and size are chosen before the model is placed, from the request's token budget: first fewer frames
+    # (down to 8), then smaller ones. The tower stays on the GPU for a video.
+    chosen = pick_frames(value['frame_files'], lambda rows, side: video_inputs(processor, rows, side, REVERSE_DESCRIBE),
+                         REVERSE_INPUT_TOKENS)
+    if chosen is None:
+        raise ValueError('context_length')
+    picked, side, inputs = chosen
+    stats.update(input_tokens=int(inputs.input_ids.shape[-1]), video_frames=len(picked), video_side=side,
+                 video_vram_bytes=len(picked) * VIDEO_FRAME_VRAM, image_count=len(picked),
+                 preprocess_seconds=time.monotonic() - preparing)
+    model, device = load_model(folder, torch, stats, checkpoint)
+    loaded = time.monotonic()
+    checkpoint('prefill', 'describing')
+    shown = [0.]
+    def on_token(timing):
+        stats.update(output_tokens=timing['output_tokens'], decode_seconds=timing['decode_seconds'],
+                     decode_tokens_per_second=timing['decode_tokens_per_second'])
+        stats['time_to_first_output_seconds'] = timing['first_output_seconds']
+        stats.setdefault('first_output_epoch', timing['first_output_epoch'])
+        if time.monotonic() - shown[0] > .5:
+            checkpoint('decode', 'describing')
+            shown[0] = time.monotonic()
+    ids, _ = generate(torch, model, inputs.to(device), REVERSE_OUTPUT_TOKENS, loaded, on_token)
+    description = processor.decode(ids, skip_special_tokens=True).strip()
+    stats.update(describe_seconds=time.monotonic() - loaded, output_tokens=len(ids))
+    checkpoint('decode', 'camera')
+    started = time.monotonic()
+    camera_inputs = video_inputs(processor, picked, side, REVERSE_CAMERA)
+    ids, _ = generate(torch, model, camera_inputs.to(device), REVERSE_CAMERA_TOKENS, started, lambda timing: None)
+    camera = processor.decode(ids, skip_special_tokens=True).strip()
+    stats.update(camera_seconds=time.monotonic() - started, stage='complete')
+    emit(phase='complete', text=reverse_text(description, camera, value['lines']), diagnostics=dict(stats))
 
 
 def validate_rewrite(text, value, stats, retried=False):
