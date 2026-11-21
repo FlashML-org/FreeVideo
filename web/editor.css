@@ -1,5 +1,5 @@
 /* Share the studio shell and header geometry; only the editor rows differ. */
-.fv-studio.fv-editor{--fv-ed-project-h:44px;--fv-ed-generation-row:calc(60px + var(--fv-ed-description-growth,0px) + var(--fv-ed-note-growth,0px));--fv-ed-timeline-h:clamp(220px,calc(100dvh - 640px),320px);overflow:hidden auto;display:grid;grid-template-columns:264px minmax(0,1fr);grid-template-rows:auto var(--fv-ed-project-h) minmax(96px,1fr) 40px var(--fv-ed-generation-row) 40px var(--fv-ed-timeline-h);animation:none;scrollbar-width:thin;scrollbar-color:var(--fv-border) transparent}
+.fv-studio.fv-editor{--fv-ed-project-h:44px;--fv-ed-generation-row:calc(60px + var(--fv-ed-description-growth,0px) + var(--fv-ed-note-growth,0px));--fv-ed-timeline-h:min(clamp(220px,calc(100dvh - 640px),320px),max(160px,var(--fv-ed-tracks-fit,320px)));overflow:hidden auto;display:grid;grid-template-columns:264px minmax(0,1fr);grid-template-rows:auto var(--fv-ed-project-h) minmax(96px,1fr) 40px var(--fv-ed-generation-row) 40px var(--fv-ed-timeline-h);animation:none;scrollbar-width:thin;scrollbar-color:var(--fv-border) transparent}
 @media(min-width:1280px){.fv-studio.fv-editor{grid-template-columns:264px minmax(0,1fr) 264px}}
 .fv-editor *{box-sizing:border-box}
 .fv-editor [hidden]{display:none!important}
@@ -592,6 +592,21 @@
 
 /* The creation panel's own bar stands in for the description, size, duration and quality controls (editor.js). */
 .fv-ed-genbar.fv-ed-genbar-borrowed{height:auto;flex-wrap:wrap;align-content:flex-start;align-items:flex-start}
+/* The borrowed bar is the creation panel's console with its own frame: the editor adds no second frame around it, and no
+   backdrop filter, which would make the bar the box its windows (Media, LoRA, Advanced) are placed in and drop them onto the timeline. */
+.fv-editor .fv-ed-genbar.fv-ed-genbar-borrowed{padding:0;border:0;background:none;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none}
+/* The picture is what the editor is for: here the description keeps two lines, growing to three, and scrolls past that
+   (its expand key opens the full box). */
+.fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console .fv-prompt-editor textarea{min-height:48px;max-height:72px;padding-block:0;box-sizing:border-box}
+/* One row of keys under it where the window allows: slightly closer keys and a narrower Generate. A short window keeps
+   the description at two lines. */
+.fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create{--fvs-key-w:140px}
+.fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-chips{gap:6px}
+@media(max-width:1439px){.fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-chips{gap:4px}}
+.fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-chips>.fvs-chip-spacer{min-width:0}
+.fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-step-value{min-width:40px}
+.fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-chip:not(.fv-reference-trigger,[data-chip=advanced],.fvs-stepper){padding:0 10px}
+@media(max-height:820px){.fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console .fv-prompt-editor textarea{max-height:48px}}
 .fv-ed-genbar-borrowed>.fv-ed-refs,.fv-ed-genbar-borrowed>.fv-ed-description-box,.fv-ed-genbar-borrowed>.fv-ed-duration,.fv-ed-genbar-borrowed>.fv-ed-first-frame,.fv-ed-genbar-borrowed>.fv-ed-generate,.fv-ed-genbar-borrowed>.fv-ed-pass-options{display:none!important}
 .fv-ed-genbar-borrowed>.fv-borrowed{flex:1 1 100%;min-width:0;position:static;display:block;width:auto;height:auto;max-height:none;padding:0;border:0;background:none;box-shadow:none;transform:none;inset:auto}
 .fv-ed-genbar-borrowed>.fv-borrowed>.fv-body{display:block;position:static;width:auto;height:auto;padding:0}

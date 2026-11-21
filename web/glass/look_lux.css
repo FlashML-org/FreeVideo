@@ -203,8 +203,9 @@ html[data-fv-lux]:root dialog.fv-studio.fv-image .fv-iv-panel{
 }
 html[data-fv-lux]:root dialog.fv-studio.fv-image .fv-iv-panel{isolation:isolate}
 /* The edit view: its library and its generate bar are the same L1 glass; the preview and the tracks keep their own
-   ground, and nothing here draws over a clip. The assistant view's two side panels likewise. */
-html[data-fv-lux]:root dialog.fv-studio.fv-editor :is(.fv-ed-library,.fv-ed-genbar),
+   ground, and nothing here draws over a clip. The assistant view's two side panels likewise. A bar borrowed from the
+   creation panel brings its own glass, and a backdrop filter on its holder would drop its windows onto the timeline. */
+html[data-fv-lux]:root dialog.fv-studio.fv-editor :is(.fv-ed-library,.fv-ed-genbar:not(.fv-ed-genbar-borrowed)),
 html[data-fv-lux]:root dialog.fv-studio.fv-autopilot :is(.fv-chat-rail,.fv-chat-side){
   background:var(--lx-g1)!important;
   -webkit-backdrop-filter:var(--lx-blur1)!important;backdrop-filter:var(--lx-blur1)!important;

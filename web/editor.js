@@ -1825,6 +1825,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     // borrow from, the editor's bar is shown as before.
     if (panel.borrowBar) {
         let observer = null, arranged = false, unlisten = null, echo = false, lent = false, home = '', arrangeNow = null; // the subscription below outlives one borrow, so what it reads is kept out here
+        // The description here shows two or three lines: away from it, it reads from the start, not from wherever the caret left it.
+        const fromStart = event => { if (event.target instanceof HTMLTextAreaElement && event.target.closest('.fv-prompt-editor')) event.target.scrollTop = 0; };
         attachBar = () => {
         if (bar) return;
         bar = panel.borrowBar({mount: genHost, onSeconds: value => { const field = genbar.duration; if (!field || field.element.hidden || field.input.disabled || !(value > 0)) return; field.input.value = String(Math.round(value)); field.commit(); }, label: () => barLabel || null, disabled: () => !genbar.canGenerate(),
@@ -1832,6 +1834,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             onFirstFrame: value => genbar.firstFrame?.set(value)});
         if (bar) {
             genHost.classList.add('fv-ed-genbar-borrowed');
+            genHost.addEventListener('focusout', fromStart);
             // The editor's own first-frame switch is hidden with its bar; the borrowed bar's switch (in its frame pop-up,
             // where the creation panel keeps it) follows the editor's rule and saves to the edit.
             genbar.firstFrame?.mirror(next => bar?.firstFrame?.(next));
@@ -1877,7 +1880,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         }
         };
         // Hidden, the editor gives the panel its bar back; shown again, it takes it once more.
-        detachBar = () => { genbar.firstFrame?.mirror(null); observer?.disconnect(); observer = null; unlisten?.(); unlisten = null; for (const back of guideBack.splice(0)) back(); bar?.release(); bar = null; panel.barActive = false; genHost.classList.remove('fv-ed-genbar-borrowed'); delete element.dataset.barBorrowed; };
+        detachBar = () => { genbar.firstFrame?.mirror(null); observer?.disconnect(); observer = null; unlisten?.(); unlisten = null; for (const back of guideBack.splice(0)) back(); bar?.release(); bar = null; panel.barActive = false; genHost.classList.remove('fv-ed-genbar-borrowed'); genHost.removeEventListener('focusout', fromStart); delete element.dataset.barBorrowed; };
         cleanupBar = detachBar;
         attachBar();
     }
@@ -2425,6 +2428,16 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         skeleton.remove();
         tracks = module.createTracks(tracksHost, {state, sources: store.sources, t, actions, blockProgress});
         listeners.push(notes.attach(tracks.element));
+        // The timeline takes the room its rows need, up to its usual height (more rows scroll inside it); the rest goes to the picture.
+        const trackContent = tracks.element.querySelector('.fv-ed-track-content'), trackScroll = tracks.element.querySelector('.fv-ed-track-scroll');
+        if (trackContent && trackScroll && typeof ResizeObserver === 'function') {
+            const fitTracks = () => {
+                const around = tracksHost.getBoundingClientRect().height - trackScroll.clientHeight; // the ruler's inset and the scroll bar
+                if (around >= 0 && trackContent.offsetHeight) element.style.setProperty('--fv-ed-tracks-fit', `${Math.ceil(trackContent.offsetHeight + around)}px`);
+            };
+            const watchTracks = new ResizeObserver(fitTracks); watchTracks.observe(trackContent); watchTracks.observe(tracksHost);
+            listeners.push(() => watchTracks.disconnect()); fitTracks();
+        }
         transportControls.attachTracks(tracks, module.snapFrame);
         if (api.addEventListener && api.removeEventListener) {
             progressConnection = createProgressConnection(api, receiveProgress); progressConnection.start();
