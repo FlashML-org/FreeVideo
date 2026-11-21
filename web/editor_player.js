@@ -475,9 +475,11 @@ export function createEditorPlayer(host, transport, {state, sources, api, t, err
         const view = (frame.closest('dialog, :fullscreen') || document.documentElement).getBoundingClientRect();
         const room = Math.max(0, (inner - frame.offsetWidth) / 2);
         const middle = stage.left + (parseFloat(style.paddingLeft) || 0) + inner / 2;
-        const shift = Math.round(Math.max(-room, Math.min(room, view.left + view.width / 2 - middle)));
         // Set on the view so the transport's play group lines up with the picture too.
         const root = frame.closest('.fv-editor') || frame;
+        // With the adjust drawer open over the stage's right side (below 1280 px) the stage already leaves its room (margin), so
+        // the picture is centred in what is left, not on the window, or it would sit against the drawer.
+        const shift = root.dataset?.adjustOpen === 'true' ? 0 : Math.round(Math.max(-room, Math.min(room, view.left + view.width / 2 - middle)));
         root.style.setProperty('--fv-ed-center-shift', `${shift}px`);
         // The transport row spans the edit's frame (the project's shape in this stage), so its time starts under the
         // picture's left edge and its tools end under the right edge. It follows the project's shape, not the part under

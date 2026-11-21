@@ -1,6 +1,6 @@
 // At phone widths the track toolbar keeps one row; the tools outside `keep` move behind ⋯ and come back on a wider window.
 // On a wider touch screen the toolbar keeps `touchKeep` (plus `touchWideKeep` from 1180 px) at finger size and the rest go behind ⋯.
-const NARROW = '(max-width:480px)', TOUCH = '(pointer:coarse) and (min-width:481px)', TOUCH_WIDE = '(pointer:coarse) and (min-width:1180px)';
+const NARROW = '(max-width:680px)', TOUCH = '(pointer:coarse) and (min-width:681px)', TOUCH_WIDE = '(pointer:coarse) and (min-width:1180px)';
 
 export function createToolbarMore({toolbar, t, keep, touchKeep = null, touchWideKeep = null}) {
     const more = document.createElement('button'); more.type = 'button'; more.className = 'fv-ed-more fv-ed-icon';
