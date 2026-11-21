@@ -752,8 +752,8 @@ export const TUTORIAL_CHAPTERS = [
             alt: {zh: '“作品库”：第一条作品已用红框标出。', en: 'Your creations, with the first video outlined in red.'},
         },
         steps: {
-            zh: ['点预览下方最近作品开头的“作品库”。', '选择一条视频，可播放，或点“接着生成”在剪辑视图中继续。', '在作品详情中点爱心图标收藏；列表上方选“收⁠藏”只看收藏的作品，选“全⁠部”看所有作品。', '需要成片时，在“剪辑视图”点“导⁠出”。', '在导出窗口选择范围、画质和内容；要更流畅的画面时，在“帧率”中选 48 或 60，中间的画面由显卡补出。再点“导⁠出”。'],
-            en: ['Choose "Creations" at the start of the recent videos below the preview.', 'Pick a video to play it, or choose "Continue" to continue it in the Edit view.', 'In a creation\'s details, choose the heart to add it to favorites. Above the list, choose "Favorites" to see only those, or "All" to see every creation.', 'For a finished file, choose "Export" in the Edit view.', 'In the export window choose the range, quality and content. For smoother motion, choose 48 or 60 under "Frame rate"; the graphics card makes the frames in between. Then choose "Export".'],
+            zh: ['点预览下方最近作品开头的“作品库”。', '选择一条视频，可播放，或点“接着生成”在剪辑视图中继续；要一次下载多个作品，点“选⁠择”选中它们，再点“下⁠载”，存成一个压缩包。', '在作品详情中点爱心图标收藏；列表上方选“收⁠藏”只看收藏的作品，选“全⁠部”看所有作品。', '需要成片时，在“剪辑视图”点“导⁠出”。', '在导出窗口选择范围、画质和内容；要更流畅的画面时，在“帧率”中选 48 或 60，中间的画面由显卡补出；要保留无损的声音，在“声音”中选“无损”。再点“导⁠出”。'],
+            en: ['Choose "Creations" at the start of the recent videos below the preview.', 'Pick a video to play it, or choose "Continue" to continue it in the Edit view. To download several at once, choose "Select", pick them, then choose "Download" to save them as one zip file.', 'In a creation\'s details, choose the heart to add it to favorites. Above the list, choose "Favorites" to see only those, or "All" to see every creation.', 'For a finished file, choose "Export" in the Edit view.', 'In the export window choose the range, quality and content. For smoother motion, choose 48 or 60 under "Frame rate"; the graphics card makes the frames in between. To keep the sound lossless, choose "Lossless" under "Sound". Then choose "Export".'],
         },
         limits: {
             zh: ['删除作品前会确认；被剪辑使用的作品不能删除。', '导出窗口每次打开时，“内容”默认选“画面和声音”，“画质”默认选“高”；窗口里没有“帧率”时，这台电脑不支持 48 和 60 帧导出。', '导出过程中取消不会留下不完整的文件。'],
