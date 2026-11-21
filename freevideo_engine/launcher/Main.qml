@@ -147,7 +147,7 @@ ApplicationWindow {
     // On a Mac, a disk problem is fixed by choosing another disk, not by reporting a fault.
     // Not a fault: a video is still generating, and the one way on is Retry installation.
     function reportOpened(error, title) { return s.report_opened === error + "\u0001" + title }
-    readonly property bool notAFault: s.failure.kind === "setup-busy" || s.failure.kind === "update-busy"
+    readonly property bool notAFault: s.failure.kind === "setup-busy" || s.failure.kind === "update-busy" || s.failure.kind === "busy"
     readonly property bool diskFailure: !!disk && (s.failure.kind || "").indexOf("disk") === 0
     readonly property bool updateOffered: s.update.engine || (!!s.update.candidate && ["available", "downloading", "ready", "error", "cancelled"].indexOf(s.update.status) >= 0)
     // An engine update needs no download; offer it as the way to launch.
