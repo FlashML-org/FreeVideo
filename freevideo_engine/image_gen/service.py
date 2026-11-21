@@ -2813,11 +2813,12 @@ def register():
     from .. import video_warm
     videos = video_warm.warmer(installation, busy=lambda: video_busy() or service.busy())
     token = secrets.token_urlsafe(24)
-    if server_mode.enabled():
-        # A server loads its models as it starts, once ComfyUI has finished starting (its queue answers).
+    if server_mode.enabled() or server_mode.keeps_idle():
+        # Models load as FreeVideo starts, once ComfyUI has finished starting (its queue answers): all of them on a
+        # server, the kinds used lately on a desktop.
         def load_at_start():
             time.sleep(START_DELAY_SECONDS)
-            logging.info('[FreeVideo] Server mode: loading the models at start: %s', server_mode.warm())
+            logging.info('[FreeVideo] Loading the models at start: %s', server_mode.warm_at_start())
         threading.Thread(target=load_at_start, name='freevideo-server-start', daemon=True).start()
 
     @server.routes.get('/freevideo/image-gen')
