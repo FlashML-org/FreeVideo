@@ -14,6 +14,25 @@ function context(){
   return c;
 }
 const evaluate=(c,expr)=>vm.runInContext(expr,c);
+test("main navigation language changes native locale only for supported languages",()=>{
+  const c=context();
+  evaluate(c,"globalThis.location={search:'?freevideo_lang=en',href:'http://localhost/?freevideo_lang=en#workflow',assign(url){globalThis.reloaded=String(url)}};document.querySelectorAll=()=>[];localStorage.setItem=(k,v)=>{globalThis.saved=v}");
+  evaluate(c,"selectLanguage('pt-BR',true)");
+  assert.equal(evaluate(c,"LANGUAGE"),"pt-BR");
+  assert.equal(evaluate(c,"typeof reloaded"),"undefined");
+  evaluate(c,"selectLanguage('zh',false)");
+  assert.equal(evaluate(c,"typeof reloaded"),"undefined");
+  evaluate(c,"selectLanguage('zh',true)");
+  assert.equal(evaluate(c,"reloaded"),"http://localhost/?freevideo_lang=zh#workflow");
+  assert.equal(evaluate(c,"saved"),"zh");
+});
+test("Creations opens the original library after closing Tasks",()=>{
+  const c=context();
+  evaluate(c,"globalThis.clicked=false;globalThis.nativeWorks={isConnected:true,click(){clicked=true}};nativeNav={closest(){return {querySelector(){return nativeWorks}}}};globalThis.dashboard={addEventListener(name,fn){this.onClose=fn},close(){this.closed=true;this.onClose()}}");
+  evaluate(c,"openNativeCreations(dashboard)");
+  assert.equal(evaluate(c,"dashboard.closed"),true);
+  assert.equal(evaluate(c,"clicked"),true);
+});
 test("language trigger toggles the menu and exposes all three languages",()=>{
   const c=context();
   evaluate(c,"globalThis.menu={hidden:true};globalThis.trigger={expanded:'false',setAttribute(k,v){this.expanded=v},focus(){this.focused=true}};globalThis.dashboard={querySelector(s){return s==='.language'?trigger:menu}}");

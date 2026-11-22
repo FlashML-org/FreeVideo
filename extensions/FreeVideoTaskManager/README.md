@@ -5,6 +5,7 @@ Independent ComfyUI frontend extension targeting FreeVideo 0.6.8. No changes to 
 Place this folder in ComfyUI/custom_nodes/FreeVideoTaskManager. Restart ComfyUI **only when the queue and agent activity are idle**. Reload the browser; select Tasks in the main FreeVideo navigation. To remove, stop ComfyUI when idle, remove this folder, and start normally. Do not restart during a generation.
 
 ## Design
+- Native top bars expose the shared language selector. English and Simplified Chinese use FreeVideo's existing language switch; Portuguese remains available only for Tasks. The Tasks header includes Creations, which opens the original library after leaving the dashboard.
 - The sun/moon control follows the shared FreeVideo theme, via FreeVideoShell.setTheme and the native freevideo.theme preference. The dashboard no longer stores a separate theme.
 - The extension also replaces the native Settings sun-like glyph with a cog and adds a separate theme toggle next to Settings. Existing Settings behavior is unchanged; no upstream files are edited.
 - Local UI string catalog (web/i18n.js): Brazilian Portuguese, English and Simplified Chinese. The globe selector beside the theme icon changes the dashboard language immediately, saves the preference locally and preserves filters and task monitoring. With no saved selection, honors explicit freevideo_lang query parameter; otherwise detects browser locale and falls back to English. Native job names and unknown engine diagnostic strings remain unchanged. FreeVideo itself supports English and Chinese, not a global Portuguese translation.
@@ -23,7 +24,7 @@ node --test custom_nodes/FreeVideoTaskManager/tests/tasks.test.cjs
 .venv/Scripts/python.exe -B custom_nodes/FreeVideoTaskManager/tests/test_host.py
 ```
 
-Verified on Windows 10 with an NVIDIA RTX 5060 Ti 16 GB and FreeVideo 0.6.8: the dashboard displayed live generation progress and hardware metrics, both themes rendered, and the user confirmed the language menu visually. Ten offline JavaScript tests and one Python host-metrics test passed. The offline checks do not replace the live-job acceptance tests below.
+Verified on Windows 10 with an NVIDIA RTX 5060 Ti 16 GB and FreeVideo 0.6.8: the dashboard displayed live generation progress and hardware metrics, both themes rendered, and the user confirmed the dashboard language menu visually. Twelve offline JavaScript tests and one Python host-metrics test passed. The native language shortcut and Creations shortcut still need a visual acceptance check. The offline checks do not replace the live-job acceptance tests below.
 
 Upstream discussion: https://github.com/FlashML-org/FreeVideo/issues/1054. The prototype was developed with AI assistance. Upstream main and other platforms still require validation.
 

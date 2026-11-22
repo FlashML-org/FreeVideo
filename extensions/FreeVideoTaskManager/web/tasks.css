@@ -1,4 +1,21 @@
 /* The main navigation tab intentionally inherits FreeVideo's own topbar CSS. */
+.ftm-native-language{--ft-text:var(--fv-fg,#263442);--ft-card:var(--fv-bg,#fff);--ft-line:var(--fv-line2,#cbd5e1);--ft-track:var(--fv-ctl-hover,#e5ebf2);--ft-accent:var(--fv-accent-ink,#326bda);position:relative;display:inline-flex;align-items:center;flex:none;color:var(--ft-text)}
+.ftm-native-language .language{display:inline-flex;align-items:center;gap:4px;height:var(--fv-ctl,34px);padding:0 6px;border:0;border-radius:var(--fv-rad-ctl,8px);background:transparent;color:var(--fv-fg2,var(--ft-text));font:inherit;cursor:pointer}
+.ftm-native-language .language:hover,.ftm-native-language .language[aria-expanded=true]{background:var(--ft-track);color:var(--ft-text)}
+.ftm-native-language .language svg{width:16px;height:16px;pointer-events:none;flex:none}
+.ftm-native-language .language svg:last-child{width:10px;height:10px}
+.ftm-native-language .language-code{font-size:11px;white-space:nowrap}
+.ftm-native-language .language-menu{position:absolute;z-index:100;top:calc(100% + 8px);right:0;width:224px;max-width:calc(100vw - 24px);padding:6px;border:1px solid var(--ft-line);border-radius:12px;background:var(--ft-card);color:var(--ft-text);box-shadow:0 10px 30px rgb(0 0 0 / .18)}
+.ftm-native-language .language-menu[hidden]{display:none}
+.ftm-native-language .language-choice{display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;padding:10px 12px;border:0;border-radius:7px;background:transparent;color:inherit;text-align:left;font:inherit;cursor:pointer;white-space:nowrap}
+.ftm-native-language .language-choice:hover,.ftm-native-language .language-choice[aria-pressed=true]{background:var(--ft-track)}
+.ftm-native-language .language-choice .check{color:var(--ft-accent);font-weight:600}
+.ftm-native-language .language-note{display:block;padding:8px 12px 4px;border-top:1px solid var(--ft-line);font-size:11px;line-height:1.4;color:var(--fv-fg2,var(--ft-text))}
+.fv-tb-pop .ftm-native-language{display:flex;flex-direction:column;align-items:stretch}
+.fv-tb-pop .ftm-native-language .language-menu{position:static;width:auto;box-shadow:none}
+.ftm header button.creations{display:inline-flex;align-items:center;justify-content:center;gap:5px;height:var(--fv-ctl,36px);padding:0 7px;border:0;border-radius:var(--fv-rad-ctl,8px);background:transparent;color:var(--ft-text);box-shadow:none;white-space:nowrap}
+.ftm header button.creations:hover{background:var(--ft-track);color:var(--ft-text)}
+.ftm header button.creations svg{display:block;pointer-events:none;flex:none}
 html body .fv-topbar.fv-topbar.fv-topbar .ftm-native-theme::before{display:block}
 html body .fv-topbar.fv-topbar.fv-topbar .ftm-native-theme .fv-tb-lbl{display:none}
 .ftm header .ftm-language{position:relative;display:inline-flex;align-items:center;color:var(--ft-text);flex:none}

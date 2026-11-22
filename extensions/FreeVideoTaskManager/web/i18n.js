@@ -1,5 +1,13 @@
 // UI strings only. Native task titles and unknown engine diagnostics are kept unchanged.
 const dictionary = {
+  "Criações": {
+    "en": "Creations",
+    "zh": "作品"
+  },
+  "PT-BR apenas no Tasks; EN e 中文 também alteram o FreeVideo.": {
+    "en": "PT-BR applies to Tasks only. EN and 中文 also change FreeVideo.",
+    "zh": "PT-BR 仅适用于任务面板。EN 和中文也会更改 FreeVideo 的界面语言。"
+  },
   "Idioma": {
     "en": "Language",
     "zh": "语言"

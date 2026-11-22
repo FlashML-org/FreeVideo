@@ -229,6 +229,19 @@ function syncNativeTheme(b){
   b.setAttribute("aria-label",label);b.title=label;
   const text=b.querySelector(".fv-tb-lbl");if(text.textContent!==label)text.textContent=label;
 }
+const globe='<circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/>';
+const worksGlyph='<rect x="4" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.6"/>';
+const svgIcon=path=>'<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+path+'</svg>';
+const nativeLanguage=()=>resolveLanguage(globalThis.location?.search,globalThis.navigator?.language)==="zh"?"zh":"en";
+let languageMenuId=0;
+function languageControl(native=false){
+  const wrapper=el("div","ftm-language"+(native?" ftm-native-language":""));
+  const trigger=button("",null,"language");
+  const menu=el("div","language-menu");menu.id="ftm-language-menu-"+(++languageMenuId);menu.hidden=true;menu.setAttribute("role","group");
+  trigger.setAttribute("aria-expanded","false");trigger.setAttribute("aria-controls",menu.id);
+  trigger.innerHTML=svgIcon(globe)+'<span class="language-code"></span><svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>';
+  wrapper.append(trigger,menu);bindLanguageMenu(wrapper,native);return wrapper;
+}
 function attachNativeControls(){
   for(const settings of document.querySelectorAll(".fv-settings-entry")){
     if(!settings.closest(".fv-tb-links"))continue;
@@ -237,10 +250,12 @@ function attachNativeControls(){
       settings.style.setProperty("--fv-tb-icon",iconMask(cog));
     }
     const links=settings.parentElement;
-    if(links.querySelector(".ftm-native-theme"))continue;
-    const b=button("",toggleTheme,"fv-tb-link fv-tb-ico ftm-native-theme");
-    b.append(el("span","fv-tb-lbl"));syncNativeTheme(b);
-    settings.before(b);
+    if(!links.querySelector(".ftm-native-language"))settings.before(languageControl(true));
+    if(!links.querySelector(".ftm-native-theme")){
+      const b=button("",toggleTheme,"fv-tb-link fv-tb-ico ftm-native-theme");
+      b.append(el("span","fv-tb-lbl"));syncNativeTheme(b);
+      settings.before(b);
+    }
   }
 }
 function syncTheme(d){
@@ -253,7 +268,7 @@ function syncTheme(d){
 }
 function populate(d){
   rowElements.clear();lastChartTheme=null;
-  d.innerHTML=`<header><div class="brand">FreeVideo <b>Task Manager</b><small> v0.1</small></div><nav></nav><div class="ftm-language"><button class="language" type="button" aria-label="${t("Idioma")}" title="${t("Idioma")}" aria-expanded="false" aria-controls="ftm-language-menu"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.65" aria-hidden="true"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/></svg><span>${LANGUAGE==="zh"?"中文":LANGUAGE==="en"?"EN":"PT-BR"}</span><svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button><div class="language-menu" id="ftm-language-menu" role="group" aria-label="${t("Idioma")}" hidden></div></div><button class="theme" type="button">${t("Tema")}</button><button class="back" type="button">${t("Voltar")}</button></header><main><div class="hero"><div><p>${t("WORKSPACE / TASKS")}</p><h1>${t("Central de tarefas")}</h1><span>${t("Acompanhe a geração e os recursos do computador.")}</span></div><div><span class="health">${t(healthKey)}</span><small class="connection"></small></div></div><section class="counts"></section><section class="hardware"><div class="section-head"><div><h2>${t("Recursos do sistema")}</h2><small class="gpu-name"></small></div><small>${t("Histórico local · até 240 amostras")}</small></div><div class="metrics"></div></section><section class="tasks"><div class="section-head"><div><h2>${t("Atividade")}</h2><small>${t("Gerações e atividades do agente são registros distintos.")}</small></div><div class="filters"><select aria-label="${t("Origem")}"><option value="all">${t("Todas as origens")}</option><option value="engine">${t("Gerações")}</option><option value="agent">${t("Agente / MCP / CLI")}</option></select><input type="search" placeholder="${t("Buscar tarefa...")}" aria-label="${t("Buscar tarefa")}"></div></div><div class="message" role="status"></div><div class="table-wrap"><table><thead><tr><th>${t("Tarefa")}</th><th>${t("Status")}</th><th>${t("Origem")}</th><th>${t("Progresso")}</th><th>${t("Etapa")}</th><th>${t("Tempo")}</th><th>${t("Ações")}</th></tr></thead><tbody></tbody></table><p class="empty">${t("Nenhuma tarefa neste filtro.")}</p></div></section></main>`;
+  d.innerHTML=`<header><div class="brand">FreeVideo <b>Task Manager</b><small> v0.1</small></div><nav></nav><button class="creations" type="button">${t("Criações")}</button><button class="theme" type="button">${t("Tema")}</button><button class="back" type="button">${t("Voltar")}</button></header><main><div class="hero"><div><p>${t("WORKSPACE / TASKS")}</p><h1>${t("Central de tarefas")}</h1><span>${t("Acompanhe a geração e os recursos do computador.")}</span></div><div><span class="health">${t(healthKey)}</span><small class="connection"></small></div></div><section class="counts"></section><section class="hardware"><div class="section-head"><div><h2>${t("Recursos do sistema")}</h2><small class="gpu-name"></small></div><small>${t("Histórico local · até 240 amostras")}</small></div><div class="metrics"></div></section><section class="tasks"><div class="section-head"><div><h2>${t("Atividade")}</h2><small>${t("Gerações e atividades do agente são registros distintos.")}</small></div><div class="filters"><select aria-label="${t("Origem")}"><option value="all">${t("Todas as origens")}</option><option value="engine">${t("Gerações")}</option><option value="agent">${t("Agente / MCP / CLI")}</option></select><input type="search" placeholder="${t("Buscar tarefa...")}" aria-label="${t("Buscar tarefa")}"></div></div><div class="message" role="status"></div><div class="table-wrap"><table><thead><tr><th>${t("Tarefa")}</th><th>${t("Status")}</th><th>${t("Origem")}</th><th>${t("Progresso")}</th><th>${t("Etapa")}</th><th>${t("Tempo")}</th><th>${t("Ações")}</th></tr></thead><tbody></tbody></table><p class="empty">${t("Nenhuma tarefa neste filtro.")}</p></div></section></main>`;
   const counts=d.querySelector(".counts");
   for(const [id,label] of Object.entries(groups)){const b=button("",()=>{selected=id;for(const c of counts.children)c.setAttribute("aria-pressed",String(c===b));render();},"count "+id);b.setAttribute("aria-pressed",String(id===selected));const n=el("strong","","0");n.dataset.count=id;b.append(el("span","",t(label)),n);counts.append(b);}
   for(const [id,label] of metrics){const c=el("article","metric");c.dataset.metric=id;c.append(el("span","",t(label)),el("strong","","—"));const tr=el("div","track");tr.append(el("i"));c.append(tr);const canvas=el("canvas");canvas.width=200;canvas.height=34;canvas.setAttribute("aria-hidden","true");c.append(canvas);d.querySelector(".metrics").append(c);}
@@ -262,7 +277,9 @@ function populate(d){
   d.querySelector("input").oninput=e=>{search=e.target.value;render();};
   const filter=d.querySelector(".filters select");filter.value=scope;filter.onchange=e=>{scope=e.target.value;render();};
   d.querySelector("input").value=search;
-  bindLanguageMenu(d);
+  const creations=d.querySelector(".creations");creations.innerHTML=svgIcon(worksGlyph)+"<span>"+t("Criações")+"</span>";creations.title=t("Criações");creations.setAttribute("aria-label",t("Criações"));
+  creations.onclick=()=>openNativeCreations(d);
+  d.querySelector(".theme").before(languageControl());
 }
 const languageOptions=[["pt-BR","Português (Brasil)"],["en","English"],["zh","简体中文"]];
 function setLanguageMenu(d,open,restoreFocus=false){
@@ -271,21 +288,49 @@ function setLanguageMenu(d,open,restoreFocus=false){
   menu.hidden=!open;trigger.setAttribute("aria-expanded",String(open));
   if(restoreFocus)trigger.focus({preventScroll:true});
 }
-function bindLanguageMenu(d){
+function syncLanguageControl(d,native=false){
+  const translateHere=key=>native?translate(key,nativeLanguage()):t(key);
+  const trigger=d.querySelector(".language"),menu=d.querySelector(".language-menu");
+  trigger.setAttribute("aria-label",translateHere("Idioma"));trigger.title=translateHere("Idioma");menu.setAttribute("aria-label",translateHere("Idioma"));
+  trigger.querySelector(".language-code").textContent=LANGUAGE==="zh"?"中文":LANGUAGE==="en"?"EN":"PT-BR";
+  for(const choice of menu.querySelectorAll(".language-choice")){
+    const on=choice.dataset.language===LANGUAGE;choice.setAttribute("aria-pressed",String(on));choice.querySelector(".check").textContent=on?"✓":"";
+  }
+}
+function selectLanguage(value,native=false){
+  if(!languageOptions.some(([id])=>id===value))return;
+  const changed=value!==LANGUAGE;
+  LANGUAGE=value;try{localStorage.setItem(LANG_KEY,LANGUAGE);}catch{}
+  for(const control of document.querySelectorAll(".ftm-native-language"))syncLanguageControl(control,true);
+  // The upstream UI only ships English and Chinese; use its own URL switch for those.
+  // Portuguese remains a Tasks-only preference. Dashboard selection never reloads.
+  if(native&&value!=="pt-BR"&&nativeLanguage()!==value){
+    const url=new URL(location.href);url.searchParams.set("freevideo_lang",value);location.assign(url.href);return;
+  }
+  if(changed&&ui){populate(ui);fillNav(ui,nativeNav);syncTheme(ui);render();}
+}
+function bindLanguageMenu(d,native=false){
   const trigger=d.querySelector(".language"),menu=d.querySelector(".language-menu");
   for(const [value,label] of languageOptions){
     const choice=button("",()=>{
       setLanguageMenu(d,false);
-      if(value!==LANGUAGE){LANGUAGE=value;try{localStorage.setItem(LANG_KEY,LANGUAGE);}catch{}populate(d);fillNav(d,nativeNav);syncTheme(d);render();}
-      d.querySelector(".language").focus({preventScroll:true});
+      selectLanguage(value,native);
+      (native?d:ui)?.querySelector(".language")?.focus({preventScroll:true});
     },"language-choice");
-    choice.setAttribute("aria-pressed",String(value===LANGUAGE));choice.lang=value;
+    choice.dataset.language=value;choice.setAttribute("aria-pressed",String(value===LANGUAGE));choice.lang=value;
     choice.append(el("span","",label),el("span","check",value===LANGUAGE?"✓":""));
     menu.append(choice);
   }
-  trigger.onclick=()=>setLanguageMenu(d,menu.hidden);
+  if(native)menu.append(el("small","language-note",translate("PT-BR apenas no Tasks; EN e 中文 também alteram o FreeVideo.",nativeLanguage())));
+  syncLanguageControl(d,native);
+  trigger.onclick=()=>{const open=menu.hidden;for(const other of document.querySelectorAll(".ftm-native-language"))if(other!==d)setLanguageMenu(other,false);setLanguageMenu(d,open);};
   trigger.onkeydown=e=>{if(e.key!=="ArrowDown"&&e.key!=="ArrowUp")return;e.preventDefault();setLanguageMenu(d,true);const items=menu.querySelectorAll("button");items[e.key==="ArrowDown"?0:items.length-1]?.focus();};
   menu.onkeydown=e=>{if(!["ArrowDown","ArrowUp","Home","End"].includes(e.key))return;e.preventDefault();const items=[...menu.querySelectorAll("button")], at=items.indexOf(document.activeElement);const index=e.key==="Home"?0:e.key==="End"?items.length-1:(at+(e.key==="ArrowDown"?1:-1)+items.length)%items.length;items[index]?.focus();};
+}
+function openNativeCreations(d){
+  const native=nativeNav?.closest(".fv-topbar")?.querySelector(".fv-tb-works");
+  d.addEventListener("close",()=>{if(native?.isConnected)native.click();else void load("palette").then(m=>m.openCreations()).catch(e=>console.warn("FreeVideo Task Manager",e));},{once:true});
+  d.close();
 }
 function build(){
   const d=el("dialog","ftm");d.setAttribute("aria-label","FreeVideo Task Manager");populate(d);
@@ -324,6 +369,9 @@ function install(){
   const attach=()=>{for(const nav of document.querySelectorAll(".fv-view-switch")){if(nav.querySelector(".ftm-tab"))continue;const b=button("",()=>open(b),"ftm-tab fv-tb-tab");b.append(el("span","",t("Tasks")));b.dataset.view="tasks";b.dataset.label=t("Tasks");b.setAttribute("aria-pressed","false");b.setAttribute("aria-haspopup","dialog");b.title="FreeVideo Task Manager";nav.append(b);}attachNativeControls();syncNativeSettingsTheme();};
   let queued=false;observer=new MutationObserver(()=>{if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;attach();});});
   observer.observe(document.body,{childList:true,subtree:true});attach();
+  document.addEventListener("pointerdown",e=>{for(const control of document.querySelectorAll(".ftm-native-language"))if(!control.contains(e.target))setLanguageMenu(control,false);},true);
+  document.addEventListener("keydown",e=>{if(e.key!=="Escape")return;const control=[...document.querySelectorAll(".ftm-native-language")].find(c=>c.querySelector(".language")?.getAttribute("aria-expanded")==="true");if(control){e.preventDefault();e.stopPropagation();setLanguageMenu(control,false,true);}},true);
+  globalThis.addEventListener?.("freevideo-view",()=>{for(const control of document.querySelectorAll(".ftm-native-language"))setLanguageMenu(control,false);});
   new MutationObserver(()=>{for(const b of document.querySelectorAll(".ftm-native-theme"))syncNativeTheme(b);syncNativeSettingsTheme();}).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
 }
 app.registerExtension({name:"Lordelo.FreeVideoTaskManager",setup(){install();}});
