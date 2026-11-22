@@ -119,6 +119,18 @@ def _linux_holder(pid):
     return _holder_line(pid, executable, command, seconds)
 
 
+def _windows_command(pid):
+    """The allowlisted words of a process's command line, or '' when it cannot be read."""
+    try:
+        import psutil
+        arguments = psutil.Process(pid).cmdline()
+    except Exception:
+        return ''
+    if not arguments:
+        return ''
+    return _lock_command('\0'.join(arguments).encode('utf-8', errors='replace'))[1]
+
+
 def _windows_lock_holders(paths, deadline, lines):
     """Restart Manager is read-only here: never request a shutdown or restart."""
     import ctypes
@@ -200,6 +212,11 @@ def _windows_lock_holders(paths, deadline, lines):
                     size = c_uint32(len(image))
                     if kernel.QueryFullProcessImageNameW(handle, 0, image, ctypes.byref(size)):
                         lines[position] = _holder_line(pid, image.value, seconds=seconds)
+                        # The image is python.exe for every FreeVideo process; its -m module (allowlisted, as on
+                        # Linux) tells a warm-up worker from a compile or a generation.
+                        command = _windows_command(pid) if time.monotonic() < deadline else ''
+                        if command:
+                            lines[position] = _holder_line(pid, image.value, command, seconds)
             except Exception:
                 pass
             finally:

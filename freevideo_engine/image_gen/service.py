@@ -1633,7 +1633,9 @@ class Service:
         if endpoint is None:
             return dict(state='skipped', reason='no resident worker')
         hardware = detect()
-        policy = choose(hardware, available_backends=available_backends(hardware, lease=descriptor), allow_capacity_trial=True)
+        # From the saved kernel checks, never running them here: a check cannot be stopped for a video or a picture.
+        policy = choose(hardware, available_backends=available_backends(hardware, probe_missing=False),
+                        allow_capacity_trial=True)
         directory = Path(endpoint).parent
         environment = dict(env, PYTHONPATH=str(source_root()))
         environment.pop(resident_process.ENV, None)

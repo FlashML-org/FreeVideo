@@ -118,7 +118,10 @@ class VideoWarmer:
             source = comfy_bridge.source_root()
             environment = comfy_bridge.engine_environment(root, source)
             environment.update(FREEVIDEO_HOME=str(root), PYTHONPATH=str(source))
-            endpoint = owner.start(root, source, machine['python'], environment)
+            try:
+                endpoint = owner.start(root, source, machine['python'], environment, stop=halt)
+            except resident_process.StartStopped:
+                return dict(state='cancelled')
             if placed_encoder_bytes(endpoint) > 0:
                 placed = dict(state='kept', reason='The encoder is already on the card')
             else:
@@ -141,7 +144,11 @@ class VideoWarmer:
         from .kernel_capabilities import available_backends
         from .policy import choose
         hardware = detect()
-        policy = choose(hardware, available_backends=available_backends(hardware, lease=descriptor), allow_capacity_trial=True)
+        # Plans from the saved kernel checks and never runs them: a check cannot be stopped for a video, and this
+        # process (ComfyUI's own Python) is not the one the video runs in, so its checks never match the video's and
+        # would run again at every start. The video runs its checks in its own process.
+        policy = choose(hardware, available_backends=available_backends(hardware, probe_missing=False),
+                        allow_capacity_trial=True)
         environment = dict(environment)
         environment.pop(resident_process.ENV, None)
         return place_now(endpoint, dict(encoder=machine.get('encoder'), comfy_root=machine.get('comfy_root'),
@@ -219,7 +226,11 @@ class VideoWarmer:
         if thread is not None and thread is not threading.current_thread():
             # The placement's watch() decides its yield time (longer while the worker keeps video models); this
             # only bounds a warm-up that hangs.
-            thread.join(timeout=max(timeout, KEPT_YIELD_SECONDS + 2.))
+            limit = max(timeout, KEPT_YIELD_SECONDS + 2.)
+            thread.join(timeout=limit)
+            if thread.is_alive():
+                # The request then waits for the GPU lease on its own; this line names who kept it.
+                logging.warning('[FreeVideo] Video warm-up did not stop within %.0f s; it still holds the GPU.', limit)
         return dict(warm='cancelled')
 
 

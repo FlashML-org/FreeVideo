@@ -54,6 +54,10 @@ class SessionBusy(RuntimeError):
     """A running request owns this worker; its allocations are not idle credit."""
 
 
+class StartStopped(RuntimeError):
+    """The caller asked to stop while the worker was still starting; it was stopped and nothing ran on it."""
+
+
 def send(connection, value):
     connection.send_bytes(json.dumps(value, allow_nan=False).encode('utf-8'))
 
@@ -612,17 +616,19 @@ class SessionOwner:
             self.close()
             return self.record(**row)
 
-    def start(self, root, source, python, environment, busy=False):
+    def start(self, root, source, python, environment, busy=False, stop=None):
+        """``stop``, an Event: set while the worker is still starting, the start ends at once (StartStopped), so a
+        speculative start never keeps a video or a picture waiting for it."""
         with self.mutex:
             self.generation += 1
             self.idle_since = None
-            endpoint = self._start(root, source, python, environment)
+            endpoint = self._start(root, source, python, environment, stop)
             # Marked under the same lock, so a release cannot land between starting and using the worker.
             if busy:
                 self.active = True
             return endpoint
 
-    def _start(self, root, source, python, environment):
+    def _start(self, root, source, python, environment, stop=None):
         import hashlib
         import psutil
         from .triton_compat import COMPILER_ENVIRONMENT_KEYS, environment as compiler_environment
@@ -668,6 +674,9 @@ class SessionOwner:
                 raise RuntimeError('Resident worker could not start; see ' + str(directory/'session.log'))
             if (directory/'ready.json').exists():
                 return str(self.endpoint)
+            if stop is not None and stop.is_set():
+                self.close()
+                raise StartStopped('Resident worker start stopped for another request')
             time.sleep(.05)
         self.close()
         raise TimeoutError('Resident worker startup timed out')

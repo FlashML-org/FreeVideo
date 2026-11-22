@@ -40,6 +40,9 @@ STOP_GRACE = 6.
 # Windows ends a stopped tree asynchronously: CUDA memory and the lease can
 # outlive the top process by seconds.
 RELEASE_SECONDS = 15.
+# Beside the installation's receipt: its presence stops the run (precompile.STOP_ENV).
+STOP_FILE = 'precompile.stop'
+
 ATTEMPTS = 8
 
 
@@ -73,6 +76,9 @@ class BackgroundCompile:
         self.lock = None
         self.attempts = []
         self.root = None
+
+    def stop_path(self):
+        return Path(self.root) / STOP_FILE
 
     def start(self, command, *, environment, cwd, log, lock, busy, delay=START_DELAY):
         """Run `command` once the session is quiet; False when this session already did.
@@ -109,8 +115,21 @@ class BackgroundCompile:
                 # instead of reading the exit as a finished run.
                 row['stopped'] = True
                 record(self.root, 'not_started', reason='foreground_work', final=final)
+                # The file first: the run gives way at its next checkpoint on
+                # every platform, before the signal's grace would end in a kill.
+                try:
+                    if self.root is not None:
+                        io_path(self.stop_path()).touch()
+                except OSError:
+                    pass
                 processes.stop(process, grace=STOP_GRACE)
                 row['stop_seconds'] = time.monotonic() - tick
+                if gave_way(process):
+                    # Its supervisor ended the tree and the run closed its own
+                    # lease: a lease still held belongs to whoever took the card.
+                    row.update(gave_way=True, released=None, release_seconds=row['stop_seconds'])
+                    logging.info('[FreeVideo] Background compile gave way in %.1f s.', row['stop_seconds'])
+                    return dict(row)
             elif gave_way(process):
                 return None
             # Every process of the tree holds the lease; once it is free the
@@ -172,10 +191,14 @@ class BackgroundCompile:
                 row = dict(started=time.time())
                 self.attempts.append(row)
                 try:
+                    # A stop file left by the last stop would end this run at once.
+                    io_path(self.stop_path()).unlink(missing_ok=True)
                     with io_path(log).open('ab') as stream:
                         from .triton_compat import temporary_environment
+                        from .precompile import STOP_ENV
                         environment = temporary_environment(environment.get('FREEVIDEO_HOME') or self.lock.parent,
                                                             environment)
+                        environment = dict(environment, **{STOP_ENV: str(self.stop_path())})
                         process = self.process = processes.popen(
                             command, env=environment, cwd=cwd, stdin=subprocess.DEVNULL, stdout=stream,
                             stderr=subprocess.STDOUT, start_new_session=True, supervise=True)
