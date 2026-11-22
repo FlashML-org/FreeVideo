@@ -49,8 +49,8 @@ const PLAIN_ERRORS = [
         summary: ['Connect up to 3 pictures as references, and remove video, audio and pre-encoded inputs.', '最多接 3 张图片作为参考图，并移除视频、音频参考和预编码输入。']},
     // Only the Mac engine still refuses keyframes next to references; elsewhere they become still guides.
     {key: 'media-mixed-layout', message: 'Reference and first/last keyframe layouts cannot be mixed in one request on this Mac; keep one of the two',
-        title: ['Choose references or first and last frames', '请选择参考素材或首尾帧'],
-        summary: ['On this Mac, use either reference media or first and last frames.', '在 Mac 上，参考素材和首尾帧请选其中一种使用。']},
+        title: ['Use references or first and last frames', '参考素材与首尾帧请选其一'],
+        summary: ['On a Mac, keep one of the two: turn off the media cards or inputs you are not using, then generate again.', '在 Mac 上请保留其中一种：关闭本次不用的素材卡片或输入，再重新生成。']},
     {key: 'audio-original-passes', prefixes: ['audio_original_passes:'],
         title: ['This audio needs two-pass acceleration', '这段音频需要二采加速'],
         summary: ['Turn on "Two-pass acceleration" or set the audio to "Reference".', '请打开“二采加速”，或把音频改选“参考”。']},
