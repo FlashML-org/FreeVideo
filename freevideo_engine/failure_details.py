@@ -403,11 +403,11 @@ WITHOUT_REPAIR_NONE = ('Return to Installation and check the same folder to rest
 _KEPT = ('; the models and videos in the current folder are not deleted.', '；原文件夹里的模型和作品不会被删除。')
 _EXTRACT = ('Extract the downloaded package again into a new folder and start FreeVideo from there' + _KEPT[0],
             '请把下载的整合包重新解压到一个新文件夹，再从新文件夹启动 FreeVideo' + _KEPT[1])
-_IMPORT = ('On the Installation page in the sidebar, select New installation, change Install location to a new folder, '
+_IMPORT = ('On the Installation page in the sidebar, select Install ComfyUI, change Install location to a new folder, '
            'then click Replace package… under Import environment package and choose the downloaded environment package; '
            'if you are online, you can instead choose Automatic as the install method there. '
            'The models and videos in the current folder are not deleted.',
-           '请在左侧“安装”页选择“全新安装”，把“安装位置”改为一个新文件夹，然后在“导入运行环境包”中点击“更换环境包…”'
+           '请在左侧“安装”页选择“帮我安装 ComfyUI”，把“安装位置”改为一个新文件夹，然后在“导入运行环境包”中点击“更换环境包…”'
            '并选择下载的运行环境包；能联网时，也可以在那里把安装方式改为“自动安装”。原文件夹里的模型和作品不会被删除。')
 WITHOUT_REPAIR = {
     # A model file that differs from the tested one; FreeVideo leaves it in place.
@@ -758,9 +758,9 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
             action = ('请改选“%s”文件夹。' if zh else 'Select the "%s" folder instead.') % found
         else:
             # The button name is the one on the launcher's ComfyUI page (Main.qml, newComfyMethod).
-            action = ('请选择包含 main.py 的 ComfyUI 文件夹，或包含它的便携包文件夹。尚未安装 ComfyUI 时，请选择“全新安装”。' if zh else
+            action = ('请选择包含 main.py 的 ComfyUI 文件夹，或包含它的便携包文件夹。尚未安装 ComfyUI 时，请选择“帮我安装 ComfyUI”。' if zh else
                       'Select the ComfyUI folder (it contains main.py), or the portable folder that contains it. '
-                      'If ComfyUI is not installed yet, choose "New installation".')
+                      'If ComfyUI is not installed yet, choose "Install ComfyUI".')
         return dict(title='这不是 ComfyUI 文件夹' if zh else "This isn't a ComfyUI folder", detail='',
                     action=action, kind='comfy-folder')
     if re.search(r'Mac GPU check did not pass|Native GPU checks did not complete', summary):
