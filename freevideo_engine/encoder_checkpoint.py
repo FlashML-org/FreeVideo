@@ -7,8 +7,10 @@ from pathlib import Path
 import stat
 import struct
 import sys
+import threading
 import warnings
 import weakref
+from contextlib import contextmanager
 
 
 PACKAGE = Path(__file__).resolve().parent
@@ -232,9 +234,60 @@ def release_mapped_pages(paths):
     return dict(advised_bytes=advised, errors=errors) if advised or errors else None
 
 
+# Builds being checked, by thread: one shared hook on nn.Module serves them all, installed by the first and removed by
+# the last, so overlapping builds never restore each other's replacement.
+_checks = {}
+_checks_lock = threading.Lock()
+_native_load = []
+
+
+def _checked_load(self, *args, **kwargs):
+    check = _checks.get(threading.get_ident())
+    if check is not None:
+        check()
+    return _native_load[0](self, *args, **kwargs)
+
+
+@contextmanager
+def checked_construction(check):
+    """Call ``check`` before each module of a native construction takes its weights, in this thread only.
+
+    The native build is one call of a few seconds (5-6 s while a video starts beside it) that never looks back; a
+    speculative build asked to stop must not run to its end first. Every module's weights pass through
+    ``nn.Module._load_from_state_dict`` (ComfyUI's quantized operations extend it and call it), about 20 ms apart
+    for this encoder, so an exception from ``check`` ends the build there and the partial model is discarded.
+    Other threads loading meanwhile only pass through: their modules are never checked."""
+    if check is None:
+        yield
+        return
+    import torch
+    owner = threading.get_ident()
+    with _checks_lock:
+        if not _checks and torch.nn.Module._load_from_state_dict is not _checked_load:
+            _native_load[:] = [torch.nn.Module._load_from_state_dict]
+            torch.nn.Module._load_from_state_dict = _checked_load
+        outer = _checks.get(owner)
+        _checks[owner] = check
+    try:
+        yield
+    finally:
+        with _checks_lock:
+            if outer is None:
+                del _checks[owner]
+            else:
+                _checks[owner] = outer
+            if not _checks:
+                # The native function stays in _native_load: a load another thread began just before this still
+                # passes through _checked_load and needs it.
+                if torch.nn.Module._load_from_state_dict is _checked_load:
+                    torch.nn.Module._load_from_state_dict = _native_load[0]
+
+
 def load_clip(ckpt_paths, embedding_directory=None, clip_type=None, model_options=None,
-              disable_dynamic=False, progress=None):
-    """Keep the native CLIP construction and quantization, replace only file IO."""
+              disable_dynamic=False, progress=None, check=None):
+    """Keep the native CLIP construction and quantization, replace only file IO.
+
+    ``check`` (optional) is called between modules while the encoder is built; whatever it raises ends the build."""
     import comfy.sd
     import comfy.utils
     options = {} if model_options is None else model_options
@@ -259,8 +312,11 @@ def load_clip(ckpt_paths, embedding_directory=None, clip_type=None, model_option
         states.append(state)
     if progress:
         progress('encoder_construct')
-    clip = comfy.sd.load_text_encoder_state_dicts(states, embedding_directory=embedding_directory,
-        clip_type=clip_type, model_options=options, disable_dynamic=disable_dynamic)
+    if check is not None:
+        check()
+    with checked_construction(check):
+        clip = comfy.sd.load_text_encoder_state_dicts(states, embedding_directory=embedding_directory,
+            clip_type=clip_type, model_options=options, disable_dynamic=disable_dynamic)
     # Native patcher recreation must use the same reader, not return to COW.
     clip.patcher.cached_patcher_init = (load_clip_model_patcher,
         (ckpt_paths, embedding_directory, clip_type, options, disable_dynamic))
