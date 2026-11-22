@@ -40,6 +40,10 @@ def engine_floor(receipt, resource):
     return floor
 
 
+MEMORY_BREAKDOWN = ('free_bytes', 'inactive_bytes', 'active_bytes', 'wired_bytes', 'compressor_physical_bytes',
+                    'compressor_logical_bytes', 'swap_total_bytes', 'swap_free_bytes')
+
+
 def policy(args, memory=None):
     from .system import system_memory
     memory = memory or system_memory()
@@ -70,6 +74,10 @@ def policy(args, memory=None):
                 -down(-(reserve + 2 * GiB))))
         # What the system reported at this moment, so the report shows whether the Mac is small or busy.
         error.memory_record = dict(total_bytes=memory['total_bytes'], available_bytes=memory['available_bytes'], reserve_bytes=reserve)
+        # How the Mac splits its memory (free, cached, in use, compressed, swap) separates a small Mac from a busy one.
+        for key in MEMORY_BREAKDOWN:
+            if type(memory.get(key)) is int and memory[key] >= 0:
+                error.memory_record[key] = memory[key]
         if getattr(args, 'ram_gib', None) is not None:
             error.memory_record['launcher_limit_bytes'] = amount('ram_gib', None)
         raise error
@@ -398,12 +406,26 @@ def run(args):
                       cancelled=isinstance(error, KeyboardInterrupt))
         if getattr(error, 'memory_record', None):
             report['preflight_memory'] = error.memory_record
+        if 'runtime_hardware' not in report:
+            identify_refused(report, inventory, code_identity)
         raise
     finally:
         processes.restore_handlers(previous)
         report['request_seconds'] = time.monotonic() - started
         save(output.with_suffix('.request.json'), report)
         write_debug(output)
+
+
+def identify_refused(report, inventory, code_identity):
+    """Name the chip, system and code of a request that stopped before its own record of them.
+
+    Each lookup stands alone, so a failing one never hides the error being reported."""
+    for key, lookup in (('runtime_hardware', lambda: inventory()['hardware']), ('runtime_code', code_identity),
+                        ('runtime_software', runtime_software)):
+        try:
+            report[key] = lookup()
+        except Exception:
+            pass
 
 
 def runtime_software():
