@@ -63,6 +63,12 @@ ACCELERATION = ('This acceleration LoRA was made for the original model and cann
 # Step-distillation adapters (for example parallel-decoding ones) ship a bank of
 # whole replacement output heads, one per stretch of the sampling schedule.
 HEADS = ('proj_out', 'audio_proj_out')
+HEAD_SHAPES = {tuple(LAYOUT[name]) for name in HEADS}
+# Conversions of the same adapters store that bank another way: flattened on the output head under a name no LoRA
+# factor has (ComfyUI set_weight / reshape_weight, PTD orig_weight), and they say what they are in their metadata.
+STEP_HEAD = re.compile(r'(?:^|\.)(?:proj_out|audio_proj_out|final_layer\.(?:video|audio)_out)\.(?:bias\.)?'
+                       r'(?:set_weight|set_bias|reshape_weight|orig_weight|orig_bias)$')
+STEP_METADATA = re.compile(r'(?:h3_)?p[dt]d_')
 _CACHE, _LOCK = {}, threading.Lock()
 
 
@@ -108,11 +114,15 @@ FAMILIES = (('wan', re.compile(r'\.(?:self_attn|cross_attn)\.|\.ffn\.\d|^head\.h
             ('sd', re.compile(r'down_blocks|up_blocks|input_blocks|lora_te|text_model')))
 
 
+# A language model (a prompt rewriter, a text encoder) also has self_attn layers; it is not a Wan model.
+LANGUAGE_MODEL = re.compile(r'language_model\.|text_encoders?\.|(?:^|\.)layers\.\d+\.(?:mlp|self_attn|linear_attn)\.')
+
+
 def family(keys):
     """Which other model a file's layer names belong to, or None when they match none we know."""
     for name, pattern in FAMILIES:
         if any(pattern.search(key) for key in keys):
-            return name
+            return 'llm' if name == 'wan' and any(LANGUAGE_MODEL.search(key) for key in keys) else name
     return None
 
 
@@ -121,13 +131,22 @@ def _bad(reason, keys, **detail):
 
 
 def _head_bank(shapes):
-    """The first tensor that is a stack of whole output-head weights, or None."""
+    """The first tensor that is a stack of whole output-head weights, under any name, or None. LoRA factors are
+    two-dimensional, so a three-dimensional tensor shaped like an output head is never one."""
     for key, shape in shapes.items():
-        if not key.endswith('.weight') or len(shape) != 3:
-            continue
-        name = _targets(key[:-7])[0][0]
-        if name in HEADS and list(shape[1:]) == list(LAYOUT[name]):
+        if len(shape) == 3 and tuple(shape[1:]) in HEAD_SHAPES:
             return key
+    return None
+
+
+def _step_adapter(shapes, metadata):
+    """For a file that is not a LoRA we can read: the tensor that marks it as a step-distillation adapter stored
+    another way (its output heads flattened, or its metadata saying so), or None."""
+    marked = next((key for key in shapes if STEP_HEAD.search(key)), None)
+    if marked:
+        return marked
+    if metadata and any(STEP_METADATA.match(str(name)) for name in metadata):
+        return next((key for key in shapes if not supported(key)), None) or next(iter(shapes), None)
     return None
 
 
@@ -150,22 +169,26 @@ def assess(shapes, *, int8_targets=None, skipped=None, metadata=None):
     heads = _head_bank(shapes)
     if heads:
         return _bad('acceleration', keys, layer=heads)
+
+    def unreadable(layer):
+        step = _step_adapter(shapes, metadata)
+        return _bad('acceleration', keys, layer=step) if step else _bad('format', keys, layer=layer)
     try:
         pairs, full = adapter_keys(keys)
     except ValueError:
         if family(keys):
             return _bad('other-model', keys, layer=None)
-        return _bad('format', keys, layer=next((key for key in keys if not supported(key)), None))
+        return unreadable(next((key for key in keys if not supported(key)), None))
     if not any('A' in pair for pair in pairs.values()) and not full:
-        return _bad('format', keys, layer=None)
+        return unreadable(None)
     wrong, applied = [], set()
     skipped = [] if skipped is None else skipped
     for name, pair in pairs.items():
         if not {'A', 'B'} <= pair.keys():
-            return _bad('format', keys, layer=name)
+            return unreadable(name)
         a, b = shapes[pair['A']], shapes[pair['B']]
         if len(a) != 2 or len(b) != 2 or a[0] != b[1] or a[0] <= 0:
-            return _bad('format', keys, layer=name)
+            return unreadable(name)
         for target, split, swap in _targets(name):
             if int8_targets is not None:
                 target = resolve_target(target, int8_targets)
