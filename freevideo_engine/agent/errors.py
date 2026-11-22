@@ -612,7 +612,8 @@ def _failure_line(error):
     lines = str(error.get('message') or '').strip().splitlines()
     line = lines[0] if lines else ''
     if line.startswith('FreeVideo generation failed') and len(lines) > 1:
-        line = lines[1].strip()
+        # The engine puts the child's last error here as "Cause: <error>" (failure_details).
+        line = re.sub(r'^Cause:\s+', '', lines[1].strip())
     return re.sub(r'^(?:[\w.]*Error|[\w.]*Exception):\s*', '', line)
 
 
