@@ -4,9 +4,9 @@ const dictionary = {
     "en": "Creations",
     "zh": "作品"
   },
-  "PT-BR apenas no Tasks; EN e 中文 também alteram o FreeVideo.": {
-    "en": "PT-BR applies to Tasks only. EN and 中文 also change FreeVideo.",
-    "zh": "PT-BR 仅适用于任务面板。EN 和中文也会更改 FreeVideo 的界面语言。"
+  "Troca instantânea · tradução da interface em evolução.": {
+    "en": "Instant switching · interface translation in progress.",
+    "zh": "即时切换 · 界面翻译持续完善中。"
   },
   "Idioma": {
     "en": "Language",
@@ -290,5 +290,18 @@ export function resolveLanguage(search="", browserLanguage="en", savedLanguage=n
   const explicit = new URLSearchParams(search).get("freevideo_lang");
   const normalized = String(explicit||browserLanguage||"en").toLowerCase();
   return normalized.startsWith("pt") ? "pt-BR" : normalized.startsWith("zh") ? "zh" : "en";
+}
+// A fresh launch is a new language session, not a continuation of a previous
+// tab's temporary language experiment. Explicit links still select a locale.
+export function initialLanguage(search="", browserLanguage="en", tabStorage=null) {
+  const query=new URLSearchParams(search);
+  let selected=null;
+  if(query.get("freevideo")!=="launch"){
+    try{selected=tabStorage?.getItem("freevideo-task-manager.tab-language");}catch{}
+  }
+  return resolveLanguage(search,browserLanguage,selected);
+}
+export function rememberLanguage(language,tabStorage=null){
+  try{tabStorage?.setItem("freevideo-task-manager.tab-language",language);}catch{}
 }
 export function translate(key,language) { return dictionary[key]?.[language] || key; }
