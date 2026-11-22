@@ -22,7 +22,8 @@ import { skinSelect } from './fv_select.js';
 import { loraMenu } from './lora_menu.js';
 import { createPreviewScene } from './preview_scene.js?v=20261115-still';
 import { animateDetails, closeDialog } from './motion.js';
-import { openLibrary, setDefaultUpscale, setDefaultUpscaleWork, videoThumbnailURL } from './library.js';
+import { openLibrary, setDefaultUpscale, setDefaultUpscaleWork, videoThumbnailURL, admittedFrames } from './library.js';
+import { createUpscaleOffer, upscaleChoices, UPSCALE_USE, UPSCALE_QUEUED, UPSCALE_FAILED } from './upscale_offer.js';
 import { createRecentVideos } from './studio_recent.js';
 import { createStudioQueue, randomSeed, turnNodeOn } from './studio_queue.js';
 import { isNetworkTypeError, connectionLostText, wrappedFetchOnly } from './browser_extension.js';
@@ -1884,6 +1885,43 @@ export function openStudio(node, {extendFrom = null} = {}) {
         fault(shownMessage(error));
     }
     const trimNote = el('div', '', 'fv-note fv-trim-note'); trimNote.hidden = true; trimNote.setAttribute('role', 'status');
+    // The result's "⋯" offers the library's upscale rows (upscaleChoices, the same words and conditions): the 4K size at
+    // once, the 1.5× step once this computer's answer for that size is known. Asked again for each new video, since free
+    // memory may have changed; a row whose condition is not met is not shown.
+    const upscaleOffer = createUpscaleOffer(admittedFrames);
+    let upscaleAsked = null;
+    function upscaleItems(r) {
+        if (typeof node.freevideoUpscaleWork !== 'function') return [];
+        return upscaleChoices(r, upscaleOffer).map(choice => {
+            const item = el('button', null, 'fv-action fv-action-secondary fv-action-upscale fv-more-item');
+            item.type = 'button'; item.dataset.upscale = choice.id;
+            item.append(icon('upscale'), el('span', t(...choice.label)));
+            item.dataset.fvTipName = t(...choice.label); item.dataset.fvTipUse = t(...UPSCALE_USE);
+            item.onclick = async () => {
+                const menu = item.closest('details'); if (menu) menu.open = false;
+                try { await node.freevideoUpscaleWork(r, choice.options); notify(t(...UPSCALE_QUEUED)); await syncQueue(); }
+                catch (error) {
+                    if (extensionCause(error)) showQueueError(error);
+                    else fault(t(...UPSCALE_FAILED) + shownMessage(error));
+                }
+            };
+            return item;
+        });
+    }
+    function refreshUpscaleItems(r) {
+        if (upscaleAsked !== r.video) { upscaleAsked = r.video; upscaleOffer.forget(); }
+        void upscaleOffer.prepare([r]).then(() => {
+            const panel = links.querySelector('.fv-actions .fv-more-menu');
+            if (disposed || result !== r || !panel) return;
+            const shown = [...panel.querySelectorAll('.fv-action-upscale')], fresh = upscaleItems(r);
+            if (shown.map(e => e.dataset.upscale).join() === fresh.map(e => e.dataset.upscale).join()) return;
+            shown.forEach(e => e.remove());
+            const copy = panel.querySelector('.fv-action-copy');
+            if (copy) copy.after(...fresh); else panel.prepend(...fresh);
+            // Open already: placed again for its new height, so it does not cover its button.
+            panel.closest('details')?.fvPlace?.();
+        });
+    }
     // Run second pass is the preview's primary action in the result bar.
     const secondPass = saved => async () => {
         try { await node.freevideoUpscaleResult(saved); await syncQueue(); }
@@ -2118,7 +2156,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
         links.replaceChildren(resultActions(r, t, {diagnostic: reported ? downloadReport : null,
                                                    extend: saved => openExtendEditor(saved, node, {studio: dialog,
                                                        isCurrent: () => dialog.open && dialog.dataset.closing !== 'true' && topDialog() === dialog && result === r}),
-                                                   secondPass: r.preview ? secondPass(r) : null, reuse: r.preview ? null : reuse, layout: 'stage', more: [guideItem()]}));
+                                                   secondPass: r.preview ? secondPass(r) : null, reuse: r.preview ? null : reuse, layout: 'stage', more: [...upscaleItems(r), guideItem()]}));
+        refreshUpscaleItems(r);
         if (runButtonReady) updateExtendButton();
         stageBar.sync(); syncHistory();
         // After a video finished just now, point at the report menu until the

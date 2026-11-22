@@ -18,7 +18,7 @@ import { createMetaStore, promptOfRow } from './image_view_history.js';
 import { attach as attachPlayerBar } from './glass/player_bar.js';
 import { hasPictureThumbnail, mediaQueue, pictureThumbnailURL, watchCards } from './work_media.js';
 import { zoomable } from './picture_zoom.js';
-import { createUpscaleOffer, upscale4kOffer } from './upscale_offer.js';
+import { createUpscaleOffer, upscaleChoices, UPSCALE_USE, UPSCALE_QUEUED, UPSCALE_FAILED } from './upscale_offer.js';
 import { capabilityPoints } from './chain_support.js';
 
 const style = document.createElement('link');
@@ -396,8 +396,9 @@ export function setDefaultUpscale(run) { defaultUpscale = typeof run === 'functi
 // ``upscaleWork`` makes a larger copy of a finished video; registered by the studio like the second pass.
 let defaultUpscaleWork = null;
 export function setDefaultUpscaleWork(run) { defaultUpscaleWork = typeof run === 'function' ? run : null; }
-// The longest single request at a size, as the planner admits it now; null when it cannot be told.
-async function admittedFrames(width, height) {
+// The longest single request at a size, as the planner admits it now; null when it cannot be told. The studio asks the
+// same for the result's "⋯".
+export async function admittedFrames(width, height) {
     for (let tries = 0; tries < 5; tries++) {
         const response = await api.fetchApi('/freevideo/capabilities?' + new URLSearchParams({width, height}));
         if (!response.ok) return null;
@@ -1485,15 +1486,11 @@ export function openLibrary(t, options = {}) {
                     disabled: secondPassRunner() ? '' : ['Open the create view first, then run the second pass', '请先打开创作页，再继续二采'],
                     run: () => secondPass(one).then(() => say(t('Queued. It appears in "Creations" when done.', '已加入队列，完成后在“作品”里。')), error => say(t('Could not start the second pass: ', '无法继续二采：') + error.message, true))});
                 // One 1.5× step where this computer can generate it (gap-04a), and the 4K size by a small model (gap-04b):
-                // each shown on its own, the same way.
-                for (const [id, larger, options] of [['upscale', defaultUpscaleWork && upscaleOffer.offer(one), {}],
-                                                     ['upscale-4k', defaultUpscaleWork && upscale4kOffer(one), {to: '4k'}]]) {
-                    if (!larger) continue;
-                    const size = `${larger.width} × ${larger.height}`;
-                    items.push({id, icon: 'upscale', label: [`Upscale to ${size}`, `放大到 ${size}`],
-                        use: ['Make a larger copy as a new creation', '生成一个更大的新作品，原作品不变'],
-                        run: () => defaultUpscaleWork(one, options).then(() => say(t('Queued. It appears in "Creations" when done.', '已加入队列，完成后在“作品”里。')),
-                            error => say(t('Could not start upscaling: ', '无法开始放大：') + error.message, true))});
+                // each shown on its own, the same rows as the result's "⋯" (upscaleChoices).
+                if (defaultUpscaleWork) for (const choice of upscaleChoices(one, upscaleOffer)) {
+                    items.push({id: choice.id, icon: 'upscale', label: choice.label, use: UPSCALE_USE,
+                        run: () => defaultUpscaleWork(one, choice.options).then(() => say(t(...UPSCALE_QUEUED)),
+                            error => say(t(...UPSCALE_FAILED) + error.message, true))});
                 }
                 items.push({id: 'reuse', icon: 'reuse', label: ['Reuse settings', '复用设置'],
                     disabled: one.preview ? ['A first-pass preview: finish it first', '这是一采预览，先继续二采'] : '',
