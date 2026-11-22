@@ -42,7 +42,7 @@ const GROUPS = [
     [['Longer videos', '更长的视频'], ['long-video', 'extend-video', 'continue-or-new-shot']],
     [['Edit and sound', '剪辑与声音'], ['editor', 'save-frame', 'editor-extend-refs', 'segment-prompt', 'separate-tracks', 'replace-music', 'beat-snap', 'voice-recording', 'narration', 'sound-to-picture', 'text-subtitles']],
     [['Autopilot', 'AI 全自动'], ['autopilot', 'drama-outline', 'film-project']],
-    [['Library and system', '作品与运行'], ['library-reuse', 'library-export', 'system-status', 'launcher-close', 'troubleshoot', 'offline-reimport']],
+    [['Library and system', '作品与运行'], ['library-reuse', 'upscale', 'library-export', 'system-status', 'launcher-close', 'troubleshoot', 'offline-reimport']],
 ];
 // The figure is a finished example, not a screenshot of the interface (screenshots go stale; "Take me there" points at the real control).
 const FIG = {

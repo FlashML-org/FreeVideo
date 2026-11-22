@@ -127,8 +127,8 @@ export const TUTORIAL_CHAPTERS = [
             settings: {},
         },
         limits: {
-            zh: ['图片会按所选画幅居中裁切。', 'Mac 上首帧、尾帧暂不能与参考图、角色同时使用。'],
-            en: ['Images are center-cropped to the chosen shape.', 'On a Mac, first and last frames cannot be used with reference images or characters yet.'],
+            zh: ['图片会按所选画幅居中裁切。', 'Mac 上首帧、尾帧与参考图、角色请选其一使用。'],
+            en: ['Images are center-cropped to the chosen shape.', 'On a Mac, a request uses either first and last frames, or reference images and characters.'],
         },
     },
     {
@@ -159,8 +159,8 @@ export const TUTORIAL_CHAPTERS = [
             alt: {zh: '创作面板：素材区域和参考图已用红框标出。', en: 'The creation panel, with the Media section and a reference image outlined in red.'},
         },
         steps: {
-            zh: ['在创作面板的“素材”中添加图片，每张可设为参考、首帧或尾帧。', '在描述中输入 @ 选择图片，并写明它在画面中的作用，例如“<Picture 1> 里的女孩在海边奔跑”。', '视频和音频也可作为参考：同样点“添\u2060加”，在描述中输入 @ 引用。', '音频卡片上选“原样使用”时，成片直接使用这段声音，时长随音频而定；一次只能有一段音频原样使用。', '点“生⁠成⁠视⁠频”。'],
-            en: ['Add images under "Media" in the creation panel and set each one as a reference, first frame, or last frame.', 'Type @ in the prompt and choose an image, then say what it does in the scene, for example "The girl in <Picture 1> runs along the beach".', 'Videos and audio can be references too: add them the same way with "Add" and mention them in the prompt with @.', 'On an audio card, choose "Use as is" to put that audio into the result unchanged. The duration follows the audio, and only one audio file can be used as is.', 'Choose "Generate video".'],
+            zh: ['在创作面板的“素材”中添加图片，每张可设为参考、首帧或尾帧。', '在描述中输入 @ 选择图片，并写明它在画面中的作用，例如“<Picture 1> 里的女孩在海边奔跑”。', '视频和音频也可作为参考：同样点“添\u2060加”，在描述中输入 @ 引用；视频卡片上勾选“仅参考构图”时，只沿用它的构图，不沿用动作和颜色。', '音频卡片上选“原样使用”时，成片直接使用这段声音，时长随音频而定；一次只能有一段音频原样使用。', '点“生⁠成⁠视⁠频”。'],
+            en: ['Add images under "Media" in the creation panel and set each one as a reference, first frame, or last frame.', 'Type @ in the prompt and choose an image, then say what it does in the scene, for example "The girl in <Picture 1> runs along the beach".', 'Videos and audio can be references too: add them the same way with "Add" and mention them in the prompt with @. On a video card, check "Composition only" to follow its layout but not its motion or colors.', 'On an audio card, choose "Use as is" to put that audio into the result unchanged. The duration follows the audio, and only one audio file can be used as is.', 'Choose "Generate video".'],
         },
         example: {
             assets: [],
@@ -192,8 +192,8 @@ export const TUTORIAL_CHAPTERS = [
             settings: {},
         },
         limits: {
-            zh: ['一次请求最多使用 3 个角色。', '角色不能与首帧、尾帧同时使用。', '角色的外观可能每次略有不同。'],
-            en: ['A request uses up to 3 characters.', 'Characters cannot be used with first or last frames.', 'A character may look slightly different between runs.'],
+            zh: ['一次请求最多使用 3 个角色。', 'Mac 上角色与首帧、尾帧请选其一使用。', '角色的外观可能每次略有不同。'],
+            en: ['A request uses up to 3 characters.', 'On a Mac, a request uses either characters or first and last frames.', 'A character may look slightly different between runs.'],
         },
     },
     {
@@ -210,8 +210,8 @@ export const TUTORIAL_CHAPTERS = [
             en: ['Expand "Media" in the creation panel and choose + on the "Scenes" or "Props" row.', 'Enter a "Name" and add pictures: choose "Upload images" or "Generate with AI". A scene takes up to 3 pictures, a prop 1.', 'Choose "Save".', 'Later, type @ in the description to pick it, and say where it is in the shot or how it is used.'],
         },
         limits: {
-            zh: ['一次请求最多使用 1 个场景和 2 个道具，不占角色的 3 个名额。', '场景和道具不能与首帧、尾帧同时使用。', '物品的细节可能每次略有不同。'],
-            en: ['A request uses up to 1 scene and 2 props, which do not count toward the 3 characters.', 'Scenes and props cannot be used with first or last frames.', 'Fine details of an object may differ slightly between runs.'],
+            zh: ['一次请求最多使用 1 个场景和 2 个道具，不占角色的 3 个名额。', 'Mac 上场景、道具与首帧、尾帧请选其一使用。', '物品的细节可能每次略有不同。'],
+            en: ['A request uses up to 1 scene and 2 props, which do not count toward the 3 characters.', 'On a Mac, a request uses either scenes and props or first and last frames.', 'Fine details of an object may differ slightly between runs.'],
         },
     },
     {
@@ -228,8 +228,8 @@ export const TUTORIAL_CHAPTERS = [
             en: ['Expand "Media" in the creation panel and turn on "Replace person".', 'Under "Source video" choose "Add video", and under "Person image" choose "Add image".', 'To keep the sound of the source video, check "Keep source video sound".', 'The prompt can stay empty or describe more of the picture. Then choose "Generate video".'],
         },
         limits: {
-            zh: ['替换人物不能与首帧、尾帧同时使用。', '首次使用时会自动下载约 80 MB 的替换人物模型，面板中显示进度，下载完成后才能生成。', '源视频至少 1 秒；源视频没有声音时，不能保留声音。'],
-            en: ['Replace person cannot be used with first or last frames.', 'The first time, the Replace person model of about 80 MB downloads on its own. The panel shows the progress, and generation can start when it finishes.', 'The source video must be at least 1 second long. A source video without sound has no sound to keep.'],
+            zh: ['替换人物与首帧、尾帧请选其一使用。', '首次使用时会自动下载约 80 MB 的替换人物模型，面板中显示进度，下载完成后才能生成。', '源视频至少 1 秒；源视频没有声音时，不能保留声音。'],
+            en: ['A request uses either Replace person or first and last frames.', 'The first time, the Replace person model of about 80 MB downloads on its own. The panel shows the progress, and generation can start when it finishes.', 'The source video must be at least 1 second long. A source video without sound has no sound to keep.'],
         },
     },
     {
@@ -247,8 +247,8 @@ export const TUTORIAL_CHAPTERS = [
             en: ['Expand "Media" in the creation panel, turn on "Replace person" and add the video under "Source video".', 'Add the first picture under "Person image 1". "Person image 2" appears next to it; add the second picture there.', 'The pictures are matched to the people in the video from left to right: image 1 replaces the person on the left, image 2 the person on the right.', 'Choose × at the top right of a picture to remove it.', 'Choose "Generate video".'],
         },
         limits: {
-            zh: ['一次最多替换 2 个人物。', '替换人物不能与首帧、尾帧同时使用。'],
-            en: ['Up to 2 people can be replaced in one request.', 'Replace person cannot be used with first or last frames.'],
+            zh: ['一次最多替换 2 个人物。', '替换人物与首帧、尾帧请选其一使用。'],
+            en: ['Up to 2 people can be replaced in one request.', 'A request uses either Replace person or first and last frames.'],
         },
     },
     {
@@ -357,8 +357,8 @@ export const TUTORIAL_CHAPTERS = [
             alt: {zh: '创作面板：“生⁠成⁠视⁠频”右侧的箭头已用红框标出，展开的菜单中有“生⁠成⁠视⁠频”和“生⁠成⁠预⁠览”。', en: 'The creation panel, with the arrow beside "Generate video" outlined in red and its menu open on "Generate video" and "Generate preview".'},
         },
         steps: {
-            zh: ['点“生⁠成⁠视⁠频”右侧的箭头，选“生⁠成⁠预⁠览”。', '点“生⁠成⁠预⁠览”，等待预览完成。', '画面满意时，点结果中的“继续二采”。', '不满意时，修改描述或种子，再生成新的预览。'],
-            en: ['Choose the arrow beside "Generate video" and pick "Generate preview".', 'Choose "Generate preview" and wait for it to finish.', 'When the picture is right, choose "Run second pass" in the result.', 'Otherwise change the prompt or the seed and generate a new preview.'],
+            zh: ['点“生⁠成⁠视⁠频”右侧的箭头，选“生⁠成⁠预⁠览”。', '点“生⁠成⁠预⁠览”，等待预览完成。', '画面满意时，点结果中的“继续二采”；也可以在作品库中右键这条预览，选“继续二采”。', '不满意时，修改描述或种子，再生成新的预览。'],
+            en: ['Choose the arrow beside "Generate video" and pick "Generate preview".', 'Choose "Generate preview" and wait for it to finish.', 'When the picture is right, choose "Run second pass" in the result, or right-click the preview in Creations and choose "Run second pass".', 'Otherwise change the prompt or the seed and generate a new preview.'],
         },
         example: {
             assets: [],
@@ -742,6 +742,25 @@ export const TUTORIAL_CHAPTERS = [
         },
     },
     {
+        id: 'upscale',
+        goto: ['works-entry'],
+        title: {zh: '放大视频', en: 'Upscale a video'},
+        summary: {zh: '把生成好的视频放大成一个更大的新作品，原视频保留不变。', en: 'Make a larger copy of a finished video as a new creation. The original stays as it is.'},
+        media: {
+            type: 'image',
+            src: {zh: 'upscale-1.webp', en: 'upscale-2.webp'},
+            alt: {zh: '作品库中一条视频的右键菜单：两项“放大到 宽 × 高”已用红框标出。', en: 'The right-click menu of a video in Creations, with the two "Upscale to W × H" rows outlined in red.'},
+        },
+        steps: {
+            zh: ['在作品库中右键一条生成好的视频；大图查看和创作页结果下方的“⋯”菜单中也有同样的选项。', '选“放大到 宽 × 高”：尺寸较小的一项放大 1.5 倍，按原来的描述和种子重新生成细节；尺寸较大的一项放大到 4K 级别，逐帧放大。', '放大任务加入队列，完成后作为新作品出现在作品库中。'],
+            en: ['In Creations, right-click a finished video. The "⋯" menu in the large view and below a result in the creation panel has the same choices.', 'Choose "Upscale to W × H". The smaller size is 1.5 times larger and redraws detail from the original prompt and seed; the larger size is about 4K, upscaled frame by frame.', 'The upscale is queued and appears in Creations as a new creation when done.'],
+        },
+        limits: {
+            zh: ['生成完成的 24 fps 视频可以放大；预览请先继续二采，再放大。', '本机能生成该尺寸和时长时，才出现放大 1.5 倍的一项；合并或导入的视频可放大到 4K。', '放大后保留视频原有的声音。'],
+            en: ['Finished 24 fps videos can be upscaled. For a preview, run the second pass first.', 'The 1.5 times size appears when this computer can generate that size and length. A merged or imported video can be upscaled to 4K.', 'The upscaled video keeps the original sound.'],
+        },
+    },
+    {
         id: 'library-export',
         goto: ['works-entry'],
         title: {zh: '作品库和导出', en: 'Creations and export'},
@@ -873,6 +892,7 @@ export const TUTORIAL_ALIASES = {
     'drama-outline': {zh: ['短剧', '剧本', '大纲'], en: ['short drama', 'script', 'outline']},
     'film-project': {zh: ['成片', '短剧剪辑'], en: ['finished film', 'drama edit']},
     'library-reuse': {zh: ['同款', '复用', '再生成一次'], en: ['reuse', 'same settings', 'remix']},
+    'upscale': {zh: ['超分', '4K', '提高分辨率', '变大'], en: ['4K', 'enlarge', 'higher resolution', 'super resolution']},
     'library-export': {zh: ['导出', '下载', '保存视频', '收藏'], en: ['export', 'download', 'save video', 'favorites']},
     'system-status': {zh: ['显存', '内存', '状态', '占用'], en: ['vram', 'memory', 'gpu', 'status']},
     'launcher-close': {zh: ['后台', '退出', '关闭'], en: ['background', 'quit', 'exit']},
