@@ -112,7 +112,11 @@ const PLAIN_ERRORS = [
 function knownError(text) {
     const lines = String(text).slice(0, 65536).split(/\r?\n/).map(line => line.trim()).filter(Boolean);
     const index = /^FreeVideo generation failed(?: \(exit -?\d+\))?$/.test(lines[0] ?? '') ? 1 : 0;
-    const line = (lines[index] ?? '').replace(/^(?:[A-Za-z_][\w.]*(?:Error|Exception)|(?:[\w.]+\.)?SamplingTableUnavailable):\s*/, '');
+    // Under the header the engine puts the child's last error first as "Cause: <error>" (failure_details),
+    // so that line counts the same as the bare error; the same words as a first line stay typed text.
+    const first = lines[index] ?? '';
+    const line = (index && /^Cause:\s/.test(first) ? first.replace(/^Cause:\s*/, '') : first)
+        .replace(/^(?:[A-Za-z_][\w.]*(?:Error|Exception)|(?:[\w.]+\.)?SamplingTableUnavailable):\s*/, '');
     if (line.startsWith('SAMPLING_TABLE_UNAVAILABLE: ')) {
         try {
             const d = JSON.parse(line.slice('SAMPLING_TABLE_UNAVAILABLE: '.length));
