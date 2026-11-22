@@ -66,3 +66,18 @@ export function createUpscaleOffer(read) {
     const forget = () => answers.clear();
     return {prepare, offer, forget};
 }
+
+// The upscale rows of one finished video, the same wherever they are offered (the library's right-click menu, the
+// result's "⋯"): one 1.5× step where this computer can make it (`offer`, from createUpscaleOffer), then the 4K size.
+// A row whose condition is not met is left out, never shown disabled.
+export const UPSCALE_USE = ['Make a larger copy as a new creation', '生成一个更大的新作品，原作品不变'];
+export const UPSCALE_QUEUED = ['Queued. It appears in "Creations" when done.', '已加入队列，完成后在“作品”里。'];
+export const UPSCALE_FAILED = ['Could not start upscaling: ', '无法开始放大：'];
+export function upscaleChoices(row, offer) {
+    return [['upscale', offer?.offer(row), {}], ['upscale-4k', upscale4kOffer(row), {to: '4k'}]]
+        .filter(([, larger]) => larger)
+        .map(([id, larger, options]) => {
+            const size = `${larger.width} × ${larger.height}`;
+            return {id, width: larger.width, height: larger.height, options, label: [`Upscale to ${size}`, `放大到 ${size}`]};
+        });
+}

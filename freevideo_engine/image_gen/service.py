@@ -24,11 +24,19 @@ from . import image_model, image_pack, keep, progress_model
 from .. import server_mode
 from .loras import ERRORS as LORA_ERRORS, resolve_selection
 from ..disk_space import ran_out
+
+
 from ..download_settings import observed_speed
 from ..exit_diagnostics import clean_reading
 from ..monitoring import save
 from .failure import (Context, classify_exception, HOST_MESSAGE_ZH, host_memory_shortage, ERRORS, FailureError, MESSAGE_ZH, NO_REPORT, STAGES, UNIFIED_MESSAGE_ZH,
                       classify_exception)
+
+def write_refused(error):
+    """Whether an OSError says a folder or file cannot be written (no permission, read-only volume, in use)."""
+    import errno
+    return isinstance(error, PermissionError) or getattr(error, 'errno', None) in (errno.EACCES, errno.EPERM, errno.EROFS)
+
 
 BODY_LIMIT = 64 * 1024
 CANCEL_GRACE = 5.
@@ -49,6 +57,8 @@ PAGE_UPLOAD_KEEP = 24 * 3600.
 WARM_LEVELS = ('light', 'full')
 # How long after registration a server starts loading its models (ComfyUI finishes starting meanwhile).
 START_DELAY_SECONDS = 5.
+# How often the host memory of a picture worker waiting between jobs is read.
+HOST_READ_SECONDS = 5.
 # How long a step of a server-mode session (a trim of the video worker, an encoder placement) waits for the lease.
 LEASE_WAIT_SECONDS = 30.
 WARM_MODES = ('eager', 'conservative')
@@ -772,7 +782,12 @@ class Service:
                         publish(temporary, target)
                     finally:
                         temporary.unlink(missing_ok=True)
-            except (OSError, Image.DecompressionBombError, SyntaxError):
+            except (OSError, Image.DecompressionBombError, SyntaxError) as error:
+                # A full disk or a folder that cannot be written is not a wrong picture: each has its own answer.
+                if isinstance(error, OSError) and ran_out(error):
+                    raise ValueError('disk_full') from None
+                if isinstance(error, OSError) and write_refused(error):
+                    raise ValueError('output_unwritable') from None
                 raise ValueError('invalid_media') from None
             self.note_record(target, record)
             self.copy_to_output(target)
@@ -1544,6 +1559,7 @@ class Service:
                 self.loading_full = True
             if not alive:
                 self.session_stop = threading.Event()
+                self.end_reason = None
                 self.requests = queue.Queue()
                 self.thread = threading.Thread(target=self.work, args=(root, machine),
                                                name='freevideo-image-gen', daemon=True)
@@ -1617,7 +1633,9 @@ class Service:
         if endpoint is None:
             return dict(state='skipped', reason='no resident worker')
         hardware = detect()
-        policy = choose(hardware, available_backends=available_backends(hardware), allow_capacity_trial=True)
+        # From the saved kernel checks, never running them here: a check cannot be stopped for a video or a picture.
+        policy = choose(hardware, available_backends=available_backends(hardware, probe_missing=False),
+                        allow_capacity_trial=True)
         directory = Path(endpoint).parent
         environment = dict(env, PYTHONPATH=str(source_root()))
         environment.pop(resident_process.ENV, None)
@@ -1682,6 +1700,7 @@ class Service:
         self._busy = True
         if self.thread is None or not self.thread.is_alive():
             self.session_stop = threading.Event()
+            self.end_reason = None
             self.requests = queue.Queue()
             self.thread = threading.Thread(target=self.work, args=(root, machine),
                                            name='freevideo-image-gen', daemon=True)
@@ -2068,7 +2087,10 @@ class Service:
                 server_mode.note_keep('image', True, reason='video_start')
                 return False
             self.yielding = True
-            self.end_reason = 'video_start' if not only_idle else 'lease_needed'
+            if self.thread is not None and self.thread.is_alive():
+                # Only a session that is running ends for this; with none, a reason left here would be given to the
+                # next session's end, whatever ended it.
+                self.end_reason = 'video_start' if not only_idle else 'lease_needed'
             self.segment_stop.set()
             self.stop.set()
             self.session_stop.set()
@@ -2253,6 +2275,8 @@ class Service:
         self.habit_root = root
         session = None
         started_resident = False
+        # The most host memory the worker tree took while it waited between jobs, for bringing it back (rewarm).
+        host_seen, host_read_at = 0, 0.
         failure = 'worker_exit'
         failure_error = None
         try:
@@ -2340,6 +2364,10 @@ class Service:
                             value = self.requests.get(timeout=.05)
                         except queue.Empty:
                             self.drain_warm(session)
+                            if time.monotonic() - host_read_at >= HOST_READ_SECONDS:
+                                host_read_at = time.monotonic()
+                                host_seen = max(host_seen, resident_process.worker_memory(
+                                    session.process.pid).get('worker_rss_bytes') or 0)
                             with self.mutex:
                                 if session.process.poll() is not None and self.requests.empty():
                                     self.session_stop.set()
@@ -2377,7 +2405,9 @@ class Service:
                                         if self._busy and placed.get('state') != 'ready':
                                             placed = dict(placed, state='stopped', reason='A picture was asked for')
                                 except Exception as error:  # noqa: BLE001
-                                    logging.warning('[FreeVideo] Encoder placement for the warm-up failed: %s', type(error).__name__)
+                                    from ..failure_details import raised_at
+                                    logging.warning('[FreeVideo] Encoder placement for the warm-up failed: %s at %s',
+                                                    type(error).__name__, raised_at(error))
                                     placed = dict(state='failed', reason='Encoder placement failed')
                                 with self.mutex:
                                     self.warm_placement = {k: placed.get(k) for k in ('state', 'reason', 'elapsed_seconds')}
@@ -2439,7 +2469,8 @@ class Service:
                                                  if session is not None and session.process.poll() == 0 else 'worker_exit')
                     self.end_reason = None
                     # The model it held comes back when the release only made room (rewarm).
-                    server_mode.released('image', dict(action='released', reason=reason, held=self.loaded_model))
+                    server_mode.released('image', dict(action='released', reason=reason, held=self.loaded_model,
+                                                       worker_rss_bytes=host_seen or None))
                     if started_resident and not resident_process.OWNER.active and not server_mode.coresident():
                         # The picture session started this worker only to hold the encoder between pictures
                         # (with co-residency it stays: it is the video worker too).
@@ -2813,11 +2844,12 @@ def register():
     from .. import video_warm
     videos = video_warm.warmer(installation, busy=lambda: video_busy() or service.busy())
     token = secrets.token_urlsafe(24)
-    if server_mode.enabled():
-        # A server loads its models as it starts, once ComfyUI has finished starting (its queue answers).
+    if server_mode.enabled() or server_mode.keeps_idle():
+        # Models load as FreeVideo starts, once ComfyUI has finished starting (its queue answers): all of them on a
+        # server, the kinds used lately on a desktop.
         def load_at_start():
             time.sleep(START_DELAY_SECONDS)
-            logging.info('[FreeVideo] Server mode: loading the models at start: %s', server_mode.warm())
+            logging.info('[FreeVideo] Loading the models at start: %s', server_mode.warm_at_start())
         threading.Thread(target=load_at_start, name='freevideo-server-start', daemon=True).start()
 
     @server.routes.get('/freevideo/image-gen')
@@ -2832,6 +2864,10 @@ def register():
             code = image_pack_error_code(error)
             return web.json_response(dict(error=code, message_en=image_pack_failure(code)['detail'],
                                           message_zh=image_pack_failure(code, zh=True)['detail']), status=409)
+        except Exception:
+            # A damaged model folder or pack record must not turn into a plain-text 500 that blocks every later action.
+            logging.getLogger(__name__).exception('image info failed')
+            return web.json_response(dict(error='model_unreadable', message_zh=MESSAGE_ZH['model_unreadable']), status=500)
 
     @server.routes.get('/freevideo/image-gen/report/{report_id}')
     async def report(request):
@@ -2937,11 +2973,32 @@ def register():
             code = str(error)
             if code in ('unknown_job', 'closed'):
                 result = dict(error=code)
-            else:
+            elif isinstance(error, ValueError):
                 code = code if code in ERRORS else 'invalid_request'
                 result = dict(phase='failed', error=code, report_id=None, stage='start')
                 if code in MESSAGE_ZH:
                     result['message_zh'] = MESSAGE_ZH[code]
+            else:
+                # An OSError is not one of the request checks: a disk, a folder or a file went wrong, or something unexpected did.
+                # It says what it is and carries a report, instead of being called a wrong setting.
+                logging.getLogger(__name__).exception('image action failed')
+                if isinstance(error, OSError) and ran_out(error):
+                    reason = 'disk_full'
+                elif isinstance(error, OSError) and write_refused(error):
+                    reason = 'output_unwritable'
+                else:
+                    reason = classify_exception(error)
+                try:
+                    context = Context(request.match_info.get('action', ''), value if isinstance(value, dict) else {})
+                    result = service.failed(reason, context, error=error)
+                    result.setdefault('error', reason)
+                    if result['error'] in MESSAGE_ZH:
+                        result.setdefault('message_zh', MESSAGE_ZH[result['error']])
+                except Exception:
+                    result = dict(phase='failed', error=reason, report_id=None, stage='start')
+                    if reason in MESSAGE_ZH:
+                        result['message_zh'] = MESSAGE_ZH[reason]
+                return web.json_response(result, status=500)
             return web.json_response(result, status=400)
         except Exception as error:
             # Any other fault still answers in JSON with a reason code, the stage and a report, so the page can show

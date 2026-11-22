@@ -1,42 +1,75 @@
 {
   "schema": 1,
-  "product_version": "0.6.7",
-  "important": true,
+  "product_version": "0.6.8",
   "en": {
-    "summary": "0.6.7 improves prompt enhancement for MOSS-Image, lets merged videos be upscaled, offers lossless sound on export, gives videos, audio and dropdowns FreeVideo's own play bar and menu, makes the Edit view smoother, explains more failures, and cleans up more thoroughly when a work is deleted.",
+    "summary": "0.6.8 keeps models on the graphics card more often when pictures and videos alternate, has background preparation give the card back sooner when a generation starts, lets results be upscaled from their own menu, makes tutorial chapters searchable from the command palette, and explains more failures.",
     "changes": [
-      "Prompt enhancement for MOSS-Image: with MOSS-Image, prompts are enhanced the way Qwen-Image's are; when the service refuses an enhancement request, the cause is named.",
-      "Prompt enhancement is steadier on smaller graphics cards: on cards with less video memory, such as 8 GB, enhancing a prompt no longer fails for lack of video memory.",
-      "Steadier use of Qwen-Image and MOSS-Image together: on a 12 GB card, making a picture with Qwen-Image and then switching to MOSS-Image no longer fails for lack of memory.",
-      "Upscale takes merged videos: a merged video can be upscaled to the largest size, and a video that cannot be enlarged says why.",
-      "Sound format on export: the export window adds a Sound option beside the frame rate, Compatible or Lossless. Lossless exports a .mov with uncompressed sound; it is not available with Audio only or for a range without sound.",
-      "One play bar and one menu: videos and audio use FreeVideo's own play bar, where a click plays or pauses a video and long audio and video can be dragged to any point; every dropdown in FreeVideo pages opens the FreeVideo menu instead of the system list.",
-      "A smoother Edit view: the preview has more room, the Media, LoRA and Advanced windows are no longer covered by the timeline, the buttons stay on one line in a narrow window, and Escape during a replace-audio step cancels only the replacement.",
-      "Over-long prompts are explained first: in the Image view and the Edit view, a prompt over the engine's limit says by how much before it is submitted, instead of being refused afterwards.",
-      "More failures explain what happened: a picture failure names the step where it failed, and a picture moved or deleted in the Edit view is named with a way to import it again.",
-      "More accurate graphics card notices: the laptop GeForce RTX 2050 is no longer listed as an unsupported card, and an old driver shows the driver update notice.",
-      "Steadier on a Mac with tight memory: when a Mac runs short of memory midway, generation retries once in a way that uses less memory instead of stopping.",
-      "Cleaner deletion: related traces in pictures, uploads, thumbnails and logs are removed, and deleted videos no longer appear in the finished-task record."
+      "Fewer reloads when pictures and videos alternate: when only system memory is short, models already on the graphics card are no longer cleared with it; after a picture, the video model returns to the card; when both cannot fit, the one used last stays.",
+      "A new generation gets the graphics card sooner: when Generate is clicked, background compiling and text-encoder preparation stop within seconds and give the card back instead of finishing first.",
+      "Less waiting in the second pass on 8 GB cards: on cards with less video memory, the second pass no longer waits for the processor to join intermediate results; the output is identical.",
+      "Upscale from the result menu: a result's \"⋯\" menu offers \"Upscale to W × H\", the same as the library's right-click menu.",
+      "Search the tutorial from the command palette: while text is typed in the command palette, matching tutorial chapters are listed after the related actions, and choosing one opens that chapter; Chinese and English chapter names and common terms can all be searched.",
+      "Launcher path tip: a folder's full path is shown as a tip only when the path is cut off.",
+      "More failures explain their cause: the prompt model and dubbing say when they fail for lack of disk space; a failure whose cause the engine has stated is no longer shown as an unexplained process exit and gets advice for that cause; on a Mac, using reference media together with first and last frames explains that one of the two has to be kept, and what to do next.",
+      "More accurate LoRA check: step-distillation acceleration LoRAs saved in other layouts are recognized as acceleration LoRAs, and language-model LoRAs are identified as such.",
+      "Edit view details: the title bar is no longer covered by the timeline's drag layers; at phone width the toolbar fits in one row; closing the Edit view clears the \"last edit not found\" notice; the slow-interface notice stays in the notification list until it is closed.",
+      "Reverse prompt: a video clip that yields a single frame can be reverse-prompted."
     ]
   },
   "zh": {
-    "summary": "0.6.7 改进 MOSS-Image 的提示词增强，合并后的视频可以放大，导出可选无损声音；播放条和下拉菜单统一为 FreeVideo 自己的样式，剪辑视图更顺手，更多失败会说明原因，删除作品时清理得更干净。",
+    "summary": "0.6.8 让图片与视频交替使用时模型更多留在显卡上，开始生成时后台准备工作更快让出显卡；结果菜单可以直接放大，命令面板可以搜索教程章节，更多失败会说明原因。",
     "changes": [
-      "提示词增强适配 MOSS-Image：使用 MOSS-Image 时，提示词按 Qwen-Image 的改写方式增强；改写请求被服务拒绝时，会说明原因。",
-      "提示词增强在显存较小的显卡上更稳：在 8 GB 等显存较小的显卡上，提示词增强不再因显存不足而失败。",
-      "先后使用 Qwen-Image 和 MOSS-Image 更稳：12 GB 显存的显卡上，先用 Qwen-Image 出图再换 MOSS-Image，不再因内存不足而失败。",
-      "视频放大支持合并后的视频：合并后的视频可以放大到最大尺寸；无法放大的视频会说明原因。",
-      "导出可选声音格式：导出窗口在帧率旁新增“声音”选项，可选“通用”或“无损”。选择“无损”时导出为 .mov 文件，声音不压缩；内容选“只声音”或所选范围没有声音时不可选。",
-      "播放条和下拉菜单统一：视频和音频使用 FreeVideo 自己的播放条，点击视频即可播放或暂停，长音频和视频可拖动进度；页面中的所有下拉选择都使用 FreeVideo 菜单，不再弹出系统列表。",
-      "剪辑视图更顺手：预览更宽敞，“素材”“LoRA”“高级选项”窗口不再被时间线遮住，窄窗口下按钮保持在一行，替换声音时按 Esc 只取消替换。",
-      "提示词过长时先说明：图像视图和剪辑视图中，超过引擎限制的提示词在提交前就会提示超出多少，不再提交后才被拒绝。",
-      "更多失败会说明原因：图片失败会指出出错的步骤；剪辑中的图片被移动或删除时，会说明并给出重新导入的办法。",
-      "显卡提示更准确：笔记本 GeForce RTX 2050 不再被列为不支持的显卡，驱动过旧时会显示更新驱动的提示。",
-      "Mac 内存紧张时更稳：Mac 生成中途内存不足时，会自动换一种更省内存的方式重试一次，不再直接停止。",
-      "删除作品清理更干净：图片、上传文件、缩略图和日志中的相关残留一并清除，已删除的视频不再出现在已完成任务记录中。"
+      "图片和视频交替使用时更少重复载入：只是电脑内存紧张时，已在显卡上的模型不再被一并清出；图片用完后，视频模型会重新回到显卡；两者放不下时，保留最近使用的一个。",
+      "开始生成更快接手显卡：点击生成时，后台的编译和文本编码器准备会在几秒内停下并让出显卡，不再等它们做完。",
+      "8 GB 显卡第二遍更少等待：显存较小时，第二遍不再等待处理器拼接中间结果，画面与之前完全一致。",
+      "结果菜单可以放大：生成结果的“⋯”菜单中可直接选择“放大到 宽 × 高”，与作品库右键菜单一致。",
+      "命令面板可以搜索教程：在命令面板中输入文字时，匹配的教程章节会列在相关操作之后，选择即可打开该章；中文、英文章节名和常用说法都可搜索。",
+      "启动器路径提示：文件夹路径只在显示不全时才出现完整路径提示。",
+      "更多失败会说明原因：提示词模型和配音因磁盘空间不足失败时会说明；引擎已写明原因的失败不再显示为原因不明的进程退出，并给出对应的处理建议；在 Mac 上同时使用参考素材和首尾帧时，会说明需要保留其中一种，以及下一步怎么做。",
+      "LoRA 检查更准确：以其他方式保存的步数蒸馏加速 LoRA 也能被识别为加速 LoRA；语言模型的 LoRA 会被如实指出。",
+      "剪辑视图细节：标题栏不再被时间线拖动层遮住；手机宽度下工具条完整放在一行；关闭剪辑视图后，“找不到上次的剪辑”提示随之清除；界面变慢的提示会保留在通知列表中，直到手动关闭。",
+      "反推提示词：只取到一帧的视频片段也能正常反推。"
     ]
   },
   "history": [
+    {
+      "product_version": "0.6.7",
+      "en": {
+        "summary": "0.6.7 improves prompt enhancement for MOSS-Image, lets merged videos be upscaled, offers lossless sound on export, gives videos, audio and dropdowns FreeVideo's own play bar and menu, makes the Edit view smoother, explains more failures, and cleans up more thoroughly when a work is deleted.",
+        "changes": [
+          "Prompt enhancement for MOSS-Image: with MOSS-Image, prompts are enhanced the way Qwen-Image's are; when the service refuses an enhancement request, the cause is named.",
+          "Prompt enhancement is steadier on smaller graphics cards: on cards with less video memory, such as 8 GB, enhancing a prompt no longer fails for lack of video memory.",
+          "Steadier use of Qwen-Image and MOSS-Image together: on a 12 GB card, making a picture with Qwen-Image and then switching to MOSS-Image no longer fails for lack of memory.",
+          "Upscale takes merged videos: a merged video can be upscaled to the largest size, and a video that cannot be enlarged says why.",
+          "Sound format on export: the export window adds a Sound option beside the frame rate, Compatible or Lossless. Lossless exports a .mov with uncompressed sound; it is not available with Audio only or for a range without sound.",
+          "One play bar and one menu: videos and audio use FreeVideo's own play bar, where a click plays or pauses a video and long audio and video can be dragged to any point; every dropdown in FreeVideo pages opens the FreeVideo menu instead of the system list.",
+          "A smoother Edit view: the preview has more room, the Media, LoRA and Advanced windows are no longer covered by the timeline, the buttons stay on one line in a narrow window, and Escape during a replace-audio step cancels only the replacement.",
+          "Over-long prompts are explained first: in the Image view and the Edit view, a prompt over the engine's limit says by how much before it is submitted, instead of being refused afterwards.",
+          "More failures explain what happened: a picture failure names the step where it failed, and a picture moved or deleted in the Edit view is named with a way to import it again.",
+          "More accurate graphics card notices: the laptop GeForce RTX 2050 is no longer listed as an unsupported card, and an old driver shows the driver update notice.",
+          "Steadier on a Mac with tight memory: when a Mac runs short of memory midway, generation retries once in a way that uses less memory instead of stopping.",
+          "Cleaner deletion: related traces in pictures, uploads, thumbnails and logs are removed, and deleted videos no longer appear in the finished-task record."
+        ]
+      },
+      "zh": {
+        "summary": "0.6.7 改进 MOSS-Image 的提示词增强，合并后的视频可以放大，导出可选无损声音；播放条和下拉菜单统一为 FreeVideo 自己的样式，剪辑视图更顺手，更多失败会说明原因，删除作品时清理得更干净。",
+        "changes": [
+          "提示词增强适配 MOSS-Image：使用 MOSS-Image 时，提示词按 Qwen-Image 的改写方式增强；改写请求被服务拒绝时，会说明原因。",
+          "提示词增强在显存较小的显卡上更稳：在 8 GB 等显存较小的显卡上，提示词增强不再因显存不足而失败。",
+          "先后使用 Qwen-Image 和 MOSS-Image 更稳：12 GB 显存的显卡上，先用 Qwen-Image 出图再换 MOSS-Image，不再因内存不足而失败。",
+          "视频放大支持合并后的视频：合并后的视频可以放大到最大尺寸；无法放大的视频会说明原因。",
+          "导出可选声音格式：导出窗口在帧率旁新增“声音”选项，可选“通用”或“无损”。选择“无损”时导出为 .mov 文件，声音不压缩；内容选“只声音”或所选范围没有声音时不可选。",
+          "播放条和下拉菜单统一：视频和音频使用 FreeVideo 自己的播放条，点击视频即可播放或暂停，长音频和视频可拖动进度；页面中的所有下拉选择都使用 FreeVideo 菜单，不再弹出系统列表。",
+          "剪辑视图更顺手：预览更宽敞，“素材”“LoRA”“高级选项”窗口不再被时间线遮住，窄窗口下按钮保持在一行，替换声音时按 Esc 只取消替换。",
+          "提示词过长时先说明：图像视图和剪辑视图中，超过引擎限制的提示词在提交前就会提示超出多少，不再提交后才被拒绝。",
+          "更多失败会说明原因：图片失败会指出出错的步骤；剪辑中的图片被移动或删除时，会说明并给出重新导入的办法。",
+          "显卡提示更准确：笔记本 GeForce RTX 2050 不再被列为不支持的显卡，驱动过旧时会显示更新驱动的提示。",
+          "Mac 内存紧张时更稳：Mac 生成中途内存不足时，会自动换一种更省内存的方式重试一次，不再直接停止。",
+          "删除作品清理更干净：图片、上传文件、缩略图和日志中的相关残留一并清除，已删除的视频不再出现在已完成任务记录中。"
+        ]
+      },
+      "important": true
+    },
     {
       "product_version": "0.6.6",
       "en": {

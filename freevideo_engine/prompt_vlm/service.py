@@ -13,6 +13,7 @@ import time
 import uuid
 
 from . import assets, rules
+from ..disk_space import ran_out
 
 # How long a rewrite that does not fit waits for other programs to free the
 # GPU (the page names them) before it fails; the user can cancel meanwhile.
@@ -302,7 +303,7 @@ class Service:
 
     def start(self, action, value):
         received_epoch = time.time()
-        if action not in ('install', 'rewrite', 'ask', 'split'):
+        if action not in ('install', 'rewrite', 'ask', 'split', 'reverse'):
             raise ValueError('invalid_request')
         if self.busy():
             raise ValueError('busy')
@@ -318,6 +319,16 @@ class Service:
             if not assets.settle(root):
                 raise ValueError('model_missing')
             value = rules.split_request(value)
+        elif action == 'reverse':
+            if not assets.settle(root):
+                raise ValueError('model_missing')
+            value = rules.reverse_request(value)
+            from ..comfy_assets import media_kind, resolve_assets
+            resolved = resolve_assets(json.dumps([dict(file=value['file'], role='reference')]), self.input_directory())
+            path = resolved['references'][0]['path']
+            if media_kind(path) != 'video':
+                raise ValueError('unsupported_media')
+            value['path'] = path
         else:
             if not assets.settle(root):
                 raise ValueError('model_missing')
@@ -452,6 +463,16 @@ class Service:
         for row in value.get('media', ()):
             row.pop('optional', None)
 
+    def reverse_frames(self, value, folder):
+        """Evenly spaced frames of the video with their times; the worker picks how many fit its budget."""
+        self.check()
+        try:
+            from ..agent.media import sample_frames
+            rows = sample_frames(value.pop('path'), folder, count=value['frames'], max_side=640)
+        except Exception:
+            raise ValueError('unreadable_video') from None
+        value['frame_files'] = [dict(path=row['path'], seconds=float(row['seconds'])) for row in rows]
+
     def work(self, root, machine, action, value):
         from ..locking import runtime_lock
         from ..monitoring import save
@@ -483,18 +504,24 @@ class Service:
                     self.progress(dict(phase='complete'))
                 else:
                     with tempfile.TemporaryDirectory(prefix='freevideo-prompt-', ignore_cleanup_errors=True) as frames:
-                        self.video_frames(value, frames)
-                        self.infer(root, machine, descriptor, value, wait=action == 'rewrite')
+                        if action == 'reverse':
+                            self.reverse_frames(value, frames)
+                        else:
+                            self.video_frames(value, frames)
+                        self.infer(root, machine, descriptor, value, wait=action in ('rewrite', 'reverse'))
         except InterruptedError:
             self.progress(dict(phase='cancelled'))
         except BlockingIOError:
             self.progress(dict(phase='failed', error='busy'))
         except Exception as error:
             known = {'disk_space', 'ram_space', 'unreadable_video', 'rewrite_failed', 'split_failed', 'worker_exit', 'timeout', 'worker_cleanup_failed'}
+            if str(error) not in known and not isinstance(error, rules.InvalidOutput):
+                logging.warning('[FreeVideo] Prompt model job %s failed: %s', action, type(error).__name__, exc_info=True)
             self.progress(dict(phase='failed', error='invalid_output' if isinstance(error, rules.InvalidOutput)
                                else str(error) if str(error) in known
+                               else 'disk_space' if isinstance(error, OSError) and ran_out(error)
                                else 'download_failed' if action == 'install'
-                               else 'ask_failed' if action == 'ask' else 'split_failed' if action == 'split'
+                               else 'ask_failed' if action == 'ask' else 'split_failed' if action == 'split' else 'reverse_failed' if action == 'reverse'
                                else 'rewrite_failed',
                                exception=type(error).__name__,
                                **({'output_rejection': error.details} if isinstance(error, rules.InvalidOutput) else {})))
@@ -760,6 +787,8 @@ class Service:
                     rules.validate_parts(result.get('parts'), value)
                 elif value.get('mode') == 'image':
                     rules.validate_image(result.get('text'), value)
+                elif value.get('mode') == 'reverse':
+                    rules.validate_reverse(result.get('text'), value)
                 else:
                     try:
                         rules.validate_output(result.get('text'), value)
@@ -863,13 +892,15 @@ def register():
                 running, pending = server.prompt_queue.get_current_queue()
                 if running or pending:
                     raise ValueError('busy')
-                if name in ('ask', 'split', 'rewrite'):
+                if name in ('ask', 'split', 'rewrite', 'reverse'):
                     # A moved modified time is checked by content here, off the event loop;
                     # start() then finds the remembered answer.
                     await asyncio.to_thread(assets.settle, service.installation()[0])
                 result = service.start(name, value)
             return web.json_response(result)
         except (ValueError, OSError) as error:
+            if isinstance(error, OSError):
+                logging.warning('[FreeVideo] Prompt model request failed: %s', type(error).__name__, exc_info=True)
             codes = {'invalid_request', 'invalid_prompt', 'invalid_duration', 'too_many_images',
                      'unsupported_media', 'mixed_media', 'busy', 'model_missing', 'consent_required', 'unknown_job'}
             return web.json_response(dict(error=str(error) if str(error) in codes else 'invalid_media'), status=400)

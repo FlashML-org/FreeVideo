@@ -49,8 +49,8 @@ const PLAIN_ERRORS = [
         summary: ['Connect up to 3 pictures as references, and remove video, audio and pre-encoded inputs.', '最多接 3 张图片作为参考图，并移除视频、音频参考和预编码输入。']},
     // Only the Mac engine still refuses keyframes next to references; elsewhere they become still guides.
     {key: 'media-mixed-layout', message: 'Reference and first/last keyframe layouts cannot be mixed in one request on this Mac; keep one of the two',
-        title: ['On this Mac, first and last frames cannot be used with references', '这台 Mac 上首尾帧不能与参考素材同时使用'],
-        summary: ['Turn off the media cards or inputs you are not using, then generate again.', '请关闭本次不用的素材卡片或输入，再重新生成。']},
+        title: ['Use references or first and last frames', '参考素材与首尾帧请选其一'],
+        summary: ['On a Mac, keep one of the two: turn off the media cards or inputs you are not using, then generate again.', '在 Mac 上请保留其中一种：关闭本次不用的素材卡片或输入，再重新生成。']},
     {key: 'audio-original-passes', prefixes: ['audio_original_passes:'],
         title: ['This audio needs two-pass acceleration', '这段音频需要二采加速'],
         summary: ['Turn on "Two-pass acceleration" or set the audio to "Reference".', '请打开“二采加速”，或把音频改选“参考”。']},
@@ -112,7 +112,11 @@ const PLAIN_ERRORS = [
 function knownError(text) {
     const lines = String(text).slice(0, 65536).split(/\r?\n/).map(line => line.trim()).filter(Boolean);
     const index = /^FreeVideo generation failed(?: \(exit -?\d+\))?$/.test(lines[0] ?? '') ? 1 : 0;
-    const line = (lines[index] ?? '').replace(/^(?:[A-Za-z_][\w.]*(?:Error|Exception)|(?:[\w.]+\.)?SamplingTableUnavailable):\s*/, '');
+    // Under the header the engine puts the child's last error first as "Cause: <error>" (failure_details),
+    // so that line counts the same as the bare error; the same words as a first line stay typed text.
+    const first = lines[index] ?? '';
+    const line = (index && /^Cause:\s/.test(first) ? first.replace(/^Cause:\s*/, '') : first)
+        .replace(/^(?:[A-Za-z_][\w.]*(?:Error|Exception)|(?:[\w.]+\.)?SamplingTableUnavailable):\s*/, '');
     if (line.startsWith('SAMPLING_TABLE_UNAVAILABLE: ')) {
         try {
             const d = JSON.parse(line.slice('SAMPLING_TABLE_UNAVAILABLE: '.length));
@@ -588,7 +592,8 @@ export function failureAdvice(value, t, known = knownError(value)) {
             ['Restart FreeVideo and generate again.', '请重启 FreeVideo 后重新生成。']);
     // The generation process ended without a Python error: it crashed or was ended from outside. The code
     // names which (freevideo_engine/failure_details.py generation_failure prints "(exit N)"); the number stays in the details.
-    const exit = /FreeVideo generation failed \(exit (-?\d+)\)/.exec(text);
+    // A "Cause:" line means the process did report an error (a named one that no row above knows): it is not an unexplained exit.
+    const exit = /^Cause: /m.test(text) ? null : /FreeVideo generation failed \(exit (-?\d+)\)/.exec(text);
     if (exit) {
         const code = Number(exit[1]);
         const killed = code === 137 || code === -9 || code === 3221225786;

@@ -8,6 +8,7 @@ history, cancellation, or the Windows process tree supervisor. No public port.
 import atexit
 from dataclasses import replace
 import json
+import logging
 import os
 from pathlib import Path
 import secrets
@@ -30,9 +31,13 @@ GiB = 2**30
 # for the card back. A failed request without a queued part releases it as
 # before; a next part already on its way is held for HOLD_SECONDS.
 HOLD_SECONDS = 90.
+# How often a held idle worker is asked what it gave back by itself.
+STATUS_SECONDS = 10.
 AGENT_HOLD_SECONDS = 30.
 KEEP_IDLE_SECONDS = None
 OTHER_GPU_GROWTH = 512 * 2**20
+# How many of the programs that took the card a release record names.
+OTHER_PROGRAMS_NAMED = 3
 PRELOAD_CONTEXT_BYTES = 1536 * 2**20  # what the preload's process adds beside its weights (context, allocator, staging; measured 1.4 GiB)
 HOST_FLOOR = 4 * GiB
 # The host memory a kept idle worker leaves free, as a share of the memory this process may use (the cgroup limit
@@ -49,6 +54,10 @@ class SessionRestarted(RuntimeError):
 
 class SessionBusy(RuntimeError):
     """A running request owns this worker; its allocations are not idle credit."""
+
+
+class StartStopped(RuntimeError):
+    """The caller asked to stop while the worker was still starting; it was stopped and nothing ran on it."""
 
 
 def send(connection, value):
@@ -396,20 +405,74 @@ class SessionOwner:
         self.active = False
         self.prewarm = None
         self.gpu = self.baseline = self.own = self.foreign = None
+        self.others = {}  # The other programs on the card when the hold began: {pid: bytes or None}.
         self.mutex = threading.RLock()
         self.generation = 0
         self.idle_since = None
         self.decisions = []
+        # (worker pid, last eviction number) already recorded from the worker's status.
+        self.evictions_seen = (None, 0)
+        self.preloads_seen = (None, 0)
         atexit.register(self.close)
 
     def record(self, **row):
         row.setdefault('at', time.time())
+        # Who took the card goes to this machine's monitor only: the decisions reach the request's files, and those
+        # go into the diagnostic report and the feedback bundle, so they keep only each program's card bytes.
+        others = row.pop('other_programs', None)
+        if others is not None:
+            row['other_programs_gpu_bytes'] = [other.get('gpu_bytes') for other in others]
         with self.mutex:
             self.decisions = (self.decisions + [row])[-RELEASE_LOG:]
         if row.get('action') in ('released', 'trimmed'):
             from . import server_mode
-            server_mode.released('video', row)
+            server_mode.released('video', row if others is None else dict(row, other_programs=others))
         return row
+
+    def note_evictions(self, answer):
+        """Record the models the worker gave back by itself (inside a request, to make room for a stage) from a
+        status ``answer``, as trims: without this only the worker knew the card had been emptied."""
+        rows = answer.get('evictions') if isinstance(answer, dict) else None
+        if not isinstance(rows, list):
+            return []
+        with self.mutex:
+            pid = self.process.pid if self.process is not None else None
+            seen = self.evictions_seen[1] if self.evictions_seen[0] == pid else 0
+            new = [row for row in rows if isinstance(row, dict) and type(row.get('seq')) is int and row['seq'] > seen]
+            if new:
+                self.evictions_seen = (pid, max(row['seq'] for row in new))
+        for row in new:
+            text = str(row.get('reason') or '')
+            self.record(action='trimmed', reason='host_memory_low' if 'host' in text.lower() else 'worker_made_room',
+                        role=str(row.get('role')), detail=text[:200], pid=pid,
+                        released_gpu_bytes=row.get('released_gpu_bytes'),
+                        **({'at': row['at']} if isinstance(row.get('at'), (int, float)) else {}))
+        self.note_preloads(answer, pid)
+        return new
+
+    def note_preloads(self, answer, pid):
+        """Log what each preloaded video model became (engine_preload): used by the next video, not used because it
+        asked for other settings, or released before any video."""
+        rows = answer.get('preloads')
+        if not isinstance(rows, list):
+            return []
+        with self.mutex:
+            seen = self.preloads_seen[1] if self.preloads_seen[0] == pid else 0
+            new = [row for row in rows if isinstance(row, dict) and type(row.get('seq')) is int and row['seq'] > seen]
+            if new:
+                self.preloads_seen = (pid, max(row['seq'] for row in new))
+        for row in new:
+            outcome = row.get('outcome')
+            if outcome == 'hit':
+                logging.info('[FreeVideo] Preloaded video model: hit, the video used it (loaded %.0f s before)',
+                             float(row.get('waited_seconds') or 0))
+            elif outcome == 'miss':
+                logging.info('[FreeVideo] Preloaded video model: miss, the video asked for other settings (%s)',
+                             ', '.join(str(name) for name in row.get('differs') or []) or 'unknown')
+            else:
+                logging.info('[FreeVideo] Preloaded video model released before any video: %s',
+                             str(row.get('reason') or '')[:200])
+        return new
 
     def take_decisions(self):
         """Keep or release decisions since the previous request, for its report."""
@@ -446,6 +509,7 @@ class SessionOwner:
                 return self.release('gpu_unreadable')
             self.gpu, self.baseline = gpu, baseline
             self.own = gpu_own(gpu) if warm else None
+            self.others = card_others(gpu) if warm else {}
             # A server counts only programs outside it: the picture worker beside the video models is its own.
             from . import server_mode
             self.foreign = (baseline - self.own if warm and server_mode.coresident() and self.own is not None
@@ -502,8 +566,18 @@ class SessionOwner:
 
     def _watch(self, generation, since, hold, gpu):
         placing = False
+        read_at = time.monotonic()
         while True:
             time.sleep(.5)
+            if time.monotonic() - read_at >= STATUS_SECONDS and not self.preloading():
+                read_at = time.monotonic()
+                with self.mutex:
+                    endpoint = self.endpoint if not self.active else None
+                if endpoint:
+                    try:
+                        self.note_evictions(status({ENV: str(endpoint)}))
+                    except Exception:
+                        logging.warning('[FreeVideo] Reading what the video worker gave back failed', exc_info=True)
             # Our own idle preload grows the card; only another program's growth counts,
             # so the reference is read again once placement has ended.
             unreadable = False
@@ -529,39 +603,43 @@ class SessionOwner:
                       'idle' if hold is not None and time.monotonic() - since >= hold
                       else server_pressure(gpu, self.foreign) if self.foreign is not None
                       else pressure(gpu, None if placing else self.baseline))
+            # Who needs the card, read before taking the lock: the release record names them.
+            detail = dict(other_programs=other_programs(gpu, self.others)) if reason == 'other_program_gpu' else {}
             with self.mutex:
                 if generation != self.generation or self.active or self.process is None:
                     return
                 if self.process.poll() is not None:
                     return  # The image or prompt model released it and recorded why.
                 if reason:
-                    self.release(reason)
+                    self.release(reason, **detail)
                     return
 
-    def release(self, reason):
+    def release(self, reason, **detail):
         with self.mutex:
             if self.process is None or self.process.poll() is not None:
                 self.close()
                 return None
             row = dict(action='released', reason=reason, pid=self.process.pid,
                        idle_seconds=None if self.idle_since is None else round(time.monotonic() - self.idle_since, 1),
-                       **worker_memory(self.process.pid))
+                       **worker_memory(self.process.pid), **detail)
             self.generation += 1
             self.idle_since = None
             self.close()
             return self.record(**row)
 
-    def start(self, root, source, python, environment, busy=False):
+    def start(self, root, source, python, environment, busy=False, stop=None):
+        """``stop``, an Event: set while the worker is still starting, the start ends at once (StartStopped), so a
+        speculative start never keeps a video or a picture waiting for it."""
         with self.mutex:
             self.generation += 1
             self.idle_since = None
-            endpoint = self._start(root, source, python, environment)
+            endpoint = self._start(root, source, python, environment, stop)
             # Marked under the same lock, so a release cannot land between starting and using the worker.
             if busy:
                 self.active = True
             return endpoint
 
-    def _start(self, root, source, python, environment):
+    def _start(self, root, source, python, environment, stop=None):
         import hashlib
         import psutil
         from .triton_compat import COMPILER_ENVIRONMENT_KEYS, environment as compiler_environment
@@ -607,6 +685,9 @@ class SessionOwner:
                 raise RuntimeError('Resident worker could not start; see ' + str(directory/'session.log'))
             if (directory/'ready.json').exists():
                 return str(self.endpoint)
+            if stop is not None and stop.is_set():
+                self.close()
+                raise StartStopped('Resident worker start stopped for another request')
             time.sleep(.05)
         self.close()
         raise TimeoutError('Resident worker startup timed out')
@@ -685,6 +766,42 @@ def gpu_own(gpu):
         pids = family(os.getpid())
         return sum(size for pid, size in rows.items() if pid in pids)
     except (OSError, RuntimeError, AttributeError, ValueError, ImportError):
+        return None
+
+
+def card_others(gpu):
+    """{pid: bytes or None} of the card's processes outside this process tree; {} when the driver cannot list them."""
+    try:
+        from .background_room import Gpu, family
+        device = Gpu(gpu)
+        try:
+            rows = device.processes()
+        finally:
+            device.close()
+        ours = family(os.getpid())
+        return {pid: size for pid, size in (rows or {}).items() if pid not in ours}
+    except (OSError, RuntimeError, AttributeError, ValueError, ImportError):
+        return {}
+
+
+def other_programs(gpu, before, limit=OTHER_PROGRAMS_NAMED):
+    """The programs that came onto the card, or grew on it, since ``before`` ({pid: bytes or None}), most growth
+    first: [{'pid', 'name', 'gpu_bytes'}]. Where the driver gives no per-process bytes (WDDM) every newcomer is
+    listed with ``gpu_bytes`` None. The names reach only this machine's monitor (SessionOwner.record)."""
+    rows = []
+    for pid, size in card_others(gpu).items():
+        grown = None if size is None else size - (before.get(pid) or 0)
+        if pid not in before or (grown or 0) > 0:
+            rows.append((grown, pid, size))
+    rows.sort(key=lambda row: -(row[0] or 0))
+    return [dict(pid=pid, name=process_name(pid), gpu_bytes=size) for grown, pid, size in rows[:limit]]
+
+
+def process_name(pid):
+    try:
+        import psutil
+        return psutil.Process(pid).name()[:80] or None
+    except Exception:
         return None
 
 

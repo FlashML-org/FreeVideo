@@ -260,6 +260,7 @@
 @media(min-width:681px) and (max-width:1279px){.fv-ed-notice{right:32px;max-width:min(560px,calc(100vw - 330px))}}
 .fv-ed-notice .fv-issue-button{margin-left:12px;vertical-align:middle;pointer-events:auto}
 @media(max-width:680px){
+ .fv-studio.fv-editor .fv-ed-genbar{height:auto;align-self:stretch}
  .fv-studio.fv-editor{--fv-ed-generation-row:calc(96px + var(--fv-ed-description-growth,0px) + var(--fv-ed-note-growth,0px));grid-template-columns:minmax(0,1fr);grid-template-rows:auto var(--fv-ed-project-h) minmax(0,1fr) 40px minmax(var(--fv-ed-generation-row),auto) 40px 236px;overflow:hidden auto}
  .fv-editor .fv-header{overflow-x:auto}
  .fv-editor .fv-ed-name{font-size:13px;max-width:112px;flex:1;padding:0 2px}

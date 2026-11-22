@@ -10,7 +10,8 @@ its model with no time limit (``keeps_idle``).
 
 Server mode (FREEVIDEO_SERVER_RESIDENT=1, Linux only; the desktop application never sets it) adds loading the video
 model's text encoder and the configured picture model as the server starts, and bringing the picture model back
-after a video that needed its room.
+after a video that needed its room. Where an idle picture worker keeps its model (``keeps_idle``), a desktop also
+loads at start the kinds of model it used lately (``warm_at_start``), its picture model only into free room.
 
 Every release or trim is recorded with its reason (``releases``), for the running status. A model that only made
 room for another program, or the picture model for a video, comes back once the room is free again (``rewarm``).
@@ -116,6 +117,9 @@ def released(model, row):
     global _last_release
     event = dict(model=model, action=row.get('action', 'released'), reason=str(row.get('reason') or 'unknown'),
                  at=float(row.get('at') or time.time()))
+    if isinstance(row.get('other_programs'), list):
+        # Local only (this machine's monitor): who took the card, so it can be found while it still runs.
+        event['other_programs'] = [dict(item) for item in row['other_programs'] if isinstance(item, dict)]
     with _mutex:
         _last_release = event
         _releases[:] = (_releases + [event])[-RELEASES_KEPT:]
@@ -123,10 +127,11 @@ def released(model, row):
     if model == 'image' and event['reason'] == 'video_start' and enabled():
         # Until the picture worker can stay through a video, it comes back once the video is done.
         threading.Thread(target=_after_video, name='freevideo-server-rewarm', daemon=True).start()
-    if event['action'] == 'released':
+    # A trim keeps the worker but gives the video model back (a picture's room, host memory): it comes back as well.
+    if event['action'] == 'released' or (event['action'] == 'trimmed' and model == 'video'):
         try:
             from . import rewarm
-            rewarm.after_release(model, event['reason'], row.get('held'))
+            rewarm.after_release(model, event['reason'], row.get('held'), row.get('worker_rss_bytes'))
         except Exception:
             logging.warning('[FreeVideo] Could not wait to bring the %s model back', model, exc_info=True)
     for callback in listeners:
@@ -204,6 +209,32 @@ def warm(models=('video', 'image'), policy='resident'):
         raise ValueError('invalid_request')
     if not enabled():
         return dict(state='off', reason=None)
+    return _start(tuple(models), beside=False)
+
+
+def recent_models(ops):
+    """The kinds of model to load at start from the last operations ('image' or 'video', oldest first): the kinds
+    used lately, the one used last first; the video side alone when nothing has been used yet."""
+    order = []
+    for kind in reversed(ops):
+        if kind in ('video', 'image') and kind not in order:
+            order.append(kind)
+    return tuple(order) or ('video',)
+
+
+def warm_at_start():
+    """Load at start what this computer used lately, as a server does: on Linux and Windows unless keeping models
+    is off (Macs keep loading on first use). A server loads both sides; a desktop loads the kinds of its last
+    operations, and its picture model only into room that is free, never in place of the video models."""
+    if enabled():
+        return warm()
+    if not keeps_idle():
+        return dict(state='off', reason=None)
+    from . import usage_habit
+    return _start(recent_models(usage_habit.ops()), beside=True)
+
+
+def _start(models, beside):
     with _mutex:
         thread = _warm['thread']
         if thread is not None and thread.is_alive():
@@ -225,27 +256,44 @@ def warm(models=('video', 'image'), policy='resident'):
         return dict(state='skipped', reason='not_started')
     with _mutex:
         _warm.update(started=time.monotonic(), ready_seconds=None, models=tuple(models))
-        _warm['thread'] = threading.Thread(target=_load, args=(tuple(models), videos, images),
+        _warm['thread'] = threading.Thread(target=_load, args=(tuple(models), videos, images, beside),
                                            name='freevideo-server-warm', daemon=True)
         _warm['thread'].start()
     return dict(state='loading', reason=None)
 
 
-def _load(models, videos, images):
+def _video_fits():
+    """Whether the video side fits now beside what the card and host memory hold (as rewarm reads it)."""
     try:
-        if 'video' in models:
-            answer = videos.warm(dict(level='full', mode='eager'))
-            if answer.get('warm') == 'loading' and videos.thread is not None:
-                videos.thread.join()
-        if 'image' in models and images is not None:
-            try:
-                info = images.installed_models()
-            except Exception:
-                info = ()
-            model = image_model(info)
-            if model is not None:
-                images.warm(dict(model=model, level='full', mode='eager'))
-                images.wait_warm(600.)
+        from .rewarm import Probe
+        return Probe('video').room() is not None
+    except Exception:
+        logging.warning('[FreeVideo] Reading the room for the video model failed', exc_info=True)
+        return False
+
+
+def _load(models, videos, images, beside=False):
+    """Load ``models`` in their order; with ``beside`` (a desktop), each after the first only into room that is
+    free beside it, so where both do not fit the one used last keeps the card."""
+    try:
+        for index, kind in enumerate(models):
+            later = beside and index > 0
+            if kind == 'video':
+                if later and not _video_fits():
+                    continue
+                answer = videos.warm(dict(level='full', mode='eager'))
+                if answer.get('warm') == 'loading' and videos.thread is not None:
+                    videos.thread.join()
+            elif kind == 'image' and images is not None:
+                try:
+                    info = images.installed_models()
+                except Exception:
+                    info = ()
+                model = image_model(info)
+                if model is not None:
+                    images.warm(dict(model=model, level='full', mode='eager', beside=True) if later
+                                else dict(model=model, level='full', mode='eager'))
+                    images.wait_warm(600.)
     except Exception:
         logging.warning('[FreeVideo] Server warm-up failed', exc_info=True)
     finally:
@@ -275,6 +323,7 @@ def state():
     alive = owner.process is not None and owner.process.poll() is None and owner.endpoint
     if alive and not owner.active:
         answer = resident_process.status({resident_process.ENV: str(owner.endpoint)})
+        owner.note_evictions(answer)
         with _mutex:
             if isinstance(answer, dict):
                 _held[:] = [(owner.process.pid, row) for row in answer.get('models') or [] if isinstance(row, dict)]

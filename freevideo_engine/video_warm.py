@@ -2,8 +2,8 @@
 
 'light' (the panel was opened or touched) reads the text encoder and the video model's files into the OS file cache,
 as far as free memory goes. 'full' (a video is likely next: the prompt is being written, the tray was closed back to
-the prompt) starts the resident worker, places the text encoder on the card under the installation lease and reads
-the video model's files ahead. 'conservative' only keeps ready what the resident worker already holds.
+the prompt) starts the resident worker, places the text encoder on the card under the installation lease, loads the
+video model with the last video's settings where it fits (engine_preload) and reads the video model's files ahead. 'conservative' only keeps ready what the resident worker already holds.
 
 Never in the way: skipped while a video, a picture or another task runs; a video or a picture that starts stops it,
 and the encoder placement yields within the worker's own yield time. While the image worker holds the lease (a
@@ -88,7 +88,8 @@ class VideoWarmer:
             self.last = (self.prepare(root, machine, halt) if level == 'full'
                          else self.read_ahead(root, machine, encoder=True))
         except Exception as error:
-            logging.warning('[FreeVideo] Video warm-up failed: %s', type(error).__name__)
+            from .failure_details import raised_at
+            logging.warning('[FreeVideo] Video warm-up failed: %s at %s', type(error).__name__, raised_at(error))
             self.last = dict(state='failed', reason=type(error).__name__)
 
     def read_ahead(self, root, machine, *, encoder):
@@ -117,11 +118,16 @@ class VideoWarmer:
             source = comfy_bridge.source_root()
             environment = comfy_bridge.engine_environment(root, source)
             environment.update(FREEVIDEO_HOME=str(root), PYTHONPATH=str(source))
-            endpoint = owner.start(root, source, machine['python'], environment)
+            try:
+                endpoint = owner.start(root, source, machine['python'], environment, stop=halt)
+            except resident_process.StartStopped:
+                return dict(state='cancelled')
             if placed_encoder_bytes(endpoint) > 0:
                 placed = dict(state='kept', reason='The encoder is already on the card')
             else:
                 placed = self.place(endpoint, machine, environment, descriptor, halt)
+            if not halt.is_set():
+                placed = dict(placed, video_model=self.place_engine(endpoint, environment, descriptor, halt))
         finally:
             lease.__exit__(None, None, None)
         if halt.is_set():
@@ -138,7 +144,11 @@ class VideoWarmer:
         from .kernel_capabilities import available_backends
         from .policy import choose
         hardware = detect()
-        policy = choose(hardware, available_backends=available_backends(hardware), allow_capacity_trial=True)
+        # Plans from the saved kernel checks and never runs them: a check cannot be stopped for a video, and this
+        # process (ComfyUI's own Python) is not the one the video runs in, so its checks never match the video's and
+        # would run again at every start. The video runs its checks in its own process.
+        policy = choose(hardware, available_backends=available_backends(hardware, probe_missing=False),
+                        allow_capacity_trial=True)
         environment = dict(environment)
         environment.pop(resident_process.ENV, None)
         return place_now(endpoint, dict(encoder=machine.get('encoder'), comfy_root=machine.get('comfy_root'),
@@ -146,6 +156,58 @@ class VideoWarmer:
                          descriptor=descriptor, environment=environment, directory=Path(endpoint).parent,
                          gpu_budget_bytes=policy.gpu_budget_bytes, ram_budget_bytes=policy.ram_budget_bytes,
                          allocator=policy.allocator_config, limits=dict(system=hardware.system), stop=halt)
+
+    @staticmethod
+    def place_engine(endpoint, environment, descriptor, halt):
+        """The video model with the last video's settings into the resident worker, under the caller's lease."""
+        from . import engine_preload, resident_process
+        from .idle_encoder import PreloadCancelled, watch
+        from .monitoring import save
+        from .ram import ProcessMemory
+        value = engine_preload.recall()
+        if value is None:
+            return dict(state='skipped', reason='no_settings')
+        environment = dict(environment, **{resident_process.ENV: str(endpoint)})
+        try:
+            held = resident_process.status(environment)
+        except Exception:
+            held = None
+        allocator = value.get('allocator') or ''
+        current = held.get('allocator_config') if isinstance(held, dict) else None
+        if current is not None and current != allocator:
+            # Another allocator restarts the worker and loses what it holds: the video loads its model as before.
+            result = dict(state='skipped', reason='allocator_changed')
+            logging.info('[FreeVideo] Video model not preloaded: the last video used other allocator settings')
+            return result
+        environment.update(PYTORCH_ALLOC_CONF=allocator, PYTORCH_CUDA_ALLOC_CONF=allocator)
+        directory = Path(endpoint).parent
+        result_path, cancelled = directory / 'engine-preload.json', directory / 'engine-preload.cancel'
+        request_path = directory / 'engine-preload-worker.json'
+        for item in (result_path, cancelled):
+            item.unlink(missing_ok=True)
+        save(request_path, engine_preload.worker_request(value, metrics=result_path, cancel=cancelled))
+        result, memory, workers = dict(state='skipped'), ProcessMemory(), []
+        try:
+            result.update(watch(endpoint, request_path, environment, descriptor, result_path, cancelled,
+                                int(value.get('ram_budget_bytes') or 1 << 62), result, memory, held=workers,
+                                stop=halt, module='freevideo_engine.worker', capability=engine_preload.CAPABILITY))
+        except PreloadCancelled as error:
+            if workers:
+                try:
+                    workers[0].stop_request(grace=.5)
+                except BaseException:
+                    pass
+            result.update(state='cancelled', reason=str(error))
+        except Exception as error:
+            result.update(state='cancelled' if halt.is_set() else 'failed', error_type=type(error).__name__,
+                          reason=str(error)[-300:])
+        result.pop('success', None)
+        geometry = value.get('geometry') or {}
+        logging.info('[FreeVideo] Video model preload with the last video settings (%sx%s, %s s): %s%s',
+                     geometry.get('width'), geometry.get('height'), geometry.get('requested_seconds'),
+                     result.get('state'), (' (%s)' % result['reason']) if result.get('reason') else
+                     (' in %.1f s' % result['seconds']) if result.get('seconds') is not None else '')
+        return result
 
     def cancel(self):
         """The page left the panel: the warm-up and its own file read stop; a kept worker stays to its idle hold."""
@@ -157,11 +219,18 @@ class VideoWarmer:
 
     def stop(self, timeout=8.):
         """A video or a picture starts, or the page left: the warm-up stops; the file read stops with IDLE.stop()."""
+        from .idle_encoder import KEPT_YIELD_SECONDS
         with self.mutex:
             thread, halt = self.thread, self.halt
         halt.set()
         if thread is not None and thread is not threading.current_thread():
-            thread.join(timeout=timeout)
+            # The placement's watch() decides its yield time (longer while the worker keeps video models); this
+            # only bounds a warm-up that hangs.
+            limit = max(timeout, KEPT_YIELD_SECONDS + 2.)
+            thread.join(timeout=limit)
+            if thread.is_alive():
+                # The request then waits for the GPU lease on its own; this line names who kept it.
+                logging.warning('[FreeVideo] Video warm-up did not stop within %.0f s; it still holds the GPU.', limit)
         return dict(warm='cancelled')
 
 

@@ -1037,3 +1037,57 @@ def validate_parts(parts, value):
 SPLIT_RETRY = ('Answer again with exactly one "Shared:" line and the "Part N:" lines, every [L] marker exactly once '
                'and in order, and no marker in Shared. Shared holds no action, and every part has something of its '
                'own that no other part repeats.')
+
+
+# Reverse prompt: describe a video from frames shown with their times, then ask for its camera movement.
+# The description is plain text for the user (or the model rewrite that follows); spoken lines are never
+# transcribed by the model: the caller gives them and the code writes them back as <d>[Language] ...</d>.
+REVERSE_FRAMES = (4, 32)
+REVERSE_DEFAULT_FRAMES = 16
+REVERSE_INPUT_TOKENS = 6500
+REVERSE_OUTPUT_TOKENS = 450
+REVERSE_CAMERA_TOKENS = 80
+REVERSE_LINES = 12
+REVERSE_DESCRIBE = ("Describe this video so that a text-to-video model can recreate it as closely as possible. Cover the "
+                    "subjects and their appearance; what each subject does, in order, with rough times in seconds; the "
+                    "setting, lighting, colours and style; and any visible text exactly, inside double quotes. Write one "
+                    "paragraph of plain description, with no lists and no preamble, about 120 to 220 words.")
+REVERSE_CAMERA = ("Look only at how the camera moves between the first frame and the last frame. Compare the size and "
+                  "position of the main subject and the background in the first and last frames: if the subject grows "
+                  "larger the camera pushes in; if it shrinks the camera pulls out; if the background slides sideways "
+                  "the camera pans or tracks; if the viewing angle around the subject changes the camera orbits; if "
+                  "nothing changes it is static. Answer with one sentence naming the camera movement and its direction.")
+
+
+def reverse_request(value):
+    """A file from ComfyUI's input folder, how many frames to look at, and the spoken lines the caller already has."""
+    if not isinstance(value, dict) or set(value) - {'file', 'frames', 'lines', 'mode'} or value.get('mode', 'reverse') != 'reverse':
+        raise ValueError('invalid_request')
+    name, frames, lines = value.get('file'), value.get('frames', REVERSE_DEFAULT_FRAMES), value.get('lines', [])
+    if not isinstance(name, str) or not name or len(name) > 1024:
+        raise ValueError('unsupported_media')
+    if type(frames) is not int or not REVERSE_FRAMES[0] <= frames <= REVERSE_FRAMES[1]:
+        raise ValueError('invalid_request')
+    if (not isinstance(lines, list) or len(lines) > REVERSE_LINES
+            or any(not isinstance(line, str) or not plain(line) or len(line) > 400 for line in lines)):
+        raise ValueError('invalid_request')
+    return dict(mode='reverse', file=name, frames=frames, lines=[line.strip() for line in lines])
+
+
+def reverse_text(description, camera, lines):
+    """What the user sees: the description, the camera sentence, then each spoken line exactly as given."""
+    parts = [description.strip(), camera.strip()]
+    spoken = ' '.join('<d>[%s] %s</d>' % (language(line), line) for line in lines)
+    if spoken:
+        parts.append(spoken)
+    return '\n\n'.join(part for part in parts if part)
+
+
+def validate_reverse(text, value):
+    """Worker output for a reverse job: text of a sensible length that keeps every given spoken line verbatim."""
+    if not isinstance(text, str) or not 40 <= len(text.strip()) <= 20000:
+        raise ValueError('invalid_output')
+    for line in value.get('lines', ()):
+        if line not in text:
+            raise ValueError('invalid_output')
+    return text

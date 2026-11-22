@@ -66,15 +66,53 @@ class GiveWay(BlockingIOError):
     """The user's other programs need memory/GPU: leave the cache receipt intact."""
 
 
+# The file whose presence stops a background run. Windows delivers Ctrl+Break
+# only within one console, and a session started without one (a service, a
+# scheduled task) never reaches the run that way; a file reaches it everywhere.
+STOP_ENV = 'FREEVIDEO_PRECOMPILE_STOP'
+
 # Set when the interactive session stops a background run. A signal can land
 # inside any handler that recovers from ordinary errors, so it only sets this;
 # the run gives way at its next checkpoint.
 CANCELLED = threading.Event()
 
 
+def stop_requested():
+    """True once the session stopped this run, by signal or by its stop file."""
+    if not CANCELLED.is_set():
+        path = os.environ.get(STOP_ENV)
+        try:
+            if path and os.path.exists(path):
+                CANCELLED.set()
+        except (OSError, ValueError):
+            pass
+    return CANCELLED.is_set()
+
+
+# A stopped run that is still inside a step without a checkpoint (a kernel probe, a long compile) after this long
+# exits with BUSY_EXIT itself. Its supervisor then ends every descendant, as for any give-way, and the next start
+# reclaims its temporary folders; the session's own kill would come later and read as a failure.
+STOP_EXIT_SECONDS = 3.
+
+
+def watch_stop_file(interval=.1):
+    """Set CANCELLED within ``interval`` of a stop, also during steps without a checkpoint; leave if it lingers."""
+
+    def watch():
+        while not stop_requested():
+            time.sleep(interval)
+        time.sleep(STOP_EXIT_SECONDS)
+        try:
+            print(json.dumps(dict(event='give_way', reason='stopped by FreeVideo', at=time.time())), flush=True)
+        finally:
+            os._exit(BUSY_EXIT)
+    if os.environ.get(STOP_ENV):
+        threading.Thread(target=watch, name='precompile stop file', daemon=True).start()
+
+
 def checkpoint(room=None, sample=None):
     """GiveWay when the session stopped this run or the room is needed now."""
-    if CANCELLED.is_set():
+    if stop_requested():
         raise GiveWay('stopped by FreeVideo')
     reason = room.run_reason(sample) if room is not None else None
     if reason:
@@ -589,6 +627,7 @@ def main(argv=None):
             # on the way out, leaving the cache receipt intact.
             CANCELLED.set()
         termination_handler(stopped)
+        watch_stop_file()
     try:
         from .testing import environment
         # A request's own variables: the installation, its caches and its GPU.

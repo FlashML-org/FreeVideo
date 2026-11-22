@@ -4,6 +4,7 @@ import hashlib
 import json
 import math
 from pathlib import Path
+import re
 import statistics
 import sys
 import time
@@ -329,6 +330,34 @@ def write_encoder_retry(output, encoding, *, index):
     return write(output, _retry=dict(stage='encoding', index=index, encoding=encoding))
 
 
+RESIDENT_ROWS = 20
+RESIDENT_NUMBERS = ('seconds', 'idle_seconds', 'released_gpu_bytes', 'worker_rss_bytes', 'worker_private_bytes')
+
+
+def resident_releases(rows):
+    """What the kept video worker did since the last request, in fixed words and numbers only. Another program
+    that took the card is described by its card bytes; its name and pid are only on this machine's monitor."""
+    found = []
+    for row in rows if isinstance(rows, list) else []:
+        if not isinstance(row, dict):
+            continue
+        item = {key: row[key] for key in ('action', 'reason')
+                if isinstance(row.get(key), str) and re.fullmatch(r'[a-z_0-9]{1,40}', row[key])}
+        item.update({key: row[key] for key in RESIDENT_NUMBERS
+                     if isinstance(row.get(key), (int, float)) and not isinstance(row.get(key), bool)})
+        if isinstance(row.get('role'), str) and re.fullmatch(r'[a-z_0-9]{1,40}', row['role']):
+            item['role'] = row['role']
+        for key in ('held', 'roles'):
+            if isinstance(row.get(key), list):
+                item[key] = [role for role in row[key] if isinstance(role, str) and re.fullmatch(r'[a-z_0-9]{1,40}', role)]
+        if isinstance(row.get('other_programs_gpu_bytes'), list):
+            item['other_programs_gpu_bytes'] = [size if type(size) is int else None
+                                                for size in row['other_programs_gpu_bytes']]
+        if item:
+            found.append(item)
+    return found[-RESIDENT_ROWS:]
+
+
 def write(output, report=None, bridge=None, *, _retry=None, live=False, restarted=False):
     """Bounded JSON/log reads only. Failure to write must not fail generation.
 
@@ -507,6 +536,9 @@ def write(output, report=None, bridge=None, *, _retry=None, live=False, restarte
                                      agent_poll.get('agent_generation_jobs'))
         if stalled:
             payload['agent_generation_stalls'] = stalled
+        releases = resident_releases(bridge.get('resident_since_last'))
+        if releases:
+            payload['bridge']['resident_since_last'] = releases
         try:
             from .comfy_host_stats import host_fields
             host = host_fields()

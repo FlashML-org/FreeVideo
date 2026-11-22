@@ -26,6 +26,7 @@ const ICONS = {
     trash: '<path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.1a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-8.1M7 7v4M9 7v4"/>',
     heart: '<path d="M8 13.5 2.6 8.3a3.3 3.3 0 0 1 4.7-4.6L8 4.4l.7-.7a3.3 3.3 0 0 1 4.7 4.6Z"/>',
     reuse: '<path d="M2.8 8a5.2 5.2 0 1 0 1.6-3.8M2.8 2.6v2.8h2.8"/><path d="M8 5.6V8l1.8 1.2"/>',
+    upscale: '<circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3M7 5v4M5 7h4"/>',
     more: '<circle cx="3.5" cy="8" r=".6"/><circle cx="8" cy="8" r=".6"/><circle cx="12.5" cy="8" r=".6"/>',
 };
 
@@ -89,7 +90,8 @@ export function liftMenu(details, panel, {align = 'end', gap = 8} = {}) {
 
 function popover(menu, summary, onClose = () => {}) {
     const panel = menu.querySelector(':scope>.fv-menu');
-    if (panel && menu.classList.contains('fv-action-more')) liftMenu(menu, panel);
+    // A lifted menu places itself when it opens; rows added while it is open call menu.fvPlace() to be placed again.
+    if (panel && menu.classList.contains('fv-action-more')) menu.fvPlace = liftMenu(menu, panel);
     const outside = event => { if (menu.open && !menu.contains(event.target)) menu.open = false; };
     menu.addEventListener('toggle', () => {
         if (menu.open) document.addEventListener('pointerdown', outside, true);

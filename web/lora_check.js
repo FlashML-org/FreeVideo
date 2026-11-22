@@ -1,5 +1,5 @@
 // What the LoRA check found, as words for the row; the check itself is /freevideo/lora/check.
-const FAMILIES = {wan: true, hunyuan: true, ltx: true, sd: true};
+const FAMILIES = {wan: true, hunyuan: true, ltx: true, sd: true, llm: true};
 const size = shape => Array.isArray(shape) ? shape.join('×') : '';
 
 /** Row notice: partial application has no details; unusable files keep their explanation. */

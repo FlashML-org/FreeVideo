@@ -148,14 +148,14 @@ def withheld_without_receipt(hardware, discovered, receipt=None, expected=None):
     return withheld
 
 
-def available_backends(hardware, *, discovered=None, probe_missing=True, evidence=None):
+def available_backends(hardware, *, discovered=None, probe_missing=True, evidence=None, lease=None):
     """Reuse matching checks; re-probe after a GPU, driver or package/code change.
 
     Read-only planning may opt out of probing; it then offers the installed
     backends except those known not to run here (``withheld_without_receipt``).
     Execution callers never turn an unavailable requested backend into another
     backend or a math SDPA kernel. ``evidence``, a dict, receives which checks
-    the answer rests on.
+    the answer rests on. ``lease``: the GPU-work lease descriptor a caller already holds, for the probes.
     """
     discovered = set(installed_backends() if discovered is None else discovered)
     saved = _saved_receipt()
@@ -172,7 +172,7 @@ def available_backends(hardware, *, discovered=None, probe_missing=True, evidenc
                 evidence.update(kernel_receipt='unmatched' if saved is not None else 'missing', withheld=withheld)
             return discovered - set(withheld)
         from .doctor import doctor
-        receipt = doctor(probe=True, hardware=hardware, backends=discovered)
+        receipt = doctor(probe=True, hardware=hardware, backends=discovered, lease=lease)
     checked = readiness(receipt['kernel_probes'])
     if not checked['ready']:
         raise RuntimeError('GPU kernel checks did not find a working linear and attention path. '

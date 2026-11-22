@@ -98,7 +98,9 @@ def disk_free(path):
     return int(free) if isinstance(free, (int, float)) and free >= 0 else None
 
 
-def snapshot(reader, root, busy, paused):
+def snapshot(reader, root, busy, paused, local=True):
+    """local: the request came from this machine; others (the LAN) see only how much of the card another program
+    held, never its name or pid."""
     result = {'busy': bool(busy), 'paused': bool(paused)}
     result.update(reader.read())
     free = disk_free(root)
@@ -107,10 +109,22 @@ def snapshot(reader, root, busy, paused):
     try:
         from . import server_mode
         # Why the video or picture models last left the card, newest last.
-        result['model_releases'] = server_mode.releases()
+        events = server_mode.releases()
+        if not local:
+            for event in events:
+                others = event.pop('other_programs', None)
+                if isinstance(others, list):
+                    event['other_programs_gpu_bytes'] = [other.get('gpu_bytes') for other in others]
+        result['model_releases'] = events
     except Exception:
         pass
     return result
+
+
+def from_this_machine(request):
+    """A request made on this machine itself, not one the LAN access proxy forwarded from another device."""
+    from .proxy_identity import HEADER
+    return request.remote in ('127.0.0.1', '::1') and HEADER not in request.headers
 
 
 def register():
@@ -143,7 +157,7 @@ def register():
 
     @server.routes.get('/freevideo/monitor')
     async def read(request):
-        return reply(await asyncio.to_thread(snapshot, reader, root, busy(), gate.paused))
+        return reply(await asyncio.to_thread(snapshot, reader, root, busy(), gate.paused, from_this_machine(request)))
 
     @server.routes.post('/freevideo/monitor/stop')
     async def stop(request):

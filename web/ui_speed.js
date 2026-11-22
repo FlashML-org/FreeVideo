@@ -26,7 +26,9 @@ export function watchSpeed({now = () => performance.now(), notify, settle = SETT
     let measuring = false, done = false, frame = 0, wake = 0, away = false;
     const show = notify || (async () => {
         const [{toast}, {openSetup}] = await Promise.all([import('./notifications.js'), import('./setup.js')]);
-        toast(t('Interface is slow. Try Compatibility view.', '界面较卡，可在设置中开启兼容界面'), {tone: 'caution',
+        // Said once in the page's life, so it also stays in the notification list until closed there.
+        toast(t('Interface is slow. Try Compatibility view.', '界面较卡，可在设置中开启兼容界面'), {tone: 'caution', keep: {id: 'ui-speed:slow', setup: 'appearance',
+            title: t('Interface is slow', '界面较卡'), sub: t('Turn on Compatibility view', '开启兼容视图')},
             action: {label: t('Open settings', '打开设置'), run: () => openSetup({section: 'appearance'})}});
     });
     const measure = () => {

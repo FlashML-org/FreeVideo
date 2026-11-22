@@ -218,7 +218,7 @@ def context(jobs, spec):
         raise JobError('voice_failed', 'The clip media is not readable') from error
     path = found_source['audio']
     if path is None:
-        raise JobError('voice_failed', 'The clip has no sound')
+        raise JobError('voice_failed', 'The clip has no sound', show=True)
     wav = Path(path).with_suffix('.wav')
     return dict(clip=clip, parent=parent, dialogue=dialogue, separated=dialogue is not None,
                 base=carrier.get('in', 0) / FPS, start=start, end=min(end, length),

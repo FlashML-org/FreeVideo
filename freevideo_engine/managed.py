@@ -13,6 +13,10 @@ from .locking import runtime_lock, describe_lock_holders, LOCK_ENV, ENGINE_BUSY
 from . import processes
 from .system import windows
 
+# A generation that finds the lease taken waits this long for it: a warm-up, a background compile or a kept
+# picture model that is still letting go after the request stopped it. Past that the busy message names the holders.
+GENERATE_LEASE_WAIT_SECONDS = 60.
+
 
 def command_for(machine, command, arguments):
     defaults = {}
@@ -119,7 +123,8 @@ def _main(argv=None, *, lock_paths=None):
     lock_path = os.environ.get('FREEVIDEO_LOCK_PATH', str(Path(snapshot['root']) / 'engine.lock'))
     if lock_paths is not None:
         lock_paths.append(lock_path)
-    with nullcontext() if readonly else runtime_lock(lock_path, wait_seconds=3 if command == 'generate' else 0) as descriptor:
+    wait = GENERATE_LEASE_WAIT_SECONDS if command == 'generate' else 0
+    with nullcontext() if readonly else runtime_lock(lock_path, wait_seconds=wait) as descriptor:
         machine = json.loads(config.read_text(encoding='utf-8'))
         if machine != snapshot:
             raise ValueError('Installation changed while starting. Rerun the command.')

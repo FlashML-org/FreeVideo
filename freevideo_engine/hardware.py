@@ -317,7 +317,10 @@ def detect():
     from . import subprocess_output
     observed = _light_hardware()
     if observed is None:
-        code = 'import json; from freevideo_engine.hardware import _detect_local; print(json.dumps(_detect_local().to_dict()))'
+        # The probe finds this source itself: ComfyUI loads the engine by file location and starts without
+        # PYTHONPATH, and a portable Python's ._pth ignores it anyway.
+        code = ('import json, sys; sys.path.insert(0, %r); from freevideo_engine.hardware import _detect_local; '
+                'print(json.dumps(_detect_local().to_dict()))' % str(Path(__file__).resolve().parents[1]))
         result = subprocess_output.run_python([sys.executable, '-c', code], capture_output=True)
         if result.returncode:
             error = RuntimeError('Hardware detection failed: ' + result.stderr[-2000:])

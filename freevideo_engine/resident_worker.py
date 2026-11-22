@@ -13,6 +13,31 @@ import types
 from .resident_process import serve
 
 
+def preload(request, bank, torch):
+    """A warm-up's video model with the last video's settings (see engine_preload); nothing is sampled."""
+    from .engine_preload import place
+    from .monitoring import save
+    from .runtime import Engine
+    bank.configure(request['gpu_budget_bytes'], request.get('ram_budget_bytes'),
+                   ram_budget_is_estimate=request.get('ram_budget_is_estimate') is True)
+    allocation = request['gpu_budget_bytes']
+    if request.get('sampling_gpu_limit_bytes'):
+        allocation = min(allocation, request['sampling_gpu_limit_bytes'])
+    factory = lambda: Engine(request['cache'], input_cache_dir=request.get('input_cache_dir'),
+                             gpu_allocation_bytes=int(allocation),
+                             **dict(request['engine_options'], canvas=request.get('geometry')))
+    free = torch.cuda.mem_get_info()[0] + torch.cuda.memory_reserved() - torch.cuda.memory_allocated()
+    result = place(request, bank, factory, free_bytes=free, host_fits=bank.ram_fits)
+    print(json.dumps(dict(event='video_model_preload', **result)), flush=True)
+    save(Path(request['metrics']), dict(result, success=True))
+
+
+def remember(request, bank, allocator):
+    """After a whole video: what its video model was built from, for the next warm-up (engine_preload)."""
+    from .engine_preload import remember as keep
+    keep(request, bank.engine_card_bytes, allocator)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--endpoint', type=Path, required=True)
@@ -22,7 +47,7 @@ def main():
 
     def snapshot():
         result = bank.snapshot() if bank is not None else dict(reclaimable_gpu_bytes=0, reclaimable_ram_bytes=0, gpu_uuid=None, models=[])
-        return dict(result, allocator_config=allocator, capabilities=['encoder-weight-preload'])
+        return dict(result, allocator_config=allocator, capabilities=['encoder-weight-preload', 'engine-preload'])
 
     def run(message):
         nonlocal bank, allocator
@@ -73,12 +98,18 @@ def main():
                 stage('cuda_setup')
                 from .processes import worker_signals
                 with worker_signals():
-                    if module.endswith('.worker'):
+                    if module.endswith('.worker') and request.get('engine_preload'):
+                        preload(request, bank, torch)
+                    elif module.endswith('.worker'):
                         from .worker import generate
                         stage('engine_import')
                         bank.configure(request['gpu_budget_bytes'], request.get('ram_budget_bytes'),
                                        ram_budget_is_estimate=request.get('ram_budget_is_estimate') is True)
                         generate(request, resident=bank)
+                        try:
+                            remember(request, bank, allocator)
+                        except Exception:
+                            pass  # A preload that is not prepared only leaves the next video as before.
                         # Only a fully returned video is a success, including its
                         # final cleanup. Keep habit data inside this worker.
                         try:

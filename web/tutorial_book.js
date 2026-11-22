@@ -2,7 +2,7 @@
 // steps with "Take me there" on the step that has a control, the limits, previous / next), an Examples page (the
 // feature examples: see one, fill it in, or be shown its control), and a follow-along card: "Follow along" folds the
 // booklet into a small card beside the work, step by step, so nothing is blocked while the person does it.
-import {TUTORIAL_CHAPTERS} from './tutorial_book_content.js';
+import {TUTORIAL_CHAPTERS, TUTORIAL_ALIASES} from './tutorial_book_content.js';
 import {FEATURE_TOUR, readyCards} from './feature_tour_content.js';
 import {SHOWCASE_TEXT, SHOWCASE_ASSET} from './entry_showcase.js';
 import {isolateDialogKeys, listenDialogKey, routeDialogKey} from './dialog_keys.js';
@@ -104,11 +104,11 @@ export function bookGroups(chapters = TUTORIAL_CHAPTERS) {
     return groups.filter(([, list]) => list.length);
 }
 export const bookOrder = (chapters = TUTORIAL_CHAPTERS) => bookGroups(chapters).flatMap(([, list]) => list);
-// Search: every word must appear in the title, summary or steps (either language's own text).
-export function searchChapters(query, lang, chapters = TUTORIAL_CHAPTERS) {
+// Search: every word must appear in the title, summary, steps or another name for the chapter (either language's own text).
+export function searchChapters(query, lang, chapters = TUTORIAL_CHAPTERS, aliases = TUTORIAL_ALIASES) {
     const words = String(query || '').toLowerCase().split(/\s+/).filter(Boolean);
     if (!words.length) return null;
-    return chapters.filter(c => { const hay = [c.title[lang], c.summary[lang], ...(c.steps[lang] || [])].join(' ').toLowerCase(); return words.every(word => hay.includes(word)); }).map(c => c.id);
+    return chapters.filter(c => { const hay = [c.title[lang], c.summary[lang], ...(c.steps[lang] || []), ...(aliases[c.id]?.[lang] || [])].join(' ').toLowerCase(); return words.every(word => hay.includes(word)); }).map(c => c.id);
 }
 
 function styles() {

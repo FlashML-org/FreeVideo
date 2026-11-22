@@ -36,9 +36,9 @@ Button {
         Rectangle { visible: control.selected; width: 3; height: 18; radius: 2; color: theme.accent; x: 0; anchors.verticalCenter: parent.verticalCenter }
     }
     Accessible.name: text
-    ToolTip {
+    FToolTip {
         objectName: "navToolTip"
-        visible: control.iconOnly && control.hovered
+        visible: control.iconOnly && control.hovered && !win.dialogShown
         text: control.text
         // Open into the content area instead of centring outside the left edge.
         x: control.width + 8

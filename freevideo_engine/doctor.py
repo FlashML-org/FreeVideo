@@ -2,7 +2,7 @@
 import json
 import os
 import subprocess
-import sys
+from contextlib import nullcontext
 from .hardware import detect, installed_backends
 from .paths import vdn_root, base_path, checkpoint_path, comfy_root
 from .locking import LOCK_ENV, runtime_lock
@@ -17,7 +17,9 @@ def missing_required_paths(result, *, video_models=True):
     return [k for k, row in result['paths'].items() if k not in skipped and not row['exists']]
 
 
-def doctor(*, probe=False, hardware=None, backends=None, progress=None):
+def doctor(*, probe=False, hardware=None, backends=None, progress=None, lease=None):
+    """``lease``: the descriptor of the GPU-work lease a caller already holds; the probes run under it
+    instead of taking the lease again, which the caller's own hold would refuse."""
     if progress is None and os.environ.get('FREEVIDEO_INSTALL_PROGRESS') == '1':
         from .install_activity import step
         progress = step
@@ -36,14 +38,16 @@ def doctor(*, probe=False, hardware=None, backends=None, progress=None):
             'validation': 'Package and path discovery only. Run bench to check actual kernels and performance.'}
     if probe:
         result['kernel_probes'] = []
-        with runtime_lock() as descriptor:
+        with (nullcontext(lease) if lease is not None else runtime_lock()) as descriptor:
             env = dict(os.environ, **{LOCK_ENV: str(descriptor)})
             linear = ['linear'] + (['linear-int8'] if hardware.system in ('Windows', 'Linux') else [])
             probes = [*sorted(backends), *linear]
             for index, backend in enumerate(probes):
                 if progress:
                     progress('GPU tests running', index, len(probes))
-                command = [sys.executable, '-m', 'freevideo_engine.probe', backend]
+                # The check finds this source itself (through the launch view, as compilers need): ComfyUI
+                # loads the engine by file location and starts without PYTHONPATH.
+                command = processes.module_command('freevideo_engine.probe', backend)
                 try:
                     child = subprocess_output.run_python(command, capture_output=True, timeout=180, env=env,
                                                          pass_fds=(descriptor,), runner=processes.run)

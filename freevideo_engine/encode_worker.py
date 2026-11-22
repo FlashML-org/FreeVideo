@@ -21,6 +21,17 @@ def encoder_on_gpu(clip):
             patcher.loaded_size() >= patcher.model_size() > 0)
 
 
+def cancel_check(cancel):
+    """Raise PreloadCancelled once the cancel file exists: speculative work yields to foreground work."""
+    from .idle_encoder import PreloadCancelled
+    cancel = Path(cancel)
+
+    def check():
+        if cancel.exists():
+            raise PreloadCancelled('New foreground work takes priority')
+    return check
+
+
 def preload(clip, request, resident):
     """Only weight placement; independent of the next prompt or input media."""
     import torch
@@ -407,9 +418,22 @@ def _encode(args, request, resident, trace):
     if clip is None:
         from .encoder_checkpoint import load_clip
         print(json.dumps({'event': 'encoder_load_start', 'encoder': name}), flush=True)
-        clip = load_clip(ckpt_paths=[path], embedding_directory=folder_paths.get_folder_paths('embeddings'),
-                                 clip_type=comfy.sd.CLIPType.MINIMAX,
-                                 model_options={'initial_device': torch.device('cpu')}, progress=phase)
+        from .idle_encoder import PreloadCancelled
+        try:
+            clip = load_clip(ckpt_paths=[path], embedding_directory=folder_paths.get_folder_paths('embeddings'),
+                             clip_type=comfy.sd.CLIPType.MINIMAX, model_options={'initial_device': torch.device('cpu')},
+                             progress=phase, check=cancel_check(request['cancel']) if idle else None)
+        except PreloadCancelled:
+            # A speculative build stopped on the CPU, between layers: nothing reached the card or the cache, and the
+            # partial model goes now rather than with the process.
+            import gc
+            gc.collect()
+            result = dict(success=True, state='cancelled', stage='encoder_construct',
+                          reason='New foreground work takes priority',
+                          elapsed_seconds=time.perf_counter() - started)
+            save(request['metrics'], result)
+            print(json.dumps(dict(event='encoder_prewarm_complete', **result)), flush=True)
+            return result
     else:
         loading['checkpoint']['state'] = 'resident_reuse'
         print(json.dumps({'event': 'encoder_cache_hit', 'encoder': name, 'gpu_ready': encoder_on_gpu(clip)}), flush=True)

@@ -2362,6 +2362,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     function hide() {
         closing = false; closePromise = null; handle.kept = true;
         player.pause(); player.stopPreview(); lineStop?.();
+        // The "last edit not found" card belongs to that opening; closing the editor takes it away.
+        for (const card of notices.querySelectorAll('[data-lost-last]')) card.remove();
         // The microphone is let go with the view: an open record bar closes, and a take in progress lands as Stop would.
         recording.hide();
         detachBar?.();
@@ -2512,10 +2514,11 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if (lastMissing && !state.record.id) {
             // Point at the name menu only when it lists another edit to open.
             store.projects().catch(() => ({})).then(rows => {
-                if (closing || disposed) return;
+                if (closing || disposed || !element.open) return;
                 const others = Array.isArray(rows) && rows.some(row => row.id !== state.record.id);
                 notify(t('The last edit could not be found, so a blank edit is open.', '找不到上次的剪辑，已打开空白剪辑。')
                     + (others ? t(' Click the edit name at the top to open another edit.', '点击顶部的剪⁠辑⁠名可打开其他剪辑。') : ''));
+                notices.lastElementChild?.setAttribute('data-lost-last', '');
             });
         }
         if (tracksFailure) throw tracksFailure;

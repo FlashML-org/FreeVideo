@@ -29,6 +29,8 @@ ENGINE_CHUNK_SWITCHES = ('head_chunk', 'ff_chunk', 'projection_chunk')
 ENGINE_ARITHMETIC_OPTIONS = ('head_chunk', 'projection_chunk')
 # Resident blocks that a kept engine may lack against the plan and still be reused.
 RESIDENT_BLOCK_SHORTFALL = 2
+# Models given back by the bank itself, kept for the worker's status (decisions are cleared with each request).
+EVICTIONS_KEPT = 20
 
 
 def retention_order(history):
@@ -158,6 +160,39 @@ def pinned_cpu_storages(model, *, committed=False):
     return storages
 
 
+def host_bytes(model):
+    """Host bytes releasing ``model`` would give back: its CPU-side tensors, counted once per storage, plus a
+    parked engine's copy. None when they cannot be read (an object without parameters), so the caller treats the
+    model as one that may hold host memory."""
+    total = parked_bytes(model)
+    if hasattr(model, 'transformer'):
+        model = model.transformer
+    elif hasattr(model, 'cond_stage_model'):
+        model = model.cond_stage_model
+    if model is None:
+        return total
+    if not callable(getattr(model, 'parameters', None)) or not callable(getattr(model, 'buffers', None)):
+        return None
+    storages = {}
+    for tensor in list(model.parameters()) + list(model.buffers()):
+        if tensor.device.type != 'cpu':
+            continue
+        try:
+            storage = tensor.untyped_storage()
+            storages[storage.data_ptr()] = storage.nbytes()
+        except (NotImplementedError, RuntimeError):
+            return None
+    return total + sum(storages.values())
+
+
+def gpu_only(model):
+    """Whether ``model`` sits wholly on the card: releasing it frees card memory and no host memory."""
+    try:
+        return gpu_bytes(model) > 0 and host_bytes(model) == 0
+    except (AttributeError, RuntimeError, TypeError):
+        return False
+
+
 def is_parked(model):
     """Whether an engine handed its GPU weights to host memory with park()."""
     return type(getattr(model, 'parked', None)) is list
@@ -235,6 +270,14 @@ class ModelBank:
         # An automatic plan's RAM budget is an estimate (see system.ram_budget_is_estimate).
         self.ram_budget_is_estimate = False
         self.decisions = []
+        self.evictions = []
+        self.eviction_count = 0
+        # The video model a warm-up loaded with the last video's settings (engine_preload), until a video takes it
+        # or it goes; and what each preload became (hit or miss), as the evictions.
+        self.preloaded = None
+        self.preloads = []
+        self.engine_card_bytes = None
+        self.preload_count = 0
         from .streamed_weights import ConvertedStore
         # Converted decoder layers streamed from the checkpoint; rebuilt on demand.
         self.converted_store = ConvertedStore()
@@ -257,6 +300,7 @@ class ModelBank:
         if ram_budget_is_estimate is not None:
             self.ram_budget_is_estimate = bool(ram_budget_is_estimate)
         self.decisions = []
+        self.engine_card_bytes = None
 
     def take(self, role, identity):
         entry = self.entries.get(role)
@@ -305,6 +349,22 @@ class ModelBank:
                                    encoder_discarded_without_cpu_copy=encoder_discarded,
                                    host_cache_released=host_cache_released,
                                    released_gpu_bytes=max(0, before - torch.cuda.memory_allocated())))
+        self.eviction_count += 1
+        self.evictions = (self.evictions + [dict(seq=self.eviction_count, role=role, reason=reason, at=time.time(),
+                                                 released_gpu_bytes=self.decisions[-1]['released_gpu_bytes'])]
+                          )[-EVICTIONS_KEPT:]
+        if role == 'engine' and self.preloaded is not None:
+            self.preload_outcome('dropped', reason=reason)
+
+    def preload_outcome(self, outcome, **detail):
+        """What the preloaded video model became: 'hit', 'miss' (with what differed) or 'dropped' before any video."""
+        row = dict(seq=self.preload_count + 1, outcome=outcome, at=time.time(),
+                   waited_seconds=round(time.time() - self.preloaded['at'], 1), **detail)
+        self.preload_count += 1
+        self.preloaded = None
+        self.preloads = (self.preloads + [row])[-EVICTIONS_KEPT:]
+        self.decisions.append(dict(action='preload_' + outcome, role='engine', **detail))
+        print(json.dumps(dict(event='video_model_preload', **row)), flush=True)
 
     def park(self, role, reason, ram_need=2*GiB):
         """Release only an idle engine's GPU weights and keep its host side.
@@ -337,6 +397,11 @@ class ModelBank:
         self.decisions.append(dict(action='park', role=role, reason=reason, parked_bytes=moved,
                                    released_gpu_bytes=released, seconds=time.perf_counter() - started))
         return True
+
+    def keep_on_card(self, role, stage):
+        self.decisions.append(dict(action='keep', role=role, gpu_bytes=gpu_bytes(self.entries[role]['model']),
+                                   reason='Host memory is short for the %s, but this model holds only card memory'
+                                   % stage))
 
     def clear(self, reason='Request failed or session configuration changed'):
         self.converted_store.clear()
@@ -393,6 +458,10 @@ class ModelBank:
             if self.ram_fits(need):
                 break
             if role in self.entries:
+                if gpu_only(self.entries[role]['model']):
+                    # On the card only: releasing it gives the host nothing back.
+                    self.keep_on_card(role, 'next request')
+                    continue
                 self.drop(role, 'Retained weights leave no host room for the next request')
                 if role == 'engine':
                     need = 8*GiB + int(pinned)
@@ -536,6 +605,11 @@ class ModelBank:
                 break
             if other == role:
                 continue
+            if available() >= extra and gpu_only(self.entries[other]['model']):
+                # Only host memory is short, and this model holds none: releasing it would empty the card and
+                # give the host nothing back.
+                self.keep_on_card(other, role)
+                continue
             if is_parked(self.entries[other]['model']):
                 # A parked engine holds no GPU memory; only RAM releases it.
                 if fits():
@@ -574,7 +648,12 @@ class ModelBank:
                         plan={name: options.get(name) for name in (*ENGINE_PASS_OPTIONS, 'resident_blocks')}))
 
     def engine_key(self, request):
-        """What a kept engine must share with a request to serve it, as opposed to engine_peak_key().
+        """What a kept engine must share with a request to serve it (engine_parts), as opposed to engine_peak_key()."""
+        return key(ModelBank.engine_parts(request))
+
+    @staticmethod
+    def engine_parts(request):
+        """The parts of engine_key, by name.
 
         The tiling and pipelining of a pass (head, window, feed-forward and projection chunks,
         prefetch) change neither the weights nor where they live, and every request re-applies
@@ -590,9 +669,9 @@ class ModelBank:
             if request['engine_options'].get(name):
                 options[name + '_on'] = True
         options.pop('resident_blocks', None)
-        return key(dict(cache=file_identity(Path(request['cache'])/'manifest.json'),
-                        options=options, geometry=request.get('geometry'),
-                        inputs=request.get('input_cache_dir')))
+        return dict(cache=file_identity(Path(request['cache'])/'manifest.json'),
+                    options=options, geometry=request.get('geometry'),
+                    inputs=request.get('input_cache_dir'))
 
     @staticmethod
     def resident_blocks_serve(retained, wanted):
@@ -606,6 +685,7 @@ class ModelBank:
         return wanted - RESIDENT_BLOCK_SHORTFALL <= retained <= wanted
 
     def engine(self, request, factory):
+        preloaded = self.preloaded
         identity = self.engine_peak_key(request)
         options, canvas = request['engine_options'], request.get('geometry', {})
         reuse_identity = self.engine_key(request)
@@ -681,9 +761,27 @@ class ModelBank:
             moved = found.unpark()
             self.decisions.append(dict(action='unpark', role='engine', moved_bytes=moved,
                                        seconds=time.perf_counter() - started))
+        if preloaded is not None:
+            # The preloaded model is the one held until a request takes or drops it.
+            if hit:
+                self.preload_outcome('hit')
+            else:
+                # Dropped just now for other settings, block count or host allowance: this request loads its own.
+                from .engine_preload import differences
+                changed = differences(preloaded['parts'], self.engine_parts(request))
+                row = self.preloads[-1] if self.preloaded is None and self.preloads else None
+                if row is not None and row['outcome'] == 'dropped':
+                    row.update(outcome='miss', differs=changed)
+                    print(json.dumps(dict(event='video_model_preload', **row)), flush=True)
+                else:
+                    self.preloaded = preloaded
+                    self.preload_outcome('miss', differs=changed)
         if found is None:
             found = factory()
             self.put('engine', reuse_identity, found)
+        # What it takes on the card, kept for a later preload of the same settings (engine_preload) even when a later
+        # stage of this request releases it.
+        self.engine_card_bytes = gpu_bytes(found)
         memo = getattr(found, 'refined_text_memo', None)
         if isinstance(memo, dict):
             cached = self.take('conditioning', identity)
@@ -772,7 +870,8 @@ class ModelBank:
 
     def snapshot(self):
         if not torch.cuda.is_initialized():
-            return dict(reclaimable_gpu_bytes=0, reclaimable_ram_bytes=0, gpu_uuid=None, models=[])
+            return dict(reclaimable_gpu_bytes=0, reclaimable_ram_bytes=0, gpu_uuid=None, models=[],
+                        evictions=list(self.evictions), preloads=list(self.preloads))
         uuid = str(getattr(device_properties(torch), 'uuid', ''))
         if uuid and not uuid.startswith(('GPU-', 'MIG-')):
             uuid = 'GPU-' + uuid
@@ -802,4 +901,5 @@ class ModelBank:
                     memory=memory, gpu_capacity=gpu_capacity,
                     ram_credit_scope='Owned pinned model storage and parked engine weights; deduplicated, reclaimable on eviction. No mapped-page or swap credit; commit only for private storage.',
                     gpu_uuid=uuid, models=[dict(role=role, gpu_bytes=gpu_bytes(entry['model']))
-                                           for role, entry in self.entries.items()], decisions=self.decisions)
+                                           for role, entry in self.entries.items()], decisions=self.decisions,
+                    evictions=list(self.evictions), preloads=list(self.preloads))
