@@ -6,6 +6,7 @@
 // the technical parts (folders, access token, speed tables, logs) are folded away. Esc closes and gives focus back.
 // setup.js re-exports openSetup from here, so every caller (top bar, failure cards, palette) opens this room.
 import { setTip } from './tip_words.js';
+import { currentLocale, translateKey } from './i18n.js';
 import { cutTip } from './cut_tip.js';
 import { api } from "../../scripts/api.js";
 import './fv_select.js';
@@ -523,7 +524,7 @@ export async function openSetup(options) {
     // ════════════ Appearance ════════════
     const appearance = pane('appearance', t('Appearance', '外观'));
     const themeSelect = el('select');
-    for (const [id, name] of [['dark', t('Dark', '深色')], ['light', t('Light', '浅色')]]) { const o = el('option', '', name); o.value = id; themeSelect.append(o); }
+    for (const [id, name] of [['dark', t('Dark', '深色')], ['light', translateKey('theme.light')]]) { const o = el('option', '', name); o.value = id; themeSelect.append(o); }
     themeSelect.value = document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
     themeSelect.onchange = async () => {
         try { (await import('./shell.js')).setTheme(themeSelect.value); } catch { document.documentElement.dataset.theme = themeSelect.value; }
@@ -551,14 +552,14 @@ export async function openSetup(options) {
     later(onMonitorShown(() => { statusSwitch.checked = statusShown(); }));
     const statusRow = row({iconName: 'gpu', title: t('Show this computer in the status', '在运行状态中显示本机数据'), sub: t('Graphics memory and temperature in the top bar', '在顶栏显示显存和温度'), end: [statusSwitch]});
     const langSelect = el('select');
-    for (const [id, name] of [['zh', '中文'], ['en', 'English']]) { const o = el('option', '', name); o.value = id; langSelect.append(o); }
-    langSelect.value = cn ? 'zh' : 'en';
+    for (const [id, name] of [['zh', '中文'], ['en', 'English'], ['pt-BR', translateKey('locale.portuguese')]]) { const o = el('option', '', name); o.value = id; langSelect.append(o); }
+    langSelect.value = currentLocale();
     const langNote = slot(); const langReload = button(t('Reload now', '立即重新载入'), {kind: 'fill', cls: 'is-sm'}); langReload.hidden = true;
     langNote.textContent = t('Changing the language reloads the page; generations keep running.', '切换语言会重新载入页面，正在进行的生成不受影响。');
-    langSelect.onchange = () => { langReload.hidden = langSelect.value === (cn ? 'zh' : 'en'); };
+    langSelect.onchange = () => { langReload.hidden = langSelect.value === currentLocale(); };
     langReload.onclick = () => { const url = new URL(location.href); url.searchParams.set('freevideo_lang', langSelect.value); location.replace(url.href); };
     tip(langReload, t('Reload now', '立即重新载入'), t('Reload the page in the chosen language', '以所选语言重新载入页面'));
-    const langRow = row({iconName: 'globe', title: t('Interface language', '界面语言'), end: [segmented(langSelect, {label: t('Language', '语言'), tips: {zh: t('Show the interface in Chinese', '界面显示为中文'), en: t('Show the interface in English', '界面显示为英文')}})]});
+    const langRow = row({iconName: 'globe', title: t('Interface language', '界面语言'), end: [segmented(langSelect, {label: t('Language', '语言'), tips: {zh: t('Show the interface in Chinese', '界面显示为中文'), en: t('Show the interface in English', '界面显示为英文'), 'pt-BR': translateKey('locale.portuguese')}})]});
     const langFoot = el('div', 'st-foot'); langFoot.append(langNote, langReload);
     appearance.append(groupHead(t('Look', '外观')), card(themeRow.element, solidRow.element),
         groupHead(t('Top bar', '顶栏')), card(statusRow.element), groupHead(t('Language', '语言')), card(langRow.element, langFoot));

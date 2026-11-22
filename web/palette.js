@@ -9,6 +9,7 @@
 //   reason), confirm?: [en, zh] (asks first), anyView?: true (offered from every view), run: ctx => any}.
 // This module also loads the rest of the command layer: shortcuts, notifications, search and the right-click menu.
 import { t, words, CN, MAC, glyph, keyChips, formatKeys, createLayer, addSheet } from './context_menu.js';
+import { nextLocale } from './i18n.js';
 import { openShortcuts, shortcutsOpen, closeShortcuts, VIEW_NAMES } from './shortcuts.js';
 import { searchEverything, searchSettled, warmSearch, fillPrompt } from './global_search.js';
 import { openNotifications, latestFinished, toast, visitJob, openWork } from './notifications.js';
@@ -274,10 +275,10 @@ export function builtinCommands() {
         {id: 'glass.toggle', scope: 'settings', group: G.look, icon: 'layers', title: () => solidNow() ? ['Turn off compatibility view', '关闭兼容界面'] : ['Turn on compatibility view', '开启兼容界面'],
             use: ['For older computers', '适合较旧的电脑'], keywords: ['glass', 'blur', 'lite', 'performance', 'compatibility', 'caizhi', 'boli', 'jianrong', 'ka'],
             run: () => { const solid = solidNow(); if (shell()?.setGlass) shell().setGlass(solid); else document.documentElement.dataset.glass = solid ? '' : 'solid'; }},
-        {id: 'language.toggle', scope: 'settings', group: G.look, icon: 'globe', title: CN ? ['English interface', '切换到英文界面'] : ['Chinese interface', '切换到中文界面'],
+        {id: 'language.toggle', scope: 'settings', group: G.look, icon: 'globe', title: () => ({en: ['English interface', '切换到英文界面'], zh: ['Chinese interface', '切换到中文界面'], 'pt-BR': ['Português (Brasil)', '葡萄牙语（巴西）']})[nextLocale()],
             use: ['Reloads the page; generations keep running', '会重新载入页面，生成不受影响'], keywords: ['language', 'english', 'chinese', 'yuyan', 'zhongwen', 'yingwen'],
             confirm: ['Reload the page in the other language? Generations keep running.', '重新载入页面并切换语言？正在进行的生成不受影响。'],
-            run: () => reloadIn(CN ? 'en' : 'zh')},
+            run: () => reloadIn(nextLocale())},
         {id: 'shortcuts.open', group: G.help, icon: 'keyboard', key: '?', title: ['Keyboard shortcuts', '快捷键速查'], use: ['Every shortcut of every view', '所有视图的快捷键'],
             keywords: ['keys', 'hotkeys', 'kuaijiejian', 'kjj'], run: () => openShortcuts()},
         {id: 'tutorial.open', group: G.help, icon: 'book', title: ['Tutorial', '教程'], use: ['Learn FreeVideo step by step', '一步步学会 FreeVideo'],

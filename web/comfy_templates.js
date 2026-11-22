@@ -1,9 +1,8 @@
+import { currentLocale } from './i18n.js';
 // ComfyUI's own Templates window, shown over the Nodes view: FreeVideo says its search box and its first category in the
 // interface language (ComfyUI's Chinese file reads the search box as "搜索占位符", and the category name is not translated),
 // and comfy_templates.css brings the window into the light theme. The window is added to the page body when it opens.
-const query = new URLSearchParams(globalThis.location?.search || '');
-const asked = query.get('freevideo_lang');
-export const chinese = asked === 'zh' || (asked !== 'en' && String(globalThis.navigator?.language || '').toLowerCase().startsWith('zh'));
+export const chinese = currentLocale() === 'zh';
 
 // English text of a ComfyUI-made label -> the Chinese FreeVideo shows in its place.
 export const LABELS = {Popular: '热门'};

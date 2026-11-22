@@ -1,3 +1,4 @@
+import { translatePair } from './i18n.js';
 import './has_mirror.js';
 import {createLanAccess} from './lan_access.js';
 import {createEditorText} from './editor_text.js';
@@ -244,7 +245,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     }
     // The same language as the top bar and the other views, read once when the page opened (the app later drops the
     // address's query, so reading it again when the editor opened fell back to the browser's language).
-    const t = (en, zh) => CN ? zh : en;
+    const t = (en, zh) => translatePair(en, zh, CN);
     const returnFocus = document.activeElement;
     const even = value => Math.max(2, Math.floor(value / 2) * 2);
     // A new edit opens with an empty second sound track, where music is made.

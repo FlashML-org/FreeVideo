@@ -1,10 +1,9 @@
+import { currentLocale, translatePair } from './i18n.js';
 // The top bar's words and its status capsule's state, apart from the page (tests/topbar_state.mjs drives them).
 import { ACTIVE } from './task_store.js';
 
-const query = new URLSearchParams(globalThis.location?.search || '');
-const language = query.get('freevideo_lang');
-export const CN = language === 'zh' || (language !== 'en' && String(globalThis.navigator?.language || '').toLowerCase().startsWith('zh'));
-export const t0 = (en, zh) => CN ? zh : en;
+export const CN = currentLocale() === 'zh';
+export const t0 = (en, zh) => translatePair(en, zh, CN);
 export const MAC = /Mac|iPhone|iPad/i.test(globalThis.navigator?.platform || globalThis.navigator?.userAgent || '');
 
 // The words of the bar, one table (TOPBAR.md §6). Names are what the item is; uses say what it does.

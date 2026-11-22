@@ -1,3 +1,4 @@
+import { currentLocale, translatePair } from './i18n.js';
 // The one right-click menu of every FreeVideo view, and the small pieces the command layer shares (language,
 // icons, how a shortcut is written). The library, the image view and the editor build their menus with it:
 //   attachContextMenu(element, event => items | null)   right click, Shift+F10, the menu key, a long press on touch
@@ -10,12 +11,10 @@
 import { isolateDialogKeys, listenDialogKey } from './dialog_keys.js';
 
 const browser = typeof document !== 'undefined';
-const query = browser ? new URLSearchParams(globalThis.location?.search || '') : new URLSearchParams();
-const forced = query.get('freevideo_lang');
-export const CN = forced === 'zh' || (forced !== 'en' && String(globalThis.navigator?.language || '').toLowerCase().startsWith('zh'));
-export const t = (en, zh) => CN ? zh : en;
+export const CN = currentLocale() === 'zh';
+export const t = (en, zh) => translatePair(en, zh, CN);
 // [en, zh] pairs, plain strings and functions returning either all read the same way.
-export const words = (value, cn = CN) => typeof value === 'function' ? words(value(), cn) : Array.isArray(value) ? String(value[cn ? 1 : 0] ?? value[0] ?? '') : String(value ?? '');
+export const words = (value, cn) => typeof value === 'function' ? words(value(), cn) : Array.isArray(value) ? String((cn === undefined ? translatePair(value[0], value[1] ?? value[0]) : value[cn ? 1 : 0]) ?? value[0] ?? '') : String(value ?? '');
 export const MAC = /Mac|iPhone|iPad/.test(globalThis.navigator?.platform || globalThis.navigator?.userAgent || '');
 // The compatibility view (Settings → 兼容界面, stored as freevideo.glass = solid): solid panels, fewer animations,
 // and nothing plays until asked. It counts as reduced motion everywhere.

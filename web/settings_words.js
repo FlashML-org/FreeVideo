@@ -1,10 +1,8 @@
+import { currentLocale, translatePair } from './i18n.js';
 // Settings' words and rules without the page: the language, sizes, what each installer refusal means and what to do
 // next, and the pages with the old names callers still pass. No DOM, so tests/settings_words.mjs runs them in Node.
-const languageOverride = typeof location !== 'undefined'
-    ? new URLSearchParams(location.search).get('freevideo_lang') : null;
-export const cn = languageOverride === 'zh' || (languageOverride !== 'en'
-    && String(globalThis.navigator?.language || '').toLowerCase().startsWith('zh'));
-export const t = (en, zh) => cn ? zh : en;
+export const cn = currentLocale() === 'zh';
+export const t = (en, zh) => translatePair(en, zh, cn);
 export const INSTALLED_HINT = {en: 'Already installed. To reinstall, click Check installation first.', zh: '已装好。要重装，请先点“检查安装”。'};
 export const gib = n => Number.isFinite(n) ? (n / 2 ** 30).toFixed(1) + " GiB" : "—";
 // Plan sizes pick their unit, so a few-MB repair does not read as "0.0 GiB".

@@ -1,3 +1,4 @@
+import { translatePair } from './i18n.js';
 import { api } from '../../scripts/api.js';
 import { setLauncherPresent, setOfflineInstall } from './repair_hint.js';
 import { issueButton } from './issue_button.js';
@@ -51,7 +52,7 @@ const SOUND_ON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9
 export function createReleaseMedia(release, which, cn) {
     const media = releaseMedia(release);
     if (!media) return null;
-    const t = (en, zh) => cn ? zh : en, kind = mediaKind(media);
+    const t = (en, zh) => translatePair(en, zh, cn), kind = mediaKind(media);
     const element = document.createElement('figure'); element.className = 'fv-release-media';
     element.dataset.kind = kind; element.dataset.state = 'cover';
     const cover = document.createElement('img'); cover.className = 'fv-release-cover'; cover.alt = '';
@@ -234,7 +235,7 @@ export function startUpdateChecks() {
 }
 
 export function createUpdateNotice(cn) {
-    const t = (en, zh) => cn ? zh : en;
+    const t = (en, zh) => translatePair(en, zh, cn);
     const element = document.createElement('aside'); element.className = 'fv-update-notice fv-update-bar';
     element.hidden = true; element.setAttribute('role', 'status');
     const label = document.createElement('span');
@@ -364,7 +365,7 @@ export function createUpdateNotice(cn) {
 // The notes, newest first: the available update (with every version it skips), then the current version. Returns
 // whether this version has a "What's new" tour. Used by the release-notes sheet and by Settings › Version & updates.
 function fillNotes(body, cn) {
-    const t = (en, zh) => cn ? zh : en;
+    const t = (en, zh) => translatePair(en, zh, cn);
     body.replaceChildren();
     for (const [label, release, kind] of [[t('Available update', '可用更新'), value?.available, 'new'],
         [t('Current version', '当前版本'), value?.current_release || (value?.current_version ? {version: value.current_version} : null), 'now']]) {
@@ -423,7 +424,7 @@ export function releaseNotesInto(body, cn, {onNews = () => {}} = {}) {
 }
 
 function noteRows(release, cn) {
-    const t = (en, zh) => cn ? zh : en, notes = localizedNotes(release, cn), rows = [];
+    const t = (en, zh) => translatePair(en, zh, cn), notes = localizedNotes(release, cn), rows = [];
     const summary = document.createElement('p'); summary.className = 'fv-release-summary';
     summary.textContent = notes?.summary || t('No release notes were included with this version.', '此版本未附带更新说明。');
     rows.push(summary);
@@ -445,7 +446,7 @@ const versionName = release => release?.product_version || release?.version || '
 // The update window: the newest version's picture or video, its full notes (with every version it skips), then the
 // version in use in one line. Returns whether the version in use has a "What's new" tour.
 function fillSheet(body, cn) {
-    const t = (en, zh) => cn ? zh : en;
+    const t = (en, zh) => translatePair(en, zh, cn);
     body.replaceChildren();
     const available = value?.available, current = value?.current_release || (value?.current_version ? {version: value.current_version} : null);
     const release = available || current;
@@ -474,7 +475,7 @@ function fillSheet(body, cn) {
 }
 
 function showReleaseNotes(cn) {
-    const t = (en, zh) => cn ? zh : en;
+    const t = (en, zh) => translatePair(en, zh, cn);
     loadStyles();
     const dialog = document.createElement('dialog'); dialog.className = 'fv-release-notes fv-release-rich';
     dialog.setAttribute('aria-label', t('Version & updates', '版本与更新'));

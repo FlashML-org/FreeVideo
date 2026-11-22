@@ -1,3 +1,4 @@
+import { translatePair } from './i18n.js';
 import {SHOWCASE_TEXT, showcaseChapter, loadShowcaseImage} from './entry_showcase.js';
 import './glass/library.js';
 import {openAnchor} from './feature_tour_layer.js';
@@ -159,7 +160,7 @@ const ROW_ICONS = {flag: 'M4 13.5V3M4 3.5h7.5l-1.5 2.5 1.5 2.5H4', play: 'M5 3.2
 const rowIcon = name => { const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('viewBox', '0 0 16 16'); svg.setAttribute('aria-hidden', 'true');
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path'); path.setAttribute('d', ROW_ICONS[name]); svg.append(path); return svg; };
 export function createGuideReplayEntry({dialog, cn, api, openWorkspace, replay = replayInFront}) {
-    const text = key => REPLAY_TEXT[key][cn ? 1 : 0], t = (en, zh) => cn ? zh : en;
+    const text = key => REPLAY_TEXT[key][cn ? 1 : 0], t = (en, zh) => translatePair(en, zh, cn);
     const tipped = (node, name, use) => { node.dataset.fvTipName = name; node.dataset.fvTipUse = use; return node; };
     const section = el('section', null, 'fv-guide-replay'), row = el('div', null, 'fv-guide-replay-row'), rows = el('div', null, 'fv-guide-rows');
     const line = (icon, name, small, control) => { const item = el('div', null, 'fv-guide-row'), words = el('span'); words.append(el('b', name), el('small', small)); item.append(rowIcon(icon), words, control); return item; };
@@ -256,7 +257,7 @@ export function guideTarget(dialog, chapter, targets = {}) {
 }
 
 export function createFirstRunGuide({dialog, api, cn, isBusy = () => false, group = 'studio', targets = {}, onShowcaseTry = null}) {
-    const t = (en, zh) => cn ? zh : en;
+    const t = (en, zh) => translatePair(en, zh, cn);
     const automatic = !attempted.has(group), editor = group === 'editor';
     const chapters = chaptersFor(group);
     if (!document.querySelector('link[data-fv-first-run-guide]')) {

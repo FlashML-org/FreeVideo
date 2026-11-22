@@ -1,3 +1,4 @@
+import { currentLocale, translatePair, translateKey } from './i18n.js';
 import {api} from '../../scripts/api.js';
 import { app } from '../../scripts/app.js';
 import { wordmark } from './wordmark.js';
@@ -9,11 +10,8 @@ import './palette.js';
 import { isLaunchVisit } from './launch_visit.js';
 import { topbarActions, adoptWhenPlaced, buildBar } from './topbar.js';
 
-const languageOverride = typeof location !== 'undefined'
-    ? new URLSearchParams(location.search).get('freevideo_lang') : null;
-const cn = languageOverride === 'zh' || (languageOverride !== 'en'
-    && String(navigator.language || '').toLowerCase().startsWith('zh'));
-const t = (en, zh) => cn ? zh : en;
+const cn = currentLocale() === 'zh';
+const t = (en, zh) => translatePair(en, zh, cn);
 const preference = 'freevideo.view';
 let toolbar, open, selected, currentView = 'nodes', agentTab = null, opening = null, place = null;
 const style = document.createElement('link');
@@ -85,9 +83,9 @@ export async function openImage(node, options) {
 
 export function viewSwitch(view, onStudio, onNodes, onEditor, onAutopilot, onImage = () => {}) {
     const group = document.createElement('div'); group.className = 'fv-view-switch';
-    group.setAttribute('role', 'group'); group.setAttribute('aria-label', t('FreeVideo view', 'FreeVideo 视图'));
-    for (const [id, label, action] of [['studio', t('Create', '创作面板'), onStudio], ['image', t('Images', '图像视图'), onImage], ['nodes', t('Nodes', '节点视图'), onNodes], ['editor', t('Edit', '剪辑视图'), onEditor],
-        ['autopilot', t('Autopilot', 'AI 全自动'), onAutopilot]]) {
+    group.setAttribute('role', 'group'); group.setAttribute('aria-label', translateKey('nav.label'));
+    for (const [id, label, action] of [['studio', translateKey('nav.create'), onStudio], ['image', translateKey('nav.images'), onImage], ['nodes', translateKey('nav.nodes'), onNodes], ['editor', translateKey('nav.edit'), onEditor],
+        ['autopilot', translateKey('nav.autopilot'), onAutopilot]]) {
         const button = document.createElement('button'); button.type = 'button';
         const text = document.createElement('span'); text.textContent = label; button.append(text);
         // Browser translation must leave the product name as written.

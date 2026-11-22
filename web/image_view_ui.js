@@ -1,9 +1,9 @@
+import { currentLocale, translatePair } from './i18n.js';
 import { listenDialogKey } from './dialog_keys.js';
 // Small pieces every part of the picture page builds with: elements, line icons, buttons, and the hover
 // description (name, one line of purpose, shortcut) that the shell's tooltip reads from data-fv-tip-*.
-const languageOverride = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('freevideo_lang') : null;
-export const cn = languageOverride === 'zh' || (languageOverride !== 'en' && typeof navigator !== 'undefined' && String(navigator.language || '').toLowerCase().startsWith('zh'));
-export const t = (en, zh) => cn ? zh : en;
+export const cn = currentLocale() === 'zh';
+export const t = (en, zh) => translatePair(en, zh, cn);
 
 export const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 

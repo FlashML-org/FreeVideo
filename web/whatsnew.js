@@ -1,3 +1,4 @@
+import { translatePair } from './i18n.js';
 // What's new in 0.5: the editor's own track view drawn with the editor's own classes and played once.
 // Nothing is recorded; the picture is a placeholder, the tracks, clips, progress and waveforms are the real styles.
 import {PAGES, LINES, SEEN_PREFIX, seenRecord, unseenPages, hasWhatsNew} from './whatsnew_pages.js';
@@ -258,7 +259,7 @@ const remember = pages => { try { for (const page of pages) localStorage.setItem
 const unseen = version => unseenPages(version, read);
 
 export function showWhatsNew(cn, {openedBy = 'user', pages = PAGES} = {}) {
-    const t = (en, zh) => cn ? zh : en;
+    const t = (en, zh) => translatePair(en, zh, cn);
     const css = document.getElementById('fv-whatsnew-css') || Object.assign(document.createElement('link'), {id: 'fv-whatsnew-css', rel: 'stylesheet', href: new URL('./whatsnew.css', import.meta.url).href});
     if (!css.isConnected) document.head.append(css);
     for (const sheet of ['editor.css', 'editor_expand.css', 'editor_adjust.css', 'editor_tracks.css', 'editor_menu.css', 'editor_voice.css', 'editor_record.css']) {

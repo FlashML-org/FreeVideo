@@ -1,3 +1,4 @@
+import { currentLocale, translatePair } from './i18n.js';
 // Checks that FreeVideo's page loaded completely and says what is wrong when
 // it did not: which file, why, and what to do. It imports nothing at load and
 // styles itself inline, so it still runs when every other FreeVideo file fails.
@@ -7,9 +8,8 @@
 let extensionUI = null, errorUI = null;
 const base = new URL('./', import.meta.url);
 const query = new URLSearchParams(location.search);
-const language = query.get('freevideo_lang');
-const cn = language === 'zh' || (language !== 'en' && String(navigator.language || '').toLowerCase().startsWith('zh'));
-const t = (en, zh) => cn ? zh : en;
+const cn = currentLocale() === 'zh';
+const t = (en, zh) => translatePair(en, zh, cn);
 // launcher.js removes this flag during setup; read it before that.
 const launchVisit = query.get('freevideo') === 'launch';
 // Every script this folder ships; a test keeps the list in step with web/*.js.

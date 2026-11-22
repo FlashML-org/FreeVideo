@@ -1,3 +1,4 @@
+import { currentLocale, translatePair, translateKey } from './i18n.js';
 import { cutTip } from './cut_tip.js';
 import './has_mirror.js';
 import {createLanAccess} from './lan_access.js';
@@ -81,11 +82,8 @@ import { mediaQueue } from './work_media.js';
 import { userMessage } from './user_message.js';
 import { fieldNote } from './field_note.js';
 
-const languageOverride = typeof location !== 'undefined'
-    ? new URLSearchParams(location.search).get('freevideo_lang') : null;
-const cn = languageOverride === 'zh' || (languageOverride !== 'en'
-    && String(navigator.language || '').toLowerCase().startsWith('zh'));
-const t = (en, zh) => cn ? zh : en;
+const cn = currentLocale() === 'zh';
+const t = (en, zh) => translatePair(en, zh, cn);
 // A dropped connection gets one plain sentence, not the browser's "Failed to fetch".
 const shownMessage = error => isNetworkTypeError(error) ? connectionLostText(t) : error.message;
 // The usual LoRA strength range is -4 to 4; a value the user types by hand may go further, up to 100.
@@ -2317,14 +2315,14 @@ export function openStudio(node, {extendFrom = null} = {}) {
         keyShowsEta = eta; paintEta();
     };
     // The key has its two lines from the first frame, so its label is in place before anything else is known.
-    paintKey(t('Generate video', '生成视频'), true);
+    paintKey(translateKey('ui.generate_video'), true);
     // Generate's second segment: the menu that says what the key makes, a video or a preview (the same choice as the
     // two-pass state; a preview turns two-pass on).
     const keyMore = el('details', null, 'fv-key-more');
     const keyMoreToggle = el('summary'); keyMoreToggle.title = t('What to generate', '生成什么'); keyMoreToggle.setAttribute('aria-label', keyMoreToggle.title);
     keyMoreToggle.append(el('span', null, 'fv-chevron'));
     const keyMenu = el('div', null, 'fv-run-menu fv-key-menu');
-    const keyChoices = [['video', t('Generate video', '生成视频')], ['preview', t('Generate preview', '生成预览')]].map(([id, label]) => {
+    const keyChoices = [['video', translateKey('ui.generate_video')], ['preview', translateKey('ui.generate_preview')]].map(([id, label]) => {
         const b = button(label, () => { choosePassMode(id === 'preview' ? 'preview' : twoPass.checked ? 'on' : 'off'); keyMore.open = false; });
         b.dataset.choice = id; keyMenu.append(b); return b;
     });
@@ -2485,7 +2483,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             : runMode === 'batch' ? t(`Add ${count.value || '…'} videos`, `添加 ${count.value || '…'} 个视频`)
             : runMode === 'loop' ? (queueState?.looping ? t('Looping', '循环中') : t('Start loop', '开始循环'))
             : busy ? t('Add to queue', '加入队列')
-            : previewFirst.checked && !previewFirst.disabled ? t('Generate preview', '生成预览') : t('Generate video', '生成视频'));
+            : previewFirst.checked && !previewFirst.disabled ? translateKey('ui.generate_preview') : translateKey('ui.generate_video'));
         paintKey(borrowed?.label?.() ?? label, borrowed ? true : !submitting && !chainReason);
         syncKeyMore();
         if (borrowed) generate.disabled = borrowed.disabled?.() ?? false;

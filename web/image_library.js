@@ -1,12 +1,12 @@
+import { currentLocale, translatePair } from './i18n.js';
 // Pictures made in the image view live in the asset library as one-picture cards of kind "image": saved when a
 // generation succeeds, offered again wherever a reference picture is added.
 import { agentGet, agentPost, agentSend } from './agent_session.js';
 import { uploadMedia } from './media_upload.js';
 import { listenDialogKey } from './dialog_keys.js';
 
-const languageOverride = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('freevideo_lang') : null;
-const cn = languageOverride === 'zh' || (languageOverride !== 'en' && String(navigator.language || '').toLowerCase().startsWith('zh'));
-const t = (en, zh) => cn ? zh : en;
+const cn = currentLocale() === 'zh';
+const t = (en, zh) => translatePair(en, zh, cn);
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const LIMIT = 200;
 const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('./image_library.css', import.meta.url).href; document.head.append(css);

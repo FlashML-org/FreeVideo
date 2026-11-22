@@ -1,3 +1,4 @@
+import { currentLocale } from './i18n.js';
 // One hover tip for every FreeVideo control: a name, one line on what it does and what you get, and its shortcut.
 // - About 500 ms on a control, then at once on its neighbours while one has just shown; gone ~100 ms after leaving.
 // - Keyboard focus shows it too; a long press shows it on touch (and that press does not also tap the control).
@@ -22,8 +23,7 @@ if (globalThis.document?.head && !globalThis.document.head.querySelector?.('link
 }
 
 const query = new URLSearchParams(globalThis.location?.search || '');
-const language = query.get('freevideo_lang');
-const cn = language === 'zh' || (language !== 'en' && String(globalThis.navigator?.language || '').toLowerCase().startsWith('zh'));
+const cn = currentLocale() === 'zh';
 const pick = value => Array.isArray(value) ? value[cn ? 1 : 0] : value;
 
 export const SHOW_DELAY = 500, HIDE_DELAY = 100, WARM_FOR = 700, GAP = 8, MARGIN = 8, LONG_PRESS = 500, MAX_WIDTH = 320;

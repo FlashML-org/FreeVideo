@@ -1,3 +1,4 @@
+import { currentLocale, translatePair } from './i18n.js';
 // One place for the view switch, shared by every view's top bar and the node view's bar: always on the window's
 // centre (the bar's outer columns are equal: minmax(0,1fr) auto minmax(0,1fr), see shell.css), never moved by what a
 // view puts beside it. When the entries on the right do not fit in their half, they go into one "More" menu button
@@ -6,10 +7,8 @@
 // first row holds the logo and the entries (or their menu button).
 // Returns the geometry the views' own fits read: {wrap, inner, gap, left, right} (left === right on one row).
 const LOGO_ROOM = 96;
-const query = new URLSearchParams(globalThis.location?.search || '');
-const language = query.get('freevideo_lang');
-const cn = language === 'zh' || (language !== 'en' && String(globalThis.navigator?.language || '').toLowerCase().startsWith('zh'));
-const t = (en, zh) => cn ? zh : en;
+const cn = currentLocale() === 'zh';
+const t = (en, zh) => translatePair(en, zh, cn);
 
 function actionsOf(header) { return header.querySelector(':scope > :is(.fv-header-actions,.fv-view-actions)'); }
 

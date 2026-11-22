@@ -1,3 +1,4 @@
+import { currentLocale, translatePair } from './i18n.js';
 import {createLanAccess} from './lan_access.js';
 // The Agent's own page, beside the studio and the editing view: the card that connects one, then the conversation with it.
 import { api } from '../../scripts/api.js';
@@ -16,11 +17,8 @@ import { keepViewSwitchPlace } from './view_switch_place.js';
 import { tip } from './autopilot_tips.js';
 import { agentPost } from './agent_session.js';
 
-const languageOverride = typeof location !== 'undefined'
-    ? new URLSearchParams(location.search).get('freevideo_lang') : null;
-const cn = languageOverride === 'zh' || (languageOverride !== 'en'
-    && String(navigator.language || '').toLowerCase().startsWith('zh'));
-const t = (en, zh) => cn ? zh : en;
+const cn = currentLocale() === 'zh';
+const t = (en, zh) => translatePair(en, zh, cn);
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 
 let current = null, kept = null;

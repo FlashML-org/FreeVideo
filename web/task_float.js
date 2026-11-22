@@ -1,3 +1,4 @@
+import { currentLocale, translatePair } from './i18n.js';
 // The floating window: the generation the user left, in every view and room. It reads the page-wide job store
 // (task_store.js); it never owns a job. Leaving a view does not stop anything; Stop asks first.
 // Every view is a modal <dialog> today, and everything outside the topmost modal is inert, so the window is a
@@ -10,9 +11,8 @@ import { errorText, failureAdvice } from './error_panel.js';
 import { createImageGenClient, imageGenError, imageReportBar } from './image_generation.js';
 import { saveGeneratedImage } from './image_library.js';
 
-const languageOverride = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('freevideo_lang') : null;
-const cn = languageOverride === 'zh' || (languageOverride !== 'en' && String(globalThis.navigator?.language || '').toLowerCase().startsWith('zh'));
-const t = (en, zh) => cn ? zh : en;
+const cn = currentLocale() === 'zh';
+const t = (en, zh) => translatePair(en, zh, cn);
 if (typeof document !== 'undefined') {
     const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('./task_float.css', import.meta.url).href; document.head.append(css);
 }
