@@ -190,6 +190,29 @@ try {
     }
     & $freevideoPython @freevideoPythonPrefix -B -X utf8 -m freevideo_engine.managed @freevideoArguments
     $freevideoExit = $LASTEXITCODE
+    if ($freevideoExit -gt 127 -or $freevideoExit -lt 0) {
+        # A crash or a blocked start prints nothing, so the exit code was all a report held.
+        # The note is best effort and never changes the exit code.
+        $freevideoDiagErrorMode = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = 'Continue'
+            $freevideoDiagHex = '0x{0:X8}' -f [BitConverter]::ToUInt32([BitConverter]::GetBytes([int]$freevideoExit), 0)
+            $freevideoDiagPresent = Test-Path -LiteralPath $freevideoPython -PathType Leaf
+            $freevideoDiagProbe = 'not run'
+            if ($freevideoDiagPresent) {
+                $freevideoDiagText = (& $freevideoPython @freevideoPythonPrefix -B -X utf8 -c 'import sys; print(sys.version.split()[0])' 2>&1 | Select-Object -First 1 | Out-String).Trim()
+                if ($freevideoDiagText.Length -gt 80) { $freevideoDiagText = $freevideoDiagText.Substring(0, 80) }
+                $freevideoDiagProbe = 'exit code ' + $LASTEXITCODE + ', printed: ' + $freevideoDiagText
+            }
+            $freevideoDiagNote = 'The setup step ended with exit code ' + $freevideoExit + ' (' + $freevideoDiagHex + '). Python file present: ' + $freevideoDiagPresent + '; a short check of it ended with ' + $freevideoDiagProbe + '; Python path: ' + $freevideoPython
+            Write-Host $freevideoDiagNote
+            [IO.Directory]::CreateDirectory($bootstrapRoot) | Out-Null
+            [IO.File]::AppendAllText((Join-Path $bootstrapRoot 'bootstrap.log'), ('[' + [DateTime]::UtcNow.ToString('o') + '] ' + $freevideoDiagNote + [Environment]::NewLine), (New-Object System.Text.UTF8Encoding($false)))
+        } catch {
+        } finally {
+            $ErrorActionPreference = $freevideoDiagErrorMode
+        }
+    }
 } catch {
     Write-Host ("FreeVideo could not start: " + $_.Exception.Message) -ForegroundColor Red
     Write-Host 'Existing files are retained. Retry the same command after resolving the reported issue.'
