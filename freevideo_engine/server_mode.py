@@ -117,6 +117,9 @@ def released(model, row):
     global _last_release
     event = dict(model=model, action=row.get('action', 'released'), reason=str(row.get('reason') or 'unknown'),
                  at=float(row.get('at') or time.time()))
+    if isinstance(row.get('other_programs'), list):
+        # Local only (this machine's monitor): who took the card, so it can be found while it still runs.
+        event['other_programs'] = [dict(item) for item in row['other_programs'] if isinstance(item, dict)]
     with _mutex:
         _last_release = event
         _releases[:] = (_releases + [event])[-RELEASES_KEPT:]

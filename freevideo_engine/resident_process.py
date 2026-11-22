@@ -36,6 +36,8 @@ STATUS_SECONDS = 10.
 AGENT_HOLD_SECONDS = 30.
 KEEP_IDLE_SECONDS = None
 OTHER_GPU_GROWTH = 512 * 2**20
+# How many of the programs that took the card a release record names.
+OTHER_PROGRAMS_NAMED = 3
 PRELOAD_CONTEXT_BYTES = 1536 * 2**20  # what the preload's process adds beside its weights (context, allocator, staging; measured 1.4 GiB)
 HOST_FLOOR = 4 * GiB
 # The host memory a kept idle worker leaves free, as a share of the memory this process may use (the cgroup limit
@@ -403,6 +405,7 @@ class SessionOwner:
         self.active = False
         self.prewarm = None
         self.gpu = self.baseline = self.own = self.foreign = None
+        self.others = {}  # The other programs on the card when the hold began: {pid: bytes or None}.
         self.mutex = threading.RLock()
         self.generation = 0
         self.idle_since = None
@@ -414,11 +417,16 @@ class SessionOwner:
 
     def record(self, **row):
         row.setdefault('at', time.time())
+        # Who took the card goes to this machine's monitor only: the decisions reach the request's files, and those
+        # go into the diagnostic report and the feedback bundle, so they keep only each program's card bytes.
+        others = row.pop('other_programs', None)
+        if others is not None:
+            row['other_programs_gpu_bytes'] = [other.get('gpu_bytes') for other in others]
         with self.mutex:
             self.decisions = (self.decisions + [row])[-RELEASE_LOG:]
         if row.get('action') in ('released', 'trimmed'):
             from . import server_mode
-            server_mode.released('video', row)
+            server_mode.released('video', row if others is None else dict(row, other_programs=others))
         return row
 
     def note_evictions(self, answer):
@@ -501,6 +509,7 @@ class SessionOwner:
                 return self.release('gpu_unreadable')
             self.gpu, self.baseline = gpu, baseline
             self.own = gpu_own(gpu) if warm else None
+            self.others = card_others(gpu) if warm else {}
             # A server counts only programs outside it: the picture worker beside the video models is its own.
             from . import server_mode
             self.foreign = (baseline - self.own if warm and server_mode.coresident() and self.own is not None
@@ -594,23 +603,25 @@ class SessionOwner:
                       'idle' if hold is not None and time.monotonic() - since >= hold
                       else server_pressure(gpu, self.foreign) if self.foreign is not None
                       else pressure(gpu, None if placing else self.baseline))
+            # Who needs the card, read before taking the lock: the release record names them.
+            detail = dict(other_programs=other_programs(gpu, self.others)) if reason == 'other_program_gpu' else {}
             with self.mutex:
                 if generation != self.generation or self.active or self.process is None:
                     return
                 if self.process.poll() is not None:
                     return  # The image or prompt model released it and recorded why.
                 if reason:
-                    self.release(reason)
+                    self.release(reason, **detail)
                     return
 
-    def release(self, reason):
+    def release(self, reason, **detail):
         with self.mutex:
             if self.process is None or self.process.poll() is not None:
                 self.close()
                 return None
             row = dict(action='released', reason=reason, pid=self.process.pid,
                        idle_seconds=None if self.idle_since is None else round(time.monotonic() - self.idle_since, 1),
-                       **worker_memory(self.process.pid))
+                       **worker_memory(self.process.pid), **detail)
             self.generation += 1
             self.idle_since = None
             self.close()
@@ -755,6 +766,42 @@ def gpu_own(gpu):
         pids = family(os.getpid())
         return sum(size for pid, size in rows.items() if pid in pids)
     except (OSError, RuntimeError, AttributeError, ValueError, ImportError):
+        return None
+
+
+def card_others(gpu):
+    """{pid: bytes or None} of the card's processes outside this process tree; {} when the driver cannot list them."""
+    try:
+        from .background_room import Gpu, family
+        device = Gpu(gpu)
+        try:
+            rows = device.processes()
+        finally:
+            device.close()
+        ours = family(os.getpid())
+        return {pid: size for pid, size in (rows or {}).items() if pid not in ours}
+    except (OSError, RuntimeError, AttributeError, ValueError, ImportError):
+        return {}
+
+
+def other_programs(gpu, before, limit=OTHER_PROGRAMS_NAMED):
+    """The programs that came onto the card, or grew on it, since ``before`` ({pid: bytes or None}), most growth
+    first: [{'pid', 'name', 'gpu_bytes'}]. Where the driver gives no per-process bytes (WDDM) every newcomer is
+    listed with ``gpu_bytes`` None. The names reach only this machine's monitor (SessionOwner.record)."""
+    rows = []
+    for pid, size in card_others(gpu).items():
+        grown = None if size is None else size - (before.get(pid) or 0)
+        if pid not in before or (grown or 0) > 0:
+            rows.append((grown, pid, size))
+    rows.sort(key=lambda row: -(row[0] or 0))
+    return [dict(pid=pid, name=process_name(pid), gpu_bytes=size) for grown, pid, size in rows[:limit]]
+
+
+def process_name(pid):
+    try:
+        import psutil
+        return psutil.Process(pid).name()[:80] or None
+    except Exception:
         return None
 
 
