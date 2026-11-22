@@ -57,18 +57,21 @@ export function fuzzyMatch(query, text) {
 }
 
 // One command against a query: every word of the query has to match the title (either language) or a keyword.
-// The title in the language shown counts most; the ranges are for highlighting that title.
+// The title in the language shown counts most; the ranges are for highlighting that title. A searchOnly command
+// (a tutorial chapter) matches its title and its other names (aliases) only, each word as typed.
 export function scoreCommand(command, query, cn = CN) {
     const parts = fold(query).trim().split(/\s+/).filter(Boolean);
     if (!parts.length) return {score: 0, ranges: []};
     const shown = words(command.title, cn), other = words(command.title, !cn);
-    const extra = [...(command.keywords || []), words(command.group || '', cn), words(command.group || '', !cn)].filter(Boolean);
+    const extra = command.searchOnly ? [...(command.aliases || [])] : [...(command.keywords || []), words(command.group || '', cn), words(command.group || '', !cn)].filter(Boolean);
     let total = 0; const ranges = [];
     for (const part of parts) {
-        const here = fuzzyMatch(part, shown), there = other !== shown ? fuzzyMatch(part, other) : null;
+        // A chapter title is long: its words have to appear as typed, not as scattered letters.
+        const allowed = text => !command.searchOnly || fold(text).includes(part);
+        const here = allowed(shown) ? fuzzyMatch(part, shown) : null, there = other !== shown && allowed(other) ? fuzzyMatch(part, other) : null;
         let best = here ? here.score : -Infinity;
         if (there) best = Math.max(best, there.score * 0.85);
-        for (const word of extra) { const hit = fuzzyMatch(part, word); if (hit) best = Math.max(best, hit.score * 0.7); }
+        for (const word of extra) { const hit = allowed(word) ? fuzzyMatch(part, word) : null; if (hit) best = Math.max(best, hit.score * 0.7); }
         if (best === -Infinity) return null;
         total += best;
         if (here) ranges.push(...here.ranges);
@@ -83,8 +86,11 @@ export function mergeRanges(ranges) {
 
 // Ranks visible commands for a query. Without a query: recently used first (up to 5), then this view's commands,
 // then the rest in their groups. With one: best match first; a recent command gets a small lift.
+// searchOnly commands (tutorial chapters) show only for a query, at most SEARCH_ONLY_LIMIT, after every matching command.
+export const SEARCH_ONLY_LIMIT = 2;
 export function rankCommands(entries, query, {recent = [], cn = CN} = {}) {
     const q = String(query || '').trim();
+    if (!q) entries = entries.filter(entry => !entry.command.searchOnly);
     const recentAt = id => { const at = recent.indexOf(id); return at < 0 ? Infinity : at; };
     if (!q) {
         const recentRows = entries.filter(entry => recentAt(entry.command.id) < 5).sort((a, b) => recentAt(a.command.id) - recentAt(b.command.id))
@@ -104,7 +110,9 @@ export function rankCommands(entries, query, {recent = [], cn = CN} = {}) {
         const lift = recentAt(entry.command.id) < Infinity ? Math.max(0, 40 - recentAt(entry.command.id) * 5) : 0;
         out.push({...entry, section: 'match', ranges: hit.ranges, score: hit.score + lift + (entry.local ? 10 : 0)});
     }
-    return out.sort((a, b) => b.score - a.score || a.order - b.order);
+    out.sort((a, b) => Number(Boolean(a.command.searchOnly)) - Number(Boolean(b.command.searchOnly)) || b.score - a.score || a.order - b.order);
+    let extra = 0;
+    return out.filter(entry => !entry.command.searchOnly || ++extra <= SEARCH_ONLY_LIMIT);
 }
 
 // ── Recently used ───────────────────────────────────────────────────────────────────────────────────────────────
@@ -281,6 +289,13 @@ export function builtinCommands() {
     ];
 }
 
+// Each finished tutorial chapter, found by its title or another name for it (either language) and opened at that chapter.
+export const chapterCommands = (chapters, aliases = {}) => (chapters || []).filter(chapter => chapter?.id && chapter.title?.en && chapter.title?.zh).map(chapter => ({
+    id: `tutorial.chapter.${chapter.id}`, searchOnly: true, group: G.help, icon: 'book', title: [chapter.title.en, chapter.title.zh],
+    aliases: [...(aliases[chapter.id]?.zh || []), ...(aliases[chapter.id]?.en || [])],
+    run: async () => (await import('./tutorial_book.js')).openTutorialBook({chapter: chapter.id}),
+}));
+
 // ── The palette ─────────────────────────────────────────────────────────────────────────────────────────────────
 // One surface with six scopes (Tab and Shift+Tab move between them): All, Actions, Creations, Prompts, Cast, Settings.
 // All without a query: recently used, this view's actions, the newest creations as a grid, then every action in its
@@ -297,6 +312,8 @@ const SECTION_NAMES = {recent: ['Recently used', '最近使用'], match: ['Actio
 
 function build() {
     recent = createRecent((() => { try { return localStorage; } catch { return null; } })());
+    // The tutorial's chapters, read when the palette first opens.
+    import('./tutorial_book_content.js').then(({TUTORIAL_CHAPTERS, TUTORIAL_ALIASES}) => registry.register('global', chapterCommands(TUTORIAL_CHAPTERS, TUTORIAL_ALIASES), {builtin: true}), () => {});
     layer = createLayer({className: 'fv-palette', label: ['Search and commands', '搜索与命令'], onKey, onClose: () => { clearTimeout(searchTimer); searchRun++; }});
     const d = layer.dialog;
     d.innerHTML = `<div class="fv-pal-field">
@@ -458,7 +475,9 @@ function draw() {
         const best = ranked[0];
         const actionsFirst = best && scoreCommand(best.command, q).score >= 1150;
         // One group of actions: first when one of them starts with the query, else after what was found.
-        const actions = [...ranked.slice(0, actionsFirst ? 6 : 8), ...makeOfQuery(q)];
+        // Chapters come after the actions, never in place of one.
+        const kept = new Set(ranked.filter(entry => !entry.command.searchOnly).slice(0, actionsFirst ? 6 : 8));
+        const actions = [...ranked.filter(entry => entry.command.searchOnly || kept.has(entry)), ...makeOfQuery(q)];
         if (actionsFirst) addCommands(actions, words(SECTION_NAMES.match));
         addResults('works', {limit: 4});
         addResults('prompt', {limit: 3});
