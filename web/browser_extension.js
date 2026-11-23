@@ -71,6 +71,13 @@ export function engineNotRunning(connection) {
     return connection?.engine_answers_after === false && connection.probe_timed_out !== true && connection.page_address === 'this-computer';
 }
 export function engineNotRunningText(t) { return t('Start it again from the FreeVideo launcher.', '请从 FreeVideo 启动器重新启动。'); }
+// The read right after a lost connection was not refused but not answered either, on the computer the page runs
+// on: the connection was accepted, so FreeVideo is most likely still running and busy. The notice goes away by
+// itself when it answers again (the page keeps reading the queue).
+export function engineNotResponding(connection) {
+    return connection?.engine_answers_after === false && connection.probe_timed_out === true && connection.page_address === 'this-computer';
+}
+export function engineNotRespondingText(t) { return t('It may still be working.', '可能仍在处理中。'); }
 // A read the engine did not answer: the status was a success but the body is a web page (a page shown while the
 // engine restarts, or one put in front of it by a proxy or tunnel), not JSON. It is raised as the same kind of
 // error as a lost connection, so retries, the delay between polls and the notice that clears itself apply
@@ -100,7 +107,10 @@ export function pageAddressKind(location = globalThis.location) {
 // What a failed request can say about itself, read right after it failed: whether the browser is
 // online, whether the engine answers a small read now, and what kind of address the page came from.
 // One failed read tells an engine that has stopped from a request that alone was cut off.
-export async function connectionFacts(api, {timeout = 2000, now = Date.now} = {}) {
+// The wait is longer than the two seconds Windows can take to refuse a connection to a port nothing listens on, so a
+// refusal (the engine has stopped) is never mistaken for a read nobody answered.
+export const PROBE_TIMEOUT_MS = 5000;
+export async function connectionFacts(api, {timeout = PROBE_TIMEOUT_MS, now = Date.now} = {}) {
     const facts = {online: globalThis.navigator?.onLine ?? null, page_hidden: globalThis.document?.hidden ?? null,
         page_address: pageAddressKind(), secure_page: globalThis.location?.protocol === 'https:'};
     const started = now();

@@ -1,7 +1,7 @@
 // Shared by the Studio and graph view. Text only; never render exception HTML.
 import {readOtherUsage, otherUsageText} from './other_usage.js';
 import {pageRepair, repairAction, repairButton} from './repair_hint.js';
-import {detectBrowserExtension, browserExtensionAdvice, extensionSteps, isNetworkTypeError, connectionLostText, engineNotRunning, engineNotRunningText, isRequestTimeout, requestTimeoutText, requestTimeoutAction} from './browser_extension.js';
+import {detectBrowserExtension, browserExtensionAdvice, extensionSteps, isNetworkTypeError, connectionLostText, engineNotRunning, engineNotRunningText, engineNotResponding, engineNotRespondingText, isRequestTimeout, requestTimeoutText, requestTimeoutAction} from './browser_extension.js';
 import {SAMPLING_EFFORTS, STEP_CACHES, UPSCALE_FACTORS, tableLevel} from './sampling_effort.js';
 import {failureIssue, failureStage} from './failure_issue.js';
 import {knownEngineExit} from './engine_exit.js';
@@ -655,9 +655,13 @@ export function adviceFor(report, t, value) {
         : failureAdvice(report.details, t, report.known_error ?? null);
     // A dropped connection reads as one sentence; the browser's own wording stays in the details.
     if (advice.kind === 'unknown' && isNetworkTypeError(value) && ['submission', 'queue'].includes(report.stage)) {
-        const stopped = engineNotRunning(report.connection);
-        Object.assign(advice, {kind: 'connection', title: stopped ? t('FreeVideo has stopped', 'FreeVideo 已停止运行') : t('Lost the connection to FreeVideo', '与 FreeVideo 的连接已断开'),
-            summary: stopped ? engineNotRunningText(t) : connectionLostText(t), action: ''});
+        const stopped = engineNotRunning(report.connection), silent = engineNotResponding(report.connection);
+        Object.assign(advice, {kind: 'connection',
+            title: stopped ? t('FreeVideo has stopped', 'FreeVideo 已停止运行')
+                : silent ? t('FreeVideo is not responding', 'FreeVideo 没有响应') : t('Lost the connection to FreeVideo', '与 FreeVideo 的连接已断开'),
+            // Not answered: the engine may already hold the task, so the next step is the timeout card's own (look in the
+            // queue first, then submit again) and not the plain "try again", which could queue it twice.
+            summary: stopped ? engineNotRunningText(t) : silent ? engineNotRespondingText(t) : connectionLostText(t), action: silent ? requestTimeoutAction(t) : ''});
     }
     // A request that was not answered in time: the card says so and what to check, instead of a bare title.
     if (advice.kind === 'unknown' && ['submission', 'queue'].includes(report.stage)
