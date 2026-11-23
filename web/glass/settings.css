@@ -287,6 +287,8 @@ dialog.fv-set .st-table td.off{color:var(--fv-warn)}
 
 /* ── Models: the video-generation card has one height in every state (版面稳定) ── */
 dialog.fv-set .st-hero{height:200px;padding:var(--fv-sp-20);display:grid;grid-template-rows:auto minmax(0,1fr);row-gap:var(--fv-sp-16);overflow:hidden}
+/* A failed step's sentence can run past the fixed box (with the report button, on a narrow window): the box grows with it instead of clipping both ends. */
+dialog.fv-set .st-hero[data-state=failed],dialog.fv-set .st-hero[data-state=readerr]{height:auto;min-height:200px}
 dialog.fv-set .st-hero-top{display:grid;grid-template-columns:var(--fv-sp-40) minmax(0,1fr) auto;align-items:center;column-gap:var(--fv-sp-16)}
 dialog.fv-set .st-hic{width:var(--fv-sp-40);height:var(--fv-sp-40);border-radius:var(--fv-r-pill);display:grid;place-items:center;background:var(--fv-ctl-bg);color:var(--fv-fg2)}
 dialog.fv-set .st-hic .fv-i{width:20px;height:20px;stroke-width:2}
@@ -439,6 +441,7 @@ dialog.fv-set .st-mi[aria-checked=true] .ck{visibility:visible}
   dialog.fv-set .st-picker{height:var(--fv-touch);padding:0 var(--fv-sp-16);border-radius:var(--fv-rad-pill);background:rgb(var(--fv-tint) / var(--fv-a1));box-shadow:inset 0 0 0 1px var(--fv-edge);color:var(--fv-fg);font-weight:var(--fv-fw-3)}
   dialog.fv-set .st-mhead .st-close{width:var(--fv-touch);height:var(--fv-touch)}
   dialog.fv-set .st-hero{height:288px}
+  dialog.fv-set .st-hero[data-state=failed],dialog.fv-set .st-hero[data-state=readerr]{height:auto;min-height:288px}
   dialog.fv-set .st-hero-top{grid-template-columns:var(--fv-sp-40) minmax(0,1fr);row-gap:var(--fv-sp-12)}
   dialog.fv-set .st-ha{grid-column:1 / -1;flex-wrap:wrap}
   dialog.fv-set .st-ha .st-btn{flex:1;height:var(--fv-touch)}
