@@ -302,4 +302,8 @@
 .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads>.fv-ed-add-audio[data-mode=remove]::before{margin:0}
 .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads:not([data-hx-a2hover])>.fv-ed-add-audio[data-mode=remove]:not([data-shown=true]):not(:hover){visibility:hidden}
 .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads[data-hx-a2hover]>.fv-ed-add-audio[data-mode=remove]{visibility:visible}
+/* The remove key sits beside Audio 2's head, in the rows' coordinates: when the rows scroll it moves with the heads. */
+.fv-studio.fv-editor .fv-ed-track-view[data-vertical-overflow=true] .fv-ed-track-heads>.fv-ed-add-audio[data-mode=remove]{translate:0 var(--fv-ed-track-offset,0px)!important}
 @media(max-width:520px){.fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads>.fv-ed-add-audio[data-mode=remove]{left:calc(100% - 32px)}}
+/* A track below the timeline's foot: a fade says there is more until it is scrolled to (editor_tracks.js fitRows). */
+.fv-ed-track-view[data-track-below=true]::after{content:"";position:absolute;left:0;right:0;bottom:0;height:24px;pointer-events:none;z-index:7;background:linear-gradient(to bottom,transparent,var(--fv-ed-timeline,var(--fv-bg)))}

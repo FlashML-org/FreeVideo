@@ -2437,7 +2437,9 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if (trackContent && trackScroll && typeof ResizeObserver === 'function') {
             const fitTracks = () => {
                 const around = tracksHost.getBoundingClientRect().height - trackScroll.clientHeight; // the ruler's inset and the scroll bar
-                if (around >= 0 && trackContent.offsetHeight) element.style.setProperty('--fv-ed-tracks-fit', `${Math.ceil(trackContent.offsetHeight + around)}px`);
+                // The rows' natural height (editor_tracks.js fitRows): sound lanes given up to fit are not taken as less room needed.
+                const rows = Number(trackContent.dataset.fit) || trackContent.offsetHeight;
+                if (around >= 0 && rows) element.style.setProperty('--fv-ed-tracks-fit', `${Math.ceil(rows + around)}px`);
             };
             const watchTracks = new ResizeObserver(fitTracks); watchTracks.observe(trackContent); watchTracks.observe(tracksHost);
             listeners.push(() => watchTracks.disconnect()); fitTracks();
