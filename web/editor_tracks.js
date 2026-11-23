@@ -528,6 +528,9 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
             top += height + 6;
         }
         addAudio.style.top = `${top}px`;
+        // The key that removes Audio 2 stands in that head's icon, so it moves whenever the rows are fitted.
+        const second = rows.get('a2');
+        if (second) addAudio.style.setProperty?.('--fv-ed-remove-top', `${second.top + second.height / 2 - 14}px`);
         content.dataset.fit = String(natural + 34);
         setTrackHeight(top - 6);
     }
@@ -764,8 +767,6 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         // With Audio 2 present the key removes it: it shows beside that track's head only while Audio 2 (or something on it)
         // is selected, or the pointer is over its head; it is not there the rest of the time.
         addAudio.dataset.mode = twoAudio ? 'remove' : 'add';
-        const second = rows.get('a2');
-        if (second) addAudio.style.setProperty?.('--fv-ed-remove-top', `${second.top + second.height / 2 - 14}px`);
         addAudio.textContent = twoAudio ? t('Remove Audio 2', '移除声音 2') : t('+ Audio track', '＋ 声音轨');
         addAudio.dataset.sign = twoAudio ? '×' : '＋'; // Phone widths show the sign alone.
         // Wide heads draw the sign in the icon column and these words in the name column, like a track head.
