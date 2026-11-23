@@ -1,37 +1,74 @@
 {
   "schema": 1,
-  "product_version": "0.6.8",
+  "product_version": "0.6.9",
   "en": {
-    "summary": "0.6.8 keeps models on the graphics card more often when pictures and videos alternate, has background preparation give the card back sooner when a generation starts, lets results be upscaled from their own menu, makes tutorial chapters searchable from the command palette, and explains more failures.",
+    "summary": "0.6.9 improves canceling, track display and continuation in the Edit view; has the launcher restore missing program files and give clearer messages; explains more clearly when a performance measurement stops for lack of memory, when FreeVideo does not answer in time and when no NVIDIA graphics card is found; and adds three tutorial chapters.",
     "changes": [
-      "Fewer reloads when pictures and videos alternate: when only system memory is short, models already on the graphics card are no longer cleared with it; after a picture, the video model returns to the card; when both cannot fit, the one used last stays.",
-      "A new generation gets the graphics card sooner: when Generate is clicked, background compiling and text-encoder preparation stop within seconds and give the card back instead of finishing first.",
-      "Less waiting in the second pass on 8 GB cards: on cards with less video memory, the second pass no longer waits for the processor to join intermediate results; the output is identical.",
-      "Upscale from the result menu: a result's \"⋯\" menu offers \"Upscale to W × H\", the same as the library's right-click menu.",
-      "Search the tutorial from the command palette: while text is typed in the command palette, matching tutorial chapters are listed after the related actions, and choosing one opens that chapter; Chinese and English chapter names and common terms can all be searched.",
-      "Launcher path tip: a folder's full path is shown as a tip only when the path is cut off.",
-      "More failures explain their cause: the prompt model and dubbing say when they fail for lack of disk space; a failure whose cause the engine has stated is no longer shown as an unexplained process exit and gets advice for that cause; on a Mac, using reference media together with first and last frames explains that one of the two has to be kept, and what to do next.",
-      "More accurate LoRA check: step-distillation acceleration LoRAs saved in other layouts are recognized as acceleration LoRAs, and language-model LoRAs are identified as such.",
-      "Edit view details: the title bar is no longer covered by the timeline's drag layers; at phone width the toolbar fits in one row; closing the Edit view clears the \"last edit not found\" notice; the slow-interface notice stays in the notification list until it is closed.",
-      "Reverse prompt: a video clip that yields a single frame can be reverse-prompted."
+      "More tracks in view in the Edit view: when the timeline cannot show every track, the sound tracks become slightly shorter so that as many as possible are visible; if they still do not fit, a fade at the bottom of the timeline shows that more tracks are below.",
+      "Smoother continuation in the Edit view: when a continued video finishes, its next part is made ready and the creation preview being watched stays open.",
+      "In a wider window, while a part is generating in the Edit view, Cancel stands on the greyed Generate key, where the mouse can reach it.",
+      "More recordings can be imported in the Edit view: WebM and MKV recordings that do not state their length can now be imported.",
+      "Clearer prompt when dubbing is stopped: in the Edit view, the confirmation says that lines already dubbed are kept and the rest can be dubbed again later.",
+      "The launcher restores missing program files: when files in its saved program folder are missing or empty, the launcher restores them from its built-in copy before setup or launch, then continues as usual. When a Windows setup step ends like a crash, the setup log gains one line with the exit code, a short check of that step's Python and its path.",
+      "Clearer launcher wording: the status heading says FreeVideo (such as Starting FreeVideo and FreeVideo stopped), and on the setup page the first step and the first option are called Runtime and New installation. The setting \"ComfyUI address\" is now called \"Server address\", and the message for a port in use says the same; when the LAN access ports are in use, the message says to close the programs using them, then turn LAN access on again.",
+      "Clearer explanation of the graphics card at setup: on Windows, when no NVIDIA driver is found and the computer lists only display devices from other makers, a virtual machine's included, the launcher says that no NVIDIA graphics card was found; when the graphics list cannot be read, the setup report says which step failed. FreeVideo still needs an NVIDIA graphics card with compute capability 8.0 or higher (such as the RTX 30 series or newer, professional cards included).",
+      "Clearer message when a performance measurement stops: when it stops because the computer ran out of available memory, Settings states the cause and the next step, and a problem can be reported. In a narrow window, a failure message in Settings grows with its text and shows in full.",
+      "Clearer notice when an answer is late: when FreeVideo does not answer in time, some cases that used to read as a lost connection now say FreeVideo is not responding and suggest checking the queue first; when a queue action gets no answer, the card suggests checking the queue's current state.",
+      "Three new tutorial chapters: Upscale a video, how to upscale a video to a larger size or to about 4K; making several videos at once (batch, one prompt per line, loop); and organizing creations (tags, filters, compare, recently deleted). The tutorial also covers \"Composition only\" for reference videos and running the second pass from a preview's right-click menu in Creations, and updates how characters, scenes and props work with first and last frames and the steps for selecting creations and finding Favorites.",
+      "More accurate memory planning on NVIDIA computers whose video memory and system memory are one pool (such as DGX Spark): the plan counts the pool once and leaves a part of it for the system (not verified on a physical computer). Windows on Arm computers: setup chooses its downloads by the processor of the computer (not verified on a physical computer). Dubbing is not available on these computers."
     ]
   },
   "zh": {
-    "summary": "0.6.8 让图片与视频交替使用时模型更多留在显卡上，开始生成时后台准备工作更快让出显卡；结果菜单可以直接放大，命令面板可以搜索教程章节，更多失败会说明原因。",
+    "summary": "0.6.9 改进剪辑视图的取消、轨道显示和接续生成；启动器自动补回缺失的程序文件，提示更清楚；性能测量因内存不足停止、FreeVideo 没有及时应答、没有找到 NVIDIA 显卡时，说明更清楚；教程新增三章。",
     "changes": [
-      "图片和视频交替使用时更少重复载入：只是电脑内存紧张时，已在显卡上的模型不再被一并清出；图片用完后，视频模型会重新回到显卡；两者放不下时，保留最近使用的一个。",
-      "开始生成更快接手显卡：点击生成时，后台的编译和文本编码器准备会在几秒内停下并让出显卡，不再等它们做完。",
-      "8 GB 显卡第二遍更少等待：显存较小时，第二遍不再等待处理器拼接中间结果，画面与之前完全一致。",
-      "结果菜单可以放大：生成结果的“⋯”菜单中可直接选择“放大到 宽 × 高”，与作品库右键菜单一致。",
-      "命令面板可以搜索教程：在命令面板中输入文字时，匹配的教程章节会列在相关操作之后，选择即可打开该章；中文、英文章节名和常用说法都可搜索。",
-      "启动器路径提示：文件夹路径只在显示不全时才出现完整路径提示。",
-      "更多失败会说明原因：提示词模型和配音因磁盘空间不足失败时会说明；引擎已写明原因的失败不再显示为原因不明的进程退出，并给出对应的处理建议；在 Mac 上同时使用参考素材和首尾帧时，会说明需要保留其中一种，以及下一步怎么做。",
-      "LoRA 检查更准确：以其他方式保存的步数蒸馏加速 LoRA 也能被识别为加速 LoRA；语言模型的 LoRA 会被如实指出。",
-      "剪辑视图细节：标题栏不再被时间线拖动层遮住；手机宽度下工具条完整放在一行；关闭剪辑视图后，“找不到上次的剪辑”提示随之清除；界面变慢的提示会保留在通知列表中，直到手动关闭。",
-      "反推提示词：只取到一帧的视频片段也能正常反推。"
+      "剪辑视图轨道多时看得更全：时间线放不下所有轨道时，声音轨会略微变矮，让轨道尽量全部显示；仍放不下时，时间线下沿出现渐隐，提示下面还有轨道。",
+      "剪辑视图接续生成更顺畅：接续生成的视频完成后，下一段会照常备好，正在看的作品预览保持打开。",
+      "在较宽的窗口里，剪辑视图生成一段时，“取消”键移到变灰的“生成视频”键处，可以用鼠标点到。",
+      "剪辑视图可以导入更多录制文件：文件中没有写明时长的 WebM、MKV 录制文件现在可以导入。",
+      "停止配音时说明更准确：在剪辑视图中停止配音，确认框会说明已配好的台词会保留，其余台词可以稍后重新配音。",
+      "启动器自动补回缺失的程序文件：已保存的程序文件夹中有文件缺失或被清空时，启动器会在安装或启动前从自带的副本补回，然后照常继续。Windows 安装中某一步像崩溃一样结束时，安装日志会多记一行，写明退出码、对该步 Python 的简短检查和 Python 路径。",
+      "启动器用词更清楚：状态标题改用“FreeVideo”（如“正在启动 FreeVideo”“FreeVideo 已停止”），安装页的第一步和第一个选项改称“环境”和“全新安装”。设置项“ComfyUI 地址”改称“服务地址”，端口被占用时的提示也用这个名字；局域网访问的端口被占用时，提示关闭占用端口的程序，再重新开启局域网访问。",
+      "安装时的显卡说明更清楚：在 Windows 上找不到 NVIDIA 驱动、电脑里只有其他厂商的显示设备（包括虚拟机的）时，启动器会说明没有找到 NVIDIA 显卡；读不出显卡列表时，安装报告写明是哪一步。FreeVideo 仍需要计算能力 8.0 及以上的 NVIDIA 显卡（如 RTX 30 系列及更新，包括专业卡）。",
+      "性能测量停止时说明更清楚：性能测量因电脑可用内存不足而停止时，设置页会写明原因和下一步，并可以提交问题。设置页的失败说明在窄窗口中随文字变高，完整显示。",
+      "应答超时的提示更准确：FreeVideo 没有及时应答时，部分原先显示“连接已断开”的情况改为显示“FreeVideo 没有响应”，并提醒先查看队列；队列操作没有得到应答时，提醒查看队列中的实际状态。",
+      "教程新增三章：“放大视频”，说明如何把视频放大到更大的尺寸或 4K 级别；“一次生成多条”（批量、每行一条描述、循环）；“整理作品”（标签、筛选、对比、最近删除）。另补充参考视频“仅参考构图”和在作品库中右键预览继续二采的用法，更新角色、场景和道具与首帧、尾帧搭配使用的说明，以及作品库多选和收藏位置的说明。",
+      "显存与内存为同一片的 NVIDIA 电脑（如 DGX Spark）的内存规划更准确：规划时这片内存只算一次，并为系统留出一部分（未在真机验证）。Windows on Arm 电脑：安装时按电脑架构选择下载内容（未在真机验证）。这类电脑上无法使用配音。"
     ]
   },
   "history": [
+    {
+      "product_version": "0.6.8",
+      "en": {
+        "summary": "0.6.8 keeps models on the graphics card more often when pictures and videos alternate, has background preparation give the card back sooner when a generation starts, lets results be upscaled from their own menu, makes tutorial chapters searchable from the command palette, and explains more failures.",
+        "changes": [
+          "Fewer reloads when pictures and videos alternate: when only system memory is short, models already on the graphics card are no longer cleared with it; after a picture, the video model returns to the card; when both cannot fit, the one used last stays.",
+          "A new generation gets the graphics card sooner: when Generate is clicked, background compiling and text-encoder preparation stop within seconds and give the card back instead of finishing first.",
+          "Less waiting in the second pass on 8 GB cards: on cards with less video memory, the second pass no longer waits for the processor to join intermediate results; the output is identical.",
+          "Upscale from the result menu: a result's \"⋯\" menu offers \"Upscale to W × H\", the same as the library's right-click menu.",
+          "Search the tutorial from the command palette: while text is typed in the command palette, matching tutorial chapters are listed after the related actions, and choosing one opens that chapter; Chinese and English chapter names and common terms can all be searched.",
+          "Launcher path tip: a folder's full path is shown as a tip only when the path is cut off.",
+          "More failures explain their cause: the prompt model and dubbing say when they fail for lack of disk space; a failure whose cause the engine has stated is no longer shown as an unexplained process exit and gets advice for that cause; on a Mac, using reference media together with first and last frames explains that one of the two has to be kept, and what to do next.",
+          "More accurate LoRA check: step-distillation acceleration LoRAs saved in other layouts are recognized as acceleration LoRAs, and language-model LoRAs are identified as such.",
+          "Edit view details: the title bar is no longer covered by the timeline's drag layers; at phone width the toolbar fits in one row; closing the Edit view clears the \"last edit not found\" notice; the slow-interface notice stays in the notification list until it is closed.",
+          "Reverse prompt: a video clip that yields a single frame can be reverse-prompted."
+        ]
+      },
+      "zh": {
+        "summary": "0.6.8 让图片与视频交替使用时模型更多留在显卡上，开始生成时后台准备工作更快让出显卡；结果菜单可以直接放大，命令面板可以搜索教程章节，更多失败会说明原因。",
+        "changes": [
+          "图片和视频交替使用时更少重复载入：只是电脑内存紧张时，已在显卡上的模型不再被一并清出；图片用完后，视频模型会重新回到显卡；两者放不下时，保留最近使用的一个。",
+          "开始生成更快接手显卡：点击生成时，后台的编译和文本编码器准备会在几秒内停下并让出显卡，不再等它们做完。",
+          "8 GB 显卡第二遍更少等待：显存较小时，第二遍不再等待处理器拼接中间结果，画面与之前完全一致。",
+          "结果菜单可以放大：生成结果的“⋯”菜单中可直接选择“放大到 宽 × 高”，与作品库右键菜单一致。",
+          "命令面板可以搜索教程：在命令面板中输入文字时，匹配的教程章节会列在相关操作之后，选择即可打开该章；中文、英文章节名和常用说法都可搜索。",
+          "启动器路径提示：文件夹路径只在显示不全时才出现完整路径提示。",
+          "更多失败会说明原因：提示词模型和配音因磁盘空间不足失败时会说明；引擎已写明原因的失败不再显示为原因不明的进程退出，并给出对应的处理建议；在 Mac 上同时使用参考素材和首尾帧时，会说明需要保留其中一种，以及下一步怎么做。",
+          "LoRA 检查更准确：以其他方式保存的步数蒸馏加速 LoRA 也能被识别为加速 LoRA；语言模型的 LoRA 会被如实指出。",
+          "剪辑视图细节：标题栏不再被时间线拖动层遮住；手机宽度下工具条完整放在一行；关闭剪辑视图后，“找不到上次的剪辑”提示随之清除；界面变慢的提示会保留在通知列表中，直到手动关闭。",
+          "反推提示词：只取到一帧的视频片段也能正常反推。"
+        ]
+      }
+    },
     {
       "product_version": "0.6.7",
       "en": {
