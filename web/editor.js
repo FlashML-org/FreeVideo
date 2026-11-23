@@ -734,7 +734,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     // Music on the second sound track goes through the same bar; the bar shows a chosen piece's own job.
     const music = createEditorMusic({state, store, t, completeSources, onStatus: () => genbar?.update(barValue)});
     // Dubbing lines of a stretch of speech.
-    let voiceReady = false, voiceInstallable = false, exportFps = false;
+    let voiceReady = false, voiceInstallable = false, voiceLater = false, exportFps = false;
     const generatedSource = value => { const match = /^generated:(.+)$/.exec(String(value || '')); return match ? {kind: 'generated', id: match[1]} : null; };
     // Playing one line: the playhead goes to its start and the picture plays up to its end, then stops.
     let lineStop = null;
@@ -1791,11 +1791,11 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         const found = await voiceFeatures(api);
         // An unanswered question changes nothing: the lines stay as they were, and a failed recognition says so.
         if (found.unknown) return voiceReady;
-        voiceReady = found.ready; voiceInstallable = found.install; exportFps = found.exportFps;
+        voiceReady = found.ready; voiceInstallable = found.install; voiceLater = !!found.later; exportFps = found.exportFps;
         if (!disposed) { voice.refresh(); narration.refresh(); if (found.install) voiceInstall.init(); genbar?.update(barValue); }
         return found.ready;
     }
-    const voiceInstall = createVoiceInstall({api, available: () => voiceInstallable && !voiceReady, target: selection => !!state.record && !!voiceTarget(state.record, selection),
+    const voiceInstall = createVoiceInstall({api, available: () => voiceInstallable && !voiceReady, later: () => voiceLater && !voiceReady, target: selection => !!state.record && !!voiceTarget(state.record, selection),
         onChange: () => { if (!disposed) genbar?.update(barValue); }, onReady: readVoice});
     // A new line said in a voice of the edit, on an empty stretch of the recording track; heard from the clip's own sound.
     let sampleStop = null;

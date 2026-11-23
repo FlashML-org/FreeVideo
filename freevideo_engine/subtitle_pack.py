@@ -41,7 +41,7 @@ def catalog():
 def platform_key():
     machine = platform.machine().lower()
     if sys.platform == 'win32':
-        return 'windows-x64' if machine in ('amd64', 'x86_64') else None
+        return 'windows-x64' if machine in ('amd64', 'x86_64') else 'windows-arm64' if machine in ('arm64', 'aarch64') else None
     if sys.platform == 'darwin':
         return 'macos-arm64' if machine in ('arm64', 'aarch64') else 'macos-x86_64' if machine == 'x86_64' else None
     if sys.platform.startswith('linux'):

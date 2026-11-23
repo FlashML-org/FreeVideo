@@ -417,8 +417,9 @@ def replace_export(stage, target):
 
 
 def runtime_packages_supported():
-    """The offline Environment package carries a Windows runtime."""
-    return sys.platform == 'win32'
+    """The offline Environment package carries a Windows x64 runtime."""
+    from .environments import windows_arm64
+    return sys.platform == 'win32' and not windows_arm64()
 
 
 def package_instructions(runtime_needed, zh=False):

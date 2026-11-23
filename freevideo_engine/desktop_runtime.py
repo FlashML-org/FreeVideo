@@ -43,6 +43,13 @@ def launcher_root():
     return Path(home) / 'FreeVideo-launcher'
 
 
+def foreign_environment(root):
+    """Whether an x64 environment is installed on a Windows on Arm computer."""
+    from .environments import WINDOWS_ARM64_PYTHON, environment_native_arm64, windows_arm64
+    folder = Path(root) / 'envs' / 'unified'
+    return windows_arm64() and io_path(folder).is_dir() and not environment_native_arm64(folder, WINDOWS_ARM64_PYTHON)
+
+
 NOTICE_FILES = ('LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md')
 
 
@@ -458,7 +465,11 @@ class Runner:
 
     def environment(self, root):
         from .linux_bundle import child_environment
-        return dict(child_environment(), PYTHONUTF8='1', PYTHONIOENCODING='utf-8', NO_COLOR='1', FREEVIDEO_UI_EVENTS='1')
+        values = dict(child_environment(), PYTHONUTF8='1', PYTHONIOENCODING='utf-8', NO_COLOR='1', FREEVIDEO_UI_EVENTS='1')
+        if foreign_environment(root):
+            # Setup makes this environment again, and Windows cannot delete the folder of the Python that runs setup.
+            values['FREEVIDEO_FORCE_BOOTSTRAP'] = '1'
+        return values
 
     def prepare(self, action, root, env, progress):
         return env

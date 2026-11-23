@@ -11,6 +11,13 @@ from . import network
 
 
 def wheel_spec(uv):
+    if 'aarch64-pc-windows-msvc' in uv.get('url', ''):
+        # Native Windows on Arm: the win_arm64 wheel row of its own table.
+        from . import windows_arm64
+        wheel = windows_arm64.load()['uv']
+        if wheel['version'] != uv['version'] or wheel['legacy_sha256'] != uv['sha256']:
+            raise ValueError('The Windows on Arm uv row does not match the pinned bootstrap version')
+        return wheel
     catalog = json.loads(Path(__file__).with_name('uv_downloads.json').read_text(encoding='utf-8'))
     if catalog['version'] != uv['version'] or catalog['windows']['legacy_sha256'] != uv['sha256']:
         raise ValueError('The uv download catalog does not match the pinned bootstrap version')

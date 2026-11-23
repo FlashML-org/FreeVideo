@@ -3,12 +3,64 @@ import logging
 import os
 from pathlib import Path
 import platform
+import re
 
 ENVIRONMENTS = {
     'unified': {'cuda': 'cu130', 'torch': ['torch==2.13.0', 'torchvision==0.28.0', 'torchaudio==2.11.0']},
     'engine': {'cuda': 'cu129', 'torch': ['torch==2.13.0', 'torchvision==0.28.0']},
     'encoder': {'cuda': 'cu130', 'torch': ['torch==2.14.0', 'torchvision==0.29.0', 'torchaudio==2.11.0']},
 }
+# Native Windows on Arm: one environment, the CUDA 13.4 torch family NVIDIA publishes for win_arm64
+# (freevideo_engine/windows_arm64.json), pinned by constraints/windows-arm64.txt.
+WINDOWS_ARM64_ENVIRONMENTS = {
+    'unified': {'cuda': 'cu134', 'torch': ['torch==2.14.0', 'torchvision==0.29.0', 'torchaudio==2.11.1']},
+}
+# uv 0.9.0 installs CPython for aarch64 Windows up to 3.12.11; the win_arm64 wheels are cp312.
+WINDOWS_ARM64_PYTHON = '3.12.11'
+# A bare version is not enough: on an ARM64 Windows host uv 0.9.0 prefers x86_64 Python (uv-platform/src/arch.rs, Ord for
+# Arch), so every uv command names the aarch64 build. Either uv binary, x64 or ARM64, honours the explicit request.
+WINDOWS_ARM64_PYTHON_REQUEST = 'cpython-' + WINDOWS_ARM64_PYTHON + '-windows-aarch64-none'
+WINDOWS_ARM64_TRITON = '3.8.0.post28'  # = triton-windows in constraints/windows-arm64.txt
+
+
+def windows_arm64(system=None, machine=None):
+    """Whether a Windows installation targets native ARM64.
+
+    A given machine (a hardware snapshot's) decides; otherwise this computer's native
+    processor does, so an x64 Python running emulated on a Windows ARM computer still
+    installs the native ARM64 tools. Never true off Windows.
+    """
+    if (system or platform.system()) != 'Windows':
+        return False
+    if machine:
+        return str(machine).lower() in ('arm64', 'aarch64')
+    from .host_arch import windows_arm
+    return windows_arm()
+
+
+def environment_spec(name, system=None, machine=None):
+    """The CUDA tag and torch pins of an environment on the target platform."""
+    if windows_arm64(system, machine):
+        if name not in WINDOWS_ARM64_ENVIRONMENTS:
+            raise ValueError('Windows on Arm uses the unified environment')
+        return WINDOWS_ARM64_ENVIRONMENTS[name]
+    return ENVIRONMENTS[name]
+
+
+def environment_native_arm64(folder, python_version):
+    """Whether an environment was made from the managed aarch64 Windows Python of this version.
+
+    The version alone does not tell: uv also offers the x64 build of the same version on ARM64 Windows.
+    """
+    from .long_paths import io_path
+    try:
+        config = io_path(Path(folder) / 'pyvenv.cfg').read_text(encoding='utf-8')
+    except (OSError, UnicodeError):
+        return False
+    version = re.search(r'^version(?:_info)?\s*=\s*([\d.]+)\s*$', config, re.M)
+    home = re.search(r'^home\s*=\s*(.+?)\s*$', config, re.M)
+    return (bool(version and home) and version.group(1) == python_version
+            and 'windows-aarch64' in home.group(1).lower())
 
 
 def constraints_file(name, system=None):
@@ -18,6 +70,10 @@ def constraints_file(name, system=None):
         from .macos_bootstrap import constraints
         return constraints()
     prefix = 'windows-' if (system or platform.system()) == 'Windows' else ''
+    if prefix and windows_arm64(system):
+        if name != 'unified':
+            raise ValueError('Windows on Arm uses the unified environment')
+        name = 'arm64'
     return Path(__file__).resolve().parent.parent / 'constraints' / (prefix + name + '.txt')
 
 
@@ -131,10 +187,10 @@ def linux_machine(machine=None):
 
 
 def setup_supported(system, machine):
-    """Setup installs on Linux x86_64 or ARM64 and on native Windows x64."""
+    """Setup installs on Linux x86_64 or ARM64 and on native Windows x64 or ARM64."""
     machine = str(machine or '').lower()
     return (system == 'Linux' and linux_machine(machine) is not None
-            or system == 'Windows' and machine in ('x86_64', 'amd64'))
+            or system == 'Windows' and machine in ('x86_64', 'amd64', 'arm64', 'aarch64'))
 
 
 def uv_folder(machine=None):
@@ -161,6 +217,16 @@ def bootstrap_versions(value, system=None, machine=None):
         return versions(value)
     if result['target_system'] == 'Windows':
         result['uv'] = result['windows']['uv']
+        if windows_arm64('Windows', machine):
+            from . import windows_arm64 as arm
+            table = arm.load()
+            uv = dict(version=table['uv']['version'], url=table['uv']['legacy_url'],
+                      sha256=table['uv']['legacy_sha256'], executable=table['uv']['legacy_executable'])
+            # No SageAttention build exists for win_arm64: the planner uses the other attention backends.
+            result['windows'] = dict(result['windows'], uv=uv, git=table['git'], sageattention=None,
+                                     triton=WINDOWS_ARM64_TRITON)
+            result.update(uv=uv, python=WINDOWS_ARM64_PYTHON, python_request=WINDOWS_ARM64_PYTHON_REQUEST,
+                          target_machine='arm64')
     elif result['target_system'] == 'Linux':
         result['target_machine'] = linux_machine(machine) or 'x86_64'
         if result['target_machine'] == 'aarch64':

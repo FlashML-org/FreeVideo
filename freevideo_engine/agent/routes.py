@@ -199,12 +199,25 @@ def voice_state(port):
     return ready, not ready and bool(info.get('supported')) and bool(info.get('published', True))
 
 
+def voice_later(port):
+    """A Windows on Arm computer, for which no dubbing runtime is published yet: the page says so where the download would be."""
+    from ..environments import windows_arm64
+    service = getattr(port.server, '_freevideo_dubbing', None)
+    if service is None or not windows_arm64():
+        return False
+    try:
+        info = service.info(wait=False)
+    except (OSError, ValueError):
+        return False
+    return not info.get('ready') and not info.get('supported')
+
+
 def voice_ready(port):
     """Whether the dubbing model that changes a voice is on this machine."""
     return voice_state(port)[0]
 
 
-def features(continuation, vlm, stems=False, voice=True, voice_install=False, fps=False):
+def features(continuation, vlm, stems=False, voice=True, voice_install=False, fps=False, voice_later=False):
     """What an agent can use here (ready says whether the engine can run now). A missing name is not offered."""
     from .editor_runtime import available
     rules = available()
@@ -220,6 +233,8 @@ def features(continuation, vlm, stems=False, voice=True, voice_install=False, fp
             'projects.stems': bool(rules and stems), 'projects.voice': bool(rules and stems and voice),
             # The machine could change a voice but the dubbing model is not there yet: the page offers its download.
             'projects.voice.install': bool(rules and stems and voice_install and not voice),
+            # Windows on Arm: no dubbing runtime for this computer yet; the page says so in the same place.
+            **({'projects.voice.later': True} if rules and stems and voice_later and not voice else {}),
             # 48/60 fps export makes the frames in between on the graphics card (far too slow without one).
             'projects.export.fps': bool(rules and fps)}
 
@@ -261,7 +276,7 @@ def capabilities(port, jobs):
         api_version=API_VERSION, freevideo_version=release or __version__, build=__version__, ready=ready, problem=problem,
         continuation=continuation,
         features=features(continuation, vlm, stems=stems_supported(machine), voice=voice[0], voice_install=voice[1],
-                          fps=bool(machine) and machine.get('device_backend', 'cuda') == 'cuda'),
+                          fps=bool(machine) and machine.get('device_backend', 'cuda') == 'cuda', voice_later=voice_later(port)),
         whitebox=whitebox_support(jobs),
         device=dict(backend=machine.get('device_backend', 'cuda') if machine else None,
                     vram_limit_gib=machine.get('vram_gib'), ram_limit_gib=machine.get('ram_gib')),

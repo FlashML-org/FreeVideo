@@ -18,6 +18,8 @@ export function percent(row) {
     return Math.max(0, Math.min(99, Math.floor(row.done / row.total * 100)));
 }
 
+// Lane-5x 11-22: no version or date is promised.
+export const laterText = t => t('Dubbing is not available on this computer.', '这台电脑上无法使用配音。');
 export const offerText = (bytes, t) => t(`Voice change needs the dubbing model (about ${sizeText(bytes)}).`, `换人声需要配音模型，约 ${sizeText(bytes)}。`);
 export const progressText = (value, t) => value == null ? t('Downloading the dubbing model', '正在下载配音模型')
     : t(`Downloading the dubbing model ${value}%`, `正在下载配音模型 ${value}%`);
@@ -41,7 +43,7 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
  * whether the model is there now. A download that runs when the page opens is taken up again: by the job this browser
  * remembers, else only as "downloading" (the engine does not hand its job to anyone else).
  */
-export function createVoiceInstall({api, available = () => true, target = () => true, onChange = () => {}, onReady = async () => false,
+export function createVoiceInstall({api, available = () => true, later = () => false, target = () => true, onChange = () => {}, onReady = async () => false,
     storage = globalThis.localStorage, delay = wait, interval = 1000} = {}) {
     const view = {phase: 'loading', percent: null, cancelling: false, error: null, bytes: 0};
     let token = '', job = readJob(storage), disposed = false, polling = false, initial = null;
@@ -120,9 +122,11 @@ export function createVoiceInstall({api, available = () => true, target = () => 
         view,
         init() { return initial || (initial = load()); },
         // Whether the engine offers the download at all (the panel exists only then).
-        offered() { return !disposed && available() && ['idle', 'downloading', 'failed'].includes(view.phase); },
+        offered() { return !disposed && (later() || available() && ['idle', 'downloading', 'failed'].includes(view.phase)); },
+        // Windows on Arm: a sentence in the download's place, nothing to click.
+        later: () => !disposed && later(),
         // Whether the bar offers the download for this selection: the engine offers it and a stretch of speech is chosen.
-        visible(selection) { return !disposed && available() && ['idle', 'downloading', 'failed'].includes(view.phase) && !!target(selection); },
+        visible(selection) { return !disposed && (later() || available() && ['idle', 'downloading', 'failed'].includes(view.phase)) && !!target(selection); },
         async start() {
             if (view.phase === 'downloading') return;
             set({phase: 'downloading', percent: 0, cancelling: false, error: null});
@@ -166,10 +170,10 @@ export function createInstallPanel(host, install, {t, selection}) {
         const view = install.view, shown = install.visible(selection());
         element.hidden = !shown;
         if (!shown) return;
-        const state = view.phase === 'downloading' ? 'downloading' : view.phase === 'failed' ? 'failed' : 'offer';
+        const state = install.later?.() ? 'later' : view.phase === 'downloading' ? 'downloading' : view.phase === 'failed' ? 'failed' : 'offer';
         element.dataset.state = state;
         const failure = state === 'failed' ? failureText(view.error, view.bytes, t) : null;
-        const text = state === 'downloading' ? progressText(view.percent, t) : failure ? failure.text : offerText(view.bytes, t);
+        const text = state === 'later' ? laterText(t) : state === 'downloading' ? progressText(view.percent, t) : failure ? failure.text : offerText(view.bytes, t);
         if (shownText !== text) {
             note.replaceChildren(text); shownText = text;
             if (failure?.report) note.append(issueButton(t, () => ({where: ['Dubbing model download', '配音模型下载'], message: failure.text, kind: view.error || null})));

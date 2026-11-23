@@ -413,7 +413,7 @@ def probe_score(row, family):
 
 def plan(spec, versions, layout='unified', *, mode='auto', timeout=5, offline=False, env=None,
          model_only=False, measure_speed=True, progress=None, proxy_mode='auto', git_available=True, only=None):
-    from .environments import ENVIRONMENTS, environment_names
+    from .environments import environment_spec, environment_names
     env = proxy_environment(env)
     started = time.monotonic()
     if proxy_mode not in proxy.MODES:
@@ -428,7 +428,7 @@ def plan(spec, versions, layout='unified', *, mode='auto', timeout=5, offline=Fa
     if versions.get('target_system') in ('Windows', 'Darwin'):
         families.remove('cuda')
     for name in (() if versions.get('target_system') == 'Darwin' else environment_names(layout)):
-        role = ENVIRONMENTS[name]
+        role = environment_spec(name, versions.get('target_system'), versions.get('target_machine'))
         family = 'torch-' + role['cuda'] + '-' + role['torch'][0].split('==')[1]
         if family not in families:
             families.append(family)
@@ -437,8 +437,13 @@ def plan(spec, versions, layout='unified', *, mode='auto', timeout=5, offline=Fa
     if only is not None:
         families = [family for family in families if family in only]
     selections, jobs = {}, []
+    arm_torch = versions.get('target_system') == 'Windows' and versions.get('target_machine') == 'arm64'
     for family in families:
         group = 'torch' if family.startswith('torch-') else 'github' if family == 'git' else family
+        if arm_torch and group == 'torch':
+            # Windows on Arm takes the torch family from NVIDIA's index, named in each wheel row; nothing to measure.
+            selections[family] = []
+            continue
         names = ['official'] if mode == 'official' else list(SOURCES[group])
         if mode != 'official' and configured_source(group, env):
             names.insert(0, 'user')

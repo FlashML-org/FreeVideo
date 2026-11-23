@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "platform": "win_arm64",
+  "python_tag": "cp312",
+  "runtime_wheel_bytes": 2077916688,
+  "python": {
+    "version": "3.12.16",
+    "release": "20261110",
+    "filename": "cpython-3.12.16+20261110-aarch64-pc-windows-msvc-install_only.tar.gz",
+    "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261110/cpython-3.12.16%2B20261110-aarch64-pc-windows-msvc-install_only.tar.gz",
+    "sha256": "7122bf62a0cf601527ba62e19ca715d64db86b269765da23937e9ac7f968f39c",
+    "bytes": 44719716,
+    "root": "python",
+    "executable": "python/python.exe"
+  },
+  "uv": {
+    "version": "0.9.0",
+    "filename": "uv-0.9.0-py3-none-win_arm64.whl",
+    "bytes": 19853856,
+    "sha256": "4a77a33c86d478fd1fb27db29035044261f086e7287325bcbe695c9b31808f4c",
+    "executable": "uv-0.9.0.data/scripts/uv.exe",
+    "executable_bytes": 48860672,
+    "sources": {
+      "official": "https://files.pythonhosted.org/packages/1a/7e/d9b4df434081e883eefb0e975e4dd40de210596c28cf8a88ec5783ae593b/uv-0.9.0-py3-none-win_arm64.whl",
+      "tuna": "https://pypi.tuna.tsinghua.edu.cn/packages/1a/7e/d9b4df434081e883eefb0e975e4dd40de210596c28cf8a88ec5783ae593b/uv-0.9.0-py3-none-win_arm64.whl"
+    },
+    "legacy_url": "https://github.com/astral-sh/uv/releases/download/0.9.0/uv-aarch64-pc-windows-msvc.zip",
+    "legacy_bytes": 19394974,
+    "legacy_sha256": "a816625eae0117c8ca0cd618716ddc11c68522d1ecfa7d2738f1c670099fef10",
+    "legacy_executable": "uv.exe"
+  },
+  "git": {
+    "version": "2.55.0.5",
+    "url": "https://github.com/git-for-windows/git/releases/download/v2.55.0.windows.5/MinGit-2.55.0.5-arm64.zip",
+    "sha256": "05843f9d6e60306c3ab886799e2c67200caab921571f10512df3493049179ddb",
+    "bytes": 37650057,
+    "executable": "cmd/git.exe"
+  },
+  "torch": [
+    {
+      "cuda": "cu134",
+      "package": "torch",
+      "version": "2.14.0+cu134",
+      "filename": "torch-2.14.0+cu134-cp312-cp312-win_arm64.whl",
+      "sha256": "075d59d2d415c93845faae3f10705707f883edaf6cfb9c60a589414b5bf8b82d",
+      "bytes": 1851098665,
+      "sources": {
+        "nvidia": "https://pypi.nvidia.com/nvtorch_oot/torch/torch-2.14.0%2Bcu134-cp312-cp312-win_arm64.whl"
+      }
+    },
+    {
+      "cuda": "cu134",
+      "package": "torchvision",
+      "version": "0.29.0+cu134",
+      "filename": "torchvision-0.29.0+cu134-cp312-cp312-win_arm64.whl",
+      "sha256": "e54986da6fb6f4dd72a17894539df7dad578a8f9979100b823cc79717da23fbb",
+      "bytes": 6490734,
+      "sources": {
+        "nvidia": "https://pypi.nvidia.com/nvtorch_oot/torchvision/torchvision-0.29.0%2Bcu134-cp312-cp312-win_arm64.whl"
+      }
+    },
+    {
+      "cuda": "cu134",
+      "package": "torchaudio",
+      "version": "2.11.1+cu134",
+      "filename": "torchaudio-2.11.1+cu134-py3-none-win_arm64.whl",
+      "sha256": "665fefb8dbb8d37e3141918d5c8dade4e1b7802abac19cea35342115a375be68",
+      "bytes": 1787661,
+      "sources": {
+        "nvidia": "https://pypi.nvidia.com/nvtorch_oot/torchaudio/torchaudio-2.11.1%2Bcu134-py3-none-win_arm64.whl"
+      }
+    }
+  ]
+}

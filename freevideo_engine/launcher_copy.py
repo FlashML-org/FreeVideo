@@ -366,6 +366,10 @@ def display(value, zh=False):
     for pattern, translated in (
         (r'Downloading packages · about (.+) across (\d+) files', r'下载组件 · 约 \1，共 \2 个文件'),
         (r'about (.+) across (\d+) files', r'约 \1，共 \2 个文件'),
+        (r'This is the first installation of the native runtime for this computer, so the runtime components are downloaded '
+         r'again \(about (.+)\)\.', r'首次安装适用于这台电脑的原生运行环境，需要重新下载运行组件（约 \1）。'),
+        (r'This is the first installation of the native runtime for this computer, so the runtime components are downloaded '
+         r'again\.', '首次安装适用于这台电脑的原生运行环境，需要重新下载运行组件。'),
         (r'(\d+) files / folders scanned', '正在查找文件'),
         (r'Testing download sources (\d+ / \d+)', r'正在测试下载源 \1'),
         (r'(\d+ / \d+) files', r'\1 个文件'), (r'shard (\d+ / \d+)', '正在下载'),

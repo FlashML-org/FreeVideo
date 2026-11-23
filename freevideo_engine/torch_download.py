@@ -1,6 +1,7 @@
 """Verified, resumable Windows GPU wheels before the package installation step."""
 import importlib.metadata
 import json
+import os
 from pathlib import Path
 
 from . import network
@@ -10,6 +11,11 @@ from .long_paths import io_path, plain_errors
 
 @plain_errors
 def catalog():
+    from .environments import windows_arm64
+    if windows_arm64('Windows' if os.name == 'nt' else None):
+        # Native Windows on Arm: NVIDIA's win_arm64 CUDA 13.4 builds, downloaded from NVIDIA's own index.
+        from . import windows_arm64 as arm
+        return arm.load()['torch']
     return json.loads(io_path(Path(__file__).with_name('torch_downloads.json')).read_text(encoding='utf-8'))['windows_cp312']
 
 
@@ -39,6 +45,9 @@ def fetch(row, root, family, networking, env, ui, check):
     if not networking.get('sources', {}).get(family) and networking.get('mode') != 'official':
         names = list(row['sources'])
     candidates = [(name, row['sources'][name]) for name in names if name in row['sources']]
+    if not candidates and list(row['sources']) == ['nvidia']:
+        # Windows on Arm rows are served only by NVIDIA's index, which no measured source names.
+        candidates = list(row['sources'].items())
     key = 'download-' + row['filename']
     name = 'Runtime components'
     source = ''
@@ -47,7 +56,7 @@ def fetch(row, root, family, networking, env, ui, check):
 
     def feedback(event):
         nonlocal source
-        source = {'official': 'PyTorch', 'nju': 'Nanjing University mirror'}.get(event.get('source'), '')
+        source = {'official': 'PyTorch', 'nju': 'Nanjing University mirror', 'nvidia': 'NVIDIA'}.get(event.get('source'), '')
         if event['action'] == 'retry':
             # A patient round is about to start: the same notice the Python and package retries show.
             ui.update(key, activity='resume', name=name, detail=network.PATIENT_DOWNLOAD_NOTICE)

@@ -2,7 +2,7 @@
   "format": 1,
   "repo": "OpenVDN/vdn-minimax-h3-edge",
   "prefix": "subtitles-v1",
-  "revision": "94f5ccc7bb78917e1eed47de4fc04a61465b8673",
+  "revision": "2283779e4cd6bd4724f200c152977fce58216da3",
   "python": "cp312",
   "groups": {
     "speech": [
@@ -97,11 +97,16 @@
       "file": "runtime/windows-x64/sherpa_onnx-1.13.8-cp312-cp312-win_amd64.whl",
       "bytes": 7807118,
       "sha256": "36b86ccb86c699c1ba3550e475a0a840e0c60cb9cd3553568b785081a04f10f3"
+    },
+    "windows-arm64": {
+      "file": "runtime/windows-arm64/sherpa_onnx-1.13.8-cp312-cp312-win_arm64.whl",
+      "bytes": 2249666,
+      "sha256": "1613f14db38b6936098c660f610baee95541378edbdec39a973a591d8df58f5b"
     }
   },
   "origin": {
     "speech": "csukuangfj/sherpa-onnx-nemo-ctc-en-conformer-small (NVIDIA NeMo stt_en_conformer_ctc_small, CC-BY-4.0); snakers4/silero-vad v5.0 (MIT)",
     "language": "csukuangfj/sherpa-onnx-whisper-tiny (OpenAI Whisper tiny, MIT); csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17 (SenseVoiceSmall by FunASR/FunAudioLLM, FunASR Model Open Source License Agreement v1.1)",
-    "runtime": "k2-fsa/sherpa-onnx 1.13.8 built by FreeVideo without text-to-speech (source 11afbd009a7f8c08f4bcf2fc1b265d0df4670fbf)"
+    "runtime": "k2-fsa/sherpa-onnx 1.13.8 built by FreeVideo without text-to-speech (source 11afbd009a7f8c08f4bcf2fc1b265d0df4670fbf); windows-arm64: the unmodified win_arm64 wheel of sherpa-onnx 1.13.8 published by k2-fsa on PyPI (Apache-2.0, LICENSE inside the wheel)"
   }
 }
