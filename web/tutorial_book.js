@@ -36,13 +36,13 @@ const COPY = {
             stepDone: 'Mark it done and move on', stepBack: 'Go back one step', drag: 'Drag to another corner', play: 'Play this example'}},
 };
 const GROUPS = [
-    [['Start', '入门'], ['quick-start', 'text-to-video', 'timed-lines', 'quality-tiers', 'refine']],
+    [['Start', '入门'], ['quick-start', 'text-to-video', 'timed-lines', 'quality-tiers', 'refine', 'run-modes']],
     [['Pictures and people', '用图片和人物'], ['first-last-frame', 'middle-frames', 'reference-video', 'cast-sheet', 'scenes-props', 'replace-person', 'replace-two-people', 'lora']],
     [['Pictures', '图像'], ['image-gen', 'image-references', 'edit-image', 'local-image-edit', 'new-image-shape']],
     [['Longer videos', '更长的视频'], ['long-video', 'extend-video', 'continue-or-new-shot']],
     [['Edit and sound', '剪辑与声音'], ['editor', 'save-frame', 'editor-extend-refs', 'segment-prompt', 'separate-tracks', 'replace-music', 'beat-snap', 'voice-recording', 'narration', 'sound-to-picture', 'text-subtitles']],
     [['Autopilot', 'AI 全自动'], ['autopilot', 'drama-outline', 'film-project']],
-    [['Library and system', '作品与运行'], ['library-reuse', 'upscale', 'library-export', 'system-status', 'launcher-close', 'troubleshoot', 'offline-reimport']],
+    [['Library and system', '作品与运行'], ['library-reuse', 'upscale', 'library-export', 'library-organize', 'system-status', 'launcher-close', 'troubleshoot', 'offline-reimport']],
 ];
 // The figure is a finished example, not a screenshot of the interface (screenshots go stale; "Take me there" points at the real control).
 const FIG = {

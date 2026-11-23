@@ -371,6 +371,24 @@ export const TUTORIAL_CHAPTERS = [
         },
     },
     {
+        id: 'run-modes',
+        title: {zh: '一次生成多条：批量、每行一条描述和循环', en: 'Several at once: batch, one prompt per line, loop'},
+        summary: {zh: '用同一组设置连续生成多个版本，或一次试几种写法。', en: 'Make several takes with the same settings in a row, or try several prompts at once.'},
+        media: {
+            type: 'image',
+            src: {zh: 'run-modes-1.webp', en: 'run-modes-2.webp'},
+            alt: {zh: '“高级选项”窗口：“生成方式”中的“批量”、“生成数量”和“每行一条描述”已用红框标出。', en: 'The Advanced window, with "Batch", "Number of videos" and "One prompt per line" under "Generation mode" outlined in red.'},
+        },
+        steps: {
+            zh: ['点创作面板底部的“高级选项”（滑杆图标）。', '在“生成方式”中选“批量”，填写“生成数量”，再点生成：用当前设置连续生成这么多个视频，每个换一个种子。', '要一次试几种写法，打开“每行一条描述”，在描述框中每行写一条，每行生成一个视频。', '选“循环”后点“开始循环”，会一直生成新版本；点“完成当前后停止”结束。'],
+            en: ['Choose "Advanced" (the sliders icon) at the bottom of the creation panel.', 'Under "Generation mode", choose "Batch", set "Number of videos", then generate: that many videos are made in a row with the current settings, each with a new seed.', 'To try several prompts at once, turn on "One prompt per line" and write one prompt per line in the description. Each line becomes one video.', 'Choose "Loop" and then "Start loop" to keep making new takes; choose "Stop after this video" to end it.'],
+        },
+        limits: {
+            zh: ['分段视频每次生成一条，“批量”和“循环”用于单段视频。', '打开“增强”时，每行一条描述按原文发送，不做增强。', '循环在关闭网页后停止。'],
+            en: ['Videos made in parts are made one at a time; "Batch" and "Loop" are for single-part videos.', 'With "Enhance" on, each line is sent as written, without enhancement.', 'A loop stops when the page is closed.'],
+        },
+    },
+    {
         id: 'long-video',
         title: {zh: '连续的长视频', en: 'Make a longer video'},
         summary: {zh: '填写更长的时长自动分段生成，也可逐段接续。', en: 'Enter a longer duration to generate in parts, or continue one part at a time.'},
@@ -771,12 +789,31 @@ export const TUTORIAL_CHAPTERS = [
             alt: {zh: '“作品库”：第一条作品已用红框标出。', en: 'Your creations, with the first video outlined in red.'},
         },
         steps: {
-            zh: ['点预览下方最近作品开头的“作品库”。', '选择一条视频，可播放，或点“接着生成”在剪辑视图中继续；要一次下载多个作品，点“选⁠择”选中它们，再点“下⁠载”，存成一个压缩包。', '在作品详情中点爱心图标收藏；列表上方选“收⁠藏”只看收藏的作品，选“全⁠部”看所有作品。', '需要成片时，在“剪辑视图”点“导⁠出”。', '在导出窗口选择范围、画质和内容；要更流畅的画面时，在“帧率”中选 48 或 60，中间的画面由显卡补出；要保留无损的声音，在“声音”中选“无损”。再点“导⁠出”。'],
-            en: ['Choose "Creations" at the start of the recent videos below the preview.', 'Pick a video to play it, or choose "Continue" to continue it in the Edit view. To download several at once, choose "Select", pick them, then choose "Download" to save them as one zip file.', 'In a creation\'s details, choose the heart to add it to favorites. Above the list, choose "Favorites" to see only those, or "All" to see every creation.', 'For a finished file, choose "Export" in the Edit view.', 'In the export window choose the range, quality and content. For smoother motion, choose 48 or 60 under "Frame rate"; the graphics card makes the frames in between. To keep the sound lossless, choose "Lossless" under "Sound". Then choose "Export".'],
+            zh: ['点预览下方最近作品开头的“作品库”。', '选择一条视频，可播放，或点“接着生成”在剪辑视图中继续；要一次下载多个作品，点作品右上角的勾选框选中它，再点其他作品一起选中，然后点“下⁠载”，存成一个压缩包。', '在作品详情中点爱心图标收藏；在左侧选“收⁠藏”只看收藏的作品，选“全⁠部”看所有作品。', '需要成片时，在“剪辑视图”点“导⁠出”。', '在导出窗口选择范围、画质和内容；要更流畅的画面时，在“帧率”中选 48 或 60，中间的画面由显卡补出；要保留无损的声音，在“声音”中选“无损”。再点“导⁠出”。'],
+            en: ['Choose "Creations" at the start of the recent videos below the preview.', 'Pick a video to play it, or choose "Continue" to continue it in the Edit view. To download several at once, choose the check box at the top right of a creation, choose the others to add them, then choose "Download" to save them as one zip file.', 'In a creation\'s details, choose the heart to add it to favorites. On the left, choose "Favorites" to see only those, or "All" to see every creation.', 'For a finished file, choose "Export" in the Edit view.', 'In the export window choose the range, quality and content. For smoother motion, choose 48 or 60 under "Frame rate"; the graphics card makes the frames in between. To keep the sound lossless, choose "Lossless" under "Sound". Then choose "Export".'],
         },
         limits: {
             zh: ['删除作品前会确认；被剪辑使用的作品不能删除。', '导出窗口每次打开时，“内容”默认选“画面和声音”，“画质”默认选“高”；窗口里没有“帧率”时，这台电脑不支持 48 和 60 帧导出。', '导出过程中取消不会留下不完整的文件。'],
             en: ['FreeVideo asks before deleting a video, and a video used in an edit cannot be deleted.', 'The export window always opens with "Video and audio" as the content and "High" as the quality; when it has no "Frame rate", this computer cannot export at 48 or 60 fps.', 'Cancelling an export leaves no unfinished file.'],
+        },
+    },
+    {
+        id: 'library-organize',
+        goto: ['works-entry'],
+        title: {zh: '整理作品：标签、筛选和对比', en: 'Organize creations: tags, filters and compare'},
+        summary: {zh: '用标签归类作品，按条件筛选，并把两个作品放在一起比较。', en: 'Group creations with tags, narrow the list with filters, and compare two creations.'},
+        media: {
+            type: 'image',
+            src: {zh: 'library-organize-1.webp', en: 'library-organize-2.webp'},
+            alt: {zh: '作品库中选中了两个作品：左侧的“标签”和中间对比上方的“并排”“滑块”已用红框标出。', en: 'Creations with two creations selected, with "Tags" on the left and "Side by side" and "Slider" above the comparison outlined in red.'},
+        },
+        steps: {
+            zh: ['在作品库左侧点“新建标签”，输入名称后按 Enter。', '点作品右上角的勾选框选中它，再点其他作品一起选中；在右侧上方点标签图标，选一个标签。之后在左侧点这个标签，只看带有它的作品。', '点上方的“筛⁠选”，按时间、图片来源等条件缩小范围；也可以在搜索框中按提示词或名称查找。', '正好选中两个作品时，画面中间对比显示它们，可切换“并⁠排”或“滑⁠块”。'],
+            en: ['On the left of Creations, choose "New tag", type a name and press Enter.', 'Choose the check box at the top right of a creation and choose others to add them. At the top right, choose the tag icon and pick a tag. Later, choose that tag on the left to see only the creations that have it.', 'Choose "Filter" at the top to narrow the list by time, picture source and more, or search by prompt or name in the search box.', 'With exactly two creations selected, they are compared in the middle; switch between "Side by side" and "Slider".'],
+        },
+        limits: {
+            zh: ['标签保存在当前浏览器中，只在这个浏览器里显示。', '删除的作品在 10 秒内可在左侧“最近删除”中恢复。'],
+            en: ['Tags are kept in this browser and show only here.', 'A deleted creation can be brought back from "Recently deleted" on the left within 10 seconds.'],
         },
     },
     {
@@ -874,6 +911,7 @@ export const TUTORIAL_ALIASES = {
     'lora': {zh: ['风格模型', '微调模型'], en: ['style model', 'fine-tuned model']},
     'quality-tiers': {zh: ['画质', '档位', '清晰度', '速度'], en: ['quality', 'speed', 'resolution']},
     'refine': {zh: ['预览', '二次采样', '精修'], en: ['preview', 'second pass', 'refine']},
+    'run-modes': {zh: ['批量生成', '多个版本', '循环生成', '多条描述'], en: ['batch', 'many takes', 'loop', 'multiple prompts']},
     'long-video': {zh: ['长视频', '多段', '连续生成'], en: ['long video', 'longer', 'multi-part']},
     'extend-video': {zh: ['续写', '延长', '接着生成', '视频续写'], en: ['extend', 'continue video', 'make longer']},
     'continue-or-new-shot': {zh: ['换镜头', '新镜头', '转场'], en: ['new shot', 'cut', 'transition']},
@@ -893,6 +931,7 @@ export const TUTORIAL_ALIASES = {
     'film-project': {zh: ['成片', '短剧剪辑'], en: ['finished film', 'drama edit']},
     'library-reuse': {zh: ['同款', '复用', '再生成一次'], en: ['reuse', 'same settings', 'remix']},
     'upscale': {zh: ['超分', '4K', '提高分辨率', '变大'], en: ['4K', 'enlarge', 'higher resolution', 'super resolution']},
+    'library-organize': {zh: ['分类', '归类', '整理', '找作品', '回收站'], en: ['organize', 'sort', 'find a video', 'trash', 'side by side']},
     'library-export': {zh: ['导出', '下载', '保存视频', '收藏'], en: ['export', 'download', 'save video', 'favorites']},
     'system-status': {zh: ['显存', '内存', '状态', '占用'], en: ['vram', 'memory', 'gpu', 'status']},
     'launcher-close': {zh: ['后台', '退出', '关闭'], en: ['background', 'quit', 'exit']},
