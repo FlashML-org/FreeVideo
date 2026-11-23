@@ -660,13 +660,13 @@ export function adviceFor(report, t, value) {
             title: stopped ? t('FreeVideo has stopped', 'FreeVideo 已停止运行')
                 : silent ? t('FreeVideo is not responding', 'FreeVideo 没有响应') : t('Lost the connection to FreeVideo', '与 FreeVideo 的连接已断开'),
             // Not answered: the engine may already hold the task, so the next step is the timeout card's own (look in the
-            // queue first, then submit again) and not the plain "try again", which could queue it twice.
-            summary: stopped ? engineNotRunningText(t) : silent ? engineNotRespondingText(t) : connectionLostText(t), action: silent ? requestTimeoutAction(t) : ''});
+            // queue first) and not the plain "try again", which could queue it twice.
+            summary: stopped ? engineNotRunningText(t) : silent ? engineNotRespondingText(t) : connectionLostText(t), action: silent ? requestTimeoutAction(t, report.stage) : ''});
     }
     // A request that was not answered in time: the card says so and what to check, instead of a bare title.
     if (advice.kind === 'unknown' && ['submission', 'queue'].includes(report.stage)
         && (isRequestTimeout(value) || report.exception_type === 'TimeoutError')) {
-        Object.assign(advice, {kind: 'timeout', title: t('FreeVideo did not answer in time', 'FreeVideo 未在规定时间内应答'), summary: requestTimeoutText(t), action: requestTimeoutAction(t)});
+        Object.assign(advice, {kind: 'timeout', title: t('FreeVideo did not answer in time', 'FreeVideo 未在规定时间内应答'), summary: requestTimeoutText(t, report.stage), action: requestTimeoutAction(t, report.stage)});
     }
     if (report.stage === 'submission' && advice.kind === 'unknown') {
         advice.title = t('The task could not be submitted', '任务提交失败');
