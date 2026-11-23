@@ -1259,8 +1259,10 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             }
         },
         // Stopping a run asks first (the floating window's own question); without that module the press stops at once.
+        // Dubbing stops by parts (lines already dubbed stay), so it has its own question; the order is cancel's own.
         async confirmStop(anchor) {
-            try { return await (await import('./task_float.js')).confirmStop(anchor, {kind: 'video'}); } catch { return true; }
+            const dubbing = !music.target() && !narration.target() && !stems?.active() && voice.session()?.phase === 'dubbing';
+            try { return await (await import('./task_float.js')).confirmStop(anchor, {kind: dubbing ? 'voice' : 'video'}); } catch { return true; }
         },
         undo: () => travel(true),
         reasonText: value => editorErrorText(value, t),
