@@ -376,6 +376,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         settled();
         return true;
     }
+    let offering = false;
     let capability = {maxSeconds: 15, maxFollowSeconds: 15, maxRequestFrames: null, estimate: () => null}, generationBusy = false, switching = false, generationDone = null, finishGeneration = null;
     let stopExport = null, mostRecentJob = null, exportPreparing = false, guide = null;
     const jobWatchers = new Map(), progress = new Map(), jobStatuses = new Map(), runProgress = new Map(), startPlayheads = new Map(), soundJobs = new Set(), shownJobs = new Set();
@@ -562,7 +563,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         saveAgain.disabled = true; saveState.dataset.state = ''; updateSaveState();
         try { releaseStamp(); await queue.flush(); } finally { if (!disposed) { saveAgain.disabled = false; updateSaveState(); } }
     }
-    const player = createEditorPlayer(preview, transport, {state, sources: store.sources, api, t, error, readAudioSamples: panel.readAudioSamples || readSpeedAudioSamples, preservePreview: () => initializing, prepareAudio: () => !initializing, speech: createSpeechSpans(store.speech)});
+    const player = createEditorPlayer(preview, transport, {state, sources: store.sources, api, t, error, readAudioSamples: panel.readAudioSamples || readSpeedAudioSamples, preservePreview: () => initializing || offering, prepareAudio: () => !initializing, speech: createSpeechSpans(store.speech)});
     // Until the first video frame arrives the picture shows the part's thumbnail at its own size, then fades to the video.
     const poster = createPicturePoster(player.element, {state, sources: store.sources, sourceKey, mediaURL: value => mediaURL(api, value)});
     function selectionClips(selection = state.selection) {
@@ -970,7 +971,9 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if ([...tracksOf].some(track => track.clips.some(clip => !pair.includes(clip) && clip.start >= edge))) return;
         const picked = state.selection;
         if (picked && !(picked.kind === 'clip' && picked.ids.some(id => ids.has(id) || model.find(state.record, id)?.link && ids.has(model.find(state.record, id).link)))) return;
-        enterClip(clip => clip.id === last.id, projectEpoch, {select: false});
+        // The part added at the end is the page's doing, not the viewer's: a creation's preview being watched stays open.
+        offering = true;
+        try { enterClip(clip => clip.id === last.id, projectEpoch, {select: false}); } finally { offering = false; }
     }
     function watchJob(id) {
         if (disposed) return;
