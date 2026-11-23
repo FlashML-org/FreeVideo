@@ -895,6 +895,33 @@ def media_path(root, key):
     return _import_path(root, source['id'], 'preview.mp4' if metadata['kind'] == 'video' else 'preview.m4a')
 
 
+def _counted_length(path, kind):
+    """(seconds, packets) of the first stream of `kind`, read from its packets, for a file whose header does not
+    say how long it is (a browser recording or a file still being written has no length). (None, 0) when the
+    packets carry no times either."""
+    import av
+    with av.logging.Capture(local=True), av.open(str(path)) as container:
+        stream = next(iter(getattr(container.streams, kind)), None)
+        # A text file is read as a "video" of characters (bintext, xbin, idf, ansi): it is not a recording.
+        if stream is None or not stream.time_base or getattr(stream.codec_context, 'name', None) in ('bintext', 'xbin', 'idf', 'ansi'):
+            return None, 0
+        first = last = None
+        packets = 0
+        try:
+            for packet in container.demux(stream):
+                if packet.pts is None:
+                    continue
+                packets += 1
+                end = packet.pts + (packet.duration or 0)
+                first = packet.pts if first is None else min(first, packet.pts)
+                last = end if last is None else max(last, end)
+        except av.error.InvalidDataError:
+            pass  # A cut-off file keeps what was read before the damage, as in the preview.
+        if packets < 2 or first is None or last <= first:
+            return None, packets
+        return float((last - first) * stream.time_base), packets
+
+
 def probe(path):
     import av
     from .media_encoding import clip_seconds
@@ -908,6 +935,11 @@ def probe(path):
         seconds = clip_seconds(container, stream)
         fps = float(video.average_rate or video.guessed_rate or FPS) if video is not None else FPS
         frames = video.frames if video is not None else 0
+        if not frames and (seconds is None or not math.isfinite(seconds) or seconds <= 0):
+            # The file does not say how long it is: read the length from its packets.
+            seconds, packets = _counted_length(path, 'video' if video is not None else 'audio')
+            if video is not None and seconds:
+                frames = packets  # A single picture or packets all at one time give no length and stay refused.
         if not frames:
             if seconds is None or not math.isfinite(seconds) or seconds <= 0:
                 raise ValueError('Media duration unavailable')
@@ -1325,6 +1357,19 @@ def transcode(root, identity):
         poster.unlink(missing_ok=True)
 
 
+# The fixed sentences this module raises for a file it cannot use, by the short name the report button carries.
+_UNREADABLE_CAUSES = {'No media': 'no_media', 'Media has no playable streams': 'no_playable_streams',
+                      'Invalid video dimensions': 'invalid_dimensions', 'No decoded video': 'no_decoded_video',
+                      'No decoded audio': 'no_decoded_audio', 'Media duration unavailable': 'no_duration'}
+
+
+def _failure_detail(error):
+    """The error's class, and for one of this module's own fixed sentences also its short name ("ValueError/no_media");
+    never any other message, which can name a path."""
+    cause = _UNREADABLE_CAUSES.get(str(error)) if type(error) is ValueError else None
+    return f'{type(error).__name__}/{cause}' if cause else type(error).__name__
+
+
 class ImportManager:
     """One daemon worker per server; restarted preparations are retried once."""
     def __init__(self, root):
@@ -1349,7 +1394,7 @@ class ImportManager:
             try:
                 # The class of the error (never its message, which can name a path) goes with the page's report button.
                 _import_update(self.root, identity, state='failed', reason=reason,
-                               detail=type(error).__name__ if reason == 'unreadable' else None)
+                               detail=_failure_detail(error) if reason == 'unreadable' else None)
             except (OSError, ValueError):
                 pass  # The terminal snapshot is retained and retried by the worker/reads.
 
