@@ -478,7 +478,9 @@ export function createCastGenerator({client, kind = 'character', views = null, f
         setPicture(0, {file, fraction: 1, original: true, own: false});
         if (before.file && !before.original) onDiscard(before.file);
     }
-    return {start, stop, reset, redo, useOriginal, setOwn, state: () => state, done,
+    // The LoRAs the pictures now on show were made with.
+    const used = () => Array.isArray(loras) ? structuredClone(loras) : [];
+    return {start, stop, reset, redo, useOriginal, setOwn, used, state: () => state, done,
         setOverride(role, name) { if (name) overrides[role] = name; else delete overrides[role]; },
         dispose() { disposed = true; return stop(); }};
 }
@@ -638,6 +640,10 @@ export function mountCastGenerate({container, api, text, t = text, viewURL, onSt
             : generator.state().pictures.map(row => ({file: row.file, label: row.view})),
         isBusy: () => generator.state().running,
         cancel: () => generator.stop(),
+        /** The LoRAs the pictures now on show were made with; a card keeps them. */
+        getLoras: () => generator.used(),
+        /** Shows a card's own LoRAs in the picker. */
+        setLoras: rows => picker ? picker.load(rows) : Promise.resolve(),
         destroy() { disposed = true; picker?.dispose(); clearTimeout(infoTimer); otherUsage.dispose(); void generator.dispose(); root.remove(); },
         element: root,
     };

@@ -775,7 +775,8 @@ def cast_schema(name, *, local=False):
     sound['oneOf'][1]['allOf'] = sound['oneOf'][1]['allOf'][:1]
     fields = dict(name=string(120), description=nullable(string(1000)),
                   images=array(obj(dict(media=picture, label=enum(LABELS)), ('media',)), 0, 6),
-                  voice=nullable(obj(dict(media=sound, start=number(0, 3600, default=0), end=number(0, 3600)), ('media',))))
+                  voice=nullable(obj(dict(media=sound, start=number(0, 3600, default=0), end=number(0, 3600)), ('media',))),
+                  loras=image_loras())
     if name == 'create':
         return obj(dict(kind=enum(('character', 'setting', 'prop', 'image'), default='character'), **fields, ref=REF), ('name',))
     if name == 'update':
@@ -811,7 +812,8 @@ def cast_view():
         images=array(picture, 0, 6), candidates=array(picture, 0, 6),
         generating=nullable(generating), generated=nullable(generated),
         generate_error=nullable(obj(dict(code=string(), job=JOB, message=string(), error_zh=string(), error_en=string(),
-            next_zh=string(), next_en=string()), ('code', 'job', 'message')))),
+            next_zh=string(), next_en=string()), ('code', 'job', 'message'))),
+        loras=array(obj(dict(name=string(512), strength=number(-2, 2), enabled={'type': 'boolean'}), ('name', 'strength', 'enabled')), 0, 8)),
         ('id', 'kind', 'name', 'revision', 'images', 'candidates', 'generating')), additionalProperties=True)
 
 

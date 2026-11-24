@@ -29,6 +29,7 @@ LABELS = schema.LABELS
 EDITABLE = ('name', 'description', 'images', 'voice')
 MAX_IMAGES = 6
 MAX_CANDIDATES = 6
+MAX_LORAS = 8
 MAX_RECEIPTS = 64
 # The FreeVideo input files that cards the user deleted named, by private_store token, with the time noted.
 RELEASED = 'released.json'
@@ -140,6 +141,11 @@ def row_view(card):
                 generate_error=errors.with_reason(card.get('generate_error')))
 
 
+def _loras(rows):
+    """The image LoRAs a card keeps for its own picture maker: file, strength and whether it is on, in the order given."""
+    return [dict(name=row['name'], strength=float(row.get('strength', 1.)), enabled=row.get('enabled', True)) for row in rows or []]
+
+
 def _plain(item):
     """The input file an image item names unchanged (a returned card file), else None."""
     if isinstance(item, str):
@@ -200,6 +206,10 @@ def _check(record, stem):
             if not isinstance(row['label'], str) or not isinstance(row['media']['file'], str):
                 raise ValueError('Invalid picture')
             unknown_labels |= row['label'] not in LABELS
+    loras = card.setdefault('loras', [])
+    if not isinstance(loras, list) or len(loras) > MAX_LORAS or not all(
+            isinstance(row, dict) and isinstance(row.get('name'), str) for row in loras):
+        raise ValueError('Invalid LoRAs')
     if card['voice'] is not None:
         if not isinstance(card['voice']['clip']['file'], str) or not (
                 isinstance(card['voice']['media'].get('file'), str) or isinstance(card['voice']['media'].get('library'), str)):
@@ -485,6 +495,7 @@ class Cast:
             entry = self._picture_at(identity, row['media'], by, index)
             images.append(dict(entry, label=row.get('label', 'other')))
         voice = self._voice(identity, value['voice']) if value.get('voice') else None
+        loras = _loras(value.get('loras'))
         with self.changed:
             digest, replay = self._receipt('cast:create', value, ref, client)
             if replay is not None:
@@ -493,7 +504,7 @@ class Cast:
             supplied = dict(name=True, description=value.get('description') is not None,
                             images=bool(images), voice=voice is not None)
             card = dict(id=identity, kind=value['kind'], name=value['name'], description=value.get('description'),
-                        images=images, voice=voice, revision=1, created_at=stamp, updated_at=stamp, by=by,
+                        images=images, voice=voice, loras=loras, revision=1, created_at=stamp, updated_at=stamp, by=by,
                         origin=by, made_for=made_for, used_by=[],
                         edited_by_user={k: by == 'user' and supplied[k] for k in EDITABLE},
                         candidates=[], generating=None, generate_error=None, generated=None, _user_images=0)
@@ -583,7 +594,8 @@ class Cast:
                 card.update(resolved, revision=card['revision'] + 1, updated_at=self._now(), by=by)
                 if by == 'user':
                     for key in resolved:
-                        card['edited_by_user'][key] = True
+                        if key in card['edited_by_user']:
+                            card['edited_by_user'][key] = True
             result = view(card)
             self._remember(record, ref, digest, result, client)
             if resolved or ref is not None:
@@ -634,9 +646,12 @@ class Cast:
                     and voice.get('end', current['end']) == current['end']
                 if not same:
                     changes['voice'] = voice
+        if 'loras' in value and _loras(value['loras']) != card.get('loras', []):
+            changes['loras'] = _loras(value['loras'])
         if by != 'user':
             for key in changes:
-                if key != 'images' and card['edited_by_user'][key]:
+                # The LoRAs are the card's own record of how its picture was made: the card dialog sets them, nobody guards them.
+                if key not in ('images', 'loras') and card['edited_by_user'][key]:
                     raise self._by_user(card, key)
         return changes
 
