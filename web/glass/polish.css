@@ -78,6 +78,8 @@ html:not([data-fv-polish="off"]) :is(.fv-studio,.fv-library) :is(button,input,te
 /* Scrollbars: thin, quiet, no track. */
 html:not([data-fv-polish="off"]) :is(.fv-studio,.fv-library,.fv-select-menu,.fv-tb-pop){scrollbar-width:thin;scrollbar-color:var(--fv-scroll) transparent}
 html:not([data-fv-polish="off"]) :is(.fv-studio,.fv-library,.fv-select-menu,.fv-tb-pop) *{scrollbar-width:thin;scrollbar-color:var(--fv-scroll) transparent}
+/* The same thin bar for every other FreeVideo popup and dialog (outside the views above). Zero specificity: a part that sets its own width or hides its bar keeps it. */
+:where(html:not([data-fv-polish="off"]) :is([class^="fv-"],[class*=" fv-"],:is([class^="fv-"],[class*=" fv-"]) *)){scrollbar-width:thin;scrollbar-color:var(--fv-scroll) transparent}
 /* Selection and placeholder. */
 html:not([data-fv-polish="off"]) :is(.fv-studio,.fv-library) ::selection{background:var(--fv-selection);color:inherit}
 html:not([data-fv-polish="off"]) :is(.fv-studio,.fv-library) :is(textarea,input)::placeholder{color:var(--fv-fg3);opacity:1;font-weight:var(--fv-fw-1)}
