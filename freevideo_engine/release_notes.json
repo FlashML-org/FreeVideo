@@ -1,23 +1,60 @@
 {
   "schema": 1,
-  "product_version": "0.6.10",
+  "product_version": "0.6.11",
   "en": {
-    "summary": "Fixes generating after opening Presets, makes Preview first follow the step count, and makes update failure reports more complete.",
+    "summary": "0.6.11 can write a prompt from a picture or a video, makes local network access and first, middle and last frames on the Mac work as expected, and no longer stops a second generation on two graphics cards with an error on Windows. Failure messages now also say what went wrong and what to do next.",
     "changes": [
-      "Generate works after opening Presets: when a setting needs changing, the reason appears next to it and you can fill it in there.",
-      "Preview first follows the step count: when a workflow's first-pass steps are not 8, Preview first is unavailable with the reason shown, and the key generates the video.",
-      "More complete update failure reports: \"Report a problem\" on an update failure now adds the last lines of the update log, with file paths, IP addresses and access tokens removed."
+      "Reverse prompt: in the image view and the create panel, choose a picture or a video and FreeVideo writes the description.",
+      "Fuller local network access: when FreeVideo is opened through its local network address, you can generate with reference pictures, edit generated pictures and copy prompts.",
+      "First, middle and last frames on the Mac: generating with a first, middle and last frame works on the Mac.",
+      "Two graphics cards at once: on Windows, a generation started on the second graphics card no longer stops with an error while the first one is working.",
+      "Clearer failure messages: every kind of failure says what to do next. When a prompt enhancement result is incomplete, the message says what was wrong.",
+      "More accurate driver messages: when no working driver is found, the launcher shows the graphics card it detected and tells \"driver not installed\" apart from \"driver not working\".",
+      "LoRAs and reference pictures are kept: the LoRAs and reference pictures set in the create panel are still there after FreeVideo restarts, and scene and prop cards remember the LoRAs used to make their picture.",
+      "Steadier running: FreeVideo commands use the installed program from any folder. When graphics memory runs short while the prompt is processed, FreeVideo retries once instead of failing.",
+      "Easier image models: Repair asks you first and keeps the original shared file under a new name. A download that starts while FreeVideo is installing, updating or cleaning up continues by itself when that finishes.",
+      "Saved prompts work right after an update: prompts saved before updating FreeVideo do not need to be processed again.",
+      "More reliable long video redo: after a lost or late reply, choosing \"Redo from here\" again shows the part already started instead of making another one.",
+      "A steadier first generation after an update: cleaning up old versions no longer changes the model files in use, so the first generation after an update is not interrupted by it."
     ]
   },
   "zh": {
-    "summary": "修复了打开“预设”后无法生成的问题，“先出预览”会跟随步数说明是否可用，更新失败的报告也更完整。",
+    "summary": "0.6.11 新增从图片或视频反推提示词，局域网访问和 Mac 首中尾帧生成可以正常使用，Windows 上两张显卡同时生成也不再报错停下。失败提示会说明原因和下一步。",
     "changes": [
-      "打开“预设”后可正常生成：有设置需要修改时，会在对应位置说明原因，并可直接填写。",
-      "“先出预览”跟随步数：工作流的一采步数不是 8 时，“先出预览”不可选并写明原因，按键直接生成视频。",
-      "更新失败的报告更完整：在更新失败提示中点“提交问题”，报告会附上最近几行更新记录，其中的文件路径、IP 地址和访问令牌已移除。"
+      "反推提示词：在图像视图和创作面板中，可以选一张图片或一段视频，自动写出描述。",
+      "局域网访问更完整：通过局域网地址打开 FreeVideo 时，可以带参考图生成、编辑已生成的图片，也可以复制提示词。",
+      "Mac 首中尾帧生成：在 Mac 上同时使用首帧、中间帧和尾帧，可以正常生成。",
+      "多显卡同时生成：在 Windows 上使用两张显卡时，第二张显卡开始的生成不再因等待第一张而报错停下。",
+      "失败提示更清楚：各类失败都会说明下一步怎么做。提示词增强的结果不完整时，会写明是哪里不对。",
+      "显卡驱动提示更准确：缺少可用驱动时，启动器会显示检测到的显卡型号，并区分“未安装驱动”和“驱动未正常工作”。",
+      "LoRA 和参考图会保留：创作面板设置的 LoRA 和参考图在重启 FreeVideo 后仍在；场景卡和道具卡也会记住生成图片时用的 LoRA。",
+      "运行更稳定：从任何文件夹运行 FreeVideo 命令，都会使用已安装的程序。处理提示词时显存不足，会自动重试一次，不再直接失败。",
+      "图像模型更省心：修复时会先请您确认，原有的共用文件改名保留。FreeVideo 正在安装、更新或清理时开始的下载，会在结束后自动继续。",
+      "更新后可直接使用已保存的提示词：更新 FreeVideo 后，已保存的提示词不需要重新处理。",
+      "长视频重新生成更可靠：在网络回复丢失或延迟后再次点击“从这段重新生成”，会继续显示已经开始的那一段，不会多生成一段。",
+      "更新后第一次生成更稳定：清理旧版本时不再改动正在使用的模型文件，更新后的第一次生成不会因此中断。"
     ]
   },
   "history": [
+    {
+      "product_version": "0.6.10",
+      "en": {
+        "summary": "Fixes generating after opening Presets, makes Preview first follow the step count, and makes update failure reports more complete.",
+        "changes": [
+          "Generate works after opening Presets: when a setting needs changing, the reason appears next to it and you can fill it in there.",
+          "Preview first follows the step count: when a workflow's first-pass steps are not 8, Preview first is unavailable with the reason shown, and the key generates the video.",
+          "More complete update failure reports: \"Report a problem\" on an update failure now adds the last lines of the update log, with file paths, IP addresses and access tokens removed."
+        ]
+      },
+      "zh": {
+        "summary": "修复了打开“预设”后无法生成的问题，“先出预览”会跟随步数说明是否可用，更新失败的报告也更完整。",
+        "changes": [
+          "打开“预设”后可正常生成：有设置需要修改时，会在对应位置说明原因，并可直接填写。",
+          "“先出预览”跟随步数：工作流的一采步数不是 8 时，“先出预览”不可选并写明原因，按键直接生成视频。",
+          "更新失败的报告更完整：在更新失败提示中点“提交问题”，报告会附上最近几行更新记录，其中的文件路径、IP 地址和访问令牌已移除。"
+        ]
+      }
+    },
     {
       "product_version": "0.6.9",
       "en": {
@@ -405,43 +442,6 @@
           "Windows 安装：安装不再停在 PowerShell 调试提示符；Windows 短暂占用刚写好的文件时，启动器不再停在检查步骤报“访问被拒绝”，改为重试数秒再复制到位。安装节点依赖、更新引擎时也使用短路径。",
           "导出和配音：几处计算不再依赖可能被 Windows 应用控制拦截的组件，输出不变。",
           "长视频与报告：接缝记录缺失时，该段重新生成一次；合并时仍缺少记录的接缝按直接拼接保存，不再因此无法保存。长视频提交、聊天发送和高分辨率图片生成失败时，诊断报告记下判断原因所需的信息。"
-        ]
-      }
-    },
-    {
-      "product_version": "0.5.3",
-      "en": {
-        "summary": "Short films are finished for you: the built-in director picks and joins the takes, the film arrives in Autopilot as a card, and an editing project with one part per shot is ready. H3 Image takes up to 16 reference pictures, and consecutive images start sooner. Imported clips can be removed from the editor, and waits, failures, setup and narrow windows read more clearly.",
-        "changes": [
-          "Short films: a screenplay can carry its outline and the blocking of each scene, and the blocking goes into every shot of that scene. With the built-in director, takes are chosen and joined automatically once they are shot, and the work continues after a pause, a resume or a restart. The finished film appears in the Autopilot conversation as a card that plays, opens or goes straight to editing, and it also opens as an editing project with one part per shot.",
-          "Reference pictures: H3 Image accepts up to 16 reference pictures and Qwen-Image 2.1 accepts four. A note appears when too many pictures are added at once, pictures that cannot fit are refused before the run starts, and Generate points to the pictures to remove when the selected model's limit is exceeded.",
-          "Image speed: consecutive images keep the models loaded when the graphics card and memory allow, and the same prompt is not encoded again, so the second image onward starts sooner. Results are saved as high-quality JPEG, and temporary uploads are removed after each run.",
-          "Editor: the Imported tab has a remove button on every clip, including ones that could not be opened. Only FreeVideo's copy is deleted, never the original file, and a clip that an edit uses, even in an earlier version, asks for a second confirmation. Work thumbnails in the media library display correctly, and the Edit button on finished-video cards is visible again.",
-          "Waits: prompt rewriting counts from the press, the size range shows Estimating while it is worked out, and starting a generation or opening the page from the launcher shows elapsed seconds after 3 s. Automatic subtitles show Unpacking, Autopilot shows Sending and the seconds spent waiting for a reply, and preparing reference media shows which file is in progress.",
-          "Failures and settings: a missing or damaged model file is explained on the failure card, and cards that suggest a repair have an Open settings button that goes to Detect & review. Offline installations are told to import the offline package again. A damaged reserved memory setting no longer blocks the settings panel or generation, and a refused save is explained under Save. The launcher report form names the real failure.",
-          "Install and repair: Check and repair list and download again any model file that is missing or damaged, and importing an offline package again completes files left short by an interrupted copy. An installation with a missing model folder no longer stops at the GPU check, and an engine source folder that cannot be read is built again instead of failing every retry. The setup plan shows small sizes in MB or KB, and unavailable buttons share one gray look.",
-          "Windows and downloads: when Windows application control blocks a component file, the GPU check and generation continue, and the block is recognised in any system language. Cards of 16 GB and more keep copying the next layer while the current one computes when commit headroom is limited. The runtime download keeps retrying the official source when a mirror refuses access, with one more public source added.",
-          "Narrow windows: the Autopilot conversation scrolls on its own with the header and input in view, and an unsent message shows its reason on its own line. The studio shows the queued count and each run's size and length in full, download size and speed stay together, export choices and the reserved memory title stay on one line, and setup lines wrap between phrases. The Connect an agent card keeps its arrow with its words, and a failed lookup shows only Retry and Report a problem.",
-          "Nodes view: switching to it no longer leaves a node under the view bar, and the voice reference, dialogue tail and empty prompt switches show Chinese names in the Chinese interface. The media panel says once, not three times, when some saved items cannot be read.",
-          "Generation: a queue read that receives a web page instead of data is retried like a lost connection, so repeating generation keeps going. A second-pass memory failure that a smaller retry cannot help is reported sooner.",
-          "Tutorial: new chapters on beat snapping, run status, generating with reference pictures, the outline and staging of a short film, and the editing project a finished film leaves."
-        ]
-      },
-      "zh": {
-        "summary": "短剧可以一路做完：内置导演自动选片并接成影片，成片以卡片出现在 AI 全自动对话中，同时建好按镜头分段的剪辑工程。H3 Image 支持最多 16 张参考图，连续出图起步更快。剪辑器可以删除已导入素材，等待、失败、安装和窄窗口的显示更清楚。",
-        "changes": [
-          "短剧：剧本可以写大纲和每场站位，站位自动写进该场每个镜头。选用内置导演时，拍完后自动选片并接成影片，暂停、继续和重启后都会接着做。成片以卡片出现在 AI 全自动对话中，可以播放、打开或直接进入剪辑，同时建好按镜头分段的剪辑工程。",
-          "参考图：H3 Image 最多可用 16 张参考图，Qwen-Image 2.1 可用 4 张。一次加入过多时显示提示，放不下的参考图在开始前拒绝；超出所选模型上限时，点“生成”会定位到需要移除的图。",
-          "出图速度：显存和内存允许时，连续生成图片保持模型常驻，同一提示词不再重复编码，第二张起开始得更快。结果保存为高质量 JPEG，每次生成后清理临时上传。",
-          "剪辑器：“已导入”页的每个素材（包括打不开的）都有删除按钮，只删除软件复制的副本，不删原文件；被剪辑使用的素材（包括只在早先版本中使用的）需再确认一次。素材库中的作品缩略图正常显示，已完成视频卡片上的“剪辑”按钮重新显示。",
-          "等待：提示词改写从点下就计秒，可生成范围计算时显示“正在估算…”，开始生成和从启动器打开页面超过 3 秒时显示已用秒数。自动字幕解压时显示“正在解压”，AI 全自动显示“正在发送…”和等待回复的秒数，准备参考素材时显示正在处理第几个文件。",
-          "失败和设置：缺失或损坏的模型文件在失败卡片上说明原因；建议修复的卡片新增“打开设置”，直接定位到“检测并预览”。离线安装改为提示重新导入离线包。预留显存设置文件损坏时，设置面板和生成照常进行；保存被拒时在“保存”下说明原因。启动器的报告表单写出真实的失败原因。",
-          "安装和修复：检测和修复会列出并重新下载缺失或损坏的模型文件，重新导入离线包会补全复制中断留下的不完整文件。缺少模型文件夹时，安装不再停在 GPU 检查一步；引擎源码目录无法读取时改为重新构建，不再每次重试都失败。安装计划中较小的文件以 MB 或 KB 显示，不可用的按钮统一为灰色。",
-          "Windows 和下载：Windows 应用控制拦截某个组件文件时，GPU 检查和生成照常继续，在任何系统语言下都能识别该拦截。提交余量受限时，16 GB 及以上显卡在计算当前层的同时仍会拷贝下一层。运行环境下载在镜像拒绝访问时继续重试官方线路，并新增一个公开备用线路。",
-          "窄窗口：AI 全自动的对话单独滚动，顶栏和输入框始终可见，没发出的消息原因单独显示一行。创作面板完整显示排队数量以及每条的尺寸和时长，下载进度的大小和速度不再拆开，导出选项和预留显存标题保持一行，安装页文字按词组换行。连接 Agent 卡片的箭头不再和文字分开，获取地址失败时只显示重试和提交问题。",
-          "节点视图：切换过来时节点不再被顶部的视图切换栏遮住，“声音参考”“隐藏对白尾段”“允许空描述”三个开关显示中文名称。素材区有资料读取失败时只提示一次，不再重复三次。",
-          "生成：队列读取得到网页而不是数据时按断线重试，重复生成不再被停掉。第二遍显存不足且缩小重试也无济于事时，更早报告失败。",
-          "教程：新增对齐音乐节拍、运行状态、用参考图生成图片、短剧的大纲和站位、短剧成片的剪辑工程五章。"
         ]
       }
     }
