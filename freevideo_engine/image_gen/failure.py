@@ -13,7 +13,7 @@ from ..disk_space import ran_out
 from .image_model import H3, QWEN
 
 MODEL_IDS = (H3, QWEN)
-from ..exit_diagnostics import clean_reading, clean_sample
+from ..exit_diagnostics import clean_reading, clean_sample, clean_memory_during_request
 from ..diagnostic_resources import commit_exhausted
 from ..failure_details import Redactor
 from .loras import ERRORS as LORA_ERRORS, MESSAGE_ZH as LORA_MESSAGE_ZH
@@ -247,6 +247,8 @@ class Context:
         self.progress = None
         # ComfyUI's own models this request unloaded before its worker started (comfy_residency.release_native).
         self.native_release = None
+        # Readings taken every few seconds while the worker runs (service.MemorySampler): numbers and fixed words only.
+        self.memory_sampler = None
         self.update_request(value)
 
     def note_start(self):
@@ -390,4 +392,9 @@ class Context:
         reading = clean_reading(getattr(error, 'exit_reading', None))
         if reading:
             service['worker_exit'] = reading
+        sampler = self.memory_sampler
+        if sampler is not None:
+            cleaned = clean_memory_during_request(sampler.summary(is_failure=error is not None))
+            if cleaned:
+                service['memory_during_request'] = cleaned
         return service
