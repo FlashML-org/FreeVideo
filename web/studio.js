@@ -3589,7 +3589,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const reversePhone = window.matchMedia?.('(max-width:760px)');
     const placeReverse = () => {
         const inRow = Boolean(reversePhone?.matches);
-        reverseKey.classList.toggle('fvs-icon-button', inRow);
+        // In the row it is one of the round keys (like LoRA and Settings); in the tools column it is a library-style key.
+        reverseKey.classList.toggle('fvs-chip', inRow); reverseKey.classList.toggle('fvs-library-button', !inRow);
         if (inRow) enhancer.chip.after(reverseKey); else promptTools.prepend(reverseKey);
     };
     placeReverse(); reversePhone?.addEventListener?.('change', placeReverse);
