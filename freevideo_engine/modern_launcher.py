@@ -425,14 +425,14 @@ def create_ui(session, *, show=True, instance=None):
 
         def openReport(self, error, title):
             from . import __version__
-            from .launcher_issue import adapter_line, environment_line, issue_url, machine_hardware, product_version
+            from .launcher_issue import adapter_line, environment_line, issue_url, machine_hardware, product_version, update_report_lines
             from .windows_ux import open_browser
             # The release (0.4.x) is named, not the build number; only fields that carry no path or user name travel.
             version = session.installed_product_version() or product_version(__version__)
             engine = session.installation_engine()
             url = issue_url(error, version, title, zh=session.language.startswith('zh'),
                             environment=environment_line(version, machine_hardware(engine) if engine else {}),
-                            diagnostics=[adapter_line()])
+                            diagnostics=[adapter_line()] + update_report_lines(title))
             self.invoke(open_browser, url)
 
         @Slot()
