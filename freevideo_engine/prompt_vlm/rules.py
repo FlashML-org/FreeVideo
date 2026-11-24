@@ -1061,7 +1061,7 @@ REVERSE_CAMERA = ("Look only at how the camera moves between the first frame and
 
 def reverse_request(value):
     """A file from ComfyUI's input folder, how many frames to look at, and the spoken lines the caller already has."""
-    if not isinstance(value, dict) or set(value) - {'file', 'frames', 'lines', 'mode'} or value.get('mode', 'reverse') != 'reverse':
+    if not isinstance(value, dict) or set(value) - {'file', 'frames', 'lines', 'mode', 'language'} or value.get('mode', 'reverse') != 'reverse':
         raise ValueError('invalid_request')
     name, frames, lines = value.get('file'), value.get('frames', REVERSE_DEFAULT_FRAMES), value.get('lines', [])
     if not isinstance(name, str) or not name or len(name) > 1024:
@@ -1071,7 +1071,22 @@ def reverse_request(value):
     if (not isinstance(lines, list) or len(lines) > REVERSE_LINES
             or any(not isinstance(line, str) or not plain(line) or len(line) > 400 for line in lines)):
         raise ValueError('invalid_request')
-    return dict(mode='reverse', file=name, frames=frames, lines=[line.strip() for line in lines])
+    language = value.get('language', 'en')
+    if language not in ('en', 'zh'):
+        raise ValueError('invalid_request')
+    return dict(mode='reverse', file=name, frames=frames, lines=[line.strip() for line in lines], language=language)
+
+
+REVERSE_IN_CHINESE = ' Write it in Chinese.'
+
+
+def reverse_describe(value):
+    """The description question, asking for Chinese when the page is in Chinese."""
+    return REVERSE_DESCRIBE + (REVERSE_IN_CHINESE if value.get('language') == 'zh' else '')
+
+
+def reverse_camera(value):
+    return REVERSE_CAMERA + (REVERSE_IN_CHINESE if value.get('language') == 'zh' else '')
 
 
 def reverse_text(description, camera, lines):

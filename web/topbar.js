@@ -83,7 +83,7 @@ function ringSVG() {
     return svg;
 }
 // The notification centre's unread count (palette's notifications.js), when it is there.
-let notices = null;
+let notices = null, promptJob = null;
 
 // The first time a notice is unread, a one-time hint under the capsule says the notices are there (Parker N2). It goes
 // for good once "Got it" or the capsule is pressed (kept in this browser).
@@ -146,7 +146,7 @@ function renderCapsule(capsule) {
     const seen = capsule.fvCapsule.seen;
     if (seen && (active > seen.active || finished > seen.finished)) bump(capsule);
     capsule.fvCapsule.seen = {active, finished};
-    const {t} = capsule.fvCapsule, state = capsuleState(list, online, notices);
+    const {t} = capsule.fvCapsule, state = capsuleState(list, online, promptJob ? {...(notices || {}), prompt: promptJob} : notices);
     const [word, number] = capsuleWords(t, state);
     const figures = state.kind === 'idle' && showFigures() ? machineFigures(machine) : null;
     capsule.dataset.state = state.kind;
@@ -154,7 +154,7 @@ function renderCapsule(capsule) {
     capsule.classList.toggle('has-n', state.count > 0);
     capsule.classList.toggle('has-figures', !!figures);
     const {dot, ring, text, count} = capsule.fvCapsule;
-    const ringed = state.kind === 'run' || state.kind === 'dl' || state.kind === 'wait';
+    const ringed = state.kind === 'run' || state.kind === 'dl' || state.kind === 'wait' || state.kind === 'prompt';
     dot.hidden = ringed; ring.style.display = ringed ? '' : 'none';
     dot.className = `fv-tb-dot${state.kind === 'off' ? ' is-off' : state.warn ? ' is-warn' : ''}`;
     if (ringed) ring.lastChild.setAttribute('stroke-dashoffset', (RING * (1 - (state.percent || 0) / 100)).toFixed(2));
@@ -204,6 +204,8 @@ function noteAgentFailures() {
     for (const job of agentTasks.failed()) addAgentNote(noteFromAgent(job, {title: agentTitle(job, t), reason: failureReason(job, t)}));
 }
 // Subscribed once everything it calls is defined (it answers at once with the current state).
+// A description being written from a picture or video (prompt_enhance.js): the capsule says so while it runs.
+if (browser) globalThis.addEventListener('freevideo-prompt-job', event => { promptJob = event.detail?.active ? {fraction: event.detail.fraction} : null; syncCapsules(); });
 if (browser) onNotices(state => { const before = notices?.unread || 0; notices = state; syncCapsules(); if (!before && state.unread) noticeHint(); });
 
 // The engine's monitor reading (the source of the old status capsule: video memory, temperature, disk): one shared

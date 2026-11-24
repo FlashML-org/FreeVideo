@@ -22,6 +22,9 @@ GPU_WAIT_SECONDS = 300
 EXTRA_VRAM_RESERVE = 2**30
 
 
+# What the worker says while it runs, passed on to the page's status; a reverse prompt's describing and camera stages included.
+STREAMED_PHASES = ('loading', 'rewriting', 'answering', 'describing', 'camera')
+
 class Worker:
     """One pipe owner across idle imports and the subsequent rewrite."""
     def __init__(self, process):
@@ -749,7 +752,7 @@ class Service:
                 if row.get('phase') in ('complete', 'failed'):
                     result.update(row)
                     result_received_at[:] = [time.monotonic()]
-                elif row.get('phase') in ('loading', 'rewriting', 'answering'):
+                elif row.get('phase') in STREAMED_PHASES:
                     self.progress(row)
         try:
             writer.start()

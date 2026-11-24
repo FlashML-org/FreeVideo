@@ -19,7 +19,7 @@
 .fv-enhance-status[data-state=error]{color:var(--fv-danger,#ff8a80);background:color-mix(in srgb,var(--fv-danger,#ff8a80) 7%,transparent)}
 .fv-enhance-status .fv-issue-button{min-height:28px;margin-top:8px;padding:4px 8px;font-size:12px}
 .fv-enhance-status .fv-issue-button:not([hidden]){display:flex;width:fit-content}
-.fv-enhance-meter{position:relative;height:4px;margin-top:8px;border-radius:var(--fv-r-xs);background:#ffffff12;overflow:hidden}
+.fv-enhance-meter{position:relative;height:4px;margin-top:8px;border-radius:var(--fv-r-xs);background:color-mix(in srgb,var(--fv-fg,#fff) 16%,transparent);overflow:hidden}
 .fv-enhance-meter>i{position:absolute;inset:0 auto 0 0;width:0;border-radius:inherit;background:var(--fv-accent,#6db8fa);transition:width .4s ease-out}
 .fv-enhance-meter[data-indeterminate=true]>i{width:32%;animation:fv-enhance-sweep 1.4s ease-in-out infinite}
 @keyframes fv-enhance-sweep{from{transform:translateX(-100%)}to{transform:translateX(320%)}}
@@ -32,3 +32,12 @@
 .fv-enhance button:focus-visible,.fv-enhance input:focus-visible{outline:2px solid var(--fv-accent,#6db8fa);outline-offset:2px}
 @keyframes fv-enhance-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
 @media(prefers-reduced-motion:reduce){.fv-enhance *{transition:none;animation:none}}
+/* "Undo" after a description was filled in (prompt from a picture or video): a small bordered key like Report a problem, the same in both views. */
+.fv-enhance-status button.fv-enhance-undo{display:inline-flex;align-items:center;min-height:28px;margin:8px 0 0 8px;padding:4px 10px;border:1px solid var(--fv-line,var(--fv-border,#45454a));border-radius:var(--fv-r-sm,8px);background:transparent;color:var(--fv-fg2,#bbb);font:inherit;font-size:12px;cursor:pointer}
+.fv-enhance-status button.fv-enhance-undo:hover{color:var(--fv-fg,#eee);border-color:var(--fv-fg2,#bbb)}
+.fv-enhance-status button.fv-enhance-undo[hidden]{display:none}
+.fvs-console-status .fv-enhance-status button.fv-enhance-undo{margin:0;min-height:20px;height:20px;padding:0 var(--fv-sp-8)}
+/* While a description is being written the box is read-only and dimmed in both views. */
+textarea[data-reversing=true]{opacity:.6}
+/* The helper's Cancel row stays away while a description is being written: the Stop key is the control. */
+.fv-enhance-bar[data-reversing=true]{display:none!important}

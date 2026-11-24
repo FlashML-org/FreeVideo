@@ -579,8 +579,8 @@ def pick_frames(frames, build, budget):
 
 def reverse(folder, value, stats):
     """Describe a video from its frames, ask where the camera moves, and give both back with the caller's spoken lines."""
-    from .rules import (REVERSE_CAMERA, REVERSE_CAMERA_TOKENS, REVERSE_DESCRIBE, REVERSE_INPUT_TOKENS,
-                        REVERSE_OUTPUT_TOKENS, reverse_text)
+    from .rules import (REVERSE_CAMERA_TOKENS, REVERSE_INPUT_TOKENS, REVERSE_OUTPUT_TOKENS, reverse_camera,
+                        reverse_describe, reverse_text)
     stats.update(stage='imports', pid=os.getpid(), mode='reverse', frame_files=len(value['frame_files']),
                  answer_tokens=REVERSE_OUTPUT_TOKENS, dtype='bfloat16', attention='sdpa', kv_cache='dynamic',
                  backend='transformers', accelerations=[], persistent_model=False)
@@ -591,7 +591,7 @@ def reverse(folder, value, stats):
     processor = AutoProcessor.from_pretrained(folder, local_files_only=True, trust_remote_code=False)
     # Frames and size are chosen before the model is placed, from the request's token budget: first fewer frames
     # (down to 8), then smaller ones. The tower stays on the GPU for a video.
-    chosen = pick_frames(value['frame_files'], lambda rows, side: video_inputs(processor, rows, side, REVERSE_DESCRIBE),
+    chosen = pick_frames(value['frame_files'], lambda rows, side: video_inputs(processor, rows, side, reverse_describe(value)),
                          REVERSE_INPUT_TOKENS)
     if chosen is None:
         raise ValueError('context_length')
@@ -616,7 +616,7 @@ def reverse(folder, value, stats):
     stats.update(describe_seconds=time.monotonic() - loaded, output_tokens=len(ids))
     checkpoint('decode', 'camera')
     started = time.monotonic()
-    camera_inputs = video_inputs(processor, picked, side, REVERSE_CAMERA)
+    camera_inputs = video_inputs(processor, picked, side, reverse_camera(value))
     ids, _ = generate(torch, model, camera_inputs.to(device), REVERSE_CAMERA_TOKENS, started, lambda timing: None)
     camera = processor.decode(ids, skip_special_tokens=True).strip()
     stats.update(camera_seconds=time.monotonic() - started, stage='complete')
