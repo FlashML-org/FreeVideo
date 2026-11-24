@@ -1001,7 +1001,7 @@ class Session:
             return
         root, engine = self._image_location()
         # Repair and Remove need the engine lease, which a task (or the idle image session) holds; say why instead of failing a second later.
-        if action in ('repair', 'remove') and self._image_engine_state(engine, fresh=True) == 'running':
+        if action in ('repair', 'remove', 'verify') and self._image_engine_state(engine, fresh=True) == 'running':
             self.image_engine_clicked = True
             return
         # Both packs share one lease and one disk: one download at a time.
@@ -1089,14 +1089,26 @@ class Session:
         detail = self.t(*labels[value['state']])
         if value.get('checking'):
             detail = self.t('Checking', '正在校验')
-        # Repair only answers a pack that is ready or known to be damaged; half a download just continues.
-        repairable = value['state'] in ('ready', 'invalid')
+        # Repair only answers a pack known to be damaged (or a check that found damage); half a download just continues.
+        repairable = value['state'] == 'invalid'
+        # A finished check that found damage is an answer, not a failure: the card says how many files need repair and offers Repair.
+        if (active.get('action') == 'verify' and active.get('state') == 'failed'
+                and active.get('reason') in ('needs_repair', 'integrity_failed')):
+            bad = sum(1 for v in installer.file_checks.values() if v.get('verification') in ('mismatch', 'missing')) or 1
+            active = dict(active, state='checked')
+            repairable = True
+            detail = self.t('1 file needs repair' if bad == 1 else f'{bad} files need repair', f'有 {bad} 个文件需要修复')
         if active.get('state') == 'running':
             labels = {'install': ('Downloading', '正在下载'), 'repair': ('Repairing', '正在修复'),
                       'remove': ('Removing', '正在删除'), 'verify': ('Checking', '正在检查')}
             detail = self.t(*labels[active['action']])
+            if active['action'] == 'verify' and active.get('verify_total'):
+                percent = min(100, int(100 * (active.get('verify_done') or 0) / active['verify_total']))
+                detail = self.t(f'Checking {percent}%', f'检查中 {percent}%')
             if active.get('action') == 'install' and active.get('phase') == 'verify':
                 detail = self.t('Checking', '正在校验')
+        elif active.get('action') == 'verify' and active.get('state') == 'done':
+            detail = self.t('Files intact', '文件完好')
         elif active.get('state') == 'paused_for_generation':
             # What the download waits for: a video, a picture, or another task holding the graphics card.
             detail = {'busy_video': self.t('Paused while a video generates', '视频生成中，已暂停'),
