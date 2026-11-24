@@ -1018,7 +1018,7 @@ export async function openSetup(options) {
                 r.sub.className = 'is-accent';
                 r.sub.textContent = s.paused ? pausedText(s)
                     : `${Math.floor(s.fraction * 100)}% · ${gb(s.done)} / ${gb(s.total)} GiB`;
-                act.hidden = false;
+                act.hidden = !!s.locked;   // waiting for a setup, update or cleanup: nothing to press
                 if (s.paused) {
                     // Waiting for a video or a picture: the user may go on with the download now.
                     act.className = 'st-btn is-fill'; act.replaceChildren(icon('down', 'fv-i s'), el('span', 'st-btn-t', t('Continue download', '继续下载')));

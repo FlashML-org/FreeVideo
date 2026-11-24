@@ -209,9 +209,11 @@ export function packView(info, t) {
     if (own) {
         const waiting = install.state === 'paused_for_generation';
         // A paused download offers to continue now; the note says what it waits for.
-        return {loading: true, waiting, button: waiting ? t('Continue download', '继续下载') : t('Pause', '暂停'), fraction: total > 0 ? Math.min(1, (install.done || 0) / total) : 0,
+        // While a setup, update or cleanup holds the installation the download cannot go on at the user's request: no button, only the note.
+        return {loading: true, waiting, noButton: waiting && install.reason === 'busy_setup', button: waiting ? t('Continue download', '继续下载') : t('Pause', '暂停'), fraction: total > 0 ? Math.min(1, (install.done || 0) / total) : 0,
             note: waiting ? (install.reason === 'busy_video' ? t('Paused while a video generates', '视频生成中，已暂停')
                 : install.reason === 'busy_picture' ? t('Paused while a picture is made', '正在出图，已暂停')
+                : install.reason === 'busy_setup' ? t('Paused while FreeVideo installs, updates or cleans up', 'FreeVideo 正在安装、更新或清理，已暂停')
                 : t('Paused while FreeVideo uses the graphics card for another task', 'FreeVideo 正在用显卡做别的任务，已暂停'))
                 : t(`Downloading · ${gb(install.done || 0)}\u00a0GB / ${size}${time}`, `正在下载 · ${gb(install.done || 0)}\u00a0GB / ${size}${time}`)};
     }
@@ -1051,7 +1053,7 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
         action.classList.toggle('fv-ie-primary', !state.running);
         action.setAttribute('aria-disabled', String(!pack && !state.running && (disabled || !prompt.trim())));
         action.title = !pack && !state.running && !prompt.trim() ? t('Enter a prompt first', '请先填写提示词') : '';
-        action.hidden = !!missing && !(pack && pack.button);
+        action.hidden = !!missing && !(pack && pack.button) || !!pack?.noButton;
         const percent = Math.floor(state.fraction * 100) + '%';
         if (state.error && !promptRequired) {
             const failureKey = `${state.error}:${state.report_id || ''}:${state.stage || ''}:${state.memory || ''}`;

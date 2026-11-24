@@ -44,6 +44,10 @@ FAMILY = 'image-models'
 BACKGROUND_RESERVE = 2 * 2**30
 GENERATION_POLL_SECONDS = .25
 GENERATION_RESUME_SECONDS = 10.
+# A background download whose lease is refused by a setup, update or cleanup waits for it instead of failing.
+SETUP_WAIT_SECONDS = 1800.
+SETUP_POLL_SECONDS = 1.
+SETUP_LOCKS = ('setup.lock',)
 # Asking ComfyUI whether it is busy can take seconds (a closed port on Windows
 # refuses only after about 2 s), and hashing checks once per 4 MiB block. Ask at
 # most every 2 s, and a slow answer waits four times its own cost before the next.
@@ -102,6 +106,12 @@ class _Background:
             if holder == 'idle':
                 return None
             return 'busy_picture' if holder == 'picture' else 'busy_engine'
+
+    def wait_for_setup(self):
+        """Sleep one poll while a setup, update or cleanup holds the lease; a cancel ends the wait at once."""
+        self.installer._set(state='paused_for_generation', reason='busy_setup')
+        if self.stop.wait(SETUP_POLL_SECONDS):
+            raise InterruptedError('cancelled')
 
     def check(self):
         if self.stop.is_set():
@@ -678,6 +688,29 @@ def _lease(root, engine_root=None, destructive=False):
         yield folder
 
 
+@contextmanager
+def _install_lease(root, engine_root, repair, background):
+    """The lease for an install. A background download whose lease is held by a setup, update or cleanup (not by
+    another pack task) waits for it, up to SETUP_WAIT_SECONDS, and goes on once it is free; any other refusal,
+    and every foreground action, is raised as before."""
+    deadline = time.monotonic() + SETUP_WAIT_SECONDS
+    waited = False
+    with ExitStack() as held:
+        while True:
+            try:
+                folder = held.enter_context(_lease(root, engine_root, destructive=repair))
+                break
+            except BlockingIOError as error:
+                setup = Path(getattr(error, 'busy_lock_path', '') or '').name in SETUP_LOCKS
+                if background is None or repair or not setup or getattr(error, 'pack_lock_held', False) or time.monotonic() >= deadline:
+                    raise
+                waited = True
+                background.wait_for_setup()
+        if waited:
+            background.installer._set(state='running', reason=None)
+        yield folder
+
+
 def verify(root=None, progress=None, check=None, *, group='image'):
     """Explicit full integrity check; bad stamps are discarded, files are kept."""
     with _lease(root) as folder:
@@ -902,7 +935,7 @@ def install(root=None, progress=None, check=None, *, engine_root=None, repair=Fa
     check = check or (lambda: None)
     transfer_check = _background.check if _background is not None else check
     try:
-        with _lease(root, engine_root, destructive=repair) as folder:
+        with _install_lease(root, engine_root, repair, _background) as folder:
             replacing = repair or confirm is not None
             for row in rows(group=group):
                 if replacing and row.get('shared') and not os.path.lexists(target(row, root)):
