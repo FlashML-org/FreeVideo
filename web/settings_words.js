@@ -24,6 +24,10 @@ const repairStep = text => text.includes('In the FreeVideo launcher, open Settin
 // The reserve's lower limit, said the same way whether the panel or the service stopped the value.
 export const atLeast = least => t(`Enter at least ${least} GiB, or turn on Automatic optimization.`, `请输入不小于 ${least} GiB 的数值，或打开“自动优化”。`);
 export const WAIT_REFUSAL = /^Wait for (the installation check|the installation|a placement test|a setup task) to finish; its progress is in this panel\.$/;
+// A runtime stop, not a setup refusal: the sentence replaces the traceback on screen, but the report button stays and
+// sends the original text, because the guard's numbers are what the cause is read from.
+const MEMORY_STOP = /MemoryError: RAM guard/;
+export const reportText = (shown, original) => MEMORY_STOP.test(String(original || '')) ? String(original) : shown;
 const SETUP_ERRORS = [
     // Another task holds the installation lock; any "Lock file open:" lines name the holders.
     [BUSY_LOCK, text => [t(BUSY_TEXT.en, BUSY_TEXT.zh), ...text.split(/\r?\n/).filter(line => line.startsWith('Lock file open:')).slice(0, 6)].join('\n')],
@@ -44,6 +48,12 @@ const SETUP_ERRORS = [
             const [en, zh] = names[text.match(/^Wait for (.+) to finish/)[1]] ?? ['the setup task', '安装任务'];
             return t(`Wait for ${en} to finish; its progress is under Models.`, `请等待${zh}完成，进度见“模型”。`);
         }],
+    // The placement test's text encoder was stopped by the memory guard: the computer, not FreeVideo's own use, ran short.
+    // The paging-file step is said only when Windows reports its commit headroom as exhausted.
+    [MEMORY_STOP, text => t('The performance measurement stopped because the computer ran out of available memory. Close memory-heavy programs, then start measuring again under Performance measurement in Advanced.',
+            '性能测量因电脑可用内存不足而停止。请关闭占用内存较多的程序，再到“高级”中的“性能测量”重新开始测量。')
+        + (text.includes('Windows commit headroom exhausted') ? t(' If it happens again, in Windows virtual memory settings, use a system-managed paging file on a drive with free space.',
+            '仍然出现时，请在 Windows 虚拟内存设置中使用系统管理的分页文件，并确保所在磁盘有空闲空间。') : '')],
     [/^Inspect this installation again before installing$/, () => t('Click Check installation again, then Install.', '请重新点“检查安装”，再点“安装”。')],
     [/^Review the plan and accept its model\/toolkit licenses first$/, () => t('Tick the agreement to enable Install.', '勾选同意后，可点击“安装”。')],
     // Saving the reserve: the panel's own limits normally stop these first.
@@ -59,7 +69,8 @@ const SETUP_ERRORS = [
     [/^The FreeVideo Python environment is missing\./, text => t('This installation is missing its runtime. ', '该安装缺少运行环境。') + repairStep(text)],
 ];
 export const setupError = text => SETUP_ERRORS.find(([pattern]) => pattern.test(text))?.[1](text);
-export const reportable = value => !/The installation plan changed\. Detect configuration again|MODEL_MISMATCH_REPAIR:/.test(String(value || ''))
+export const reportable = value => MEMORY_STOP.test(String(value || '')) && !isBusy(String(value || ''))
+    || !/The installation plan changed\. Detect configuration again|MODEL_MISMATCH_REPAIR:/.test(String(value || ''))
     && setupError(String(value || '')) === undefined && !isBusy(String(value || ''));
 export const failureText = value => {
     const text = String(value || ''), matches = [...text.matchAll(/MODEL_MISMATCH_REPAIR: ([^\r\n]+)/g)];

@@ -224,6 +224,9 @@ def runtime_id():
 
 def runtime_fits(value):
     """Any earlier ZIP whose runtime is unchanged serves this version."""
+    from .environments import windows_arm64
+    if windows_arm64():
+        return False  # The package holds an x64 Python and x64 wheels.
     found = value.get('runtime_id') or EARLIER_RUNTIMES.get(value.get('dependency_id'))
     return value.get('schema_version') == 2 and found == runtime_id()
 

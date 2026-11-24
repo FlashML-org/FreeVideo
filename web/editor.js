@@ -376,6 +376,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         settled();
         return true;
     }
+    let offering = false;
     let capability = {maxSeconds: 15, maxFollowSeconds: 15, maxRequestFrames: null, estimate: () => null}, generationBusy = false, switching = false, generationDone = null, finishGeneration = null;
     let stopExport = null, mostRecentJob = null, exportPreparing = false, guide = null;
     const jobWatchers = new Map(), progress = new Map(), jobStatuses = new Map(), runProgress = new Map(), startPlayheads = new Map(), soundJobs = new Set(), shownJobs = new Set();
@@ -562,7 +563,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         saveAgain.disabled = true; saveState.dataset.state = ''; updateSaveState();
         try { releaseStamp(); await queue.flush(); } finally { if (!disposed) { saveAgain.disabled = false; updateSaveState(); } }
     }
-    const player = createEditorPlayer(preview, transport, {state, sources: store.sources, api, t, error, readAudioSamples: panel.readAudioSamples || readSpeedAudioSamples, preservePreview: () => initializing, prepareAudio: () => !initializing, speech: createSpeechSpans(store.speech)});
+    const player = createEditorPlayer(preview, transport, {state, sources: store.sources, api, t, error, readAudioSamples: panel.readAudioSamples || readSpeedAudioSamples, preservePreview: () => initializing || offering, prepareAudio: () => !initializing, speech: createSpeechSpans(store.speech)});
     // Until the first video frame arrives the picture shows the part's thumbnail at its own size, then fades to the video.
     const poster = createPicturePoster(player.element, {state, sources: store.sources, sourceKey, mediaURL: value => mediaURL(api, value)});
     function selectionClips(selection = state.selection) {
@@ -733,7 +734,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     // Music on the second sound track goes through the same bar; the bar shows a chosen piece's own job.
     const music = createEditorMusic({state, store, t, completeSources, onStatus: () => genbar?.update(barValue)});
     // Dubbing lines of a stretch of speech.
-    let voiceReady = false, voiceInstallable = false, exportFps = false;
+    let voiceReady = false, voiceInstallable = false, voiceLater = false, exportFps = false;
     const generatedSource = value => { const match = /^generated:(.+)$/.exec(String(value || '')); return match ? {kind: 'generated', id: match[1]} : null; };
     // Playing one line: the playhead goes to its start and the picture plays up to its end, then stops.
     let lineStop = null;
@@ -970,7 +971,9 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if ([...tracksOf].some(track => track.clips.some(clip => !pair.includes(clip) && clip.start >= edge))) return;
         const picked = state.selection;
         if (picked && !(picked.kind === 'clip' && picked.ids.some(id => ids.has(id) || model.find(state.record, id)?.link && ids.has(model.find(state.record, id).link)))) return;
-        enterClip(clip => clip.id === last.id, projectEpoch, {select: false});
+        // The part added at the end is the page's doing, not the viewer's: a creation's preview being watched stays open.
+        offering = true;
+        try { enterClip(clip => clip.id === last.id, projectEpoch, {select: false}); } finally { offering = false; }
     }
     function watchJob(id) {
         if (disposed) return;
@@ -1259,8 +1262,10 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             }
         },
         // Stopping a run asks first (the floating window's own question); without that module the press stops at once.
+        // Dubbing stops by parts (lines already dubbed stay), so it has its own question; the order is cancel's own.
         async confirmStop(anchor) {
-            try { return await (await import('./task_float.js')).confirmStop(anchor, {kind: 'video'}); } catch { return true; }
+            const dubbing = !music.target() && !narration.target() && !stems?.active() && voice.session()?.phase === 'dubbing';
+            try { return await (await import('./task_float.js')).confirmStop(anchor, {kind: dubbing ? 'voice' : 'video'}); } catch { return true; }
         },
         undo: () => travel(true),
         reasonText: value => editorErrorText(value, t),
@@ -1786,11 +1791,11 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         const found = await voiceFeatures(api);
         // An unanswered question changes nothing: the lines stay as they were, and a failed recognition says so.
         if (found.unknown) return voiceReady;
-        voiceReady = found.ready; voiceInstallable = found.install; exportFps = found.exportFps;
+        voiceReady = found.ready; voiceInstallable = found.install; voiceLater = !!found.later; exportFps = found.exportFps;
         if (!disposed) { voice.refresh(); narration.refresh(); if (found.install) voiceInstall.init(); genbar?.update(barValue); }
         return found.ready;
     }
-    const voiceInstall = createVoiceInstall({api, available: () => voiceInstallable && !voiceReady, target: selection => !!state.record && !!voiceTarget(state.record, selection),
+    const voiceInstall = createVoiceInstall({api, available: () => voiceInstallable && !voiceReady, later: () => voiceLater && !voiceReady, target: selection => !!state.record && !!voiceTarget(state.record, selection),
         onChange: () => { if (!disposed) genbar?.update(barValue); }, onReady: readVoice});
     // A new line said in a voice of the edit, on an empty stretch of the recording track; heard from the clip's own sound.
     let sampleStop = null;
@@ -2437,7 +2442,9 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if (trackContent && trackScroll && typeof ResizeObserver === 'function') {
             const fitTracks = () => {
                 const around = tracksHost.getBoundingClientRect().height - trackScroll.clientHeight; // the ruler's inset and the scroll bar
-                if (around >= 0 && trackContent.offsetHeight) element.style.setProperty('--fv-ed-tracks-fit', `${Math.ceil(trackContent.offsetHeight + around)}px`);
+                // The rows' natural height (editor_tracks.js fitRows): sound lanes given up to fit are not taken as less room needed.
+                const rows = Number(trackContent.dataset.fit) || trackContent.offsetHeight;
+                if (around >= 0 && rows) element.style.setProperty('--fv-ed-tracks-fit', `${Math.ceil(rows + around)}px`);
             };
             const watchTracks = new ResizeObserver(fitTracks); watchTracks.observe(trackContent); watchTracks.observe(tracksHost);
             listeners.push(() => watchTracks.disconnect()); fitTracks();

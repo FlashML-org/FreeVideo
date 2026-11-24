@@ -11,7 +11,7 @@
 
 <p align="center"><a href="README.md">English</a> · 中文</p>
 
-FreeVideo 由 [Video DeltaNet（VDN）](https://openvdn.github.io/) 驱动，让 MiniMax H3 能够在消费级显卡上本地运行，最低只需 8GB 显存和 16GB 内存，并会根据硬件配置自动选择合适的加速路径。
+FreeVideo 由 [Video DeltaNet（VDN）](https://openvdn.github.io/) 驱动，让 MiniMax H3 能够在计算能力 8.0 及以上的 NVIDIA 显卡（如 RTX 30 系列及更新，包括专业卡）上本地运行，最低只需 8GB 显存和 16GB 内存，并会根据硬件配置自动选择合适的加速路径。Apple 芯片 Mac 为预览版。
 
 https://github.com/user-attachments/assets/ecda7d0d-7fbe-4e0c-8c29-8f3315bafc15
 
@@ -36,7 +36,7 @@ FreeVideo 是面向消费级显卡的 MiniMax H3 本地推理引擎，基于 [Op
 
 它统一调度显存、内存与磁盘，并根据硬件条件调整权重放置、计算精度和注意力内核。FreeVideo 以 ComfyUI 插件形式提供，配备 Windows、macOS 和 Linux 启动器。主要特性包括：
 
-- **硬件自适应**：针对不同显卡选择权重格式（GeForce 和 RTX 30 系用 int8，专业卡和数据中心卡用 FP8），并自动探测可用的注意力内核，无需手动配置。
+- **硬件自适应**：针对不同显卡选择权重格式（GeForce RTX 30、40、50 系列和其他 Ampere 架构的显卡用 int8，更新架构的专业卡和数据中心卡用 FP8），并自动探测可用的注意力内核，无需手动配置。
 - **低显存推理**：通过权重流式加载、异步预取与分块计算降低峰值显存，最低只需 8GB 显存和 16GB 内存。
 - **多模态输入**：支持文本、首帧、尾帧，以及图像、视频、音频参考输入。
 - **社区 LoRA**：支持在工作流中使用 MiniMax H3 社区 LoRA。[查看效果对比](docs/LoRA.zh-CN.md)。

@@ -17,7 +17,9 @@ export async function voiceFeatures(api) {
         if (!response.ok) return {ready: false, install: false, unknown: true};
         const features = (await response.json())?.features;
         // The same answer says whether export can make 48/60 fps (it needs the graphics card).
-        return {ready: !!features?.['projects.voice'], install: !!features?.['projects.voice.install'], exportFps: !!features?.['projects.export.fps']};
+        // `later`: a Windows on Arm computer, for which the dubbing runtime is not published yet.
+        return {ready: !!features?.['projects.voice'], install: !!features?.['projects.voice.install'], later: !!features?.['projects.voice.later'],
+            exportFps: !!features?.['projects.export.fps']};
     } catch { return {ready: false, install: false, unknown: true}; }
 }
 

@@ -21,13 +21,18 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from freevideo_engine.launcher_update import (CHANNEL, LINUX_CHANNEL, MAC_CHANNEL, MAX_MANIFEST_BYTES,  # noqa: E402
-                                              NIGHTLY_TAG, RELEASE_ASSETS, asset_url, build_identity, build_track,
+                                              NIGHTLY_TAG, WINDOWS_ARM64_CHANNEL, RELEASE_ASSETS, asset_url, build_identity, build_track,
                                               manifest)
 from freevideo_engine.release_notes import notes, version_key  # noqa: E402
 
 PLATFORMS = (CHANNEL, MAC_CHANNEL, LINUX_CHANNEL)
 LEGACY_PLATFORMS = (CHANNEL, MAC_CHANNEL)
-NAMES = {CHANNEL: 'Windows', MAC_CHANNEL: 'Mac', LINUX_CHANNEL: 'Linux'}
+NAMES = {CHANNEL: 'Windows', MAC_CHANNEL: 'Mac', LINUX_CHANNEL: 'Linux', WINDOWS_ARM64_CHANNEL: 'Windows ARM64'}
+
+
+def platforms(builds):
+    """The platforms of this release: the three always, Windows ARM64 only when its build succeeded."""
+    return PLATFORMS + ((WINDOWS_ARM64_CHANNEL,) if WINDOWS_ARM64_CHANNEL in builds else ())
 PAGE = 'https://github.com/FlashML-org/FreeVideo'
 LOGO = '''<div align="center">
   <picture>
@@ -70,9 +75,12 @@ def digest(path):
     return value.hexdigest()
 
 
-def load_builds(windows, macos, linux):
+def load_builds(windows, macos, linux, windows_arm64=None):
     builds = {}
-    for channel, folder in ((CHANNEL, Path(windows)), (MAC_CHANNEL, Path(macos)), (LINUX_CHANNEL, Path(linux))):
+    folders = [(CHANNEL, Path(windows)), (MAC_CHANNEL, Path(macos)), (LINUX_CHANNEL, Path(linux))]
+    if windows_arm64:
+        folders.append((WINDOWS_ARM64_CHANNEL, Path(windows_arm64)))
+    for channel, folder in folders:
         raw = json.loads((folder / 'launcher-build.json').read_text(encoding='utf-8'))
         identity = build_identity(raw)
         if identity['channel'] != channel:
@@ -105,16 +113,20 @@ def whats_new(raw):
     return rows
 
 
-def downloads(base):
-    return ['| | |', '|---|---|',
+def downloads(base, builds=None):
+    rows = ['| | |', '|---|---|',
             '| **Windows** 10/11 · NVIDIA GPU | [FreeVideo.exe](%sFreeVideo.exe) |' % base,
             '| **macOS** 14+ · Apple silicon | [FreeVideo-Mac-arm64.dmg](%sFreeVideo-Mac-arm64.dmg) |' % base,
-            '| **Linux** x86_64 · NVIDIA GPU | [FreeVideo-Linux-x86_64.AppImage](%sFreeVideo-Linux-x86_64.AppImage) |' % base, '']
+            '| **Linux** x86_64 · NVIDIA GPU | [FreeVideo-Linux-x86_64.AppImage](%sFreeVideo-Linux-x86_64.AppImage) |' % base]
+    if builds and WINDOWS_ARM64_CHANNEL in builds:
+        name = RELEASE_ASSETS[WINDOWS_ARM64_CHANNEL][0]
+        rows.append('| **Windows** ARM64 · NVIDIA GPU (experimental) | [%s](%s%s) |' % (name, base, name))
+    return rows + ['']
 
 
 def checksums(builds):
     return ['<details><summary>sha256</summary>', '', '```',
-            *('%s  %s' % (builds[c]['sha256'], builds[c]['path'].name) for c in PLATFORMS), '```', '</details>', '']
+            *('%s  %s' % (builds[c]['sha256'], builds[c]['path'].name) for c in platforms(builds)), '```', '</details>', '']
 
 
 # The same offline packages, mirrored to ModelScope for downloads from China (anonymous folder page).
@@ -123,7 +135,7 @@ OFFLINE_MODELSCOPE = 'https://modelscope.cn/models/BowenXue/FreeVideo-releases/t
 
 def stable_body(builds, tag):
     # Visitors come to download: the files come first, then what changed.
-    rows = [LOGO, '## Download / 下载', ''] + downloads(PAGE + '/releases/download/' + tag + '/')
+    rows = [LOGO, '## Download / 下载', ''] + downloads(PAGE + '/releases/download/' + tag + '/', builds)
     rows += ['**Windows:** run FreeVideo.exe, choose an existing ComfyUI folder or install a new one, then click '
              '**Install & launch**. Offline packages are on [Quark](https://pan.quark.cn/s/c51235b84618) and [ModelScope](%s).' % OFFLINE_MODELSCOPE,
              '',
@@ -150,14 +162,14 @@ def stable_body(builds, tag):
 
 def nightly_body(builds, sha):
     built = time.strftime('%Y-%m-%d %H:%M', time.gmtime(max(b['identity']['built_at'] for b in builds.values())))
-    size = {c: '%.1f MB' % (builds[c]['path'].stat().st_size / 1e6) for c in PLATFORMS}
+    size = {c: '%.1f MB' % (builds[c]['path'].stat().st_size / 1e6) for c in platforms(builds)}
     rows = ['## FreeVideo nightly (rolling)', '',
             'Automated build of `main`, refreshed after every merge. For everyday use, download the '
             '[latest release](%s/releases/latest).' % PAGE,
             '',
             '基于 `main` 的自动构建，每次合并后更新。日常使用请下载[最新正式版](%s/releases/latest)。' % PAGE,
             '']
-    rows += downloads(PAGE + '/releases/download/' + NIGHTLY_TAG + '/')
+    rows += downloads(PAGE + '/releases/download/' + NIGHTLY_TAG + '/', builds)
     rows += ['| commit | built (UTC) | version | Windows | macOS | Linux |', '|---|---|---|---|---|---|',
              '| [`%s`](%s/commit/%s) | %s | %s | %s | %s | %s |' % (sha[:9], PAGE, sha, built,
                                                                  escape('v' + builds[CHANNEL]['identity']['product_version']),
@@ -253,13 +265,13 @@ def publish_stable(releases, builds, sha, folder):
     if releases.tag_exists(tag) or releases.find(tag) is not None:
         raise SystemExit('::error::%s is already released. Bump product_version and the notes in '
                          'freevideo_engine/release_notes.json, merge, then publish again.' % tag)
-    sums = write(folder, 'SHA256SUMS.txt', ''.join('%s  %s\n' % (builds[c]['sha256'], builds[c]['path'].name) for c in PLATFORMS))
+    sums = write(folder, 'SHA256SUMS.txt', ''.join('%s  %s\n' % (builds[c]['sha256'], builds[c]['path'].name) for c in platforms(builds)))
     body = write(folder, 'release-body.md', stable_body(builds, tag))
     title = 'FreeVideo ' + tag
     releases.point_tag(tag, sha)
     gh('Create draft %s' % tag, 'release', 'create', tag, '--verify-tag', '--draft', '--title', title, '--notes-file', body)
-    gh('Upload launchers to %s' % tag, 'release', 'upload', tag, *(str(builds[c]['path']) for c in PLATFORMS), sums, '--clobber')
-    bind_metadata(releases, tag, builds, PLATFORMS, folder, {c: RELEASE_ASSETS[c][1] for c in PLATFORMS})
+    gh('Upload launchers to %s' % tag, 'release', 'upload', tag, *(str(builds[c]['path']) for c in platforms(builds)), sums, '--clobber')
+    bind_metadata(releases, tag, builds, platforms(builds), folder, {c: RELEASE_ASSETS[c][1] for c in platforms(builds)})
     gh('Publish %s' % tag, 'release', 'edit', tag, '--draft=false', '--prerelease=false', '--latest',
        '--title', title, '--notes-file', body)
     # Launchers from before combined releases read the platform tags; keep them current.
@@ -308,15 +320,15 @@ def publish_nightly(releases, builds, sha, folder):
     if superseded(releases, sha):
         print('main moved on; the newer build publishes the nightly')
         return
-    sums = write(folder, 'SHA256SUMS.txt', ''.join('%s  %s\n' % (builds[c]['sha256'], builds[c]['path'].name) for c in PLATFORMS))
+    sums = write(folder, 'SHA256SUMS.txt', ''.join('%s  %s\n' % (builds[c]['sha256'], builds[c]['path'].name) for c in platforms(builds)))
     body = write(folder, 'release-body.md', nightly_body(builds, sha))
     releases.point_tag(NIGHTLY_TAG, sha)
     if releases.find(NIGHTLY_TAG) is None:
         gh('Create nightly', 'release', 'create', NIGHTLY_TAG, '--verify-tag', '--draft', '--prerelease', '--latest=false',
            '--title', 'Nightly (rolling)', '--notes-file', body)
-    gh('Upload nightly launchers', 'release', 'upload', NIGHTLY_TAG, *(str(builds[c]['path']) for c in PLATFORMS), sums, '--clobber')
-    bind_metadata(releases, NIGHTLY_TAG, builds, PLATFORMS, folder, {c: RELEASE_ASSETS[c][1] for c in PLATFORMS})
-    keep = {builds[c]['path'].name for c in PLATFORMS} | {RELEASE_ASSETS[c][1] for c in PLATFORMS} | {'SHA256SUMS.txt'}
+    gh('Upload nightly launchers', 'release', 'upload', NIGHTLY_TAG, *(str(builds[c]['path']) for c in platforms(builds)), sums, '--clobber')
+    bind_metadata(releases, NIGHTLY_TAG, builds, platforms(builds), folder, {c: RELEASE_ASSETS[c][1] for c in platforms(builds)})
+    keep = {builds[c]['path'].name for c in platforms(builds)} | {RELEASE_ASSETS[c][1] for c in platforms(builds)} | {'SHA256SUMS.txt'}
     for name in sorted(set(releases.assets(NIGHTLY_TAG)) - keep):
         gh('Remove stale %s' % name, 'release', 'delete-asset', NIGHTLY_TAG, name, '--yes')
     gh('Publish nightly', 'release', 'edit', NIGHTLY_TAG, '--draft=false', '--prerelease', '--latest=false',
@@ -330,10 +342,11 @@ def main():
     parser.add_argument('--windows', type=Path, required=True)
     parser.add_argument('--macos', type=Path, required=True)
     parser.add_argument('--linux', type=Path, required=True)
+    parser.add_argument('--windows-arm64', type=Path, help='the ARM64 build folder; leave out when that build failed')
     parser.add_argument('--sha', required=True)
     parser.add_argument('--repository', default=os.environ.get('GH_REPO', 'FlashML-org/FreeVideo'))
     args = parser.parse_args()
-    builds = load_builds(args.windows, args.macos, args.linux)
+    builds = load_builds(args.windows, args.macos, args.linux, args.windows_arm64)
     if build_track(builds[CHANNEL]['identity']) != args.track:
         raise SystemExit('The builds are %s builds, not %s' % (build_track(builds[CHANNEL]['identity']), args.track))
     releases = Releases(args.repository)

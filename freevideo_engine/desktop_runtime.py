@@ -43,6 +43,13 @@ def launcher_root():
     return Path(home) / 'FreeVideo-launcher'
 
 
+def foreign_environment(root):
+    """Whether an x64 environment is installed on a Windows on Arm computer."""
+    from .environments import WINDOWS_ARM64_PYTHON, environment_native_arm64, windows_arm64
+    folder = Path(root) / 'envs' / 'unified'
+    return windows_arm64() and io_path(folder).is_dir() and not environment_native_arm64(folder, WINDOWS_ARM64_PYTHON)
+
+
 NOTICE_FILES = ('LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md')
 
 
@@ -284,6 +291,56 @@ def entry_ready(source, name=ENTRY_SCRIPT):
         return False
 
 
+def _builtin_files(source):
+    """What the launcher can put back into a deployed source folder: ({name: sha256}, where(name) -> file).
+
+    Only the launcher's own built-in files (or the verified update overlay) are ever the origin, and each one
+    is used only when its hash equals the recorded one; nothing is downloaded. None when there is no such origin."""
+    bootstrap = None
+    if getattr(sys, 'frozen', False):
+        from .top_level_modules import update_modules
+        bootstrap = update_modules()[2]
+    active = getattr(bootstrap, 'ACTIVE', None)
+    if active and resolved(Path(plain(active['source']))) == resolved(Path(plain(source))):
+        recorded = {name: row.get('sha256') for name, row in active['manifest']['files'].items()}
+
+        def where(name):
+            held = io_path(active['folder']) / 'files' / name
+            return held if held.is_file() else io_path(Path(sys._MEIPASS) / 'engine-source') / name
+        return recorded, where
+    if getattr(sys, 'frozen', False):
+        record = json.loads((io_path(source) / 'launcher-source.json').read_text(encoding='utf-8'))
+        return dict(record['sha256']), lambda name: io_path(Path(sys._MEIPASS) / 'engine-source') / name
+    return None
+
+
+def _inside(name):
+    """A recorded name is a plain relative path of forward-slash parts: no drive, absolute path, '..' or backslash."""
+    parts = name.split('/') if isinstance(name, str) else ()
+    return bool(parts) and all(part not in ('', '.', '..') and not set(part) & set('\\:') for part in parts)
+
+
+def _put_back(source, name, recorded, where):
+    expected = recorded.get(name)
+    if not expected or not _inside(name):
+        return False
+    origin = where(name)
+    if not origin.is_file():
+        return False
+    data = origin.read_bytes()
+    if hashlib.sha256(data).hexdigest() != expected:
+        return False
+    target = io_path(source) / name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    stage = target.with_name(target.name + '.' + uuid.uuid4().hex[:8] + '.tmp')
+    try:
+        stage.write_bytes(data)
+        os.replace(stage, target)
+    finally:
+        stage.unlink(missing_ok=True)
+    return True
+
+
 def restore_entry(source, name=ENTRY_SCRIPT):
     """Put back one entry script that vanished from a deployed source folder after the launcher started.
 
@@ -292,35 +349,40 @@ def restore_entry(source, name=ENTRY_SCRIPT):
     if entry_ready(source, name):
         return True
     try:
-        bootstrap = None
-        origin = expected = None
-        if getattr(sys, 'frozen', False):
-            from .top_level_modules import update_modules
-            bootstrap = update_modules()[2]
-        active = getattr(bootstrap, 'ACTIVE', None)
-        if active and resolved(Path(plain(active['source']))) == resolved(Path(plain(source))):
-            expected = active['manifest']['files'].get(name, {}).get('sha256')
-            held = io_path(active['folder']) / 'files' / name
-            origin = held if held.is_file() else io_path(Path(sys._MEIPASS) / 'engine-source') / name
-        elif getattr(sys, 'frozen', False):
-            origin = io_path(Path(sys._MEIPASS) / 'engine-source') / name
-            record = json.loads((io_path(source) / 'launcher-source.json').read_text(encoding='utf-8'))
-            expected = record['sha256'].get(name)
-        if origin is None or not expected or not origin.is_file():
+        found = _builtin_files(source)
+        if found is None or not _put_back(source, name, *found):
             return False
-        data = origin.read_bytes()
-        if hashlib.sha256(data).hexdigest() != expected:
-            return False
-        target = io_path(source) / name
-        stage = target.with_name(name + '.' + uuid.uuid4().hex[:8] + '.tmp')
-        try:
-            stage.write_bytes(data)
-            os.replace(stage, target)
-        finally:
-            stage.unlink(missing_ok=True)
     except Exception:
         return False
     return entry_ready(source, name)
+
+
+def restore_missing_files(source):
+    """Put back every file of a deployed source folder that is gone (or was emptied), such as one a virus
+    scanner removed, so a setup step does not stop on the first file it reads.
+
+    Files that are present are never touched, so edits stay. Returns (restored names, names that could not be
+    restored); both are empty when the folder is complete or has no built-in origin to restore from."""
+    restored, failed = [], []
+    try:
+        found = _builtin_files(source)
+        if found is None:
+            return restored, failed
+        empty = hashlib.sha256(b'').hexdigest()
+        for name, expected in sorted(found[0].items()):
+            try:
+                if not _inside(name):
+                    failed.append(name)
+                    continue
+                target = io_path(source) / name
+                if target.is_file() and (target.stat().st_size or expected == empty):
+                    continue
+                (restored if _put_back(source, name, *found) else failed).append(name)
+            except OSError:
+                failed.append(name)
+    except Exception:
+        pass
+    return restored, failed
 
 
 def preflight_json(output):
@@ -403,7 +465,11 @@ class Runner:
 
     def environment(self, root):
         from .linux_bundle import child_environment
-        return dict(child_environment(), PYTHONUTF8='1', PYTHONIOENCODING='utf-8', NO_COLOR='1', FREEVIDEO_UI_EVENTS='1')
+        values = dict(child_environment(), PYTHONUTF8='1', PYTHONIOENCODING='utf-8', NO_COLOR='1', FREEVIDEO_UI_EVENTS='1')
+        if foreign_environment(root):
+            # Setup makes this environment again, and Windows cannot delete the folder of the Python that runs setup.
+            values['FREEVIDEO_FORCE_BOOTSTRAP'] = '1'
+        return values
 
     def prepare(self, action, root, env, progress):
         return env
@@ -421,10 +487,17 @@ class Runner:
             # Only a command that really starts the script needs it (the ComfyUI host runs from Python directly).
             if entry and str(self.source / entry) in command and not restore_entry(self.source, entry):
                 raise RuntimeError('FreeVideo could not find %s in %s' % (entry, plain(self.source)))
+            restored, unrestored = restore_missing_files(self.source)
+            restore_note = ''
+            if restored or unrestored:
+                restore_note = 'Source files missing from %s: restored %d%s' % (plain(self.source), len(restored),
+                    ('; could not restore ' + ', '.join(unrestored[:5])) if unrestored else '')
             save(run / 'status.json', dict(action=action, command=command, root=str(root), status='running'))
             self.events.put(('started', plain(run)))
             env = self.environment(root)
             with (run / 'launcher.log').open('w', encoding='utf-8', buffering=1) as log:
+                if restore_note:
+                    log.write(json.dumps({'event': 'source_files', 'message': restore_note}) + '\n')
                 def plain_message(value):
                     if isinstance(value, str):
                         return plain_text(value)

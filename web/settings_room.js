@@ -36,7 +36,7 @@ if (typeof document !== 'undefined') {
 }
 
 import { nearestAllowed } from './field_note.js';
-import { cn, t, INSTALLED_HINT, gib, bytesText, atLeast, WAIT_REFUSAL, reportable, failureText, setupError, SECTIONS, sectionOf } from './settings_words.js';
+import { cn, t, INSTALLED_HINT, gib, bytesText, atLeast, WAIT_REFUSAL, reportable, reportText, failureText, setupError, SECTIONS, sectionOf } from './settings_words.js';
 export { failureText, sectionOf, SECTIONS, bytesText };
 
 let current;
@@ -189,7 +189,7 @@ export async function openSetup(options) {
     const fault = (target, message, error, fallback) => {
         const known = failureText(message), text = error && known === String(message || '') ? userMessage(error, t, fallback) : known;
         target.textContent = text;
-        if (text && reportable(message)) target.append(reportTip(issueButton(t, () => ({where: ['Settings / installation', '设置／安装'], message: known}))));
+        if (text && reportable(message)) target.append(reportTip(issueButton(t, () => ({where: ['Settings / installation', '设置／安装'], message: reportText(known, message)}))));
     };
 
     // ════════════ Models ════════════

@@ -395,7 +395,7 @@ class Session:
                 value = local_url(str(value))
             except ValueError as exc:
                 if str(exc).startswith(('Invalid ComfyUI port', 'Port ')):
-                    message = self.t('The ComfyUI port is not valid.', 'ComfyUI 端口无效。')
+                    message = self.t('The server port is not valid.', '服务端口无效。')
                 else:
                     message = self.t(
                         'Enter localhost or an IP address of this computer, for example http://127.0.0.1:8188.',

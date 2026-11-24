@@ -299,7 +299,8 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         const narrated = !previewSelection && !musical && !!narration?.target(selection);
         const dub =!previewSelection && voice?.controller.target(selection) ? voice.controller.session(voice.controller.target(selection)) : null;
         const voiced = !!dub && dub.phase !== 'none' && dub.phase !== 'error';
-        const installing = !previewSelection && !!voice?.install?.visible(selection);
+        // Where dubbing is not available the sentence stands beside the description and Generate; it takes nothing away.
+        const installing = !previewSelection && !!voice?.install?.visible(selection) && !voice.install.later?.();
         const selected = !!selection && (!!previewSelection || musical || narrated || (actions.supportedSelection?.() ?? true));
         // While a part generates, choosing another place offers Generate again; it is queued behind.
         // A press is being sent for the parts in `pressing`; only that same selection waits for it.

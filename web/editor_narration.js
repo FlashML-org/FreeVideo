@@ -203,7 +203,7 @@ export function createEditorNarration({state, store, t, sources = () => new Map(
     // Waits for the dubbing model when it is still to be downloaded; false when it cannot be had.
     async function modelReady() {
         if (ready()) return true;
-        if (!install?.offered?.()) return false;
+        if (!install?.offered?.() || install.later?.()) return false;
         install.start();
         while (!disposed && !ready()) {
             if (['failed', 'unsupported'].includes(install.view?.phase) || install.view?.phase === 'idle' && !install.hasJob?.()) return ready();
@@ -261,7 +261,7 @@ export function createEditorNarration({state, store, t, sources = () => new Map(
             return found && pace ? pace * found.frames / FPS : null;
         },
         // Bytes still to download before the first line, for the bar's "Downloads before generating" line.
-        downloadBytes: () => !ready() && install?.offered?.() ? install.view?.bytes || 0 : 0,
+        downloadBytes: () => !ready() && install?.offered?.() && !install.later?.() ? install.view?.bytes || 0 : 0,
         downloading: () => !ready() && install?.view?.phase === 'downloading' ? install.view : null,
         // Generate on an empty stretch, or again on a planned line there, in the voice shown.
         async press(text) {

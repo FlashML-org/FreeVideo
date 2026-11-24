@@ -18,6 +18,7 @@ import platform
 
 from . import execution_paths
 from . import long_paths
+from . import host_arch
 from .long_paths import io_path, resolved, plain, plain_text
 from . import __version__
 from .bootstrap import DEFAULT_ROOT
@@ -237,6 +238,17 @@ def web_files(root, machine):
     return dict(error='No FreeVideo source is recorded')
 
 
+def windows_state(bootstrap):
+    """The system section of a Windows report."""
+    return {'platform': platform.platform(),
+            'windows_version': platform.win32_ver(), 'machine': platform.machine(),
+            'host_arch': host_arch.detect(),
+            'memory': system_memory(), 'cpu': platform.processor(),
+            'executables': {name: shutil.which(name) for name in ('git', 'curl', 'cl', 'nvcc')},
+            'cuda_paths': {k: v for k, v in os.environ.items() if k == 'CUDA_PATH' or k.startswith('CUDA_PATH_V')},
+            'bootstrap_log': plain(bootstrap / 'bootstrap.log')}
+
+
 def collect(root, config, run, output, *, complete=False, extra_files=(), notes='', progress=None):
     root, config = resolved(root.expanduser()), io_path(config.expanduser().absolute())
     run = io_path(run) if run is not None else None
@@ -372,12 +384,7 @@ def collect(root, config, run, output, *, complete=False, extra_files=(), notes=
                     for path in report_files(gui_run):
                         add_path('launcher/' + gui_run.name + '/' + path.relative_to(gui_run).as_posix(), path)
             try:
-                add('current/windows.json', json.dumps({'platform': platform.platform(),
-                    'windows_version': platform.win32_ver(), 'machine': platform.machine(),
-                    'memory': system_memory(), 'cpu': platform.processor(),
-                    'executables': {name: shutil.which(name) for name in ('git', 'curl', 'cl', 'nvcc')},
-                    'cuda_paths': {k: v for k, v in os.environ.items() if k == 'CUDA_PATH' or k.startswith('CUDA_PATH_V')},
-                    'bootstrap_log': plain(bootstrap / 'bootstrap.log')}).encode())
+                add('current/windows.json', json.dumps(windows_state(bootstrap)).encode())
             except OSError as error:
                 manifest['errors'].append({'command': 'windows-memory', 'error': redactor.text(str(error))})
         else:

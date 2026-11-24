@@ -82,7 +82,7 @@ sqlalchemy==2.0.52
 sympy==1.14.0
 tokenizers==0.23.0rc0
 torch==2.14.0+cu134
-torchaudio==2.11.0+cu134
+torchaudio==2.11.1+cu134
 torchsde==0.2.6
 torchvision==0.29.0+cu134
 tqdm==4.70.0

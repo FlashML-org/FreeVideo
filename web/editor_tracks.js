@@ -500,10 +500,39 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
     function syncVerticalScroll() {
         const top = scroll.scrollTop;
         element.dataset.verticalOverflow = String(scroll.scrollHeight > scroll.clientHeight);
+        const last = rowOrder.at(-1);
+        element.dataset.trackBelow = String(!!last && last.top + last.height > top + scroll.clientHeight + 1);
         element.style.setProperty('--fv-ed-track-offset', `${-top}px`);
         // Keep the handle beside the fixed ruler; the line still ends at the last row.
         playhead.style.top = `${18 + top}px`;
         playhead.style.height = `${Math.max(0, parseFloat(content.style.height) - 34 - 18 - top)}px`;
+    }
+    // Rows taller than the timeline: the sound lanes give up height first, evenly, down to what a track head's switches
+    // need (28 px buttons); the picture row and text rows keep theirs. Past that the timeline scrolls, and a fade at its foot
+    // says a track is still below until it is scrolled to. Rows that fit keep their size. The timeline's own height is
+    // taken from the rows' natural height (editor.js), so a lane given up comes back when the window grows.
+    const soundMinimum = () => touchRows?.matches ? 46 : 30;
+    let rowOrder = [];
+    function fitRows() {
+        const natural = rowOrder.reduce((sum, row) => sum + row.natural + 6, 24) - 6, sound = rowOrder.filter(row => row.sound);
+        const over = natural - scroll.clientHeight, spare = Math.min(...sound.map(row => row.natural)) - soundMinimum();
+        const cut = scroll.clientHeight && over > 0 && sound.length ? clamp(Math.ceil(over / sound.length), 0, Math.max(0, spare)) : 0;
+        let top = 24;
+        for (const row of rowOrder) {
+            const height = row.natural - (row.sound ? cut : 0);
+            if (row.top !== top || row.height !== height) {
+                row.top = top; row.height = height;
+                row.element.style.top = row.head.style.top = `${top}px`;
+                row.element.style.height = row.head.style.height = `${height}px`;
+            }
+            top += height + 6;
+        }
+        addAudio.style.top = `${top}px`;
+        // The key that removes Audio 2 stands in that head's icon, so it moves whenever the rows are fitted.
+        const second = rows.get('a2');
+        if (second) addAudio.style.setProperty?.('--fv-ed-remove-top', `${second.top + second.height / 2 - 14}px`);
+        content.dataset.fit = String(natural + 34);
+        setTrackHeight(top - 6);
     }
     function setTrackHeight(height) {
         // The heads' 6px gap and 28px audio button belong to the same scroll extent.
@@ -512,6 +541,7 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         syncVerticalScroll();
     }
     function layout() {
+        if (rowOrder.length) fitRows();
         // Defer the initial 90-second view until a detached shell is mounted.
         if (!mountedStates.has(state) && scroll.clientWidth) {
             mountedStates.add(state);
@@ -631,6 +661,7 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         const twoAudio = tracks.some(track => track.id === 'a2');
         const STEM_NAMES = {dialogue: t('Dialogue', '人声'), music: t('Music', '音乐'), ambience: t('Ambience', '环境声')};
         let top = 24, parted = false;
+        const order = [];
         for (const track of tracks) {
             const name = track.kind === 'text' ? t('Text', '文字') : track.kind === 'subtitle' ? t('Subtitles', '字幕') : track.kind === 'video' ? t('Video', '画面') : track.stem ? STEM_NAMES[track.stem] : track.id === 'a3'
                 ? t('Voice', '录音') : twoAudio ? t(`Audio ${track.id.slice(1)}`, `声音 ${track.id.slice(1)}`) : t('Audio', '声音');
@@ -655,7 +686,8 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
             row.empty.hidden = track.clips.length > 0;
             // A picture track with any block description grows a strip for it under the pictures.
             const noted = !!actions.describedTrack?.(track); row.element.dataset.noted = String(noted);
-            row.top = top; row.height = track.kind === 'video' ? 64 + (noted ? 22 : 0) : laneHeight();
+            row.natural = track.kind === 'video' ? 64 + (noted ? 22 : 0) : laneHeight(); row.sound = track.kind === 'audio';
+            row.top = top; row.height = row.natural; order.push(row);
             row.element.style.top = row.head.style.top = `${top}px`;
             row.element.style.height = row.head.style.height = `${row.height}px`;
             row.element.setAttribute('aria-label', name);
@@ -727,15 +759,14 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
                 updateProgress(item);
             });
         }
+        rowOrder = order; fitRows();
         for (const [id, row] of rows) if (!tracks.some(track => track.id === id)) { row.element.remove(); row.head.remove(); rows.delete(id); }
         for (const [id, item] of clips) if (!retained.has(id)) { item.component?.dispose(); item.element.remove(); clips.delete(id); progresses.delete(id); }
         heads.append(addAudio);
-        addAudio.style.top = `${top}px`; addAudio.disabled = tracks.find(track => track.id === 'a2')?.clips.some(busy) || false;
+        addAudio.disabled = tracks.find(track => track.id === 'a2')?.clips.some(busy) || false;
         // With Audio 2 present the key removes it: it shows beside that track's head only while Audio 2 (or something on it)
         // is selected, or the pointer is over its head; it is not there the rest of the time.
         addAudio.dataset.mode = twoAudio ? 'remove' : 'add';
-        const second = rows.get('a2');
-        if (second) addAudio.style.setProperty?.('--fv-ed-remove-top', `${second.top + second.height / 2 - 14}px`);
         addAudio.textContent = twoAudio ? t('Remove Audio 2', '移除声音 2') : t('+ Audio track', '＋ 声音轨');
         addAudio.dataset.sign = twoAudio ? '×' : '＋'; // Phone widths show the sign alone.
         // Wide heads draw the sign in the icon column and these words in the name column, like a track head.
@@ -745,7 +776,6 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         addAudio.setAttribute('aria-label', addAudio.textContent);
         // Without Audio 2 the guide points at the button that adds it.
         if (twoAudio) delete addAudio.dataset.tourId; else addAudio.dataset.tourId = 'audio-a2-track';
-        setTrackHeight(top - 6);
         layout();
         // The parts of a fresh split appear under the sound they came from: show them from the top.
         if (parted) scroll.scrollTop = 0;

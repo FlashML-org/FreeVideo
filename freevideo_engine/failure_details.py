@@ -403,11 +403,11 @@ WITHOUT_REPAIR_NONE = ('Return to Installation and check the same folder to rest
 _KEPT = ('; the models and videos in the current folder are not deleted.', '；原文件夹里的模型和作品不会被删除。')
 _EXTRACT = ('Extract the downloaded package again into a new folder and start FreeVideo from there' + _KEPT[0],
             '请把下载的整合包重新解压到一个新文件夹，再从新文件夹启动 FreeVideo' + _KEPT[1])
-_IMPORT = ('On the Installation page in the sidebar, select Install ComfyUI, change Install location to a new folder, '
+_IMPORT = ('On the Installation page in the sidebar, select New installation, change Install location to a new folder, '
            'then click Replace package… under Import environment package and choose the downloaded environment package; '
            'if you are online, you can instead choose Automatic as the install method there. '
            'The models and videos in the current folder are not deleted.',
-           '请在左侧“安装”页选择“帮我安装 ComfyUI”，把“安装位置”改为一个新文件夹，然后在“导入运行环境包”中点击“更换环境包…”'
+           '请在左侧“安装”页选择“全新安装”，把“安装位置”改为一个新文件夹，然后在“导入运行环境包”中点击“更换环境包…”'
            '并选择下载的运行环境包；能联网时，也可以在那里把安装方式改为“自动安装”。原文件夹里的模型和作品不会被删除。')
 WITHOUT_REPAIR = {
     # A model file that differs from the tested one; FreeVideo leaves it in place.
@@ -758,9 +758,9 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
             action = ('请改选“%s”文件夹。' if zh else 'Select the "%s" folder instead.') % found
         else:
             # The button name is the one on the launcher's ComfyUI page (Main.qml, newComfyMethod).
-            action = ('请选择包含 main.py 的 ComfyUI 文件夹，或包含它的便携包文件夹。尚未安装 ComfyUI 时，请选择“帮我安装 ComfyUI”。' if zh else
+            action = ('请选择包含 main.py 的 ComfyUI 文件夹，或包含它的便携包文件夹。尚未安装 ComfyUI 时，请选择“全新安装”。' if zh else
                       'Select the ComfyUI folder (it contains main.py), or the portable folder that contains it. '
-                      'If ComfyUI is not installed yet, choose "Install ComfyUI".')
+                      'If ComfyUI is not installed yet, choose "New installation".')
         return dict(title='这不是 ComfyUI 文件夹' if zh else "This isn't a ComfyUI folder", detail='',
                     action=action, kind='comfy-folder')
     if re.search(r'Mac GPU check did not pass|Native GPU checks did not complete', summary):
@@ -825,18 +825,20 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
         return dict(title=DOWNLOAD_COPY['error_read'][zh], detail='', action='', kind='download-list-read')
     rules = (
         (r'This port is in use by another application', 'port-taken',
-         ('The ComfyUI port is in use', 'ComfyUI 端口被占用'),
-         ('Another program is using this port. Change the ComfyUI address in Settings, then start again.',
-          '有其他程序占用了这个端口。请在设置里换一个 ComfyUI 地址，再重新启动。')),
+         ('The server port is in use', '服务端口被占用'),
+         ('Another program is using this port. Change the server address in Settings, then start again.',
+          '有其他程序占用了这个端口。请在设置里换一个服务地址，再重新启动。')),
         # Windows reserves whole port ranges (Hyper-V, WSL), so the ports after it may be unusable too.
         (r'This port and the next ones are in use or reserved by the system', 'port-taken',
-         ('The ComfyUI port cannot be used', 'ComfyUI 端口无法使用'),
-         ('This port and the next ones are in use or reserved by the system. Change the ComfyUI address in Settings, '
-          'then start again.', '这个端口和后面的端口都已被占用或被系统保留。请在设置里换一个 ComfyUI 地址，再重新启动。')),
-        (r'The ports for LAN access are in use or reserved by the system', 'port-taken',
+         ('The server port cannot be used', '服务端口无法使用'),
+         ('This port and the next ones are in use or reserved by the system. Change the server address in Settings, '
+          'then start again.', '这个端口和后面的端口都已被占用或被系统保留。请在设置里换一个服务地址，再重新启动。')),
+        # The older wording of this sentence ("The ports for LAN access are in use ...") is still recognised.
+        (r'The ports for LAN access (?:and the ports after them )?are in use or reserved by the system', 'port-taken',
          ('The LAN access port cannot be used', '局域网访问的端口无法使用'),
-         ('The ports for LAN access are in use or reserved by the system. Change the ComfyUI port in Settings, '
-          'then start again.', '局域网访问要用的端口已被占用或被系统保留。请在设置里换一个 ComfyUI 端口，再重新启动。')),
+         ('The ports for LAN access and the ports after them are in use or reserved by the system. Close the programs '
+          'using these ports, then turn on LAN access again.',
+          '局域网访问要用的端口和后面的端口都已被占用或被系统保留。请关闭占用这些端口的程序，再重新开启局域网访问。')),
         (r'The previous video has no usable continuation data', 'continuation-missing',
          ('This video cannot be continued', '这个视频暂时不能接续'),
          ('Generate the previous video again, then continue it.', '请重新生成上一段视频，再接续。')),
@@ -975,8 +977,8 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
           '请点“重试安装”，启动器会自动修复下载工具。仍然失败时，可以导出报告。')),
         (r'ComfyUI is still running a job', 'busy',
          ('A video is still generating', '还有视频正在生成'),
-         ('The update is installed. Click Connect again after the job finishes to restart ComfyUI with it.',
-          '更新已装好。等当前任务完成后点“重新连接”，ComfyUI 会重启并使用新版。')),
+         ('The update is installed. Click Connect again after the job finishes to restart FreeVideo with it.',
+          '更新已装好。等当前任务完成后点“重新连接”，FreeVideo 会重启并使用新版。')),
         (r'WinError 206|The filename or extension is too long|is too long for Git to read', 'path-too-long',
          ("The installation folder's path is too long", '安装文件夹的路径太长'),
          ('Install FreeVideo in a folder with a shorter path, such as D:\\FreeVideo, then click "Retry installation".',

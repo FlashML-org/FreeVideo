@@ -603,6 +603,10 @@ class ResourceBudgetError(ValueError):
             cgroup_ram_limit_bytes=hardware.cgroup_ram_limit,
             ram_physical_available_bytes=hardware.ram_physical_available,
             ram_commit_available_bytes=hardware.ram_commit_available)
+        # One pool (resource_budget): the GPU's usable figure is what is left after the host's share and reserve.
+        host_share = UNIFIED_HOST_BYTES + int(reserve_ram * GiB) if shared_pool(hardware) else 0
+        if host_share:
+            self.details.update(gpu_budget_bytes=self.details['gpu_budget_bytes'] - host_share, unified_host_share_bytes=host_share)
         failed = [name for name in ('gpu', 'ram')
                   if self.details[name+'_budget_bytes'] < self.details[name+'_minimum_bytes']]
         self.details['insufficient'] = failed
@@ -610,7 +614,7 @@ class ResourceBudgetError(ValueError):
         # automatic reserve would leave enough. Said in the refusal so the
         # setting is named instead of looking like a shortage of memory.
         automatic = int(automatic_gpu_reserve_gib(hardware.system == 'Windows', free_gpu) * GiB)
-        automatic_budget = free_gpu - automatic
+        automatic_budget = free_gpu - automatic - host_share
         self.details['gpu_reserve_explicit'] = bool(gpu_reserve_explicit)
         if ('gpu' in failed and gpu_reserve_explicit and int(reserve_gpu * GiB) > automatic
                 and automatic_budget >= gpu_minimum_bytes):
@@ -644,6 +648,9 @@ class ResourceBudgetError(ValueError):
                              (canvas['width'], canvas['height'], canvas['frames'], canvas['frames']/24,
                               canvas['video_tokens'], canvas.get('reference_video_tokens', 0) +
                               canvas.get('reference_audio_tokens', 0)))
+        if host_share:
+            lines.append('The GPU and the host share one memory pool: VRAM and RAM below are the same %.2f GiB, and the '
+                         'usable VRAM leaves the host %.2f GiB of it.' % (free_gpu / GiB, host_share / GiB))
         for name, label in (('gpu', 'VRAM'), ('ram', 'RAM')):
             lines.append('%s: %.2f GiB available, %.2f GiB reserved for system growth, '
                          '%.2f GiB usable; minimum %.2f GiB. Capacity %.2f / %.2f GiB.' %
@@ -814,6 +821,30 @@ def commit_gpu_limit(hardware: Hardware, request_budget):
     return int(limit) if limit < request_budget else None
 
 
+# GB10 and the RTX Spark laptops built on it (compute capability 12.1) keep the GPU's memory in system memory.
+#
+# On Linux (DGX Spark) it is one pool: CUDA's free figure and MemAvailable describe the same bytes, and a byte the GPU
+# takes is gone for the host. The host's share is the private memory measured beside a complete request on Windows,
+# where the allocator's reservations are charged to the same commit account (WINDOWS_COMMIT_HOST_BYTES), plus its
+# spare for other programs: a starting point from that measurement, to be calibrated on a GB10 (arm64 2b).
+#
+# On Windows the GPU's part is a dedicated carve-out the user can resize (NVML reports only that part; 96 GiB of a
+# 128 GB laptop left the CPU about 30.5 GiB), so the two figures do not overlap. What they share is the commit
+# account: NVIDIA confirmed that CUDA allocations are charged to it even inside the carve-out. commit_gpu_limit
+# already holds the GPU budget to the commit headroom less the host's share, as on every Windows machine.
+UNIFIED_HOST_BYTES = WINDOWS_COMMIT_HOST_BYTES + WINDOWS_COMMIT_SPARE_BYTES
+
+
+def unified_memory(hardware: Hardware):
+    """Whether the GPU's memory is system memory, so a host copy of a weight is a second copy, not a saving."""
+    return hardware.architecture == 'blackwell-unified'
+
+
+def shared_pool(hardware: Hardware):
+    """Whether the GPU's free figure and the host's available memory are the same bytes (unified memory on Linux)."""
+    return unified_memory(hardware) and hardware.system != 'Windows'
+
+
 def automatic_gpu_reserve_gib(desktop, free_gpu):
     """The VRAM growth reserve when none is set: a fixed share on Windows, a fraction of the free card elsewhere."""
     return .25 if desktop else max(.5, min(1., free_gpu / GiB * .025))
@@ -841,6 +872,11 @@ def resource_budget(hardware: Hardware, *, vram_gib=None, ram_gib=None,
     free_ram = max(0, min(ram_total, hardware.ram_available))
     if hardware.cgroup_ram_limit is not None:
         free_ram = min(free_ram, hardware.cgroup_ram_limit)
+    unified = shared_pool(hardware)
+    if unified:
+        # One pool, counted once. CUDA's figure leaves out reclaimable page cache and MemAvailable counts it, so the
+        # smaller of the two is what both sides can rely on.
+        free_gpu = free_ram = min(free_gpu, free_ram)
     reserve_gpu = (gpu_reserve_gib if gpu_reserve_gib is not None else
                    automatic_gpu_reserve_gib(desktop, free_gpu))
     reserve_ram = ram_reserve_gib if ram_reserve_gib is not None else max(2. if desktop else 1., min(4., free_ram / GiB * .05))
@@ -848,6 +884,12 @@ def resource_budget(hardware: Hardware, *, vram_gib=None, ram_gib=None,
         raise ValueError('System RAM headroom must be finite and nonnegative.')
     gpu_budget = free_gpu - int(reserve_gpu * GiB)
     ram_budget = free_ram - int(reserve_ram * GiB)
+    if unified:
+        # The GPU budget leaves the host its share and its reserve. The RAM budget, which the RAM guard enforces,
+        # stays the whole pool less its reserve: whether the guard's reading includes CUDA allocations on these
+        # machines is not known yet (arm64 2e), and a guard that saw them would stop every request at a host-sized
+        # budget. The planner keeps no weights in host memory here (see _choose), so the host does not grow into it.
+        gpu_budget -= UNIFIED_HOST_BYTES + int(reserve_ram * GiB)
     return dict(gpu_capacity_bytes=gpu_total, ram_capacity_bytes=ram_total,
                 gpu_available_bytes=free_gpu, ram_available_bytes=free_ram,
                 gpu_system_reserve_bytes=int(reserve_gpu * GiB),
@@ -1148,6 +1190,10 @@ def _choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto'
             raise ValueError('Demonstrated RAM must be a nonnegative byte count')
         retention_budget = max(ram_budget, min(demonstrated_ram_bytes,
                                                ram_total - int(reserve_ram * GiB)))
+    if unified_memory(hardware):
+        # A weight kept in host memory is a second copy in the same pool, which saves nothing: blocks the GPU budget
+        # does not hold are read from the model file instead, and the GPU budget above already holds what fits.
+        retention_budget = 0
     small_adjustment = (int(4.6 * GiB * (effective_tokens / (72 * 1008) - 1.))
                         if canvas is not None else 0)
     # Scale the existing activation estimate with output and reference rows.
@@ -1793,6 +1839,9 @@ def _choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto'
     # keeps read-only views of the rest, which avoid rereads while RAM allows.
     streamed_weights = ((hardware.system == 'Windows' and resident < 50)
                         or (50 - resident) * block_bytes + host_activation + 2 * GiB > retention_budget)
+    if unified_memory(hardware):
+        # Nothing is kept in host memory there (retention_budget is 0): only blocks the GPU does not hold are read.
+        streamed_weights = resident < 50
     if streamed_weights:
         # When the remaining weights exceed RAM, a bounded retained subset
         # prevents rereading those bytes every step. This addresses disk I/O,
@@ -1917,6 +1966,11 @@ def _choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto'
     if commit_limit is not None:
         notes.append('Windows commit headroom is %.2f GiB: sampling keeps its GPU allocation within %.2f GiB, the most that commit can back beside the host\'s memory without changing the planned compute shapes. Weights beyond that stay streamed; arithmetic and attention are unchanged.'
                      % ((hardware.ram_commit_available or 0) / GiB, commit_limit / GiB))
+    if shared_pool(hardware):
+        notes.append('One memory pool serves the GPU and the host: the GPU budget leaves the host %.2f GiB and its reserve, and no weights are kept in host memory.'
+                     % (UNIFIED_HOST_BYTES / GiB))
+    elif unified_memory(hardware):
+        notes.append('The GPU memory is a carve-out of system memory and CUDA allocations are charged to Windows commit: the commit headroom bounds the GPU budget, and no weights are kept in host memory.')
     if retention_budget > ram_budget:
         notes.append('Weight caching may keep %.2f GiB rather than the %.2f GiB currently reported available: a complete verified request on this machine, under this compute build and geometry, held that much. The request budget and admission still use the reported figure.'
                      % (retention_budget / GiB, ram_budget / GiB))

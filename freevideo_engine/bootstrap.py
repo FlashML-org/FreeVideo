@@ -31,7 +31,7 @@ from .monitoring import save, load_ledger
 from .install_tuning import build_parallelism, required_models, cache_compatible, wheel_key
 from .terminal_ui import TerminalUI, LogProgress
 from .locking import runtime_lock, LOCK_ENV
-from .environments import (ENVIRONMENTS, environment_names, select_layout, role_pythons, constraints_file, setup_supported, uv_folder, conda_lock, conda_triple,
+from .environments import (ENVIRONMENTS, environment_spec, windows_arm64, environment_native_arm64, environment_names, select_layout, role_pythons, constraints_file, setup_supported, uv_folder, conda_lock, conda_triple,
                            bootstrap_versions, uv_file_arguments, uv_build_environment)
 from . import disk_space
 from . import network
@@ -170,7 +170,7 @@ def reinstall_download_bytes(dependencies, system, *, root=None, frontend_python
     """Bytes setup downloads again to replace missing or changed files: the pinned
     Windows wheel (torch_download), elsewhere the package's installed size, an
     upper bound for its wheel. Marks each engine environment's damaged packages."""
-    from .environments import ENVIRONMENTS
+    from .environments import ENVIRONMENTS, environment_spec
     from .runtime_libraries import damaged, incomplete, installed_bytes, missing_packages
     from .torch_download import select
     total = 0
@@ -189,7 +189,7 @@ def reinstall_download_bytes(dependencies, system, *, root=None, frontend_python
         else:
             # Setup puts back pinned packages whose files are gone (Setup.repairing).
             broken = sorted(set(broken + missing_packages(row['python'], constraints_file(name, system))))
-        pins = ENVIRONMENTS.get(name, {})
+        pins = (environment_spec(name, system) if name in ENVIRONMENTS else {}) if system == 'Windows' else ENVIRONMENTS.get(name, {})
         wheels = {w['package']: w for w in (select(pins['torch'], pins['cuda']) or [])} if system == 'Windows' and pins else {}
         for package in broken:
             wheel = wheels.get(package)
@@ -239,13 +239,15 @@ def dependency_status(root, layout='unified', system=None):
     if system == 'Windows':
         for name in packages:
             packages[name] = ['triton-windows' if p == 'triton' else p for p in packages[name]]
+            if windows_arm64(system):
+                packages[name] = [p for p in packages[name] if p != 'sageattention']  # no win_arm64 build
     for name in environment_names(layout):
         names = packages[name]
         expected = dict(line.strip().lower().split('==', 1) for line in
                         constraints_file(name, system).read_text(encoding='utf-8').splitlines() if '==' in line)
         expected = {name.replace('_', '-'): version for name, version in expected.items()}
         expected.update({'freevideo-engine': __version__, 'sageattention': '2.2.0'})
-        if system == 'Windows':
+        if system == 'Windows' and not windows_arm64(system):
             expected['sageattention'] = json.loads((PACKAGE / 'bootstrap_versions.json').read_text(encoding='utf-8'))['windows']['sageattention']['version']
         python = venv_python(root / 'envs' / name, system)
         row = {'python': str(python), 'exists': python.exists(), 'installed': {}, 'missing': sorted(set(names)), 'mismatched': {}}
@@ -438,7 +440,9 @@ def inventory(gpu=None):
         platform.system(), cgroup_ram_limit=limit, gpu_uuid=selected['uuid'],
         driver_version=selected['driver_version'])
     return {'hardware': hardware.to_dict(), 'selected_gpu': selected, 'gpus': rows,
-            'kernel': platform.release(), 'platform': platform.platform(), 'machine': platform.machine(),
+            # On a Windows ARM computer an emulated x64 Python names AMD64; setup installs for the native processor.
+            'kernel': platform.release(), 'platform': platform.platform(),
+            'machine': 'ARM64' if windows_arm64(platform.system()) else platform.machine(),
             'cpu_threads': os.cpu_count(), 'swap_total_bytes': ram.get('swap_total_bytes'),
             'swap_free_bytes': ram.get('swap_free_bytes'), 'system_memory': ram,
             'compiler': shutil.which('cl' if platform.system() == 'Windows' else 'g++'), 'git': usable_git(),
@@ -660,13 +664,13 @@ def plan(args, *, local_progress=None, stage=None):
         prepared_format = 'int8_convrot'
     else:
         if not args.hardware_json and not setup_supported(platform.system(), platform.machine()):
-            raise RuntimeError('One-click setup supports Linux x86_64 or ARM64 and native Windows x64.')
+            raise RuntimeError('One-click setup supports Linux x86_64 or ARM64 and native Windows x64 or ARM64.')
         snapshot = json.loads(args.hardware_json.read_text(encoding='utf-8')) if args.hardware_json else inventory(args.gpu)
         warnings.extend(snapshot.get('warnings', []))
         hardware = Hardware.from_dict(snapshot['hardware'])
         errors = []
         if not setup_supported(hardware.system, snapshot.get('machine', '')):
-            errors.append('This installer supports Linux x86_64 or ARM64 and native Windows x64.')
+            errors.append('This installer supports Linux x86_64 or ARM64 and native Windows x64 or ARM64.')
         windows_target = hardware.system == 'Windows'
         # A replayed snapshot (--hardware-json) plans for its own processor, not this machine's.
         target_machine = snapshot.get('machine') or None
@@ -1795,7 +1799,7 @@ class Installer:
             sparse=['/comfy/', '/utils/', '/folder_paths.py', '/node_helpers.py', '/LICENSE']), after=('git',))
         pythons = {}
         for name in environment_names(self.layout):
-            spec = ENVIRONMENTS[name]
+            spec = environment_spec(name, self.system)
             venv = self.root / 'envs' / name
             python = venv_python(venv, self.system)
             pythons[name] = python
@@ -1803,11 +1807,15 @@ class Installer:
             def environment(folder=venv, executable=python, label=name):
                 orphaned = (self.system == 'Windows' and executable.exists()
                             and environment_python_orphaned(executable))
+                # On Windows on Arm an environment made with an x64 Python is made again natively.
+                foreign = (windows_arm64(self.system) and executable.exists()
+                           and not environment_native_arm64(folder, self.versions['python']))
+                orphaned = orphaned or foreign
                 if executable.exists() and environment_seeded(folder) and not orphaned:
                     return None
                 from .failure_details import environment_python_removed, file_in_use
                 for wait in (*ENVIRONMENT_BUSY_WAITS, None):
-                    command = [uv, 'venv', '--seed', '--python', self.versions['python']]
+                    command = [uv, 'venv', '--seed', '--python', self.python_request()]
                     # The Python file came back (restored from quarantine) without
                     # the seed packages: keep it and add them. Without the file, the
                     # folder is a leftover that uv replaces.
@@ -1817,6 +1825,11 @@ class Installer:
                     elif folder.exists():
                         command.append('--clear')
                     try:
+                        if foreign:
+                            from .windows_arm64 import first_install_notice
+                            with self.download_notice('download-patient-native') as notice:
+                                notice(first_install_notice())
+                                return self.packages(label + '-venv', [*command, folder], wait_busy=False)
                         return self.packages(label + '-venv', [*command, folder], wait_busy=False)
                     except RuntimeError as error:
                         # Another program (usually security software scanning the
@@ -2034,6 +2047,10 @@ class Installer:
             return names
         return [*[n for n in names if n != 'ghfast'], *network.PYTHON_MIRRORS, *[n for n in names if n == 'ghfast']]
 
+    def python_request(self):
+        """What uv is asked for: the version, or on Windows on Arm the aarch64 build of it."""
+        return self.versions.get('python_request', self.versions['python'])
+
     def python_install(self, uv):
         from .system import bootstrap_root
         prepared = bootstrap_root(self.root) / 'python'
@@ -2041,11 +2058,12 @@ class Installer:
         # A from-zero launcher already installed this exact Python. Reuse its
         # base interpreter when creating the single compute venv; do not download
         # and unpack another copy. Existing installations keep their own base.
-        if prepared.is_dir() and not any(current.glob('cpython-' + self.versions['python'] + '-*')):
+        if prepared.is_dir() and not any(current.glob(self.versions.get('python_request')
+                                                      or 'cpython-' + self.versions['python'] + '-*')):
             env = dict(self.env, UV_PYTHON_INSTALL_DIR=str(prepared))
             uv = self.ensure_uv() if str(uv) == self.env.get('FREEVIDEO_UV') else uv
             found = subprocess_output.run_external([str(uv), '--no-config', 'python', 'find', '--managed-python',
-                                    '--no-python-downloads', self.versions['python']],
+                                    '--no-python-downloads', self.python_request()],
                                    env=env, capture_output=True, timeout=30)
             if found.returncode == 0:
                 candidate = Path(found.stdout.strip())
@@ -2070,7 +2088,7 @@ class Installer:
                                                if source in network.PYTHON_MIRRORS else
                                                network.source_url('github', source, self.env) + '/astral-sh/python-build-standalone/releases/download')
             return self.command('python-' + source + '-' + route,
-                                [uv, 'python', 'install', *isolation, self.versions['python']], env=env)
+                                [uv, 'python', 'install', *isolation, self.python_request()], env=env)
         try:
             with self.download_notice('download-patient-python') as notice:
                 return network.download_command(self.network, 'github', attempt, self.env, category='python',
@@ -2238,6 +2256,10 @@ class Installer:
 
     def install_sage_windows(self, uv, python):
         spec = self.versions['windows']['sageattention']
+        if spec is None:
+            # Windows on Arm: no SageAttention build exists; the other attention backends are used.
+            self.ui.write('SageAttention has no Windows on Arm build; continuing without it.\n')
+            return None
         directory = Path(self.plan['wheel_cache']) / 'windows-sage2' / spec['sha256'][:16]
         wheel = directory / unquote(urlsplit(spec['url']).path.rsplit('/', 1)[-1])
         reused = wheel.is_file()

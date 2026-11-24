@@ -68,13 +68,19 @@ MAX_DMG_BYTES = 2**30
 MAC_CHANNEL = 'macos-preview'
 # Linux has no release before combined releases, so no platform tag to fall back on.
 LINUX_CHANNEL = 'linux-preview'
+# Native Windows ARM64 is a platform of its own: its package and manifest names
+# differ from x64, so an x64 launcher never reads an ARM64 update and the other
+# way round. Like Linux it has no release before combined releases.
+WINDOWS_ARM64_CHANNEL = 'windows-arm64-preview'
+NO_LEGACY_CHANNELS = (LINUX_CHANNEL, WINDOWS_ARM64_CHANNEL)
 # Stable builds follow the latest vX.Y.Z release; nightly builds follow the
 # rolling `nightly` prerelease. Both carry every platform in one release.
 TRACKS = ('stable', 'nightly')
 NIGHTLY_TAG = 'nightly'
 RELEASE_ASSETS = {CHANNEL: ('FreeVideo.exe', 'update-windows.json'),
                   MAC_CHANNEL: ('FreeVideo-Mac-arm64.dmg', 'update-macos.json'),
-                  LINUX_CHANNEL: ('FreeVideo-Linux-x86_64.AppImage', 'update-linux.json')}
+                  LINUX_CHANNEL: ('FreeVideo-Linux-x86_64.AppImage', 'update-linux.json'),
+                  WINDOWS_ARM64_CHANNEL: ('FreeVideo-Windows-arm64.exe', 'update-windows-arm64.json')}
 CHANNELS = tuple(RELEASE_ASSETS)
 MANIFEST_DOMAIN = b'FreeVideo update manifest v1\x00'
 # Every platform's mirror manifest carries the release signature, which binds the
@@ -320,6 +326,9 @@ def build_identity(value):
     elif value['channel'] == LINUX_CHANNEL:
         if value.get('target') != 'linux-x86_64' or value.get('packaging') != 'appimage':
             raise ValueError('Invalid Linux launcher build identity')
+    elif value['channel'] == WINDOWS_ARM64_CHANNEL:
+        if build_target(value) != 'windows-arm64':
+            raise ValueError('Invalid Windows ARM64 launcher build identity')
     elif build_target(value) != 'windows-x86_64':
         raise ValueError('Launcher update channel does not match its target')
     if build_track(value) not in TRACKS:
@@ -333,6 +342,8 @@ def build_identity(value):
         result.update(target='macos-arm64', packaging='app')
     if value['channel'] == LINUX_CHANNEL:
         result.update(target='linux-x86_64', packaging='appimage')
+    if value['channel'] == WINDOWS_ARM64_CHANNEL:
+        result['target'] = 'windows-arm64'
     from .release_notes import optional_fields
     result.update(optional_fields(value))
     return result
@@ -497,7 +508,7 @@ def _release(token, channel, track):
     names = {a.get('name') for a in (release or {}).get('assets', []) if isinstance(a, dict)}
     if isinstance(release, dict) and not release.get('draft') and not release.get('prerelease') and metadata in names:
         return release, executable, metadata
-    if channel == LINUX_CHANNEL:
+    if channel in NO_LEGACY_CHANNELS:
         raise UpdateUnavailable('missing')
     # Until the first combined release, updates come from the platform tag.
     release = _json(API + '/releases/tags/' + channel, token)
@@ -551,7 +562,7 @@ def _github_release(token='', *, channel=CHANNEL, track='stable'):
     try:
         candidate = manifest(_json(url, '', binary=True, limit=MAX_MANIFEST_BYTES))
     except urllib.error.HTTPError as error:
-        if error.code == 404 and track == 'stable' and channel != LINUX_CHANNEL:
+        if error.code == 404 and track == 'stable' and channel not in NO_LEGACY_CHANNELS:
             try:
                 candidate = manifest(_json(asset_url(channel, 'update.json'), '', binary=True, limit=MAX_MANIFEST_BYTES))
             except OSError as legacy:

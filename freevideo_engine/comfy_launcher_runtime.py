@@ -1310,7 +1310,7 @@ class Controller:
         """Take the next free port for this ComfyUI and keep it in the selection the launcher saves."""
         url = next_free_address(selected['url'])
         if url is None:
-            raise ValueError('This port and the next ones are in use or reserved by the system. Set a different local ComfyUI address.')
+            raise ValueError('This port and the next ones are in use or reserved by the system. Set a different local server address.')
         if self.port_move is None:
             self.port_move = urlsplit(selected['url']).port or 80
         selected = self.selection = dict(selected, url=url)
@@ -1396,7 +1396,7 @@ class Controller:
                 port = (urlsplit(selected['url']).port or 80) + 1
             candidate = next_free_address(address('0.0.0.0', port - 1)) if port <= 65535 else None
             if candidate is None:
-                raise lan_error('ports_in_use', 'The ports for LAN access are in use or reserved by the system. Choose another ComfyUI port.')
+                raise lan_error('ports_in_use', 'The ports for LAN access and the ports after them are in use or reserved by the system. Close the programs using these ports, then turn it on again.')
             port = urlsplit(candidate).port
             self.selection = selected = dict(selected, lan_port=port)
             self.state = dict(self.state, selection=dict(selected))
@@ -1520,7 +1520,7 @@ class Controller:
                     continue
                 if error.errno == errno.EADDRNOTAVAIL:
                     raise ValueError('This address does not belong to this computer. Enter one of its IP addresses or 0.0.0.0.') from error
-                raise ValueError('This port is in use by another application. Set a different local ComfyUI address.') from error
+                raise ValueError('This port is in use by another application. Set a different local server address.') from error
         if not selected.get('python') or not io_path(selected['python']).is_file():
             raise ValueError('ComfyUI Python is missing. Inspect again to prepare a separate environment.')
         directory = io_path(selected['engine']) / 'launcher' / 'comfy-runs' / (time.strftime('%Y%m%dT%H%M%S') + '-' + secrets.token_hex(4))

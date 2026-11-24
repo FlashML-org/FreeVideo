@@ -12,6 +12,8 @@ PCI_ENUM = r'SYSTEM\CurrentControlSet\Enum\PCI'
 NVIDIA_VENDOR = '10de'
 # PCI vendors whose cards are never NVIDIA's, for naming a driverless card the display class lists without a vendor.
 OTHER_VENDOR_IDS = {'1002': 'AMD graphics', '8086': 'Intel graphics'}
+# Why the last adapters() call could not tell; the report line carries it so a report says which step failed.
+LAST_FAILURE = ''
 BASIC = re.compile(r'basic (?:display|render)', re.I)
 NVIDIA = 'NVIDIA'
 NVIDIA_NAME = re.compile(r'nvidia|geforce|quadro|rtx|tesla', re.I)
@@ -115,18 +117,25 @@ def pci_display_vendors():
 
 
 def vendor_of_unknown_adapter():
-    """NVIDIA, a name for another vendor, or None when it cannot be told from the system's PCI list."""
+    """NVIDIA, a name for the other vendors, or None when it cannot be told from the system's PCI list.
+
+    A complete list that holds a display device but no NVIDIA one means no NVIDIA card is present, whoever made the
+    device (a virtual machine's graphics has its own vendor ID). An empty list stays unknown.
+    """
+    global LAST_FAILURE
     try:
         vendors = pci_display_vendors() if os.name == 'nt' else set()
-    except Exception:
+    except Exception as error:
         # Any surprise from the registry or the device tree (ctypes.ArgumentError is not an OSError) means unknown;
         # this lookup only refines a card note and must never stop the launcher.
+        LAST_FAILURE = 'PCI list unreadable: ' + type(error).__name__
         return None
     if NVIDIA_VENDOR in vendors:
         return NVIDIA
-    if vendors and vendors <= set(OTHER_VENDOR_IDS):
-        return ' / '.join(OTHER_VENDOR_IDS[item] for item in sorted(vendors))
-    return None
+    if not vendors:
+        LAST_FAILURE = 'no display device in the PCI list'
+        return None
+    return ' / '.join(OTHER_VENDOR_IDS.get(item, 'Other graphics ' + item) for item in sorted(vendors))
 
 
 def linux_names():
@@ -141,9 +150,12 @@ def linux_names():
 
 def adapters():
     """Adapter names in system order, or None when the system could not be asked."""
+    global LAST_FAILURE
+    LAST_FAILURE = ''
     try:
         names = windows_names() if os.name == 'nt' else linux_names()
-    except (ImportError, OSError, ValueError, subprocess.SubprocessError):
+    except (ImportError, OSError, ValueError, subprocess.SubprocessError) as error:
+        LAST_FAILURE = 'adapter list unreadable: ' + type(error).__name__
         return None
     seen, unknown = [], False
     for entry in names:
@@ -186,7 +198,7 @@ def only_other_vendors(names):
 def report_line(names):
     """One line for the report: adapter model names only, or that the lookup failed."""
     if names is None:
-        return 'Display adapters: not available'
+        return 'Display adapters: not available' + (' (%s)' % LAST_FAILURE if LAST_FAILURE else '')
     return 'Display adapters: ' + ('; '.join(names) if names else 'none listed')
 
 

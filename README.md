@@ -11,7 +11,7 @@
 
 <p align="center">English · <a href="README.zh-CN.md">中文</a></p>
 
-Make videos on the computer you already own. Powered by [Video DeltaNet (VDN)](https://openvdn.github.io/), FreeVideo runs MiniMax H3 in as little as 8 GB of VRAM and 16 GB of RAM, with acceleration adapted to your&nbsp;hardware.
+Make videos on the computer you already own. Powered by [Video DeltaNet (VDN)](https://openvdn.github.io/), FreeVideo runs MiniMax H3 in as little as 8 GB of VRAM and 16 GB of RAM on NVIDIA graphics cards with compute capability 8.0 or higher (such as the RTX 30 series or newer, professional cards included), with acceleration adapted to your&nbsp;hardware. Apple silicon Macs run a preview.
 
 https://github.com/user-attachments/assets/ecda7d0d-7fbe-4e0c-8c29-8f3315bafc15
 
@@ -36,7 +36,7 @@ FreeVideo is a local inference engine for MiniMax H3 on consumer GPUs, built on 
 
 It coordinates VRAM, system memory and disk, adapting weight placement, compute precision and attention kernels to the available hardware. FreeVideo runs as a ComfyUI plugin, with launchers for Windows, macOS and Linux. Its core features include:
 
-- **Hardware-adaptive execution**: Chooses the weight format for each GPU, int8 on GeForce and RTX 30-series cards and FP8 on workstation and datacenter cards, and automatically probes the available attention kernels.
+- **Hardware-adaptive execution**: Chooses the weight format for each GPU, int8 on GeForce RTX 30, 40 and 50 series cards and other Ampere cards, and FP8 on workstation and datacenter cards of newer architectures, and automatically probes the available attention kernels.
 - **Low-memory inference**: Weight streaming, asynchronous prefetching and chunked computation keep peak memory low, enabling inference with as little as 8 GB of VRAM and 16 GB of RAM.
 - **Multimodal inputs**: Text prompts, first and last frames, and image, video and audio references.
 - **Community LoRAs**: Use MiniMax H3 LoRAs in your workflow. See [examples](docs/LoRA.md).
