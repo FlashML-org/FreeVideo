@@ -2302,7 +2302,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         });
         b.dataset.mode = id; modeButtons.push(b); optionsPanel.append(b);
     }
-    const count = el('input'); count.type = 'number'; count.min = '2'; count.max = '100'; count.step = '1';
+    const count = el('input'); count.type = 'number'; count.required = true; count.min = '2'; count.max = '100'; count.step = '1';  // disabled unless a batch uses it
     count.value = node.properties?.freevideo_batch_count ?? 4;
     count.setAttribute('aria-label', t('Number of videos', '生成数量'));
     const countField = field(t('Number of videos', '生成数量'), count); optionsPanel.append(countField);
@@ -2512,7 +2512,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             ? t('Joining the parts…', '正在接合各段…')
             : chain?.state === 'queued' ? (chain.waiting ? waitingText(chain.waiting, t) : t('Queued…', '排队中…'))
             : t(`Generating part ${position.index + 1}…`, `正在生成第 ${position.index + 1} 段…`);
-        generate.disabled = submitting || chainWait || lengthControl.blocked || (runMode === 'loop' && queueState?.looping);
+        generate.disabled = submitting || chainWait || (lengthControl.blocked && !lengthControl.retryable) || (runMode === 'loop' && queueState?.looping);
         // Planning the parts and adding a batch are different waits; a count is only shown when the queue really has one.
         const adding = queueState?.batch ? t(`Adding ${Math.min(queueState.batch.done + 1, queueState.batch.total)}/${queueState.batch.total}…`,
             `正在添加 ${Math.min(queueState.batch.done + 1, queueState.batch.total)}/${queueState.batch.total}…`)
@@ -2733,16 +2733,24 @@ export function openStudio(node, {extendFrom = null} = {}) {
         // Ctrl+Enter leaves focus in a field: commit its edit (change fires on blur) first.
         const editing = dialog.contains(document.activeElement) ? document.activeElement : null;
         if (editing && editing !== generate) { editing.blur(); editing.focus({preventScroll: true}); }
-        const invalid = [...dialog.querySelectorAll('input:not(:disabled)')].find(e => !e.checkValidity());
+        lengthControl.settleUnusedBlock();
+        // The fields of this request, shown or in a closed tray. A field in a form of its own (the preset name) is that form's
+        // to check; the frame window's two boxes only mirror the width and height, which are checked themselves.
+        const invalid = [...dialog.querySelectorAll('input:not(:disabled)')].find(e => !e.form && !e.classList.contains('fvp-dim') && !e.checkValidity());
         if (invalid) {
             const details = invalid.closest('details'); if (details) details.open = true;
+            if (invalid.dataset.fvLength === 'block') { lengthControl.reportBlock(); invalid.focus(); invalid.scrollIntoView({block: 'center'}); return; }
             if (invalid.validity.valueMissing) {
                 const message = new Map([[seconds, t('Fill in the duration.', '请填写时长。')],
                     [width, t('Fill in the width.', '请填写宽度。')], [height, t('Fill in the height.', '请填写高度。')],
-                    [seed, t('Fill in the seed.', '请填写种子。')],
+                    [seed, t('Fill in the seed.', '请填写种子。')], [count, t('Fill in the number of videos.', '请填写生成数量。')],
                     [baseSteps, t('Fill in the first-pass steps.', '请填写一采步数。')],
-                    [refineSteps, t('Fill in the second-pass steps.', '请填写二采步数。')]]).get(invalid);
-                if (message) { status.dataset.error = 'true'; status.textContent = message; }
+                    [refineSteps, t('Fill in the second-pass steps.', '请填写二采步数。')]]).get(invalid)
+                    || t('Check the settings, then generate.', '请检查设置后再生成。');
+                // On the field's own row when the opened tray shows it; the status line would be under the tray.
+                const row = fieldNotes.get(invalid);
+                if (row && invalid.checkVisibility()) { row.say(message); invalid.focus(); invalid.scrollIntoView({block: 'center'}); return; }
+                status.dataset.error = 'true'; status.textContent = message;
             }
             // A value out of range is brought in and said under its field (the length: in the console's line); a rule
             // between fields is said there too. No browser bubble.
@@ -2751,7 +2759,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             if (!invalid.validity.valueMissing) { status.dataset.error = 'true'; status.textContent = invalid.validationMessage; }
             // Width and height are typed in the frame panel: it opens at the empty field.
             const side = (invalid === width || invalid === height) && framePicker?.element.checkVisibility() ? [...framePicker.pop.querySelectorAll('.fvp-dim')][invalid === width ? 0 : 1] : null;
-            if (side) { framePicker.set({empty: emptySide, ask: true}); if (framePicker.pop.dataset.open !== 'true') framePicker.element.click(); side.focus(); return; }
+            if (side) { framePicker.set({empty: emptySide || (invalid === height ? 'height' : 'width'), ask: true}); if (framePicker.pop.dataset.open !== 'true') framePicker.element.click(); side.focus(); return; }
             // The duration is typed in the stepper's number: it opens for typing.
             const stepValue = invalid === seconds ? dialog.querySelector('.fvs-step-value') : null;
             if (stepValue?.checkVisibility()) { stepValue.click(); return; }

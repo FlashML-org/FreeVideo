@@ -477,8 +477,8 @@
 
 /* ── Prompt history, templates and presets: a popover over the console's right half ── */
 .fv-studio.fv-create .fvs-library{position:absolute;right:0;bottom:calc(100% + var(--fv-sp-8));z-index:7;width:min(520px,100%);max-height:min(56vh,520px);display:flex;flex-direction:column;
-  border-radius:var(--fv-rad-pop);overflow:hidden;background:rgb(var(--fv-tint) / var(--fv-a3));border:1px solid var(--fv-edge);box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh3);
-  -webkit-backdrop-filter:blur(var(--fv-glass-blur3)) saturate(175%);backdrop-filter:blur(var(--fv-glass-blur3)) saturate(175%);animation:fvs-pop var(--fv-dur-1) var(--fv-ease-out)}
+  border-radius:var(--fv-rad-pop);overflow:hidden;background:rgb(var(--fv-solid3));border:1px solid var(--fv-edge);box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh3);
+  animation:fvs-pop var(--fv-dur-1) var(--fv-ease-out)}
 .fv-studio.fv-create .fvs-library[hidden]{display:none}
 .fvs-library-head{display:flex;align-items:center;gap:var(--fv-sp-8);padding:var(--fv-sp-8) var(--fv-sp-8) var(--fv-sp-8) var(--fv-sp-12);border-bottom:1px solid var(--fv-line)}
 .fvs-library-tabs{display:inline-flex;gap:var(--fv-sp-2);padding:var(--fv-sp-2);border-radius:var(--fv-rad-pill);background:var(--fv-ctl-bg);flex:none}

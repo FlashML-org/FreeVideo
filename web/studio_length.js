@@ -92,6 +92,10 @@ export function createStudioLength({api, node, seconds, advanced, fields, t, fie
             blockSeconds: blockEdited || Object.hasOwn(node.properties || {}, LENGTH_PROPERTIES.block) ? Number(block.value)
                 : !planLimits && total() > 15 && total() <= 30 ? defaultBlockSeconds(null) : null};
     }
+    // The part length to fall back on, and whether this duration needs parts of it.
+    const storedBlock = () => Math.min(node.properties?.[LENGTH_PROPERTIES.block] || defaultBlockSeconds(planLimits?.maximum), planLimits?.maximum || Infinity);
+    const partsNeeded = () => !absent && !effectiveSingle() && !block.disabled
+        && total() > (Object.hasOwn(node.properties || {}, LENGTH_PROPERTIES.block) ? storedBlock() : singleLimitSeconds(planLimits?.maximum));
     function paintModel() {
         const multiple = !absent && !error && plan?.count >= 2;
         put(modelNotice, 'hidden', !multiple || modelState.info?.ready !== false);
@@ -123,6 +127,8 @@ export function createStudioLength({api, node, seconds, advanced, fields, t, fie
         if (positive(maximum)) { if (block.max !== String(maximum)) block.max = String(maximum); } else if (block.hasAttribute('max')) block.removeAttribute('max');
         if (!edited) put(block, 'value', String(Math.min(node.properties?.[LENGTH_PROPERTIES.block] || defaultBlockSeconds(maximum), maximum || Infinity)));
         put(block, 'disabled', Boolean(absent || seconds.disabled || effectiveSingle() || (positive(maximum) && maximum < 5))); put(controls, 'hidden', Boolean(absent));
+        // Whether this duration is made in parts whatever the box holds now: an emptied box stays editable then.
+        if (block.dataset.fvPartsNeeded !== String(partsNeeded())) block.dataset.fvPartsNeeded = String(partsNeeded());
         put(reset, 'hidden', !Object.hasOwn(node.properties || {}, LENGTH_PROPERTIES.block)); put(reset, 'disabled', block.disabled);
         put(block, 'title', !block.disabled || absent || seconds.disabled || effectiveSingle() ? ''
             : t('These settings cannot generate in parts.', '当前设置不能分段生成。'));
@@ -141,6 +147,7 @@ export function createStudioLength({api, node, seconds, advanced, fields, t, fie
             continuation_unavailable: noParts ? NO_PARTS
                 : t('Choose a smaller picture size to make a longer video.', '如需生成更长的视频，请选择更小的画面大小。'),
             too_long: TOO_LONG() + storyboardText(),
+            block_missing: t('Fill in the longest part length.', '请填写每段最长时长。'),
             block_too_short: t('The part length is too short. Set a longer part length.', '每段时长过短，请加长。'),
             block_too_long: t('The part length is longer than one run allows at this size. Set a shorter part length.', '每段时长超过当前画面大小的单次上限，请缩短。'),
             other: t('Could not plan this video. Try again.', '暂时无法安排这条视频的分段，请重试。')}[kind];
@@ -206,11 +213,23 @@ export function createStudioLength({api, node, seconds, advanced, fields, t, fie
         // Short original audio keeps its single run; long selections can use parts.
         forceSingle(on) { if (forced === on) return; forced = on; submitted = false; invalidate(); schedule(); },
         commit, options, get plan() { return plan; }, get absent() { return absent; },
+        // A part length that cannot be used now does not stop a run: it goes back to the one in force.
+        settleUnusedBlock() {
+            if (block.disabled || block.checkValidity() || partsNeeded()) return;
+            edited = blockEdited = false; blockNote.clear(); block.value = String(storedBlock()); invalidate(); schedule();
+        },
+        // The part length stops this run: said on its own row, until it is edited.
+        reportBlock() {
+            if (!block.validity.valueMissing) { blockNote.settle(); return; }
+            error = 'block_missing'; paint(); onChange();
+        },
         get needsPlan() { return !absent && !effectiveSingle() && (total() > singleLimitSeconds(planLimits?.maximum)
             || Object.hasOwn(node.properties || {}, LENGTH_PROPERTIES.block)); },
         get estimate() { return limits?.estimate || null; },
         get capabilityState() { return capabilityState; }, get estimating() { return waiting; },
-        get blocked() { return !absent && Boolean(error); }, get message() { return error ? errorMessage(error) : ''; },
+        get blocked() { return !absent && Boolean(error); },
+        // A plan that could not be made says "Try again": Generate stays pressable and asks for it again.
+        get retryable() { return !absent && error === 'other'; }, get message() { return error ? errorMessage(error) : ''; },
         // The line shown beside the greyed button: the reason, and always what to do next.
         get visibleMessage() {
             if (absent || !error) return '';
@@ -222,6 +241,7 @@ export function createStudioLength({api, node, seconds, advanced, fields, t, fie
         set autopilot(shown) { if (disposed || Boolean(shown) === autopilotShown) return; autopilotShown = Boolean(shown); writeHint(); paint(); onChange(); },
         freeze() { submitted = true; },
         async ready() {
+            if (error === 'other') { error = null; plan = null; pending = null; paint(); onChange(); }
             while (!disposed) {
                 const version = revision; clearTimeout(timer); timer = null;
                 if (pending) await pending;
