@@ -7,6 +7,7 @@ import {FEATURE_TOUR, readyCards} from './feature_tour_content.js';
 import {SHOWCASE_TEXT, SHOWCASE_ASSET} from './entry_showcase.js';
 import {isolateDialogKeys, listenDialogKey, routeDialogKey} from './dialog_keys.js';
 import {reducedMotion} from './context_menu.js';
+import { isChinese } from './i18n.js';
 
 const COPY = {
     zh: {book: '教程', chapters: '章节', examples: '示例', contents: '目录', close: '关闭', search: '搜索教程', steps: '步骤', limits: '注意',
@@ -86,10 +87,7 @@ const el = (tag, cls, text) => {
 };
 const tip = (node, name, use, key = '') => { node.dataset.fvTipName = name; node.dataset.fvTipUse = use; if (key) node.dataset.fvTipKey = key; return node; };
 const button = (cls, label, [name, use, key = ''], ...icons) => { const node = el('button', cls); node.type = 'button'; node.append(...icons); if (label != null) node.append(document.createTextNode(label)); return tip(node, name, use, key); };
-const language = () => {
-    const choice = new URLSearchParams(location.search).get('freevideo_lang');
-    return choice === 'zh' || (choice !== 'en' && navigator.language?.toLowerCase().startsWith('zh')) ? 'zh' : 'en';
-};
+const language = () => isChinese() ? 'zh' : 'en';
 const asset = name => new URL(`./assets/tour/${name}`, import.meta.url).href;
 const poster = name => asset(`${name}.webp`);
 const READ_KEY = 'freevideo.tutorial.read';

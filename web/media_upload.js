@@ -1,9 +1,7 @@
 // One media file into ComfyUI's input folder through FreeVideo's streaming upload; every upload place shares it.
-const languageOverride = typeof location !== 'undefined'
-    ? new URLSearchParams(location.search).get('freevideo_lang') : null;
-const cn = languageOverride === 'zh' || (languageOverride !== 'en'
-    && String(navigator.language || '').toLowerCase().startsWith('zh'));
-const text = (en, zh) => cn ? zh : en;
+import { isChinese, translator } from './i18n.js';
+const cn = isChinese();
+const text = translator(cn);
 // The page's background loading of works (work_media.js) waits while an upload runs.
 const uploadRunning = active => { try { globalThis.dispatchEvent?.(new CustomEvent('freevideo-upload', {detail: {active}})); } catch { /* no page */ } };
 // The server's limit; a bigger file is turned away before a byte is sent.

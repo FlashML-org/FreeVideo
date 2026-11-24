@@ -3,6 +3,7 @@ import {readGuideRecord, saveGuideRecord, guideRecord, CARDS_OFF} from './first_
 import './glass/library.js';
 import {openAnchor, anchorOpen, closeAnchor} from './feature_tour_layer.js';
 import {reducedMotion} from './context_menu.js';
+import { isChinese } from './i18n.js';
 
 export const TOUR_TEXT = {
     en: {examples: 'Feature examples', use: 'Use example', next: 'Next', goto: 'Take me there', noView: 'Could not open the Edit view. Choose "Edit" at the top.', noTarget: 'This item is not available here. Follow the steps above.', noHidden: 'The timeline has no clip with sound yet. Import or generate one first.', book: 'Read the tutorial', done: 'Done', close: 'Close', gotIt: 'Got it',
@@ -291,7 +292,7 @@ function openAnchorCard({api, cn, loaded, owner, automatic = true, badge = ''}) 
     active = {owner, close: () => layer?.close('fade', 'dismiss') || Promise.resolve()};
     return true;
 }
-const pageZh = () => { const choice = new URLSearchParams(location.search).get('freevideo_lang'); return choice === 'zh' || (choice !== 'en' && String(navigator.language || '').toLowerCase().startsWith('zh')); };
+const pageZh = () => isChinese();
 /** One card on request (the tutorial's examples, a chapter's card): beside its control when that control is on screen,
  * otherwise centred; the keyboard moves into it. */
 export async function showFeatureCard(id, {owner = globalThis.FreeVideoShell?.viewDialog?.() || contextFor()?.dialog || null, cn = contextFor()?.cn ?? pageZh(), api = contextFor()?.api} = {}) {

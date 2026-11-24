@@ -3,10 +3,10 @@
 import { agentGet, agentPost, agentSend } from './agent_session.js';
 import { uploadMedia } from './media_upload.js';
 import { listenDialogKey } from './dialog_keys.js';
+import { isChinese, translator } from './i18n.js';
 
-const languageOverride = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('freevideo_lang') : null;
-const cn = languageOverride === 'zh' || (languageOverride !== 'en' && String(navigator.language || '').toLowerCase().startsWith('zh'));
-const t = (en, zh) => cn ? zh : en;
+const cn = isChinese();
+const t = translator(cn);
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const LIMIT = 200;
 const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('./image_library.css', import.meta.url).href; document.head.append(css);

@@ -37,6 +37,7 @@ if (typeof document !== 'undefined') {
 
 import { nearestAllowed } from './field_note.js';
 import { cn, t, INSTALLED_HINT, gib, bytesText, atLeast, WAIT_REFUSAL, reportable, reportText, failureText, setupError, SECTIONS, sectionOf } from './settings_words.js';
+import { languageUrl } from './i18n.js';
 export { failureText, sectionOf, SECTIONS, bytesText };
 
 let current;
@@ -556,7 +557,7 @@ export async function openSetup(options) {
     const langNote = slot(); const langReload = button(t('Reload now', '立即重新载入'), {kind: 'fill', cls: 'is-sm'}); langReload.hidden = true;
     langNote.textContent = t('Changing the language reloads the page; generations keep running.', '切换语言会重新载入页面，正在进行的生成不受影响。');
     langSelect.onchange = () => { langReload.hidden = langSelect.value === (cn ? 'zh' : 'en'); };
-    langReload.onclick = () => { const url = new URL(location.href); url.searchParams.set('freevideo_lang', langSelect.value); location.replace(url.href); };
+    langReload.onclick = () => { const url = languageUrl(location.href, langSelect.value); location.replace(url.href); };
     tip(langReload, t('Reload now', '立即重新载入'), t('Reload the page in the chosen language', '以所选语言重新载入页面'));
     const langRow = row({iconName: 'globe', title: t('Interface language', '界面语言'), end: [segmented(langSelect, {label: t('Language', '语言'), tips: {zh: t('Show the interface in Chinese', '界面显示为中文'), en: t('Show the interface in English', '界面显示为英文')}})]});
     const langFoot = el('div', 'st-foot'); langFoot.append(langNote, langReload);

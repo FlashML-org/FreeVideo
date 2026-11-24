@@ -80,12 +80,10 @@ import { toast, toastHeight } from './notifications.js';
 import { mediaQueue } from './work_media.js';
 import { userMessage } from './user_message.js';
 import { fieldNote } from './field_note.js';
+import { isChinese, translator } from './i18n.js';
 
-const languageOverride = typeof location !== 'undefined'
-    ? new URLSearchParams(location.search).get('freevideo_lang') : null;
-const cn = languageOverride === 'zh' || (languageOverride !== 'en'
-    && String(navigator.language || '').toLowerCase().startsWith('zh'));
-const t = (en, zh) => cn ? zh : en;
+const cn = isChinese();
+const t = translator(cn);
 // A dropped connection gets one plain sentence, not the browser's "Failed to fetch".
 const shownMessage = error => isNetworkTypeError(error) ? connectionLostText(t) : error.message;
 // The usual LoRA strength range is -4 to 4; a value the user types by hand may go further, up to 100.

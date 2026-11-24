@@ -2,6 +2,7 @@ import { api } from '../../scripts/api.js';
 import './fv_select.js';
 import './glass/library.js';
 import {userMessage} from './user_message.js';
+import { isChinese, translator } from './i18n.js';
 
 // FreeVideo's own reason keeps the lead-in that says what failed; browser or program wording becomes a plain sentence.
 const saveFailure = (error, tt) => { const text = userMessage(error, tt, tt('Could not save. Try again.', '没能保存，请重试。'));
@@ -9,11 +10,8 @@ const saveFailure = (error, tt) => { const text = userMessage(error, tt, tt('Cou
 const readFailure = (error, tt) => { const text = userMessage(error, tt, tt('Could not read the setting. Try again.', '没能读取设置，请重试。'));
     return text === String(error?.message ?? '').trim() ? tt('The setting could not be read: ', '无法读取设置：') + text : text; };
 
-const languageOverride = typeof location !== 'undefined'
-    ? new URLSearchParams(location.search).get('freevideo_lang') : null;
-const cn = languageOverride === 'zh' || (languageOverride !== 'en'
-    && String(navigator.language || '').toLowerCase().startsWith('zh'));
-const t = (en, zh) => cn ? zh : en;
+const cn = isChinese();
+const t = translator(cn);
 const unavailable = () => t('Device information is unavailable; compatibility settings are off.', '无法获取设备信息，兼容性设置已关闭。');
 let current;
 const element = (tag, text) => { const node = document.createElement(tag); if (text) node.textContent = text; return node; };

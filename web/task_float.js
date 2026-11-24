@@ -9,10 +9,10 @@ import { jobs, imageSource, progressSource, chainSource, queueSource, journalSou
 import { errorText, failureAdvice } from './error_panel.js';
 import { createImageGenClient, imageGenError, imageReportBar } from './image_generation.js';
 import { saveGeneratedImage } from './image_library.js';
+import { isChinese, translator } from './i18n.js';
 
-const languageOverride = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('freevideo_lang') : null;
-const cn = languageOverride === 'zh' || (languageOverride !== 'en' && String(globalThis.navigator?.language || '').toLowerCase().startsWith('zh'));
-const t = (en, zh) => cn ? zh : en;
+const cn = isChinese();
+const t = translator(cn);
 if (typeof document !== 'undefined') {
     const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('./task_float.css', import.meta.url).href; document.head.append(css);
 }
