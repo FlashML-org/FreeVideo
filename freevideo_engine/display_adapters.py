@@ -7,7 +7,7 @@ import os
 import re
 import subprocess
 
-DISPLAY_CLASS = r'SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11cf-bfc1-08002be10318}'
+DISPLAY_CLASS = r'SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}'
 PCI_ENUM = r'SYSTEM\CurrentControlSet\Enum\PCI'
 NVIDIA_VENDOR = '10de'
 # PCI vendors whose cards are never NVIDIA's, for naming a driverless card the display class lists without a vendor.
@@ -212,7 +212,14 @@ def line(zh, names):
         return '检测到：NVIDIA 显卡' if zh else 'Detected: NVIDIA graphics card'
     if nvidia:
         return ('检测到：' if zh else 'Detected: ') + nvidia[0]
-    other = '、'.join(names[:2]) if zh else ', '.join(names[:2])
-    if zh:
-        return '未检测到 NVIDIA 显卡' + ('（%s）' % other if other else '')
-    return 'No NVIDIA graphics card detected' + (' (%s)' % other if other else '')
+    # No NVIDIA card: the card's title already says so; the note says what was found, and nothing when nothing was.
+    if not names:
+        return ''
+    return ('检测到：' + '、'.join(names[:2])) if zh else ('Detected: ' + ', '.join(names[:2]))
+
+
+def nvidia_driver_listed(names):
+    """True on Windows when an NVIDIA card is listed under its model name: that name is the one its NVIDIA driver wrote, so a
+    driver is installed. A card found only through the PCI list is listed as plain NVIDIA (no driver). Elsewhere the list
+    names cards whether or not a driver is installed (lspci reads the PCI ID database), so it never says."""
+    return os.name == 'nt' and bool(names) and any(NVIDIA_NAME.search(name) and name != NVIDIA for name in names)

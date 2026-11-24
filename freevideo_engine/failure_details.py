@@ -575,6 +575,13 @@ DRIVER_FOR_LISTED_CARD = (
     ('NVIDIA 显卡未安装驱动',
      '请安装 580 或更新版本的 NVIDIA 显卡驱动，重启电脑后点击“重试安装”。'))
 
+# Windows lists the card under the model name its NVIDIA driver wrote, so a driver is installed, yet none answers.
+DRIVER_NOT_WORKING = (
+    ('The NVIDIA graphics driver is not working',
+     'Reinstall the NVIDIA driver, version 580 or newer, restart the computer, then click "Retry installation".'),
+    ('NVIDIA 显卡驱动未正常工作',
+     '请重新安装 580 或更新版本的 NVIDIA 显卡驱动，重启电脑后点击“重试安装”。'))
+
 
 # What each download source returned, as one short line per host and route on
 # the failure card. The full lines stay in the copied error and the report.

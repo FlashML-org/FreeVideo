@@ -2778,16 +2778,19 @@ class Session:
                                    model_package=model_mismatch_package(raw_error, zh),
                                    exception=row.get('exception') if own else None)
         if failure.get('kind') == 'gpu-driver-missing':
-            from .display_adapters import adapters, line, only_other_vendors
+            from .display_adapters import adapters, line, nvidia_driver_listed, only_other_vendors
             zh = self.language.startswith('zh')
             names = adapters()
             if line(zh, names):
                 failure['note'] = line(zh, names)
             if only_other_vendors(names):
-                # No NVIDIA card is listed: the card says what FreeVideo needs, and the note would repeat it.
+                # No NVIDIA card is listed: the card says what FreeVideo needs; the note names what was found.
                 from .failure_details import UNSUPPORTED_VENDOR
                 failure['title'], failure['action'] = UNSUPPORTED_VENDOR[1 if zh else 0]
-                failure.pop('note', None)
+            elif nvidia_driver_listed(names):
+                # Its driver named the card, so a driver is installed but does not answer: reinstall it.
+                from .failure_details import DRIVER_NOT_WORKING
+                failure['title'], failure['action'] = DRIVER_NOT_WORKING[1 if zh else 0]
             elif names:
                 from .failure_details import DRIVER_FOR_LISTED_CARD
                 failure['title'], failure['action'] = DRIVER_FOR_LISTED_CARD[1 if zh else 0]
