@@ -59,3 +59,13 @@ html[data-fv-shell=nodes] canvas[tabindex]:not([tabindex="-1"]):focus-visible{ou
   .fv-studio .fv-iv-sec-head{height:auto!important;min-height:44px!important}
   .fv-studio .fv-iv-stbar{height:auto!important;min-height:56px!important}
 }
+
+/* Number fields carry no browser-drawn up/down arrows (small, hard to hit, white on the dark theme). The value is typed;
+   ↑/↓ still step it, and a field meant to be stepped by pointer has its own − and + (the creation panel's duration, the
+   settings steppers). FreeVideo's own surfaces only, as above. */
+:where(body [class^="fv-"],body [class*=" fv-"],body [class^="sgf"],body [class*=" sgf"],body [data-fv-tip-scope]) input[type=number],
+:where(body) input[type=number]:is([class^="fv-"],[class*=" fv-"]){-moz-appearance:textfield;appearance:textfield}
+:where(body [class^="fv-"],body [class*=" fv-"],body [class^="sgf"],body [class*=" sgf"],body [data-fv-tip-scope]) input[type=number]::-webkit-inner-spin-button,
+:where(body [class^="fv-"],body [class*=" fv-"],body [class^="sgf"],body [class*=" sgf"],body [data-fv-tip-scope]) input[type=number]::-webkit-outer-spin-button,
+:where(body) input[type=number]:is([class^="fv-"],[class*=" fv-"])::-webkit-inner-spin-button,
+:where(body) input[type=number]:is([class^="fv-"],[class*=" fv-"])::-webkit-outer-spin-button{-webkit-appearance:none;appearance:none;margin:0}
