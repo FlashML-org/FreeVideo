@@ -18,6 +18,11 @@ ROUTE = {
                            '长视频文件读写失败。请确认 FreeVideo 文件夹可以打开且不是只读，然后重试。'),
     'unknown_chain': ('This long video was not found. Reload the page to see the current list.',
                       '找不到这个长视频。请刷新页面查看当前列表。'),
+    # The failure card shows it in its own words (web/error_panel.js REDO_CHANGED).
+    'redo_request_changed': ('This redo was already submitted with the earlier settings. Check the queue first. '
+                             'If you still want the current settings, choose "Redo from here" again.',
+                             '这次重新生成已按之前的设置提交过。请先查看队列；'
+                             '仍需要按现在的设置生成时，再点一次“从这段重新生成”。'),
 }
 HOST_UNAVAILABLE = {
     'after': ('Extend is not available in this version. Update FreeVideo and try again.',

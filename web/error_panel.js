@@ -365,6 +365,12 @@ const RETRY_REPORT = ['Try again. If it happens again, choose "Report a problem"
 const PREVIEW_STEPS = [/A preview uses two-pass generation, which runs only with 8 first-pass steps/,
     'preview-steps', ['Preview first needs 8 first-pass steps', '先出预览需一采 8 步'], ['', ''],
     ['Set the first-pass steps to 8, or turn off Preview first, then generate again.', '请将一采步数改为 8，或关闭“先出预览”，再重新生成。']];
+// A redo whose name was already used with other settings (chain_errors.py redo_request_changed): what happened and where
+// to look first, instead of a plain "try again" (Lane, review/chain-redo-lost-reply-duplicate copy_lane).
+const REDO_CHANGED = [/This redo was already submitted with the earlier settings\./,
+    'redo-request-changed', ['The redo did not start', '没有重新开始生成'],
+    ['This redo was already submitted with the earlier settings.', '这次重新生成已按之前的设置提交过。'],
+    ['Check the queue first. If you still want the current settings, choose "Redo from here" again.', '请先查看队列；仍需要按现在的设置生成时，再点一次“从这段重新生成”。']];
 const REFERENCE_FAILURES = [
     [/Source video (?:frame count )?changed during depth (?:conversion|inspection)|reference video changed while it was being turned into lines/i,
         'reference-changed', ['The reference video changed', '参考视频在转换时被改动'],
@@ -449,7 +455,7 @@ export function failureAdvice(value, t, known = knownError(value)) {
     }
     // A reference video turned into depth (depth_reference.py) failed: the cause in people's words and the
     // next step, in both languages; the engine's own sentence stays in the details below.
-    for (const [pattern, kind, title, summary, action] of [...REFERENCE_FAILURES, PREVIEW_STEPS]) {
+    for (const [pattern, kind, title, summary, action] of [...REFERENCE_FAILURES, PREVIEW_STEPS, REDO_CHANGED]) {
         if (pattern.test(text)) return row(kind, title, summary, action);
     }
     if (known === 'media-missing')

@@ -174,7 +174,8 @@ function createChainPartList(t, save, {onShow = () => {}, onHide = () => {}, red
                 return;
             }
             // The line says the server's own sentence when it gave one; the card carries what failed and a report.
-            const said = (error.said || error.cause?.said);
+            // A redo refused for its changed settings is told on the card; its line stays the short one.
+            const said = error.code === 'redo_request_changed' ? null : error.said || error.cause?.said;
             if (rows.get(row.part.id) === row) flash(row, said ? t(said[0], said[1])
                 : t('Could not start. See the details on the picture.', '没能开始，原因见画面上的说明。'), 'error');
             onError(error);

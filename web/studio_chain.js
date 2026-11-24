@@ -19,6 +19,12 @@ export function chainPosition(chain, message = {}) {
     return {index: Math.min(Math.max(0, index), Math.max(0, count - 1)), count};
 }
 
+// crypto.randomUUID exists on secure pages only; a page opened from another computer has none.
+function requestName() {
+    return globalThis.crypto?.randomUUID?.()
+        ?? Array.from(globalThis.crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
 // A fallback part is explicitly distinct from a joined partial result.
 export function readChainResult(chain) {
     if (!chain) return null;
@@ -97,7 +103,7 @@ export function singleRunSnapshot(snapshot, node, plan) {
 
 export function createStudioChain({api, node, onState = () => {}, onProgress = () => {}, onResult = () => {},
     onError = () => {}, pollMs = 2000, now = () => Date.now()}) {
-    let chain = null, poller = null, disposed = false, epoch = 0, submitting = false, promoting = false;
+    let chain = null, poller = null, disposed = false, epoch = 0, submitting = false, promoting = false, redoRequest = null;
     // Chains the server took while another was running; the next one is shown when the running one stops.
     const waiting = [];
     let previous = {}, lastMessage = {}, delivered = null, errorShown = null, corrected = false, etaAt = 0, lastIndex = -1;
@@ -281,6 +287,7 @@ export function createStudioChain({api, node, onState = () => {}, onProgress = (
         // The reply carries the whole chain, so the part shows the words the server keeps.
         async setText(block, text) {
             if (!chain) throw new Error('chain_missing');
+            redoRequest = null;
             const id = chain.id, version = epoch;
             const value = (await json(chainRoute(id, `blocks/${encodeURIComponent(block)}/text`), post({text})))?.chain;
             if (value?.id === id && version === epoch && !disposed) deliver(value);
@@ -290,9 +297,22 @@ export function createStudioChain({api, node, onState = () => {}, onProgress = (
         async redo(block) {
             if (!chain || active()) throw new Error('chain_busy');
             const id = chain.id, version = epoch;
-            const value = (await json(chainRoute(id, `blocks/${encodeURIComponent(block)}/redo`),
-                post(api.clientId ? {client_id: api.clientId} : {})))?.chain;
+            // One name per press: kept while no reply has come, so pressing again after a lost reply asks for the same
+            // video; gone once the engine has answered or what is asked has changed.
+            if (redoRequest?.chain !== id || redoRequest.block !== block) redoRequest = {chain: id, block, name: requestName()};
+            const request = redoRequest, answered = () => { if (redoRequest === request) redoRequest = null; };
+            let value;
+            try {
+                value = (await json(chainRoute(id, `blocks/${encodeURIComponent(block)}/redo`),
+                    post({request_id: request.name, ...(api.clientId ? {client_id: api.clientId} : {})})))?.chain;
+            } catch (error) {
+                // The engine's own refusal carries its code in words. A lost or late reply does not (a TimeoutError's
+                // code is a number), nor does a page a proxy puts in front of the engine.
+                if (error?.status && typeof error.code === 'string') answered();
+                throw error;
+            }
             if (!value?.id) throw new Error('chain_missing');
+            answered();
             if (version !== epoch || disposed) return value;
             const {id: _, ...metadata} = node.properties?.[CHAIN_PROPERTY] || {};
             epoch++; adopt(value, metadata);

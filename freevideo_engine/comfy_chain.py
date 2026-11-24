@@ -10,7 +10,7 @@ import ssl
 import time
 from urllib import error, request
 
-from .chain_runner import ChainBusy, ChainPartTooShort, ChainRunner, ChainTooLong
+from .chain_runner import ChainBusy, ChainPartTooShort, ChainRunner, ChainTooLong, RedoRequestChanged
 from . import chain_plan, chain_store
 from .chain_errors import host_unavailable_body, route_body, storage_code
 
@@ -463,6 +463,8 @@ def register(host_factory=None):
             return response(route_body(code, '%s: %s' % (type(failure).__name__, failure)), 507 if code == 'disk_full' else 500)
         if isinstance(failure, ChainBusy):
             return response(route_body('busy', str(failure)), 409)
+        if isinstance(failure, RedoRequestChanged):  # Not 409: the part list reads that as another video generating.
+            return response(route_body('redo_request_changed', str(failure)), 400)
         if isinstance(failure, ChainTooLong):
             return response({'error': str(failure), 'error_zh': failure.message_zh, 'code': failure.code,
                              'parts': failure.parts, 'max_parts': failure.limit}, 400)
@@ -565,7 +567,8 @@ def register(host_factory=None):
                 if missing:
                     return response(host_unavailable_body('after'), 409)
             return response({'chain': await asyncio.to_thread(runner.redo, identity, block,
-                                                              value.get('text'), value.get('client_id'))})
+                                                              value.get('text'), value.get('client_id'),
+                                                              value.get('request_id'))})
         except STORED as failure:
             return refused(failure)
 
