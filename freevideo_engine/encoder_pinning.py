@@ -88,18 +88,20 @@ def _nonlocal_pin_limit(torch, manager, reserve, memory=None):
 
 
 @contextmanager
-def readonly_pinning(torch, manager, *, nonlocal_reserve_bytes=None):
+def readonly_pinning(torch, manager, *, nonlocal_reserve_bytes=None, register=True):
     """Adapt native pinning only while the isolated encoder is running.
 
     CUDA requires ReadOnly for read-only CPU mappings on platforms without
     host page tables. Native writable tensors keep the original code path;
     native registries and unpinning continue to own successful registrations.
+    With `register=False` no read-only page is registered: the weights are
+    read from ordinary memory, as when the registration is refused.
     """
     original = manager.pin_memory
     if getattr(original, '_freevideo_readonly_adapter', False) is True:
         yield
         return
-    unsupported = False
+    unsupported = not register
     support_checked = False
     flags = None
     pin_limit = None

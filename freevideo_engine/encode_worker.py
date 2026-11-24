@@ -585,13 +585,22 @@ def _encode(args, request, resident, trace):
         finally:
             guard.disarm()
 
+    # A fresh worker after a lost CUDA context (see encoder_retry) leaves the checkpoint's
+    # read-only pages unregistered and one more GiB of the card free. Values do not change.
+    register = request.get('readonly_registration') is not False
+    extra_reserve = request.get('extra_reserve_gib')
+    if type(extra_reserve) in (int, float) and extra_reserve > 0:
+        import comfy.model_management as _reserve_manager
+        _reserve_manager.EXTRA_RESERVED_VRAM += int(extra_reserve * 2**30)
+        loading['extra_reserve_gib'] = float(extra_reserve)
+    loading['readonly_registration'] = register
     clip.load_model = timed_load
     try:
         from .encoder_memory import encode_with_recovery
         from .encoder_pinning import readonly_pinning
         import comfy.model_management as memory
         from .encoder_progress import layer_progress
-        with readonly_pinning(torch, memory, nonlocal_reserve_bytes=_reserve(resident)), \
+        with readonly_pinning(torch, memory, nonlocal_reserve_bytes=_reserve(resident), register=register), \
                 layer_progress(clip.cond_stage_model):
             encoded, attempts = encode_with_recovery(clip, tokens, memory, torch, phase, max_attempts=4,
                                                      attempt=attempt)
@@ -605,7 +614,7 @@ def _encode(args, request, resident, trace):
                 tokens = clip.tokenize(prompt, **reference_options(normalized, media_kwargs, step))
                 size = input_size(tokens)
                 current.clear()
-                with readonly_pinning(torch, memory, nonlocal_reserve_bytes=_reserve(resident)), \
+                with readonly_pinning(torch, memory, nonlocal_reserve_bytes=_reserve(resident), register=register), \
                         layer_progress(clip.cond_stage_model, 'encoder_compute_reference'):
                     stage_encoded, stage_attempts = encode_with_recovery(
                         clip, tokens, memory, torch, phase, max_attempts=4, attempt=attempt)

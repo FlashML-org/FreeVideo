@@ -1015,35 +1015,63 @@ def _run(args):
                             raise
                         print(json.dumps(dict(event='encoder_preflight_skipped', error=repr(error)[:300])), flush=True)
                     encoder_env = dict(env, PYTHONPATH=str(repo))
-                    print(json.dumps({'event': 'encoding_start'}), flush=True)
-                    encoder_attempt = history.begin(resource_identity, {'encoder': args.encoder},
-                        attempt_geometry(canvas, profile['engine']), purpose='encoding',
-                        evidence={'reason': 'Text conditioning cache miss',
-                                  'request_artifacts': str(artifacts)})
-                    report['encoding_attempt'] = encoder_attempt
-                    save(destination.with_suffix('.request.json'), report)
-                    try:
-                        report['encoding_resources'] = child(
-                            [args.comfy_python, '-m', 'freevideo_engine.encode_worker', '--request', str(encode_request)],
-                            encoder_env, descriptor, destination.with_suffix('.encoding.log'),
-                            ram_budget_bytes=profile['inference_ram_budget_gb'] * 1e9,
-                            ram_budget_is_estimate=ram_budget_is_estimate(args),
-                            minimum_available_bytes=inference_emergency_floor(profile['inference_ram_budget_gb'] * 1e9,
-                                getattr(args, 'ram_reserve_gib', None)),
-                            on_start=lambda pid: history.attach_worker(encoder_attempt, pid, phase='encoding'))
-                        encoded = json.loads(destination.with_suffix('.encoding.json').read_text(encoding='utf-8'))
-                        if encoded.get('success') is not True or not condition.is_file():
-                            raise ValueError('Encoder exited without verified conditioning')
-                    except BaseException as error:
+                    from .encoder_retry import fresh_process_retry
+                    encoder_retry = None
+                    for encoder_try in (1, 2):
+                        print(json.dumps({'event': 'encoding_start'}), flush=True)
+                        encoder_attempt = history.begin(resource_identity, {'encoder': args.encoder},
+                            attempt_geometry(canvas, profile['engine']), purpose='encoding',
+                            evidence={'reason': 'Text conditioning cache miss' if encoder_try == 1 else
+                                      'Encoder worker lost its CUDA context; one fresh worker without read-only registration',
+                                      'request_artifacts': str(artifacts)})
+                        report['encoding_attempt'] = encoder_attempt
+                        save(destination.with_suffix('.request.json'), report)
                         try:
-                            failed_encoding = json.loads(destination.with_suffix('.encoding.json').read_text(encoding='utf-8'))
-                        except (OSError, ValueError):
-                            failed_encoding = {}
-                        failure = classify_failure(error, failed_encoding)
-                        report['encoding_resources'] = getattr(error, 'telemetry', {})
-                        report['encoding_failure'] = dict(phase=failed_encoding.get('phase', 'encoding'), failure=failure)
-                        history.finish(encoder_attempt, failure['outcome'], details=failure)
-                        raise
+                            report['encoding_resources'] = child(
+                                [args.comfy_python, '-m', 'freevideo_engine.encode_worker', '--request', str(encode_request)],
+                                encoder_env, descriptor, destination.with_suffix('.encoding.log'),
+                                ram_budget_bytes=profile['inference_ram_budget_gb'] * 1e9,
+                                ram_budget_is_estimate=ram_budget_is_estimate(args),
+                                minimum_available_bytes=inference_emergency_floor(profile['inference_ram_budget_gb'] * 1e9,
+                                    getattr(args, 'ram_reserve_gib', None)),
+                                on_start=lambda pid: history.attach_worker(encoder_attempt, pid, phase='encoding'))
+                            encoded = json.loads(destination.with_suffix('.encoding.json').read_text(encoding='utf-8'))
+                            if encoded.get('success') is not True or not condition.is_file():
+                                raise ValueError('Encoder exited without verified conditioning')
+                        except BaseException as error:
+                            try:
+                                failed_encoding = json.loads(destination.with_suffix('.encoding.json').read_text(encoding='utf-8'))
+                            except (OSError, ValueError):
+                                failed_encoding = {}
+                            failure = classify_failure(error, failed_encoding)
+                            report['encoding_resources'] = getattr(error, 'telemetry', {})
+                            failed_record = dict(phase=failed_encoding.get('phase', 'encoding'), failure=failure)
+                            history.finish(encoder_attempt, failure['outcome'], details=failure)
+                            overrides = fresh_process_retry(failure, failed_encoding) if encoder_try == 1 else None
+                            if overrides is None:
+                                report['encoding_failure'] = dict(failed_record)
+                                if encoder_retry is not None:
+                                    report['encoding_failure']['first_attempt'] = encoder_retry['first_attempt']
+                                    report['encoding_retry'] = encoder_retry
+                                raise
+                            # The first worker's evidence stays beside the second's own files.
+                            for suffix in ('.encoding.log', '.encoding.json'):
+                                try:
+                                    os.replace(destination.with_suffix(suffix),
+                                               destination.with_suffix('.encoding.attempt-1' + suffix[len('.encoding'):]))
+                                except OSError:
+                                    # Only the first worker's evidence is lost; its result must not stand for the second's.
+                                    try:
+                                        destination.with_suffix(suffix).unlink(missing_ok=True)
+                                    except OSError:
+                                        pass
+                            encoder_retry = dict(first_attempt=failed_record, overrides=overrides)
+                            report['encoding_retry'] = encoder_retry
+                            encoding.update(overrides)
+                            encode_request.write_text(json.dumps(encoding) + '\n', encoding='utf-8')
+                            print(json.dumps(dict(event='encoder_fresh_retry', overrides=overrides)), flush=True)
+                            continue
+                        break
                     history.finish(encoder_attempt, 'success', details={'reason': 'Encoder exited with conditioning',
                         'encoding': encoded, 'resources': report.get('encoding_resources'),
                         'prompt_characters': len(encoding['prompt'])})
