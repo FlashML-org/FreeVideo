@@ -196,6 +196,13 @@ def assess(shapes, *, int8_targets=None, skipped=None, metadata=None):
                 if reason == 'other_layer' and family(keys):
                     return _bad('other-model', keys, layer=name)
                 if reason:
+                    # A layer int8 does not merge is skipped, but a linear layer this model has at another size (a LoRA
+                    # trained for another build, such as the pruned one) is the same mismatch the other precisions report.
+                    known = _find(target)
+                    expected = LAYOUT[known] if known else UNCHECKED
+                    rows = b[0] if split is None else b[0] // 3
+                    if expected is not UNCHECKED and len(expected) == 2 and list(expected) != [rows, a[1]]:
+                        wrong.append((known, list(expected), [rows, a[1]]))
                     skipped.append((reason, target))
                     continue
                 if target in applied:
@@ -220,6 +227,12 @@ def assess(shapes, *, int8_targets=None, skipped=None, metadata=None):
                 if int8_skip_reason(target, int8_targets, full=True) == 'other_layer' and family(keys):
                     return _bad('other-model', keys, layer=name)
                 skipped.append((int8_skip_reason(target, int8_targets, full=True), target))
+                # Skipped either way, but a whole difference for a layer this model has at another size is the same
+                # mismatch the other precisions report.
+                known = None if bias else _find(target)
+                expected = LAYOUT[known] if known else UNCHECKED
+                if expected is not UNCHECKED and len(expected) == 2 and split is None and list(shape) != list(expected):
+                    wrong.append((known, list(expected), list(shape)))
                 continue
             found = _find(target)
             if found is None:
