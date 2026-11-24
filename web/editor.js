@@ -842,6 +842,12 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 : t('Save the whole edit as one video in the library', '把整条剪辑存成一个视频，放进作品库')});
         tip(exportCancel, {name: t('Cancel export', '取消导出'), use: t('Stop this export; no partial file is kept', '停止导出，不留下不完整的文件')});
     }
+    // The first-pass steps the next request carries, by the same rule as snapshot() below; a linked value is not known here.
+    function stepsToSend() {
+        const panelSteps = panel.sampling?.().base_steps, own = state.record.settings?.base_steps;
+        const steps = panel.barActive ? bar?.overrides?.().base_steps ?? panelSteps ?? own : own ?? panelSteps;
+        return typeof steps === 'number' ? steps : 8;
+    }
     async function snapshot() {
         let value = panel.snapshot ? clonePrompt(await panel.snapshot()) : clonePrompt(await app.graphToPrompt());
         if (value.output) {
@@ -1391,8 +1397,9 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         // frames, which the second pass changes. It may continue the part before it where the engine can.
         previewFirst(selection = state.selection) {
             if (actions.passMode()?.mode !== 'preview' || music.target(selection)) return false;
-            if ((state.record.settings?.base_steps ?? 8) !== 8) return false;
             const run = partRun(selection), chosen = run ? clipChoice(run) : selection, range = selectionRange(chosen); if (!range) return false;
+            // A part that continues is made with 8 steps whatever is set (comfy_continuation.part_steps).
+            if (!continuesEarlier(range) && stepsToSend() !== 8) return false;
             if (continuesEarlier(range) && !store.continuationPreview) return false;
             try {
                 // The parts Generate would send, planned as it plans them.
@@ -1506,7 +1513,9 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                     if (!alone) throw new model.EditError('unsupported');
                     Object.assign(inputs, {two_pass: true, preview: false, refine_from: secondPass});
                 } else {
-                    if ('preview' in inputs || previewing) inputs.preview = previewing && alone;
+                    // By the steps in this very request: they may have changed on the node since the key was drawn.
+                    const stepsFit = beforeKeys.some(Boolean) || typeof inputs.base_steps !== 'number' || inputs.base_steps === 8;
+                    if ('preview' in inputs || previewing) inputs.preview = previewing && alone && stepsFit;
                     if ('refine_from' in inputs) inputs.refine_from = '';
                 }
                 await followSound(frozen, prepared, ids);
@@ -1835,7 +1844,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         const fromStart = event => { if (event.target instanceof HTMLTextAreaElement && event.target.closest('.fv-prompt-editor')) event.target.scrollTop = 0; };
         attachBar = () => {
         if (bar) return;
-        bar = panel.borrowBar({mount: genHost, onSeconds: value => { const field = genbar.duration; if (!field || field.element.hidden || field.input.disabled || !(value > 0)) return; field.input.value = String(Math.round(value)); field.commit(); }, label: () => barLabel || null, disabled: () => !genbar.canGenerate(),
+        bar = panel.borrowBar({mount: genHost, onSeconds: value => { const field = genbar.duration; if (!field || field.element.hidden || field.input.disabled || !(value > 0)) return; field.input.value = String(Math.round(value)); field.commit(); }, label: () => barLabel || null, previews: () => [t('Generate preview', '生成预览'), t('Regenerate preview', '重新生成预览')].includes(barLabel), disabled: () => !genbar.canGenerate(),
             submit: async options => { genbar.setText(bar.prompt.value); await genbar.press(options?.allowEmpty === true); },
             onFirstFrame: value => genbar.firstFrame?.set(value)});
         if (bar) {

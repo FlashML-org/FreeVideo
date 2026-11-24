@@ -2,6 +2,7 @@
 // History: prompts that were generated, newest first. Templates: read-only starting points. Presets: the panel's
 // settings saved under a name (shape, resolution, length, quality, seed rule, LoRA choice, enhancement, and the
 // prompt and seed value when asked); files are never stored, only names, and a missing LoRA is named when applied.
+import { fieldNote } from './field_note.js';
 import {privacyOffered} from './private_offers.js';
 
 export const HISTORY_KEY = 'freevideo.prompts.history', PRESET_KEY = 'freevideo.prompts.presets';
@@ -188,8 +189,11 @@ export function createPromptLibrary({t, host, fill, snapshot, apply, describe = 
             const save = el('button', 'fvs-preset-save', t('Save', '保存')); save.type = 'submit';
             setTip(save, t('Save preset', '保存预设'), t('Save the current settings under this name', '用这个名称保存当前设置'));
             form.append(name, withPrompt, withSeed, save);
+            form.noValidate = true;  // the name is asked for here, under the form
+            const nameNote = fieldNote(name, {t, place: () => form});
             form.onsubmit = event => {
                 event.preventDefault();
+                if (!name.value.trim()) { name.focus(); nameNote.say(t('Fill in the preset name.', '请填写预设名称。')); return; }
                 const settings = snapshot({prompt: promptBox.checked, seed: seedBox.checked});
                 if (savePreset(name.value, settings, storage)) { name.value = ''; render(); notify(t('Preset saved', '预设已保存')); }
                 else notify(t('Could not save the preset.', '预设没能保存。'), null, 'fail');

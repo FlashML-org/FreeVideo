@@ -3,15 +3,28 @@
 Only the sentence the failure card shows travels. It has gone through the launcher's redaction already;
 paths and long tokens are removed once more here, and the end of a long log gives way to fit the address.
 """
+import re
 from urllib.parse import urlencode
 
 from .feedback import scrub
+from .long_paths import io_path
 
 ISSUE_FORM = 'https://github.com/FlashML-org/FreeVideo/issues/new'
 # GitHub refuses very long addresses.
 MAX_ADDRESS = 7000
 MAX_PROBLEM = 600
 MAX_REPORT = 2500
+# The update failure card: the report page carries the last lines of the per-source failure log.
+UPDATE_TITLES = ('Update', '更新')
+UPDATE_SOURCE_LINES = 5
+UPDATE_SOURCE_LINE_CHARS = 240
+# IPv4 first (so ::ffff:192.0.2.1 leaves no part of the address), then IPv6 in the full form (four groups or more,
+# so a time such as 23:00:00 stays) and in the compressed form (::).
+_IPV4 = re.compile(r'\b\d{1,3}(?:\.\d{1,3}){3}\b')
+_IPV6 = re.compile(r'(?<![\w:])(?:[0-9A-Fa-f]{1,4}:){3,7}[0-9A-Fa-f]{0,4}\b'
+                   r'|(?<![\w:])[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{1,4})*::[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{1,4})*(?![\w:])')
+# Below this many characters of error text the log lines give way first, oldest first.
+MIN_REPORT_WITH_LOG = 500
 
 
 def _lines(error):
@@ -64,6 +77,36 @@ def adapter_line():
         return 'Display adapters: not available'
 
 
+def update_source_lines(root, count=UPDATE_SOURCE_LINES):
+    """A heading and the last lines of the update-source failure log, redacted once more; [] when there is no readable line."""
+    try:
+        from .launcher_update import SOURCE_LOG
+        path = io_path(root) / 'updates' / SOURCE_LOG
+        if not path.is_file() or path.is_symlink():
+            return []
+        with open(path, 'rb') as handle:
+            handle.seek(0, 2)
+            handle.seek(max(0, handle.tell() - 16384))
+            text = handle.read().decode('utf-8', errors='replace')
+        lines = [' '.join(_IPV6.sub('<ip>', _IPV4.sub('<ip>', scrub(line))).split())[:UPDATE_SOURCE_LINE_CHARS]
+                 for line in text.splitlines() if line.strip()]
+        # A heading and a list: the report page strips each line, so the entries start with "- ", not with spaces.
+        return ['Update sources:'] + ['- ' + line for line in lines[-count:]] if lines else []
+    except Exception:
+        return []
+
+
+def update_report_lines(title):
+    """The diagnostic lines for the report page of an update failure; [] for any other failure or when anything goes wrong."""
+    try:
+        if str(title).strip() not in UPDATE_TITLES:
+            return []
+        from .desktop_runtime import launcher_root
+        return update_source_lines(launcher_root())
+    except Exception:
+        return []
+
+
 def issue_url(error, version=None, title=None, zh=False, environment='', diagnostics=()):
     lines = _lines(error)
     # A successful download-tool check can open the text (its Sysnative "not found" is normal); the cause is not that line.
@@ -77,11 +120,6 @@ def issue_url(error, version=None, title=None, zh=False, environment='', diagnos
     # only the error text gives way to fit the address.
     # The diagnostic lines (adapter model) come first and are kept whole, whatever the error is.
     notes = [scrub(line).strip() for line in diagnostics if str(line).strip()]
-    head = '\n'.join(([('Environment: ' + scrub(environment).strip())] if str(environment).strip() else []) + notes)
-    head += '\n\n' if head else ''
-
-    def fit(limit):
-        return head + (report if len(report) <= limit else report[:limit // 3] + '\n...\n' + report[-(limit - limit // 3 - 5):])
 
     def build(body):
         params = {'template': 'bug_launcher.yml', 'title': f'[{place}] ' + (str(title).strip() if title else place),
@@ -90,7 +128,31 @@ def issue_url(error, version=None, title=None, zh=False, environment='', diagnos
             params['version'] = 'v' + str(version).lstrip('v')
         return ISSUE_FORM + '?' + urlencode(params)
 
-    limit = MAX_REPORT
-    while len(build(fit(limit))) > MAX_ADDRESS and limit > 50:
-        limit = int(limit * 0.8)
-    return build(fit(limit))
+    def attempt(lines, floor):
+        head = '\n'.join(([('Environment: ' + scrub(environment).strip())] if str(environment).strip() else []) + lines)
+        head += '\n\n' if head else ''
+
+        def fit(limit):
+            return head + (report if len(report) <= limit else report[:limit // 3] + '\n...\n' + report[-(limit - limit // 3 - 5):])
+
+        limit = MAX_REPORT
+        while len(build(fit(limit))) > MAX_ADDRESS and limit > floor:
+            limit = int(limit * 0.8)
+        return build(fit(limit))
+
+    # The log lines (a heading, then "- " entries) are the first to give way: a long line, or one in Chinese, whose
+    # address form is nine times as long, must not make the address too long for GitHub. Oldest entries go first.
+    if 'Update sources:' in notes:
+        heading = notes.index('Update sources:')
+        count = 0
+        while heading + 1 + count < len(notes) and notes[heading + 1 + count].startswith('- '):
+            count += 1
+        before, after = notes[:heading], notes[heading + 1 + count:]
+        entries = notes[heading + 1:heading + 1 + count]
+        for dropped in range(count + 1):
+            kept = before + (['Update sources:'] + entries[dropped:] if dropped < count else []) + after
+            url = attempt(kept, MIN_REPORT_WITH_LOG)
+            if len(url) <= MAX_ADDRESS:
+                return url
+        notes = before + after
+    return attempt(notes, 50)

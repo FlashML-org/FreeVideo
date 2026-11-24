@@ -194,7 +194,8 @@ function paintLength(tray, dialog) {
         const shown = (dialog.querySelector('.fvs-key-eta')?.textContent || '').match(/分\s*(\d+)\s*段|(\d+)\s*parts/);
         count = shown ? Number(shown[1] || shown[2]) : seconds <= each ? 1 : Math.ceil(seconds / each);
     }
-    const idle = !one && count <= 1;
+    // An emptied box on a duration that needs parts stays editable, so it can be filled in.
+    const idle = !one && count <= 1 && !(block?.value === '' && block.dataset.fvPartsNeeded === 'true');
     toggle(part, 'fv-at-idle', idle);
     const field = part?.querySelector('.fv-at-num');
     if (field && field.hasAttribute('inert') !== idle) { field.toggleAttribute('inert', idle); field.setAttribute('aria-disabled', String(idle)); }
@@ -211,7 +212,7 @@ function paintLength(tray, dialog) {
     const refusal = dialog.querySelector('.fv-length-plan:not([hidden])'), said = refusal ? (refusal.firstChild?.textContent || refusal.textContent || '').trim() : '';
     const problem = section.querySelector('.fv-at-problem');
     if (problem) { if (problem.textContent !== said) problem.textContent = said; toggle(problem, 'fv-at-gone', !said); }
-    toggle(part, 'fv-at-bad', Boolean(said) && /每段时长|part length/i.test(said));
+    toggle(part, 'fv-at-bad', Boolean(said) && /每段时长|每段最长|part length/i.test(said));
     toggle(section.querySelector('.fv-at-segments[data-at=length]'), 'fv-at-bad', Boolean(said) && /单次|single run/i.test(said));
 }
 

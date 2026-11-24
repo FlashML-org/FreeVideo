@@ -13,7 +13,7 @@ import signal
 import time
 from pathlib import Path
 
-from .exit_diagnostics import clean_reading, exit_reading, memory_sample
+from .exit_diagnostics import clean_reading, exit_reading, memory_sample, stderr_kinds
 from .long_paths import io_path
 from .monitoring import save
 from .system import windows
@@ -78,6 +78,10 @@ def build(code, log=None, *, now=None, system=None):
     # The computer's memory when the exit was seen; the readings of this process are not the engine's.
     record['memory'] = {key: value for key, value in memory_sample().items() if not key.startswith('process_')}
     record['log_tail'] = log_tail(log) if log else []
+    # What the engine's last lines complained about, as fixed words: the lines stay on this computer, the words may leave it.
+    kinds = stderr_kinds('\n'.join(record['log_tail']))
+    if kinds:
+        record['stderr_kinds'] = kinds
     return record
 
 
