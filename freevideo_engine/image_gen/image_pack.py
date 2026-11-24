@@ -37,6 +37,8 @@ MOSS_ONLY_COMPONENTS = ('transformer', 'tokenizer', 'scheduler', 'license')
 H3_GROUPS = ('h3-image-core', 'h3-text-encoder') + tuple('h3-image-dit-' + tier for tier in H3_TIERS)
 LEDGER = 'download-verified.json'
 OWNERSHIP = 'owned-files.json'
+# A swap of a shared file in progress: the kept original's name and identity, written before the first rename.
+SWAPS = 'logs/model-swaps.json'
 RESERVE = 256 * 2**20
 FAMILY = 'image-models'
 BACKGROUND_RESERVE = 2 * 2**30
@@ -283,6 +285,13 @@ def shared_root(root=None):
     if root is None:
         root = installed_model_root()
     return Path(root).expanduser().absolute().parent / 'encoder'
+
+
+def _same_disk(first, second):
+    try:
+        return os.stat(disk_space.existing(first)).st_dev == os.stat(disk_space.existing(second)).st_dev
+    except OSError:
+        return True
 
 
 def _same_folder(first, second):
@@ -698,9 +707,15 @@ def _verify(folder, root, progress, check, full=False, *, group='image'):
         progress(dict(phase='diagnostic', diagnostic=dict(file=row['file'], verification='verified' if intact else
                                       'mismatch' if path.exists() else 'missing',
                                       method='sha256' if hashed else 'receipt' if intact else 'size')))
+        if intact and row.get('shared'):
+            try:
+                _swap_record(folder, path)       # the file is there and right: a record of an interrupted swap is moot
+            except OSError:
+                pass
         if not intact:
             ledger.pop(str(path), None)
-            if path.exists() and not row.get('shared'):
+            if path.exists():
+                # A file shared with the video install is recorded too: repair may replace it only after this record.
                 model_repair.record(folder, path, row, before)
             todo.append(row)
         done += row['bytes']
@@ -793,25 +808,160 @@ def _transfer(plan, row, path, progress, check, background=None, diagnostic=None
             raise PackError(reason) from error
 
 
-def install(root=None, progress=None, check=None, *, engine_root=None, repair=False, _background=None, group='image'):
-    """Install only missing weights. Repair also hashes and retains bad originals."""
+def _swap_record(folder, path, approved=None):
+    """Write (or, without approved, drop) the record of a swap that has begun at path."""
+    values = _read(folder, SWAPS)
+    if approved is None:
+        if str(path) not in values:
+            return
+        del values[str(path)]
+    else:
+        values[str(path)] = dict({key: approved[key] for key in model_repair.IDENTITY}, keep_as=approved['keep_as'])
+    save(_path(folder, SWAPS), values)
+
+
+def _put_back(folder, path):
+    """A swap stopped after it moved the original away and before the new file was in place: the original, found by
+    the record the swap left (its name and identity), goes back. A .replaced file from a swap that finished has no
+    record and stays where it is."""
+    try:
+        record = _read(folder, SWAPS).get(str(path))
+        if not isinstance(record, dict):
+            return False
+        if os.path.lexists(path):
+            _swap_record(folder, path)           # the path has a file again: the record is a leftover
+            return False
+        name = record.get('keep_as')
+        kept = path.with_name(name) if model_repair.valid_name(name) else None
+        if kept is None or not model_repair.same_identity(model_repair.identity(kept), record):
+            return False
+        model_repair.rename_noreplace(kept, path)
+        _swap_record(folder, path)
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def _swap_in(folder, path, staged, approved, prior):
+    """The verified new file takes the place of the original, which is kept as .replaced-<date>.
+
+    A record of the swap is written first and dropped when both renames are done, so a stop in between can be told
+    from an old .replaced file. If the second rename cannot be done the original goes back, so the path is never left
+    empty by this function."""
+    try:
+        _swap_record(folder, path, approved)
+    except PermissionError as error:
+        raise PackError('write_failed') from error
+    try:
+        kept = model_repair.retain(folder, path, approved)
+    except BaseException as error:
+        # retain may have failed after its rename (writing the mismatch record): then the original goes back. Only when
+        # it is still in place was nothing renamed (Windows: another program holds the file open); the verified new
+        # file waits as <name>.replacing either way.
+        keep = path.with_name(approved['keep_as'])
+        if not os.path.lexists(path) and keep.exists():
+            try:
+                model_repair.restore(folder, path, keep, approved, prior)
+            except (OSError, ValueError):
+                pass
+        if os.path.lexists(path):
+            try:
+                _swap_record(folder, path)
+            except OSError:
+                pass
+        if isinstance(error, PermissionError):
+            raise PackError('write_failed') from error
+        raise
+    try:
+        model_repair.rename_noreplace(staged, path)
+    except BaseException:
+        try:
+            model_repair.restore(folder, path, kept, approved, prior)
+            _swap_record(folder, path)
+        except (OSError, ValueError):
+            pass
+        raise
+    try:
+        _swap_record(folder, path)
+    except OSError:
+        pass
+
+
+def install(root=None, progress=None, check=None, *, engine_root=None, repair=False, _background=None, group='image', confirm=None):
+    """Install only missing weights. Repair also hashes and retains bad originals.
+
+    A damaged file the video install shares is renamed only after the user has seen it: with repair or confirm given,
+    a shared file that differs and is not in confirm stops the run with PackError('confirm_replace', replace=rows)
+    before anything is touched, and passing those rows as confirm (setup's reviewed plan lists them: bootstrap
+    replace_models) replaces them. A plain install reports 'shared_mismatch' and changes nothing.
+
+    A call with confirm takes no engine lease of its own (only repair=True does). That holds because its one caller,
+    bootstrap's Installer.install_image_only, runs inside a setup that holds the installation's engine lease for its
+    whole run, so no video runs while a file is replaced. Any new caller that passes confirm must do the same."""
     progress = progress or (lambda v: None)
     check = check or (lambda: None)
     transfer_check = _background.check if _background is not None else check
     try:
         with _lease(root, engine_root, destructive=repair) as folder:
+            replacing = repair or confirm is not None
+            for row in rows(group=group):
+                if replacing and row.get('shared') and not os.path.lexists(target(row, root)):
+                    new = Path(str(target(row, root)) + '.replacing')
+                    if not (new.is_file() and new.stat().st_size == row['bytes']):
+                        # An earlier swap moved the original away and stopped before the new file was in place:
+                        # a repair puts the original back first (before the check, which then sees it), so the video
+                        # is not left without its file. Only a swap that left its record is undone, and only in a
+                        # repair (which holds the engine lease); a plain install never renames the user's files.
+                        _put_back(folder, target(row, root))
             ledger, todo = _verify(folder, root, progress, check, full=repair, group=group)
             total = sum(r['bytes'] for r in todo)
-            retained = 0
-            for row in todo:
-                partial = _side(folder, row, root, '.partial')
-                if partial.is_file() and partial.stat().st_size < row['bytes']:
-                    retained += partial.stat().st_size
             reserve = BACKGROUND_RESERVE if _background is not None else RESERVE
-            needed = total - retained + reserve
-            free = disk_space.free_bytes(folder)
-            if total and free < needed:
-                raise PackError('disk_space', needed_bytes=needed, free_bytes=free)
+            # Each disk a file lands on must hold what lands there: the shared encoder goes to the video encoder
+            # folder, which may be another disk, also when its file is missing (a failed repair) or kept beside its copy.
+            disks = []
+            for row in todo:
+                parts = [_side(folder, row, root, '.partial')]
+                if row.get('shared'):
+                    parts.append(Path(str(target(row, root)) + '.replacing.partial'))
+                have = max([p.stat().st_size for p in parts if p.is_file() and p.stat().st_size < row['bytes']] or [0])
+                if row.get('shared') and Path(str(target(row, root)) + '.replacing').is_file() and \
+                        Path(str(target(row, root)) + '.replacing').stat().st_size == row['bytes']:
+                    have = row['bytes']       # the new file is already on the disk (an earlier run): only a rename is left
+                where = target(row, root).parent if row.get('shared') else folder
+                for entry in disks:
+                    if _same_disk(entry[0], where):
+                        entry[1] += row['bytes'] - have
+                        break
+                else:
+                    disks.append([where, row['bytes'] - have])
+            for where, amount in disks:
+                if amount <= 0:
+                    continue          # only renames are left (a new file already on the disk)
+                needed, free = amount + reserve, disk_space.free_bytes(where)
+                if free < needed:
+                    raise PackError('disk_space', needed_bytes=needed, free_bytes=free)
+            replacements = {}
+            if replacing:
+                # Before anything is renamed or downloaded: which shared files would be replaced, and did the user confirm them.
+                asked = []
+                reviewed = {row.get('path'): row for row in confirm or [] if isinstance(row, dict)}
+                for row in todo:
+                    path = target(row, root)
+                    if not row.get('shared') or not path.exists():
+                        continue
+                    if _linked(path):
+                        raise PackError('link_mismatch', link=str(path))
+                    approved = model_repair.replacement(path, row, model_repair.read(folder), set())
+                    if approved is None:
+                        raise PackError('changed')
+                    prior = reviewed.get(approved['path'])
+                    if prior is not None and model_repair.same_identity(approved, prior):
+                        model_repair.reuse_names([approved], [prior])
+                    else:
+                        asked.append(approved)
+                    replacements[str(path)] = approved
+                if asked:
+                    raise PackError('confirm_replace', replace=asked)
             plan = _download_plan(engine_root)
             plan.update(quiet=True, resource_check=check)
             owned = _read(folder, OWNERSHIP)
@@ -826,19 +976,34 @@ def install(root=None, progress=None, check=None, *, engine_root=None, repair=Fa
                 progress(dict(phase='download', done=done + pending_prefixes, total=total))
             for row in todo:
                 check()
+                swap = None
                 path = target(row, root)
+                # A shared file that is replaced stays where it is while the new one is fetched beside it, as
+                # <name>.replacing; only a verified new file is swapped in, so no stop leaves the video without it.
+                staged = path.with_name(path.name + '.replacing') if row.get('shared') else None
+                download_to = path
+                if staged is not None and not os.path.lexists(path) and staged.is_file():
+                    # An earlier swap stopped between its two renames: the verified new file is still waiting.
+                    download_to = staged
                 if path.exists():
-                    if not row.get('shared') and _linked(path):
+                    if _linked(path) and (replacing or not row.get('shared')):
                         # The user's link leads to a different file: neither the link nor that file is ours to replace.
                         raise PackError('link_mismatch', link=str(path))
-                    if not repair or row.get('shared'):
+                    if not repair and not (row.get('shared') and replacing):
+                        # A plain install never renames a file the video install shares: setup's repair does, after a review.
+                        if row.get('shared'):
+                            raise PackError('shared_mismatch', file=path.name, path=str(path))
                         raise PackError('needs_repair')
-                    approved = model_repair.replacement(path, row, model_repair.read(folder), set())
+                    approved = replacements.get(str(path)) or model_repair.replacement(path, row, model_repair.read(folder), set())
                     if approved is None:
                         raise PackError('changed')
-                    model_repair.retain(folder, path, approved)
-                    owned.pop(row['file'], None)
-                    save(_path(folder, OWNERSHIP), owned)
+                    if row.get('shared'):
+                        swap = (approved, model_repair.read(folder).get(str(path)))
+                        download_to = staged
+                    else:
+                        model_repair.retain(folder, path, approved)
+                        owned.pop(row['file'], None)
+                        save(_path(folder, OWNERSHIP), owned)
                 partial = _side(folder, row, root, '.partial')
                 if _background is not None and partial.is_file():
                     pending_prefixes -= min(row['bytes'], partial.stat().st_size)
@@ -849,12 +1014,35 @@ def install(root=None, progress=None, check=None, *, engine_root=None, repair=Fa
                     progress(dict(phase='download', done=done + current + pending_prefixes, total=total))
                     transfer_check()
                 try:
-                    _transfer(plan, row, path, moved, transfer_check, _background, progress)
+                    try:
+                        _transfer(plan, row, download_to, moved, transfer_check, _background, progress)
+                    except ValueError as error:
+                        # download() refuses to overwrite a finished file that fails its check. A leftover <name>.replacing
+                        # that does not hold the tested bytes is our own staging file: removed, then fetched again, once.
+                        if download_to is not staged or not str(error).startswith('Existing file failed integrity check'):
+                            raise
+                        staged.unlink()
+                        download_to = staged
+                        _transfer(plan, row, download_to, moved, transfer_check, _background, progress)
+                    if swap is not None:
+                        _swap_in(folder, path, staged, *swap)
+                    elif download_to is staged:
+                        model_repair.rename_noreplace(staged, path)
+                        _swap_record(folder, path)      # the swap an earlier run began is finished
+                except BaseException:
+                    if replacing and staged is not None and not os.path.lexists(path):
+                        _put_back(folder, path)         # this run could not bring the new file: the original stays the video's
+                    raise
                 finally:
                     # Completed files and cancellable prefixes have separate identities.
                     for artifact in (partial, affinity):
                         if not row.get('shared') and may_own[artifact] and _path(folder, artifact.relative_to(folder).as_posix(), kind='beside').is_file():
                             _own(folder, owned, artifact)
+                if staged is not None:
+                    try:
+                        _swap_record(folder, path)      # a record an interrupted swap left is moot once the path has its file
+                    except OSError:
+                        pass
                 ledger[str(path)] = provision.file_identity(path, row)
                 save(_path(folder, LEDGER), ledger)
                 if not row.get('shared'):
@@ -871,8 +1059,8 @@ def install(root=None, progress=None, check=None, *, engine_root=None, repair=Fa
         raise PackError('download_failed') from error
 
 
-def repair(root=None, progress=None, check=None, *, engine_root=None, group='image'):
-    return install(root, progress, check, engine_root=engine_root, repair=True, group=group)
+def repair(root=None, progress=None, check=None, *, engine_root=None, group='image', confirm=None):
+    return install(root, progress, check, engine_root=engine_root, repair=True, group=group, confirm=confirm)
 
 
 def _kinds(group):

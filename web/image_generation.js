@@ -217,6 +217,9 @@ export function packView(info, t) {
     }
     const resume = install.state === 'failed' || install.state === 'cancelled' || install.done > 0;
     const reason = install.state === 'failed' ? t(install.message_en, install.message_zh) : '';
+    // A file the video install shares differs: downloading again would stop at the same place, and the launcher's Repair
+    // (named in the note) is the way on, so no button is offered here.
+    if (install.state === 'failed' && install.reason === 'shared_mismatch' && reason) return {loading: false, fraction: null, reason: true, button: '', note: reason};
     return {loading: false, fraction: null, reason: !!reason, button: resume ? t('Resume download', '继续下载') : t('Download image generation models', '下载图像生成模型'),
         note: reason || (resume ? t(`${gb(install.done || 0)}\u00a0GB / ${size}${time}`, `${gb(install.done || 0)}\u00a0GB / ${size}${time}`) : size + time)};
 }
@@ -1048,7 +1051,7 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
         action.classList.toggle('fv-ie-primary', !state.running);
         action.setAttribute('aria-disabled', String(!pack && !state.running && (disabled || !prompt.trim())));
         action.title = !pack && !state.running && !prompt.trim() ? t('Enter a prompt first', '请先填写提示词') : '';
-        action.hidden = !!missing && !pack;
+        action.hidden = !!missing && !(pack && pack.button);
         const percent = Math.floor(state.fraction * 100) + '%';
         if (state.error && !promptRequired) {
             const failureKey = `${state.error}:${state.report_id || ''}:${state.stage || ''}:${state.memory || ''}`;
@@ -1121,6 +1124,7 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
         const note = el('div', '', 'fv-ie-opt-note fv-ie-gen-note'); note.setAttribute('role', 'status');
         const action = button(t('Generate', '生成'), null, () => {
             const now = session.state(), pack = !now.running && now.info && !now.info.installed ? packView(now.info, t) : null;
+            if (pack && !pack.button) return;
             if (pack) void session.pack(pack.loading && !pack.waiting ? 'cancel' : 'install');
             else if (now.running) void stop(); else void start();
         }, 'fv-ie-button fv-ie-primary');

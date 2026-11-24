@@ -775,6 +775,10 @@ class Session:
             # the editable setup form may currently describe another installation.
             self.remember(self.selected, persist=False)
             self.repair_request = dict(self.form, repair=True)
+            if self.installed_machine().get('video_model') is False:
+                # Set up with MiniMax H3 Image alone: repair that, whatever the model step's form says now
+                # (it defaults to the video model, and "Add the video model" sets it to the video model).
+                self.repair_request['install_model'] = 'image'
             self.persist()
             self.controller.run('inspect', self.setup_values(self.repair_request))
             self.page = 'progress'

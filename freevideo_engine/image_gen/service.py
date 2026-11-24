@@ -21,7 +21,7 @@ import time
 import uuid
 
 from . import image_model, image_pack, keep, progress_model
-from .. import server_mode
+from .. import model_repair, server_mode
 from .loras import ERRORS as LORA_ERRORS, resolve_selection
 from ..disk_space import ran_out
 
@@ -540,10 +540,39 @@ class Service:
                     purposes=list(PURPOSES),
                     **({'unified_memory': True} if machine.get('device_backend') == 'mps' else {}))
 
+    def forget_stale_shared_failure(self, root):
+        """A failure 'a file the video install shares differs' stays in memory until something replaces the installer.
+        Repair runs in the launcher and may fix the file while this service keeps running (a ComfyUI the launcher did
+        not start is not restarted), and the page has no button then: so the failure goes once the file is no longer the
+        one it was recorded for: it is gone, or its identity (size, times, inode) differs from the record the check left.
+        No record with the file still there (a link, an unreadable record) keeps the failure. No hashing here; the next
+        download then checks the file for real and either finishes or reports it again."""
+        installer = self.h3_installer
+        if installer is None or getattr(installer, 'busy', False):
+            return
+        state = installer.state()
+        if not isinstance(state, dict) or state.get('state') != 'failed' or state.get('reason') != 'shared_mismatch':
+            return
+        try:
+            records = model_repair.read(image_pack.base(root))
+            for row in image_pack.rows(group=H3_GROUP):
+                if row.get('shared'):
+                    path = image_pack.target(row, root)
+                    record = records.get(str(path))
+                    if os.path.lexists(path) and (record is None or model_repair.same_identity(model_repair.identity(path), record)):
+                        return                      # still the file that failed (or no way to tell: a link, no record)
+        except (OSError, ValueError):
+            return
+        with self.mutex:
+            if self.h3_installer is installer:
+                self.h3_installer = None
+
     def model_rows(self, machine, qwen_ready, qwen_downloading, qwen_problem=None):
         """Both picture models for the page: installed, or being fetched with the bytes still to download."""
         root = machine['model_root']
         mac = sys.platform == 'darwin'
+        if not mac:
+            self.forget_stale_shared_failure(root)
         h3_ready, h3_problem = False, None
         if not mac:
             h3_ready, h3_problem = self.pack_checked(image_pack.ready, root, group=H3_GROUP)
