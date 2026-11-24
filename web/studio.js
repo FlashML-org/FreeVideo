@@ -849,6 +849,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             setPrompt: text => { set(node, 'text', text); prompt.value = text; placeholder(); castOverlay.refresh(); },
             // Two-pass and preview settle into one pass mode, whichever of the two the example lists first.
             setSetting: (name, input) => {
+                if (['quality', 'two_pass', 'preview', 'base_steps'].includes(name)) holdPreview(false);
                 if (name === 'quality') {
                     const tier = effort.levels().find(tier => tier.name === input);
                     baseSteps.value = tier.steps; twoPass.checked = tier.twoPass; refineSteps.value = 3;
@@ -1151,22 +1152,48 @@ export function openStudio(node, {extendFrom = null} = {}) {
     };
     // (effortPointed: the quality panel's line on what the pointed-at level gives; set with that panel.)
     let effortPointed = () => {};
-    const effort = createSamplingEffort(t, {onChange: chooseEffort, onPreview: tier => { if (tier) showEffortEstimate(tier.steps, tier.twoPass, tier.stepCache, tier.upscale); else showEffortEstimate(); effortPointed(tier); }});
+    const effort = createSamplingEffort(t, {onChange: chooseLevel, onPreview: tier => { if (tier) showEffortEstimate(tier.steps, tier.twoPass, tier.stepCache, tier.upscale); else showEffortEstimate(); effortPointed(tier); }});
     // What the quality control shows now; the editor's generation bar shows the same control from this.
     const effortState = () => ({baseSteps: Number(baseSteps.value), refineSteps: Number(refineSteps.value),
         twoPass: twoPass.checked, stepCache: stepCacheNow(), upscale: upscaleNow(),
         disabled: baseSteps.disabled || linked(node, 'two_pass') || linked(node, 'refine_steps') || linked(node, 'step_cache') || linked(node, 'upscale_factor'),
         reason: extension.source ? continuationReason() : ''});
     const effortListeners = new Set();
-    const sharedEffort = {state: effortState, choose: chooseEffort, levels: () => effort.levels(),
+    const sharedEffort = {state: effortState, choose: chooseLevel, levels: () => effort.levels(),
         subscribe(listener) { effortListeners.add(listener); return () => effortListeners.delete(listener); }};
     node.freevideoEffort = sharedEffort;
     cleanup.push(() => { effortListeners.clear(); if (node.freevideoEffort === sharedEffort) delete node.freevideoEffort; });
     const samplingSettings = el('div', null, 'fv-sampling-settings');
+    // A preview is the first of two passes, which run only with 8 first-pass steps (two_pass.TWO_PASS_BASE_STEPS): a workflow
+    // saved with two-pass and other steps makes the video without one.
+    const previewNeedsSteps = () => t('Preview first needs 8 first-pass steps', '先出预览需一采 8 步');
+    const previewStepsWrong = () => twoPass.checked && !extension.source && !linked(node, 'base_steps') && Number(baseSteps.value) !== 8;
+    // A saved Preview first that these steps cannot use waits in the workflow. It returns only when the steps are brought
+    // back to 8 in this panel; a one-pass level, a filled-in preset or example, or a choice of what to generate ends the wait.
+    const previewHeld = () => node.properties?.freevideo_preview_held === true;
+    function returnHeldPreview() {
+        if (!previewHeld() || !twoPass.checked || Number(baseSteps.value) !== 8 || extension.source || linked(node, 'preview') || !widget(node, 'preview')) return;
+        holdPreview(false); previewFirst.checked = true; set(node, 'preview', true);
+        syncSamplingSteps();
+        if (runButtonReady) updateRunButton();
+    }
+    // A level chosen on the control.
+    function chooseLevel(tier) {
+        chooseEffort(tier);
+        if (tier.twoPass) returnHeldPreview(); else holdPreview(false);
+    }
+    const holdPreview = on => {
+        if (previewHeld() === on) return;
+        node.properties ||= {};
+        if (on) node.properties.freevideo_preview_held = true; else delete node.properties.freevideo_preview_held;
+        node.graph?.change?.();
+    };
     const previewFirst = el('input'); previewFirst.type = 'checkbox'; previewFirst.checked = value(node, 'preview') === true;
     function choosePassMode(mode) {
         if (extension.source) return;
         const wantsTwoPass = mode !== 'off', wantsPreview = mode === 'preview';
+        // Chosen, so nothing waits; the workflow has to record that even when no other setting changes.
+        if (!wantsPreview && node.properties?.freevideo_preview_held) { delete node.properties.freevideo_preview_held; node.graph?.change?.(); }
         if (twoPass.checked !== wantsTwoPass) {
             // Switching off uses Max including its cache; switching on uses uncached Light. Typed steps stay.
             const next = passSwitch(wantsTwoPass, Number(baseSteps.value), Number(refineSteps.value), stepCacheNow(), effort.levels());
@@ -1183,8 +1210,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
         const passLinked = linked(node, 'two_pass'), previewLinked = linked(node, 'preview');
         return {mode: !twoPass.checked ? 'off' : previewFirst.checked ? 'preview' : 'on',
             disabled: {off: Boolean(extension.source) || passLinked || !widget(node, 'two_pass'), on: twoPass.disabled,
-                preview: Boolean(extension.source) || twoPass.disabled || previewLinked || !widget(node, 'preview')},
-            hidden: {preview: !widget(node, 'preview')}, hint: passLinked || previewLinked ? '' : previewPassHint};
+                preview: Boolean(extension.source) || twoPass.disabled || previewLinked || !widget(node, 'preview') || previewStepsWrong()},
+            hidden: {preview: !widget(node, 'preview')}, hint: passLinked || previewLinked ? '' : previewStepsWrong() ? previewNeedsSteps() : previewPassHint};
     }
     // The editor's generation bar shows the same choices; it hears every change made here and chooses through here.
     const passListeners = new Set();
@@ -1380,7 +1407,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         samplingFields.append(field(label, input));
     }
     // Typed steps are custom sampling, which has no step cache.
-    baseSteps.oninput = () => { clearStepCache(); syncSamplingSteps(); };
+    baseSteps.oninput = () => { clearStepCache(); syncSamplingSteps(true); };
     // Apply the two-pass rule to committed values, never while typing.
     const twoPassRule = () => {
         const steps = Number(baseSteps.value);
@@ -1398,10 +1425,11 @@ export function openStudio(node, {extendFrom = null} = {}) {
         fieldNotes.get(baseSteps).settle();
         if (baseSteps.value !== typed) twoPassRule();
         syncSamplingSteps();
+        returnHeldPreview();
     };
     // The run button exists only further down; until then its label is set there.
     let runButtonReady = false;
-    function syncSamplingSteps() {
+    function syncSamplingSteps(typing = false) {
         if (extension.source) {
             const factor = continuationUpscale(baseSteps.value, twoPass.checked, refineSteps.value, stepCacheNow(), value(node, 'upscale_factor'), effort.levels());
             baseSteps.value = '8'; refineSteps.value = '3'; twoPass.checked = true; set(node, 'two_pass', true); clearStepCache(); setUpscale(factor); autoSinglePass = false;
@@ -1415,11 +1443,15 @@ export function openStudio(node, {extendFrom = null} = {}) {
         twoPassStatus.textContent = Number(baseSteps.value) !== 8 && !onePassLevel ? t('Needs 8 first-pass steps', '一采需 8 步') : '';
         twoPassLabel.classList.toggle('fv-two-pass-unavailable', unavailable);
         // A preview stops after the first pass, so it needs two-pass sampling.
-        if (!twoPass.checked && previewFirst.checked) {
+        // Steps half typed decide nothing; the two-pass rule above is applied to them once they are committed.
+        const stepsWrong = !typing && previewStepsWrong();
+        if ((!twoPass.checked || stepsWrong) && previewFirst.checked) {
+            // A linked value is another node's to change.
+            if (stepsWrong && !linked(node, 'preview')) holdPreview(true);
             previewFirst.checked = false; set(node, 'preview', false);
             if (runButtonReady) updateRunButton();
         }
-        previewFirst.disabled = !twoPass.checked || linked(node, 'preview') || !widget(node, 'preview');
+        previewFirst.disabled = !twoPass.checked || previewStepsWrong() || linked(node, 'preview') || !widget(node, 'preview');
         blockOriginal('preview', previewFirst.checked && !previewFirst.disabled, {release() { choosePassMode('on'); return ['Preview first was turned off for "Use as is".', '已为“原样使用”关闭“先出预览”。']; }});
         syncPassMode();
         baseSteps.disabled = baseLinked || !widget(node, 'base_steps') || Boolean(extension.source);
@@ -1441,6 +1473,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
         refreshEffortEstimate();
         consoleUI?.sync();
     }
+    // Already at 8 steps with the preview off: that was set outside this panel, and it stands. A continuation's 8 steps are
+    // its own, so the choice keeps waiting for the end of it.
+    if (previewHeld() && !extension.source && Number(baseSteps.value) === 8) holdPreview(false);
     syncSamplingSteps();
     advanced.append(samplingFields, samplingWarning);
     // A continuation keeps a two-pass level (Light or Medium).
@@ -2328,6 +2363,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         const b = button(label, () => { choosePassMode(id === 'preview' ? 'preview' : twoPass.checked ? 'on' : 'off'); keyMore.open = false; });
         b.dataset.choice = id; keyMenu.append(b); return b;
     });
+    const keyMenuWhy = el('p', null, 'fv-key-why'); keyMenuWhy.hidden = true; keyMenu.append(keyMenuWhy);
     keyMore.append(keyMoreToggle, keyMenu);
     liftMenu(keyMore, keyMenu);
     const syncKeyMore = () => {
@@ -2335,6 +2371,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         keyMore.hidden = runMode !== 'single' || videoMissing || Boolean(state.hidden.preview) || Boolean(extension.source);
         for (const b of keyChoices) setAttr(b, 'aria-pressed', String((b.dataset.choice === 'preview') === (state.mode === 'preview')));
         keyChoices[1].disabled = state.disabled.preview && !(state.mode === 'preview');
+        keyMenuWhy.hidden = !previewStepsWrong(); keyMenuWhy.textContent = keyMenuWhy.hidden ? '' : previewNeedsSteps();
         if (keyMore.hidden) keyMore.open = false;
     };
     runrow.append(generate, runOptions, keyMore);
@@ -2485,7 +2522,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             : runMode === 'batch' ? t(`Add ${count.value || '…'} videos`, `添加 ${count.value || '…'} 个视频`)
             : runMode === 'loop' ? (queueState?.looping ? t('Looping', '循环中') : t('Start loop', '开始循环'))
             : busy ? t('Add to queue', '加入队列')
-            : previewFirst.checked && !previewFirst.disabled ? t('Generate preview', '生成预览') : t('Generate video', '生成视频'));
+            : !borrowed && previewFirst.checked && !previewFirst.disabled ? t('Generate preview', '生成预览') : t('Generate video', '生成视频'));
         paintKey(borrowed?.label?.() ?? label, borrowed ? true : !submitting && !chainReason);
         syncKeyMore();
         if (borrowed) generate.disabled = borrowed.disabled?.() ?? false;
@@ -2500,7 +2537,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
             : runMode === 'batch' ? t(...TIPS['studio.mode.batch'].use)
             : runMode === 'loop' ? t(...TIPS['studio.mode.loop'].use)
             : busy ? t('Starts when the current video finishes', '当前视频完成后自动开始')
-            : previewFirst.checked && !previewFirst.disabled ? t(...TIPS['studio.twoPass.preview'].use) : t(...TIPS['studio.generate'].use);
+            // Why the key makes no preview although the saved settings asked for one (a reason is read only on a greyed key).
+            : previewHeld() && previewStepsWrong() ? previewNeedsSteps()
+            : (borrowed ? borrowed.previews?.() : previewFirst.checked && !previewFirst.disabled) ? t(...TIPS['studio.twoPass.preview'].use) : t(...TIPS['studio.generate'].use);
         const why = !generate.disabled ? ''
             : submitting ? t('Adding to the queue. One moment.', '正在加入队列，请稍候')
             : chainWait ? t('Parts are generating. Wait, or cancel them in the queue.', '分段视频生成中，完成或在队列里取消后可再生成')
@@ -3073,7 +3112,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // same chips and their rules stay in one place. Pressing Generate runs the editor's submission instead; the values
     // come from the same node the bar edits. Release puts everything back as it was.
     let popHolder = null;
-    current.borrow = ({mount, submit, label = null, disabled = null, onSeconds = null, onFirstFrame = null, initial = {}, locked = []}) => {
+    current.borrow = ({mount, submit, label = null, previews = null, disabled = null, onSeconds = null, onFirstFrame = null, initial = {}, locked = []}) => {
         if (borrowed || disposed) return null;
         const outer = mount.closest('dialog') || document.body;
         const home = {parent: controls.parentNode, next: controls.nextSibling};
@@ -3110,7 +3149,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
                 updateRunButton();
             }};
         shadow = new Map();
-        borrowed = {submit, label: () => (state.labelFn ?? label)?.(), disabled, onSeconds, onFirstFrame, firstFrame: null, applying: false, release: state.release};
+        borrowed = {submit, label: () => (state.labelFn ?? label)?.(), previews, disabled, onSeconds, onFirstFrame, firstFrame: null, applying: false, release: state.release};
         const unlock = () => {
             for (const control of lockedNow.splice(0)) { control.disabled = false; delete control.dataset.fvLocked; }
             for (const element of [framePicker?.element, stepper?.element]) delete element?.dataset.fvLocked;
@@ -3177,6 +3216,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         // The media panel and the @ list read whether a video is being continued.
         if (mediaNode) window.dispatchEvent(new CustomEvent('freevideo-media', {detail: mediaNode.id}));
         syncSamplingSteps(); syncCanvasSize(); seconds.dispatchEvent(new Event('input'));
+        if (!source) returnHeldPreview();
         prompt.focus({preventScroll: true});
     }
     current.enterExtend = record => {
@@ -3450,6 +3490,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
                 seconds.dispatchEvent(new Event('input', {bubbles: true})); seconds.dispatchEvent(new Event('change', {bubbles: true}));
             }
             if (!baseSteps.disabled) {
+                holdPreview(false);
                 const tier = settings.level && effort.levels().find(level => level.name === settings.level);
                 if (tier) chooseEffort(tier);
                 else if (settings.steps) {

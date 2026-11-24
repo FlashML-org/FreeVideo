@@ -361,6 +361,10 @@ export function createErrorReport(detail, context = {}) {
 
 // Failures of turning a reference video into depth (freevideo_engine/depth_reference.py), most specific first.
 const RETRY_REPORT = ['Try again. If it happens again, choose "Report a problem" to send us the report.', '请重试。再次出现时，请点击“提交问题”，把报告发给我们。'];
+// The engine's refusal of a preview with other first-pass steps (preview.validate_flags; Lane, review/preview-steps-check-0610).
+const PREVIEW_STEPS = [/A preview uses two-pass generation, which runs only with 8 first-pass steps/,
+    'preview-steps', ['Preview first needs 8 first-pass steps', '先出预览需一采 8 步'], ['', ''],
+    ['Set the first-pass steps to 8, or turn off Preview first, then generate again.', '请将一采步数改为 8，或关闭“先出预览”，再重新生成。']];
 const REFERENCE_FAILURES = [
     [/Source video (?:frame count )?changed during depth (?:conversion|inspection)|reference video changed while it was being turned into lines/i,
         'reference-changed', ['The reference video changed', '参考视频在转换时被改动'],
@@ -445,7 +449,7 @@ export function failureAdvice(value, t, known = knownError(value)) {
     }
     // A reference video turned into depth (depth_reference.py) failed: the cause in people's words and the
     // next step, in both languages; the engine's own sentence stays in the details below.
-    for (const [pattern, kind, title, summary, action] of REFERENCE_FAILURES) {
+    for (const [pattern, kind, title, summary, action] of [...REFERENCE_FAILURES, PREVIEW_STEPS]) {
         if (pattern.test(text)) return row(kind, title, summary, action);
     }
     if (known === 'media-missing')
