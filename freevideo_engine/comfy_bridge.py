@@ -1385,7 +1385,7 @@ def engine_environment(root, source, environ=None):
         from .macos_bootstrap import environment
     else:
         from .triton_compat import environment
-    return environment(root, isolated_environment(root, source, environ))
+    return dict(environment(root, isolated_environment(root, source, environ)), PYTHONSAFEPATH='1')
 
 
 def generate(prompt, width, height, seconds, seed, output_directory, *,

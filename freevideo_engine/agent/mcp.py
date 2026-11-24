@@ -4,8 +4,8 @@
     freevideo.cmd mcp                   # Windows
     ./freevideo mcp --print-config      # Linux client configuration
     # macOS / other Unix platforms: use the installed Python and source folder.
-    env FREEVIDEO_AGENT=1 PYTHONPATH=/path/to/FreeVideo/engine-source \
-        /path/to/installed/python -X utf8 -m freevideo_engine.agent.mcp --root /path/to/FreeVideo
+    env FREEVIDEO_AGENT=1 PYTHONPATH=/path/to/FreeVideo/engine-source /path/to/installed/python -X utf8 \
+        /path/to/FreeVideo/engine-source/freevideo_engine/installed_entry.py freevideo_engine.agent.mcp --root /path/to/FreeVideo
     # Add --print-config to print client configuration.
 
 Standard library only; it talks to the running ComfyUI through the agent API.
@@ -505,7 +505,7 @@ def linux_wrapper_supported():
 def python_shell_command(config, module):
     """Direct Unix entry using this installation's interpreter, source and root."""
     command = list(config['command'])
-    command[command.index('-m') + 1] = module
+    command[command.index('freevideo_engine.agent.mcp')] = module
     command[1:1] = ['-X', 'utf8']
     env = ['FREEVIDEO_AGENT=1'] + [key + '=' + value for key, value in config['env'].items()]
     return 'env ' + ' '.join(shell_quote(value) for value in env + command)
@@ -519,14 +519,15 @@ def client_config(root):
         python = machine['python']
     except (OSError, ValueError, KeyError):
         python = sys.executable
-    command = [python, '-B', '-m', 'freevideo_engine.agent.mcp', '--root', str(root)]
-    env = {'PYTHONPATH': str(Path(__file__).resolve().parents[2])}
+    source = Path(__file__).resolve().parents[2]
+    command = [python, '-B', str(source / 'freevideo_engine' / 'installed_entry.py'), 'freevideo_engine.agent.mcp', '--root', str(root)]
+    env = {'PYTHONPATH': str(source)}
     shell_command = list(command)
     if sys.platform != 'win32' and not linux_wrapper_supported():
         shell_command[1:1] = ['-X', 'utf8']
     # Keep JSON argv untouched. Windows command text targets Command Prompt.
-    assignment = shell_quote('PYTHONPATH=' + env['PYTHONPATH']) if sys.platform == 'win32' else \
-        'PYTHONPATH=' + shell_quote(env['PYTHONPATH'])
+    assignment = ' --env '.join(shell_quote(key + '=' + value) if sys.platform == 'win32' else key + '=' + shell_quote(value)
+                                for key, value in env.items())
     return dict(command=command, env=env, codex='codex mcp add freevideo --env %s -- %s' % (
                     assignment, ' '.join(shell_quote(p) for p in shell_command)), mcp_json={'mcpServers': {'freevideo': {
                     'command': command[0], 'args': command[1:], 'env': env}}},

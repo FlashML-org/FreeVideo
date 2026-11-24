@@ -169,7 +169,8 @@ class PoolSupervisor:
                     'FREEVIDEO_BACKGROUND_COMPILE': 'off', 'FREEVIDEO_PROMPT_PRESTART': 'off',
                     'FREEVIDEO_COMFY_LOG': str(directory / 'comfy.log'), 'PYTHONUNBUFFERED': '1'})
         # Insert source explicitly: Windows portable Python ignores PYTHONPATH.
-        code = ('import runpy,sys;sys.path.insert(0,sys.argv.pop(1));'
+        from .installed_entry import INSTALLED_ONLY
+        code = (INSTALLED_ONLY + 'import runpy;sys.path.insert(0,sys.argv.pop(1));'
                 'p=sys.argv.pop(1);sys.path.insert(0,__import__("os").path.dirname(p));'
                 'runpy.run_path(p,run_name="__main__")')
         command = [sys.executable, '-u', '-B', '-c', code, str(self.source), str(comfy / 'main.py'),

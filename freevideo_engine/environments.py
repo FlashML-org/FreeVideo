@@ -102,6 +102,10 @@ def uv_build_environment(command, root, environ):
     Mark only this child's view: processes.popen translates its paths, while
     installation settings, cache ownership and the parent's environment stay put.
     """
+    from .installed_entry import SAFE_PATH, without_safe_path
+    if SAFE_PATH in environ and command and (Path(str(command[0])).name.lower() in ('uv', 'uv.exe')
+                                             or list(map(str, command[1:3])) == ['-m', 'pip']):
+        environ = without_safe_path(environ)  # a package build imports from its own folder
     # `venv` and `python` also write into the cache (interpreter records, downloads) below the same root.
     # A Python child also needs it: it runs `uv` itself (VDN and ComfyUI packages) and the loader
     # refuses a DLL such as torch\\lib\\c10.dll whose full path exceeds the limit (WinError 206).

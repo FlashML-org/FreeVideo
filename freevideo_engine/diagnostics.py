@@ -350,7 +350,8 @@ def collect(root, config, run, output, *, complete=False, extra_files=(), notes=
         pythons = {str(p) for key in ('python', 'comfy_python') if (p := machine.get(key))}
         pythons.update(str(p) for name in ('unified', 'engine', 'encoder')
                        if (p := venv_python(root / 'envs' / name)).is_file())
-        code = 'import importlib.metadata as m,json,sys; print(json.dumps({"python":sys.version,"packages":{d.metadata["Name"]:d.version for d in m.distributions()}}))'
+        from .installed_entry import INSTALLED_ONLY
+        code = INSTALLED_ONLY + 'import importlib.metadata as m,json; print(json.dumps({"python":sys.version,"packages":{d.metadata["Name"]:d.version for d in m.distributions()}}))'
         for index, python in enumerate(sorted(pythons)):
             commands.append(('packages-' + str(index), [plain(python), '-B', '-c', code]))
         for name, command in commands:

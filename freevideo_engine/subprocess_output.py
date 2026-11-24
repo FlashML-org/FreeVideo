@@ -20,6 +20,12 @@ def python_command(command):
     # --freevideo-module entry configures the streams before dispatching.
     if getattr(sys, 'frozen', False) and str(command[0]) == sys.executable:
         return command
+    index = 1
+    while index < len(command) and command[index] in ('-B', '-u', '-E', '-s', '-X'):
+        index += 2 if command[index] == '-X' else 1
+    if command[index:index + 1] == ['-c'] and index + 1 < len(command):  # (-I already leaves the folder out)
+        from .installed_entry import INSTALLED_ONLY
+        command[index + 1] = INSTALLED_ONLY + command[index + 1]
     # -I/-E and Windows portable ._pth ignore PYTHON* environment settings.
     # The command-line mode still makes redirected stdout/stderr UTF-8.
     return [command[0], '-X', 'utf8', *command[1:]]

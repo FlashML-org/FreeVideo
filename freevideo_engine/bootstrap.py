@@ -31,6 +31,7 @@ from .monitoring import save, load_ledger
 from .install_tuning import build_parallelism, required_models, cache_compatible, wheel_key
 from .terminal_ui import TerminalUI, LogProgress
 from .locking import runtime_lock, LOCK_ENV
+from .installed_entry import INSTALLED_ONLY
 from .environments import (ENVIRONMENTS, environment_spec, windows_arm64, environment_native_arm64, environment_names, select_layout, role_pythons, constraints_file, setup_supported, uv_folder, conda_lock, conda_triple,
                            bootstrap_versions, uv_file_arguments, uv_build_environment)
 from . import disk_space
@@ -1793,7 +1794,7 @@ class Installer:
         # This entry imports only stdlib engine code from the bootstrap Python.
         # It can fetch the exact source trees while large Torch wheels download.
         task('vdn-source', lambda: self.command('vdn-source', [sys.executable, '-c',
-            'from freevideo_engine.install import install; install()']), after=('git',))
+            INSTALLED_ONLY + 'from freevideo_engine.install import install; install()']), after=('git',))
         task('encoder-source', lambda: self.clone('h3-text-encoder',
             self.spec['encoder']['comfy_url'], self.spec['encoder']['comfy_commit'],
             sparse=['/comfy/', '/utils/', '/folder_paths.py', '/node_helpers.py', '/LICENSE']), after=('git',))

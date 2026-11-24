@@ -770,7 +770,8 @@ class LauncherRunner(SetupRunner):
     def command(self, root, arguments):
         if arguments and arguments[0] == 'comfy-host':
             _, machine = installation(self.source, {'FREEVIDEO_HOME': str(root)})
-            code = "import runpy,sys;sys.path.insert(0,sys.argv.pop(1));runpy.run_module('freevideo_engine.comfy_host',run_name='__main__')"
+            from .installed_entry import INSTALLED_ONLY
+            code = INSTALLED_ONLY + "import runpy;sys.path.insert(0,sys.argv.pop(1));runpy.run_module('freevideo_engine.comfy_host',run_name='__main__')"
             return [machine['python'], '-B', '-c', code, str(self.source), '--root', str(root), *arguments[1:]]
         return super().command(root, arguments)
 
@@ -1532,6 +1533,8 @@ class Controller:
         env = (self.child_environment() if self.child_environment is not None else
                isolated_environment(selected['engine'], selected['source']))
         env.pop('PYTHONPATH', None)
+        from .installed_entry import SAFE_PATH
+        env.pop(SAFE_PATH, None)  # ComfyUI's main.py imports from its own folder
         env['PYTHONDONTWRITEBYTECODE'] = '1'
         env.update(PYTHONUNBUFFERED='1', PYTHONUTF8='1', PYTHONIOENCODING='utf-8')
         from .proxy import bypass_local
