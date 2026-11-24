@@ -139,12 +139,37 @@ def gpu_snapshot(stats):
     if torch is not None and torch.cuda.is_initialized():
         try:
             free, total = torch.cuda.mem_get_info()
+            memory = torch.cuda.memory_stats()
             stats.update(gpu_peak_allocated_bytes=torch.cuda.max_memory_allocated(),
                          gpu_peak_reserved_bytes=torch.cuda.max_memory_reserved(),
                          gpu_free_bytes=free, gpu_total_bytes=total,
-                         gpu_allocator_ooms=torch.cuda.memory_stats().get('num_ooms'))
+                         gpu_allocator_ooms=memory.get('num_ooms'),
+                         gpu_alloc_retries=memory.get('num_alloc_retries'))
+            # Where the card's memory is at this moment: the allocator's pool, the tensors in it, and the
+            # rest (CUDA context, kernel modules, other programs), which the allocator cannot give back.
+            reserved, allocated = memory.get('reserved_bytes.all.current'), memory.get('allocated_bytes.all.current')
+            if type(reserved) is int and type(allocated) is int:
+                stats.update(gpu_reserved_bytes=reserved, gpu_allocated_bytes=allocated,
+                             gpu_outside_allocator_bytes=max(0, total - free - reserved))
+            # Which attention kernels PyTorch may pick at this moment (1 = allowed). With flash and cuDNN
+            # unavailable the math kernel is the fallback, which needs far more memory for long inputs.
+            switches = []
+            for name in ('flash', 'mem_efficient', 'math', 'cudnn'):
+                check = getattr(getattr(getattr(torch, 'backends', None), 'cuda', None), name + '_sdp_enabled', None)
+                if check is not None:
+                    switches.append('%s=%d' % (name, bool(check())))
+            if switches:
+                stats['sdp_switches'] = ','.join(switches)
         except (RuntimeError, OSError):
             stats['gpu_sample_unavailable'] = True
+
+
+def tried_bytes(error):
+    """The size in the allocator's "Tried to allocate 3.60 GiB" as a number of bytes; None without it."""
+    found = re.search(r'tried to allocate ([0-9]{1,12}(?:\.[0-9]{1,6})?) (b|kib|mib|gib)\b', str(error).lower())
+    if found:
+        return int(float(found.group(1)) * {'b': 1, 'kib': 2**10, 'mib': 2**20, 'gib': 2**30}[found.group(2)])
+    return None
 
 
 def failure(error, mode='rewrite'):
@@ -157,9 +182,15 @@ def failure(error, mode='rewrite'):
     message = str(error)
     fallback = 'ask_failed' if mode == 'ask' else 'rewrite_failed'
     code = message if message in allowed else 'out_of_memory' if 'out of memory' in message.lower() else fallback
+    # Who ran out: the allocator ("Tried to allocate ...", after it gave back its cache) or a CUDA call
+    # outside it ("CUDA error: out of memory", e.g. loading a kernel). One of two fixed words, never the text.
+    source = None if code != 'out_of_memory' or message == 'out_of_memory' else \
+        'allocator' if 'tried to allocate' in message.lower() else 'cuda_runtime'
     frames = [dict(module=Path(f.filename).name, function=f.name, line=f.lineno)
               for f in traceback.extract_tb(error.__traceback__)]
     result = dict(error=code, exception=type(error).__name__, error_details=frames)
+    if source:
+        result['oom_source'] = source
     from .rules import InvalidOutput
     if isinstance(error, InvalidOutput):
         result['output_rejection'] = error.details
@@ -345,7 +376,8 @@ def load_model(folder, torch, stats, checkpoint):
         from .. import gpu_budget
         free, total = torch.cuda.mem_get_info()
         stats.update(gpu_name=torch.cuda.get_device_name(), gpu_free_before_load_bytes=free, gpu_total_bytes=total,
-                     gpu_compute_capability=list(torch.cuda.get_device_capability()))
+                     gpu_compute_capability=list(torch.cuda.get_device_capability()),
+                     gpu_capability='%d.%d' % torch.cuda.get_device_capability())
         reading = free
         admission = gpu_budget.configure(torch, free, reserve_bytes=256 * 2**20)
         free = min(free, admission.get('effective_allocator_limit_bytes') or free)
@@ -955,6 +987,9 @@ def main():
         if not prestarting or requested:
             gpu_snapshot(stats)
         mode = value.get('mode') if isinstance(value, dict) else None
+        tried = tried_bytes(error)
+        if tried is not None:
+            stats['oom_tried_bytes'] = tried
         emit(phase='failed', diagnostics=stats, **failure(error, mode))
         return 1
     return 0

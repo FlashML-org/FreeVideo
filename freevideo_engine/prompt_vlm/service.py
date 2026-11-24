@@ -537,7 +537,7 @@ class Service:
             # Allowlisted metadata only, never original/rewritten text or input paths.
             # Output rejections contain condition IDs, counts, typed media labels and retry flags only.
             report = {key: item for key, item in self.state.items()
-                      if key in ('phase', 'error', 'exception', 'error_details', 'timings', 'diagnostics',
+                      if key in ('phase', 'error', 'exception', 'error_details', 'oom_source', 'timings', 'diagnostics',
                                  'resources', 'cleanup', 'worker_returncode', 'output_rejection', 'gpu_wait')}
             try:
                 spec = assets.catalog()
@@ -592,7 +592,7 @@ class Service:
                 waited['oom_reruns'] = waited.get('oom_reruns', 0) + 1
                 self.progress(dict(gpu_wait=dict(waited)))
                 with self.mutex:
-                    for key in ('error', 'exception', 'error_details', 'gpu_holders', 'gpu_short_bytes'):
+                    for key in ('error', 'exception', 'error_details', 'oom_source', 'gpu_holders', 'gpu_short_bytes'):
                         self.state.pop(key, None)
                     self.state['phase'] = 'loading'
                 continue
@@ -612,7 +612,7 @@ class Service:
                 self.progress(dict(phase='failed', error='out_of_memory', gpu_holders=self.gpu_holders(machine)))
                 return
             with self.mutex:
-                for key in ('error', 'exception', 'error_details', 'gpu_holders', 'gpu_short_bytes'):
+                for key in ('error', 'exception', 'error_details', 'oom_source', 'gpu_holders', 'gpu_short_bytes'):
                     self.state.pop(key, None)
                 self.state['phase'] = 'loading'
 

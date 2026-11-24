@@ -191,7 +191,9 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         'idle_release_gpu_free_before_bytes', 'idle_release_gpu_free_after_bytes',
         'gpu_peak_allocated_bytes', 'gpu_peak_reserved_bytes', 'image_count', 'input_tokens', 'weights', 'vision_device', 'kv_reserve', 'stage', 'platform',
         'gpu_non_allocator_reserve_bytes', 'extra_vram_reserve_bytes',
-        'streamed_layers', 'available_memory_at_start_bytes', 'available_memory_before_load_bytes'];
+        'streamed_layers', 'available_memory_at_start_bytes', 'available_memory_before_load_bytes',
+        'gpu_name', 'gpu_capability', 'torch_version', 'transformers_version', 'cuda_version',
+        'gpu_reserved_bytes', 'gpu_allocated_bytes', 'gpu_outside_allocator_bytes', 'gpu_alloc_retries', 'sdp_switches', 'oom_tried_bytes'];
     const factsOf = diagnostics => Object.fromEntries(MEMORY_FACTS.filter(key => ['number', 'string'].includes(typeof diagnostics?.[key]))
         .map(key => [key, diagnostics[key]]));
     // Where the worker failed: exception class and the last stack frames as module:function:line, no paths and no message text.
@@ -199,7 +201,8 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     const failureOf = row => {
         const frames = (Array.isArray(row?.error_details) ? row.error_details : []).map(frame => [plainName(frame?.module), plainName(frame?.function), frame?.line])
             .filter(([module, name, line]) => module && name && Number.isInteger(line)).slice(-5).map(([module, name, line]) => `${module}:${name}:${line}`);
-        return Object.assign(plainName(row?.exception) ? {failure_exception: row.exception} : {}, frames.length ? {failure_location: frames.join(' > ')} : {});
+        return Object.assign(plainName(row?.exception) ? {failure_exception: row.exception} : {}, ['allocator', 'cuda_runtime'].includes(row?.oom_source) ? {oom_source: row.oom_source} : {},
+            frames.length ? {failure_location: frames.join(' > ')} : {});
     };
     const gib = value => String(Math.round(value / 2 ** 30));
     // Mentions are counted as the character descriptions they expand to, so the count can exceed what the box shows.
