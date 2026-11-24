@@ -7,6 +7,7 @@
 // setup.js re-exports openSetup from here, so every caller (top bar, failure cards, palette) opens this room.
 import { setTip } from './tip_words.js';
 import { cutTip } from './cut_tip.js';
+import { copyText } from './clipboard_text.js';
 import { api } from "../../scripts/api.js";
 import './fv_select.js';
 import { compatibilityCard } from './compatibility.js';
@@ -233,7 +234,7 @@ export async function openSetup(options) {
     const more = fold({title: t('Details and logs', '详细信息与日志'), sub: t('Kept for reporting a problem', '提交问题时可附上'), cls: 'st-logs'});
     const log = el("pre", 'st-pre fv-copyable'); more.body.append(log);
     const logCopy = button(t('Copy', '复制'), {iconName: 'copy', cls: 'is-sm'});
-    logCopy.onclick = event => { event.preventDefault(); event.stopPropagation(); navigator.clipboard?.writeText(log.textContent).then(() => { setText(logCopy, t('Copied', '已复制')); setTimeout(() => setText(logCopy, t('Copy', '复制')), 1500); }, () => {}); };
+    logCopy.onclick = event => { event.preventDefault(); event.stopPropagation(); void copyText(log.textContent).then(ok => { if (!ok) return; setText(logCopy, t('Copied', '已复制')); setTimeout(() => setText(logCopy, t('Copy', '复制')), 1500); }); };
     tip(logCopy, t('Copy', '复制'), t('Copy the log for a report', '复制日志，用于提交问题'));
     more.end.append(logCopy); more.element.hidden = true;
     models.append(hero, more.element);

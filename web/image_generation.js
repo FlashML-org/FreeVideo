@@ -8,6 +8,7 @@ import {skinSelect} from './fv_select.js';
 import {about} from './request_assets.js';
 import {createImageLoras} from './image_lora.js';
 import {createOtherUsageNotice, otherUsageText} from './other_usage.js';
+import {randomUUID} from './random_id.js';
 // The page's background loading of works (work_media.js) waits while an upload runs.
 const uploadRunning = active => { try { globalThis.dispatchEvent?.(new CustomEvent('freevideo-upload', {detail: {active}})); } catch { /* no page */ } };
 
@@ -174,7 +175,7 @@ export function createImageGenClient(fetchImpl = globalThis.fetch.bind(globalThi
             const folder = await offers('request_folder');
             const ext = folder ? ({'image/jpeg': 'jpg', 'image/webp': 'webp'}[file.type] || 'png') : 'png';
             const body = new FormData();
-            body.append('image', new File([file], folder ? `${crypto.randomUUID()}.${ext}` : `freevideo-image-reference-${crypto.randomUUID()}.png`, {type: file.type || 'image/png'}));
+            body.append('image', new File([file], folder ? `${randomUUID()}.${ext}` : `freevideo-image-reference-${randomUUID()}.png`, {type: file.type || 'image/png'}));
             body.append('type', 'input'); body.append('overwrite', 'false');
             if (folder) body.append('subfolder', PAGE_UPLOAD_FOLDER);
             uploadRunning(true);
@@ -451,7 +452,7 @@ export async function uploadGenerationReference(renderer, client, context, alive
         blob = await new Promise((resolve, reject) => raster.toBlob(b => b ? resolve(b) : reject(failure(undefined, {step: 'encode_reference'})), 'image/png'));
     } else blob = (await renderer.export(context.doc, 'image/png')).blob;
     if (!alive()) throw failure('cancelled');
-    const file = new File([blob], `freevideo-image-reference-${crypto.randomUUID()}.png`, {type: 'image/png'});
+    const file = new File([blob], `freevideo-image-reference-${randomUUID()}.png`, {type: 'image/png'});
     return client.upload(file);
 }
 
@@ -471,7 +472,7 @@ export async function uploadGenerationMask(renderer, client, context, alive = ()
     if (!any) return null;
     const blob = await new Promise((resolve, reject) => mask.toBlob(b => b ? resolve(b) : reject(failure(undefined, {step: 'encode_mask'})), 'image/png'));
     if (!alive()) throw failure('cancelled');
-    return client.upload(new File([blob], `freevideo-image-mask-${crypto.randomUUID()}.png`, {type: 'image/png'}));
+    return client.upload(new File([blob], `freevideo-image-mask-${randomUUID()}.png`, {type: 'image/png'}));
 }
 
 // The object under a click, as the name of a black and white picture the size of the layer's pixels.
@@ -493,7 +494,7 @@ export async function segmentAt(renderer, client, doc, layer, point, again = fal
         const blob = await new Promise((resolve, reject) => raster.toBlob(b => b ? resolve(b) : reject(failure(undefined, {step: 'encode_segment'})), 'image/png'));
         // The layer's previous look is not needed any more: its upload goes.
         if (known?.name) { segmentNames.delete(known.name); Promise.resolve().then(() => client.discardUploads?.([known.name])).catch(() => {}); }
-        known = {look, name: await client.upload(new File([blob], `freevideo-image-reference-${crypto.randomUUID()}.png`, {type: 'image/png'})), width: raster.width, height: raster.height};
+        known = {look, name: await client.upload(new File([blob], `freevideo-image-reference-${randomUUID()}.png`, {type: 'image/png'})), width: raster.width, height: raster.height};
         segmentUploads.set(layer, known); segmentNames.add(known.name);
     }
     const x = Math.min(known.width - 1, Math.max(0, Math.floor(point[0] * known.width))), y = Math.min(known.height - 1, Math.max(0, Math.floor(point[1] * known.height)));
@@ -530,7 +531,7 @@ export async function uploadExtraReferences(client, references, render, alive = 
     for (const item of references) {
         const blob = await render(item.file);
         if (!alive()) throw failure('cancelled');
-        names.push(await client.upload(new File([blob], `freevideo-image-reference-${crypto.randomUUID()}.png`, {type: 'image/png'})));
+        names.push(await client.upload(new File([blob], `freevideo-image-reference-${randomUUID()}.png`, {type: 'image/png'})));
         if (!alive()) throw failure('cancelled');
     }
     return names;

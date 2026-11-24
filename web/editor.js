@@ -57,6 +57,7 @@ import {jobs} from './task_store.js';
 import {openingChoice} from './editor_opening.js';
 import {CN} from './topbar_state.js';
 import {setDisabled} from './dom_quiet.js';
+import {randomUUID} from './random_id.js';
 const editorStyles = Promise.all(['result_actions.css', 'editor.css', 'editor_expand.css', 'editor_tracks.css', 'editor_frame.css', 'editor_adjust.css', 'editor_adjust_picture.css', 'editor_preview_picture.css', 'editor_select.css', 'editor_menu.css', 'editor_text.css', 'editor_notes.css', 'editor_transport.css', 'glass/editor.css', 'editor_touch.css'].map(name => {
     const style = document.createElement('link'); style.rel = 'stylesheet'; style.href = new URL(name, import.meta.url).href;
     const ready = 'sheet' in style ? new Promise(resolve => { style.onload = style.onerror = resolve; }) : Promise.resolve();
@@ -1044,7 +1045,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     async function replaceProject(record, key = null) {
         releaseTakes(); rememberView(); viewReady = false;
         await store.activateProject(record.id).catch(() => {});
-        viewKey = record.id || key || 'draft:' + (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`);
+        viewKey = record.id || key || 'draft:' + randomUUID();
         let remembered = editorViews.get(viewKey);
         if (!remembered) try { remembered = JSON.parse(localStorage.getItem(viewPrefix + viewKey)); } catch {}
         initialSelection = offerInitial = extendEntry = null;

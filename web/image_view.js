@@ -19,7 +19,7 @@ import { openAutopilot, viewChanged, viewSwitch } from './view_navigation.js';
 import { wordmark } from './wordmark.js';
 import { keepViewSwitchPlace } from './view_switch_place.js';
 import { openReferenceMenu, removeSavedImages } from './image_library.js';
-import { BLANK_CANVAS_AREAS, createImageGenClient, fittedNote, imageGenError, imageRemainingText, imageReportBar, renderImageFailure } from './image_generation.js';
+import { BLANK_CANVAS_AREAS, createImageGenClient, fittedNote, imageGenError, imageRemainingText, imageReportBar, originStep, renderImageFailure } from './image_generation.js';
 import { duration } from './generation_progress.js';
 import { randomSeed } from './studio_queue.js';
 import { createLayout } from './image_view_layout.js';
@@ -41,6 +41,7 @@ import { openPictureViewer } from './image_view_viewer.js';
 import { LORA_MODEL, imageViewLora } from './image_view_lora.js';
 import { hasPictureThumbnail, mediaQueue, pictureThumbnailURL } from './work_media.js';
 import { fieldNote } from './field_note.js';
+import { copyText } from './clipboard_text.js';
 
 export { IMAGE_MODELS, RATIOS };
 for (const name of ['./image_view.css']) {
@@ -459,7 +460,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     moreButton.setAttribute('aria-haspopup', 'true');
     const more = el('div', 'fv-iv-menu fv-image-more fv-glass fv-g3'); more.hidden = true; more.setAttribute('role', 'menu');
     const menuItem = (iconName, text, use, onClick, cls = '') => { const b = el('button', 'fv-iv-menu-item ' + cls); b.type = 'button'; b.setAttribute('role', 'menuitem'); b.append(icon(iconName), el('span', '', text)); tip(b, text, use); b.addEventListener('click', () => { more.hidden = true; onClick(); }); return b; };
-    const copyPrompt = () => { const text = promptFor(shownFile); try { void navigator.clipboard?.writeText(text); } catch { /* the clipboard may be refused */ } };
+    const copyPrompt = () => { void copyText(promptFor(shownFile)); };     // with the selection copy where the clipboard API is missing (LAN over http)
     const usePromptItem = menuItem('prompt', t('Use prompt', '使用提示词'), t('Put its prompt back in the box', '把它的提示词填回描述框'), () => usePrompt(shownFile));
     // For MOSS the boxes are part of the prompt: they come back with the words, and MOSS is chosen.
     function usePrompt(file) {
@@ -1445,14 +1446,18 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         level.hidden = false; level.dataset.counted = 'false'; level.style.setProperty('--fv-progress', '0');
         clearStep();
         const names = [];
+        // Where a failure without a reason of its own was caught (#1097: an upload that never left the page said "unreported").
+        let reached = 'upload';
         try {
             for (const r of references.slice(0, cap_(model))) names.push(await client.upload(r.file));
             if (mine.cancelled) return;
+            reached = 'prepare';
             if (!enhancerOff() && await enhancer.beforeGenerate() === false) { say(''); if (running === mine) running = null; level.hidden = true; render(); drawWorks(); return; }
             if (!fits()) { if (running === mine) running = null; level.hidden = true; render(); drawWorks(); fits(); prompt.focus(); return; }
             startJobSources();
             const loras = loraRow.value(model.id);
             let id;
+            reached = 'submit';
             // The engine makes one picture at a time: a second request waits its turn here and starts by itself; Stop cancels the wait.
             for (;;) {
                 try {
@@ -1481,7 +1486,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             running = null; level.hidden = true; clearStep();
             // The worker is full: a state of the worker, shown in place, not a failed picture.
             if (IMAGE_BUSY.has(error.code)) { note.dataset.kind = 'busy'; say(imageGenError(error.code, info, t)); render(); drawWorks(); return; }
-            failure = {error: error.code || 'generation_failed', report_id: error.report_id, stage: error.stage, step: error.step, fitted: error.fitted, memory: error.memory, other_usage: error.other_usage, retryStandard: tierNow === 'high' && error.code === 'no_memory'};
+            failure = {error: error.code || 'generation_failed', report_id: error.report_id, stage: error.stage, step: originStep(error, reached), fitted: error.fitted, memory: error.memory, other_usage: error.other_usage, retryStandard: tierNow === 'high' && error.code === 'no_memory'};
             renderFailure(); render(); drawWorks();
         } finally {
             // Pictures sent for a request that never became a job; a job's own go when it ends.

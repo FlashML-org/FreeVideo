@@ -7,6 +7,7 @@
 //   cast     /freevideo/agent/cast for characters, scenes and props, when the assistant interface is on.
 // Moving to an engine search (GET /freevideo/library?q=) replaces the fetchers and nothing else.
 import { t, words, CN } from './context_menu.js';
+import { copyText } from './clipboard_text.js';
 
 const browser = typeof document !== 'undefined';
 export const SEARCH_MIN = 2;
@@ -289,8 +290,8 @@ export async function fillPrompt(text, {view = null, fallbackView = 'studio'} = 
         toast(t('The prompt is in. Press Ctrl+Enter to generate.', '描述已填入，按 Ctrl+回车 生成。').replace('Ctrl', /Mac/.test(navigator.platform) ? '⌘' : 'Ctrl'), {tone: 'ok'});
         return true;
     }
-    try { await navigator.clipboard.writeText(text); toast(t('Prompt copied. Paste it into the prompt box.', '描述已复制，请粘贴到描述框。'), {icon: 'copy'}); }
-    catch { toast(t('Could not put the prompt in. Try again.', '没有填入描述，请重试。'), {tone: 'warn'}); }
+    if (await copyText(text)) toast(t('Prompt copied. Paste it into the prompt box.', '已复制提示词，请粘贴到输入框。'), {icon: 'copy'});
+    else toast(t('Could not fill in the prompt. Try again.', '未能填入提示词，请重试。'), {tone: 'warn'});
     return false;
 }
 

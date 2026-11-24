@@ -4,6 +4,7 @@ import {agentGet, agentPost, retryAgentPost} from './agent_session.js';
 import {sourceKey} from './editor_store.js';
 import {showSoundBubble, markSoundBubbleSeen, isBubbleRemover} from './sound_bubble.js';
 import {tip} from './editor_tips.js';
+import {randomUUID} from './random_id.js';
 
 const ROOT = '/freevideo/agent/v1';
 const ACTIVE = ['waiting', 'queued', 'running', 'cancelling'];
@@ -122,7 +123,7 @@ export function createStemsIntegration({state, api, queue, store, t, error, noti
         const tool = running = {cancelled: false, job: null}; markSoundBubbleSeen(); sync();
         try {
             if (!await ready()) return false;
-            const project = state.record.id, ref = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+            const project = state.record.id, ref = randomUUID();
             const body = {revision: state.record.revision, clip_id: clipId, lay: false, ref};
             paint('start', phaseWords());
             const response = await retryAgentPost(api, `${ROOT}/projects/${encodeURIComponent(project)}/stems`, body);
@@ -165,7 +166,7 @@ export function createStemsIntegration({state, api, queue, store, t, error, noti
     async function exportStems(clipId) {
         try {
             if (!await ready()) return false;
-            const body = {revision: state.record.revision, clip_id: clipId, ref: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`};
+            const body = {revision: state.record.revision, clip_id: clipId, ref: randomUUID()};
             const response = await retryAgentPost(api, `${ROOT}/projects/${encodeURIComponent(state.record.id)}/stems/export`, body);
             const answer = await response?.json().catch(() => null);
             if (!response?.ok) { say(answer, 'stems_failed'); return false; }

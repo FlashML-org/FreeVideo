@@ -3,6 +3,7 @@
 import {api} from '../../scripts/api.js';
 import {app} from '../../scripts/app.js';
 import {privacyOffered} from './private_offers.js';
+import {randomUUID} from './random_id.js';
 
 const FILE = /freevideo(?:-image(?:-ref)?|-draft)?\/[^"\\\s]+|freevideo-image-(?:reference|mask)-[0-9a-f-]{36}\.png/g;
 const REFRESH_MS = 6 * 3600 * 1000;
@@ -12,7 +13,7 @@ function pageId() {
     if (page) return page;
     try { page = sessionStorage.getItem('freevideo.pin.page') || ''; } catch { /* this tab only */ }
     if (!page) {
-        page = crypto.randomUUID().replace(/-/g, '');
+        page = randomUUID().replace(/-/g, '');
         try { sessionStorage.setItem('freevideo.pin.page', page); } catch { /* this tab only */ }
     }
     return page;

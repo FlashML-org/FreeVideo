@@ -7,6 +7,7 @@ import { savedSettings, differs } from './result_reuse.js';
 import { REPORT_GONE } from './report_issue.js';
 import { listenDialogKey } from './dialog_keys.js';
 import { userMessage } from './user_message.js';
+import { copyText as copyClipboardText } from './clipboard_text.js';
 
 const css = document.createElement('link');
 css.rel = 'stylesheet'; css.href = new URL('./result_actions.css', import.meta.url).href; document.head.append(css);
@@ -180,14 +181,8 @@ export function actionsUnavailable(bar) {
     }
 }
 
-// Writes text to the clipboard; resolves false when neither the clipboard API nor the old copy command is allowed.
-export async function copyText(text) {
-    try { await navigator.clipboard.writeText(text); return true; } catch { /* fall through to the selection copy */ }
-    const area = document.createElement('textarea'); area.value = text; area.setAttribute('readonly', '');
-    area.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
-    document.body.append(area); area.select();
-    try { return document.execCommand('copy'); } catch { return false; } finally { area.remove(); }
-}
+// The clipboard copy lives in clipboard_text.js so light modules can use it; callers that import it from here keep working.
+export const copyText = text => copyClipboardText(text);
 
 // Fills the prompt, size and duration of an earlier video back into the panel. It is offered only when
 // the video kept its prompt and the panel does not already hold the same settings. Resolves to the button or null.
