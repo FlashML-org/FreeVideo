@@ -546,6 +546,20 @@ def queue_state(url, timeout=3):
         return 'idle' if _refused(error) else 'unknown'
 
 
+RETIRE_IDLE_SECONDS = 30.
+
+
+def work_running(url):
+    """True while ComfyUI runs or holds a job, or its picture service is making a picture. An unreadable queue
+    counts as running; a picture service that does not answer (not installed) as not."""
+    if not url or queue_state(url) != 'idle':
+        return bool(url)
+    try:
+        return get_json(loopback_url(url) + '/freevideo/image-gen', timeout=3).get('busy') is True
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
 def queue_busy(url, timeout=3):
     """Preserve the legacy check; a pool must confirm every executor is idle, so an unreadable pool counts as busy."""
     from .gpu_pool import pool_enabled
@@ -819,6 +833,10 @@ class Controller:
         if self._old_versions_thread is not None and self._old_versions_thread.is_alive():
             return
         def work():
+            # Not while something is being made: removing a package file that is another name of an installed
+            # model changes that model's metadata under a generation reading it. Wait for an idle server.
+            while work_running(selected.get('url')):
+                time.sleep(RETIRE_IDLE_SECONDS)
             from .desktop_runtime import launcher_root
             from .launcher_update import current_build
             from .version_cleanup import run

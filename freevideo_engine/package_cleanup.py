@@ -203,6 +203,11 @@ def discard(path, root, running=None, dry_run=False):
     if ('.replaced-' in path.name or not local_path(root, path) or started_from(path, running)
             or (path.is_dir() and not plain_tree(path))):
         return None
+    if only_linked_files(path):
+        # Every file here is another name of a file kept elsewhere (an import linked it into the installation):
+        # removing it frees nothing, and on Windows it changes that file's NTFS ChangeTime, which a generation
+        # reading the installed copy treats as the file having changed.
+        return None
     freed = unique_bytes(path)
     if dry_run:
         return freed
@@ -212,13 +217,104 @@ def discard(path, root, running=None, dry_run=False):
     except OSError:
         return None
     if retired.is_dir():
-        shutil.rmtree(retired, ignore_errors=True)
+        # Only the files no other name links to: a linked one stays under the retired name (packages() skips it).
+        for directory, file in list(unlinked_files(retired)):
+            try:
+                os.unlink(os.path.join(directory, file))
+            except OSError:
+                pass
+        for directory, _, _ in sorted(os.walk(retired, followlinks=False), key=lambda row: len(row[0]), reverse=True):
+            try:
+                os.rmdir(directory)
+            except OSError:
+                pass
     else:
         try:
             retired.unlink()
         except OSError:
             pass
     return freed if not retired.exists() else max(0, freed - unique_bytes(retired))
+
+
+def finish_remnants(folder, running=None, dry_run=False):
+    """What an earlier discard left under a retired name: files that then had another name (an installed model).
+    Each that has no other name now goes, since removing a sole name changes no other file; emptied folders go
+    with them. Returns [(remnant, bytes freed)] for the remnants that freed something or are gone."""
+    from .version_cleanup import started_from, plain_tree
+    try:
+        folder = io_path(checked_real_path(folder))
+    except AliasUnavailable:
+        return []
+    if not folder.is_dir() or (layout_name(folder.name) in CONTAINERS and redirected(folder)):
+        return []
+    done = []
+    for remnant in sorted(folder.iterdir()):
+        if ('.retired-' not in remnant.name or not remnant.is_dir() or redirected(remnant)
+                or not local_path(folder, remnant) or started_from(remnant, running) or not plain_tree(remnant)):
+            continue
+        freed = 0
+        for directory, name in list(unlinked_files(remnant)):
+            path = os.path.join(directory, name)
+            try:
+                size = os.lstat(path).st_size
+                if not dry_run:
+                    os.unlink(path)
+                freed += size
+            except OSError:
+                continue
+        if not dry_run:
+            for directory, _, _ in sorted(os.walk(remnant, followlinks=False), key=lambda row: len(row[0]), reverse=True):
+                try:
+                    os.rmdir(directory)
+                except OSError:
+                    pass
+        if freed or not remnant.exists():
+            done.append((remnant, freed))
+    return done
+
+
+def only_linked_files(path):
+    """True when path holds files and every one of them has another name."""
+    path = io_path(path)
+    try:
+        info = os.lstat(path)
+    except OSError:
+        return False
+    if not stat.S_ISDIR(info.st_mode):
+        return info.st_nlink > 1
+    seen = False
+    for directory, folders, files in os.walk(path, followlinks=False):
+        folders[:] = [name for name in folders if not is_junction(Path(directory) / name)]
+        for name in files:
+            try:
+                if os.lstat(os.path.join(directory, name)).st_nlink == 1:
+                    return False
+            except OSError:
+                return False
+            seen = True
+    return seen
+
+
+def unlinked_files(path):
+    """(directory, name) of each file below path (or path itself) that no other name links to."""
+    path = io_path(path)
+    try:
+        info = os.lstat(path)
+    except OSError:
+        return
+    if not stat.S_ISDIR(info.st_mode):
+        if info.st_nlink == 1:
+            yield str(path.parent), path.name
+        return
+    for directory, folders, files in os.walk(path, followlinks=False):
+        # os.walk(followlinks=False) still follows Windows directory junctions.
+        folders[:] = [name for name in folders if not is_junction(Path(directory) / name)]
+        for name in files:
+            try:
+                if os.lstat(os.path.join(directory, name)).st_nlink == 1:
+                    yield directory, name
+            except OSError:
+                continue
 
 
 def packages(folder):
@@ -363,6 +459,11 @@ def prune_packages(engine, comfy_root=None, index=None, running=None, dry_run=Fa
                     result['released_bytes'] += freed
                     result['removed'].append(dict(kind='offline-package', path=plain(pack), bytes=freed,
                                                   reason='installed and verified' if covered else 'not used by this installation'))
+                # Files an earlier pass left in place because an installed model shared them, once that name is gone.
+                for remnant, freed in finish_remnants(folder, running, dry_run):
+                    result['released_bytes'] += freed
+                    result['removed'].append(dict(kind='offline-package', path=plain(remnant), bytes=freed,
+                                                  reason='no longer linked to the installation'))
         except BlockingIOError:
             result['kept'].append(dict(kind='offline-package', path=plain(folder), reason='in use'))
     return result
@@ -391,6 +492,9 @@ def prune_downloads(engine, index=None, running=None, dry_run=False):
                 if (parent / STAGES).is_dir() and (not windows() or local_path(top, parent / STAGES)):
                     stages.add(parent / STAGES)
     for folder in sorted(stages):
+        for remnant, freed in finish_remnants(folder, running, dry_run):
+            result['released_bytes'] += freed
+            result['removed'].append(dict(kind='download-leftover', path=plain(remnant), bytes=freed))
         for stage in sorted(folder.iterdir()):
             match = STAGE.fullmatch(stage.name)
             if not match or match['sha'] not in prefixes:
