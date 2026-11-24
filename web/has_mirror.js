@@ -18,6 +18,7 @@ const RULES = [
     ['textdis', '.fv-chain-part', host => shown(host, '.fv-chain-part-text:disabled')],
     ['queued', '.fv-chain-position', host => shown(host, '.fv-chain-queued')],
     ['note', '.fvs-console-status', host => kid(host, c => c.matches('.fv-add-video-note,.fv-length-why') && !c.hidden)],
+    ['enhsay', '.fvs-console-status', host => kid(host, c => c.matches('.fv-enhance-status') && !!c.textContent.trim())],
     ['enh', '.fv-enhance-bar', host => kid(host, c => !c.hidden && !c.matches('.fv-enhance-toggle'))],
     ['cmp', '.fv-preview-column', host => shown(host, '.fv-stage[data-comparing=true]')],
     ['nextprog', '.fv-preview-column', host => shown(host, '.fv-stage[data-next=true],.fv-stage .fv-generation-progress:not([hidden])')],

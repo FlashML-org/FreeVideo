@@ -184,7 +184,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     if (versions.value.enabled) void prestart.request();
     // Available RAM the model needs; the server knows the usual case for this card.
     let ramBytes = 11 * 2 ** 30;
-    // Memory readings of a failed rewrite for the feedback form: numbers and states only.
+    // Readings of a failed rewrite for the feedback form: numbers, states and fixed check names only.
     let memoryFacts = null;
     const MEMORY_FACTS = ['gpu_total_bytes', 'gpu_free_before_load_bytes', 'gpu_allocator_budget_bytes', 'gpu_free_needed_text_only_bytes', 'gpu_free_needed_with_images_bytes',
         'placement_refused', 'gpu_free_bytes', 'gpu_allocator_ooms', 'idle_release', 'idle_release_seconds',
@@ -204,6 +204,18 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         return Object.assign(plainName(row?.exception) ? {failure_exception: row.exception} : {}, ['allocator', 'cuda_runtime'].includes(row?.oom_source) ? {oom_source: row.oom_source} : {},
             frames.length ? {failure_location: frames.join(' > ')} : {});
     };
+    // The output check that rejected a rewrite: its fixed name and category, never text of the prompt or the draft.
+    const CHECK_LABELS = {length: ['it came out too long or empty', '过长或为空'], structure: ['some sections were missing or out of place', '分段缺失或错位'],
+        timing: ['a time point was lost or went past the end of the video', '时间点丢失或超出视频时长'],
+        media: ['a media reference was left out or wrong', '漏掉或写错了素材引用'], text: ['quoted text was left out or changed', '漏掉或改动了引号里的文字'],
+        dialogue: ['the spoken lines were out of order', '台词顺序被打乱']};
+    const checkOf = row => {
+        const found = row?.output_rejection, name = found?.condition;
+        return typeof name === 'string' && /^[a-z0-9_]{1,40}$/.test(name) && Object.hasOwn(CHECK_LABELS, found.category)
+            ? {name, category: found.category, retried: found.retried === true} : null;
+    };
+    // The feedback carries only the check's name, its category and whether the retry had run; the local counts stay on this computer.
+    const checkFacts = check => ({check: check.name, check_category: check.category, check_retried: check.retried});
     const gib = value => String(Math.round(value / 2 ** 30));
     // Mentions are counted as the character descriptions they expand to, so the count can exceed what the box shows.
     const lengthOf = (error, english) => {
@@ -237,7 +249,10 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         invalid_prompt: error?.characters
             ? t(`${lengthOf(error, true)}; enhancement supports up to 12,000. Shorten it or use the original.`, `${lengthOf(error, false)}，增强最多支持 12,000 字符，请精简或使用原文。`)
             : t('Enter a prompt of up to 12,000 characters.', '请输入不超过 12,000 字符的提示词。'),
-        invalid_output: t('The rewrite was incomplete. Retry or use the original.', '改写结果不完整，请重试或使用原文。'),
+        invalid_output: error?.check
+            ? t(`The rewrite was incomplete: ${CHECK_LABELS[error.check.category][0]}. Retry or use the original.`,
+                `改写结果不完整：${CHECK_LABELS[error.check.category][1]}。请重试或使用原文。`)
+            : t('The rewrite was incomplete. Retry or use the original.', '改写结果不完整，请重试或使用原文。'),
         invalid_request: t('Rewriting does not support this model or aspect ratio. Change it or use the original.', '当前模型或画幅不支持改写，请更换或使用原文。'),
         context_length: t('The scene is too long for this model. Shorten it or use the original.', '内容超出改写模型容量，请精简或使用原文。'),
         out_of_memory: holderNames(error?.holders)
@@ -261,7 +276,10 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         invalid_prompt: error?.characters
             ? t(`${lengthOf(error, true)}; rewriting supports up to 12,000. Shorten it before rewriting again.`, `${lengthOf(error, false)}，改写最多支持 12,000 字符，精简后可再改写。`)
             : t('Rewriting supports prompts of up to 12,000 characters.', '改写只支持不超过 12,000 字符的提示词。'),
-        invalid_output: t('The rewrite was incomplete.', '改写结果不完整。'),
+        invalid_output: error?.check
+            ? t(`The rewrite was incomplete: ${CHECK_LABELS[error.check.category][0]}.`,
+                `改写结果不完整：${CHECK_LABELS[error.check.category][1]}。`)
+            : t('The rewrite was incomplete.', '改写结果不完整。'),
         invalid_request: t('Rewriting does not support this model or aspect ratio.', '当前模型或画幅不支持改写。'),
         context_length: t('The scene is too long for the rewrite model.', '内容超出改写模型容量。'),
         out_of_memory: holderNames(error?.holders)
@@ -373,8 +391,9 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
                 }
                 if (row.phase === 'complete') return row;
                 if (row.phase === 'failed') {
-                    memoryFacts = row.error === 'out_of_memory' ? {...factsOf(row.diagnostics), ...failureOf(row)} : null;
-                    throw Object.assign(new Error(row.error || 'rewrite_failed'), {ramBytes: row.diagnostics?.ram_required_bytes, holders: row.gpu_holders});
+                    const check = row.error === 'invalid_output' ? checkOf(row) : null;
+                    memoryFacts = row.error === 'out_of_memory' ? {...factsOf(row.diagnostics), ...failureOf(row)} : check ? checkFacts(check) : null;
+                    throw Object.assign(new Error(row.error || 'rewrite_failed'), {ramBytes: row.diagnostics?.ram_required_bytes, holders: row.gpu_holders, check});
                 }
                 if (row.phase === 'cancelled') throw new Error(action === 'install' ? 'download_failed' : 'cancelled');
                 if (disposed) throw new Error('cancelled');
