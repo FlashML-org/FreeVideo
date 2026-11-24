@@ -28,6 +28,8 @@ TOKENS = (
     ('agent', re.compile(r'freevideo' + SEP + 'agent' + SEP + '([A-Za-z0-9_-]{1,64})')),
 )
 RECORD_LIMIT = 64 * 1024 * 1024
+# How often tidying the draft starts again when the page saved it in between.
+DRAFT_TRIES = 5
 
 
 class ScanIncomplete(OSError):
@@ -80,6 +82,63 @@ def _walk(folder, suffixes, *, skip=()):
                 yield os.path.join(parent, leaf)
 
 
+def _is_draft(path):
+    """The creation draft the page keeps in the user folder. It names the pictures last set up, only so a start
+    without the browser's copy can offer them again: it never keeps a file alive, and what is gone leaves it."""
+    return Path(path).as_posix().endswith('/freevideo/prompt-draft.json')
+
+
+def scrub_draft(user_root=None, input_root=None):
+    """Takes the reference pictures that no longer exist out of the saved creation draft, so nothing of a deleted
+    file stays in it. Never raises; returns how many rows went.
+
+    The page saves the draft through ComfyUI's own file route, so no lock here is shared with it. The file is read,
+    changed and written back only while its bytes are still the ones that were read; a save that lands in between
+    makes this start again from the new file, so the user's newer draft is never replaced by an older one."""
+    removed = 0
+    try:
+        user_root = user_root if user_root is not None else user_directory()
+        input_root = input_root if input_root is not None else input_directory()
+        if user_root is None or input_root is None or not _plain_dir(user_root):
+            return 0
+        base = os.path.realpath(input_root)
+
+        def there(row):
+            name = re.sub(r' \[(?:input|output|temp)\]$', '', row.get('file', '')) if isinstance(row, dict) else ''
+            target = os.path.realpath(os.path.join(base, *re.split(r'[\\/]', name))) if name else base
+            return target != base and target.startswith(base + os.sep) and os.path.exists(target)
+
+        for path in _walk(Path(user_root), ('.json',)):
+            if not _is_draft(path):
+                continue
+            for attempt in range(DRAFT_TRIES):
+                with open(path, 'rb') as stream:
+                    raw = stream.read()
+                draft = json.loads(raw.decode('utf-8'))
+                rows = draft.get('assets') if isinstance(draft, dict) else None
+                if not isinstance(rows, list):
+                    break
+                kept = [row for row in rows if there(row)]
+                if len(kept) == len(rows):
+                    break
+                draft['assets'] = kept
+                temporary = path + '.tmp'
+                with open(temporary, 'w', encoding='utf-8') as stream:
+                    json.dump(draft, stream, ensure_ascii=False)
+                with open(path, 'rb') as stream:
+                    unchanged = stream.read() == raw
+                if unchanged:
+                    os.replace(temporary, path)
+                    removed += len(rows) - len(kept)
+                    break
+                os.unlink(temporary)
+            else:
+                logging.warning('[FreeVideo] The saved creation draft kept changing; it was left as it is.')
+    except Exception:
+        logging.warning('[FreeVideo] Could not tidy the saved creation draft.', exc_info=True)
+    return removed
+
+
 def scan(*, output_root=None, user_root=None, queue=None, extra=(), roots=()):
     """Every token a record still names. Raises ScanIncomplete when a record exists but cannot be read.
 
@@ -101,7 +160,8 @@ def scan(*, output_root=None, user_root=None, queue=None, extra=(), roots=()):
     if user_root is not None:
         # ComfyUI's saved workflows and FreeVideo's own page records in the user folder.
         for path in _walk(Path(user_root), ('.json',)):
-            found |= tokens(_read_text(path))
+            if not _is_draft(path):
+                found |= tokens(_read_text(path))
     if queue is not None:
         try:
             running, pending = queue.get_current_queue_volatile()
@@ -145,6 +205,8 @@ def run_sweep(*, input_root, output_root=None, user_root=None, queue=None, extra
                         type(error).__name__)
         return None
     summary = private_store.sweep(input_root, referenced, root=root, now=now, released=released(output_root))
+    if not summary.get('dry_run'):
+        scrub_draft(user_root, input_root)
     if output_root is not None:
         # Folders of requests that ended without a video: listed when cleanup only lists, removed otherwise.
         from .comfy_library import failed_runs
@@ -277,6 +339,8 @@ def clean(context, tokens, *, root=None, now=None):
                 size = remove_failed_run(context['output_root'], identity, now=now)
                 removed += size > 0
                 freed += size
+    if removed:
+        scrub_draft(context.get('user_root'), context['input_root'])
     logging.info('[FreeVideo] Private file cleanup confirmed by the user: %d files, %.1f MB.', removed, freed / 1e6)
     return dict(removed=removed, freed_bytes=freed)
 
@@ -333,7 +397,8 @@ def _record_texts(context):
                 yield _read_text(path)
     if user_root is not None:
         for path in _walk(Path(user_root), ('.json',)):
-            yield _read_text(path)
+            if not _is_draft(path):
+                yield _read_text(path)
     queue = context.get('queue')
     if queue is not None:
         try:
@@ -558,8 +623,10 @@ def release_owner(owner_id, context=None, *, input_root=None):
         except OSError:
             logging.warning('[FreeVideo] Kept the files of a deleted work: a record could not be read.')
             return None
-        return private_store.release(owner_id, input_root=context['input_root'], cache_root=data_root() / 'input-cache',
-                                     keep=keep)
+        released = private_store.release(owner_id, input_root=context['input_root'], cache_root=data_root() / 'input-cache',
+                                         keep=keep)
+        scrub_draft(context.get('user_root'), context['input_root'])
+        return released
     except Exception:
         logging.warning('[FreeVideo] Could not release what a deleted work held.', exc_info=True)
         return None
@@ -604,4 +671,6 @@ def release_tokens(context, tokens):
                 status = private_store.safe_remove(context['input_root'], row['path'],
                                                    folders=4 if row['kind'] == 'agent' else 1)[0]
             removed += status == 'removed'
+    if removed:
+        scrub_draft(context.get('user_root'), context['input_root'])
     return removed
