@@ -2,6 +2,7 @@
 // read until it ends. The job leaves the project alone (lay: false); the page puts the new sound in itself, so its own
 // saves never clash with the job and the change can be undone.
 import {agentGet, agentPost, retryAgentPost} from './agent_session.js';
+import {randomUUID} from './random_id.js';
 
 const ROOT = '/freevideo/agent/v1';
 const ACTIVE = ['waiting', 'queued', 'running', 'cancelling'];
@@ -27,7 +28,7 @@ export async function voiceAvailable(api) { return (await voiceFeatures(api)).re
 
 export function createVoiceStore({api, state, queue}) {
     let running = null;
-    const uuid = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+    const uuid = () => randomUUID();
     const path = name => `${ROOT}/projects/${encodeURIComponent(state.record.id)}/voice/${name}`;
     const selection = found => ({clip_id: found.clipId, start: found.start, end: found.end});
     async function saved() {

@@ -6,6 +6,7 @@
 .fv-agent-connect-body svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round}
 .fv-agent-connect-body>h2{font-size:20px;line-height:1.3;font-weight:700;color:var(--fv-ink)}
 .fv-agent-connect-body>.fv-agent-connect-intro{margin-top:-8px;font-size:13px;line-height:1.5;color:#a5b3c6}
+.fv-agent-connect-body>.fv-agent-connect-note{margin-top:-8px;font-size:12px;line-height:1.5;color:#8796aa}
 .fv-agent-connect-body>.fv-muted{margin-top:-8px;font-size:13px;color:var(--fv-muted)}
 .fv-agent-connect-actions{display:flex;align-items:center;gap:12px;margin-top:8px;flex-wrap:wrap}
 .fv-studio .fv-agent-connect-actions button{padding:8px 20px;font-size:13px}.fv-agent-connect-actions button svg{width:16px;height:16px}

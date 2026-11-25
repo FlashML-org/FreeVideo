@@ -148,19 +148,105 @@ def sections(text, fields):
     return re.sub(r'\n+(?=(?:%s):)' % names, '\n\n', text).strip()
 
 
+# Every output check has one fixed name and one category. Names and categories are the only thing a
+# rejection reports: never the prompt, never the rejected draft. The page shows the category and the
+# feedback carries both; tests/test_prompt_vlm_checks.py fails when a check has no entry here.
+CHECKS = {
+    'type_or_length': 'length', 'output_token_limit': 'length', 'split_event_length': 'length',
+    'split_shared_length': 'length', 'parts_length': 'length', 'reverse_length': 'length', 'answer_empty': 'length',
+    'headings': 'structure', 'missing_shot_1': 'structure', 'empty_section': 'structure', 'json': 'structure',
+    'answer_count': 'structure', 'answer_fields': 'structure', 'answer_error': 'structure',
+    'split_not_text': 'structure', 'split_sections': 'structure', 'split_event_repeats_shared': 'structure',
+    'split_action_placed_twice': 'structure', 'split_empty_part': 'structure', 'parts_count': 'structure',
+    'timestamp_not_before_duration': 'timing', 'timing_lost': 'timing',
+    'picture_index_out_of_range': 'media', 'unsupported_audio_video_reference': 'media',
+    'missing_picture_reference': 'media',
+    'missing_text': 'text', 'split_text_changed': 'text', 'reverse_line_missing': 'text',
+    'split_lines_order': 'dialogue',
+}
+
+
 class InvalidOutput(ValueError):
     """Stable rejection metadata; never retain the prompt or rejected draft."""
-    def __init__(self, condition, text, value):
+    def __init__(self, condition, text=None, value=None):
         super().__init__('invalid_output')
         draft = text if isinstance(text, str) else ''
-        required = required_labels(value)
+        required = required_labels(value) if isinstance(value, dict) and 'media' in value else []
         pictures = [int(each[len('<Picture '):-1]) for each in required if each.startswith('<Picture ')]
         indices = {int(i) for i in re.findall(r'<Picture (\d+)>', draft)}
-        self.details = dict(condition=condition, output_characters=len(draft),
+        self.details = dict(condition=condition, category=CHECKS[condition], output_characters=len(draft),
                             missing_pictures=sorted(i for i in pictures if f'<Picture {i}>' not in draft),
                             missing_references=[each for each in required if each not in draft],
                             out_of_range_pictures=sorted(i for i in indices if i not in pictures),
                             retried=False)
+
+
+def clean_counts(counts):
+    """The counts as read from the file, rebuilt so that a damaged or hand-edited file still counts on:
+    only the known actions and checks, only whole numbers (anything else restarts at zero)."""
+    counts = counts if isinstance(counts, dict) else {}
+    whole = lambda value: value if type(value) is int and value >= 0 else 0
+    jobs, checks = counts.get('jobs'), counts.get('checks')
+    jobs = jobs if isinstance(jobs, dict) else {}
+    checks = checks if isinstance(checks, dict) else {}
+    since = counts.get('since')
+    clean = dict(schema=1, jobs={}, checks={})
+    if isinstance(since, str) and re.fullmatch(r'\d{4}-\d{2}-\d{2}', since):
+        clean['since'] = since
+    for action in ('rewrite', 'ask', 'split', 'reverse'):
+        row = jobs.get(action)
+        if isinstance(row, dict):
+            clean['jobs'][action] = {key: whole(row.get(key)) for key in ('total', 'recovered', 'failed')}
+    for name, category in CHECKS.items():
+        row = checks.get(name)
+        if isinstance(row, dict):
+            clean['checks'][name] = dict(category=category, **{key: whole(row.get(key)) for key in ('rejected', 'first', 'recovered', 'final')})
+    return clean
+
+
+def count_checks(counts, action, state, day=None):
+    """Add one finished job to the local check counts and return them; numbers only, no text.
+
+    Only jobs that reached a verdict count: a finished answer, or a failure by an output check. A
+    cancelled job or one that ran out of memory never reached the checks, so it is no denominator.
+    Per check: first = jobs whose first draft it rejected, recovered = those jobs that then finished
+    after the single retry, final = jobs it ended with a failure, rejected = every rejection
+    including the retry's. Read together with the job totals: first / total is how often the model
+    trips the check, recovered / first how often one retry repairs it, final / total how often a
+    person sees the message because of it.
+    """
+    done = state.get('phase') == 'complete'
+    if action not in ('rewrite', 'ask', 'split', 'reverse') or not (
+            done or state.get('phase') == 'failed' and (state.get('error') == 'invalid_output' or state.get('output_rejection'))):
+        return clean_counts(counts) if counts else counts
+    counts = clean_counts(counts)
+    if day:
+        counts.setdefault('since', day)
+    jobs = counts.setdefault('jobs', {}).setdefault(action, dict(total=0, recovered=0, failed=0))
+    checks = counts.setdefault('checks', {})
+    rows = [row for row in (state.get('diagnostics') or {}).get('output_rejections') or []
+            if isinstance(row, dict) and row.get('condition') in CHECKS]
+    final = state.get('output_rejection')
+    final = final if isinstance(final, dict) and final.get('condition') in CHECKS else None
+    if final is not None and not done and not (rows and rows[-1]['condition'] == final['condition']):
+        rows.append(final)
+    jobs['total'] += 1
+    if done:
+        jobs['recovered'] += bool(rows)
+    else:
+        jobs['failed'] += 1
+    first = set()
+    for row in rows:
+        check = checks.setdefault(row['condition'], dict(category=CHECKS[row['condition']], rejected=0, first=0, recovered=0, final=0))
+        check['rejected'] += 1
+        if not row.get('retried') and row['condition'] not in first:
+            # One count per check and job, however many first-pass drafts (the time-point rescale is one) it rejected.
+            first.add(row['condition'])
+            check['first'] += 1
+            check['recovered'] += done
+    if final is not None and not done:
+        checks[final['condition']]['final'] += 1
+    return counts
 
 
 def validate_output(text, value):
@@ -649,14 +735,14 @@ ANSWER_KEYS ={'text', 'json', 'tokens', 'seconds', 'error', 'truncated', 'retrie
 def validate_answers(answers, value):
     """Worker output shape for an ask job: one answer per question, in order."""
     if not isinstance(answers, list) or len(answers) != len(value['questions']):
-        raise ValueError('invalid_output')
+        raise InvalidOutput('answer_count')
     for answer in answers:
         if not isinstance(answer, dict) or set(answer) - ANSWER_KEYS or not isinstance(answer.get('text', ''), str):
-            raise ValueError('invalid_output')
+            raise InvalidOutput('answer_fields')
         if 'error' not in answer and not answer.get('text', '').strip():
-            raise ValueError('invalid_output')
+            raise InvalidOutput('answer_empty')
         if 'error' in answer and answer['error'] not in ('invalid_json', 'context_length'):
-            raise ValueError('invalid_output')
+            raise InvalidOutput('answer_error')
     return answers
 
 
@@ -772,12 +858,12 @@ def split_user_text(value):
 
 def split_answer(text, count):
     if not isinstance(text, str):
-        raise ValueError('invalid_output')
+        raise InvalidOutput('split_not_text')
     text = text.strip().strip('`').strip()
     found = list(re.finditer(r'(?m)^[ \t*#]*(Shared|Part[ \t]+(\d+))[ \t*]*[:：]', text))
     names = [m.group(2) or 'shared' for m in found]
     if names != ['shared'] + [str(i) for i in range(1, count + 1)] or text[:found[0].start()].strip(' \t\n*#'):
-        raise ValueError('invalid_output')
+        raise InvalidOutput('split_sections')
     ends = [m.start() for m in found[1:]] + [len(text)]
     values = [' '.join(text[m.end():end].split()).strip('* ') for m, end in zip(found, ends)]
     return values[0], values[1:]
@@ -860,7 +946,7 @@ def validate_split(text, value, *, strict=False):
     body, sound, lines = part_source(value['text'])
     shared, events = split_answer(text, len(value['seconds']))
     if re.search(r'\[L\d+\]', shared) or wide(body) != wide(shared + ' '.join(events)):
-        raise ValueError('invalid_output')
+        raise InvalidOutput('split_text_changed')
     used = set()
     def once(match):
         # A marker written twice stays where it first stands.
@@ -870,9 +956,10 @@ def validate_split(text, value, *, strict=False):
         return match.group(0)
     events = [' '.join(re.sub(r'\[L\d+\]', once, event).split()) for event in events]
     keys = [plain(re.sub(r'\[L\d+\]', '', event)) for event in events]
-    if any(len(event) > 4000 for event in events) or any(key and (key in plain(shared) or key == plain(body))
-                                                         for key in keys):
-        raise ValueError('invalid_output')
+    if any(len(event) > 4000 for event in events):
+        raise InvalidOutput('split_event_length')
+    if any(key and (key in plain(shared) or key == plain(body)) for key in keys):
+        raise InvalidOutput('split_event_repeats_shared')
     # Clauses after the opening sentence, each with whether it stands in the first half of the description.
     told_at, story = 0, []
     for index, sentence in enumerate(sentences(body)):
@@ -882,14 +969,14 @@ def validate_split(text, value, *, strict=False):
                 story.append((words, told_at < len(body) / 2))
             told_at += len(piece)
     if not 20 <= len(shared) <= 4000:
-        raise ValueError('invalid_output')
+        raise InvalidOutput('split_shared_length')
     def placed_twice(piece):
         return action(plain(piece)) and any(plain(piece) in key for key in keys)
     def told(piece):
         return next((early for words, early in story if action(plain(piece))
                      and (plain(piece) in words or words in plain(piece))), None)
     if strict and any(placed_twice(piece) for piece in clauses(shared)):
-        raise ValueError('invalid_output')
+        raise InvalidOutput('split_action_placed_twice')
     join = '' if wide(shared) else ' '
     kept = [piece for piece in clauses(shared) if not placed_twice(piece) and told(piece) is None]
     # Story the model left in Shared alone: its first half opens the video, the rest is not repeated.
@@ -908,10 +995,10 @@ def validate_split(text, value, *, strict=False):
     events = cleaned
     if not re.sub(r'\[L\d+\]', '', events[0]).strip() or strict and not all(
             re.sub(r'\[L\d+\]', '', event).strip() for event in events):
-        raise ValueError('invalid_output')
+        raise InvalidOutput('split_empty_part')
     placed = [int(n) for event in events for n in re.findall(r'\[L(\d+)\]', event)]
     if placed != list(range(1, len(lines) + 1)) and strict:
-        raise ValueError('invalid_output')
+        raise InvalidOutput('split_lines_order')
     if placed != list(range(1, len(lines) + 1)):
         # The model lost or reordered a line: keep its events, place the lines by time.
         events = [' '.join(re.sub(r'\s*\[L\d+\]\s*[:：,，]?', ' ', event).split()).rstrip(':：,，') for event in events]
@@ -1028,9 +1115,10 @@ def own_words(texts):
 
 def validate_parts(parts, value):
     """Worker output shape for a split job: one non-empty text per part."""
-    if (not isinstance(parts, list) or len(parts) != len(value['seconds'])
-            or any(not isinstance(part, str) or not 40 <= len(part) <= 20000 for part in parts)):
-        raise ValueError('invalid_output')
+    if not isinstance(parts, list) or len(parts) != len(value['seconds']):
+        raise InvalidOutput('parts_count')
+    if any(not isinstance(part, str) or not 40 <= len(part) <= 20000 for part in parts):
+        raise InvalidOutput('parts_length')
     return parts
 
 
@@ -1061,7 +1149,7 @@ REVERSE_CAMERA = ("Look only at how the camera moves between the first frame and
 
 def reverse_request(value):
     """A file from ComfyUI's input folder, how many frames to look at, and the spoken lines the caller already has."""
-    if not isinstance(value, dict) or set(value) - {'file', 'frames', 'lines', 'mode'} or value.get('mode', 'reverse') != 'reverse':
+    if not isinstance(value, dict) or set(value) - {'file', 'frames', 'lines', 'mode', 'language'} or value.get('mode', 'reverse') != 'reverse':
         raise ValueError('invalid_request')
     name, frames, lines = value.get('file'), value.get('frames', REVERSE_DEFAULT_FRAMES), value.get('lines', [])
     if not isinstance(name, str) or not name or len(name) > 1024:
@@ -1071,7 +1159,22 @@ def reverse_request(value):
     if (not isinstance(lines, list) or len(lines) > REVERSE_LINES
             or any(not isinstance(line, str) or not plain(line) or len(line) > 400 for line in lines)):
         raise ValueError('invalid_request')
-    return dict(mode='reverse', file=name, frames=frames, lines=[line.strip() for line in lines])
+    language = value.get('language', 'en')
+    if language not in ('en', 'zh'):
+        raise ValueError('invalid_request')
+    return dict(mode='reverse', file=name, frames=frames, lines=[line.strip() for line in lines], language=language)
+
+
+REVERSE_IN_CHINESE = ' Write it in Chinese.'
+
+
+def reverse_describe(value):
+    """The description question, asking for Chinese when the page is in Chinese."""
+    return REVERSE_DESCRIBE + (REVERSE_IN_CHINESE if value.get('language') == 'zh' else '')
+
+
+def reverse_camera(value):
+    return REVERSE_CAMERA + (REVERSE_IN_CHINESE if value.get('language') == 'zh' else '')
 
 
 def reverse_text(description, camera, lines):
@@ -1086,8 +1189,8 @@ def reverse_text(description, camera, lines):
 def validate_reverse(text, value):
     """Worker output for a reverse job: text of a sensible length that keeps every given spoken line verbatim."""
     if not isinstance(text, str) or not 40 <= len(text.strip()) <= 20000:
-        raise ValueError('invalid_output')
+        raise InvalidOutput('reverse_length')
     for line in value.get('lines', ()):
         if line not in text:
-            raise ValueError('invalid_output')
+            raise InvalidOutput('reverse_line_missing')
     return text

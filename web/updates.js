@@ -5,6 +5,7 @@ import { userMessage } from './user_message.js';
 import './glass/library.js';
 import { hasWhatsNew } from './whatsnew_pages.js';
 import { releaseMedia, mediaKind, mediaPath, splitChange } from './release_media.js';
+import { LANGUAGE_PARAM, askedLanguage } from './i18n.js';
 
 // Every platform downloads from one release: the latest vX.Y.Z.
 const releasePage = 'https://github.com/FlashML-org/FreeVideo/releases/latest';
@@ -18,7 +19,7 @@ let loadedVersion, updating = false, offline = false, failure = '';
 try { dismissed = sessionStorage.getItem(storageKey); } catch { /* Session memory still works. */ }
 // The launcher passes its language in the first address, which ComfyUI later
 // rewrites; keep it when reloading into an updated engine.
-const languageHint = (() => { try { return new URLSearchParams(location.search).get('freevideo_lang'); } catch { return null; } })();
+const languageHint = askedLanguage();
 const identity = candidate => candidate ? [candidate.version, candidate.revision, candidate.built_at].join(':') : '';
 const displayVersion = release => release?.product_version ? 'v' + release.product_version : release?.version || '—';
 // The running release's product version ("0.3.4"), once the first check has answered.
@@ -157,8 +158,8 @@ export async function checkUpdates() {
             // The server restarted with another engine; load its matching
             // interface. ComfyUI keeps the workflow, including the prompt.
             const url = new URL(location.href);
-            if (languageHint && !url.searchParams.has('freevideo_lang')) {
-                url.searchParams.set('freevideo_lang', languageHint);
+            if (languageHint && !url.searchParams.has(LANGUAGE_PARAM)) {
+                url.searchParams.set(LANGUAGE_PARAM, languageHint);
                 location.replace(url.href);
             } else location.reload();
             return;

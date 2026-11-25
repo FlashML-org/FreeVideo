@@ -117,9 +117,17 @@ def identity(machine, hardware):
 
 
 TEXT_SCHEMA = 1
-TEXT_FILES = ('encode_worker.py', 'encoder_lowmem.py', 'encoder_precision.py', 'encoder_checkpoint.py',
-              'encoder_pinning.py', 'encoder_workspace.py', 'encoder_memory.py', 'adaptive.py',
-              'conditioning.py', 'media_request.py')
+# Raised when a change can alter the conditioning a prompt and its references encode to: tokens, vision inputs,
+# precision, attention arithmetic, what is kept. Raising it re-encodes every saved prompt once; a change to memory,
+# loading or reporting keeps it, so an update does not throw the saved prompts away.
+# tests/test_text_encoding_version.py holds the fingerprints of ENCODING_FILES and a tiny encoder's output under
+# this number: it fails on any change to them until the ledger records whether the number was raised and why.
+# Modules these files call into (original_audio and guide_audio from media_request and media_encoding, ComfyUI
+# itself) are not fingerprinted: a change there that alters the conditioning raises the number by hand.
+ENCODING_VERSION = 1
+ENCODING_FILES = ('encode_worker.py', 'encoder_lowmem.py', 'encoder_precision.py', 'encoder_checkpoint.py',
+                  'encoder_workspace.py', 'encoder_memory.py', 'conditioning.py', 'media_request.py',
+                  'media_encoding.py')
 TEXT_PACKAGES = ('torch', 'transformers', 'tokenizers', 'comfy-kitchen', 'safetensors', 'numpy')
 
 
@@ -143,10 +151,11 @@ def encoder_content(path, catalog):
 
 
 def text_identity(machine, hardware):
-    """What the text conditioning of a prompt depends on: encoder content, its code and arithmetic, nothing else.
+    """What the text conditioning of a prompt depends on: encoder content, its encoding version and arithmetic.
 
-    No git, no timestamps, no video models, no GPU serial number: an unrelated update or a copied folder without
-    .git keeps the cache; a different encoder file, library, source or GPU architecture does not."""
+    No git, no timestamps, no video models, no GPU serial number, no source fingerprints: an update that leaves
+    ENCODING_VERSION alone or a copied folder without .git keeps the cache; a different encoder file, library,
+    encoding version or GPU architecture does not."""
     package = Path(__file__).parent
     catalog = json.loads((package / 'model_files.json').read_text(encoding='utf-8'))
     catalog = catalog['files'] if isinstance(catalog, dict) else catalog
@@ -161,7 +170,7 @@ def text_identity(machine, hardware):
             'encoder': encoder_content(encoder, catalog),
             'encoder_packages': {k: v for k, v in versions.items() if k in TEXT_PACKAGES},
             'comfy_commit': specs['encoder']['comfy_commit'], 'comfy_text_encoders': assets,
-            'source_sha256': {name: digest(package / name) for name in TEXT_FILES}}
+            'encoding_version': ENCODING_VERSION}
 
 
 def report_identity_errors(inventory, expected):

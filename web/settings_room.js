@@ -7,6 +7,7 @@
 // setup.js re-exports openSetup from here, so every caller (top bar, failure cards, palette) opens this room.
 import { setTip } from './tip_words.js';
 import { cutTip } from './cut_tip.js';
+import { copyText } from './clipboard_text.js';
 import { api } from "../../scripts/api.js";
 import './fv_select.js';
 import { compatibilityCard } from './compatibility.js';
@@ -37,6 +38,7 @@ if (typeof document !== 'undefined') {
 
 import { nearestAllowed } from './field_note.js';
 import { cn, t, INSTALLED_HINT, gib, bytesText, atLeast, WAIT_REFUSAL, reportable, reportText, failureText, setupError, SECTIONS, sectionOf } from './settings_words.js';
+import { languageUrl } from './i18n.js';
 export { failureText, sectionOf, SECTIONS, bytesText };
 
 let current;
@@ -232,7 +234,7 @@ export async function openSetup(options) {
     const more = fold({title: t('Details and logs', '详细信息与日志'), sub: t('Kept for reporting a problem', '提交问题时可附上'), cls: 'st-logs'});
     const log = el("pre", 'st-pre fv-copyable'); more.body.append(log);
     const logCopy = button(t('Copy', '复制'), {iconName: 'copy', cls: 'is-sm'});
-    logCopy.onclick = event => { event.preventDefault(); event.stopPropagation(); navigator.clipboard?.writeText(log.textContent).then(() => { setText(logCopy, t('Copied', '已复制')); setTimeout(() => setText(logCopy, t('Copy', '复制')), 1500); }, () => {}); };
+    logCopy.onclick = event => { event.preventDefault(); event.stopPropagation(); void copyText(log.textContent).then(ok => { if (!ok) return; setText(logCopy, t('Copied', '已复制')); setTimeout(() => setText(logCopy, t('Copy', '复制')), 1500); }); };
     tip(logCopy, t('Copy', '复制'), t('Copy the log for a report', '复制日志，用于提交问题'));
     more.end.append(logCopy); more.element.hidden = true;
     models.append(hero, more.element);
@@ -556,7 +558,7 @@ export async function openSetup(options) {
     const langNote = slot(); const langReload = button(t('Reload now', '立即重新载入'), {kind: 'fill', cls: 'is-sm'}); langReload.hidden = true;
     langNote.textContent = t('Changing the language reloads the page; generations keep running.', '切换语言会重新载入页面，正在进行的生成不受影响。');
     langSelect.onchange = () => { langReload.hidden = langSelect.value === (cn ? 'zh' : 'en'); };
-    langReload.onclick = () => { const url = new URL(location.href); url.searchParams.set('freevideo_lang', langSelect.value); location.replace(url.href); };
+    langReload.onclick = () => { const url = languageUrl(location.href, langSelect.value); location.replace(url.href); };
     tip(langReload, t('Reload now', '立即重新载入'), t('Reload the page in the chosen language', '以所选语言重新载入页面'));
     const langRow = row({iconName: 'globe', title: t('Interface language', '界面语言'), end: [segmented(langSelect, {label: t('Language', '语言'), tips: {zh: t('Show the interface in Chinese', '界面显示为中文'), en: t('Show the interface in English', '界面显示为英文')}})]});
     const langFoot = el('div', 'st-foot'); langFoot.append(langNote, langReload);
@@ -1017,7 +1019,7 @@ export async function openSetup(options) {
                 r.sub.className = 'is-accent';
                 r.sub.textContent = s.paused ? pausedText(s)
                     : `${Math.floor(s.fraction * 100)}% · ${gb(s.done)} / ${gb(s.total)} GiB`;
-                act.hidden = false;
+                act.hidden = !!s.locked;   // waiting for a setup, update or cleanup: nothing to press
                 if (s.paused) {
                     // Waiting for a video or a picture: the user may go on with the download now.
                     act.className = 'st-btn is-fill'; act.replaceChildren(icon('down', 'fv-i s'), el('span', 'st-btn-t', t('Continue download', '继续下载')));

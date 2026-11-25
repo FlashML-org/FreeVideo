@@ -81,6 +81,8 @@ def inspection_failed(value):
     else:
         parts.append('no exit code')
     parts.append('%d output lines' % int(value.get('lines') or 0))
+    if type(value.get('winerror')) is int:
+        parts.append('Windows error %d' % value['winerror'])
     # A cancelled run never gets here: only a complete or failed plan is read, so cancelling is not a failure to report.
     if failed in ('TimeoutExpired', 'TimeoutError'):
         parts.append('timed out')

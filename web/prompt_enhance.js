@@ -129,14 +129,17 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     meter.setAttribute('role', 'progressbar'); meter.setAttribute('aria-valuemin', '0'); meter.setAttribute('aria-valuemax', '100');
     // The shared "Report a problem" button, handed in by the page.
     // Feedback quotes the line without the names of the user's other programs.
-    let quoted = '';
+    let quoted = '', undoState = null;
     const report = issueButton ? issueButton(t, () => ({where: ['Prompt enhancement', '提示词增强'], message: quoted, facts: memoryFacts})) : document.createElement('span');
     report.hidden = true;
-    meter.append(fill); status.append(statusText, meter, report);
+    // "Undo" after a description was filled in (reverse prompt): a text key beside the line (after the report key: the line's children keep their places, and the two are never shown together).
+    const undoKey = el('button', t('Undo', '撤销'), 'fv-enhance-undo'); undoKey.type = 'button'; undoKey.hidden = true;
+    meter.append(fill); status.append(statusText, meter, report, undoKey);
     // One place sets what the status line says and how it looks.
     function show(text, state = '', fraction = null, quote = text) {
         if (downloadOnly) { publishModel({text: text || ''}); return; }
         statusText.textContent = text || '';
+        undoKey.hidden = true; undoState = null;
         quoted = quote || '';
         status.dataset.state = text ? state : '';
         report.hidden = !text || state !== 'error';
@@ -181,14 +184,16 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     if (versions.value.enabled) void prestart.request();
     // Available RAM the model needs; the server knows the usual case for this card.
     let ramBytes = 11 * 2 ** 30;
-    // Memory readings of a failed rewrite for the feedback form: numbers and states only.
+    // Readings of a failed rewrite for the feedback form: numbers, states and fixed check names only.
     let memoryFacts = null;
     const MEMORY_FACTS = ['gpu_total_bytes', 'gpu_free_before_load_bytes', 'gpu_allocator_budget_bytes', 'gpu_free_needed_text_only_bytes', 'gpu_free_needed_with_images_bytes',
         'placement_refused', 'gpu_free_bytes', 'gpu_allocator_ooms', 'idle_release', 'idle_release_seconds',
         'idle_release_gpu_free_before_bytes', 'idle_release_gpu_free_after_bytes',
         'gpu_peak_allocated_bytes', 'gpu_peak_reserved_bytes', 'image_count', 'input_tokens', 'weights', 'vision_device', 'kv_reserve', 'stage', 'platform',
         'gpu_non_allocator_reserve_bytes', 'extra_vram_reserve_bytes',
-        'streamed_layers', 'available_memory_at_start_bytes', 'available_memory_before_load_bytes'];
+        'streamed_layers', 'available_memory_at_start_bytes', 'available_memory_before_load_bytes',
+        'gpu_name', 'gpu_capability', 'torch_version', 'transformers_version', 'cuda_version',
+        'gpu_reserved_bytes', 'gpu_allocated_bytes', 'gpu_outside_allocator_bytes', 'gpu_alloc_retries', 'sdp_switches', 'oom_tried_bytes'];
     const factsOf = diagnostics => Object.fromEntries(MEMORY_FACTS.filter(key => ['number', 'string'].includes(typeof diagnostics?.[key]))
         .map(key => [key, diagnostics[key]]));
     // Where the worker failed: exception class and the last stack frames as module:function:line, no paths and no message text.
@@ -196,8 +201,21 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     const failureOf = row => {
         const frames = (Array.isArray(row?.error_details) ? row.error_details : []).map(frame => [plainName(frame?.module), plainName(frame?.function), frame?.line])
             .filter(([module, name, line]) => module && name && Number.isInteger(line)).slice(-5).map(([module, name, line]) => `${module}:${name}:${line}`);
-        return Object.assign(plainName(row?.exception) ? {failure_exception: row.exception} : {}, frames.length ? {failure_location: frames.join(' > ')} : {});
+        return Object.assign(plainName(row?.exception) ? {failure_exception: row.exception} : {}, ['allocator', 'cuda_runtime'].includes(row?.oom_source) ? {oom_source: row.oom_source} : {},
+            frames.length ? {failure_location: frames.join(' > ')} : {});
     };
+    // The output check that rejected a rewrite: its fixed name and category, never text of the prompt or the draft.
+    const CHECK_LABELS = {length: ['it came out too long or empty', '过长或为空'], structure: ['some sections were missing or out of place', '分段缺失或错位'],
+        timing: ['a time point was lost or went past the end of the video', '时间点丢失或超出视频时长'],
+        media: ['a media reference was left out or wrong', '漏掉或写错了素材引用'], text: ['quoted text was left out or changed', '漏掉或改动了引号里的文字'],
+        dialogue: ['the spoken lines were out of order', '台词顺序被打乱']};
+    const checkOf = row => {
+        const found = row?.output_rejection, name = found?.condition;
+        return typeof name === 'string' && /^[a-z0-9_]{1,40}$/.test(name) && Object.hasOwn(CHECK_LABELS, found.category)
+            ? {name, category: found.category, retried: found.retried === true} : null;
+    };
+    // The feedback carries only the check's name, its category and whether the retry had run; the local counts stay on this computer.
+    const checkFacts = check => ({check: check.name, check_category: check.category, check_retried: check.retried});
     const gib = value => String(Math.round(value / 2 ** 30));
     // Mentions are counted as the character descriptions they expand to, so the count can exceed what the box shows.
     const lengthOf = (error, english) => {
@@ -231,7 +249,10 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         invalid_prompt: error?.characters
             ? t(`${lengthOf(error, true)}; enhancement supports up to 12,000. Shorten it or use the original.`, `${lengthOf(error, false)}，增强最多支持 12,000 字符，请精简或使用原文。`)
             : t('Enter a prompt of up to 12,000 characters.', '请输入不超过 12,000 字符的提示词。'),
-        invalid_output: t('The rewrite was incomplete. Retry or use the original.', '改写结果不完整，请重试或使用原文。'),
+        invalid_output: error?.check
+            ? t(`The rewrite was incomplete: ${CHECK_LABELS[error.check.category][0]}. Retry or use the original.`,
+                `改写结果不完整：${CHECK_LABELS[error.check.category][1]}。请重试或使用原文。`)
+            : t('The rewrite was incomplete. Retry or use the original.', '改写结果不完整，请重试或使用原文。'),
         invalid_request: t('Rewriting does not support this model or aspect ratio. Change it or use the original.', '当前模型或画幅不支持改写，请更换或使用原文。'),
         context_length: t('The scene is too long for this model. Shorten it or use the original.', '内容超出改写模型容量，请精简或使用原文。'),
         out_of_memory: holderNames(error?.holders)
@@ -255,7 +276,10 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         invalid_prompt: error?.characters
             ? t(`${lengthOf(error, true)}; rewriting supports up to 12,000. Shorten it before rewriting again.`, `${lengthOf(error, false)}，改写最多支持 12,000 字符，精简后可再改写。`)
             : t('Rewriting supports prompts of up to 12,000 characters.', '改写只支持不超过 12,000 字符的提示词。'),
-        invalid_output: t('The rewrite was incomplete.', '改写结果不完整。'),
+        invalid_output: error?.check
+            ? t(`The rewrite was incomplete: ${CHECK_LABELS[error.check.category][0]}.`,
+                `改写结果不完整：${CHECK_LABELS[error.check.category][1]}。`)
+            : t('The rewrite was incomplete.', '改写结果不完整。'),
         invalid_request: t('Rewriting does not support this model or aspect ratio.', '当前模型或画幅不支持改写。'),
         context_length: t('The scene is too long for the rewrite model.', '内容超出改写模型容量。'),
         out_of_memory: holderNames(error?.holders)
@@ -294,7 +318,16 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         bar.dataset.enabled = String(Boolean(versions.value.enabled)); bar.dataset.busy = String(Boolean(running));
     }
     function apply() { input.value = versions.text(); setText(input.value); save(); render(); }
+    let silent = false, undoTimer = 0;
     function changed() {
+        if (silent) return;
+        // Ctrl+Z (or typing the old words back) while Undo is offered brings the saved versions back too, as the Undo key does.
+        if (undoState && !undoKey.hidden && input.value === undoState.before) {
+            const {snapshot} = undoState; show('');
+            versions.value = snapshot; setText(input.value); save(); render();
+            return;
+        }
+        if (!undoKey.hidden) show('');
         if (waiting) { waiting = false; show(''); }
         versions.edit(input.value, replacing || !input.value.trim()); replacing = false; save(); render();
     }
@@ -358,8 +391,9 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
                 }
                 if (row.phase === 'complete') return row;
                 if (row.phase === 'failed') {
-                    memoryFacts = row.error === 'out_of_memory' ? {...factsOf(row.diagnostics), ...failureOf(row)} : null;
-                    throw Object.assign(new Error(row.error || 'rewrite_failed'), {ramBytes: row.diagnostics?.ram_required_bytes, holders: row.gpu_holders});
+                    const check = row.error === 'invalid_output' ? checkOf(row) : null;
+                    memoryFacts = row.error === 'out_of_memory' ? {...factsOf(row.diagnostics), ...failureOf(row)} : check ? checkFacts(check) : null;
+                    throw Object.assign(new Error(row.error || 'rewrite_failed'), {ramBytes: row.diagnostics?.ram_required_bytes, holders: row.gpu_holders, check});
                 }
                 if (row.phase === 'cancelled') throw new Error(action === 'install' ? 'download_failed' : 'cancelled');
                 if (disposed) throw new Error('cancelled');
@@ -373,7 +407,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
                     show(names ? t(`Waiting for ${short}\u00a0GiB more graphics memory to rewrite. In use: ${names}.`, `显存不足，再空出 ${short}\u00a0GiB 后自动改写。正在占用：${names}。`)
                         : t(`Waiting for ${short}\u00a0GiB more graphics memory to rewrite.`, `显存不足，再空出 ${short}\u00a0GiB 后自动改写。`), 'progress');
                 } else if (action !== 'install') {
-                    clock?.set(row.phase === 'rewriting' ? 'rewriting' : 'preparing');
+                    clock?.set(row.phase === 'rewriting' ? 'rewriting' : 'preparing', row.phase);
                 }
                 await new Promise(resolve => setTimeout(resolve, 400));
             }
@@ -483,6 +517,138 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         render();
         return running;
     }
+    // ---- Reverse prompt: a picture or a video becomes a description in the box. ----
+    // Pictures: one step, the existing ask action. Videos: the reverse action (frames with their times, then the camera),
+    // and where the view writes video prompts (shapeVideo) the existing rewrite action turns it into the model's format.
+    const REVERSE_PICTURE = 'Describe this image so that a text-to-image model can recreate it as closely as possible. Cover the main subjects and their appearance, age, clothing, pose and expression; every object and where it is in the frame; the background and setting; lighting and time of day; colour palette; camera angle, shot size and lens feel; and the medium or art style (photo, illustration, 3D render, ink painting and so on). Copy any visible text exactly, inside double quotes. Write one flowing paragraph of plain description, with no lists and no preamble, about 120 to 200 words.';
+    const reverseErrorText = error => isNetworkTypeError(error) ? networkText(error) : ({
+        busy: t('Finish the current queue before writing a prompt from media.', '请等待当前队列完成后再生成提示词。'),
+        unreadable_video: t('Could not read frames from this video. Choose another file.', '无法读取这个视频的画面，请换一个文件。'),
+        unsupported_media: t('Only pictures and videos can be turned into a prompt.', '只能用图片或视频生成提示词。'),
+        invalid_media: t('Could not read this picture. Choose another file.', '无法读取这张图片，请换一个文件。'),
+        out_of_memory: holderNames(error?.holders)
+            ? t(`Not enough graphics memory. In use: ${holderNames(error.holders)}. Close them and try again.`, `显存不足，无法生成提示词。正在占用：${holderNames(error.holders)}。关闭后再试。`)
+            : t('Not enough graphics memory. Close other GPU apps and try again.', '显存不足，请关闭其他显卡程序后再试。'),
+        ram_space: t(`Loading needs about ${gib(error?.ramBytes || ramBytes)} GiB of free RAM. Close other programs and try again.`, `加载需约 ${gib(error?.ramBytes || ramBytes)} GiB 可用内存，请关闭其他程序后再试。`),
+        timeout: t('Took too long. Try again.', '生成提示词超时，请重试。'),
+        invalid_output: t('The result was incomplete. Try again.', '结果不完整，请重试。'),
+        context_length: t('The result was incomplete. Try again.', '结果不完整，请重试。'),
+        download_failed: t('Download paused. Retry to resume.', '下载已暂停，重试可继续。'),
+        disk_space: t('Not enough disk space for the optional model.', '可选模型的磁盘空间不足，请清理后重试。'),
+        worker_cleanup_failed: t('The process could not close. Restart FreeVideo before generating.', '生成提示词的进程未能退出，请重启 FreeVideo 后再生成。'),
+        cancelled: t('Stopped. Your prompt is unchanged.', '已停止，原文已保留。'),
+        not_enabled: t('Not enabled. Your prompt is unchanged.', '未启用，原文已保留。'),
+    }[error?.message] || t(`Could not write the prompt${reasonOf(error) ? `: ${reasonOf(error)}` : ''}. Try again.`, `暂时无法生成提示词${reasonOf(error) ? `。原因：${reasonOf(error)}。` : ''}请重试。`));
+    const reverseListeners = new Set();
+    let reverseState = {state: 'idle', fraction: 0, text: ''};
+    const publishReverse = change => {
+        reverseState = {...reverseState, noted: false, ...change}; for (const listener of reverseListeners) listener(reverseState);
+        globalThis.dispatchEvent?.(new CustomEvent('freevideo-prompt-job', {detail: {active: reverseState.state === 'running', fraction: reverseState.fraction}}));
+    };
+    // Stage lines and their expected seconds (measured: reading ~2 s, describing ~8 s with the model loaded, camera ~1 s,
+    // shaping the H3 prompt ~10 s); the bar runs on those and turns to a back-and-forth when they are overrun.
+    function reverseClock(stages) {
+        const total = stages.reduce((sum, row) => sum + row.seconds, 0), started = Date.now();
+        let stage = stages[0].key, paused = false;
+        const tick = () => {
+            if (paused || disposed || cancelling) return;
+            const elapsed = (Date.now() - started) / 1000;
+            const row = stages.find(item => item.key === stage) || stages[0];
+            const before = stages.slice(0, stages.indexOf(row)).reduce((sum, item) => sum + item.seconds, 0);
+            const within = Math.min(row.seconds, Math.max(0, elapsed - before));
+            const fraction = elapsed > total * 1.5 ? null : Math.min(.95, (before + within) / total);
+            show(t(row.en, row.zh), 'progress', fraction);
+            publishReverse({state: 'running', fraction: fraction === null ? null : fraction, text: t(row.en, row.zh)});
+        };
+        const timer = setInterval(tick, 250); tick();
+        return {
+            set(_, raw) { const next = ({starting: 'read', loading: 'read', preparing: 'read', describing: 'describe', camera: 'camera', rewriting: 'shape'})[raw]; if (next && stages.some(item => item.key === next) && stage !== next) { stage = next; tick(); } },
+            pause() { paused = true; }, restart() { paused = false; }, stop() { clearInterval(timer); },
+        };
+    }
+    async function reverse(source, {shapeVideo = false} = {}) {
+        if (running) return running;
+        // Shaping into the model's format only where enhancement is already on: reversing never changes that switch.
+        shapeVideo = shapeVideo && Boolean(versions.value.enabled);
+        const language = t('en', 'zh');
+        cancelling = false; memoryFacts = null;
+        const before = input.value, snapshot = JSON.parse(JSON.stringify(versions.value));
+        const video = source.kind === 'video';
+        const stages = video
+            ? [{key: 'read', en: 'Reading the frames…', zh: '正在读取画面…', seconds: 2}, {key: 'describe', en: 'Describing the video…', zh: '正在描述视频…', seconds: 8},
+               {key: 'camera', en: 'Looking at the camera movement…', zh: '正在看镜头运动…', seconds: 1}, ...(shapeVideo ? [{key: 'shape', en: 'Shaping it into a video prompt…', zh: '正在整理成视频描述…', seconds: 10}] : [])]
+            : [{key: 'describe', en: 'Describing the picture…', zh: '正在描述图片…', seconds: 8}];
+        // The job is under way: the box is read-only and dimmed, the key says Stop, Generate waits.
+        const begin = () => {
+            input.readOnly = true; input.dataset.reversing = 'true'; element.dataset.reversing = 'true'; bar.dataset.reversing = 'true';
+            publishReverse({state: 'running', fraction: 0, text: ''});
+        };
+        const execute = async () => {
+            if (disposed || cancelling) throw new Error('cancelled');
+            let described, shaped = '', clock = null;
+            try {
+                const info = await readModel();
+                if (disposed || cancelling) throw new Error('cancelled');
+                // The consent card (model not installed) is asked while everything is still idle; the job starts when it is accepted.
+                if (!info.ready) show('');
+                // Declining the question is not a stop: nothing was started, so the line says the model is not enabled.
+                if (!await installModel(info)) throw new Error(disposed || cancelling ? 'cancelled' : 'not_enabled');
+                begin();
+                clock = reverseClock(stages);
+                const file = await source.upload();
+                if (disposed || cancelling) throw new Error('cancelled');
+                if (video) {
+                    described = (await poll('reverse', {file, frames: 16, lines: [], language}, clock)).text;
+                    if (shapeVideo) {
+                        clock.set('', 'rewriting');
+                        const scene = context();
+                        shaped = (await poll('rewrite', {text: described, seconds: scene.seconds, media: []}, clock)).text;
+                    }
+                } else {
+                    const answer = (await poll('ask', {questions: [{text: language === 'zh' ? REVERSE_PICTURE + ' Write the description in Chinese.' : REVERSE_PICTURE, images: [{file}]}], format: 'text', max_tokens: 400}, clock)).answers?.[0];
+                    if (!answer || answer.error || !String(answer.text || '').trim()) throw new Error('invalid_output');
+                    described = answer.text.trim();
+                }
+            } finally { clock?.stop(); }
+            if (disposed || cancelling) throw new Error('cancelled');
+            fillFrom(described, shaped);
+            return true;
+        };
+        function fillFrom(described, shaped) {
+            versions.adopt(described);
+            if (shaped) {
+                // The Original tab holds the readable description, the Enhanced tab the model's own format; Generate uses the latter.
+                versions.value.useOriginal = false;
+                const restored = restore(shaped), scene = context();
+                versions.accept(versions.key(scene), scene, display(restored), restored);
+            }
+            write(versions.text());
+            setText(input.value); save(); render();
+            if (before.trim()) {
+                show(t('Description filled in.', '已填入描述。'), 'note'); undoKey.hidden = false; undoState = {before, snapshot};
+                undoKey.onclick = () => { versions.value = snapshot; write(before); setText(input.value); save(); render(); show(''); };
+                clearTimeout(undoTimer); undoTimer = setTimeout(() => { if (!undoKey.hidden) show(''); }, 10000);
+            } else show('');
+        }
+        function write(text) {
+            // Through the editing history, so Ctrl+Z brings the old text back; `silent` keeps the page's own bookkeeping out of it.
+            silent = true;
+            try {
+                input.readOnly = false; input.focus({preventScroll: true}); input.select();
+                if (!(globalThis.document?.execCommand?.('insertText', false, text) && input.value === text)) input.value = text;
+            } finally { silent = false; }
+        }
+        running = Promise.resolve().then(execute).then(() => { publishReverse({state: 'done'}); return true; }).catch(error => {
+            const message = error?.message;
+            const quiet = message === 'cancelled' || message === 'not_enabled';
+            show(reverseErrorText(error), quiet ? 'note' : 'error', null,
+                reverseErrorText({message, ramBytes: error?.ramBytes}));
+            publishReverse({state: quiet ? 'idle' : 'error', fraction: 0, noted: quiet});
+            throw error;
+        }).finally(() => { running = null; cancelling = false; install.hidden = true; input.readOnly = false; delete input.dataset.reversing; delete element.dataset.reversing; delete bar.dataset.reversing; render(); });
+        render();
+        return running;
+    }
     toggle.onchange = () => {
         versions.value.enabled = toggle.checked;
         if (!toggle.checked) { cancelJob().catch(() => {}); versions.select('original'); apply(); }
@@ -497,7 +663,8 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         versions.value.selected = 'original'; apply();
         show(t(`Generated with the original prompt. ${stale ? errorText(error) : fallbackText(error)}`, `已用原文生成。${stale ? errorText(error) : fallbackText(error)}`), 'note');
     }
-    return {element, chip, bar, model: {read: readModel, download: downloadModel, subscribe(listener) {
+    return {element, chip, bar, reverse, stop: () => cancelJob().catch(() => {}), get reversing() { return reverseState.state === 'running'; },
+        onReverse(listener) { reverseListeners.add(listener); listener(reverseState); return () => reverseListeners.delete(listener); }, model: {read: readModel, download: downloadModel, subscribe(listener) {
         modelListeners.add(listener); listener(modelState);
         return () => modelListeners.delete(listener);
     }}, async beforeGenerate() {

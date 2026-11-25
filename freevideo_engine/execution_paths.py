@@ -4,6 +4,7 @@ from pathlib import PurePath
 import subprocess
 
 from . import launch_view
+from .installed_entry import INSTALLED_ONLY
 
 
 def execution_path(path):
@@ -76,11 +77,11 @@ def call(function, command, **kwargs):
 # Run as "python -c": import the engine, leave no trace of that import, then run the script as
 # python would have. Arguments: the engine's source folder, the script, the script's own arguments.
 _ENGINE_FIRST = (
-    "import os,runpy,sys;source=sys.argv.pop(1);sys.path.insert(0,source);import freevideo_engine;"
+    INSTALLED_ONLY + "import os,runpy;source=sys.argv.pop(1);sys.path.insert(0,source);import freevideo_engine;"
     "sys.path.remove(source);"
     "[sys.modules.pop(name) for name in list(sys.modules) if name.partition('.')[0]=='freevideo_engine'];"
     "del sys.argv[0];folder=os.path.dirname(sys.argv[0]);"
-    "sys.path[0:1]=[folder] if sys.path[:1]==[''] else [folder]+sys.path[:1];"
+    "sys.path.insert(0,folder);"
     "runpy.run_path(sys.argv[0],run_name='__main__')")
 
 

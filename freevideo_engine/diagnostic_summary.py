@@ -177,6 +177,13 @@ def summary_report(report):
     result['attempts'] = diagnostic.attempts(request.get('resource_attempts'))
     result['exception'] = [diagnostic.trace(row) for row in diagnostic.sequence(request.get('exception'))[:4]]
     result['encoder_failure'] = diagnostic.failure(diagnostic.mapping(request.get('encoding_failure')).get('failure'))
+    retry = diagnostic.mapping(request.get('encoding_retry'))
+    # A first encoder worker that failed stays on record even when the second one finished the request.
+    first = diagnostic.mapping(retry.get('first_attempt'))
+    result['encoder_retry'] = dict(
+        overrides={key: value for key, value in diagnostic.mapping(retry.get('overrides')).items()
+                   if key in ('readonly_registration', 'extra_reserve_gib') and type(value) in (bool, int, float)},
+        first_attempt=dict(phase=str(first.get('phase'))[:64], failure=diagnostic.failure(first.get('failure')))) if first else {}
     result['encoder_resources'] = (diagnostic.resources(diagnostic.mapping(report.get('memory')).get('encoding'))
                                    if not any(summary.get(k) for k in ('conditioning_cache_hit', 'preencoded', 'conditioning_from_preview'))
                                    else {})

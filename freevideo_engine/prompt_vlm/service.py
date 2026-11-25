@@ -22,6 +22,9 @@ GPU_WAIT_SECONDS = 300
 EXTRA_VRAM_RESERVE = 2**30
 
 
+# What the worker says while it runs, passed on to the page's status; a reverse prompt's describing and camera stages included.
+STREAMED_PHASES = ('loading', 'rewriting', 'answering', 'describing', 'camera')
+
 class Worker:
     """One pipe owner across idle imports and the subsequent rewrite."""
     def __init__(self, process):
@@ -106,6 +109,7 @@ class Service:
         self.installation = installation
         self.input_directory = input_directory
         self.mutex = threading.Lock()
+        self.counts_lock = threading.Lock()
         self.stop = threading.Event()
         self.state = {}
         self.key = None
@@ -515,9 +519,12 @@ class Service:
             self.progress(dict(phase='failed', error='busy'))
         except Exception as error:
             known = {'disk_space', 'ram_space', 'unreadable_video', 'rewrite_failed', 'split_failed', 'worker_exit', 'timeout', 'worker_cleanup_failed'}
-            if str(error) not in known and not isinstance(error, rules.InvalidOutput):
+            # An output check names what failed in `output_rejection`; only a rewrite reports it as invalid_output,
+            # the other jobs keep their own failure codes.
+            rejected = isinstance(error, rules.InvalidOutput) and action not in ('ask', 'split', 'reverse')
+            if str(error) not in known and not rejected:
                 logging.warning('[FreeVideo] Prompt model job %s failed: %s', action, type(error).__name__, exc_info=True)
-            self.progress(dict(phase='failed', error='invalid_output' if isinstance(error, rules.InvalidOutput)
+            self.progress(dict(phase='failed', error='invalid_output' if rejected
                                else str(error) if str(error) in known
                                else 'disk_space' if isinstance(error, OSError) and ran_out(error)
                                else 'download_failed' if action == 'install'
@@ -531,11 +538,17 @@ class Service:
             if self.stop.is_set():
                 self.progress(dict(phase='cancelled'))
             self.result_expires = time.monotonic() + 600
+            try:
+                counts = self.count_checks(root, action)
+                if counts:
+                    self.progress(dict(check_counts=counts))
+            except Exception:  # the counts are a nicety: whatever is wrong with them must not stop the report below
+                logging.warning('[FreeVideo] Could not update the prompt check counts', exc_info=True)
             # Allowlisted metadata only, never original/rewritten text or input paths.
             # Output rejections contain condition IDs, counts, typed media labels and retry flags only.
             report = {key: item for key, item in self.state.items()
-                      if key in ('phase', 'error', 'exception', 'error_details', 'timings', 'diagnostics',
-                                 'resources', 'cleanup', 'worker_returncode', 'output_rejection', 'gpu_wait')}
+                      if key in ('phase', 'error', 'exception', 'error_details', 'oom_source', 'timings', 'diagnostics',
+                                 'resources', 'cleanup', 'worker_returncode', 'output_rejection', 'gpu_wait', 'check_counts')}
             try:
                 spec = assets.catalog()
             except (OSError, ValueError):
@@ -555,6 +568,23 @@ class Service:
                                        report_id=REPORTS.register(directory / 'video.mp4')))
             except OSError:
                 pass
+
+    def count_checks(self, root, action):
+        """Add this job to the check counts kept beside the model files (numbers only) and return them."""
+        from ..monitoring import save
+        path = Path(root) / 'prompt-vlm-check-counts.json'
+        with self.counts_lock:
+            try:
+                counts = json.loads(path.read_text(encoding='utf-8'))
+            except (OSError, ValueError):
+                counts = {}
+            with self.mutex:
+                state = dict(self.state)
+            before = json.dumps(counts, sort_keys=True)
+            updated = rules.count_checks(counts, action, state, time.strftime('%Y-%m-%d', time.gmtime()))
+            if updated and json.dumps(updated, sort_keys=True) != before:
+                save(path, updated)
+            return updated
 
     def infer(self, root, machine, descriptor, value, *, wait=False):
         """Run the worker; when the model does not fit the GPU, name the programs
@@ -589,7 +619,7 @@ class Service:
                 waited['oom_reruns'] = waited.get('oom_reruns', 0) + 1
                 self.progress(dict(gpu_wait=dict(waited)))
                 with self.mutex:
-                    for key in ('error', 'exception', 'error_details', 'gpu_holders', 'gpu_short_bytes'):
+                    for key in ('error', 'exception', 'error_details', 'oom_source', 'gpu_holders', 'gpu_short_bytes'):
                         self.state.pop(key, None)
                     self.state['phase'] = 'loading'
                 continue
@@ -609,7 +639,7 @@ class Service:
                 self.progress(dict(phase='failed', error='out_of_memory', gpu_holders=self.gpu_holders(machine)))
                 return
             with self.mutex:
-                for key in ('error', 'exception', 'error_details', 'gpu_holders', 'gpu_short_bytes'):
+                for key in ('error', 'exception', 'error_details', 'oom_source', 'gpu_holders', 'gpu_short_bytes'):
                     self.state.pop(key, None)
                 self.state['phase'] = 'loading'
 
@@ -749,7 +779,7 @@ class Service:
                 if row.get('phase') in ('complete', 'failed'):
                     result.update(row)
                     result_received_at[:] = [time.monotonic()]
-                elif row.get('phase') in ('loading', 'rewriting', 'answering'):
+                elif row.get('phase') in STREAMED_PHASES:
                     self.progress(row)
         try:
             writer.start()

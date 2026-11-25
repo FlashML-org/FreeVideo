@@ -11,6 +11,56 @@ const STEP_CACHE_OPTIONS = ['none', 'easycache-av', 'fbcache'], UPSCALE_OPTIONS 
 const PROPERTIES = ['freevideo_aspect', 'freevideo_pixels', 'freevideo_seconds', 'freevideo_single',
     'freevideo_block_seconds', 'freevideo_run_mode', 'freevideo_batch_count'];
 const OUTBOX = 'freevideo.prompt-pending';
+// The LoRA list and the reference pictures live on the nodes wired to the generate node, not on it. The draft keeps
+// them as plain lists so a start without the browser's own copy of the project (another port, cleared site data)
+// brings them back. Only arrays are ever written: a missing node is "not known", never "empty".
+// This file stands alone (each tab, and the tests, load it as one module), so the replace-person names of
+// replace_state.js (SWAP_LORA, SWAP_KEY) are repeated here; scripts/test_prompt_draft_lists.mjs keeps the two equal.
+const SWAP_LORA = 'alissonerdx-v1.1.safetensors', SWAP_KEY = 'freevideo_replace_person';
+const swapLoraNames = names => (Array.isArray(names) ? names : []).filter(name => typeof name === 'string'
+    && String(name).split(/[\\/]/).pop().toLowerCase() === SWAP_LORA);
+const LORA_LIMIT = 100, LIST_MAX = 32;
+const finiteNumber = value => typeof value === 'number' && Number.isFinite(value);
+function cleanLoras(value) {
+    let rows = value;
+    if (typeof rows === 'string') { try { rows = JSON.parse(rows || '[]'); } catch { return null; } }
+    if (!Array.isArray(rows)) return null;
+    const names = new Set(swapLoraNames(rows.map(row => row?.name)));
+    return rows.filter(row => row && typeof row === 'object' && typeof row.name === 'string' && row.name && !names.has(row.name)
+        && (row.strength === undefined || (finiteNumber(row.strength) && Math.abs(row.strength) <= LORA_LIMIT))
+        && (row.enabled === undefined || typeof row.enabled === 'boolean')).slice(0, LIST_MAX)
+        .map(row => ({name: row.name, ...(row.strength === undefined ? {} : {strength: row.strength}),
+            ...(row.enabled === undefined ? {} : {enabled: row.enabled})}));
+}
+// Only what places a picture is kept: its file, its role and the settings of that row. A character card is named by its
+// id alone; the card's name and description are read again from the library when the draft is restored.
+const ASSET_KEYS = ['file', 'role', 'enabled', 'seconds', 'use', 'range', 'sound', 'depth', 'lines'];
+// Rows that stand for a replace-person source (they carry a slot) belong to that panel, not to the list.
+// `whole` keeps the card label of a row as it is (a restored row, going into the graph).
+function cleanAssets(value, whole = false) {
+    let rows = value;
+    if (typeof rows === 'string') { try { rows = JSON.parse(rows || '[]'); } catch { return null; } }
+    if (!Array.isArray(rows)) return null;
+    return rows.filter(row => row && typeof row === 'object' && !Array.isArray(row) && typeof row.file === 'string' && row.file
+        && !row.slot).slice(0, LIST_MAX).map(row => ({...Object.fromEntries(ASSET_KEYS.filter(key => row[key] !== undefined).map(key => [key, clone(row[key])])),
+        ...(typeof row.cast?.id === 'string' && row.cast.id ? {cast: whole ? clone(row.cast) : {id: row.cast.id,
+            ...(row.cast.setting === true ? {setting: true} : {}), ...(row.cast.prop === true ? {prop: true} : {})}} : {})}));
+}
+function liveSource(node, name) {
+    const link = node.inputs?.find(input => input.name === name)?.link;
+    const origin = link != null ? node.graph?.links?.[link]?.origin_id : null;
+    return origin != null ? node.graph?.getNodeById?.(origin) || null : null;
+}
+const widgetValue = (node, name) => node?.widgets?.find(w => w.name === name)?.value;
+// The same pair in a saved workflow: the node that feeds `name` of `node`.
+function savedSource(workflow, node, name) {
+    const link = node.inputs?.find(input => input.name === name)?.link;
+    const row = link != null ? (workflow.links || []).find(entry => Array.isArray(entry) ? entry[0] === link : entry?.id === link) : null;
+    const origin = Array.isArray(row) ? row[1] : row?.origin_id;
+    return origin != null ? workflow.nodes.find(entry => entry.id === origin) || null : null;
+}
+const isList = value => typeof value === 'string' && value.trim() !== '' && value.trim() !== '[]';
+
 const clone = value => JSON.parse(JSON.stringify(value));
 const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const watched = new WeakMap(), dirty = new Set();
@@ -43,6 +93,10 @@ export function promptDraft(node) {
         versions: String(text ?? '').trim() && versions && typeof versions === 'object' ? clone(versions) : null};
     const widgets = Object.fromEntries((node.widgets || []).filter(w => SAVED_WIDGETS.includes(w.name)).map(w => [w.name, w.value]));
     const properties = Object.fromEntries(PROPERTIES.filter(key => Object.hasOwn(node.properties || {}, key)).map(key => [key, node.properties[key]]));
+    const loras = cleanLoras(widgetValue(liveSource(node, 'loras'), 'adapters'));
+    const assets = cleanAssets(widgetValue(liveSource(node, 'media'), 'assets'));
+    if (loras) draft.loras = loras;
+    if (assets) draft.assets = assets;
     if (Object.keys(widgets).length) draft.widgets = clone(widgets);
     if (Object.keys(properties).length) draft.properties = clone(properties);
     return draft;
@@ -72,7 +126,93 @@ export function applyPromptDraft(workflow, draft) {
     const versions = draft.versions;
     if (versions && typeof versions.original === 'string' && typeof versions.rewritten === 'string')
         node.properties = {...node.properties, freevideo_prompt_versions: clone(versions)};
+    keepLists(workflow, node, draft);
     return workflow;
+}
+
+// Puts the saved LoRA list and reference pictures back, but only where the graph has none: a project the browser
+// still holds, or anything the user already chose, is never replaced by the older copy in the draft.
+function keepLists(workflow, node, draft) {
+    // A card label without the card's name cannot be used: that row waits for a restore that has read the card.
+    const assets = (cleanAssets(draft.assets, true) || []).filter(row => !row.cast || typeof row.cast.name === 'string'), loras = cleanLoras(draft.loras) || [];
+    const media = savedSource(workflow, node, 'media');
+    if (assets.length && media && Array.isArray(media.widgets_values) && !isList(media.widgets_values[0])
+        && !media.properties?.[SWAP_KEY]) media.widgets_values[0] = JSON.stringify(assets);
+    if (!loras.length) return;
+    const stack = savedSource(workflow, node, 'loras');
+    if (stack) {
+        if (Array.isArray(stack.widgets_values) && !isList(stack.widgets_values[0])) stack.widgets_values[0] = JSON.stringify(loras);
+    } else if (!node.inputs?.some(input => input.name === 'loras' && input.link != null)) addLoraStack(workflow, node, loras);
+}
+
+// A LoRA node wired to the generate node's `loras` input, below the bundled layout. No effect without such an input.
+// The launcher builds the same node for a project it carries over (launcher.js, currentStudioWorkflow); it cannot import this.
+function addLoraStack(graph, node, rows) {
+    const input = node.inputs?.findIndex(row => row.name === 'loras') ?? -1;
+    if (!rows.length || input < 0) return false;
+    graph.links ||= [];
+    const id = Math.max(graph.last_node_id || 0, ...graph.nodes.map(row => Number(row.id) || 0)) + 1;
+    const link = Math.max(graph.last_link_id || 0, ...graph.links.map(row => row[0])) + 1;
+    graph.nodes.push({id, type: 'FreeVideoLoRAStack', pos: [60, 660], size: [460, 200], flags: {}, order: 2, mode: 0,
+        inputs: [{name: 'adapters', type: 'STRING', widget: {name: 'adapters'}, link: null}, {name: 'previous', type: 'FREEVIDEO_LORAS', link: null}],
+        outputs: [{name: 'loras', type: 'FREEVIDEO_LORAS', links: [link], slot_index: 0}],
+        properties: {'Node name for S&R': 'FreeVideoLoRAStack'}, widgets_values: [JSON.stringify(rows)]});
+    graph.links.push([link, id, 0, node.id, input, 'FREEVIDEO_LORAS']);
+    node.inputs[input].link = link;
+    graph.last_node_id = id; graph.last_link_id = link;
+    return true;
+}
+
+// What the draft names but this machine no longer has is left out: a LoRA file that is gone from the models folder,
+// a reference picture that was deleted with the last work that used it. When a check cannot be made the row stays.
+async function stillThere(api, draft) {
+    const result = {...draft};
+    const loras = cleanLoras(draft.loras) || [], assets = cleanAssets(draft.assets) || [];
+    if (loras.length) {
+        try {
+            const reply = await api.fetchApi('/models/loras', {cache: 'no-store'});
+            const names = reply.ok ? await reply.json() : null;
+            if (Array.isArray(names)) {
+                const have = new Set(names.map(name => String(name).replaceAll('\\', '/')));
+                result.loras = loras.filter(row => have.has(row.name.replaceAll('\\', '/')));
+            }
+        } catch { /* Keep the rows: the request line above Generate names a missing LoRA. */ }
+    }
+    if (assets.length) {
+        result.assets = (await Promise.all(assets.map(async row => {
+            const found = /^(.*?)(?: \[(input|output|temp)\])?$/.exec(row.file), path = found[1], kind = found[2] || 'input';
+            const cut = path.lastIndexOf('/');
+            const query = new URLSearchParams({filename: path.slice(cut + 1), type: kind, ...(cut > 0 ? {subfolder: path.slice(0, cut)} : {})});
+            try { const reply = await api.fetchApi('/view?' + query, {method: 'HEAD', cache: 'no-store'}); return reply.status === 404 ? null : row; }
+            catch { return row; }
+        }))).filter(Boolean);
+        // A row that names a character card gets the card's name and description back from the library; a card that
+        // cannot be read takes its rows with it.
+        const ids = [...new Set(result.assets.map(row => row.cast?.id).filter(Boolean))];
+        if (ids.length) {
+            let agent = null;
+            try { agent = await import('./agent_session.js'); } catch { /* No library: the rows go. */ }
+            const cards = new Map(await Promise.all(ids.map(async id => {
+                try {
+                    const reply = await agent.agentGet(api, '/freevideo/agent/cast/' + encodeURIComponent(id));
+                    const card = reply.ok ? await reply.json() : null;
+                    return [id, card && typeof card.name === 'string' ? card : null];
+                } catch { return [id, null]; }
+            })));
+            result.assets = result.assets.flatMap(row => {
+                if (!row.cast?.id) return [row];
+                const card = cards.get(row.cast.id);
+                return card ? [{...row, cast: {id: card.id || row.cast.id, name: card.name, description: card.description || '',
+                    ...(card.kind === 'setting' ? {setting: true} : card.kind === 'prop' ? {prop: true} : {})}}] : [];
+            });
+        }
+        // A picture that is gone leaves the draft too, so its name is not kept after the file is.
+        if (result.assets.length < assets.length) {
+            addPatch({assets: result.assets.map(row => cleanAssets([row])[0])});
+            await savePromptDraft(api);
+        }
+    }
+    return result;
 }
 
 // Baseline comes from the configured node, never the shared server draft. A stale
@@ -86,7 +226,7 @@ export function trackPromptDraft(node, onChange, project) {
 function combine(base, patch) {
     const value = {...(patch.project && (base?.schema !== 1 || (base.project && patch.project !== base.project)) ? patch.snapshot
         : base?.schema === 1 ? base : {schema: 1, text: null, versions: null})};
-    for (const key of ['text', 'versions', 'project']) if (Object.hasOwn(patch, key)) value[key] = patch[key];
+    for (const key of ['text', 'versions', 'project', 'loras', 'assets']) if (Object.hasOwn(patch, key)) value[key] = patch[key];
     for (const group of ['widgets', 'properties']) if (patch[group]) {
         value[group] = {...value[group]};
         for (const [key, entry] of Object.entries(patch[group])) {
@@ -113,6 +253,7 @@ function collect(node, notify = true) {
     if (!equal(next.text, previous.text) || !equal(next.versions, previous.versions)) {
         patch.text = next.text; patch.versions = next.versions;
     }
+    for (const key of ['loras', 'assets']) if (next[key] && !equal(next[key], previous[key] ?? [])) patch[key] = next[key];
     for (const group of ['widgets', 'properties']) {
         for (const key of new Set([...Object.keys(previous[group] || {}), ...Object.keys(next[group] || {})])) {
             if (!equal(previous[group]?.[key], next[group]?.[key])) {
@@ -219,6 +360,6 @@ export async function restorePromptDraft(api, workflow, project = null) {
     const local = pending || sending ? mergePatches(sending, pending) : null;
     if (local && (!project || !local.project || local.project === project)) draft = combine(draft, local);
     // Unscoped schema-1 drafts predate project ownership and must migrate too.
-    if (!project || !draft?.project || draft.project === project) return applyPromptDraft(workflow, draft);
+    if (!project || !draft?.project || draft.project === project) return applyPromptDraft(workflow, draft?.schema === 1 ? await stillThere(api, draft) : draft);
     return workflow;
 }

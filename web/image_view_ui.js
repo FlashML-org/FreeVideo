@@ -1,9 +1,9 @@
 import { listenDialogKey } from './dialog_keys.js';
+import { isChinese, translator } from './i18n.js';
 // Small pieces every part of the picture page builds with: elements, line icons, buttons, and the hover
 // description (name, one line of purpose, shortcut) that the shell's tooltip reads from data-fv-tip-*.
-const languageOverride = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('freevideo_lang') : null;
-export const cn = languageOverride === 'zh' || (languageOverride !== 'en' && typeof navigator !== 'undefined' && String(navigator.language || '').toLowerCase().startsWith('zh'));
-export const t = (en, zh) => cn ? zh : en;
+export const cn = isChinese();
+export const t = translator(cn);
 
 export const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 
@@ -12,6 +12,7 @@ const PATHS = {
     model: '<path d="M12 3.5l7.5 4.2v8.6L12 20.5l-7.5-4.2V7.7z"/><path d="M12 12l7.5-4.3M12 12v8.5M12 12L4.5 7.7"/>',
     prompt: '<path d="M5 18.5V7a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H8.5z"/><path d="M8.5 9.5h7M8.5 12.5h4"/>',
     layout: '<rect x="3.5" y="5" width="17" height="14" rx="2" stroke-dasharray="3 2.4"/><rect x="7" y="8.5" width="6" height="5" rx="1"/>',
+    reverse: '<path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M8 10h8M8 14h5"/>',
     refs: '<rect x="3.5" y="4.5" width="13" height="13" rx="3"/><path d="M3.8 14.5l3.6-3.4 3 2.7 2.2-2 3.2 3"/><path d="M19.5 14v6M16.5 17h6"/>',
     size: '<rect x="4" y="6" width="16" height="12" rx="2.5"/><path d="M8 10v4M16 10v4" opacity=".6"/>',
     sliders: '<path d="M4 7.5h9M17 7.5h3M4 16.5h3M11 16.5h9"/><circle cx="15" cy="7.5" r="2"/><circle cx="9" cy="16.5" r="2"/>',

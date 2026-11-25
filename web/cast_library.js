@@ -131,6 +131,9 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         const keyOf = tab => scene ? '' : tab === 'upload' ? (!id && makers.image ? 'image' : '') : makers[tab] ? tab : '';
         let moved = false;
         let generator = null, aiState = {busy: false, done: false}, deleteTimer = null, confirming = false, frontless = scene, beyond = [];
+        // A scene or prop card keeps the LoRAs its chosen picture was made with: savedLoras are the card's own, pickedLoras
+        // those of a picture chosen in this dialog; only a chosen picture changes what the card keeps.
+        let savedLoras = [], pickedLoras = null;
         const slots = Array(SLOTS).fill(null), slotUI = [];
         skin(); const dialog = el('dialog', 'fv-cast-dialog'); dialog.dataset.kind = prop ? 'prop' : scene ? 'scene' : 'character';
         const top = el('div', 'fv-cast-top');
@@ -263,8 +266,12 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
             }
             remove.hidden = true; if (image?.complete) remove.hidden = false; mark(index); sync();
         }
+        // The first picture of a scene card is the one its LoRAs describe: once the person puts their own picture there, or
+        // takes it out, the card keeps no LoRAs (only said when there were some to drop).
+        const firstChanged = index => { if (scene && index === 0) pickedLoras = pickedLoras || savedLoras.length ? [] : null; };
         function chooseFiles(index, files) {
             if (loading || saving || closed) return;
+            if (files.length) firstChanged(index);
             for (const file of Array.from(files).slice(0, SLOTS - index)) {
                 release(index);
                 slots[index] = {file, label: index || scene ? 'other' : 'front', preview: URL.createObjectURL(file)};
@@ -277,7 +284,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
             const input = el('input'); input.type = 'file'; input.accept = 'image/*'; input.hidden = true;
             const label = prop ? text('Image', '图片') : scene ? text(`Image ${index + 1}`, `图片 ${index + 1}`) : index ? text(`View ${index}`, `视角 ${index}`) : text('Front image', '正面图片');
             const choose = button('fv-cast-choose', '', () => input.click()); choose.setAttribute('aria-label', label);
-            const remove = button('fv-cast-remove', '×', () => { release(index); paint(index); });
+            const remove = button('fv-cast-remove', '×', () => { firstChanged(index); release(index); paint(index); });
             remove.setAttribute('aria-label', text('Remove image', '移除图片'));
             choose.dataset.fvTipName = label; choose.dataset.fvTipUse = text('Choose a picture, or drop one here', '选择图片，或把图片拖到这里');
             remove.dataset.fvTipName = text('Remove image', '移除图片'); remove.dataset.fvTipUse = text('Take this picture out', '拿掉这张图片');
@@ -307,6 +314,8 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
                 card.images.slice(0, SLOTS).forEach((picture, index) => { slots[index] = {...picture}; });
                 // The API allows six pictures on a scene card but the dialog shows three: the rest stay as they are.
                 beyond = card.images.slice(SLOTS).map(picture => ({media: picture.media, label: picture.label}));
+                savedLoras = scene && Array.isArray(card.loras) ? card.loras : []; pickedLoras = null;
+                if (savedLoras.length) void generator?.setLoras?.(savedLoras);
                 slotUI.forEach((_, index) => paint(index));
                 generator?.cancel(); aiState = {busy: false, done: false}; select('upload'); resetDelete();
             } finally {
@@ -352,7 +361,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
                 }
                 if (id && scene) images.push(...beyond);
                 if (closed) return;
-                const body = {name: name.value.trim(), images};
+                const body = {name: name.value.trim(), images, ...(scene && pickedLoras ? {loras: pickedLoras} : {})};
                 await value(await (id ? agentSend(api, 'PATCH', path(id), {revision, ...body})
                     : agentPost(api, '/freevideo/agent/cast', {kind, ...body})));
                 maker?.markSaved?.();
@@ -396,7 +405,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         name.value = ''; select('upload'); document.body.append(dialog); dialog.showModal(); name.focus();
         if (id) load().catch(error => message(userMessage(error, text, text('Could not open it. Try again.', '没能打开，请重试。'))));
         // A scene has one set of pictures: the chosen option takes the first place, where the Upload tab shows it.
-        const pick = file => { if (closed || !scene) return; slots[0] = {media: file, label: 'other'}; paint(0); };
+        const pick = file => { if (closed || !scene) return; slots[0] = {media: file, label: 'other'}; pickedLoras = generator?.getLoras?.() ?? null; paint(0); };
         // Scenes and props: the description's candidates. Characters: the four views from each source.
         if (scene) mountGenerator({container: aiPane, api, text, viewURL, kind, onPick: pick, onState: state => {
             if (closed) return;
@@ -404,6 +413,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         }}).then(instance => {
             if (closed) { instance?.cancel(); instance?.destroy(); return; }
             generator = instance; aiTab.hidden = !instance; tabs.hidden = !instance; sync();
+            if (savedLoras.length) void instance?.setLoras?.(savedLoras);
         });
         else for (const [source, pane] of [['photo', photoPane], ...(id ? [] : [['image', imagePane]]), ['ai', aiPane]]) {
             mountPhoto({container: pane, api, text, viewURL, uploadOne, source, onState: state => {

@@ -15,6 +15,7 @@ import { openNotifications, latestFinished, toast, visitJob, openWork } from './
 import { jobs } from './task_store.js';
 import { userMessage } from './user_message.js';
 import { openIssue, preloadIssue } from './issue_button.js';
+import { languageUrl } from './i18n.js';
 
 const browser = typeof document !== 'undefined';
 addSheet('palette.css', import.meta.url);
@@ -206,7 +207,7 @@ function setTheme(theme) {
 }
 const solidNow = () => document.documentElement.dataset.glass === 'solid' || document.documentElement.classList.contains('lite');
 function reloadIn(lang) {
-    const url = new URL(location.href); url.searchParams.set('freevideo_lang', lang);
+    const url = languageUrl(location.href, lang);
     location.assign(url.href);
 }
 

@@ -19,7 +19,7 @@
 .sgf[popover], .sgf-slot[popover], .sgf-fly[popover] { position: fixed; inset: auto; left: 0; top: 0; margin: 0; padding: 0; border: 0; background: transparent; overflow: visible; width: auto; height: auto; max-width: none; max-height: none; color: var(--f-fg); }
 .sgf[popover]:not(:popover-open), .sgf-slot[popover]:not(:popover-open), .sgf-fly[popover]:not(:popover-open) { display: none; }
 .sgf {
-  z-index: var(--fv-z-float, 2000); will-change: transform; font: 400 13px/1.45 "Inter", "Noto Sans SC", "Segoe UI", "PingFang SC", "Microsoft YaHei UI", system-ui, sans-serif; font-feature-settings: "tnum" 1;
+  z-index: var(--fv-z-float, 2000); will-change: transform; font: 400 13px/1.45 var(--fv-font, "Segoe UI", "PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", system-ui, sans-serif); font-feature-settings: "tnum" 1;
   -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
 }
 .sgf .fv-selectable { -webkit-user-select: text; user-select: text; cursor: text; }

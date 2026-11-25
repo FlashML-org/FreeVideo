@@ -78,7 +78,9 @@ def load_conditioning(path, device, *, task, canvas, target=None):
     from .media_conditioning import describe
     value = torch.load(path, map_location='cpu', weights_only=True)
     anchors = tuple(value.get('keyframe_anchors', ()))
-    inferred = {(): 't2va', ('first',): 'i2va', ('last',): 'l2va', ('first', 'last'): 'fl2va'}.get(anchors)
+    from .mid_keyframes import native_anchors
+    inferred = {(): 't2va', ('first',): 'i2va', ('last',): 'l2va',
+                ('first', 'last'): 'fl2va'}.get(native_anchors(anchors))
     actual_task = value.get('task', inferred)
     reference = str(actual_task).startswith('ref2va')
     if (not reference and (actual_task != task or inferred != task)

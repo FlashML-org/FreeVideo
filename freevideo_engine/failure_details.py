@@ -34,6 +34,8 @@ IMAGE_PACK_FAILURES = {
     'busy_setup': ('FreeVideo is being installed, updated or cleaned up; try again when it finishes.', 'FreeVideo 正在安装、更新或清理，完成后再试。'),
     'busy_video': ('A video is using the graphics card; try again when it finishes.', '视频正在使用显卡，完成后再试。'),
     'needs_repair': ('The image model files are incomplete or damaged; repair them in the launcher.', '图像模型文件不完整或已损坏，请在启动器里修复。'),
+    # The text is built in image_pack_failure from model_repair's sentence; this row only makes the code known.
+    'shared_mismatch': ('The image model files are incomplete or damaged; repair them in the launcher.', '图像模型文件不完整或已损坏，请在启动器里修复。'),
     'changed': ('The image model files changed during the check; they were kept, so check again.', '图像模型文件在检查期间发生变化，已保留，请重新检查。'),
     'unsafe_path': ("One of FreeVideo's own record files in the image model folder (image_gen) is a link or leads outside that folder, so it was not written; delete that link and try again.",
                     '图像模型目录（image_gen）里 FreeVideo 自己的记录文件是链接或指向目录之外，所以没有写入；请删掉这个链接后重试。'),
@@ -100,7 +102,39 @@ def image_pack_error_code(error):
     return 'failed'
 
 
-def image_pack_failure(code, *, zh=False):
+# A file the video install shares differs from the tested version, shown where there is no Repair button (the picture
+# page): the file and how it is renamed are on the confirmation page, so this says only where to go (Lane-5x's wording).
+SHARED_MISMATCH_ELSEWHERE = (
+    'A model file differs from the tested version and was left unchanged. '
+    'Select "Repair" in the launcher under Settings > Environment and confirm.',
+    '一个模型文件与测试过的版本不同，这次没有改动它。请在启动器“设置 → 环境”中点击“修复”并确认。')
+# A portable (offline package) installation has no Repair in its launcher.
+SHARED_MISMATCH_PORTABLE = (
+    'A model file differs from the tested version and was left unchanged. '
+    'Extract the package again into a new folder and start FreeVideo from there.',
+    '一个模型文件与测试过的版本不同，这次没有改动它。请把整合包重新解压到新文件夹，再从那里启动 FreeVideo。')
+
+
+def _portable_installation():
+    """Installed from an offline package (the launcher has no Repair there); the same test as bootstrap's."""
+    try:
+        from .paths import data_root
+        return (data_root().parent / 'portable.json').is_file()
+    except OSError:
+        return False
+
+
+def shared_mismatch_text(*, zh=False, portable=None):
+    """The sentence for a differing shared file on the picture page."""
+    if portable is None:
+        portable = _portable_installation()
+    return (SHARED_MISMATCH_PORTABLE if portable else SHARED_MISMATCH_ELSEWHERE)[bool(zh)]
+
+
+def image_pack_failure(code, *, zh=False, file=None):
+    if code == 'shared_mismatch':
+        return dict(kind='image-pack', title=('图像模型操作未完成' if zh else 'Image model operation stopped'),
+                    detail=shared_mismatch_text(zh=zh), action='')
     return dict(kind='image-pack', title=('图像模型操作未完成' if zh else 'Image model operation stopped'),
                 detail=IMAGE_PACK_FAILURES.get(code, IMAGE_PACK_FAILURES['failed'])[bool(zh)], action='')
 
@@ -574,6 +608,13 @@ DRIVER_FOR_LISTED_CARD = (
      'Install the NVIDIA driver, version 580 or newer, restart the computer, then click "Retry installation".'),
     ('NVIDIA 显卡未安装驱动',
      '请安装 580 或更新版本的 NVIDIA 显卡驱动，重启电脑后点击“重试安装”。'))
+
+# Windows lists the card under the model name its NVIDIA driver wrote, so a driver is installed, yet none answers.
+DRIVER_NOT_WORKING = (
+    ('The NVIDIA graphics driver is not working',
+     'Reinstall the NVIDIA driver, version 580 or newer, restart the computer, then click "Retry installation".'),
+    ('NVIDIA 显卡驱动未正常工作',
+     '请重新安装 580 或更新版本的 NVIDIA 显卡驱动，重启电脑后点击“重试安装”。'))
 
 
 # What each download source returned, as one short line per host and route on

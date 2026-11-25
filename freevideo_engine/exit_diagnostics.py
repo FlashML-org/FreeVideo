@@ -5,6 +5,7 @@ started it takes the readings: once when the request starts and once when the
 exit is seen. Only numbers and fixed words leave this module, never text from
 the worker, so a diagnostic report stays free of user data.
 """
+import math
 import os
 import re
 import tempfile
@@ -245,4 +246,94 @@ def clean_reading(value):
         frames = [row for row in stack[:MAX_FRAMES] if isinstance(row, str) and _FRAME_OUT.match(row)]
         if frames:
             result['native_stack'] = frames
+    return result
+
+
+def _number(value):
+    return (type(value) is int and value >= 0
+            or type(value) is float and math.isfinite(value) and value >= 0)
+
+
+MEMORY_DURING_STAGES = frozenset(('start', 'load', 'text', 'encode', 'denoise', 'decode'))
+
+_DURING_REQUEST_COUNTS = frozenset((
+    'min_physical_available_bytes',
+    'min_commit_available_bytes',
+    'peak_worker_private_commit_bytes',
+    'peak_worker_working_set_bytes',
+    'peak_private_commit_bytes',
+    'peak_working_set_bytes',
+))
+
+_DURING_REQUEST_STAGES = frozenset((
+    'min_physical_available_stage',
+    'min_commit_available_stage',
+    'peak_worker_private_commit_stage',
+    'peak_worker_working_set_stage',
+    'peak_private_commit_stage',
+    'peak_working_set_stage',
+))
+
+_WORKER_SAMPLE_COUNTS = frozenset((
+    'worker_private_commit_bytes',
+    'worker_working_set_bytes',
+    'private_commit_bytes',
+    'working_set_bytes',
+    'process_private_commit_bytes',
+    'process_working_set_bytes',
+))
+
+_SAMPLE_ROW_COUNTS = _WORKER_SAMPLE_COUNTS | frozenset((
+    'physical_available_bytes',
+    'commit_available_bytes',
+))
+
+
+def clean_memory_during_request(value):
+    """Whitelist cleaner for memory readings sampled during an image request.
+
+    Rejects arbitrary text, unknown keys and invalid values. Keeps only bounded
+    non-negative integers, finite seconds and fixed stage words.
+    """
+    if not isinstance(value, dict):
+        return {}
+    result = {}
+    for key in _DURING_REQUEST_COUNTS:
+        if key in value and _count(value[key]) is not None:
+            result[key] = value[key]
+    for key in _DURING_REQUEST_STAGES:
+        if value.get(key) in MEMORY_DURING_STAGES:
+            result[key] = value[key]
+
+    last = value.get('last_worker_reading')
+    if isinstance(last, dict):
+        cleaned_last = {}
+        if 'seconds' in last and _number(last['seconds']):
+            cleaned_last['seconds'] = round(float(last['seconds']), 1)
+        if last.get('stage') in MEMORY_DURING_STAGES:
+            cleaned_last['stage'] = last['stage']
+        for key in _WORKER_SAMPLE_COUNTS:
+            if key in last and _count(last[key]) is not None:
+                cleaned_last[key] = last[key]
+        if cleaned_last:
+            result['last_worker_reading'] = cleaned_last
+
+    samples = value.get('samples')
+    if isinstance(samples, (list, tuple)):
+        cleaned_samples = []
+        for row in samples[-5:]:
+            if isinstance(row, dict):
+                cleaned_row = {}
+                if 'seconds' in row and _number(row['seconds']):
+                    cleaned_row['seconds'] = round(float(row['seconds']), 1)
+                if row.get('stage') in MEMORY_DURING_STAGES:
+                    cleaned_row['stage'] = row['stage']
+                for key in _SAMPLE_ROW_COUNTS:
+                    if key in row and _count(row[key]) is not None:
+                        cleaned_row[key] = row[key]
+                if cleaned_row:
+                    cleaned_samples.append(cleaned_row)
+        if cleaned_samples:
+            result['samples'] = cleaned_samples
+
     return result

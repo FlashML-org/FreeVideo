@@ -8,6 +8,7 @@ import {skinSelect} from './fv_select.js';
 import {about} from './request_assets.js';
 import {createImageLoras} from './image_lora.js';
 import {createOtherUsageNotice, otherUsageText} from './other_usage.js';
+import {randomUUID} from './random_id.js';
 // The page's background loading of works (work_media.js) waits while an upload runs.
 const uploadRunning = active => { try { globalThis.dispatchEvent?.(new CustomEvent('freevideo-upload', {detail: {active}})); } catch { /* no page */ } };
 
@@ -174,7 +175,7 @@ export function createImageGenClient(fetchImpl = globalThis.fetch.bind(globalThi
             const folder = await offers('request_folder');
             const ext = folder ? ({'image/jpeg': 'jpg', 'image/webp': 'webp'}[file.type] || 'png') : 'png';
             const body = new FormData();
-            body.append('image', new File([file], folder ? `${crypto.randomUUID()}.${ext}` : `freevideo-image-reference-${crypto.randomUUID()}.png`, {type: file.type || 'image/png'}));
+            body.append('image', new File([file], folder ? `${randomUUID()}.${ext}` : `freevideo-image-reference-${randomUUID()}.png`, {type: file.type || 'image/png'}));
             body.append('type', 'input'); body.append('overwrite', 'false');
             if (folder) body.append('subfolder', PAGE_UPLOAD_FOLDER);
             uploadRunning(true);
@@ -209,14 +210,19 @@ export function packView(info, t) {
     if (own) {
         const waiting = install.state === 'paused_for_generation';
         // A paused download offers to continue now; the note says what it waits for.
-        return {loading: true, waiting, button: waiting ? t('Continue download', '继续下载') : t('Pause', '暂停'), fraction: total > 0 ? Math.min(1, (install.done || 0) / total) : 0,
+        // While a setup, update or cleanup holds the installation the download cannot go on at the user's request: no button, only the note.
+        return {loading: true, waiting, noButton: waiting && install.reason === 'busy_setup', button: waiting ? t('Continue download', '继续下载') : t('Pause', '暂停'), fraction: total > 0 ? Math.min(1, (install.done || 0) / total) : 0,
             note: waiting ? (install.reason === 'busy_video' ? t('Paused while a video generates', '视频生成中，已暂停')
                 : install.reason === 'busy_picture' ? t('Paused while a picture is made', '正在出图，已暂停')
+                : install.reason === 'busy_setup' ? t('Paused while FreeVideo installs, updates or cleans up', 'FreeVideo 正在安装、更新或清理，已暂停')
                 : t('Paused while FreeVideo uses the graphics card for another task', 'FreeVideo 正在用显卡做别的任务，已暂停'))
                 : t(`Downloading · ${gb(install.done || 0)}\u00a0GB / ${size}${time}`, `正在下载 · ${gb(install.done || 0)}\u00a0GB / ${size}${time}`)};
     }
     const resume = install.state === 'failed' || install.state === 'cancelled' || install.done > 0;
     const reason = install.state === 'failed' ? t(install.message_en, install.message_zh) : '';
+    // A file the video install shares differs: downloading again would stop at the same place, and the launcher's Repair
+    // (named in the note) is the way on, so no button is offered here.
+    if (install.state === 'failed' && install.reason === 'shared_mismatch' && reason) return {loading: false, fraction: null, reason: true, button: '', note: reason};
     return {loading: false, fraction: null, reason: !!reason, button: resume ? t('Resume download', '继续下载') : t('Download image generation models', '下载图像生成模型'),
         note: reason || (resume ? t(`${gb(install.done || 0)}\u00a0GB / ${size}${time}`, `${gb(install.done || 0)}\u00a0GB / ${size}${time}`) : size + time)};
 }
@@ -446,7 +452,7 @@ export async function uploadGenerationReference(renderer, client, context, alive
         blob = await new Promise((resolve, reject) => raster.toBlob(b => b ? resolve(b) : reject(failure(undefined, {step: 'encode_reference'})), 'image/png'));
     } else blob = (await renderer.export(context.doc, 'image/png')).blob;
     if (!alive()) throw failure('cancelled');
-    const file = new File([blob], `freevideo-image-reference-${crypto.randomUUID()}.png`, {type: 'image/png'});
+    const file = new File([blob], `freevideo-image-reference-${randomUUID()}.png`, {type: 'image/png'});
     return client.upload(file);
 }
 
@@ -466,7 +472,7 @@ export async function uploadGenerationMask(renderer, client, context, alive = ()
     if (!any) return null;
     const blob = await new Promise((resolve, reject) => mask.toBlob(b => b ? resolve(b) : reject(failure(undefined, {step: 'encode_mask'})), 'image/png'));
     if (!alive()) throw failure('cancelled');
-    return client.upload(new File([blob], `freevideo-image-mask-${crypto.randomUUID()}.png`, {type: 'image/png'}));
+    return client.upload(new File([blob], `freevideo-image-mask-${randomUUID()}.png`, {type: 'image/png'}));
 }
 
 // The object under a click, as the name of a black and white picture the size of the layer's pixels.
@@ -488,7 +494,7 @@ export async function segmentAt(renderer, client, doc, layer, point, again = fal
         const blob = await new Promise((resolve, reject) => raster.toBlob(b => b ? resolve(b) : reject(failure(undefined, {step: 'encode_segment'})), 'image/png'));
         // The layer's previous look is not needed any more: its upload goes.
         if (known?.name) { segmentNames.delete(known.name); Promise.resolve().then(() => client.discardUploads?.([known.name])).catch(() => {}); }
-        known = {look, name: await client.upload(new File([blob], `freevideo-image-reference-${crypto.randomUUID()}.png`, {type: 'image/png'})), width: raster.width, height: raster.height};
+        known = {look, name: await client.upload(new File([blob], `freevideo-image-reference-${randomUUID()}.png`, {type: 'image/png'})), width: raster.width, height: raster.height};
         segmentUploads.set(layer, known); segmentNames.add(known.name);
     }
     const x = Math.min(known.width - 1, Math.max(0, Math.floor(point[0] * known.width))), y = Math.min(known.height - 1, Math.max(0, Math.floor(point[1] * known.height)));
@@ -525,7 +531,7 @@ export async function uploadExtraReferences(client, references, render, alive = 
     for (const item of references) {
         const blob = await render(item.file);
         if (!alive()) throw failure('cancelled');
-        names.push(await client.upload(new File([blob], `freevideo-image-reference-${crypto.randomUUID()}.png`, {type: 'image/png'})));
+        names.push(await client.upload(new File([blob], `freevideo-image-reference-${randomUUID()}.png`, {type: 'image/png'})));
         if (!alive()) throw failure('cancelled');
     }
     return names;
@@ -1048,7 +1054,7 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
         action.classList.toggle('fv-ie-primary', !state.running);
         action.setAttribute('aria-disabled', String(!pack && !state.running && (disabled || !prompt.trim())));
         action.title = !pack && !state.running && !prompt.trim() ? t('Enter a prompt first', '请先填写提示词') : '';
-        action.hidden = !!missing && !pack;
+        action.hidden = !!missing && !(pack && pack.button) || !!pack?.noButton;
         const percent = Math.floor(state.fraction * 100) + '%';
         if (state.error && !promptRequired) {
             const failureKey = `${state.error}:${state.report_id || ''}:${state.stage || ''}:${state.memory || ''}`;
@@ -1121,6 +1127,7 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
         const note = el('div', '', 'fv-ie-opt-note fv-ie-gen-note'); note.setAttribute('role', 'status');
         const action = button(t('Generate', '生成'), null, () => {
             const now = session.state(), pack = !now.running && now.info && !now.info.installed ? packView(now.info, t) : null;
+            if (pack && !pack.button) return;
             if (pack) void session.pack(pack.loading && !pack.waiting ? 'cancel' : 'install');
             else if (now.running) void stop(); else void start();
         }, 'fv-ie-button fv-ie-primary');

@@ -420,6 +420,22 @@ def local_model_ui(message):
                 remaining_seconds=(total-done)/rate if total and rate and phase in ('verify', 'copy') else None)
 
 
+def start_failure_note(failure, command, source):
+    """One line for a child that could not be started: the system's error number and the files it was given."""
+    code = getattr(failure, 'winerror', None)
+    parts = ['The task could not be started']
+    if isinstance(code, int):
+        parts.append('Windows error %d' % code)
+    elif isinstance(failure.errno, int):
+        parts.append('error %d' % failure.errno)
+    if failure.filename:
+        parts.append('path %s' % failure.filename)
+    if command:
+        parts.append('program %s' % command[0])
+    parts.append('folder %s' % source)
+    return ', '.join(parts)
+
+
 class Runner:
     def __init__(self, source, events, logs=None):
         self.source, self.events = Path(plain(source)), events
@@ -478,7 +494,7 @@ class Runner:
         run = io_path(self.logs) / (time.strftime('%Y%m%dT%H%M%SZ', time.gmtime()) + '-' + uuid.uuid4().hex[:8])
         code, output, error = None, '', None
         # what a report can say when the child left no text: how much it printed, and what stopped the run
-        lines, failed_with = 0, None
+        lines, failed_with, winerror, command, refused = 0, None, None, None, None
         started = time.monotonic()
         try:
             run.mkdir(parents=True)
@@ -535,6 +551,9 @@ class Runner:
                         self.process = processes.popen(command, cwd=self.source, env=env, stdin=subprocess.DEVNULL,
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace',
                             start_new_session=True, supervise=True)
+                    except OSError as failure:
+                        refused = failure   # only the system's refusal to start the child gets the start note
+                        raise
                     finally:
                         if dll_directory is not None:
                             ctypes.windll.kernel32.SetDllDirectoryW(dll_directory)
@@ -558,6 +577,11 @@ class Runner:
         except BaseException as failure:
             failed_with = type(failure).__name__
             error = plain_text(repr(failure))
+            if failure is refused:
+                # The system refused to start the child, so repr() alone names neither the code nor the path
+                # it refused; a report that keeps only the first lines must still say both.
+                winerror = getattr(failure, 'winerror', None)
+                error += plain_text('\n' + start_failure_note(failure, command, self.source))
             detail = plain_text('\n' + traceback.format_exc())
             output += detail
             try:
@@ -571,7 +595,7 @@ class Runner:
         finally:
             result = dict(action=action, status='cancelled' if self.cancelled.is_set() else 'complete' if code == 0 else 'failed',
                 returncode=code, error=error, wall_seconds=time.monotonic()-started, root=str(root), log=plain(run),
-                lines=lines, failed_with=failed_with)
+                lines=lines, failed_with=failed_with, winerror=winerror)
             try:
                 save(run / 'status.json', result)
             except OSError as failure:

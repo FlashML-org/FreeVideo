@@ -775,6 +775,10 @@ class Session:
             # the editable setup form may currently describe another installation.
             self.remember(self.selected, persist=False)
             self.repair_request = dict(self.form, repair=True)
+            if self.installed_machine().get('video_model') is False:
+                # Set up with MiniMax H3 Image alone: repair that, whatever the model step's form says now
+                # (it defaults to the video model, and "Add the video model" sets it to the video model).
+                self.repair_request['install_model'] = 'image'
             self.persist()
             self.controller.run('inspect', self.setup_values(self.repair_request))
             self.page = 'progress'
@@ -1001,7 +1005,7 @@ class Session:
             return
         root, engine = self._image_location()
         # Repair and Remove need the engine lease, which a task (or the idle image session) holds; say why instead of failing a second later.
-        if action in ('repair', 'remove') and self._image_engine_state(engine, fresh=True) == 'running':
+        if action in ('repair', 'remove', 'verify') and self._image_engine_state(engine, fresh=True) == 'running':
             self.image_engine_clicked = True
             return
         # Both packs share one lease and one disk: one download at a time.
@@ -1089,18 +1093,31 @@ class Session:
         detail = self.t(*labels[value['state']])
         if value.get('checking'):
             detail = self.t('Checking', '正在校验')
-        # Repair only answers a pack that is ready or known to be damaged; half a download just continues.
-        repairable = value['state'] in ('ready', 'invalid')
+        # Repair only answers a pack known to be damaged (or a check that found damage); half a download just continues.
+        repairable = value['state'] == 'invalid'
+        # A finished check that found damage is an answer, not a failure: the card says how many files need repair and offers Repair.
+        if (active.get('action') == 'verify' and active.get('state') == 'failed'
+                and active.get('reason') in ('needs_repair', 'integrity_failed')):
+            bad = sum(1 for v in installer.file_checks.values() if v.get('verification') in ('mismatch', 'missing')) or 1
+            active = dict(active, state='checked')
+            repairable = True
+            detail = self.t('1 file needs repair' if bad == 1 else f'{bad} files need repair', f'有 {bad} 个文件需要修复')
         if active.get('state') == 'running':
             labels = {'install': ('Downloading', '正在下载'), 'repair': ('Repairing', '正在修复'),
                       'remove': ('Removing', '正在删除'), 'verify': ('Checking', '正在检查')}
             detail = self.t(*labels[active['action']])
+            if active['action'] == 'verify' and active.get('verify_total'):
+                percent = min(100, int(100 * (active.get('verify_done') or 0) / active['verify_total']))
+                detail = self.t(f'Checking {percent}%', f'检查中 {percent}%')
             if active.get('action') == 'install' and active.get('phase') == 'verify':
                 detail = self.t('Checking', '正在校验')
+        elif active.get('action') == 'verify' and active.get('state') == 'done':
+            detail = self.t('Files intact', '文件完好')
         elif active.get('state') == 'paused_for_generation':
             # What the download waits for: a video, a picture, or another task holding the graphics card.
             detail = {'busy_video': self.t('Paused while a video generates', '视频生成中，已暂停'),
-                      'busy_picture': self.t('Paused while a picture is made', '正在出图，已暂停')}.get(
+                      'busy_picture': self.t('Paused while a picture is made', '正在出图，已暂停'),
+                      'busy_setup': self.t('Paused while FreeVideo installs, updates or cleans up', 'FreeVideo 正在安装、更新或清理，已暂停')}.get(
                 active.get('reason'), self.t('Paused: the graphics card is busy', '显卡忙，已暂停'))
         elif active.get('state') == 'cancelled':
             detail = self.t('Paused', '已暂停')
@@ -2778,16 +2795,19 @@ class Session:
                                    model_package=model_mismatch_package(raw_error, zh),
                                    exception=row.get('exception') if own else None)
         if failure.get('kind') == 'gpu-driver-missing':
-            from .display_adapters import adapters, line, only_other_vendors
+            from .display_adapters import adapters, line, nvidia_driver_listed, only_other_vendors
             zh = self.language.startswith('zh')
             names = adapters()
             if line(zh, names):
                 failure['note'] = line(zh, names)
             if only_other_vendors(names):
-                # No NVIDIA card is listed: the card says what FreeVideo needs, and the note would repeat it.
+                # No NVIDIA card is listed: the card says what FreeVideo needs; the note names what was found.
                 from .failure_details import UNSUPPORTED_VENDOR
                 failure['title'], failure['action'] = UNSUPPORTED_VENDOR[1 if zh else 0]
-                failure.pop('note', None)
+            elif nvidia_driver_listed(names):
+                # Its driver named the card, so a driver is installed but does not answer: reinstall it.
+                from .failure_details import DRIVER_NOT_WORKING
+                failure['title'], failure['action'] = DRIVER_NOT_WORKING[1 if zh else 0]
             elif names:
                 from .failure_details import DRIVER_FOR_LISTED_CARD
                 failure['title'], failure['action'] = DRIVER_FOR_LISTED_CARD[1 if zh else 0]

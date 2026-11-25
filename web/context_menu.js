@@ -8,12 +8,11 @@
 // Nothing here runs at import under Node, so the unit tests load it as it is.
 
 import { isolateDialogKeys, listenDialogKey } from './dialog_keys.js';
+import { isChinese, translator } from './i18n.js';
 
 const browser = typeof document !== 'undefined';
-const query = browser ? new URLSearchParams(globalThis.location?.search || '') : new URLSearchParams();
-const forced = query.get('freevideo_lang');
-export const CN = forced === 'zh' || (forced !== 'en' && String(globalThis.navigator?.language || '').toLowerCase().startsWith('zh'));
-export const t = (en, zh) => CN ? zh : en;
+export const CN = isChinese();
+export const t = translator(CN);
 // [en, zh] pairs, plain strings and functions returning either all read the same way.
 export const words = (value, cn = CN) => typeof value === 'function' ? words(value(), cn) : Array.isArray(value) ? String(value[cn ? 1 : 0] ?? value[0] ?? '') : String(value ?? '');
 export const MAC = /Mac|iPhone|iPad/.test(globalThis.navigator?.platform || globalThis.navigator?.userAgent || '');

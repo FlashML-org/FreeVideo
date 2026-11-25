@@ -1589,6 +1589,53 @@ def remove_tree(path):
     shutil.rmtree(io_path(path), onerror=writable)
 
 
+RENAME_HELD_SECONDS = 8.0
+HELD_FOLDER_ERRORS = (5, 32)  # Windows: access denied, sharing violation (a file inside is open elsewhere)
+
+
+def rename_when_released(source, destination, commit, *, sleep=time.sleep, clock=time.monotonic):
+    """Put a finished Git download in place.
+
+    Windows refuses to rename a folder while a program (a virus scanner, the search indexer) still has
+    one of the files just written open. Such a hold is usually short, so the rename is tried again for a
+    few seconds; if the folder stays held, its files are copied instead, and the copy is accepted only
+    when it holds the pinned commit. Any other error, and a hold that outlasts both, is raised as it came.
+    """
+    source, destination = io_path(source), io_path(destination)
+    try:
+        source.rename(destination)
+        return
+    except OSError as first:
+        if getattr(first, 'winerror', None) not in HELD_FOLDER_ERRORS:
+            raise
+        failure = first
+    deadline, pause = clock() + RENAME_HELD_SECONDS, .1
+    while clock() < deadline:
+        sleep(pause)
+        pause = min(pause * 2, 1.0)
+        try:
+            source.rename(destination)
+            return
+        except OSError as again:
+            if getattr(again, 'winerror', None) not in HELD_FOLDER_ERRORS:
+                raise
+            failure = again
+    try:
+        shutil.copytree(source, destination, symlinks=True, copy_function=shutil.copyfile)
+        head = io_path(destination / '.git' / 'HEAD').read_text(encoding='utf-8').strip()
+        if head != commit:
+            raise OSError('The copied folder is not at the pinned commit')
+    except BaseException as error:
+        try:
+            if destination.exists():
+                remove_tree(destination)
+        except OSError:
+            pass  # Held by another program; the failure below is the one that matters.
+        if not isinstance(error, Exception):
+            raise
+        raise failure from None
+
+
 def relocate(source, destination):
     """Move a finished folder; where a rename cannot (another volume) copy it."""
     source, destination = io_path(source), io_path(destination)
@@ -2036,7 +2083,7 @@ def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None)
                 relocate(work, temporary)
             old = set_aside(target) if replacing else None
             try:
-                io_path(temporary).rename(io_path(target))
+                rename_when_released(temporary, target, commit)
             except OSError as error:
                 if old is None:
                     raise

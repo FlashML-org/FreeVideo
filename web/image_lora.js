@@ -153,14 +153,17 @@ export function createImageLoras({t, fetchApi, el = domEl, getPrompt = () => '',
         drawSummary();
     }
 
+    async function readNames() {
+        const response = await fetchApi('/models/loras', {cache: 'no-store'});
+        if (!response.ok) throw new Error(response.statusText);
+        const listed = (await response.json()).filter(n => typeof n === 'string');
+        skipped = listed.filter(n => /\.(ckpt|pt|pth|bin|sft)$/i.test(n)).length;
+        names = listed.filter(n => n.toLowerCase().endsWith('.safetensors'));
+        verdicts.clear();
+    }
     async function refresh() {
         try {
-            const response = await fetchApi('/models/loras', {cache: 'no-store'});
-            if (!response.ok) throw new Error(response.statusText);
-            const listed = (await response.json()).filter(n => typeof n === 'string');
-            skipped = listed.filter(n => /\.(ckpt|pt|pth|bin|sft)$/i.test(n)).length;
-            names = listed.filter(n => n.toLowerCase().endsWith('.safetensors'));
-            verdicts.clear(); render(); changed();
+            await readNames(); render(); changed();
         } catch (error) {
             if (!disposed) note.textContent = t('Could not read the LoRA folder.', '无法读取 LoRA 文件夹。');
         }
@@ -182,6 +185,17 @@ export function createImageLoras({t, fetchApi, el = domEl, getPrompt = () => '',
         refresh,
         /** After the prompt box is cleared or replaced, trigger words are put back for the rows still on. */
         reconcile: syncPrompt,
+        /** Puts a saved list in the rows (a card's own LoRAs). A file that is no longer in the folder is left out, no
+         *  empty row stays. */
+        async load(saved) {
+            const wanted = (Array.isArray(saved) ? saved : []).filter(r => r && typeof r.name === 'string')
+                .slice(0, IMAGE_LORA_LIMIT).map(r => ({name: r.name, strength: Number.isFinite(Number(r.strength)) ? Number(r.strength) : 1, enabled: r.enabled !== false}));
+            if (!wanted.length) return;
+            try { await readNames(); } catch { /* The folder cannot be read now: the rows are kept as they were saved. */ }
+            if (disposed) return;
+            rows = wanted.filter(r => !names || names.includes(r.name));
+            render();
+        },
         dispose() { disposed = true; },
     };
 }

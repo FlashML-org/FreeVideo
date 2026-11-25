@@ -768,6 +768,8 @@ def smoke_connect(app, engine, window, bridge, destination, values):
 
 
 def main(session=None):
+    from .installed_entry import protect
+    protect()
     if (getattr(sys, 'frozen', False) and sys.platform == 'darwin'
             and sys.argv[1:2] == ['--macos-process-host']):
         from .macos_process_host import main as supervise

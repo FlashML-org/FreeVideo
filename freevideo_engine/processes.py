@@ -39,7 +39,8 @@ def module_command(module, *arguments):
     if getattr(sys, 'frozen', False) and sys.platform.startswith('linux'):
         # The Linux launcher (AppImage) runs its own helpers; see modern_launcher.main.
         return [sys.executable, '--freevideo-module', module, *map(str, arguments)]
-    code = ("import runpy,sys;sys.path.insert(0,sys.argv.pop(1));"
+    from .installed_entry import INSTALLED_ONLY
+    code = (INSTALLED_ONLY + "import runpy;sys.path.insert(0,sys.argv.pop(1));"
             "runpy.run_module(sys.argv.pop(1),run_name='__main__',alter_sys=True)")
     source = Path(__file__).resolve().parents[1]
     view = launch_view.current()

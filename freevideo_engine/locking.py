@@ -299,6 +299,40 @@ def failure_frames(error, limit=12):
             for frame in traceback.extract_tb(error.__traceback__)[-limit:]]
 
 
+LOCKFILE_FAIL_IMMEDIATELY = 0x1
+
+
+def windows_byte_lock_call(name, descriptor, *flags):
+    """kernel32 LockFileEx / UnlockFileEx on the first byte (Offset 0, length 1) of the descriptor's file."""
+    import ctypes
+    import msvcrt
+
+    class Overlapped(ctypes.Structure):  # OVERLAPPED: the byte range starts at Offset/OffsetHigh (0 here)
+        _fields_ = [('Internal', ctypes.c_void_p), ('InternalHigh', ctypes.c_void_p), ('Offset', ctypes.c_uint32),
+                    ('OffsetHigh', ctypes.c_uint32), ('hEvent', ctypes.c_void_p)]
+
+    call = getattr(ctypes.WinDLL('kernel32', use_last_error=True), name)
+    call.argtypes = [ctypes.c_void_p] + [ctypes.c_uint32] * (len(flags) + 2) + [ctypes.POINTER(Overlapped)]
+    call.restype = ctypes.c_int
+    if not call(msvcrt.get_osfhandle(descriptor), *flags, 1, 0, ctypes.byref(Overlapped())):
+        raise ctypes.WinError(ctypes.get_last_error())
+
+
+def windows_shared_lock(descriptor):
+    """A shared lock on the file's first byte, failing at once when it is held exclusively (Windows).
+
+    msvcrt.locking has no shared mode: its LK_NBRLCK is the same as LK_NBLCK, an exclusive LockFile, so two holders
+    of the "shared" machine lease excluded each other and a generation on a second GPU waited for the first one to
+    end. LockFileEx without LOCKFILE_EXCLUSIVE_LOCK takes the shared lock; the exclusive leases keep msvcrt.locking,
+    whose LockFile lock on the same byte excludes it and is excluded by it."""
+    windows_byte_lock_call('LockFileEx', descriptor, LOCKFILE_FAIL_IMMEDIATELY, 0)
+
+
+def windows_shared_unlock(descriptor):
+    """Release the shared lock taken by windows_shared_lock, at the same byte, before the handle is closed."""
+    windows_byte_lock_call('UnlockFileEx', descriptor, 0)
+
+
 @contextmanager
 def runtime_lock(path=None, *, inherit=True, shared=False, wait_seconds=0):
     """Take a lease, optionally waiting a bounded time for acquisition only."""
@@ -315,6 +349,7 @@ def runtime_lock(path=None, *, inherit=True, shared=False, wait_seconds=0):
         if (actual.st_dev, actual.st_ino) != (expected.st_dev, expected.st_ino):
             raise ValueError('Inherited runtime lock descriptor does not match the GPU-work lock')
         stream = os.fdopen(os.dup(descriptor), 'a+b')
+    windows_shared_held = False
     try:
         # An inherited descriptor shares the parent's open-file description.
         # Close our descriptor on exit; do not unlock the parent's live work.
@@ -329,10 +364,13 @@ def runtime_lock(path=None, *, inherit=True, shared=False, wait_seconds=0):
                             stream.flush()
                         stream.seek(0)
                         try:
-                            msvcrt.locking(stream.fileno(),
-                                           msvcrt.LK_NBRLCK if shared else msvcrt.LK_NBLCK, 1)
+                            if shared:
+                                windows_shared_lock(stream.fileno())
+                                windows_shared_held = True
+                            else:
+                                msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
                         except OSError as error:
-                            raise BlockingIOError('Another process holds the installation lease') from error
+                            raise BlockingIOError(ENGINE_BUSY) from error
                     # The parent holds the byte-range lock; its Job Object owns this
                     # worker tree. Closing a duplicated child handle must not unlock it.
                 else:
@@ -352,6 +390,12 @@ def runtime_lock(path=None, *, inherit=True, shared=False, wait_seconds=0):
         # The body is outside the retry loop: a failed request must never rerun.
         yield stream.fileno()
     finally:
+        if windows_shared_held:
+            try:
+                windows_shared_unlock(stream.fileno())
+            except OSError as error:
+                # The close below releases the byte range anyway.
+                print('Could not unlock the shared lease at %s: %s.' % (path, error), file=sys.stderr, flush=True)
         # Releasing the lease must not discard completed work. Taking it still
         # fails loudly, but once the request has run, a close that fails has
         # nothing left to protect: the kernel drops the descriptor when this

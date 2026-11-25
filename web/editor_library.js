@@ -146,6 +146,12 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
             const value = metadata(row, kind), key = `${kind}:${row.id}`;
             event.dataTransfer.effectAllowed = 'copy';
             event.dataTransfer.setData('application/x-freevideo-source', JSON.stringify({key, ...value}));
+            // The picture follows the pointer, not a see-through copy of the whole button; a sound has no picture and keeps the default.
+            const thumb = picture.querySelector('img');
+            if (thumb && !thumb.hidden && thumb.complete && thumb.naturalWidth) {
+                const box = thumb.getBoundingClientRect();
+                event.dataTransfer.setDragImage(thumb, Math.round(box.width / 2), Math.round(box.height / 2));
+            }
             store.getSources([key]).catch(actions.error);
         };
         // Single click previews the source; double click also inserts it.

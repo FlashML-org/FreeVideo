@@ -39,3 +39,10 @@ html.fv-dragging,html.fv-dragging *{-webkit-user-select:none!important;user-sele
 
 /* FreeVideo's own selection colour. */
 :is(.fv-app,dialog.fv-studio,.fv-view-navigation,.fv-setup,.fv-library) ::selection{background:var(--fv-selection,var(--fv-accent-soft,rgb(79 140 255 / .3)));color:inherit}
+
+/* Reading (this sheet is the one every FreeVideo surface loads): the explanation in a failure card or a notice bar
+   wraps so its last line is not one or two characters on their own ("试。"). Only the wrapping style is set, not
+   whether the text wraps, and with zero specificity, so a part's own balance or nowrap stays; browsers without
+   text-wrap-style wrap as before. */
+:where(.fv-failure p:not(.fv-failure-cause,.fv-failure-location),.fv-image-failure-reason,.fv-ed-failure-reason,.fv-chat-error,
+  .fv-chat-notice,.fv-chat-job[data-mode=failed]>p,.fv-ed-notice-text,.fv-update-notice>span,.fv-lan-reason){text-wrap-style:pretty}

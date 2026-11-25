@@ -1079,20 +1079,29 @@ ApplicationWindow {
                         Layout.fillWidth: true; padding: 22; spacing: 10
                         color: s.image_pack.install.state === "failed" ? theme.dangerSubtle : theme.surface
                         border.color: s.image_pack.install.state === "failed" ? theme.dangerLine : theme.border
-                        RowLayout {
-                            Layout.fillWidth: true; spacing: 14
+                        GridLayout {
+                            Layout.fillWidth: true; columnSpacing: 14; rowSpacing: 10; columns: width < 640 ? 1 : 2
                             ColumnLayout {
                                 Layout.fillWidth: true; spacing: 4
                                 FText { objectName: "imagePackTitle"; text: s.image_pack.title; font.weight: Font.DemiBold; Layout.fillWidth: true }
                                 FText { objectName: "imagePackStatus"; visible: s.image_pack.install.state !== "failed"; text: s.image_pack.detail; color: theme.muted; Layout.fillWidth: true }
                             }
-                            FText { objectName: "imagePackSize"; text: gb(s.image_pack.total_bytes); color: theme.muted }
-                            FButton { objectName: "imagePackInstall"; visible: !s.image_pack.ready && !s.image_pack.busy; text: s.image_pack.downloaded_bytes > 0 ? t("Resume", "继续") : t("Download", "下载"); enabled: s.image_pack.can_act; onClicked: backend.imagePackAction("install") }
-                            FButton { objectName: "imagePackCancel"; visible: s.image_pack.busy; text: t("Pause", "暂停"); flat: true; onClicked: backend.imagePackAction("cancel") }
-                            FButton { objectName: "imagePackRepair"; visible: s.image_pack.repairable && s.image_pack.downloaded_bytes > 0 && !s.image_pack.busy; text: t("Repair", "修复"); flat: true; enabled: s.image_pack.can_act; unavailable: s.image_pack.engine_state === "running"; onClicked: backend.imagePackAction("repair") }
-                            FButton { objectName: "imagePackRemove"; visible: s.image_pack.removable_bytes > 0 && !s.image_pack.busy; text: t("Remove", "删除"); flat: true; enabled: s.image_pack.can_act; unavailable: s.image_pack.engine_state === "running"; onClicked: backend.imagePackAction("remove") }
+                            Flow {
+                                id: imagePackActions
+                                spacing: 14; Layout.fillWidth: parent.columns === 1; Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                                // Wide: one row at its natural width. Narrow: the size takes the first line and the buttons start the next, aligned with it.
+                                property real rowWidth: { var w = 0, n = 0; for (var i = 0; i < children.length; i++) if (children[i].visible) { w += children[i].implicitWidth; n++ } return w + Math.max(0, n - 1) * spacing }
+                                Layout.minimumWidth: parent.columns === 1 ? 0 : rowWidth
+                                Layout.preferredWidth: parent.columns === 1 ? -1 : rowWidth
+                                FText { objectName: "imagePackSize"; width: imagePackActions.parent.columns === 1 ? imagePackActions.width : implicitWidth; text: gb(s.image_pack.total_bytes); color: theme.muted }
+                                FButton { objectName: "imagePackInstall"; visible: !s.image_pack.ready && !(s.image_pack.repairable && s.image_pack.downloaded_bytes > 0) && !s.image_pack.busy; text: s.image_pack.downloaded_bytes > 0 ? t("Resume", "继续") : t("Download", "下载"); enabled: s.image_pack.can_act; onClicked: backend.imagePackAction("install") }
+                                FButton { objectName: "imagePackCancel"; visible: s.image_pack.busy; text: t("Pause", "暂停"); flat: true; onClicked: backend.imagePackAction("cancel") }
+                                FButton { objectName: "imagePackRepair"; visible: s.image_pack.repairable && s.image_pack.downloaded_bytes > 0 && !s.image_pack.busy; text: t("Repair", "修复"); enabled: s.image_pack.can_act; unavailable: s.image_pack.engine_state === "running"; onClicked: backend.imagePackAction("repair") }
+                                FButton { objectName: "imagePackCheck"; visible: s.image_pack.ready && !s.image_pack.busy; text: t("Check files", "检查文件"); flat: true; enabled: s.image_pack.can_act; unavailable: s.image_pack.engine_state === "running"; onClicked: backend.imagePackAction("verify") }
+                                FButton { objectName: "imagePackRemove"; visible: s.image_pack.removable_bytes > 0 && !s.image_pack.busy; text: t("Remove", "删除"); flat: true; enabled: s.image_pack.can_act; unavailable: s.image_pack.engine_state === "running"; onClicked: backend.imagePackAction("remove") }
+                            }
                         }
-                        FText { objectName: "imagePackEngineNote"; visible: s.image_pack.engine_state === "running"; text: s.image_pack.engine_note; color: s.image_pack.engine_clicked ? theme.danger : theme.muted; Layout.fillWidth: true }
+                        FText { objectName: "imagePackEngineNote"; wrapMode: Text.WordWrap; visible: s.image_pack.engine_state === "running"; text: s.image_pack.engine_note; color: s.image_pack.engine_clicked ? theme.danger : theme.muted; Layout.fillWidth: true }
                         FText { objectName: "imagePackFailureReason"; visible: s.image_pack.install.state === "failed"; text: s.image_pack.detail; color: theme.danger; Layout.fillWidth: true }
                         FButton { objectName: "imagePackReport"; visible: s.image_pack.install.state === "failed"; text: reportOpened((s.image_pack.detail || "") + (s.image_pack.report_line ? "\n" + s.image_pack.report_line : ""), t("Image pack", "图像模型包")) ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened((s.image_pack.detail || "") + (s.image_pack.report_line ? "\n" + s.image_pack.report_line : ""), t("Image pack", "图像模型包")); onClicked: backend.reportProblem((s.image_pack.detail || "") + (s.image_pack.report_line ? "\n" + s.image_pack.report_line : ""), t("Image pack", "图像模型包")) }
                         Flow {

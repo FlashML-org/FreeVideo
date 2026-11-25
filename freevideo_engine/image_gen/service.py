@@ -3,7 +3,7 @@ import atexit
 import contextlib
 from datetime import datetime, timezone
 import asyncio
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from copy import deepcopy
 import json
 import logging
@@ -21,7 +21,7 @@ import time
 import uuid
 
 from . import image_model, image_pack, keep, progress_model
-from .. import server_mode
+from .. import model_repair, server_mode
 from .loras import ERRORS as LORA_ERRORS, resolve_selection
 from ..disk_space import ran_out
 
@@ -221,6 +221,205 @@ class Worker:
                 pass
 
 
+class MemorySampler:
+    """Daemon thread sampling memory during an image request (every ~2 seconds).
+
+    Swallows all exceptions so sampling never interferes with inference.
+    """
+    def __init__(self, context, interval=2.0, clock=time.monotonic):
+        self.session = None
+        self.context = context
+        self.interval = interval
+        self.clock = clock
+        self.started_at = self.clock()
+        self.stop_event = threading.Event()
+        self.lock = threading.Lock()
+        self.thread = None
+        self.min_physical = None
+        self.min_physical_stage = None
+        self.min_commit = None
+        self.min_commit_stage = None
+        self.peak_worker_private_commit = None
+        self.peak_worker_private_commit_stage = None
+        self.peak_worker_working_set = None
+        self.peak_worker_working_set_stage = None
+        self.last_worker_reading = None
+        self.samples = deque(maxlen=5)
+
+    def start(self, session):
+        """Sample the given worker session; a retry on a fresh worker keeps the readings of the first try."""
+        self.session = session
+        self.stop_event = threading.Event()
+        try:
+            self.thread = threading.Thread(target=self._run, name='freevideo-image-memory-sampler', daemon=True)
+            self.thread.start()
+        except Exception:
+            pass
+        return self
+
+    def stop(self):
+        self.stop_event.set()
+        try:
+            if self.thread is not None and self.thread.is_alive():
+                self.thread.join(timeout=2.0)
+        except Exception:
+            pass
+
+    def is_alive(self):
+        try:
+            return self.thread is not None and self.thread.is_alive()
+        except Exception:
+            return False
+
+    @staticmethod
+    def _linux_tree_resident(root_pid, limit=64):
+        """Resident bytes of a process and its descendants: the worker runs under a supervising host process."""
+        try:
+            page = os.sysconf('SC_PAGE_SIZE')
+        except Exception:
+            return None
+        total, seen, pending = None, set(), [root_pid]
+        while pending and len(seen) < limit:
+            pid = pending.pop()
+            if pid in seen:
+                continue
+            seen.add(pid)
+            try:
+                with open('/proc/%d/statm' % pid, encoding='ascii') as stream:
+                    pages = int(stream.read().split()[1])
+                total = (total or 0) + pages * page
+            except Exception:
+                continue
+            try:
+                for task in os.listdir('/proc/%d/task' % pid):
+                    with open('/proc/%d/task/%s/children' % (pid, task), encoding='ascii') as stream:
+                        pending.extend(int(child) for child in stream.read().split())
+            except Exception:
+                pass
+        return total
+
+    def _read_worker_memory(self, pid):
+        if not pid or not isinstance(pid, int):
+            return None, None
+        try:
+            from ..system import windows
+            if windows():
+                try:
+                    from ..win32 import ProcessMemory
+                    tree = ProcessMemory().sample(pid)
+                    if tree and tree.get('processes', 0) > 0:
+                        rss = tree.get('rss_bytes')
+                        private = tree.get('private_commit_bytes')
+                        count_rss = rss if type(rss) is int and rss >= 0 else None
+                        count_priv = private if type(private) is int and private >= 0 else None
+                        return count_priv, count_rss
+                except Exception:
+                    return None, None
+            else:
+                return None, self._linux_tree_resident(pid)
+        except Exception:
+            return None, None
+        return None, None
+
+    def sample_once(self):
+        try:
+            now = self.clock()
+            elapsed = max(0.0, now - self.started_at)
+            seconds = round(elapsed, 1)
+
+            stage = getattr(getattr(self.context, 'timing', None), 'stage', 'start')
+            if stage not in STAGES:
+                stage = 'start'
+
+            from ..exit_diagnostics import memory_sample
+            sys_mem = memory_sample()
+            phys = sys_mem.get('physical_available_bytes')
+            phys = phys if type(phys) is int and phys >= 0 else None
+            commit = sys_mem.get('commit_available_bytes')
+            commit = commit if type(commit) is int and commit >= 0 else None
+
+            pid = None
+            if self.session is not None:
+                process = getattr(self.session, 'process', None)
+                pid = getattr(process, 'pid', None) if process is not None else getattr(self.session, 'pid', None)
+                if pid is None and isinstance(self.session, int):
+                    pid = self.session
+
+            worker_private, worker_ws = self._read_worker_memory(pid)
+
+            with self.lock:
+                sample = dict(seconds=seconds, stage=stage)
+                if phys is not None:
+                    sample['physical_available_bytes'] = phys
+                    if self.min_physical is None or phys < self.min_physical:
+                        self.min_physical = phys
+                        self.min_physical_stage = stage
+                if commit is not None:
+                    sample['commit_available_bytes'] = commit
+                    if self.min_commit is None or commit < self.min_commit:
+                        self.min_commit = commit
+                        self.min_commit_stage = stage
+                if worker_private is not None:
+                    sample['worker_private_commit_bytes'] = worker_private
+                    if self.peak_worker_private_commit is None or worker_private > self.peak_worker_private_commit:
+                        self.peak_worker_private_commit = worker_private
+                        self.peak_worker_private_commit_stage = stage
+                if worker_ws is not None:
+                    sample['worker_working_set_bytes'] = worker_ws
+                    if self.peak_worker_working_set is None or worker_ws > self.peak_worker_working_set:
+                        self.peak_worker_working_set = worker_ws
+                        self.peak_worker_working_set_stage = stage
+
+                if worker_private is not None or worker_ws is not None:
+                    worker_reading = dict(seconds=seconds, stage=stage)
+                    if worker_private is not None:
+                        worker_reading['worker_private_commit_bytes'] = worker_private
+                    if worker_ws is not None:
+                        worker_reading['worker_working_set_bytes'] = worker_ws
+                    self.last_worker_reading = worker_reading
+
+                self.samples.append(sample)
+        except Exception:
+            pass
+
+    def _run(self):
+        while not self.stop_event.is_set():
+            try:
+                self.sample_once()
+            except Exception:
+                pass
+            if self.stop_event.wait(self.interval):
+                break
+
+    def summary(self, is_failure=False):
+        with self.lock:
+            result = {}
+            if self.min_physical is not None:
+                result['min_physical_available_bytes'] = self.min_physical
+                if self.min_physical_stage in STAGES:
+                    result['min_physical_available_stage'] = self.min_physical_stage
+            if self.min_commit is not None:
+                result['min_commit_available_bytes'] = self.min_commit
+                if self.min_commit_stage in STAGES:
+                    result['min_commit_available_stage'] = self.min_commit_stage
+            if self.peak_worker_private_commit is not None:
+                result['peak_worker_private_commit_bytes'] = self.peak_worker_private_commit
+                if self.peak_worker_private_commit_stage in STAGES:
+                    result['peak_worker_private_commit_stage'] = self.peak_worker_private_commit_stage
+            if self.peak_worker_working_set is not None:
+                result['peak_worker_working_set_bytes'] = self.peak_worker_working_set
+                if self.peak_worker_working_set_stage in STAGES:
+                    result['peak_worker_working_set_stage'] = self.peak_worker_working_set_stage
+
+            if is_failure and self.last_worker_reading:
+                result['last_worker_reading'] = dict(self.last_worker_reading)
+
+            if self.samples:
+                result['samples'] = list(self.samples)
+
+            return result
+
+
 class Service:
     def __init__(self, installation, input_directory, *, video_busy=None, idle_seconds=45., folders=None):
         self.installation = installation
@@ -341,10 +540,39 @@ class Service:
                     purposes=list(PURPOSES),
                     **({'unified_memory': True} if machine.get('device_backend') == 'mps' else {}))
 
+    def forget_stale_shared_failure(self, root):
+        """A failure 'a file the video install shares differs' stays in memory until something replaces the installer.
+        Repair runs in the launcher and may fix the file while this service keeps running (a ComfyUI the launcher did
+        not start is not restarted), and the page has no button then: so the failure goes once the file is no longer the
+        one it was recorded for: it is gone, or its identity (size, times, inode) differs from the record the check left.
+        No record with the file still there (a link, an unreadable record) keeps the failure. No hashing here; the next
+        download then checks the file for real and either finishes or reports it again."""
+        installer = self.h3_installer
+        if installer is None or getattr(installer, 'busy', False):
+            return
+        state = installer.state()
+        if not isinstance(state, dict) or state.get('state') != 'failed' or state.get('reason') != 'shared_mismatch':
+            return
+        try:
+            records = model_repair.read(image_pack.base(root))
+            for row in image_pack.rows(group=H3_GROUP):
+                if row.get('shared'):
+                    path = image_pack.target(row, root)
+                    record = records.get(str(path))
+                    if os.path.lexists(path) and (record is None or model_repair.same_identity(model_repair.identity(path), record)):
+                        return                      # still the file that failed (or no way to tell: a link, no record)
+        except (OSError, ValueError):
+            return
+        with self.mutex:
+            if self.h3_installer is installer:
+                self.h3_installer = None
+
     def model_rows(self, machine, qwen_ready, qwen_downloading, qwen_problem=None):
         """Both picture models for the page: installed, or being fetched with the bytes still to download."""
         root = machine['model_root']
         mac = sys.platform == 'darwin'
+        if not mac:
+            self.forget_stale_shared_failure(root)
         h3_ready, h3_problem = False, None
         if not mac:
             h3_ready, h3_problem = self.pack_checked(image_pack.ready, root, group=H3_GROUP)
@@ -2611,6 +2839,23 @@ class Service:
         return error
 
     def infer(self, session, value):
+        # The readings taken while the worker runs are what a report needs when the system ends it.
+        context = self.context
+        sampler = None
+        if context is not None:
+            try:
+                sampler = context.memory_sampler or MemorySampler(context)
+                context.memory_sampler = sampler
+                sampler.start(session)
+            except Exception:
+                sampler = None
+        try:
+            return self.run_inference(session, value)
+        finally:
+            if sampler is not None:
+                sampler.stop()
+
+    def run_inference(self, session, value):
         context = self.context or Context('generate', value)
         heard = False
         habit = keep.path(self.habit_root)

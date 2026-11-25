@@ -8,6 +8,7 @@ import { uploadMedia } from './media_upload.js';
 import { issueButton } from './issue_button.js';
 import { createPlayBar } from './fv_player.js';
 import { userMessage } from './user_message.js';
+import { copyText } from './clipboard_text.js';
 
 const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('./cast_room.css', import.meta.url).href; document.head.append(css);
 const el = (tag, text, cls) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; };
@@ -200,8 +201,7 @@ export function createCastRoom({api, t, viewURL: outputURL}) {
     async function copyMention() {
         if (!card) return;
         const text = '@' + card.name + ' ';
-        let ok = false;
-        try { await navigator.clipboard.writeText(text); ok = true; } catch { /* Shown below. */ }
+        const ok = await copyText(text);
         notice.textContent = ok ? t(`Copied @${card.name}. Paste it in a prompt.`, `已复制 @${card.name}，粘贴到提示词里使用。`) : t('Could not copy. Type the name after @ in a prompt.', '没能复制。可在提示词中输入 @ 加名字。');
     }
     function resetRemove() { clearTimeout(arm); arm = 0; remove.classList.remove('fv-library-arming'); remove.lastElementChild.textContent = t('Delete', '删除'); }

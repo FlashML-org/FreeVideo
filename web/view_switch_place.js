@@ -5,11 +5,10 @@
 // beside the tabs (or the window is 480 px or narrower) the tabs move to a second row of their own, centred, and the
 // first row holds the logo and the entries (or their menu button).
 // Returns the geometry the views' own fits read: {wrap, inner, gap, left, right} (left === right on one row).
+import { isChinese, translator } from './i18n.js';
 const LOGO_ROOM = 96;
-const query = new URLSearchParams(globalThis.location?.search || '');
-const language = query.get('freevideo_lang');
-const cn = language === 'zh' || (language !== 'en' && String(globalThis.navigator?.language || '').toLowerCase().startsWith('zh'));
-const t = (en, zh) => cn ? zh : en;
+const cn = isChinese();
+const t = translator(cn);
 
 function actionsOf(header) { return header.querySelector(':scope > :is(.fv-header-actions,.fv-view-actions)'); }
 

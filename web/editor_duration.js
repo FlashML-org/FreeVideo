@@ -134,7 +134,7 @@ export function createDurationField({state, t, actions}) {
     };
     input.oninput = () => { typing = true; };
     input.onblur = () => commit();
-    // The browser's own step buttons.
+    // A value set by a script or by the browser (an autofill) that never typed.
     input.onchange = () => commit();
     // While these parts are made the field stays in place, greyed like the description.
     function update(busy = false) {

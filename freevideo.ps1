@@ -188,7 +188,7 @@ try {
     foreach ($name in @('UV_HTTP_TIMEOUT', 'UV_HTTP_RETRIES')) {
         [Environment]::SetEnvironmentVariable($name, $freevideoSavedEnvironment[$name], 'Process')
     }
-    & $freevideoPython @freevideoPythonPrefix -B -X utf8 -m freevideo_engine.managed @freevideoArguments
+    & $freevideoPython @freevideoPythonPrefix -B -X utf8 (Join-Path $PSScriptRoot 'freevideo_engine\installed_entry.py') freevideo_engine.managed @freevideoArguments
     $freevideoExit = $LASTEXITCODE
     if ($freevideoExit -gt 127 -or $freevideoExit -lt 0) {
         # A crash or a blocked start prints nothing, so the exit code was all a report held.

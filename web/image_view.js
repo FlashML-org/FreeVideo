@@ -19,7 +19,7 @@ import { openAutopilot, viewChanged, viewSwitch } from './view_navigation.js';
 import { wordmark } from './wordmark.js';
 import { keepViewSwitchPlace } from './view_switch_place.js';
 import { openReferenceMenu, removeSavedImages } from './image_library.js';
-import { BLANK_CANVAS_AREAS, createImageGenClient, fittedNote, imageGenError, imageRemainingText, imageReportBar, renderImageFailure } from './image_generation.js';
+import { BLANK_CANVAS_AREAS, createImageGenClient, fittedNote, imageGenError, imageRemainingText, imageReportBar, originStep, renderImageFailure } from './image_generation.js';
 import { duration } from './generation_progress.js';
 import { randomSeed } from './studio_queue.js';
 import { createLayout } from './image_view_layout.js';
@@ -41,6 +41,7 @@ import { openPictureViewer } from './image_view_viewer.js';
 import { LORA_MODEL, imageViewLora } from './image_view_lora.js';
 import { hasPictureThumbnail, mediaQueue, pictureThumbnailURL } from './work_media.js';
 import { fieldNote } from './field_note.js';
+import { copyText } from './clipboard_text.js';
 
 export { IMAGE_MODELS, RATIOS };
 for (const name of ['./image_view.css']) {
@@ -313,7 +314,10 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     tip(layoutAdd, t('Layout', '布局')); layoutAdd.addEventListener('click', () => toggleLayout());
     // Prompt enhancement is a key in this row beside References and Sketch, lit while on (no switch row of its own).
     enhancer.chip.classList.add('fv-iv-text-btn', 'fv-iv-enhance-tool'); enhancer.chip.querySelector('span')?.classList.add('fv-iv-btn-label');
-    promptBar.append(refAdd, sketchAdd, layoutAdd, enhancer.chip, el('span', 'fv-iv-grow'), promptCount, expand.element);
+    // Prompt from a picture or video: a key beside Expand; while it runs the same key stops it. The file only feeds the
+    // description (it is not added to the references).
+    const reverseKey = button('fv-iv-icon-btn fv-iv-reverse-tool', {iconName: 'reverse', name: t('Prompt from a picture or video', '从图片或视频生成提示词'), use: t("Pick a picture or video; its description fills the box", '选一张图片或一段视频，生成的描述填入描述框')});
+    promptBar.append(refAdd, sketchAdd, layoutAdd, enhancer.chip, el('span', 'fv-iv-grow'), promptCount, reverseKey, expand.element);
     // The row stays on one line inside the panel, Expand at the same inset as the box: when its words do not fit (a
     // narrow panel, longer words), its keys keep their icons only (their hover cards still name them). Measured again
     // whenever the row's own contents change (the count near the limit), not only when the panel is resized.
@@ -456,7 +460,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     moreButton.setAttribute('aria-haspopup', 'true');
     const more = el('div', 'fv-iv-menu fv-image-more fv-glass fv-g3'); more.hidden = true; more.setAttribute('role', 'menu');
     const menuItem = (iconName, text, use, onClick, cls = '') => { const b = el('button', 'fv-iv-menu-item ' + cls); b.type = 'button'; b.setAttribute('role', 'menuitem'); b.append(icon(iconName), el('span', '', text)); tip(b, text, use); b.addEventListener('click', () => { more.hidden = true; onClick(); }); return b; };
-    const copyPrompt = () => { const text = promptFor(shownFile); try { void navigator.clipboard?.writeText(text); } catch { /* the clipboard may be refused */ } };
+    const copyPrompt = () => { void copyText(promptFor(shownFile)); };     // with the selection copy where the clipboard API is missing (LAN over http)
     const usePromptItem = menuItem('prompt', t('Use prompt', '使用提示词'), t('Put its prompt back in the box', '把它的提示词填回描述框'), () => usePrompt(shownFile));
     // For MOSS the boxes are part of the prompt: they come back with the words, and MOSS is chosen.
     function usePrompt(file) {
@@ -959,10 +963,48 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     function openRefMenu(anchor) {
         if (refAdd.getAttribute('aria-disabled') === 'true' && anchor === refAdd) return;
         if (menu?.box.isConnected) { menu.close(); return; }
-        menu = openReferenceMenu({api, viewURL: pictureURL, anchor: () => anchor.isConnected ? anchor : refAdd, host: dialog, prefer: 'up', onComputer: () => pick.click(),
+        menu = openReferenceMenu({api, viewURL: pictureURL, anchor: () => anchor.isConnected ? anchor : refAdd, host: dialog, prefer: 'up', onComputer: () => chooseFile(false),
             onPick: (file, id) => { addFiles([file], id); }, state: () => ({used: new Set(references.map(r => r.card)), full: references.length >= most()})});
     }
-    pick.onchange = () => { addFiles([...pick.files]); pick.value = ''; };
+    // The one file box serves both keys; every opening says which, so a cancelled choice leaves nothing behind.
+    function chooseFile(forReverse) {
+        pick.dataset.for = forReverse ? 'reverse' : ''; pick.accept = forReverse ? 'image/*,video/*' : 'image/*'; pick.multiple = !forReverse;
+        pick.click();
+    }
+    pick.onchange = () => {
+        const files = [...pick.files], forReverse = pick.dataset.for === 'reverse';
+        pick.value = ''; pick.dataset.for = ''; pick.accept = 'image/*'; pick.multiple = true;
+        if (forReverse) { if (files[0]) startReverse(files[0]); } else addFiles(files);
+    };
+    // ───── Prompt from a picture or video ─────
+    let reverseMenu = null;
+    const reverseWhy = () => running ? t('Finish the current queue before writing a prompt from media.', '请等待当前队列完成后再生成提示词。') : '';
+    function startReverse(file) {
+        const kind = file.type?.startsWith('video/') ? 'video' : file.type?.startsWith('image/') ? 'image' : 'other';
+        promptGroup.open(true);
+        enhancer.reverse({kind, upload: async () => { if (kind === 'other') throw new Error('unsupported_media'); return client.upload(file); }}, {shapeVideo: false}).catch(() => {});
+    }
+    reverseKey.addEventListener('click', () => {
+        if (enhancer.reversing) { enhancer.stop(); return; }
+        if (reverseKey.getAttribute('aria-disabled') === 'true') return;
+        if (reverseMenu?.box.isConnected) { reverseMenu.close(); return; }
+        reverseMenu = openReferenceMenu({api, viewURL: pictureURL, anchor: reverseKey, host: dialog, prefer: 'up', onComputer: () => chooseFile(true),
+            onPick: file => { reverseMenu?.close(); startReverse(file); }, state: () => ({used: new Set(), full: false})});
+    });
+    // Dropped on the box: the description is written from it.
+    prompt.addEventListener('dragover', event => { if (event.dataTransfer?.types?.includes('Files')) { event.preventDefault(); event.stopPropagation(); } });
+    prompt.addEventListener('drop', event => { const file = event.dataTransfer?.files?.[0]; if (!file) return; event.preventDefault(); event.stopPropagation(); if (!enhancer.reversing && !running) startReverse(file); });
+    // The key follows the job: Stop while it runs, grey (with its reason) while the queue runs; the status line shows whether or not the helper is on.
+    const paintReverse = () => {
+        const on = enhancer.reversing, why = reverseWhy();
+        reverseKey.dataset.state = on ? 'running' : '';
+        reverseKey.setAttribute('aria-disabled', String(!on && !!why)); reverseKey.dataset.fvTipWhy = !on && why ? why : ''; if (!why || on) delete reverseKey.dataset.fvTipWhy;
+        tip(reverseKey, on ? t('Stop', '停止') : t('Prompt from a picture or video', '从图片或视频生成提示词'), on ? '' : t('Pick a picture or video; its description fills the box', '选一张图片或一段视频，生成的描述填入描述框'));
+        reverseKey.replaceChildren(icon(on ? 'stop' : 'reverse'));
+        go.disabled = go.disabled || on;
+    };
+    // The line stays when it says why nothing was written (not enabled, stopped), which ends in the idle state.
+    queueMicrotask(() => enhancer.onReverse(state => { enhancer.element.dataset.reverse = state.state === 'idle' && !state.noted ? 'false' : 'true'; if (alive) render(); }));
     // The reference pictures the user had when the view was left come back as they were (marks, sketches, originals).
     if (keptDraft?.references?.length) {
         for (const kept of keptDraft.references) {
@@ -1105,7 +1147,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     function paintGo() {
         const s = modelState(info, model.id), busy = !!running, now = size(), est = estimateSeconds(meta.samples(), model.id, now.width * now.height);
         go.className = 'fv-image-go fv-iv-go ' + (failure ? 'fv-image-go-quiet' : 'fv-primary');
-        go.disabled = false; go.dataset.state = busy ? 'running' : s.state === 'downloading' ? 'downloading' : (s.state === 'missing' || s.state === 'failed') ? 'install' : 'ready';
+        go.disabled = !!enhancer.reversing; if (go.disabled) tip(go, t('Writing the prompt', '正在生成提示词'), ''); go.dataset.state = busy ? 'running' : s.state === 'downloading' ? 'downloading' : (s.state === 'missing' || s.state === 'failed') ? 'install' : 'ready';
         goFill.style.setProperty('--p', String(s.state === 'downloading' ? s.fraction : 0));
         delete go.dataset.fvTipWhy;
         if (busy) {
@@ -1152,6 +1194,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         // Generate fills the draft frame in place; when the picture is done the stage shows it.
         if (running && !browsing) { draft = false; draftPreview = null; }
         enhancer.element.dataset.off = String(enhancerOff());
+        paintReverse();
         cards.paint(info, model.id, pendingGenerate);
         loraRow.paint(model.id);
         drawReferences();
@@ -1403,14 +1446,18 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         level.hidden = false; level.dataset.counted = 'false'; level.style.setProperty('--fv-progress', '0');
         clearStep();
         const names = [];
+        // Where a failure without a reason of its own was caught (#1097: an upload that never left the page said "unreported").
+        let reached = 'upload';
         try {
             for (const r of references.slice(0, cap_(model))) names.push(await client.upload(r.file));
             if (mine.cancelled) return;
+            reached = 'prepare';
             if (!enhancerOff() && await enhancer.beforeGenerate() === false) { say(''); if (running === mine) running = null; level.hidden = true; render(); drawWorks(); return; }
             if (!fits()) { if (running === mine) running = null; level.hidden = true; render(); drawWorks(); fits(); prompt.focus(); return; }
             startJobSources();
             const loras = loraRow.value(model.id);
             let id;
+            reached = 'submit';
             // The engine makes one picture at a time: a second request waits its turn here and starts by itself; Stop cancels the wait.
             for (;;) {
                 try {
@@ -1439,7 +1486,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             running = null; level.hidden = true; clearStep();
             // The worker is full: a state of the worker, shown in place, not a failed picture.
             if (IMAGE_BUSY.has(error.code)) { note.dataset.kind = 'busy'; say(imageGenError(error.code, info, t)); render(); drawWorks(); return; }
-            failure = {error: error.code || 'generation_failed', report_id: error.report_id, stage: error.stage, step: error.step, fitted: error.fitted, memory: error.memory, other_usage: error.other_usage, retryStandard: tierNow === 'high' && error.code === 'no_memory'};
+            failure = {error: error.code || 'generation_failed', report_id: error.report_id, stage: error.stage, step: originStep(error, reached), fitted: error.fitted, memory: error.memory, other_usage: error.other_usage, retryStandard: tierNow === 'high' && error.code === 'no_memory'};
             renderFailure(); render(); drawWorks();
         } finally {
             // Pictures sent for a request that never became a job; a job's own go when it ends.

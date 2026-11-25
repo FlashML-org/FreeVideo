@@ -2,6 +2,7 @@ import { cutTip } from './cut_tip.js';
 import { api } from '../../scripts/api.js';
 import { closeDialog } from './motion.js';
 import { resultActions, previewBadge, icon } from './result_actions.js';
+import { copyText } from './clipboard_text.js';
 import { videoUnavailableText, canExtend } from './studio_extend.js';
 import { savedSettings } from './result_reuse.js';
 import { listenDialogKey, topDialog } from './dialog_keys.js';
@@ -635,7 +636,7 @@ export function openLibrary(t, options = {}) {
     const promptBox = el('div', null, 'fv-library-prompt'); promptBox.hidden = true;
     const promptHead = el('div', null, 'fv-library-prompt-head'), promptText = el('p', null, 'fv-library-prompt-text');
     const promptCopy = button('', async () => {
-        let ok = false; try { await navigator.clipboard.writeText(promptText.textContent); ok = true; } catch { /* Shown on the button. */ }
+        const ok = await copyText(promptText.textContent);   // shown on the button
         promptCopy.lastElementChild.textContent = ok ? t('Copied', '已复制') : t('Could not copy', '复制失败');
         setTimeout(() => { promptCopy.lastElementChild.textContent = t('Copy', '复制'); }, 1600);
     }, 'fv-library-prompt-copy');
@@ -1508,7 +1509,7 @@ export function openLibrary(t, options = {}) {
             const promptOf = one.kind === 'image' ? picturePrompt(one) : prompts.get(one.id);
             items.push({id: 'copy-prompt', icon: 'copy', label: ['Copy prompt', '复制提示词'],
                 disabled: promptOf ? '' : one.kind === 'image' ? ['This picture kept no prompt', '这张图片没有保存提示词'] : ['This video kept no prompt', '这条视频没有保存提示词'],
-                run: async () => { try { await navigator.clipboard.writeText(promptOf); say(t('Prompt copied.', '已复制提示词。')); } catch { say(t('Could not copy.', '没能复制。'), true); } }});
+                run: async () => { if (await copyText(promptOf)) say(t('Prompt copied.', '已复制提示词。')); else say(t('Could not copy. Try again.', '未能复制，请重试。'), true); }});
         }
         if (one) items.push({id: 'folder', icon: 'folder', label: ['Show in folder', '在文件夹中显示'],
             run: async () => {

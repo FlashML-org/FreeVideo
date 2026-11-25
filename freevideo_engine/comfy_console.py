@@ -82,9 +82,14 @@ def install(engine):
     root = Path(engine).resolve() / 'launcher/comfy-runs'
     managed = os.environ.get('FREEVIDEO_COMFY_LOG')
     if managed:
-        path = Path(managed).resolve()
-        path.relative_to(root)  # Only the launcher's own output file is reusable.
-        return path
+        # Only the launcher's own output file is reusable. A value left by something else (a user's own
+        # start script, another tool) must not stop ComfyUI from starting: capture on our own instead.
+        try:
+            path = Path(managed).resolve()
+            path.relative_to(root.resolve())
+            return path
+        except (OSError, ValueError):
+            pass
     capture = getattr(sys, '_freevideo_console', None)
     if capture is None:
         path = root / ('connected-%s-%s' % (time.time_ns(), os.getpid())) / 'comfy.log'

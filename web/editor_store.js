@@ -1,4 +1,5 @@
 import {copyName} from './editor_model.js';
+import {randomUUID} from './random_id.js';
 import {generationSize} from './editor_generation.js';
 // HTTP and scheduling live here; records and editing stay in the data modules.
 const clockDefault = {now: () => Date.now(), setTimeout: (fn, ms) => setTimeout(fn, ms), clearTimeout: id => clearTimeout(id)};
@@ -26,7 +27,7 @@ export {chainRoute, createPoller, interpolate, capabilityPoints};
 // Writes are serialized; a response supplies metadata to the next snapshot only.
 const savedContent = record => JSON.stringify({...record, id: null, revision: 0});
 const OUTBOX = 'fv-editor-outbox';
-const operationId = () => globalThis.crypto?.randomUUID?.().replaceAll('-', '') || Array.from({length: 32}, () => Math.floor(Math.random() * 16).toString(16)).join('');
+const operationId = () => randomUUID().replaceAll('-', '');
 const lockName = session => OUTBOX + ':' + session;
 function holdSession(session = operationId()) {
     let release = () => {}; const owner = {session, held: !globalThis.navigator?.locks};

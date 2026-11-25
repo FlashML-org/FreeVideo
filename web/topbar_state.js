@@ -1,10 +1,9 @@
 // The top bar's words and its status capsule's state, apart from the page (tests/topbar_state.mjs drives them).
 import { ACTIVE } from './task_store.js';
+import { isChinese, translator } from './i18n.js';
 
-const query = new URLSearchParams(globalThis.location?.search || '');
-const language = query.get('freevideo_lang');
-export const CN = language === 'zh' || (language !== 'en' && String(globalThis.navigator?.language || '').toLowerCase().startsWith('zh'));
-export const t0 = (en, zh) => CN ? zh : en;
+export const CN = isChinese();
+export const t0 = translator(CN);
 export const MAC = /Mac|iPhone|iPad/i.test(globalThis.navigator?.platform || globalThis.navigator?.userAgent || '');
 
 // The words of the bar, one table (TOPBAR.md §6). Names are what the item is; uses say what it does.
@@ -51,6 +50,8 @@ export function capsuleState(list = [], isOnline = true, notices = null) {
         const percent = Math.max(0, Math.min(100, Math.round(100 * (Number(running.percent) || 0))));
         return {kind: 'run', percent, count: failed ? failed : active.length > 1 ? active.length : 0, warn: false, countWarn: failed > 0};
     }
+    // A description being written from a picture or video (notices.prompt: {fraction}, null while not measurable): shown like a task, after real tasks.
+    if (notices?.prompt) return {kind: 'prompt', percent: Number.isFinite(notices.prompt.fraction) ? Math.max(0, Math.min(100, Math.round(100 * notices.prompt.fraction))) : null, count: failed ? failed : 0, warn: false, countWarn: failed > 0};
     // A failure: a warning-coloured dot and "Not finished 1" in plain words; no extra badge.
     if (failed) return {kind: 'fail', failed, count: 0, warn: true, countWarn: false};
     // A model download or install (notices.installing: {fraction}) when nothing else runs.
@@ -60,6 +61,7 @@ export function capsuleState(list = [], isOnline = true, notices = null) {
 }
 export function capsuleWords(t, state) {
     return {off: [t('Engine offline', '引擎已断开'), ''], run: [t('Generating', '生成中'), `${state.percent}%`], dl: [t('Downloading', '下载中'), `${state.percent}%`],
+        prompt: [t('Writing prompt', '生成提示词'), state.percent == null ? '' : `${state.percent}%`],
         wait: [t('Waiting', '排队'), String(state.waiting || 1)],
         fail: [t('Not finished', '未完成'), String(state.failed || 1)], idle: [t('Ready', '就绪'), '']}[state.kind];
 }

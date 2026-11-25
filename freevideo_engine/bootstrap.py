@@ -31,6 +31,7 @@ from .monitoring import save, load_ledger
 from .install_tuning import build_parallelism, required_models, cache_compatible, wheel_key
 from .terminal_ui import TerminalUI, LogProgress
 from .locking import runtime_lock, LOCK_ENV
+from .installed_entry import INSTALLED_ONLY
 from .environments import (ENVIRONMENTS, environment_spec, windows_arm64, environment_native_arm64, environment_names, select_layout, role_pythons, constraints_file, setup_supported, uv_folder, conda_lock, conda_triple,
                            bootstrap_versions, uv_file_arguments, uv_build_environment)
 from . import disk_space
@@ -836,8 +837,37 @@ def plan(args, *, local_progress=None, stage=None):
     model_entries = []
     from . import model_repair
     mismatches = model_repair.read(root)
+    # The picture models' check records the files it found different in its own folder: a file the video install shares
+    # (the text encoder) is then listed for the review by any plan, not only a picture-only one.
+    from .image_gen import image_pack
+    try:
+        pack_records = model_repair.read(image_pack.base(model_dir))
+    except OSError:
+        pack_records = {}      # unreadable now (a scanner, a file where the folder should be): nothing to add, nothing breaks
+    for key, record in pack_records.items():
+        # Both places may hold a record of one file: the one whose identity is the file's now is the current one.
+        # A path that cannot be looked at (a disk that is not there, no permission, a character it cannot hold) keeps
+        # the installation folder's record, and the other records are merged all the same.
+        try:
+            if key in mismatches:
+                current = model_repair.identity(Path(key))
+                if (not model_repair.same_identity(current, mismatches[key])
+                        and model_repair.same_identity(current, record)):
+                    mismatches[key] = record
+            else:
+                mismatches[key] = record
+        except (OSError, ValueError):
+            mismatches.setdefault(key, record)
     replace_models = []
     reserved = set()
+    if only_image:
+        # The shared text encoder (the video model's file too) that a picture-only setup would otherwise refuse to
+        # touch: a file that differs is listed for the review like any model, and replaced only after it.
+        for row in image_pack.rows(group=image_group):
+            if row.get('shared'):
+                replacement = model_repair.replacement(image_pack.target(row, model_dir), row, mismatches, reserved)
+                if replacement:
+                    replace_models.append(replacement)
     check_download_list = bool(getattr(args, 'download_list', False))
     stamps_path = root / 'verified-models.json'
     stamps = load_ledger(stamps_path, retain=False) if check_download_list else {}
@@ -1793,7 +1823,7 @@ class Installer:
         # This entry imports only stdlib engine code from the bootstrap Python.
         # It can fetch the exact source trees while large Torch wheels download.
         task('vdn-source', lambda: self.command('vdn-source', [sys.executable, '-c',
-            'from freevideo_engine.install import install; install()']), after=('git',))
+            INSTALLED_ONLY + 'from freevideo_engine.install import install; install()']), after=('git',))
         task('encoder-source', lambda: self.clone('h3-text-encoder',
             self.spec['encoder']['comfy_url'], self.spec['encoder']['comfy_commit'],
             sparse=['/comfy/', '/utils/', '/folder_paths.py', '/node_helpers.py', '/LICENSE']), after=('git',))
@@ -1939,7 +1969,20 @@ class Installer:
             self.ui.update(key, done=done, total=total, unit='bytes', activity='download', name='MiniMax H3 Image',
                            detail='%.1f GiB / %.1f GiB' % (done / 2**30, total / 2**30))
         try:
-            image_pack.install(Path(self.plan['model_dir']), progress, engine_root=SOURCE, group=self.plan['image_group'])
+            # The reviewed and confirmed shared files may be replaced; without any, a file that differs stops the install.
+            image_pack.install(Path(self.plan['model_dir']), progress, engine_root=SOURCE, group=self.plan['image_group'],
+                               confirm=self.plan.get('replace_models') or None)
+        except image_pack.PackError as error:
+            self.ui.end(key, success=False)
+            from . import model_repair
+            path = error.details.get('path')
+            if error.reason == 'shared_mismatch' and path:
+                raise ValueError(model_repair.MISMATCH + ': ' + Path(path).name + '\n' +
+                                 model_repair.MISMATCH_PATH + ': ' + path + '\n' +
+                                 model_repair.CLI_FAILURE.format(file=Path(path).name)) from error
+            if error.reason == 'confirm_replace':
+                raise ValueError(model_repair.FILE_CHANGED + ' ' + ', '.join(row['path'] for row in error.details['replace'])) from error
+            raise
         except BaseException:
             self.ui.end(key, success=False)
             raise

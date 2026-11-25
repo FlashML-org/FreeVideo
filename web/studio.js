@@ -34,7 +34,7 @@ import { problem as timedProblem, timedText, parse as timedParse } from './timed
 import { castInRows, expandCast, mentionHandle, mentionState, mentionedIds, restoreCast, withCharacter, MAX_PICTURES_EACH } from './cast_mention.js';
 import { attachMentionOverlay } from './cast_overlay.js';
 import { openCastLibrary } from './cast_source.js';
-import { uploadMedia } from './media_upload.js';
+import { mediaName, uploadMedia } from './media_upload.js';
 import { reconcileLoraTriggers, promptLines } from './lora_triggers.js';
 import { createVerdicts, describeVerdict, feedbackDraft } from './lora_check.js';
 import { continuationUpscale, createSamplingEffort, effortFor, effortsFrom, passSwitch, stepCacheOf, upscaleOf } from './sampling_effort.js';
@@ -80,12 +80,10 @@ import { toast, toastHeight } from './notifications.js';
 import { mediaQueue } from './work_media.js';
 import { userMessage } from './user_message.js';
 import { fieldNote } from './field_note.js';
+import { isChinese, translator } from './i18n.js';
 
-const languageOverride = typeof location !== 'undefined'
-    ? new URLSearchParams(location.search).get('freevideo_lang') : null;
-const cn = languageOverride === 'zh' || (languageOverride !== 'en'
-    && String(navigator.language || '').toLowerCase().startsWith('zh'));
-const t = (en, zh) => cn ? zh : en;
+const cn = isChinese();
+const t = translator(cn);
 // A dropped connection gets one plain sentence, not the browser's "Failed to fetch".
 const shownMessage = error => isNetworkTypeError(error) ? connectionLostText(t) : error.message;
 // The usual LoRA strength range is -4 to 4; a value the user types by hand may go further, up to 100.
@@ -176,7 +174,8 @@ function createChainPartList(t, save, {onShow = () => {}, onHide = () => {}, red
                 return;
             }
             // The line says the server's own sentence when it gave one; the card carries what failed and a report.
-            const said = (error.said || error.cause?.said);
+            // A redo refused for its changed settings is told on the card; its line stays the short one.
+            const said = error.code === 'redo_request_changed' ? null : error.said || error.cause?.said;
             if (rows.get(row.part.id) === row) flash(row, said ? t(said[0], said[1])
                 : t('Could not start. See the details on the picture.', '没能开始，原因见画面上的说明。'), 'error');
             onError(error);
@@ -758,7 +757,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     current = {node, dialog}; const cleanup = [];
     let firstStart = null, exampleFocused = false;
     // The console (studio_console.js) is put together once every control exists; until then nothing reads it.
-    let consoleUI = null, promptLibrary = null;
+    let consoleUI = null, promptLibrary = null, reverseKey = null, reversePick = null;
     // Set while the editor borrows this panel's bar (current.borrow below).
     let borrowed = null;
     // Frame & size picker and the stage's outline of a new frame (set with the size tray).
@@ -2512,7 +2511,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
             ? t('Joining the parts…', '正在接合各段…')
             : chain?.state === 'queued' ? (chain.waiting ? waitingText(chain.waiting, t) : t('Queued…', '排队中…'))
             : t(`Generating part ${position.index + 1}…`, `正在生成第 ${position.index + 1} 段…`);
-        generate.disabled = submitting || chainWait || (lengthControl.blocked && !lengthControl.retryable) || (runMode === 'loop' && queueState?.looping);
+        generate.disabled = submitting || chainWait || (lengthControl.blocked && !lengthControl.retryable) || (runMode === 'loop' && queueState?.looping) || enhancer.reversing;
+        paintReverse?.();
         // Planning the parts and adding a batch are different waits; a count is only shown when the queue really has one.
         const adding = queueState?.batch ? t(`Adding ${Math.min(queueState.batch.done + 1, queueState.batch.total)}/${queueState.batch.total}…`,
             `正在添加 ${Math.min(queueState.batch.done + 1, queueState.batch.total)}/${queueState.batch.total}…`)
@@ -2543,6 +2543,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         const why = !generate.disabled ? ''
             : submitting ? t('Adding to the queue. One moment.', '正在加入队列，请稍候')
             : chainWait ? t('Parts are generating. Wait, or cancel them in the queue.', '分段视频生成中，完成或在队列里取消后可再生成')
+            : enhancer.reversing ? t('Writing the prompt. One moment.', '正在生成提示词，请稍候')
             : lengthControl.blocked ? lengthControl.message || ''
             : t('A loop is running. Stop it to start again.', '正在循环生成，停止后可重新开始');
         const lengthSaid = lengthControl.blocked && !videoMissing ? lengthControl.visibleMessage : '';
@@ -3522,6 +3523,37 @@ export function openStudio(node, {extendFrom = null} = {}) {
             return problems.join(' · ');
         }});
     promptTools.prepend(promptLibrary.button);
+    // Prompt from a picture or video: the key left of the history key; the file only feeds the description (it is not added to the media).
+    // A video is read, then shaped into the model's own format (the Original tab keeps the readable description).
+    reverseKey = el('button', null, 'fvs-library-button fv-prompt-reverse'); reverseKey.type = 'button';
+    reversePick = el('input'); reversePick.type = 'file'; reversePick.accept = 'image/*,video/*'; reversePick.hidden = true;
+    const reverseIcon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 5.5v-1a2 2 0 0 1 2-2h1M10.5 2.5h1a2 2 0 0 1 2 2v1M13.5 10.5v1a2 2 0 0 1-2 2h-1M5.5 13.5h-1a2 2 0 0 1-2-2v-1"/><path d="M5.5 6.5h5M5.5 9h3.2"/></svg>';
+    const stopIcon = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" fill="currentColor"/></svg>';
+    const reverseQueueWhy = () => queueState?.running || queueState?.pending?.length ? t('Finish the current queue before writing a prompt from media.', '请等待当前队列完成后再生成提示词。') : '';
+    function startReverse(file) {
+        const kind = file.type?.startsWith('video/') ? 'video' : file.type?.startsWith('image/') ? 'image' : 'other';
+        enhancer.reverse({kind, upload: async () => { if (kind === 'other') throw new Error('unsupported_media'); return mediaName(await uploadMedia(api, file)); }}, {shapeVideo: true}).catch(() => {});
+    }
+    function paintReverse() {
+        if (!reverseKey) return;
+        const on = enhancer.reversing, why = reverseQueueWhy();
+        reverseKey.dataset.state = on ? 'running' : '';
+        reverseKey.setAttribute('aria-disabled', String(!on && !!why));
+        reverseKey.setAttribute('aria-label', on ? t('Stop', '停止') : t('Prompt from a picture or video', '从图片或视频生成提示词'));
+        reverseKey.dataset.fvTipName = on ? t('Stop', '停止') : t('Prompt from a picture or video', '从图片或视频生成提示词');
+        if (on) delete reverseKey.dataset.fvTipUse; else reverseKey.dataset.fvTipUse = t('Pick a picture or video; its description fills the box', '选一张图片或一段视频，生成的描述填入描述框');
+        if (!on && why) reverseKey.dataset.fvTipWhy = why; else delete reverseKey.dataset.fvTipWhy;
+        reverseKey.title = [reverseKey.dataset.fvTipName, reverseKey.dataset.fvTipUse].filter(Boolean).join(' · ');
+        const html = on ? stopIcon : reverseIcon; if (reverseKey.dataset.icon !== String(on)) { reverseKey.innerHTML = html; reverseKey.dataset.icon = String(on); }
+    }
+    reverseKey.addEventListener('click', () => { if (enhancer.reversing) { enhancer.stop(); return; } if (reverseKey.getAttribute('aria-disabled') !== 'true') reversePick.click(); });
+    reversePick.onchange = () => { const file = reversePick.files[0]; reversePick.value = ''; if (file) startReverse(file); };
+    paintReverse();
+    cleanup.push(enhancer.onReverse(() => { paintReverse(); updateRunButton(); }));
+    promptTools.prepend(reverseKey); promptEditor.append(reversePick);
+    // A picture or video dropped on the box writes the description from it.
+    prompt.addEventListener('dragover', event => { if (event.dataTransfer?.types?.includes('Files')) { event.preventDefault(); event.stopPropagation(); } });
+    prompt.addEventListener('drop', event => { const file = event.dataTransfer?.files?.[0]; if (!file) return; event.preventDefault(); event.stopPropagation(); if (!enhancer.reversing && !reverseQueueWhy()) startReverse(file); });
     cleanup.push(() => promptLibrary.dispose());
     prompt.addEventListener('keydown', event => {
         if ((event.metaKey || event.ctrlKey) && event.key === 'ArrowUp' && !event.isComposing) { event.preventDefault(); promptLibrary.show('history'); }
@@ -3552,6 +3584,17 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const enhanceStatus = enhancer.element.querySelector('.fv-enhance-status');
     if (enhanceStatus) consoleUI.slot.append(enhanceStatus);
     enhancer.chip.after(enhancer.bar);
+    // At phone width the prompt tools stand in a column beside the box, and a third key would make the console taller than it
+    // is without reverse: there the key sits in the options row, right of Enhance, as an icon (same key, same words).
+    const reversePhone = window.matchMedia?.('(max-width:760px)');
+    const placeReverse = () => {
+        const inRow = Boolean(reversePhone?.matches);
+        // In the row it is one of the round keys (like LoRA and Settings); in the tools column it is a library-style key.
+        reverseKey.classList.toggle('fvs-chip', inRow); reverseKey.classList.toggle('fvs-library-button', !inRow);
+        if (inRow) enhancer.chip.after(reverseKey); else promptTools.prepend(reverseKey);
+    };
+    placeReverse(); reversePhone?.addEventListener?.('change', placeReverse);
+    cleanup.push(() => reversePhone?.removeEventListener?.('change', placeReverse));
     consoleUI.trays.querySelector('[data-tray=size] .fvs-tray-title')?.append(canvasLock);
     consoleUI.element.classList.add('sgf-avoid');
     mention.dataset.fvTipName = t('Mention', '引用');

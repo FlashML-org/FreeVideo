@@ -1,5 +1,6 @@
 """Durable chains, submitting ordinary host prompts by dependency."""
 from copy import deepcopy
+import hashlib
 import json
 import logging
 import math
@@ -41,6 +42,29 @@ def _ordered_texts(record, value):
 
 class ChainBusy(ValueError):
     pass
+
+
+class RedoRequestChanged(ValueError):
+    """A redo came with the name of another one that had other parameters."""
+
+
+REDO_REQUEST_ID = re.compile(r'[A-Za-z0-9-]{1,64}')
+
+
+def _redo_request(request_id, chain_id, block_id, text):
+    """What a redone chain keeps of the page's request: its name and a digest of what was asked. None without a
+    usable name. It stays in the record: no reply, report or log carries it."""
+    if not isinstance(request_id, str) or not REDO_REQUEST_ID.fullmatch(request_id):
+        return None
+    asked = json.dumps([chain_id, block_id, text], ensure_ascii=True)
+    return dict(id=request_id, asked=hashlib.sha256(asked.encode('ascii')).hexdigest())
+
+
+def _is_redo_request(value):
+    # A record without one, or with anything else in its place, reads as one that has none.
+    return (isinstance(value, dict) and set(value) == {'id', 'asked'} and isinstance(value['id'], str)
+            and REDO_REQUEST_ID.fullmatch(value['id']) is not None and isinstance(value['asked'], str)
+            and re.fullmatch(r'[0-9a-f]{64}', value['asked']) is not None)
 
 
 class ChainTooLong(ValueError):
@@ -503,16 +527,27 @@ class ChainRunner:
             self.wake.set()
             return self._view(record)
 
-    def redo(self, chain_id, block_id, text=None, client_id=None):
+    def redo(self, chain_id, block_id, text=None, client_id=None, request_id=None):
         """A new chain that keeps the parts before `block_id` and makes that part and every later one
         again with new seeds. Later parts continue the part before them, so redoing one part alone would
-        break the next seam. The original chain, its parts and its joined video stay as they are."""
+        break the next seam. The original chain, its parts and its joined video stay as they are.
+        `request_id` names one press of the page: the same one again (its reply was lost) returns the chain it
+        made, and one that comes with other parameters is refused. The look-up, the new chain and its file are
+        under one lock, so two presses with one name at the same moment make one chain."""
         if text is not None and (not isinstance(text, str) or not text.strip() or len(text) > 20000):
             raise ValueError('Text must be a nonempty string of at most 20000 characters')
         if client_id is not None and not isinstance(client_id, str):
             raise ValueError('Client ID must be a string')
         from .lora_triggers import apply_chain_triggers
         with self.lock:
+            request = _redo_request(request_id, chain_id, block_id, text)
+            if request is not None:
+                for row in self.records.values():
+                    made = row.get('redo_request')
+                    if _is_redo_request(made) and made['id'] == request['id']:
+                        if made != request:
+                            raise RedoRequestChanged('This request was already used for another redo')
+                        return self._view(row)
             source = self.records[chain_id]
             start = next((row for row in source['blocks'] if row['id'] == block_id), None)
             if start is None:
@@ -530,9 +565,11 @@ class ChainRunner:
             while identity in self.records or (Path(self.store_dir) / (identity + '.json')).exists():
                 identity = 'c-' + uuid.uuid4().hex[:12]
             for key in ('last_report_id', 'last_heartbeat_at', 'output_seams', 'output_unrepaired', 'join_final_state',
-                        *OUTPUT_FIELDS):
+                        'redo_request', *OUTPUT_FIELDS):
                 record.pop(key, None)
             now = self.wall()
+            if request is not None:
+                record['redo_request'] = request
             record.update(id=identity, created=now, state='queued', redo_of=dict(chain=chain_id, block=block_id),
                           output=None, output_state='pending' if record['join'] else 'none',
                           output_error=None, output_blocks=0)

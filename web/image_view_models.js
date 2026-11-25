@@ -26,7 +26,9 @@ export function modelState(info, id) {
         : total > 0 ? Math.min(1, done / total) : 0;
     if (row.downloading || install.state === 'running' || install.state === 'paused_for_generation')
         return {state: 'downloading', row, total, done, fraction, verifying, paused: install.state === 'paused_for_generation',
-            waitsFor: install.state === 'paused_for_generation' ? install.reason || 'busy_engine' : '', rate: install.bytes_per_second || 0};
+            waitsFor: install.state === 'paused_for_generation' ? install.reason || 'busy_engine' : '', rate: install.bytes_per_second || 0,
+            // A setup, update or cleanup holds the installation: the download goes on by itself and cannot be asked to go on.
+            locked: install.state === 'paused_for_generation' && install.reason === 'busy_setup'};
     if (install.state === 'failed')
         return {state: 'failed', row, total, done, fraction, reason: t(install.message_en || '', install.message_zh || '') || install.reason || ''};
     return {state: 'missing', row, total, done, fraction, resume: done > 0};
@@ -40,6 +42,7 @@ export const continueUse = () => t('Download now; a video or picture being made 
 export function pausedText(state) {
     return state.waitsFor === 'busy_video' ? t('Paused while a video generates; resumes after it, or continue now', '视频生成中，下载已暂停，之后自动继续，也可以现在继续下载')
         : state.waitsFor === 'busy_picture' ? t('Paused while a picture is made; resumes after it, or continue now', '正在出图，下载已暂停，出完自动继续，也可以现在继续下载')
+        : state.waitsFor === 'busy_setup' ? t('Paused while FreeVideo installs, updates or cleans up; resumes after it', 'FreeVideo 正在安装、更新或清理，下载已暂停，结束后自动继续')
         : t('Paused while FreeVideo uses the graphics card for another task; resumes after it, or continue now', 'FreeVideo 正在用显卡做别的任务，下载已暂停，之后自动继续，也可以现在继续下载');
 }
 // Checking files already on disk: a percentage only when the engine reports one.
@@ -79,7 +82,7 @@ function useOf(model, state) {
         checking: t('Asking the engine', '正在询问引擎'),
     }[state.state];
 }
-const actionOf = state => state.state === 'missing' ? (state.resume ? t('Resume', '继续') : t('Install', '安装')) : state.state === 'failed' ? t('Retry', '重试') : state.state === 'downloading' && state.paused ? t('Continue download', '继续下载') : state.state === 'downloading' && !state.verifying ? t('Pause', '暂停') : '';
+const actionOf = state => state.locked ? '' : state.state === 'missing' ? (state.resume ? t('Resume', '继续') : t('Install', '安装')) : state.state === 'failed' ? t('Retry', '重试') : state.state === 'downloading' && state.paused ? t('Continue download', '继续下载') : state.state === 'downloading' && !state.verifying ? t('Pause', '暂停') : '';
 
 // The picker: one row for the chosen model; the list opens below it (above when there is no room), takes the
 // arrow keys, Home, End, Enter and Escape, and scrolls when there are more models than fit.

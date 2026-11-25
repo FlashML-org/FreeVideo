@@ -8,12 +8,10 @@ import { installTooltips } from './tooltip.js';
 import './palette.js';
 import { isLaunchVisit } from './launch_visit.js';
 import { topbarActions, adoptWhenPlaced, buildBar } from './topbar.js';
+import { isChinese, translator } from './i18n.js';
 
-const languageOverride = typeof location !== 'undefined'
-    ? new URLSearchParams(location.search).get('freevideo_lang') : null;
-const cn = languageOverride === 'zh' || (languageOverride !== 'en'
-    && String(navigator.language || '').toLowerCase().startsWith('zh'));
-const t = (en, zh) => cn ? zh : en;
+const cn = isChinese();
+const t = translator(cn);
 const preference = 'freevideo.view';
 let toolbar, open, selected, currentView = 'nodes', agentTab = null, opening = null, place = null;
 const style = document.createElement('link');

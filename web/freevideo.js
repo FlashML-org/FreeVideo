@@ -47,12 +47,10 @@ import { issueButton } from './issue_button.js';
 import { createPlayBar } from './fv_player.js';
 import { userMessage } from './user_message.js';
 import { AUDIO_USE, usesOriginal, checkOriginal, checkedLength, failureText, multipleText, createUseSwitch, originalBlocked, stuckText, liftBlock } from './audio_original.js';
+import { isChinese, translator } from './i18n.js';
 
-const languageOverride = typeof location !== 'undefined'
-    ? new URLSearchParams(location.search).get('freevideo_lang') : null;
-const cn = languageOverride === 'zh' || (languageOverride !== 'en'
-    && String(navigator.language || '').toLowerCase().startsWith('zh'));
-const text = (en, zh) => cn ? zh : en;
+const cn = isChinese();
+const text = translator(cn);
 const style = document.createElement("style");
 style.textContent = `
 .fv-panel{box-sizing:border-box;width:100%;height:100%;padding:16px;background:var(--fv-card);color:var(--fv-ink);border:1px solid var(--fv-border);border-radius:var(--fv-r-md,12px);font:13px/1.6 var(--fv-font);overflow:auto;color-scheme:dark}

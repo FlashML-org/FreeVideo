@@ -187,7 +187,12 @@
 .fvs-console-status .fv-enhance-status{display:flex!important;align-items:center;gap:var(--fv-sp-8);padding:0;border:0;background:none;font-size:var(--fv-fs-1);line-height:20px}
 .fvs-console-status .fv-enhance-status:not([data-state=progress]):not([data-state=error]):not([data-state=note]){display:none!important}
 /* A failure the user can act on reads as an ordinary note (not a warning colour); nothing else is said here. */
-.fvs-console-status .fv-enhance-status[data-state=error]{color:var(--fv-fg2)}
+.fvs-console-status .fv-enhance-status[data-state=error]{color:var(--fv-danger);background:color-mix(in srgb,var(--fv-danger) 7%,transparent);border-radius:var(--fv-r-sm,8px);padding:0 var(--fv-sp-8)}
+/* What enhancement says (a failure with its reason, the report key) is said whole: on a narrow line it wraps, the line grows
+   and so does the band above the console (studio.js sets --fvs-band), instead of cutting the sentence and the key off. */
+.fv-studio.fv-create .fvs-console-status[data-hx-enhsay]{height:auto;min-height:20px}
+.fv-studio.fv-create .fvs-console-status[data-hx-enhsay]>.fv-enhance-status{flex-wrap:wrap;white-space:normal;overflow:visible;text-overflow:clip;row-gap:var(--fv-sp-4)}
+.fv-studio.fv-create .fvs-console-status[data-hx-enhsay] .fv-enhance-status-text{white-space:normal;flex:0 1 auto;text-wrap:pretty}
 .fvs-console-status .fv-enhance-meter{width:72px;flex:none;margin:0}
 .fvs-console-status .fv-enhance-status .fv-issue-button{margin:0;min-height:20px;height:20px;padding:0 var(--fv-sp-8)}
 
@@ -936,3 +941,9 @@ html body .fv-studio.fv-create .fvs-console :is(.fvs-console-prompt,.fv-section,
 .fv-studio.fv-create .fv-body[data-grid=true] .fvs-rail .fv-recent-card{display:block;min-height:auto;padding:0}
 .fv-studio.fv-create .fv-body[data-grid=true] .fvs-rail .fv-recent-card .fv-library-picture{height:auto;aspect-ratio:16/9}
 .fv-studio.fv-create .fv-body[data-grid=true] .fvs-rail .fv-recent-card>:is(span:not(.fv-recent-check),small){display:none}
+/* Prompt from a picture or video (the key left of History): Stop while it runs, grey while the queue runs. The report key keeps its border and gap. */
+.fv-studio.fv-create :is(.fv-prompt-tools,.fvs-chips)>.fv-prompt-reverse[aria-disabled=true]{opacity:.4;cursor:not-allowed}
+.fv-studio.fv-create :is(.fv-prompt-tools,.fvs-chips)>.fv-prompt-reverse[data-state=running]{color:var(--fv-accent-ink,var(--fv-fg))}
+/* In the options row (phone width): the icon key, the same round key as LoRA and Settings at the row's end. */
+.fv-studio.fv-create .fvs-chips>.fv-prompt-reverse{flex:none;width:var(--fv-touch);height:var(--fv-touch);min-height:var(--fv-touch);padding:0}
+.fv-studio.fv-create .fvs-console-status .fv-enhance-status .fv-issue-button{border:1px solid var(--fv-line);gap:6px;padding:4px 10px}

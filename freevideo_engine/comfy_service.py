@@ -105,7 +105,8 @@ def loopback(address):
 def host_setup(root, source, machine, comfy, *, download=False):
     """Run the ComfyUI environment setup; its exit code."""
     # The engine's Python reads the CUDA packages the ComfyUI environment must match.
-    code = ("import runpy,sys;sys.path.insert(0,sys.argv.pop(1));"
+    from .installed_entry import INSTALLED_ONLY
+    code = (INSTALLED_ONLY + "import runpy;sys.path.insert(0,sys.argv.pop(1));"
             "runpy.run_module('freevideo_engine.comfy_host',run_name='__main__')")
     command = [machine['python'], '-B', '-c', code, str(source), '--root', str(root), '--comfy', str(comfy)]
     if download:
@@ -283,7 +284,8 @@ def request(url, *, headers=None, timeout=3):
 def start_proxy(record, *, listen, port, upstream, token_file, tls, hop_secret=None):
     """Run the access proxy with ComfyUI's Python, which brings aiohttp."""
     from . import processes
-    code = ("import runpy,sys;sys.path.insert(0,sys.argv.pop(1));"
+    from .installed_entry import INSTALLED_ONLY
+    code = (INSTALLED_ONLY + "import runpy;sys.path.insert(0,sys.argv.pop(1));"
             "runpy.run_module('freevideo_engine.access_proxy',run_name='__main__')")
     command = [record['python'], '-B', '-c', code, record['source'], '--listen', listen, '--port', str(port),
                '--upstream', upstream, '--token-file', str(token_file)]
@@ -422,7 +424,7 @@ def spawn(root, *, port, listen='127.0.0.1', tls=None):
                'run', '--port', str(port), '--listen', listen]
     if tls:
         command += ['--tls-cert', str(tls[0]), '--tls-key', str(tls[1])]
-    env = dict(os.environ, PYTHONPATH=str(source_root()), PYTHONNOUSERSITE='1')
+    env = dict(os.environ, PYTHONPATH=str(source_root()), PYTHONNOUSERSITE='1', PYTHONSAFEPATH='1')
     for name in ('FREEVIDEO_RUNTIME_LOCK_FD', 'FREEVIDEO_LOCK_PATH', 'PYTHONHOME', 'VIRTUAL_ENV'):
         env.pop(name, None)
     with (folder(root) / 'service.log').open('ab') as output:

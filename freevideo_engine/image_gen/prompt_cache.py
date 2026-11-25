@@ -1,7 +1,7 @@
 """The same prompt is not encoded twice: image conditioning goes through the input cache the video path uses.
 
-The key is the prompt plus the pixels of every reference, under the identity of the encoder (file content, its code
-and libraries, GPU architecture). A hit hands back exactly the tensors the encoder saved, so a cached image equals an
+The key is the prompt plus the pixels of every reference, under the identity of the encoder (file content, its encoding
+version and libraries, GPU architecture). A hit hands back exactly the tensors the encoder saved, so a cached image equals an
 uncached one. Anything that cannot be verified (no installation record, other explicit paths, an unreadable or
 damaged entry) encodes as before."""
 import hashlib

@@ -7,8 +7,8 @@
 
 Linux x86_64 uses ./freevideo; Windows uses freevideo.cmd. On macOS and other
 Unix platforms, use the installed interpreter and source folder:
-    env FREEVIDEO_AGENT=1 PYTHONPATH=/path/to/FreeVideo/engine-source \
-        /path/to/installed/python -X utf8 -m freevideo_engine.agent.cli --root /path/to/FreeVideo status
+    env FREEVIDEO_AGENT=1 PYTHONPATH=/path/to/FreeVideo/engine-source /path/to/installed/python -X utf8 \
+        /path/to/FreeVideo/engine-source/freevideo_engine/installed_entry.py freevideo_engine.agent.cli --root /path/to/FreeVideo status
 """
 import argparse
 import json
