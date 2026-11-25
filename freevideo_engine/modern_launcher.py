@@ -769,7 +769,12 @@ def smoke_connect(app, engine, window, bridge, destination, values):
 
 def main(session=None):
     from .installed_entry import protect
-    protect()
+    # The process hosts below start other programs (ComfyUI, install steps) with the environment the launcher gave them;
+    # PYTHONSAFEPATH would stop ComfyUI's main.py from importing from its own folder, so only the launcher itself is protected.
+    frozen = getattr(sys, 'frozen', False)
+    if not (frozen and (sys.platform == 'darwin' and sys.argv[1:2] == ['--macos-process-host']
+                        or sys.platform.startswith('linux') and sys.argv[1:2] == ['--freevideo-module'])):
+        protect()
     if (getattr(sys, 'frozen', False) and sys.platform == 'darwin'
             and sys.argv[1:2] == ['--macos-process-host']):
         from .macos_process_host import main as supervise
