@@ -47,3 +47,15 @@
 .fv-ed-adjust[data-empty=false] .fv-ed-adjust-pane:not([hidden]){animation:fv-ed-adjust-in 160ms cubic-bezier(.2,.8,.2,1)}
 @keyframes fv-ed-adjust-in{from{opacity:0;transform:translateY(4px)}}
 @media(prefers-reduced-motion:reduce){.fv-ed-adjust[data-empty=false] .fv-ed-adjust-pane:not([hidden]){animation:none}}
+/* Below 1280 px the panel is a drawer over the picture. While it is open the transport keeps only the time and the
+   play button (Iris): beside the drawer the full row runs into itself from about 900 px down; the rest comes back when
+   the drawer closes. A fullscreen picture has the whole screen and keeps every control. */
+@media(max-width:1279px){
+ .fv-studio.fv-editor[data-adjust-open=true] .fv-ed-fullscreen-host:not(:fullscreen) .fv-ed-transport>:not(.fv-ed-time,.fv-ed-transport-center),
+ .fv-studio.fv-editor[data-adjust-open=true] .fv-ed-fullscreen-host:not(:fullscreen) .fv-ed-transport-center>:not(.fv-ed-play){display:none!important} /* the Media button is display:inline-flex!important up to 680 px (editor.css) */
+ /* The drawer opens under the project row so the name and Export stay whole beside it (editor.css says so for the
+    library too; the base rule above, loaded later at the same weight, kept the drawer on the project row). */
+ .fv-studio.fv-editor .fv-ed-adjust-host{grid-row:3/5}
+}
+/* Up to 680 px the drawer has no margin of its own: the same 8 px gap under Export as wider windows (Iris). */
+@media(max-width:680px){.fv-studio.fv-editor .fv-ed-adjust-host{margin-top:8px}}
