@@ -226,7 +226,38 @@ export function packView(info, t) {
     return {loading: false, fraction: null, reason: !!reason, button: resume ? t('Resume download', '继续下载') : t('Download image generation models', '下载图像生成模型'),
         note: reason || (resume ? t(`${gb(install.done || 0)}\u00a0GB / ${size}${time}`, `${gb(install.done || 0)}\u00a0GB / ${size}${time}`) : size + time)};
 }
+// FreeVideo went away while a picture was being made (#1121): why, as far as the launcher saw it end, and what next. The
+// page's cause (task_store, engine_exit.js exitCause) picks the row; a restart without a record reads as quitting
+// unexpectedly. Lane, review/engine-closed-reason copy_lane.
+const LOST_ENGINE = {
+    engine_restarted: {
+        memory: [["The system closed FreeVideo, most likely because the computer ran out of memory. FreeVideo has restarted.", "FreeVideo 被系统关闭，很可能是因为电脑内存不足。FreeVideo 已重新启动。"], ["Use a smaller size, or close other programs that use memory, then generate again.", "请缩小尺寸，或关闭其他占用内存的程序后重新生成。"]],
+        // Lane 11-25 (copy_lane_memory_maybe_0613).
+        memory_maybe: [["The system ended FreeVideo, possibly because the computer ran out of memory. FreeVideo has restarted.", "FreeVideo 被系统结束，可能是因为电脑内存不足。FreeVideo 已重新启动。"], ["Use a smaller size, or close other programs that use memory, then generate again.", "请缩小尺寸，或关闭其他占用内存的程序后重新生成。"]],
+        ended: [["The system or another program ended FreeVideo. It has restarted.", "FreeVideo 被系统或其他程序结束，已重新启动。"], ["Generate again.", "请重新生成。"]],
+        crashed: [["FreeVideo crashed. It has restarted.", "FreeVideo 意外崩溃，已重新启动。"], ["Generate again. If it happens again, choose \"Report a problem\".", "请重新生成。再次出现时，请点击“提交问题”。"]],
+        unknown: [["FreeVideo quit unexpectedly. It has restarted.", "FreeVideo 意外退出，已重新启动。"], ["Generate again. If it happens again, choose \"Report a problem\".", "请重新生成。再次出现时，请点击“提交问题”。"]],
+    },
+    engine_closed: {
+        unreachable: [["The connection to FreeVideo was lost and did not come back within 2 minutes.", "与 FreeVideo 的连接中断，2 分钟内没有恢复。"], ["Open the launcher, make sure FreeVideo is running, then generate again.", "请打开启动器，确认 FreeVideo 正在运行后重新生成。"]],
+        stopped_waiting: [["Stopped waiting for FreeVideo to reconnect.", "已停止等待 FreeVideo 恢复连接。"], ["Open the launcher, make sure FreeVideo is running, then generate again.", "请打开启动器，确认 FreeVideo 正在运行后重新生成。"]],
+    },
+};
+const LOST_DEFAULT = {engine_restarted: 'unknown', engine_closed: 'unreachable'};
+/** [cause, next step] of a picture that FreeVideo's going away ended, or null for any other code. */
+export function lostEngineText(code, cause, t) {
+    if (typeof code !== 'string' || !Object.hasOwn(LOST_ENGINE, code)) return null;
+    const rows = LOST_ENGINE[code];
+    const [said, next] = rows[typeof cause === 'string' && Object.hasOwn(rows, cause) ? cause : LOST_DEFAULT[code]];
+    return [t(...said), t(...next)];
+}
+/** While the page waits for FreeVideo to come back: the line and the button that stops waiting. */
+export const WAITING_TEXT = {status: ["Lost the connection to FreeVideo. Waiting for it to come back…", "与 FreeVideo 的连接中断，正在等待恢复…"], stop: ["Stop waiting", "停止等待"],
+    short: ["Reconnecting…", "等待恢复连接…"]};
+
 export function imageGenError(code, info, t) {
+    const lost = lostEngineText(code, info?.cause, t);
+    if (lost) return lost.join(t(' ', ''));
     const reasons = {
         invalid_loras: ['The LoRA selection is invalid. Choose the files again.', 'LoRA 设置有误，请重新选择文件。'],
         invalid_lora_strength: ['LoRA strength must be between -2 and 2.', 'LoRA 强度必须在 -2 到 2 之间。'],
@@ -239,6 +270,8 @@ export function imageGenError(code, info, t) {
         busy_video: ['A video is generating. Try again when it finishes.', '视频正在生成，完成后再试。'],
         busy: ['An image is already being generated. Try again when it finishes.', '已有一张图在生成，完成后再试。'],
         model_unavailable: ['This computer does not support the chosen picture model. Use Qwen-Image 2.1.', '这台电脑不支持所选的图片模型。请改用 Qwen-Image 2.1。'],
+        // Lane 11-25 (image-prompt-read-failure-reason copy_lane_gpu_kernels).
+        gpu_kernels_failed: ["The graphics card's computation check did not pass. Update the graphics card driver, then restart FreeVideo. If the check still does not pass, download the report and report the problem.", "\u663e\u5361\u7684\u8ba1\u7b97\u68c0\u67e5\u672a\u901a\u8fc7\u3002\u8bf7\u66f4\u65b0\u663e\u5361\u9a71\u52a8\u540e\u91cd\u65b0\u542f\u52a8 FreeVideo\uff1b\u5982\u4ecd\u672a\u901a\u8fc7\uff0c\u8bf7\u4e0b\u8f7d\u62a5\u544a\u5e76\u63d0\u4ea4\u95ee\u9898\u3002"],
         model_unreadable: ['The image generation model files could not be read. Repair them in the launcher and try again.',
             '图像生成模型的文件读不出来。在启动器里修复后再试。'],
         device_unavailable: ['The graphics card is not available right now. Try again later.', '显卡暂时用不了，稍后再试。'],
@@ -261,8 +294,6 @@ export function imageGenError(code, info, t) {
         reload: ['Image generation was interrupted. Try again.', '图片生成中途被打断，请重试。'],
         engine_error: ['The image engine returned an unreadable answer. Try again; if it keeps failing, report the problem.', '图像引擎返回了无法读取的结果。请重试；仍然失败请提交问题。'],
         connection_lost: ['Lost the connection to FreeVideo. Try again once it is back.', '与 FreeVideo 的连接已断开，恢复后请重试。'],
-        engine_closed: ['FreeVideo stopped answering while this picture was being made. Start FreeVideo again, then generate again.', '生成过程中 FreeVideo 停止了响应。重新启动 FreeVideo 后再生成一次。'],
-        engine_restarted: ['FreeVideo restarted while this picture was being made, so it did not finish. Generate it again.', 'FreeVideo 在生成过程中重新启动，这张图没有完成。请再生成一次。'],
         generation_failed: ['Image generation ran into an error. Try again.', '图像生成出错了，请再试一次。'],
         small_memory: ['This Mac has less than 16 GB of memory and cannot generate pictures.',
             '这台 Mac 的内存不足 16 GB，无法生成图片。'],
@@ -374,7 +405,7 @@ export function imageReportBar(card, report_id, t, {productVersion = () => null,
 
 // Shared by the editor and the other image entry points. Only the opaque report
 // ID goes in the request; raw service messages are never shown in the page.
-export function renderImageFailure(host, {error, report_id, stage, step, fitted, info, memory, other_usage} = {}, t,
+export function renderImageFailure(host, {error, report_id, stage, step, fitted, info, memory, other_usage, cause, misses} = {}, t,
     {productVersion = () => null, fetchApi = globalThis.fetch.bind(globalThis), retry = null, retried = Boolean(retry)} = {}) {
     // `retry` ({label: [en, zh], onClick}) puts the page's Retry first in the card's own action row;
     // `retried` alone says the caller shows a Retry of its own elsewhere.
@@ -387,7 +418,7 @@ export function renderImageFailure(host, {error, report_id, stage, step, fitted,
     }
     const card = doc.createElement('div'); card.className = 'fv-result-links';
     const reason = doc.createElement('div'); reason.className = 'fv-image-failure-reason';
-    reason.setAttribute('role', 'status'); reason.textContent = imageGenError(error, {stage, fitted, memory, unified: info?.unified_memory, other_usage, retried}, t);
+    reason.setAttribute('role', 'status'); reason.textContent = imageGenError(error, {stage, fitted, memory, unified: info?.unified_memory, other_usage, retried, cause}, t);
     card.append(reason); host.append(card);
     let again = null;
     if (retry) {
@@ -400,7 +431,9 @@ export function renderImageFailure(host, {error, report_id, stage, step, fitted,
     let bar;
     if (report_id) ({bar} = imageReportBar(card, report_id, t, {productVersion, fetchApi}));
     else {
-        const facts = [[['Error code', '错误码'], error], [['Stage', '阶段'], stage], [['Step', '步骤'], step || (stage ? '' : 'unreported')], [['Memory', '内存'], memory]].filter(([, v]) => v);
+        // A picture FreeVideo's going away ended (#1121) names why (fixed words) and the last asks that failed.
+        const facts = [[['Error code', '错误码'], error], [['Stage', '阶段'], stage], [['Step', '步骤'], step || (stage || cause ? '' : 'unreported')],
+            [['Cause', '原因'], cause], [['Last attempts', '最后几次请求'], Array.isArray(misses) ? misses.slice(-3).map(miss => typeof miss === 'string' && /^[a-z][a-z0-9_]{0,31}$/.test(miss) ? miss : 'other').join(', ') : ''], [['Memory', '内存'], memory]].filter(([, v]) => v);
         bar = doc.createElement('div'); bar.className = 'fv-actions';
         // Drawn as the card's other actions (Retry, Download report): their border, focus ring and press.
         bar.append(issueButton(t, () => ({where: ['Image generation', '图像生成'], message: facts.map(([[en, zh], v]) => `${t(en, zh)}: ${v}`).join('\n')}), {className: 'fv-action'}));

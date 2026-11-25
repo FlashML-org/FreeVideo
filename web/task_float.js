@@ -7,7 +7,8 @@ import { api } from '../../scripts/api.js';
 import { app } from '../../scripts/app.js';
 import { jobs, imageSource, progressSource, chainSource, queueSource, journalSource, ACTIVE, FINAL } from './task_store.js';
 import { errorText, failureAdvice } from './error_panel.js';
-import { createImageGenClient, imageGenError, imageReportBar } from './image_generation.js';
+import { createImageGenClient, imageGenError, imageReportBar, lostEngineText, WAITING_TEXT } from './image_generation.js';
+import { exitCause, newEngineExit, watchEngineExit } from './engine_exit.js';
 import { saveGeneratedImage } from './image_library.js';
 import { isChinese, translator } from './i18n.js';
 
@@ -27,7 +28,9 @@ const outputURL = file => api.apiURL('/view?' + new URLSearchParams({filename: f
 export function startJobSources() {
     if (sourcesStarted) return; sourcesStarted = true;
     let storage = null; try { storage = globalThis.localStorage; } catch { /* Private windows keep jobs in memory only. */ }
-    imageSource(jobs, {client: createImageGenClient(), storage});
+    // Why FreeVideo went away while a picture was being made, as the launcher saw it end (#1121).
+    void watchEngineExit(api);
+    imageSource(jobs, {client: createImageGenClient(), storage, connection: api, lastExit: async () => exitCause(await newEngineExit(api))});
     // The request the engine runs on each node now, from its own events: a plain (one graphics card) run's progress
     // names no request, so this keeps every queued video a row of its own (task_store.js progressSource).
     const runningOn = new Map();
@@ -176,13 +179,16 @@ function stateWord(row) {
 }
 function reasonShort(row) {
     const code = row.failure?.code;
-    if (code === 'engine_closed') return t('The engine was closed', '引擎已关闭');
-    if (code === 'engine_restarted' || row.status === 'interrupted') return t('The engine restarted', '引擎已重启');
+    if (code === 'engine_closed') return t('Connection lost', '连接中断');
+    // Short enough for the card's line (Lane, copy_lane.float_short); the hover and the opened card say it whole.
+    if (code === 'engine_restarted' || row.status === 'interrupted') return t('Restarted', '已重新启动');
     return t('Open for the reason', '点开查看原因');
 }
 function reasonLong(row) {
     const code = row.failure?.code;
-    if (code === 'engine_closed') return t('FreeVideo stopped answering while this was being made. Start FreeVideo again, then generate again.', '生成过程中 FreeVideo 停止了响应。重新启动 FreeVideo 后再生成一次。');
+    // A picture: why FreeVideo went away, as far as the launcher saw it end, and what next (#1121).
+    if (row.kind === 'image' && (code === 'engine_closed' || code === 'engine_restarted')) return lostEngineText(code, row.failure?.cause, t).join(t(' ', ''));
+    if (code === 'engine_closed') return lostEngineText(code, row.failure?.cause, t).join(t(' ', ''));
     if (code === 'engine_restarted' || row.status === 'interrupted') return t('FreeVideo restarted while this was being made, so it did not finish. Finished parts are in your works.', 'FreeVideo 在生成过程中重新启动，这次没有完成。已经完成的部分在作品里。');
     if (row.kind === 'image') return imageGenError(code, row.failure, t) || t('The picture did not finish.', '这张图没有完成。');
     // The engine's own text is raw; it goes through the same advice as the create panel, and an unknown cause says so.
@@ -197,6 +203,8 @@ function reasonLong(row) {
         'FreeVideo 没有给出这段视频失败的原因。请重试，仍然失败请提交问题。');
 }
 function line2(row) {
+    // Waiting for FreeVideo to come back (#1121): said, with the stop button turned into "Stop waiting".
+    if (row.meta?.reconnecting && ACTIVE.has(row.status)) return t(...WAITING_TEXT.short);
     if (row.status === 'running') return etaText(row.eta_seconds) || elapsedText(row);
     if (row.status === 'queued' || row.status === 'submitting') return t('Starts after the one before it', '等前一项完成后开始');
     if (row.status === 'cancelling') return elapsedText(row);
@@ -572,14 +580,18 @@ export function installTaskFloat() {
         const stoppable = ACTIVE.has(row.status) && row.cancellable !== false && row.status !== 'cancelling';
         close.hidden = ACTIVE.has(row.status) && !stoppable;
         close.innerHTML = stoppable ? ICON.stop : ICON.x;
-        close.setAttribute('aria-label', stoppable ? t('Stop', '停止') : t('Dismiss', '收起'));
-        if (stoppable) tip(close, t('Stop', '停止'), t('Stop this generation (asks first)', '停止这次生成（会先确认）'));
+        const waiting = Boolean(row.meta?.reconnecting) && ACTIVE.has(row.status);
+        F.classList.toggle('waiting', waiting);
+        close.setAttribute('aria-label', waiting ? t(...WAITING_TEXT.stop) : stoppable ? t('Stop', '停止') : t('Dismiss', '收起'));
+        if (waiting) tip(close, t(...WAITING_TEXT.stop), t(...WAITING_TEXT.status));
+        else if (stoppable) tip(close, t('Stop', '停止'), t('Stop this generation (asks first)', '停止这次生成（会先确认）'));
         else tip(close, t('Dismiss', '收起'), row.status === 'done' ? t('Hide this; the result stays in your works', '收起提示，成品仍在作品里') : t('Hide this message', '收起这条提示'));
         const action = state === 'done' ? [t('Open', '打开'), t('See what was made', '查看这次生成的成品')]
             : state === 'fail' ? [t('See why', '查看原因'), t('Reason, what to do, and the report', '原因、可做的事和诊断报告')]
             : [t('Back to it', '回到生成'), t('Return to the generation; nothing restarts', '展开回生成画面，进度不中断')];
         // The hover tip says the whole state, whatever the card had to shorten, then what a click does.
-        const full = `${[label.textContent, l1.querySelector('.sgf-p')?.textContent].filter(Boolean).join(' ')} · ${$('.sgf-l2').textContent}`;
+        const whole = row.meta?.reconnecting && ACTIVE.has(row.status) ? t(...WAITING_TEXT.status) : state === 'fail' && row.kind === 'image' && lostEngineText(row.failure?.code, row.failure?.cause, t)?.[0];
+        const full = `${[label.textContent, l1.querySelector('.sgf-p')?.textContent].filter(Boolean).join(' ')} · ${whole || $('.sgf-l2').textContent}`;
         tip(card, full, `${action[0]}：${action[1]}`.replace('：', cn ? '：' : ': '), 'Enter');
         card.setAttribute('aria-label', `${full}. ${action[0]}`);
         drawSheet(list);
@@ -852,6 +864,8 @@ export function installTaskFloat() {
             drawSheet(); draw(); return;
         }
         if (button === close) {
+            // Waiting for FreeVideo: nothing can reach it to stop the job, so the button stops waiting (#1121).
+            if (row.meta?.reconnecting && ACTIVE.has(row.status)) { jobs.stopWaiting(row.id); draw(); return; }
             if (ACTIVE.has(row.status)) { ask = row.id; stopError = ''; open = false; failCard = null; drawSheet(); setTimeout(() => sheet.querySelector('[data-k="keep"]')?.focus({preventScroll: true}), 0); }
             else { jobs.dismiss(row.id); }
             return;

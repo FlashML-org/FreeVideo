@@ -160,6 +160,8 @@ IMAGE_REASONS = {
                          '图像生成模型的文件读不出来。在启动器里修复后再试。'),
     'device_unavailable': ('The graphics card is not available right now. Try again later.',
                            '显卡暂时用不了，稍后再试。'),
+    'gpu_kernels_failed': ("The graphics card's computation check did not pass. Update the graphics card driver, then restart FreeVideo. If the check still does not pass, download the report and report the problem.",
+                           '显卡的计算检查未通过。请更新显卡驱动后重新启动 FreeVideo；如仍未通过，请下载报告并提交问题。'),
     'worker_exit': ('Image generation stopped unexpectedly. Try again.', '图像生成意外停止了，请再试一次。'),
     'timeout': ('This image took too long and was stopped. Try again.', '这一张用时太长，已停止。请再试一次。'),
     'disk_full': ('Saving the image failed: the disk is full. Free some space, then generate again.',
@@ -214,6 +216,7 @@ IMAGE_ERRORS = {
     'no_memory': 'There is not enough GPU or system memory for this picture.',
     'model_unreadable': IMAGE_REASONS['model_unreadable'][0],
     'device_unavailable': IMAGE_REASONS['device_unavailable'][0],
+    'gpu_kernels_failed': IMAGE_REASONS['gpu_kernels_failed'][0],
     'timeout': IMAGE_REASONS['timeout'][0],
     'generation_failed': IMAGE_REASONS['generation_failed'][0],
     'worker_exit': 'The image worker stopped before finishing this picture.',
@@ -308,7 +311,7 @@ def safe_details(value):
 
 
 # Picture-only codes: the people-facing sentence is the picture card's own (IMAGE_REASONS), word for word.
-IMAGE_ONLY = ('small_memory', 'busy_video', 'model_unreadable', 'device_unavailable')
+IMAGE_ONLY = ('small_memory', 'busy_video', 'model_unreadable', 'device_unavailable', 'gpu_kernels_failed')
 # Program-facing codes: only an Agent or a command-line client meets them, never a person as a task's failure.
 PROTOCOL_ONLY = ('forbidden', 'redirect_forbidden', 'method_not_allowed', 'unauthorized', 'no_token', 'invalid_json',
                  'unsupported_media_type', 'idempotency_conflict', 'invalid_range', 'invalid_wait', 'invalid_resume',

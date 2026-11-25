@@ -15,12 +15,12 @@ from .image_model import H3, QWEN
 MODEL_IDS = (H3, QWEN)
 from ..exit_diagnostics import clean_reading, clean_sample, clean_memory_during_request
 from ..diagnostic_resources import commit_exhausted
-from ..failure_details import Redactor
+from ..failure_details import KERNEL_CHECKS_FAILED, Redactor
 from .loras import ERRORS as LORA_ERRORS, MESSAGE_ZH as LORA_MESSAGE_ZH
 
 
 ERRORS = frozenset(('no_memory', 'small_memory', 'busy_video', 'busy', 'pack_missing', 'model_unavailable', 'model_unreadable',
-                    'device_unavailable', 'worker_exit', 'timeout', 'cancelled', 'disk_full',
+                    'device_unavailable', 'gpu_kernels_failed', 'worker_exit', 'timeout', 'cancelled', 'disk_full',
                     'invalid_request', 'invalid_prompt', 'invalid_dimensions', 'invalid_seed', 'too_many_images', 'output_unwritable',
                     'invalid_media', 'invalid_points', 'segment_not_installed', 'generation_failed')) | LORA_ERRORS
 NO_REPORT = frozenset(('small_memory', 'busy', 'invalid_request', 'invalid_prompt', 'invalid_dimensions', 'invalid_seed',
@@ -38,6 +38,7 @@ MESSAGE_ZH = {
     'model_unavailable': '这台电脑不支持所选的图片模型。请改用 Qwen-Image 2.1。',
     'model_unreadable': '图像生成模型的文件读不出来。在启动器里修复后再试。',
     'device_unavailable': '显卡暂时用不了，稍后再试。',
+    'gpu_kernels_failed': '显卡的计算检查未通过。请更新显卡驱动后重新启动 FreeVideo；如仍未通过，请下载报告并提交问题。',
     'worker_exit': '图像生成意外停止了，请再试一次。',
     'timeout': '这一张用时太长，已停止。请再试一次。',
     'disk_full': '保存图片时出错：磁盘空间不够，空出空间后再生成。',
@@ -112,6 +113,10 @@ def classify_exception(error, *, stage='start', cancelled=False):
             return 'no_memory'
     if chain and ran_out(chain[0]):
         return 'disk_full'
+    # The GPU's own kernel checks found no working path (kernel_capabilities): nothing on this card can run until the
+    # driver or the installation changes, so it is said as such, not as a step that failed.
+    if any(str(item).startswith(KERNEL_CHECKS_FAILED) for item in chain):
+        return 'gpu_kernels_failed'
     for item in chain:
         cuda_init = any(frame.f_globals.get('__name__') == 'torch.cuda'
                         and frame.f_code.co_name in ('_lazy_init', '_check_driver')

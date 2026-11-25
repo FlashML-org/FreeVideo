@@ -78,8 +78,8 @@ const NOTE_STATES = new Set(['done', 'failed', 'interrupted']);
 // A person-readable cause only: the raw code is never shown, so an unknown one gives nothing and the line says where to look.
 const reasonOf = failure => {
     const code = failure?.code;
-    if (code === 'engine_closed') return words(['The engine was closed', '引擎已关闭']);
-    if (code === 'engine_restarted') return words(['The engine restarted', '引擎已重启']);
+    if (code === 'engine_closed') return words(['Connection lost', '连接中断']);
+    if (code === 'engine_restarted') return words(['FreeVideo restarted', 'FreeVideo 已重新启动']);
     return '';
 };
 export function noteFromJob(row, previous, now = Date.now()) {

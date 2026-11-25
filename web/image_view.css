@@ -314,6 +314,10 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
 .fv-iv .fv-iv-frame .fv-image-block-low .fv-image-progress{color:rgb(255 255 255 / .85);text-shadow:0 1px 3px rgb(7 10 16 / .9)}
 .fv-iv .fv-iv-frame .fv-image-block-low .fv-image-progress b{color:#fff}
 .fv-iv .fv-iv-frame .fv-image-run-report{position:relative}
+/* Waiting for FreeVideo to come back (#1121): the one button on the progress overlay, light on the dark frame. */
+.fv-iv .fv-iv-frame .fv-image-progress .fv-image-stop-waiting{justify-self:center;margin-top:4px;min-height:var(--fv-h-sm,32px);padding:4px 16px;border:1px solid rgb(255 255 255 / .32);border-radius:var(--fv-r-sm,8px);background:rgb(255 255 255 / .08);color:#fff;font:inherit;font-weight:var(--fv-medium,500);text-shadow:none;cursor:pointer}
+.fv-iv .fv-iv-frame .fv-image-progress .fv-image-stop-waiting:hover{background:rgb(255 255 255 / .16)}
+.fv-iv .fv-iv-frame .fv-image-progress .fv-image-stop-waiting:focus-visible{outline:2px solid var(--fv-focus,#7ab8ff);outline-offset:2px}
 .fv-iv .fv-iv-meter{position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--fv-line2);opacity:0;transition:opacity var(--iv-dur)}
 .fv-iv .fv-iv-meter::after{content:"";position:absolute;inset:0;background:var(--fv-accent-ink);transform-origin:0 50%;transform:scaleX(var(--p,0));transition:transform .4s var(--iv-ease)}
 .fv-iv .fv-iv-frame[data-state=running] .fv-iv-meter{opacity:1}

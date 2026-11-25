@@ -19,7 +19,7 @@ import { openAutopilot, viewChanged, viewSwitch } from './view_navigation.js';
 import { wordmark } from './wordmark.js';
 import { keepViewSwitchPlace } from './view_switch_place.js';
 import { openReferenceMenu, removeSavedImages } from './image_library.js';
-import { BLANK_CANVAS_AREAS, createImageGenClient, fittedNote, imageGenError, imageRemainingText, imageReportBar, originStep, renderImageFailure } from './image_generation.js';
+import { BLANK_CANVAS_AREAS, createImageGenClient, fittedNote, imageGenError, imageRemainingText, imageReportBar, originStep, renderImageFailure, WAITING_TEXT } from './image_generation.js';
 import { duration } from './generation_progress.js';
 import { randomSeed } from './studio_queue.js';
 import { createLayout } from './image_view_layout.js';
@@ -410,7 +410,10 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     const clearStep = () => { stepURL = ''; stepPicture.removeAttribute('src'); stepFrame.hidden = true; block.classList.remove('fv-image-block-low'); };
     const block = el('div', 'fv-image-block'), progressText = el('p', 'fv-image-progress');
     const progressLine = el('b'), progressSub = el('span'), runReport = el('div', 'fv-image-run-report');
-    progressLine.setAttribute('role', 'status'); progressText.append(progressLine, progressSub); block.append(progressText, runReport);
+    // While the page waits for FreeVideo to come back (#1121): a button that stops waiting, beside the waiting line.
+    const stopWaiting = el('button', 'fv-action fv-image-stop-waiting'); stopWaiting.type = 'button'; stopWaiting.hidden = true;
+    stopWaiting.onclick = () => { if (running?.id) jobs.stopWaiting(running.id); };
+    progressLine.setAttribute('role', 'status'); progressText.append(progressLine, progressSub, stopWaiting); block.append(progressText, runReport);
     const meter = el('i', 'fv-iv-meter');
     // The video's rising wave: it reads the level from this element, as in the studio.
     const sceneHost = el('div', 'fv-iv-scene'), level = el('div'); level.hidden = true; sceneHost.append(level);
@@ -1509,7 +1512,11 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             progressLine.textContent = row.status === 'running' ? [words, `${Math.floor(percent * 100)}%`].join(' · ') : words;
             // The second line changes with every report, so the page never looks stuck; elapsed counts from the job's own start.
             const begun = row.started_at || row.created_at || Date.now();
-            progressSub.textContent = [`${t('Elapsed', '已用时')} ${duration((Date.now() - begun) / 1000)}`, imageRemainingText(row.eta_seconds, t)].filter(Boolean).join(' · ');
+            const waiting = Boolean(row.meta?.reconnecting);
+            // While waiting, no estimate: nothing is being made until FreeVideo answers again.
+            progressSub.textContent = [`${t('Elapsed', '已用时')} ${duration((Date.now() - begun) / 1000)}`, waiting ? '' : imageRemainingText(row.eta_seconds, t)].filter(Boolean).join(' · ');
+            if (waiting) progressLine.textContent = t(...WAITING_TEXT.status);
+            stopWaiting.hidden = !waiting; stopWaiting.textContent = t(...WAITING_TEXT.stop);
             level.hidden = false; level.dataset.counted = row.status === 'running' ? 'true' : 'false'; level.style.setProperty('--fv-progress', String(percent * 100));
             if (row.meta?.preview) showStep(row.meta.preview);
             const reportId = row.meta?.report_id;
@@ -1520,7 +1527,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             return;
         }
         // Ended: the page lets go of the job; the floating window has nothing more to say about it once seen here.
-        unwatch?.(); unwatch = null; running = null; level.hidden = true; clearStep(); delete canvas.dataset.fvTaskId;
+        unwatch?.(); unwatch = null; running = null; level.hidden = true; clearStep(); delete canvas.dataset.fvTaskId; stopWaiting.hidden = true;
         jobs.markSeen(row.id);
         if (row.status === 'done' && row.result?.file) {
             shownFile = row.result.file; promptOf[shownFile] = row.meta?.text ?? row.prompt ?? ''; if (row.meta?.layout) layoutOf[shownFile] = row.meta.layout;
@@ -1530,6 +1537,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         } else if (row.status === 'failed' || row.status === 'interrupted') {
             const reason = row.failure || {};
             failure = {error: reason.code || 'generation_failed', report_id: reason.report_id, stage: reason.stage, step: reason.step, fitted: reason.fitted, memory: reason.memory, other_usage: reason.other_usage,
+                cause: reason.cause, misses: reason.misses,
                 retryStandard: row.meta?.tier === 'high' && reason.code === 'no_memory'};
             renderFailure(); jobs.dismiss(row.id);
         } else jobs.dismiss(row.id);
@@ -1549,7 +1557,8 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             label: failure.retryStandard ? ['Retry at Standard', '改用标准并重试'] : ['Retry', '重试'],
             onClick: () => { if (failure.noList) { failure = null; render(); go.onclick(); return; } if (failure.retryStandard) { area = RANGES[model.id].presets.standard; keepSize(); } void generate(); }}});
         const head = el('div', 'fv-iv-fail-head'), mark = el('i', 'fv-iv-fail-icon'); mark.append(icon('warn'));
-        head.append(mark, el('h3', '', failure.error === 'engine_closed' || failure.error === 'engine_restarted' ? t('The engine stopped', '引擎停止了') : t('The picture was not made', '这张没有生成出来')));
+        // One title for every failure; why FreeVideo went away is in the sentence below it (Lane, engine-closed-reason).
+        head.append(mark, el('h3', '', t('The picture was not made', '这张没有生成出来')));
         failHost.prepend(head);
         const stage_ = STAGE_WORDS[failure.stage];
         // No request was made when the list could not be fetched: there is no model or size to name.
