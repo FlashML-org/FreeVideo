@@ -313,9 +313,18 @@ NOUNS = (r'写着|写有|写的|印着|刻着|标着|显示|字样|字幕|招牌
          r'名为|名字|称为|号称|看板|書かれ|表示|간판|\bsigns?|\bbanners?|\bcaptions?|\btitles?|\bposters?|'
          r'\bscreens?|\blabels?|\bboards?|\bneon|\btext|\bplacards?|\bgraffiti|\bheadlines?|\bsubtitles?|'
          r'\blettering|\bnamed|\bcalled|\btitled|\bnicknamed|\bbrand\w*|\breads?|\breading|\bwritten|'
-         r'\bprinted|\bpainted|\bspelled')
+         r'\bprinted|\bpainted|\bspelled|'
+         # Signs in other languages: German, French, Spanish, Russian, Ukrainian, Turkish, Vietnamese.
+         r'\bschild(?:er|ern)?\b|\baufschrift\w*|\bplakat\w*|\bschriftzug\w*|\benseignes?\b|\bpanneaux?\b|'
+         r'\baffiches?\b|\bletreros?\b|\bвывеск\w*|\bнадпис\w*|\bтабличк\w*|\bвивіск\w*|'
+         r'\bнапис\w*|\blevha\w*|\bafiş\w*|biển hiệu|bảng hiệu|tấm biển|\bécriteaux?\b|\bpancartes?\b|'
+         r'\btafel\w*|\binschrift\w*|\bbeschriftung\w*|\brótulos?\b|\bpancartas?\b|\bплакат\w*|\bафиш\w*|\bбаннер\w*')
 # Writing, not speech: a sign "OPEN", 写着“老街馄饨”, a sign that says "OPEN", a shop called "Kiko".
 WRITING = re.compile(NOUNS, re.I)
+# Sign words that are English words too (a drug cartel, an inscription): writing only in a scene written in another
+# language; tabela (Turkish sign, Portuguese and Polish table) only when the scene has a Turkish letter.
+OTHER_WRITING = re.compile(r'\bcartel(?:es)?\b|\binscriptions?\b', re.I)
+TURKISH_WRITING = re.compile(r'\btabela\w*', re.I)
 SIGN_SAYS = re.compile(r'(?:%s)\w*\s+(?:that\s+|which\s+)?(?:says|said|reads|shows|displays)$' % NOUNS, re.I)
 
 
@@ -347,13 +356,14 @@ EN_WORDS = frozenset('the and of with is are was were she he his her him they th
 # Only words no English prompt uses (son, die, Dan, la, le ... are left out).
 OTHER_WORDS = frozenset('el los las un una unos unas al y que por con dos su sus es esta este pero muy como para les une '
                         'des du et avec dans sa il elle ils elles je nous vous pas sont der das ein eine und ist mit im '
-                        'sie ich nicht auf uma não gli che ile yang dengan dit répond demande murmure crie sagt ruft '
+                        'sie ich nicht auf uma não ela ele elas eles gli che ile yang dengan dit répond demande murmure crie sagt ruft '
                         'fragt flüstert antwortet dice responde pregunta grita susurra diz pergunta risponde chiede'.split())
 # Speech verbs that follow the quote: « Je reviens demain », dit la femme; „Ich komme morgen“, sagt sie.
-AFTER_SPEECH = re.compile(r'[\s,.!?…\u2014\u2013-]*(?:\w+\s+){0,3}?(?P<verb>dit|répond|demande|murmure|crie|sagt|ruft|fragt|'
-                          r'flüstert|antwortet|dice|responde|pregunta|grita|susurra|diz|pergunta|risponde|chiede|'
-                          r'говорит|сказал|сказала|кричит|спрашивает|отвечает|шепчет|каже|сказав|кричить|питає|'
-                          r'відповідає|шепоче|dedi|diyor|sordu|nói)\b', re.I)
+SPEECH_VERBS = (r'dit|répond|demande|murmure|crie|sagt|ruft|fragt|flüstert|antwortet|dice|responde|pregunta|grita|'
+                r'susurra|diz|pergunta|risponde|chiede|говорит|сказал|сказала|кричит|спрашивает|отвечает|шепчет|каже|'
+                r'сказав|кричить|питає|відповідає|шепоче|dedi|diyor|sordu|nói')
+AFTER_SPEECH = re.compile(r'[\s,.!?…\u2014\u2013-]*(?:\w+\s+){0,3}?(?P<verb>%s)\b' % SPEECH_VERBS, re.I)
+SPEECH_VERB = re.compile(r'\b(?:%s)\b' % SPEECH_VERBS, re.I)
 # Of those, the ones that are also English words (dice) count when the scene or the quoted words are in another
 # language, or when the quote has the shape of a Spanish speech tag: a comma or dash, dice, then a word that follows it
 # in Spanish or the end of the sentence ("Hola", dice la mujer.). The English noun does not take that shape
@@ -380,6 +390,7 @@ def spoken_lines(scene):
     """Quoted spans the user introduced as speech (not signs or captions), in order."""
     lines = []
     other = other_language(scene)
+    turkish = bool(re.search('[\u0131\u0130\u015f\u015e\u011f\u011e]', scene))
     for match in QUOTED.finditer(scene):
         words = next(group for group in match.groups() if group is not None).strip()
         before = scene[max(0, match.start() - 40):match.start()]
@@ -389,7 +400,8 @@ def spoken_lines(scene):
         lead = before.rstrip(' :：,，\u3000')
         if SIGN_SAYS.search(lead):
             continue
-        writing = max((m.end() for m in WRITING.finditer(lead)), default=-1)
+        writing = max((m.end() for m in (*WRITING.finditer(lead), *(OTHER_WRITING.finditer(lead) if other else ()),
+                                         *(TURKISH_WRITING.finditer(lead) if turkish else ()))), default=-1)
         cues = [len(lead) for verb in CJK_SPEECH if lead.endswith(verb)]
         cues += [lead.rfind(verb) + len(verb) for verb in CJK_STRONG if verb in lead[-6:]]
         cues += [m.start() + 1 for m in EN_SPEECH.finditer(lead)]
@@ -402,14 +414,19 @@ def spoken_lines(scene):
                          % '|'.join(CJK_SPEECH + CJK_STRONG), after)
                 or re.match(r'[\s,]*(?:\w+\s+){0,3}(?:says|said|asks|asked|replies|replied|shouts|shouted|'
                             r'whispers|whispered|calls|called|cries|cried)\b', after, re.I))
-            if not speech and writing < 0:
+            # A sign word in the same clause as the quote, with no speech verb after it, makes the quote writing
+            # (une enseigne lumineuse : « … », Ein Schild an der Tür: „…“); a sign word before a sentence end or before
+            # the speaker's verb does not (Под вывеской стоит мужчина и говорит: «…»).
+            tail = lead[writing:] if writing >= 0 else ''
+            near_writing = writing >= 0 and not re.search(r'[.!?…]', tail) and not SPEECH_VERB.search(tail)
+            if not speech and not near_writing:
                 # Speech verbs of other languages after the quote; English and CJK scenes do not use them, except the
                 # few that are English words too (rolls the dice), which count when the scene or the quoted words
                 # themselves are in another language ("Volveré mañana", dice la mujer).
                 verb = AFTER_SPEECH.match(scene[match.end():match.end() + 40])
                 speech = bool(verb) and (verb.group('verb').lower() not in AFTER_SPEECH_ENGLISH or other or
                                          other_language(words) or bool(SPANISH_DICE.match(scene[match.end():])))
-            if not speech and other and writing < 0:
+            if not speech and other and not near_writing:
                 speech = bool(re.search(r'[:：]\s*$', before)) or words[-1] in '.!?…'
         if speech:
             lines.append(words)
