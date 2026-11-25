@@ -423,8 +423,8 @@ export const TUTORIAL_CHAPTERS = [
             alt: {zh: '剪辑视图：接着生成的草稿段和描述框已用红框标出。', en: 'The Edit view, with the draft part that continues the video and the prompt box outlined in red.'},
         },
         steps: {
-            zh: ['在生成好的视频下方点“接着生成”，打开剪辑视图。', '选中后面自动加上的那一段，在底部描述框写明接下来发生什么。这一段默认 10 秒，在 Mac 和一次生成不了 10 秒的设备上为 5 秒。', '需要更长时，拖长这一段，每段至少 5 秒，然后点“生⁠成”。', '新的一段会接在原视频之后，并自动拼成一条。'],
-            en: ['Choose "Extend" below a finished video. The Edit view opens.', 'Select the part added after it and write what happens next in the box at the bottom. The part is 10 seconds by default, or 5 seconds on a Mac and on devices that cannot make 10 seconds at once.', 'To make it longer, drag the part out; each part is at least 5 seconds. Then choose "Generate".', 'The new part follows the original and is joined into one video.'],
+            zh: ['在生成好的视频下方点“接着生成”，打开剪辑视图。', '选中后面自动加上的那一段，在底部提示词框写明接下来发生什么。这一段默认 10 秒，在 Mac 和一次生成不了 10 秒的设备上为 5 秒。', '需要更长时，拖长这一段，每段至少 5 秒，然后点“生⁠成”。', '新的一段会接在原视频之后，并自动拼成一条。'],
+            en: ['Choose "Extend" below a finished video. The Edit view opens.', 'Select the part added after it and write what happens next in the prompt box at the bottom. The part is 10 seconds by default, or 5 seconds on a Mac and on devices that cannot make 10 seconds at once.', 'To make it longer, drag the part out; each part is at least 5 seconds. Then choose "Generate".', 'The new part follows the original and is joined into one video.'],
         },
         example: {
             assets: [],
@@ -471,8 +471,8 @@ export const TUTORIAL_CHAPTERS = [
             alt: {zh: '剪辑视图：选中的一段和描述框已用红框标出。', en: 'The Edit view, with the selected part and the prompt box outlined in red.'},
         },
         steps: {
-            zh: ['点顶部的“剪辑视图”。', '在时间线上选中要处理的一段。', '在下方描述框中填写这一段的内容，点“生⁠成”接续下一段。', '在右侧“画面”中可调整缩放、位置和旋转，或点“裁⁠剪”；窗口窄于 1280 时，先点“调⁠整”打开该面板。', '完成后点右上角的“导⁠出”保存。'],
-            en: ['Choose "Edit" at the top.', 'Select a part on the timeline.', 'Write what happens in this part in the box below and choose "Generate" to extend the video.', 'Under "Video" on the right, adjust scale, position and rotation, or choose "Crop". On a window narrower than 1280 pixels, choose "Adjust" first to open the panel.', 'When done, choose "Export" at the top right.'],
+            zh: ['点顶部的“剪辑视图”。', '在时间线上选中要处理的一段。', '在下方提示词框中填写这一段的内容，点“生⁠成”接续下一段。', '在右侧“画面”中可调整缩放、位置和旋转，或点“裁⁠剪”；窗口窄于 1280 时，先点“调⁠整”打开该面板。', '完成后点右上角的“导⁠出”保存。'],
+            en: ['Choose "Edit" at the top.', 'Select a part on the timeline.', 'Write what happens in this part in the prompt box below and choose "Generate" to extend the video.', 'Under "Video" on the right, adjust scale, position and rotation, or choose "Crop". On a window narrower than 1280 pixels, choose "Adjust" first to open the panel.', 'When done, choose "Export" at the top right.'],
         },
         example: {
             assets: [],
@@ -560,8 +560,8 @@ export const TUTORIAL_CHAPTERS = [
             alt: {zh: '剪辑视图：选中的声音片段和“分⁠离⁠音⁠轨”按钮已用红框标出。', en: 'The Edit view, with a selected sound clip and the "Separate tracks" button outlined in red.'},
         },
         steps: {
-            zh: ['在剪辑视图中选中带声音的片段。', '点“分⁠离⁠音⁠轨”，人声、音乐和环境声会分成三条轨道。', '选中“音乐”轨上的片段，在描述框中写下想要的音乐，点“替⁠换⁠配⁠乐”。', '选中“人声”轨上的片段，在“台词”中修改某一句的文字。', '点“重⁠新⁠配⁠音”，只重配改过的句子。'],
-            en: ['Select a clip with sound in the Edit view.', 'Choose "Separate tracks". Dialogue, music and ambience become three tracks.', 'Select a clip on the music track, describe the music you want and choose "Replace music".', 'Select a clip on the dialogue track and change the words of one line under "Lines".', 'Choose "Redub". The changed lines are spoken again.'],
+            zh: ['在剪辑视图中选中带声音的片段。', '点“分⁠离⁠音⁠轨”，人声、音乐和环境声会分成三条轨道。', '选中“音乐”轨上的片段，在提示词框中写下想要的音乐，点“替⁠换⁠配⁠乐”。', '选中“人声”轨上的片段，在“台词”中修改某一句的文字。', '点“重⁠新⁠配⁠音”，只重配改过的句子。'],
+            en: ['Select a clip with sound in the Edit view.', 'Choose "Separate tracks". Dialogue, music and ambience become three tracks.', 'Select a clip on the music track, write the music you want in the prompt box and choose "Replace music".', 'Select a clip on the dialogue track and change the words of one line under "Lines".', 'Choose "Redub". The changed lines are spoken again.'],
         },
         limits: {
             zh: ['部分电脑暂不支持分离音轨，此时按钮不会出现。'],

@@ -615,7 +615,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         if (!items.length) historyList.append(el('p', 'fv-ed-history-empty', t('Prompts you generate with show here.', '生成过的提示词会出现在这里。')));
         for (const text of items) {
             const item = el('button', 'fv-ed-history-item', text); item.type = 'button'; item.setAttribute('role', 'menuitem');
-            tip(item, {name: t('Use this prompt', '用这段提示词'), use: t('Put it in the box; nothing is generated yet', '放进描述框，还不会生成')});
+            tip(item, {name: t('Use this prompt', '用这段提示词'), use: t('Put it in the prompt box; nothing is generated yet', '放进提示词框，还不会生成')});
             item.onclick = () => { input.value = text; typed(text); closeHistory(); render(); input.focus(); };
             historyList.append(item);
         }
