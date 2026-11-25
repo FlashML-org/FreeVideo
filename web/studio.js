@@ -765,7 +765,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // The console (studio_console.js) is put together once every control exists; until then nothing reads it.
     let consoleUI = null, promptLibrary = null, reverseKey = null, reversePick = null;
     // Set while the editor borrows this panel's bar (current.borrow below).
-    let borrowed = null, columns = null;
+    let borrowed = null, columns = null, placeReverse = () => {};   // (placeReverse: where the reverse-prompt key stands; set below, run again when the editor lends or takes back the bar)
     // Frame & size picker and the stage's outline of a new frame (set with the size tray).
     let framePicker = null;
     const header = el('header', null, 'fv-header'), brand = el('div', null, 'fv-brand');
@@ -3330,6 +3330,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             release({disposing = false} = {}) {
                 if (!borrowed) return;
                 borrowed = null; shadow = null;
+                placeReverse();
                 unlock(); updateFirstFrame();
                 shell.remove();
                 if (!disposing) {
@@ -3341,6 +3342,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             }};
         shadow = new Map();
         borrowed = {submit, label: () => (state.labelFn ?? label)?.(), previews, disabled, onSeconds, onFirstFrame, firstFrame: null, applying: false, release: state.release};
+        placeReverse();
         const unlock = () => {
             for (const control of lockedNow.splice(0)) { control.disabled = false; delete control.dataset.fvLocked; }
             for (const element of [framePicker?.element, stepper?.element]) delete element?.dataset.fvLocked;
@@ -3810,9 +3812,10 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // At phone width the prompt tools stand in a column beside the box, and a third key would make the console taller than it
     // is without reverse: there the key sits in the options row, right of Enhance, as an icon (same key, same words).
     const reversePhone = window.matchMedia?.('(max-width:760px)');
-    const placeReverse = () => {
-        // (The three-column panel has no tools column beside the box: the key stays in the Prompt section's head at every width.)
-        const inRow = Boolean(reversePhone?.matches) && body.dataset.cols !== '3';
+    placeReverse = () => {
+        // (The three-column panel has no tools column beside the box: the key stays in the Prompt section's head at every width.
+        // The editor's lent bar is the console again, with the tools column: at phone width the key is in the options row there too.)
+        const inRow = Boolean(reversePhone?.matches) && (body.dataset.cols !== '3' || Boolean(borrowed));
         // In the row it is one of the round keys (like LoRA and Settings); in the tools column it is a library-style key.
         reverseKey.classList.toggle('fvs-chip', inRow); reverseKey.classList.toggle('fvs-library-button', !inRow);
         if (inRow) enhancer.chip.after(reverseKey); else promptTools.prepend(reverseKey);
