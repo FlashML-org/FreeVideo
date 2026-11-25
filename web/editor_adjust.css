@@ -26,7 +26,9 @@
     stays centered in the visible preview, without moving any lower rows. */
  .fv-editor[data-adjust-open=true] .fv-ed-preview,.fv-editor[data-adjust-open=true] .fv-ed-transport{margin-right:264px}
 }
-@media(max-width:680px){.fv-editor .fv-ed-adjust-host{grid-column:1}}
+@media(max-width:680px){.fv-editor .fv-ed-adjust-host{grid-column:1}
+ /* The phone preview is width:100% (editor.css); beside the open drawer it takes the room the margin leaves, not its full width. */
+ .fv-editor[data-adjust-open=true] .fv-ed-preview{width:auto}}
 @media(min-width:681px) and (max-width:800px){
  .fv-editor[data-adjust-available=true] .fv-ed-toolbar{gap:4px}
  .fv-editor[data-adjust-available=true] .fv-ed-toolbar button{padding-left:4px;padding-right:4px}

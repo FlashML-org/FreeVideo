@@ -51,7 +51,13 @@ export function createAdjustPicture({state, sources, t, player, notes = null}) {
     function update(ctx = context) {
         if (!ctx || !container) return; context = ctx;
         notes?.update(ctx);
-        clip = ctx.clips.find(c => c.track.kind === 'video' && c.source);
+        const next = ctx.clips.find(c => c.track.kind === 'video' && c.source);
+        // A number typed for one part is kept for that part when the selection moves on while its box still has the focus
+        // (a key that selects another part, say): it commits to the part it was typed for, never to the new one and never lost.
+        if (clip && next?.id !== clip.id) for (const {control} of Object.values(numbers)) {
+            if (control.input.dataset.editing === 'true' && control.input.dataset.editClip === clip.id) control.input.onblur?.();
+        }
+        clip = next;
         const seen = new Set(); let count = 0;
         for (const item of ctx.clips) { if (!seen.has(item.id)) count++; seen.add(item.id); if (item.link) seen.add(item.link); }
         const reason = disabledReason({...ctx, multiple: ctx.multiple || count > 1}, {needs: 'video', single: true}) || session.editReason(clip);
