@@ -203,7 +203,7 @@ async function reuseAction(record, t, reuse) {
         clearTimeout(timer); stop();
         const button = action('button', '', 'reuse', 'fv-action-secondary fv-action-reuse');
         button.dataset.tourId = 'library-reuse';
-        button.dataset.fvTipName = label; button.dataset.fvTipUse = t('Bring back its prompt, size and length', '带回这条的描述、尺寸和时长');
+        button.dataset.fvTipName = label; button.dataset.fvTipUse = t('Bring back its prompt, size and length', '带回这条的提示词、尺寸和时长');
         button.lastElementChild.replaceWith(make(label));
         button.hidden = !offered();
         button.onclick = () => {
@@ -273,9 +273,9 @@ export function resultActions(record, t, {diagnostic = null, secondPass = null, 
             button.setAttribute('aria-pressed', String(!!record.favorite));
             if (stage) {
                 // Under the picture the key names the state ("Favourite" / "Favourited"), after Download; its hover card says what a press does.
-                button.lastElementChild.textContent = record.favorite ? t('Favourited', '已收藏') : t('Favourite', '收藏');
-                button.dataset.fvTipName = record.favorite ? t('Favourited', '已收藏') : t('Favourite', '收藏');
-                button.dataset.fvTipUse = record.favorite ? t('Take this video out of favourites', '把这条视频移出收藏') : t('Keep it at the top of Creations', '在作品里置顶保留');
+                button.lastElementChild.textContent = record.favorite ? t('Favorited', '已收藏') : t('Favorite', '收藏');
+                button.dataset.fvTipName = record.favorite ? t('Favorited', '已收藏') : t('Favorite', '收藏');
+                button.dataset.fvTipUse = record.favorite ? t('Take this video out of favorites', '把这条视频移出收藏') : t('Keep it at the top of Creations', '在作品里置顶保留');
                 button.setAttribute('aria-label', button.lastElementChild.textContent);
                 return;
             }
@@ -359,7 +359,7 @@ export function resultActions(record, t, {diagnostic = null, secondPass = null, 
     share.className = 'fv-action fv-action-secondary fv-share-trigger';
     const label = document.createElement('span'); label.textContent = share.textContent;
     share.replaceChildren(icon('share'), label);
-    share.dataset.fvTipName = label.textContent; share.dataset.fvTipUse = t('Export a video or picture to send', '导出可发送的视频或图片');
+    share.dataset.fvTipName = label.textContent; share.dataset.fvTipUse = t('Export a video or image to send', '导出可发送的视频或图片');
     bar.append(share);
     if (diagnostic) {
         const reportLabel = t('Download report', '下载报告');

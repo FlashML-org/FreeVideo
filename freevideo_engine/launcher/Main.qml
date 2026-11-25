@@ -70,10 +70,26 @@ ApplicationWindow {
         if (uiLanguage === "zh-Hans") return fill(zh, values)
         if (uiLanguage === "en") return fill(en, values)
         const own = key => catalog && typeof catalog[key] === "string" ? catalog[key] : null
-        return fill(own(en + "\u241f" + zh) ?? own(en) ?? en, values)
+        // A file whose fallback is zh-Hans (Traditional Chinese) shows text it does not hold as the code's Simplified
+        // Chinese in its own characters, not as English (web/i18n.js lookup).
+        const missing = () => catalog && catalog._meta && catalog._meta.fallback === "zh-Hans" ? fromSimplified(zh) : en
+        return fill(own(en + "\u241f" + zh) ?? own(en) ?? missing(), values)
+    }
+    // Simplified Chinese in the characters of the language file's _meta.chars (pairs of a Simplified character and the
+    // one it becomes). The table follows the file (computed when it changes); reading it never writes a property, so the
+    // texts that call t() in their bindings do not loop.
+    readonly property var charTable: {
+        const pairs = Array.from(String(catalog && catalog._meta && catalog._meta.chars || ""))
+        const table = {}
+        for (let i = 0; i + 1 < pairs.length; i += 2) table[pairs[i]] = pairs[i + 1]
+        return table
+    }
+    function fromSimplified(text) {
+        const table = charTable
+        return Array.from(String(text)).map(ch => Object.prototype.hasOwnProperty.call(table, ch) ? table[ch] : ch).join("")
     }
     function releaseVersion(value) { return value && value.product_version ? "v" + value.product_version : value && value.version || "—" }
-    function releaseSummary(value) { return value && value.release_notes ? value.release_notes[s.zh ? "zh" : "en"].summary : "" }
+    function releaseSummary(value) { return value && value.release_notes ? value.release_notes[s.notes_zh ? "zh" : "en"].summary : "" }
     readonly property var currentRelease: s.update.current_release || {version: s.update.current}
     readonly property var engineRelease: s.update.engine_release || {}
     readonly property string engineBuild: engineRelease.version || s.update.installed || ""
@@ -653,7 +669,7 @@ ApplicationWindow {
                             FIcon { kind: "disk"; ink: disk && (disk.problem || disk.short) ? theme.danger : theme.muted; Layout.preferredWidth: 16; Layout.preferredHeight: 16; Layout.alignment: Qt.AlignVCenter }
                             // A full-width colon carries its own space; pull the value up to it.
                             FText { id: diskLabelText; objectName: "installDiskLabel"; visible: !!diskLabel(); text: diskLabel(); color: theme.muted; font.pixelSize: theme.micro + 1; wrapMode: Text.NoWrap
-                                    Layout.alignment: Qt.AlignBaseline; Layout.rightMargin: s.zh ? -(8 + Math.round(font.pixelSize / 2) - 2) : -4 }
+                                    Layout.alignment: Qt.AlignBaseline; Layout.rightMargin: text.slice(-1) === "：" ? -(8 + Math.round(font.pixelSize / 2) - 2) : -4 }
                             FText { objectName: "installDiskText"; text: diskLine(); color: disk && (disk.problem || disk.short) ? theme.danger : theme.muted; font.pixelSize: theme.micro + 1; Layout.fillWidth: true; Layout.alignment: Qt.AlignBaseline }
                             // The label's right edge lines up with Browse; the hover fill reaches into the card's padding.
                             FButton { objectName: "changeDisk"; visible: s.form.new_comfy && diskChoices.length > 0; enabled: s.can_manage; flat: true; implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1
@@ -714,7 +730,7 @@ ApplicationWindow {
                         FChoice {
                             objectName: "installImageModel"; Layout.fillWidth: true; Layout.minimumWidth: 0; Layout.preferredWidth: 1; Layout.fillHeight: true
                             text: "MiniMax H3\u00a0Image"
-                            detail: s.image_installed ? t("Installed.", "已安装。") : checked ? t("Makes pictures.", "生成图片。") : t("Makes pictures. Can be added later in the app.", "生成图片。以后可在应用内添加。")
+                            detail: s.image_installed ? t("Installed.", "已安装。") : checked ? t("Makes images.", "生成图片。") : t("Makes images. Can be added later in the app.", "生成图片。以后可在应用内添加。")
                             checked: !!s.image_only; enabled: !s.busy
                             onClicked: backend.edit("install_model", "image")
                         }
@@ -1407,7 +1423,7 @@ ApplicationWindow {
                                     FText { text: t("Updates", "更新"); Layout.fillWidth: true }
                                     FText { text: t("Settings are kept in Documents across updates.", "设置保存在文档目录中，更新后保留。"); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
                                 }
-                                FButton { objectName: "checkUpdatesButton"; text: s.update.check_requested ? s.update.check_text : t("Check now", "检查更新"); implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1; onClicked: { manualUpdate = true; backend.checkUpdates("") } }
+                                FButton { objectName: "checkUpdatesButton"; text: s.update.check_requested ? s.update.check_text : t("Check for updates", "检查更新"); implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1; onClicked: { manualUpdate = true; backend.checkUpdates("") } }
                             }
                             FButton { text: t("Version & release notes", "版本与更新说明") + " · " + releaseVersion(currentRelease); flat: true; Layout.fillWidth: true; onClicked: releaseNotesOpen = true }
                         }
@@ -1421,8 +1437,10 @@ ApplicationWindow {
                                 objectName: "lanFirewallHint"
                                 visible: Qt.platform.os === "windows" && !!s.form.lan_access && !(s.lan_qr && s.lan_qr.length > 0)
                                 Layout.fillWidth: true
-                                FText { text: t("Windows will ask for permission. Check \"Private networks\", then click \"Allow access\".", "Windows 会弹出确认框，"); color: theme.muted; font.pixelSize: theme.micro; width: Math.min(implicitWidth, parent.width); wrapMode: Text.WordWrap }
-                                FText { text: "请勾选“专用网络”，再点“允许访问”。"; visible: s.zh; color: theme.muted; font.pixelSize: theme.micro; width: Math.min(implicitWidth, parent.width); wrapMode: Text.WordWrap }
+                                // The whole sentence in English (and in a language file that translates it whole); Chinese
+                                // has two halves, each through t(), the second only where the first stops at the comma.
+                                FText { objectName: "lanFirewallFirst"; text: t("Windows will ask for permission. Check \"Private networks\", then click \"Allow access\".", "Windows 会弹出确认框，"); color: theme.muted; font.pixelSize: theme.micro; width: Math.min(implicitWidth, parent.width); wrapMode: Text.WordWrap }
+                                FText { objectName: "lanFirewallSecond"; text: t("Check \"Private networks\", then click \"Allow access\".", "请勾选“专用网络”，再点“允许访问”。"); visible: uiLanguage.indexOf("zh") === 0; color: theme.muted; font.pixelSize: theme.micro; width: Math.min(implicitWidth, parent.width); wrapMode: Text.WordWrap }
                             }
                             GridLayout {
                                 id: lanQrRow; objectName: "lanQrRow"
@@ -1921,7 +1939,7 @@ ApplicationWindow {
                 Layout.topMargin: -updateDialog.topPadding; Layout.leftMargin: -updateDialog.leftPadding
                 Layout.rightMargin: -updateDialog.rightPadding; Layout.bottomMargin: 6
                 media: s.update.candidate ? (s.update.media || {}).candidate || null : s.update.engine ? (s.update.media || {}).current || null : null
-                zh: s.zh; radius: theme.radiusLg; maxHeight: Math.round(win.height * 0.4)
+                zh: !!s.notes_zh; radius: theme.radiusLg; maxHeight: Math.round(win.height * 0.4)
             }
             ScrollView {
                 ScrollBar.vertical: FScrollBar {}
@@ -1955,7 +1973,7 @@ ApplicationWindow {
                 FButton { objectName: "updateDialogReport"; text: reportOpened(s.update.error, t("Update", "更新")) ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(s.update.error, t("Update", "更新")); flat: true; visible: s.update.status === "error" && !!s.update.error; onClicked: backend.reportProblem(s.update.error, t("Update", "更新")) }
             }
             FMeter { Layout.fillWidth: true; visible: s.update.status === "downloading"; active: true; fraction: s.update.progress && s.update.progress.total ? s.update.progress.done/s.update.progress.total : -1 }
-            FReleaseNotes { t: win.t; objectName: "updateReleaseNotes"; visible: !!availableRelease; Layout.fillWidth: true; room: updateDialog.availableWidth; release: availableRelease; earlier: availableEarlier; zh: s.zh; heading: releaseVersion(availableRelease) }
+            FReleaseNotes { t: win.t; objectName: "updateReleaseNotes"; visible: !!availableRelease; Layout.fillWidth: true; room: updateDialog.availableWidth; release: availableRelease; earlier: availableEarlier; zh: !!s.notes_zh; heading: releaseVersion(availableRelease) }
             FButton { text: t("Version & release notes", "版本与更新说明"); flat: true; Layout.maximumWidth: updateContents.width; onClicked: releaseNotesOpen = true }
             }
             }
@@ -2055,7 +2073,7 @@ ApplicationWindow {
                 Layout.topMargin: -releaseNotesPopup.topPadding; Layout.leftMargin: -releaseNotesPopup.leftPadding
                 Layout.rightMargin: -releaseNotesPopup.rightPadding; Layout.bottomMargin: 6
                 media: s.update.candidate ? (s.update.media || {}).candidate || null : (s.update.media || {}).current || null
-                zh: s.zh; radius: theme.radiusLg; maxHeight: Math.round(win.height * 0.4)
+                zh: !!s.notes_zh; radius: theme.radiusLg; maxHeight: Math.round(win.height * 0.4)
             }
             ScrollView {
                 ScrollBar.vertical: FScrollBar {}
@@ -2065,9 +2083,9 @@ ApplicationWindow {
                 ColumnLayout {
                     id: releaseContents; width: releaseScroll.availableWidth - releaseScroll.ScrollBar.vertical.width; spacing: 18
                     FText { text: t("Version & release notes", "版本与更新说明"); font.pixelSize: theme.section + 2; font.weight: Font.DemiBold; Layout.fillWidth: true }
-                    FReleaseNotes { t: win.t; visible: !!s.update.candidate; Layout.fillWidth: true; room: releaseNotesPopup.availableWidth; release: s.update.candidate; earlier: s.update.candidate_earlier || []; zh: s.zh; heading: releaseVersion(s.update.candidate) }
+                    FReleaseNotes { t: win.t; visible: !!s.update.candidate; Layout.fillWidth: true; room: releaseNotesPopup.availableWidth; release: s.update.candidate; earlier: s.update.candidate_earlier || []; zh: !!s.notes_zh; heading: releaseVersion(s.update.candidate) }
                     FDivider { visible: !!s.update.candidate }
-                    FReleaseNotes { t: win.t; objectName: "currentReleaseNotes"; Layout.fillWidth: true; room: releaseNotesPopup.availableWidth; release: currentRelease; zh: s.zh; heading: (separateVersions ? t("Launcher", "启动器") : t("Current version", "当前版本")) + " · " + releaseVersion(currentRelease) }
+                    FReleaseNotes { t: win.t; objectName: "currentReleaseNotes"; Layout.fillWidth: true; room: releaseNotesPopup.availableWidth; release: currentRelease; zh: !!s.notes_zh; heading: (separateVersions ? t("Launcher", "启动器") : t("Current version", "当前版本")) + " · " + releaseVersion(currentRelease) }
                     FText { objectName: "engineReleaseInfo"; visible: !!engineRelease.product_version || !!engineBuild
                             text: !engineRelease.product_version ? t("Engine in use: build {build}", "正在使用的引擎：构建号 {build}", {build: engineBuild})
                                   : engineBuild ? t("Engine in use: {version} (build {build})", "正在使用的引擎：{version}（构建号 {build}）", {version: engineVersion, build: engineBuild})

@@ -1151,7 +1151,7 @@ class Session:
         elif active.get('state') == 'paused_for_generation':
             # What the download waits for: a video, a picture, or another task holding the graphics card.
             detail = {'busy_video': self.t('Paused while a video generates', '视频生成中，已暂停'),
-                      'busy_picture': self.t('Paused while a picture is made', '正在出图，已暂停'),
+                      'busy_picture': self.t('Paused while an image is made', '正在出图，已暂停'),
                       'busy_setup': self.t('Paused while FreeVideo installs, updates or cleans up', 'FreeVideo 正在安装、更新或清理，已暂停')}.get(
                 active.get('reason'), self.t('Paused: the graphics card is busy', '显卡忙，已暂停'))
         elif active.get('state') == 'cancelled':
@@ -1419,6 +1419,32 @@ class Session:
                 languages=language_choices(), language_setting='auto' if follows else interface_language(setting, default_language),
                 system_language=interface_language('auto', default_language)))
         return self._language_view[1]
+
+    def notes_zh(self):
+        """Whether release notes and their media captions show in Chinese: Simplified Chinese, and a language whose file
+        falls back to it (Traditional Chinese reads the Chinese notes in its own characters, not the English)."""
+        return self.chinese() or self._falls_back_to_chinese()
+
+    def _falls_back_to_chinese(self):
+        from .i18n import catalog
+        meta = catalog(self.ui_language()).get('_meta') or {}
+        return meta.get('fallback') == 'zh-Hans'
+
+    def notes_in_language(self, value):
+        """The update view with every Chinese text of its releases (notes, media captions) in the interface language's
+        characters; unchanged unless the language falls back to Simplified Chinese."""
+        if self.chinese() or not self._falls_back_to_chinese():
+            return value
+        from .i18n import catalog, from_simplified
+        entries = catalog(self.ui_language())
+
+        def convert(item, chinese=False):
+            if isinstance(item, dict):
+                return {key: convert(part, chinese or key == 'zh') for key, part in item.items()}
+            if isinstance(item, list):
+                return [convert(part, chinese) for part in item]
+            return from_simplified(entries, item) if chinese and isinstance(item, str) else item
+        return convert(value)
 
     def ui_language(self):
         """The language the interface shows (a language file's tag: 'en', 'zh-Hans', 'zh-Hant', ...): the saved setting,
@@ -2165,7 +2191,7 @@ class Session:
                     body=self.t('This frees %s of disk space. If the files are needed later, they will be downloaded again automatically.',
                                 '可释放 %s 磁盘空间。以后如需要，会自动重新下载。') % size,
                     delete_text=(self.t('Deleting…', '正在删除…') if thread is not None else
-                                 self.t('Try again', '再试一次') if self.adaln_retry else self.t('Delete', '删除')),
+                                 self.t('Retry', '重试') if self.adaln_retry else self.t('Delete', '删除')),
                     later_text=self.t('Not now', '暂不删除'))
 
     def sync_lan_from_store(self):
@@ -2536,7 +2562,7 @@ class Session:
                         'Deleting them does not affect models, the runtime or your videos.',
                         '导入过的离线包压缩包仍保留在磁盘上，FreeVideo 已不再需要。删除后，模型、运行环境和作品都不受影响。'),
                     delete_text=(self.t('Deleting…', '正在删除…') if self.archives_busy else
-                                 self.t('Try again', '再试一次') if retry else
+                                 self.t('Retry', '重试') if retry else
                                  self.t('Delete and free %s', '删除并释放 %s') % size),
                     keep_text=self.t('Keep for now', '暂时保留'),
                     footnote=self.t('You can also delete them later in Settings › Preferences › Storage.',
@@ -2984,7 +3010,7 @@ class Session:
             archives_toast=(self.t('Freed %s', '已释放 %s') % self.archive_size(self.archives_freed)
                             if self.archives_freed and time.monotonic() < self.archives_toast_until else ''),
             can_shortcut=bool(self.controller.selection and self.controller.selection.get('ready')),
-            update=update, engine_update_available=bool(row.get('engine_update_available')),
+            update=self.notes_in_language(update), notes_zh=self.notes_zh(), engine_update_available=bool(row.get('engine_update_available')),
             settings_path=str(self.store.primary),
             review_id=json.dumps(self.importer.state.get('replace_models', []), sort_keys=True) if offline_review else
                       row.get('plan', {}).get('plan_id', ''),

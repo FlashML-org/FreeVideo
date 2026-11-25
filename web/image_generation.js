@@ -213,7 +213,7 @@ export function packView(info, t) {
         // While a setup, update or cleanup holds the installation the download cannot go on at the user's request: no button, only the note.
         return {loading: true, waiting, noButton: waiting && install.reason === 'busy_setup', button: waiting ? t('Continue download', '继续下载') : t('Pause', '暂停'), fraction: total > 0 ? Math.min(1, (install.done || 0) / total) : 0,
             note: waiting ? (install.reason === 'busy_video' ? t('Paused while a video generates', '视频生成中，已暂停')
-                : install.reason === 'busy_picture' ? t('Paused while a picture is made', '正在出图，已暂停')
+                : install.reason === 'busy_picture' ? t('Paused while an image is made', '正在出图，已暂停')
                 : install.reason === 'busy_setup' ? t('Paused while FreeVideo installs, updates or cleans up', 'FreeVideo 正在安装、更新或清理，已暂停')
                 : t('Paused while FreeVideo uses the graphics card for another task', 'FreeVideo 正在用显卡做别的任务，已暂停'))
                 : t('Downloading · {done}\u00a0GB / {size}{time}', '正在下载 · {done}\u00a0GB / {size}{time}', { done: gb(install.done || 0), size, time })};
@@ -262,14 +262,14 @@ export function imageGenError(code, info, t) {
         invalid_loras: ['The LoRA selection is invalid. Choose the files again.', 'LoRA 设置有误，请重新选择文件。'],
         invalid_lora_strength: ['LoRA strength must be between -2 and 2.', 'LoRA 强度必须在 -2 到 2 之间。'],
         duplicate_lora: ['Select each LoRA only once. Remove the duplicate.', '同一个 LoRA 只能选择一次，请移除重复项。'],
-        too_many_loras: ['Use at most eight LoRAs per picture.', '一张图片最多使用 8 个 LoRA，请减少数量。'],
+        too_many_loras: ['Use at most eight LoRAs per image.', '一张图片最多使用 8 个 LoRA，请减少数量。'],
         lora_not_found: ['The LoRA file could not be found. Choose it again.', 'LoRA 文件找不到，请重新选择。'],
-        invalid_lora_model: ['This LoRA cannot be used for pictures. Choose another one.', '此 LoRA 不适用于图片生成，请换一个。'],
+        invalid_lora_model: ['This LoRA cannot be used for images. Choose another one.', '此 LoRA 不适用于图片生成，请换一个。'],
         no_memory: ['Not enough GPU memory, even at the smallest size. Close other apps using the GPU, then try again.',
             '显存不足，最小尺寸也无法生成。请关闭其他占用显卡的程序后重试。'],
         busy_video: ['A video is generating. Try again when it finishes.', '视频正在生成，完成后再试。'],
         busy: ['An image is already being generated. Try again when it finishes.', '已有一张图在生成，完成后再试。'],
-        model_unavailable: ['This computer does not support the chosen picture model. Use Qwen-Image 2.1.', '这台电脑不支持所选的图片模型。请改用 Qwen-Image 2.1。'],
+        model_unavailable: ['This computer does not support the chosen image model. Use Qwen-Image 2.1.', '这台电脑不支持所选的图片模型。请改用 Qwen-Image 2.1。'],
         // Lane 11-25 (image-prompt-read-failure-reason copy_lane_gpu_kernels).
         gpu_kernels_failed: ["The graphics card's computation check did not pass. Update the graphics card driver, then restart FreeVideo. If the check still does not pass, download the report and report the problem.", "\u663e\u5361\u7684\u8ba1\u7b97\u68c0\u67e5\u672a\u901a\u8fc7\u3002\u8bf7\u66f4\u65b0\u663e\u5361\u9a71\u52a8\u540e\u91cd\u65b0\u542f\u52a8 FreeVideo\uff1b\u5982\u4ecd\u672a\u901a\u8fc7\uff0c\u8bf7\u4e0b\u8f7d\u62a5\u544a\u5e76\u63d0\u4ea4\u95ee\u9898\u3002"],
         model_unreadable: ['The image generation model files could not be read. Repair them in the launcher and try again.',
@@ -280,12 +280,12 @@ export function imageGenError(code, info, t) {
         disk_full: ['Saving the image failed: the disk is full. Free some space, then generate again.', '保存图片时出错：磁盘空间不够，空出空间后再生成。'],
         cancelled: ['Image generation was cancelled.', '已取消图像生成。'],
         invalid_request: ['The image settings are invalid. Adjust them and try again.', '图片设置有误，请调整后重试。'],
-        invalid_prompt: ['The prompt is empty, or longer than 2,000 characters once the picture references are counted. Shorten it and try again.',
+        invalid_prompt: ['The prompt is empty, or longer than 2,000 characters once the image references are counted. Shorten it and try again.',
             '提示词为空，或加上图片引用后超过 2000 字。请缩短提示词后重试。'],
         invalid_dimensions: ['The image size is outside what the chosen model supports. Change the size and try again.', '图片尺寸超出所选模型支持的范围。请调整尺寸后重试。'],
         invalid_seed: ['The seed is not valid. Clear it or use a smaller whole number, then try again.', '随机种子无效。请清空种子或改用较小的整数后重试。'],
         too_many_images: ['There are more reference images than the chosen model supports. Remove some and try again.', '参考图超过所选模型支持的数量。请减少参考图后重试。'],
-        output_unwritable: ['The folder that keeps the pictures cannot be written (freevideo-image in the ComfyUI input folder). Check that it exists, is writable and has no file of the same name, then try again.',
+        output_unwritable: ['The folder that keeps the images cannot be written (freevideo-image in the ComfyUI input folder). Check that it exists, is writable and has no file of the same name, then try again.',
             '无法写入保存图片的文件夹（ComfyUI 的 input 目录下的 freevideo-image）。请确认该目录存在、可写，且没有同名文件，然后重试。'],
         invalid_layout: ['A layout box cannot be used. Draw it larger or change its words, then generate again.', '有一个布局框用不了。请把它画大一些或改一下文字，再生成。'],
         too_many_boxes: ['A layout takes at most 8 boxes. Delete one, then generate again.', '布局最多 8 个框。请删掉一个，再生成。'],
@@ -295,7 +295,7 @@ export function imageGenError(code, info, t) {
         engine_error: ['The image engine returned an unreadable answer. Try again; if it keeps failing, report the problem.', '图像引擎返回了无法读取的结果。请重试；仍然失败请提交问题。'],
         connection_lost: ['Lost the connection to FreeVideo. Try again once it is back.', '与 FreeVideo 的连接已断开，恢复后请重试。'],
         generation_failed: ['Image generation ran into an error. Try again.', '图像生成出错了，请再试一次。'],
-        small_memory: ['This Mac has less than 16 GB of memory and cannot generate pictures.',
+        small_memory: ['This Mac has less than 16 GB of memory and cannot generate images.',
             '这台 Mac 的内存不足 16 GB，无法生成图片。'],
     };
     const fact = ['no_memory', 'small_memory'].includes(code) ? otherUsageText(info?.other_usage, t, true) : '';
@@ -1026,9 +1026,9 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
     // on the canvas, or used as a reference of this edit; deleting, choosing several and the folder are in the picker too.
     function worksButton() {
         const open = el('button', null, 'fv-ie-button fv-ie-gen-works'); open.type = 'button';
-        open.innerHTML = icon('image', 16); open.append(el('span', t('Works', '作品库')));
-        open.dataset.fvTipName = t('Works', '作品库');
-        open.dataset.fvTipUse = t('Place a picture from the works, or use it as a reference', '从作品库放入一张图，或用作参考图');
+        open.innerHTML = icon('image', 16); open.append(el('span', t('Creations', '作品库')));
+        open.dataset.fvTipName = t('Creations', '作品库');
+        open.dataset.fvTipUse = t('Place an image from the creations, or use it as a reference', '从作品库放入一张图，或用作参考图');
         open.setAttribute('aria-haspopup', 'dialog'); open.setAttribute('aria-expanded', 'false');
         let picker = null;
         open.onclick = async () => {
@@ -1079,7 +1079,7 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
         if (wantFocus && !disabled) { wantFocus = false; input.focus({preventScroll: true}); }
         if (loras) { if (state.running) loras.element.setAttribute('inert', ''); else loras.element.removeAttribute('inert'); }
         renderReferences(refs, disabled);
-        input.placeholder = mode === 'edit' ? getSelection() ? t('What to change in the selection', '要改选区里的什么') : t('What to change', '要改什么') : t('Describe the picture', '描述画面');
+        input.placeholder = mode === 'edit' ? getSelection() ? t('What to change in the selection', '要改选区里的什么') : t('What to change', '要改什么') : t('Describe the image', '描述画面');
         input.setAttribute('aria-label', input.placeholder);
         const pack = missing ? packView(state.info, t) : null;
         action.textContent = pack ? pack.button : state.running ? state.stopping ? t('Stopping', '正在停止') : t('Stop', '停止') : t('Generate', '生成');

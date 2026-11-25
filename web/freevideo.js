@@ -47,7 +47,7 @@ import { issueButton } from './issue_button.js';
 import { createPlayBar } from './fv_player.js';
 import { userMessage } from './user_message.js';
 import { AUDIO_USE, usesOriginal, checkOriginal, checkedLength, failureText, multipleText, createUseSwitch, originalBlocked, stuckText, liftBlock } from './audio_original.js';
-import { isChinese, translator, LANGUAGE } from './i18n.js';
+import { isChinese, translator, LANGUAGE, pageLanguage } from './i18n.js';
 
 const cn = isChinese();
 const text = translator(cn);
@@ -88,7 +88,7 @@ document.head.append(style);
 // since a saved workflow carries the names of the language it was saved in. In English it keeps ComfyUI's own names.
 const SLOT_WORDS = {first: ['First frame', '首帧'], 'First frame': ['First frame', '首帧'], last: ['Last frame', '尾帧'], 'Last frame': ['Last frame', '尾帧'],
     references: ['Reference images', '参考图'], loras: ['LoRA', 'LoRA'], LoRAs: ['LoRA', 'LoRA'], conditioning: ['Conditioning', '条件输入'], media: ['Media', '素材'],
-    text: ['Prompt', '描述'], reference_audio: ['Reference audio', '参考音频'], 'Reference audio': ['Reference audio', '参考音频'], video: ['Video', '视频'],
+    text: ['Prompt', '提示词'], reference_audio: ['Reference audio', '参考音频'], 'Reference audio': ['Reference audio', '参考音频'], video: ['Video', '视频'],
     report: ['Report', '报告'], 'Report JSON': ['Report', '报告']};
 const VALUE_WORDS = {
     control_after_generate: {fixed: ['Keep fixed', '保持固定'], increment: ['Increment', '递增'], decrement: ['Decrement', '递减'], randomize: ['New each run', '每次随机']},
@@ -108,7 +108,7 @@ const INPUT_WORDS = [
     ['seconds', ['Duration (s)', '时长（秒）']],
     ['seed', ['Seed', '种子']],
     ['force_regenerate', ['Force regeneration', '重新生成'], ['Generate again even when an identical completed video is saved locally.', '跳过已保存结果的缓存。']],
-    ['preview', ['Two-pass: preview first pass', '先出预览'], ['Part of two-pass acceleration: pause after the half-resolution first pass and save it as a preview. Run the second pass from the result when it looks right; it continues from the same latents.', '先出低分辨率预览，满意后在结果里点“继续二采”，成片与直接生成一致。']],
+    ['preview', ['Two-pass: preview first pass', '先出预览'], ['Part of the faster second pass: pause after the half-resolution first pass and save it as a preview. Run the second pass from the result when it looks right; it continues from the same latents.', '先出低分辨率预览，满意后在结果里点“继续二采”，成片与直接生成一致。']],
     ['refine_from', ['Second pass of preview', '继续二采'], ["Set by the Run second pass button: the preview video to continue. The second pass uses the preview's own prompt, seed, size and inputs.", '从这个预览继续生成全分辨率视频。']],
     ['continue_from', ['Continue from video', '接着生成']],
     ['frames', ['Total frames', '帧数']],
@@ -116,8 +116,8 @@ const INPUT_WORDS = [
     ['voice_reference', ['Voice reference', '声音参考'], ['Keeps the opening voice consistent in continued dialogue.', '接着生成对白时，沿用原视频开头的声音，让前后声音一致。']],
     ['hide_tail', ['Hide dialogue tail', '隐藏对白尾段'], ['Generates and discards 17 extra frames to keep dialogue moving between parts.', '多生成 17 帧后丢弃，让对白在前后两段之间连贯。']],
     ['step_cache', ['Step cache', '步间缓存'], ['Reuses work between similar sampling steps to finish sooner, with a small change to the result.', '复用相近采样步之间的计算，更快完成，结果会有细微变化。']],
-    ['upscale_factor', ['Upscale factor', '放大倍数'], ['Two-pass only: a smaller factor starts from a larger first pass, for more detail and a longer run.', '二采时成片相对一采的放大倍数。']],
-    ['allow_empty_prompt', ['Allow empty prompt', '允许空描述'], ['Generates from an empty prompt instead of asking for one.', '描述为空时直接生成，不再提示。']],
+    ['upscale_factor', ['Upscale factor', '放大倍数'], ['Second pass only: a smaller factor starts from a larger first pass, for more detail and a longer run.', '二采时成片相对一采的放大倍数。']],
+    ['allow_empty_prompt', ['Allow empty prompt', '允许空提示词'], ['Generates from an empty prompt instead of asking for one.', '提示词为空时直接生成，不再提示。']],
 ];
 const ENGLISH = LANGUAGE === 'en' && !cn;
 function localizeNode(node) {
@@ -1175,7 +1175,7 @@ api.addEventListener('freevideo_prewarm', event => {
     if (value) app.graph?.getNodeById(value.node)?.freevideoShowPrewarm?.(value);
 });
 
-installTranslateGuard({chinese: cn});
+installTranslateGuard({lang: pageLanguage()});
 installNativeErrorGuard({api, app, describe: detail => {
     const {advice} = adviceFor(createErrorReport(detail, {stage: 'execution', graph: app.graph}), text);
     return [advice.title, advice.summary].filter(Boolean).join('\n');

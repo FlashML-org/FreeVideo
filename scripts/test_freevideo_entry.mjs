@@ -293,7 +293,7 @@ test('main browser entry registers both views and preserves node hooks', async t
                         ['voice_reference', 'Voice reference', '声音参考', true,
                             '接着生成对白时，沿用原视频开头的声音，让前后声音一致。'],
                         ['hide_tail', 'Hide dialogue tail', '隐藏对白尾段', true, '多生成 17 帧后丢弃，让对白在前后两段之间连贯。'],
-                        ['allow_empty_prompt', 'Allow empty prompt', '允许空描述', false, '描述为空时直接生成，不再提示。'],
+                        ['allow_empty_prompt', 'Allow empty prompt', '允许空提示词', false, '提示词为空时直接生成，不再提示。'],
                     ];
                     const node = new LocalizedGenerateNode();
                     node.widgets = rows.map(([name, label, , value]) => ({name, label, value, tooltip: `original ${name}`}));

@@ -18,5 +18,21 @@ export function promptText(pair, cn = i18n.isChinese()) {
     return /^zh-hant/i.test(i18n.LANGUAGE || '') && i18n.fromSimplified ? i18n.fromSimplified(i18n.CATALOG, zh) : zh;
 }
 
+// The English texts a shown text can stand for on a page of a language file (a label is matched against patterns written
+// for English and Chinese); none on an English or a Chinese page.
+let meanings = null;
+export function englishOf(text, catalog = i18n.CATALOG) {
+    if (!catalog || !text) return [];
+    if (!meanings || meanings.catalog !== catalog) {
+        const map = new Map();
+        for (const [key, shown] of Object.entries(catalog)) if (key !== '_meta' && typeof shown === 'string') {
+            const english = key.split(i18n.KEY_SEPARATOR)[0], list = map.get(shown);
+            if (!list) map.set(shown, [english]); else if (!list.includes(english)) list.push(english);
+        }
+        meanings = {catalog, map};
+    }
+    return meanings.map.get(text) || [];
+}
+
 // The page's language as an element's lang attribute: the browser picks its characters' shapes by it.
-export const pageLang = () => i18n.LANGUAGE === 'zh-Hans' ? 'zh-CN' : i18n.LANGUAGE;
+export const pageLang = i18n.pageLanguage;

@@ -247,7 +247,7 @@ export function builtinCommands() {
         id: `view.${view}`, group: G.views, icon: VIEW_ICONS[view], key: `Alt+${index + 1}`,
         title: {studio: ['Go to Create', '切换到创作面板'], image: ['Go to Images', '切换到图像视图'], nodes: ['Go to Nodes', '切换到节点视图'],
             editor: ['Go to Edit', '切换到剪辑视图'], autopilot: ['Go to Autopilot', '切换到 AI 全自动']}[view],
-        use: {studio: ['Make videos from a description', '用描述生成视频'], image: ['Make and edit pictures', '生成和编辑图片'], nodes: ['The workflow behind the views', '各视图背后的工作流'],
+        use: {studio: ['Make videos from a prompt', '用提示词生成视频'], image: ['Make and edit images', '生成和编辑图片'], nodes: ['The workflow behind the views', '各视图背后的工作流'],
             editor: ['Cut, join and add sound', '剪辑、拼接和配声音'], autopilot: ['Let the assistant make a film', '让助手做一部片子']}[view],
         keywords: {studio: ['create', 'video', 'chuangzuo', 'czmb'], image: ['picture', 'tuxiang', 'txst'], nodes: ['workflow', 'graph', 'jiedian', 'jdst'], editor: ['edit', 'cut', 'timeline', 'jianji', 'jjst'], autopilot: ['agent', 'assistant', 'ai', 'quanzidong', 'qzd']}[view],
         when: () => currentView() !== view,
@@ -262,7 +262,7 @@ export function builtinCommands() {
             keywords: ['progress', 'task', 'jindu', 'renwu'], when: () => jobs.active().length > 0, run: goToRunning},
         {id: 'jobs.latest', group: G.works, icon: 'clock', title: ['Go to the latest generation', '跳到最近生成'], use: ['Show what was made last', '打开最近一次生成的结果'],
             keywords: ['recent', 'last', 'result', 'zuijin', 'zjsc'], run: goToLatest},
-        {id: 'library.open', group: G.works, icon: 'grid', title: ['Open Creations', '打开作品库'], use: ['Every video and picture made here', '生成过的全部视频和图片'],
+        {id: 'library.open', group: G.works, icon: 'grid', title: ['Open Creations', '打开作品库'], use: ['Every video and image made here', '生成过的全部视频和图片'],
             keywords: ['library', 'works', 'gallery', 'zuopin', 'zpk'], run: () => openCreations()},
         {id: 'library.trash', group: G.works, icon: 'trash', title: ['Recently deleted', '最近删除'], use: ['Bring back deleted creations', '找回删掉的作品'],
             keywords: ['trash', 'bin', 'restore', 'undo', 'shanchu', 'zjsc'], run: async () => { await openCreations(); dispatchEvent(new CustomEvent('freevideo-command', {detail: {id: 'library.trash', view: 'library', handled: false}})); }},
@@ -336,8 +336,8 @@ function build() {
     for (const item of SCOPES) {
         const chip = document.createElement('button'); chip.type = 'button'; chip.className = 'fv-pal-chip'; chip.tabIndex = -1;
         chip.setAttribute('role', 'tab'); chip.dataset.scope = item.id; chip.textContent = words(item.label);
-        Object.assign(chip.dataset, {fvTipName: words(item.label), fvTipUse: words({all: ['Everything at once', '一次看全部'], actions: ['Only things to do', '只看可执行的操作'], works: ['Videos and pictures made here', '生成过的视频和图片'],
-            prompt: ['Prompts used before', '用过的描述'], cast: ['Characters, scenes and props', '角色、场景和道具'], settings: ['Appearance, language, settings', '外观、语言和设置']}[item.id]), fvTipKey: formatKeys('Tab')});
+        Object.assign(chip.dataset, {fvTipName: words(item.label), fvTipUse: words({all: ['Everything at once', '一次看全部'], actions: ['Only things to do', '只看可执行的操作'], works: ['Videos and images made here', '生成过的视频和图片'],
+            prompt: ['Prompts used before', '用过的提示词'], cast: ['Characters, scenes and props', '角色、场景和道具'], settings: ['Appearance, language, settings', '外观、语言和设置']}[item.id]), fvTipKey: formatKeys('Tab')});
         chip.onclick = () => { setScope(item.id); ui.input.focus({preventScroll: true}); };
         ui.scopes.append(chip);
     }
@@ -427,8 +427,8 @@ function makeOfQuery(q) {
     const text = q.trim(); if (!text) return [];
     const short = text.length > 24 ? text.slice(0, 23) + '…' : text;
     return [
-        {id: 'make.image', icon: 'image', title: ['Make a picture of “{prompt}”', '用“{prompt}”作为描述生成图像', { prompt: short }], use: ['Puts it in the Images prompt', '填进图像视图的描述框'], key: '', run: () => fillPrompt(text, {view: 'image', fallbackView: 'image'})},
-        {id: 'make.video', icon: 'film', title: ['Make a video of “{prompt}”', '用“{prompt}”作为描述生成视频', { prompt: short }], use: ['Puts it in the Create prompt', '填进创作面板的描述框'], key: '', run: () => fillPrompt(text, {view: 'studio', fallbackView: 'studio'})},
+        {id: 'make.image', icon: 'image', title: ['Make an image of “{prompt}”', '用“{prompt}”作为提示词生成图像', { prompt: short }], use: ['Puts it in the Images prompt', '填进图像视图的提示词框'], key: '', run: () => fillPrompt(text, {view: 'image', fallbackView: 'image'})},
+        {id: 'make.video', icon: 'film', title: ['Make a video of “{prompt}”', '用“{prompt}”作为提示词生成视频', { prompt: short }], use: ['Puts it in the Create prompt', '填进创作面板的提示词框'], key: '', run: () => fillPrompt(text, {view: 'studio', fallbackView: 'studio'})},
     ].map((command, order) => ({command, section: 'make', ranges: [], order: 1e6 + order}));
 }
 
@@ -505,8 +505,8 @@ function draw() {
         const head = document.createElement('b');
         const line = document.createElement('span');
         if (searchState === 'error' && scope !== 'actions') { head.textContent = t('Could not search the creations', '暂时无法搜索作品'); line.textContent = t('Try again in a moment.', '请稍后再试。'); }
-        else if (q) { head.textContent = t('No results for “{q}”', '没有找到“{q}”', { q }); line.textContent = onlyMake ? t('Try another word, or use it as a prompt.', '换个词，或直接用它作为描述生成。') : t('Try another word.', '换个词试试。'); }
-        else { head.textContent = t('Nothing here yet', '这里还没有内容'); line.textContent = {works: t('Videos and pictures show here once made.', '生成的视频和图片会出现在这里。'), prompt: t('Prompts show here once used.', '用过的描述会出现在这里。'), cast: t('Characters show here once created.', '创建的角色会出现在这里。')}[scope] || ''; }
+        else if (q) { head.textContent = t('No results for “{q}”', '没有找到“{q}”', { q }); line.textContent = onlyMake ? t('Try another word, or use it as a prompt.', '换个词，或直接用它作为提示词生成。') : t('Try another word.', '换个词试试。'); }
+        else { head.textContent = t('Nothing here yet', '这里还没有内容'); line.textContent = {works: t('Videos and images show here once made.', '生成的视频和图片会出现在这里。'), prompt: t('Prompts show here once used.', '用过的提示词会出现在这里。'), cast: t('Characters show here once created.', '创建的角色会出现在这里。')}[scope] || ''; }
         empty.append(art, head, line);
         if (onlyMake) ui.list.replaceChildren(empty, fragment); else { ui.list.replaceChildren(empty); }
         active = Math.min(active, Math.max(0, rows.length - 1)); mark(false);
@@ -672,7 +672,7 @@ export function paletteButton(translate = t, className = 'fv-cmd-entry') {
     button.innerHTML = glyph('search');
     const name = translate('Search and commands', '搜索与命令');
     button.setAttribute('aria-label', name); button.setAttribute('aria-keyshortcuts', MAC ? 'Meta+K' : 'Control+K');
-    Object.assign(button.dataset, {fvTipName: name, fvTipUse: translate('Search works and run any action', '搜索作品、提示词并执行操作'), fvTipKey: formatKeys('Mod+K')});
+    Object.assign(button.dataset, {fvTipName: name, fvTipUse: translate('Search creations and run any action', '搜索作品、提示词并执行操作'), fvTipKey: formatKeys('Mod+K')});
     button.onclick = () => togglePalette();
     return button;
 }

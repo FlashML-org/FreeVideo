@@ -40,6 +40,8 @@
             "PingFang TC","Microsoft JhengHei UI","Noto Sans CJK TC","Noto Sans TC",system-ui,sans-serif;
 }
 :root[data-fv-language="zh-Hant"] .sgf{font-family:"Inter","Segoe UI","PingFang TC","Microsoft JhengHei UI","Noto Sans CJK TC",system-ui,sans-serif}
+/* Japanese breaks lines by its own rules: a small kana (ッ, ャ) or a prolonged sound mark never starts a line. */
+:root[data-fv-language="ja"],:lang(ja){line-break:strict}
 .fv-wordmark{display:block;width:210px;height:auto;max-width:100%;object-fit:contain}
 :where(.fv-studio,.fv-setup,.fv-panel,.fv-view-navigation){overflow-wrap:anywhere}
 :where(.fv-studio,.fv-setup,.fv-panel) :is(input,select,textarea,button){font-family:inherit}

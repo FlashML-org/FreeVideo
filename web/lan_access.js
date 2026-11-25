@@ -4,6 +4,7 @@ import {qrcodegen} from './qrcodegen.js';
 import {listenDialogKey} from './dialog_keys.js';
 import { skin } from './glass/library.js';
 import {userMessage} from './user_message.js';
+import {CATALOG} from './i18n.js';
 const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('./lan_access.css', import.meta.url).href; document.head.append(css);
 const seenKey = 'freevideo.phone.opened';
 export function qrMatrix(link) { return qrcodegen.QrCode.encodeText(link, qrcodegen.QrCode.Ecc.MEDIUM); }
@@ -84,8 +85,8 @@ export function createLanAccess(t, api) {
         problem.hidden = !shown; problemText.textContent = shown ? reasons[shown] : ''; retry.disabled = writing; retry.hidden = unavailable;
         starting.replaceChildren();
         if (pending && windows) {
-            if (t('en', 'zh') === 'zh') { starting.append(document.createTextNode('Windows 会弹出确认框，'), el('br'), el('span', '', '请勾选“专用网络”，再点“允许访问”。')); }
-            else starting.textContent = 'Windows will ask for permission. Check "Private networks", then click "Allow access".';
+            if (t('en', 'zh') === 'zh' && !CATALOG) { starting.append(document.createTextNode('Windows 会弹出确认框，'), el('br'), el('span', '', '请勾选“专用网络”，再点“允许访问”。')); }
+            else starting.textContent = t('Windows will ask for permission. Check "Private networks", then click "Allow access".', 'Windows 会弹出确认框，请勾选“专用网络”，再点“允许访问”。');
         } else if (pending) starting.textContent = t('Opening…', '正在打开…');
         passwordState.textContent = state.password_set ? t('Password: on', '密码：已设置') : t('Password: not set', '密码：未设置');
         set.textContent = state.password_set ? t('Change', '修改') : t('Set', '设置');

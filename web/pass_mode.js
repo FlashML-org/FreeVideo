@@ -8,7 +8,7 @@ const plainListen = (target, type, handler) => {
 export function createPassMode({t, onChoose, listen = plainListen}) {
     const element = document.createElement('div');
     element.className = 'fv-pass-mode'; element.dataset.tourId = 'pass-mode'; element.setAttribute('role', 'radiogroup');
-    element.setAttribute('aria-label', t('Two-pass sampling', '二采加速'));
+    element.setAttribute('aria-label', t('Faster second pass', '二采加速'));
     const options = [['off', t('Off', '关闭')], ['on', t('On', '开启')], ['preview', t('Preview first', '先出预览')]].map(([mode, label]) => {
         const option = document.createElement('button');
         option.type = 'button'; option.textContent = label; option.dataset.mode = mode; option.setAttribute('role', 'radio');

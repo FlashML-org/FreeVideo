@@ -55,6 +55,9 @@ export const CATALOG = wanted && typeof globalThis.fetch === 'function' ? await 
 // The language the page shows, as a language file's tag.
 export const LANGUAGE = CATALOG ? wanted : isChinese() ? 'zh-Hans' : 'en';
 if (CATALOG && globalThis.document?.documentElement) globalThis.document.documentElement.dataset.fvLanguage = LANGUAGE;
+// The page's language as an element's lang attribute (zh-CN, en, zh-Hant, ja, ...): the browser picks its characters'
+// shapes and its line-breaking rules by it.
+export const pageLanguage = () => LANGUAGE === 'zh-Hans' ? 'zh-CN' : LANGUAGE;
 
 // t(en, zh, values) for a catalog (null: the text written in the code) and the language the module read.
 export const translatorFor = (catalog, chinese) => catalog

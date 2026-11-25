@@ -143,7 +143,7 @@ export function promptMentions({prompt, host, pictures, onAdd, onPick = () => {}
     marks.setAttribute('aria-hidden', 'true'); marks.append(sheet);
     prompt.after(marks);
     const list = el('div', 'fv-iv-at fv-glass fv-g3'); list.setAttribute('role', 'listbox'); list.hidden = true;
-    list.setAttribute('aria-label', t('Reference pictures', '参考图'));
+    list.setAttribute('aria-label', t('Reference images', '参考图'));
     host.append(list);
     let open = null; // {start, active, items}
     const COPY = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing', 'lineHeight', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'textIndent', 'wordSpacing', 'tabSize'];
@@ -204,9 +204,9 @@ export function promptMentions({prompt, host, pictures, onAdd, onPick = () => {}
             return b;
         });
         if (!rows.length) {
-            const empty = el('p', 'fv-iv-at-empty', pictures().length ? t('No picture with that number', '没有这个编号的参考图') : t('No reference pictures yet', '还没有参考图'));
+            const empty = el('p', 'fv-iv-at-empty', pictures().length ? t('No image with that number', '没有这个编号的参考图') : t('No reference images yet', '还没有参考图'));
             const add = el('button', 'fv-iv-at-item fv-iv-at-add'); add.type = 'button'; add.setAttribute('role', 'option'); add.tabIndex = -1;
-            add.append(icon('plus'), el('span', 'fv-iv-at-name', t('Add a reference picture', '添加参考图')));
+            add.append(icon('plus'), el('span', 'fv-iv-at-name', t('Add a reference image', '添加参考图')));
             add.setAttribute('aria-selected', 'true');
             add.addEventListener('pointerdown', event => event.preventDefault());
             add.addEventListener('click', () => { const at = open?.start; close(); if (at != null) removeAt(at); onAdd(prompt); });

@@ -267,7 +267,7 @@ const SECONDS = (t, value) => { const s = Math.max(1, Math.round(value)); return
 function jobTitle(row, t) {
     if (row.source === 'agent') return agentTitle(row.job, t);
     const text = String(row.meta?.text ?? row.prompt ?? '').replace(/\s+/g, ' ').trim();
-    return text || ({image: t('Picture', '图片'), video: t('Video', '视频'), chain: t('Long video', '长视频')}[row.kind] || t('Task', '任务'));
+    return text || ({image: t('Image', '图片'), video: t('Video', '视频'), chain: t('Long video', '长视频')}[row.kind] || t('Task', '任务'));
 }
 function jobLine(row, t) {
     if (row.status === 'queued' || row.status === 'submitting') return row.position > 0 ? t('Waiting, {position} ahead', '排队中，前面 {position} 个', { position: row.position }) : t('Waiting', '排队中');
@@ -321,7 +321,7 @@ function buildActivity(t) {
         if (row.status === 'done' || isFailure(row)) jobs.markSeen?.(row.id);
     };
     const heading = (node, name, extra = null) => { const line = el('div', 'fv-tb-act-title'); line.append(el('span', '', name)); if (extra) line.append(extra); node.replaceChildren(line); };
-    const VIEW = {studio: t('Studio', '创作面板'), image: t('Image', '图像视图'), editor: t('Edit', '剪辑视图'), autopilot: t('Autopilot', 'AI 全自动'), nodes: t('Nodes', '节点视图')};
+    const VIEW = {studio: t('Create', '创作面板'), image: t('Image', '图像视图'), editor: t('Edit', '剪辑视图'), autopilot: t('Autopilot', 'AI 全自动'), nodes: t('Nodes', '节点视图')};
     // 2 · Tasks: one row each; a press goes back to its picture; Stop (or Remove from queue) is confirmed first.
     const stopLost = new Map(), LOST_MS = 8000;
     const taskRow = row => {
@@ -517,7 +517,7 @@ export function topbarActions(t = t0) {
     const right = el('div', 'fv-tb-right');
     const capsule = statusCapsule(t);
     const search = paletteButton(t, 'fv-tb-btn fv-tb-search'); withIcon(search, 'search'); search.replaceChildren(); tip(search, ...w.search);
-    search.dataset.fvField = t('Search works, prompts and actions', '搜索作品、提示词和操作');
+    search.dataset.fvField = t('Search creations, prompts and actions', '搜索作品、提示词和操作');
     const sep = el('span', 'fv-tb-sep'); sep.setAttribute('aria-hidden', 'true');
     // The works library is one click away in every view and at every width: never folded into the menu (CEO 11-17).
     // It is a link like the five beside it (same box, icon, hover), kept out of the phone menu so it stays on the bar.

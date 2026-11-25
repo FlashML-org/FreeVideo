@@ -3,9 +3,9 @@ import {fileState} from './output_download.js';
 export const EXTEND_PROPERTY = 'freevideo_extend';
 export const EXTEND_TEXT = Object.freeze({
     action: ['Extend', '接着生成'],
-    source: ['Continues this video', '接在这条视频后面'],
+    source: ['Extends this video', '接在这条视频后面'],
     remove: ['Remove', '移除'],
-    prompt: ['Prompt', '描述'],
+    prompt: ['Prompt', '提示词'],
     unavailable: ['Video unavailable', '视频不可用'],
     unchecked: ['Could not check the video', '没能检查视频'],
 });

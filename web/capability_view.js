@@ -189,6 +189,9 @@ export function surfacePixels(surface, width, height) {
 }
 
 let serial = 0;
+// What the estimate adds while the first build is still owed.
+export const setupNote = t => t(' · \u2060includes\u00a0first-time\u00a0setup', ' · \u2060含\u2060首\u2060次\u2060准\u2060备');
+
 export function createCapabilityView({node, api, t, getState, onPick, onEstimate, onGrid}) {
     if (!document.querySelector('link[data-fv-capability]')) {
         const css = el('link', ''); css.rel = 'stylesheet'; css.dataset.fvCapability = '';
@@ -409,7 +412,7 @@ export function createCapabilityView({node, api, t, getState, onPick, onEstimate
         const seconds = tier?.estimate_seconds?.[i]?.[j];
         if (!positive(seconds)) return '';
         // The suffix stays in one piece so a narrow line moves it whole to the next line.
-        return aboutTime(seconds, t) + (grid.machine?.compile_owed === true ? t(' · \u2060includes\u00a0first-time\u00a0setup', ' · \u2060含\u2060首\u2060次\u2060准\u2060备') : '');
+        return aboutTime(seconds, t) + (grid.machine?.compile_owed === true ? setupNote(t) : '');
     }, warning(steps, twoPass, refine, stepCache = null, upscale = 2) {
         if (!grid || !surface) return '';
         const tier = gridTier(grid, steps, twoPass, refine, stepCache, upscale);

@@ -52,18 +52,18 @@ export function photoClient(client, references = new Map(), purpose = () => '') 
 // redraws the rest after the first view changed.
 function wordsOf(source, tr) {
     if (source === 'ai') return {
-        use: tr('Make the face close-up, front, side and back from the description', '按描述生成脸部特写、正面、侧面和背面'),
+        use: tr('Make the face close-up, front, side and back from the prompt', '按提示词生成脸部特写、正面、侧面和背面'),
         rest: [tr('Redraw the others to match', '按新正面重画其余三张'), tr('Make the face close-up, side and back again from the new front', '用新的正面重新生成脸部特写、侧面和背面')]};
     const image = source === 'image';
     return {
-        slot: image ? [tr('Picture of the character', '角色图片'), tr('Add a picture', '添加图片'), tr('Drop a picture of the character here, or choose one', '把角色图片拖到这里，或点击选择'),
-            tr('One clear picture of the character, in any style; the views keep its style', '一张清晰的角色图片，任何画风都可以，各视角保持原图风格')]
+        slot: image ? [tr('Image of the character', '角色图片'), tr('Add an image', '添加图片'), tr('Drop an image of the character here, or choose one', '把角色图片拖到这里，或点击选择'),
+            tr('One clear image of the character, in any style; the views keep its style', '一张清晰的角色图片，任何画风都可以，各视角保持原图风格')]
             : [tr('Photo of the person', '人物照片'), tr('Add a photo', '添加照片'), tr('Drop a photo of the person here, or choose one', '把人物照片拖到这里，或点击选择'),
                 tr('One clear photo of the person; the face decides the likeness', '一张清晰的人物照片，长相以脸部为准')],
-        first: image ? tr('Add a picture first', '先添加图片') : tr('Add a photo first', '先添加照片'),
-        use: image ? tr('Make the four views from the picture, in its style', '用图片按原图风格生成四个视角') : tr('Make the four views from the photo', '用照片生成四个视角'),
-        keep: image ? tr('Dress the views as in the picture', '各视角保持图片里的服装') : tr('Dress the views as in the photo', '各视角保持照片里的服装'),
-        original: image ? [tr('Use the picture', '用原图'), tr('Put the picture itself in as the face close-up', '把原图作为脸部特写')]
+        first: image ? tr('Add an image first', '先添加图片') : tr('Add a photo first', '先添加照片'),
+        use: image ? tr('Make the four views from the image, in its style', '用图片按原图风格生成四个视角') : tr('Make the four views from the photo', '用照片生成四个视角'),
+        keep: image ? tr('Dress the views as in the image', '各视角保持图片里的服装') : tr('Dress the views as in the photo', '各视角保持照片里的服装'),
+        original: image ? [tr('Use the image', '用原图'), tr('Put the image itself in as the face close-up', '把原图作为脸部特写')]
             : [tr('Use the photo', '用原照片'), tr('Put the photo itself in as the face close-up', '把原照片作为脸部特写')],
         rest: [tr('Redraw the others to match', '按新脸重画其余三张'), tr('Make the front, side and back again from the new face', '用新的脸部特写重新生成正面、侧面和背面')]};
 }
@@ -98,9 +98,9 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
         const restore = el('button', 'fv-cp-tool', tr('Restore', '恢复原图')); restore.type = 'button';
         const replace = el('button', 'fv-cp-tool', tr('Replace', '更换')); replace.type = 'button';
         const remove = el('button', 'fv-cp-tool', tr('Remove', '移除')); remove.type = 'button';
-        tip(restore, tr('Restore', '恢复原图'), tr('Put the original picture back', '换回编辑前的原图'));
-        tip(replace, tr('Replace', '更换'), tr('Choose another picture', '换一张图片'));
-        tip(remove, tr('Remove', '移除'), tr('Take this picture out', '拿掉这张图片'));
+        tip(restore, tr('Restore', '恢复原图'), tr('Put the original image back', '换回编辑前的原图'));
+        tip(replace, tr('Replace', '更换'), tr('Choose another image', '换一张图片'));
+        tip(remove, tr('Remove', '移除'), tr('Take this image out', '拿掉这张图片'));
         tools.append(edited, restore, replace, remove);
         face.append(shown, hint); box.append(face, input, tools);
         let record = null;
@@ -120,7 +120,7 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
                 const {openImageEditor} = await import('./image_editor.js').catch(error => { loadFailed = true; throw error; });
                 outcome = await openImageEditor({source: record.original?.url || record.url, name: record.file.name || 'picture.png', edit: record.edit || null,
                     role: 'reference', t: tr, resolve: url => url, upload: async blob => client.upload(blob), imageGenClient: client});
-            } catch { attention = loadFailed ? tr('The image editor did not load. Reload the page and try again.', '图片编辑器没有加载出来。请刷新页面后再试。') : tr('This picture could not be read. Choose another picture.', '这张图无法读取。请重新选择一张。'); render(); return; }
+            } catch { attention = loadFailed ? tr('The image editor did not load. Reload the page and try again.', '图片编辑器没有加载出来。请刷新页面后再试。') : tr('This image could not be read. Choose another image.', '这张图无法读取。请重新选择一张。'); render(); return; }
             if (!outcome || !record || disposed) return;
             if (outcome.restore) { back(); return; }
             if (!outcome.blob) return;
@@ -157,15 +157,15 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
     // Clothes: as in the picture, as described, or as in a clothes picture (with words for details if wanted). From a
     // description the clothes are in the description, or in a clothes picture.
     const wear = el('div', 'fv-cp-wear'); wear.setAttribute('role', 'radiogroup'); wear.setAttribute('aria-label', tr('Clothes', '服装'));
-    const modes = ai ? [['text', tr('As described', '按描述'), tr('Dress the character as the description says', '按描述里的服装生成')],
-        ['image', tr('Picture', '上传服装图'), tr('Dress the character in the clothes of a picture', '换上服装图里的衣服')]]
+    const modes = ai ? [['text', tr('As described', '按描述'), tr('Dress the character as the prompt says', '按提示词里的服装生成')],
+        ['image', tr('Image', '上传服装图'), tr('Dress the character in the clothes of an image', '换上服装图里的衣服')]]
         : [['keep', tr('Keep clothes', '保持服装'), words.keep],
             ['text', tr('Describe', '按描述更换'), tr('Dress the views as described', '各视角按描述更换服装')],
-            ['image', tr('Picture', '上传服装图'), tr('Dress the views in the clothes of a picture', '各视角换上服装图里的衣服')]];
+            ['image', tr('Image', '上传服装图'), tr('Dress the views in the clothes of an image', '各视角换上服装图里的衣服')]];
     wear.dataset.count = String(modes.length);
     const modeButtons = modes.map(([value, name, use]) => { const b = el('button', null, name); b.type = 'button'; b.setAttribute('role', 'radio'); b.dataset.value = value; tip(b, name, use); b.onclick = () => setWear(value); wear.append(b); return b; });
-    const outfitSlot = slot({label: tr('Clothes picture', '服装图'), empty: [tr('Add a clothes picture', '添加服装图'), tr('Drop it here, or choose one', '拖到这里，或点击选择')],
-        use: tr('A picture of the clothes to wear', '要换上的服装图片'), onChange: () => { outfitRef = ''; render(); }});
+    const outfitSlot = slot({label: tr('Clothes image', '服装图'), empty: [tr('Add a clothes image', '添加服装图'), tr('Drop it here, or choose one', '拖到这里，或点击选择')],
+        use: tr('An image of the clothes to wear', '要换上的服装图片'), onChange: () => { outfitRef = ''; render(); }});
     outfitSlot.element.classList.add('fv-cp-outfit-slot');
     const field = ai ? null : el('textarea', 'fv-cg-text fv-cp-outfit');
     if (field) { field.maxLength = 400; field.rows = 2; field.setAttribute('aria-label', tr('Clothes', '服装')); }
@@ -217,11 +217,11 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
         const usePhoto = view === 'face' && !ai ? tool(words.original[0], words.original[1], () => {
             if (!photoSlot.get()) return; dropEdit('face'); generator.useOriginal(ORIGINAL); faceChanged = true; render();
         }) : null;
-        const restore = tool(tr('Restore', '恢复原图'), tr('Put the picture back as it was made', '换回生成时的样子'), () => { dropEdit(view); if (leads(view)) faceChanged = true; render(); });
-        const mine = canOwn ? tool(tr('Add picture', '添加图片'), tr('Use a picture of your own for this view', '这个视角用自己的图片'), () => choosing(view)) : null;
-        const clear = canOwn ? tool(tr('Remove', '移除'), tr('Remove this picture. Generate makes this view.', '移除这张图片，生成时补上这个视角。'), () => dropOwn(view)) : null;
+        const restore = tool(tr('Restore', '恢复原图'), tr('Put the image back as it was made', '换回生成时的样子'), () => { dropEdit(view); if (leads(view)) faceChanged = true; render(); });
+        const mine = canOwn ? tool(tr('Add image', '添加图片'), tr('Use an image of your own for this view', '这个视角用自己的图片'), () => choosing(view)) : null;
+        const clear = canOwn ? tool(tr('Remove', '移除'), tr('Remove this image. Generate makes this view.', '移除这张图片，生成时补上这个视角。'), () => dropOwn(view)) : null;
         cell.append(image, label, edited, percent, meter, tools); grid.append(cell);
-        tip(cell, title, canOwn ? tr('Click or drop a picture', '点击或拖入图片') : tr('Click to edit it in the image editor', '点击在图像编辑器中修改'));
+        tip(cell, title, canOwn ? tr('Click or drop an image', '点击或拖入图片') : tr('Click to edit it in the image editor', '点击在图像编辑器中修改'));
         const open = () => { if (generator.state().running) return; if (cell.dataset.state === 'done') void editView(view); else if (canOwn && cell.dataset.state === 'empty') choosing(view); };
         if (canOwn) {
             cell.addEventListener('dragover', event => { event.preventDefault(); });
@@ -264,7 +264,7 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
     }
     async function redraw(view) {
         if (own[view]) return;
-        try { await ensureOwn(); } catch (error) { attention = error.message || tr('Could not read this picture. Please choose another one.', '无法读取这张图片，请换一张。'); render(); return; }
+        try { await ensureOwn(); } catch (error) { attention = error.message || tr('Could not read this image. Please choose another one.', '无法读取这张图片，请换一张。'); render(); return; }
         dropEdit(view);
         await generator.redo(make.indexOf(view));
         if (view === base && generator.state().pictures[0].file) { faceChanged = true; render(); }
@@ -277,7 +277,7 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
             const {openImageEditor} = await import('./image_editor.js').catch(error => { loadFailed = true; throw error; });
             outcome = await openImageEditor({source: sourceOf(view), name: `${view}.png`, edit: edits[view]?.edit || null,
                 role: 'reference', t: tr, resolve: url => url, upload: async blob => client.upload(blob), imageGenClient: client});
-        } catch { attention = loadFailed ? tr('The image editor did not load. Reload the page and try again.', '图片编辑器没有加载出来。请刷新页面后再试。') : tr('This picture could not be read. Choose another picture.', '这张图无法读取。请重新选择一张。'); render(); return; }
+        } catch { attention = loadFailed ? tr('The image editor did not load. Reload the page and try again.', '图片编辑器没有加载出来。请刷新页面后再试。') : tr('This image could not be read. Choose another image.', '这张图无法读取。请重新选择一张。'); render(); return; }
         if (!outcome || disposed) return;
         if (outcome.restore) { dropEdit(view); if (leads(view)) faceChanged = true; render(); return; }
         if (!outcome.blob) return;
@@ -350,8 +350,8 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
             : ownCount ? tr('Generate the rest', '生成其余视角') : tr('Generate', '生成');
         action.classList.toggle('fv-cp-none', ownCount === SHOW.length);
         action.dataset.primary = String(!running && !finished);
-        const why = ai ? (!describe.value.trim() ? tr('Describe the character first', '先描述角色') : mode === 'image' && !outfitSlot.get() ? tr('Add a clothes picture first', '先添加服装图') : '')
-            : !photoSlot.get() && !own.front && !own.face ? (ownCount ? tr('Add a source picture, or put in the front or face close-up.', '请添加来源图，或放入正面或脸部特写。') : words.first) : mode === 'image' && !outfitSlot.get() ? tr('Add a clothes picture first', '先添加服装图')
+        const why = ai ? (!describe.value.trim() ? tr('Describe the character first', '先描述角色') : mode === 'image' && !outfitSlot.get() ? tr('Add a clothes image first', '先添加服装图') : '')
+            : !photoSlot.get() && !own.front && !own.face ? (ownCount ? tr('Add a source image, or put in the front or face close-up.', '请添加来源图，或放入正面或脸部特写。') : words.first) : mode === 'image' && !outfitSlot.get() ? tr('Add a clothes image first', '先添加服装图')
             : mode === 'text' && !field.value.trim() ? tr('Describe the clothes first', '先描述服装') : '';
         if (why && !running) { action.setAttribute('aria-disabled', 'true'); action.dataset.fvTipWhy = why; } else { action.removeAttribute('aria-disabled'); delete action.dataset.fvTipWhy; }
         tip(action, action.textContent, running ? tr('Stop making the views', '停止生成') : words.use);
@@ -367,9 +367,9 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
             c.again.disabled = running || (index > 0 && !state.pictures[0].file);
             if (c.usePhoto) c.usePhoto.hidden = !photoSlot.get() || !!r.original || running;
             if (c.mine) {
-                tip(c.cell, c.title, r.file ? tr('Click to edit it in the image editor, or drop a picture to replace it', '点击在图像编辑器中修改，或拖入图片替换') : tr('Click or drop a picture', '点击或拖入图片'));
-                const name = r.file ? tr('Replace', '更换') : tr('Add picture', '添加图片');
-                if (c.mine.textContent !== name) { c.mine.textContent = name; tip(c.mine, name, r.file ? tr('Use another picture of your own for this view', '这个视角换成自己的另一张图片') : tr('Use a picture of your own for this view', '这个视角用自己的图片')); }
+                tip(c.cell, c.title, r.file ? tr('Click to edit it in the image editor, or drop an image to replace it', '点击在图像编辑器中修改，或拖入图片替换') : tr('Click or drop an image', '点击或拖入图片'));
+                const name = r.file ? tr('Replace', '更换') : tr('Add image', '添加图片');
+                if (c.mine.textContent !== name) { c.mine.textContent = name; tip(c.mine, name, r.file ? tr('Use another image of your own for this view', '这个视角换成自己的另一张图片') : tr('Use an image of your own for this view', '这个视角用自己的图片')); }
                 c.mine.hidden = running; c.clear.hidden = running || !own[view];
             }
         }
@@ -416,7 +416,7 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
                 if (!own.face) await closeUpOf(sourceRef, (from || photoSlot.get()).file);
             }
             if (mode === 'image' && !outfitRef) outfitRef = await referenceOf(outfitSlot.get());
-        } catch (error) { attention = error.message || tr('Could not read this picture. Please choose another one.', '无法读取这张图片，请换一张。'); render(); return; }
+        } catch (error) { attention = error.message || tr('Could not read this image. Please choose another one.', '无法读取这张图片，请换一张。'); render(); return; }
         if (disposed) return;
         for (const name of [sourceRef, own.face ? '' : closeUp.name, mode === 'image' ? outfitRef : '', ...SHOW.map(view => own[view]?.ref)]) if (name && references.has(name)) references.set(name, true);
         const outfitImage = mode === 'image' ? outfitRef : '';

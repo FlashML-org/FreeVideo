@@ -39,10 +39,10 @@ const gb = bytes => (bytes / 1e9).toFixed(1);
 // Why a download waits, as the engine reports it: only a video or a picture being made pauses it, and the user can
 // continue it at once.
 // What pressing Continue download does: the download runs now, beside the video or picture being made.
-export const continueUse = () => t('Download now; a video or picture being made may take longer', '现在就下载；正在进行的生成可能会变慢');
+export const continueUse = () => t('Download now; a video or image being made may take longer', '现在就下载；正在进行的生成可能会变慢');
 export function pausedText(state) {
     return state.waitsFor === 'busy_video' ? t('Paused while a video generates; resumes after it, or continue now', '视频生成中，下载已暂停，之后自动继续，也可以现在继续下载')
-        : state.waitsFor === 'busy_picture' ? t('Paused while a picture is made; resumes after it, or continue now', '正在出图，下载已暂停，出完自动继续，也可以现在继续下载')
+        : state.waitsFor === 'busy_picture' ? t('Paused while an image is made; resumes after it, or continue now', '正在出图，下载已暂停，出完自动继续，也可以现在继续下载')
         : state.waitsFor === 'busy_setup' ? t('Paused while FreeVideo installs, updates or cleans up; resumes after it', 'FreeVideo 正在安装、更新或清理，下载已暂停，结束后自动继续')
         : t('Paused while FreeVideo uses the graphics card for another task; resumes after it, or continue now', 'FreeVideo 正在用显卡做别的任务，下载已暂停，之后自动继续，也可以现在继续下载');
 }
@@ -72,8 +72,8 @@ function useOf(model, state) {
     const size = state.total ? shared ? t('about {size} GB, files shared with video are not downloaded again', '约 {size} GB，和视频共用的文件不重复下载', { size: gbOf(state) })
         : t('about {size} GB', '约 {size} GB', { size: gbOf(state) }) : '';
     return {
-        ready: model.id === IMAGE_MODELS[0].id ? t('Large, detailed pictures, up to 16 references', '大尺寸、细节多，最多 16 张参考图')
-            : model.id === 'moss-image-sft' ? t('Pictures from a text prompt', '根据文字提示出图') : t('Fast pictures, up to 4 references', '出图快，最多 4 张参考图'),
+        ready: model.id === IMAGE_MODELS[0].id ? t('Large, detailed images, up to 16 references', '大尺寸、细节多，最多 16 张参考图')
+            : model.id === 'moss-image-sft' ? t('Images from a text prompt', '根据文字提示出图') : t('Fast images, up to 4 references', '出图快，最多 4 张参考图'),
         missing: state.row?.blocked_by ? t('Not installed: another model is downloading; this one installs after it, or when you press Generate', '未安装：另一个模型正在下载，完成后才会安装这个，也可点生成')
             : t('Not installed: Generate installs it first, {size}', '未安装：点生成会先安装，{size}', { size }),
         downloading: state.paused ? pausedText(state) : state.verifying ? (state.unknown ? t('Verifying the files; usable when done', '正在校验文件，完成后可以使用') : t('Verifying the files {percent}%; usable when done', '正在校验文件 {percent}%，完成后即可使用', { percent: Math.floor(state.fraction * 100) })) : t('Downloading {percent}%; usable when done', '正在下载 {percent}%，完成后即可使用', { percent: Math.floor((state.fraction || 0) * 100) }),

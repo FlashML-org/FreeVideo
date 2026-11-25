@@ -53,7 +53,7 @@ import { requestText, shownRewrite } from './prompt_sections.js';
 import { createRequestAssets, enabledLoras, referenceFiles } from './request_assets.js';
 import { promptDraftTrouble, rememberPromptDraft, restorePromptDraft, savePromptDraft, trackPromptDraft, watchPromptDraftTrouble } from './prompt_draft.js';
 import { canvasDimensions, imageSizeSelection } from './studio_size.js';
-import { createCapabilityView, capabilityContext } from './capability_view.js';
+import { createCapabilityView, capabilityContext, setupNote } from './capability_view.js';
 import { createOtherUsageNotice } from './other_usage.js';
 import { openEditorView } from './editor_loader.js';
 import { frameShapes, frameSize } from './frame_sizes.js';
@@ -214,7 +214,7 @@ function createChainPartList(t, save, {onShow = () => {}, onHide = () => {}, red
         editing = row; clearTimeout(timers.get(row.part.id)); timers.delete(row.part.id); tag(row, '');
         const editor = row.editor = el('textarea', null, 'fv-chain-part-editor');
         editor.maxLength = 20000; editor.value = row.draft = row.part.text;
-        editor.setAttribute('aria-label', t('Part {part} description', '第 {part} 段描述', { part: row.part.index + 1 }));
+        editor.setAttribute('aria-label', t('Part {part} prompt', '第 {part} 段提示词', { part: row.part.index + 1 }));
         editor.addEventListener('input', () => { row.draft = editor.value; });
         listenDialogKey(editor, 'keydown', event => {
             // Escape leaves the edit, never the studio.
@@ -795,8 +795,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
         const works = el('aside', null, 'fv-work-column'); works.hidden = true; body.append(works);
         const settingsRail = el('div', null, 'fv-iv-rail'), worksRail = el('div', null, 'fv-iv-rail');
         const panels = readLocal('freevideo.studio.panels', {}), panelShell = {};
-        const open = side => railButton('fv-iv-icon-btn', {iconName: side === 'left' ? 'panelL' : 'panelR', name: side === 'left' ? t('Show settings', '展开设置栏') : t('Show works', '展开作品栏'), onClick: () => panelShell.api.setPanel(side, true)});
-        const fold = side => railButton('fv-iv-icon-btn fv-iv-collapse', {iconName: side === 'left' ? 'panelL' : 'panelR', name: side === 'left' ? t('Hide settings', '收起设置栏') : t('Hide works', '收起作品栏'), onClick: () => panelShell.api.setPanel(side, false)});
+        const open = side => railButton('fv-iv-icon-btn', {iconName: side === 'left' ? 'panelL' : 'panelR', name: side === 'left' ? t('Show settings', '展开设置栏') : t('Show creations', '展开作品栏'), onClick: () => panelShell.api.setPanel(side, true)});
+        const fold = side => railButton('fv-iv-icon-btn fv-iv-collapse', {iconName: side === 'left' ? 'panelL' : 'panelR', name: side === 'left' ? t('Hide settings', '收起设置栏') : t('Hide creations', '收起作品栏'), onClick: () => panelShell.api.setPanel(side, false)});
         settingsRail.append(open('left')); worksRail.append(open('right'));
         const foldLeft = fold('left'); body.foldLeft = foldLeft; body.settingsRail = settingsRail; works.append(worksRail);
         body.dataset.cols = '3';
@@ -935,7 +935,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             target.field.value = JSON.stringify(withCharacter(rows, card, typed));
             target.owner.graph?.change?.();
             window.dispatchEvent(new CustomEvent('freevideo-media', {detail: target.owner.id}));
-        }).catch(() => { if (!disposed) fault(t('Could not add the character\'s pictures', '无法加入角色的图片')); })
+        }).catch(() => { if (!disposed) fault(t('Could not add the character\'s images', '无法加入角色的图片')); })
             .finally(() => castPending.delete(person.id));
         return true;
     }
@@ -964,9 +964,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const showDraftTrouble = ({save, restore}) => {
         if (draftNote.disabled) return;
         draftNote.hidden = !save && !restore;
-        draftNote.textContent = save ? t('Prompt not saved. Click to retry', '描述没能保存，点此重试') : t('Last prompt not loaded. Click to retry', '上次的描述没能读取，点此重试');
+        draftNote.textContent = save ? t('Prompt not saved. Click to retry', '提示词未能保存，点此重试') : t('Last prompt not loaded. Click to retry', '上次的提示词未能读取，点此重试');
         // The note is a small plain dot; its hover card says what happened and what a click does.
-        draftNote.dataset.fvTipName = save ? t('Prompt not saved', '描述没能保存') : t('Last prompt not loaded', '上次的描述没能读取');
+        draftNote.dataset.fvTipName = save ? t('Prompt not saved', '提示词未能保存') : t('Last prompt not loaded', '上次的提示词未能读取');
         draftNote.dataset.fvTipUse = t('Click to retry', '点此重试');
         draftNote.setAttribute('aria-label', draftNote.textContent);
     };
@@ -1031,11 +1031,11 @@ export function openStudio(node, {extendFrom = null} = {}) {
     promptHelp.href = 'https://github.com/MiniMax-AI/MiniMax-H3/blob/main/skills/h3-prompt-writing/SKILL.md';
     promptHelp.target = '_blank'; promptHelp.rel = 'noopener noreferrer';
     promptHelp.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 4.2C6.6 3.2 4.7 2.8 2.5 3v9.6c2.2-.2 4.1.2 5.5 1.2 1.4-1 3.3-1.4 5.5-1.2V3c-2.2-.2-4.1.2-5.5 1.2ZM8 4.2v9.6"/></svg>';
-    promptHelp.setAttribute('aria-label', t('How to write a prompt', '描述写法'));
-    tip(promptHelp, t('How to write a prompt', '描述写法'), t('Open the guide to writing a good prompt', '打开描述写法指南，写得更准'));
+    promptHelp.setAttribute('aria-label', t('How to write a prompt', '提示词写法'));
+    tip(promptHelp, t('How to write a prompt', '提示词写法'), t('Open the guide to writing a good prompt', '打开提示词写法指南，写得更准'));
     // Expand: a large box for long prompts; Generate works from there too.
     const promptExpand = createExpandButton({t, textarea: prompt, canGenerate: () => !generate.disabled, onGenerate: () => { generate.click(); return ''; }});
-    tip(promptExpand.element, t('Expand', '放大'), t('Write a long prompt in a large box', '在大文本框里写长描述'));
+    tip(promptExpand.element, t('Expand', '展开'), t('Write a long prompt in a large box', '在大文本框里写长提示词'));
     cleanup.push(() => promptExpand.dispose?.());
     promptTools.append(promptHelp, promptExpand.element);
     promptSection.append(enhancer.element);
@@ -1150,7 +1150,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     cleanup.push(passControl.dispose);
     const previewPassHint = t('Stops at a lower-resolution preview. Choose "Run second pass" in the result when it looks right; the video matches a direct run.',
         '先出低分辨率预览，满意后在结果里点“继续二采”，成片与直接生成一致。');
-    twoPassLabel.append(el('span', t('Two-pass', '二采')), twoPassStatus, passMode);
+    twoPassLabel.append(el('span', t('Second pass', '二采')), twoPassStatus, passMode);
     let effortEstimate = {}, effortEstimateKey = '', effortEstimateTimer = null, effortEstimateRequest = null, lengthControl = null, chainController = null;
     // A level's step cache; custom steps and workflows without the input sample every step.
     const stepCacheNow = () => stepCacheOf(value(node, 'step_cache'));
@@ -1480,7 +1480,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         refineSteps.setCustomValidity(twoPass.checked && !baseLinked && !refineSteps.disabled && Number(refineSteps.value) !== 3 && Number(refineSteps.value) >= Number(baseSteps.value)
             ? t('Use 3 second-pass steps, or fewer than the first-pass steps.', '二采步数须为 3，或少于一采步数。') : '');
         if (twoPass.checked) refineSteps.removeAttribute('title');
-        else refineSteps.title = t('Turn on two-pass acceleration to use this setting.', '开启二采加速后生效。');
+        else refineSteps.title = t('Turn on the faster second pass to use this setting.', '开启二采加速后生效。');
         for (const [input, name] of [[baseSteps, 'base_steps'], [refineSteps, 'refine_steps']]) {
             if (!input.disabled && input.checkValidity() && Number(input.value) !== value(node, name)) {
                 set(node, name, Number(input.value));
@@ -1509,7 +1509,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         if ((lengthControl.capabilityState === 'pending' || lengthControl.capabilityState === 'unavailable')
             && (lengthControl.needsPlan || lengthControl.plan?.count > 1)) {
             const waiting = lengthControl.estimating ? t('Estimating time…', '正在估算用时…') : '';
-            effort.setEstimate([parts, waiting].filter(Boolean).join(' · '));
+            effort.setEstimate([parts, waiting].filter(Boolean).join(' · '), '', lengthControl.plan?.count > 1 ? lengthControl.plan.count : 0);
             return;
         }
         if (lengthControl.plan?.single && Number(seconds.value) > 60) { effort.setEstimate(''); return; }
@@ -1519,7 +1519,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             const seconds = steps === Number(baseSteps.value) && twoPassPlan === twoPass.checked && cache === stepCacheNow() && factor === upscaleNow()
                 ? sumPartEstimates(plan, lengthControl.estimate) : null;
             effort.setEstimate(seconds > 0 ? t('{count} parts · about {minutes} min', '分 {count} 段 · 约 {minutes} 分钟', { count: plan.count, minutes: Math.ceil(seconds / 60) })
-                : t('{count} parts', '分 {count} 段', { count: plan.count }));
+                : t('{count} parts', '分 {count} 段', { count: plan.count }), '', plan.count);
             return;
         }
         const rangeEstimate = capabilityView?.estimate(steps, twoPassPlan, arguments.length ? 3 : Number(refineSteps.value), cache, factor);
@@ -1617,7 +1617,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     worksButton.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1.2"/><rect x="9" y="2.5" width="4.5" height="4.5" rx="1.2"/><rect x="2.5" y="9" width="4.5" height="4.5" rx="1.2"/><rect x="9" y="9" width="4.5" height="4.5" rx="1.2"/></svg>';
     worksButton.append(el('span', t('Creations', '作品库'), 'fv-works-label'));
     worksButton.setAttribute('aria-label', t('Creations', '作品库'));
-    tip(worksButton, t('Creations', '作品库'), t('Open your works to sort and manage them', '打开作品库，筛选和管理'));
+    tip(worksButton, t('Creations', '作品库'), t('Open your creations to sort and manage them', '打开作品库，筛选和管理'));
     previewHead.append(previewTools); previewHead.hidden = true; output.append(previewHead);
     // The picture's space: its size comes from the column and the shape alone (fitPreview), never from what is below it.
     const previewSpace = el('div', null, 'fv-preview-space sgf-avoid'); previewSpace.dataset.fvMain = ''; output.append(previewSpace);
@@ -2218,7 +2218,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
                                                    extend: saved => openExtendEditor(saved, node, {studio: dialog,
                                                        isCurrent: () => dialog.open && dialog.dataset.closing !== 'true' && topDialog() === dialog && result === r}),
                                                    secondPass: r.preview ? secondPass(r) : null, reuse: r.preview ? null : reuse, layout: 'stage',
-                                                   favorite: worksColumn && r.video ? value => worksColumn.setFavorite(r, value).catch(error => { notify(t('The favourite was not saved. Try again.', '收藏未能保存，请重试。'), null, 'fail'); throw error; }) : null, more: [...upscaleItems(r), guideItem()]}));
+                                                   favorite: worksColumn && r.video ? value => worksColumn.setFavorite(r, value).catch(error => { notify(t('The favorite was not saved. Try again.', '收藏未能保存，请重试。'), null, 'fail'); throw error; }) : null, more: [...upscaleItems(r), guideItem()]}));
         refreshUpscaleItems(r);
         if (runButtonReady) updateExtendButton();
         stageBar.sync(); syncHistory();
@@ -2337,7 +2337,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const perLine = el('input'); perLine.type = 'checkbox'; perLine.setAttribute('role', 'switch');
     perLine.checked = node.properties?.freevideo_batch_lines === true;
     const perLineField = el('label', null, 'fv-batch-lines');
-    perLineField.append(el('span', t('One prompt per line', '每行一条描述')), perLine); optionsPanel.append(perLineField);
+    perLineField.append(el('span', t('One prompt per line', '每行一条提示词')), perLine); optionsPanel.append(perLineField);
     const linesUsable = () => !linked(node, 'text') && !linked(node, 'conditioning');
     const byLine = () => runMode === 'batch' && perLine.checked && linesUsable();
     const lineTexts = () => promptLines(shown(value(node, 'text')), (node.properties?.[LORA_TRIGGERS] || []).map(row => row?.words));
@@ -2363,13 +2363,16 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const keyLabel = el('span', null, 'fvs-key-label'), keyEta = el('span', null, 'fvs-key-eta');
     let keyShowsEta = false, keySetup = false;
     // A one-time note (the first build) is not a standing line: it goes to the key's hover card instead.
-    const setupPart = part => /首次准备|first.time setup/i.test(part.replace(/\u2060/g, '').replace(/\u00a0/g, ' '));
+    const plainWords = text => text.replace(/\u2060/g, '').replace(/\u00a0/g, ' ').replace(/^ · /, '').trim(), setupWords = plainWords(setupNote(t));
+    const setupPart = part => plainWords(part) === setupWords;
     const paintEta = () => {
         const parts = (effort?.element?.querySelector('.fv-effort-estimate')?.textContent || '').trim().split(' · ').filter(Boolean);
         keySetup = parts.some(setupPart);
         // A preview has no estimate of its own (the figures are for the whole two-pass run), so the line stays empty rather than show the wrong time.
         const estimate = keyShowsEta && !(previewFirst.checked && !previewFirst.disabled) ? parts.filter(part => !setupPart(part)).join(' · ') : '';
         if (keyEta.textContent !== estimate) keyEta.textContent = estimate;
+        const partCount = estimate ? effort?.element?.querySelector('.fv-effort-estimate')?.dataset.parts : undefined;
+        if (partCount) { if (keyEta.dataset.parts !== partCount) keyEta.dataset.parts = partCount; } else delete keyEta.dataset.parts;
         // Kept in place when empty (not hidden), so the label above it never moves.
         keyEta.dataset.empty = String(!estimate);
     };
@@ -2560,7 +2563,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         // The hover card names what the button does now (its own label), and when it is greyed, why and how to free it.
         const lineUse = enhancer.element.dataset.enabled === 'true'
             ? t('Each line is one video, sent as written without enhancement', '每行生成一个视频，按原文发送，不做描述增强')
-            : t('Each line of the description is one video', '描述的每一行生成一个视频');
+            : t('Each line of the prompt is one video', '提示词的每一行生成一个视频');
         const use = videoMissing ? t('Download the video model before generating', '下载视频模型后才能生成视频')
             : generate.disabled ? ''
             : byLine() ? lineUse
@@ -2598,7 +2601,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             if (count.value !== shownCount) { count.value = shownCount; count.fvAtPaint?.(); }
         }
         put(perLineField, 'hidden', !linesUsable()); put(perLine, 'disabled', runMode !== 'batch');
-        const lineTip = {fvTipName: t('One prompt per line', '每行一条描述'), fvTipUse: lineUse,
+        const lineTip = {fvTipName: t('One prompt per line', '每行一条提示词'), fvTipUse: lineUse,
             fvTipWhy: perLine.disabled ? t('Choose Batch to use it', '选“批量”后可用') : ''};
         for (const [key, text] of Object.entries(lineTip)) {
             if (text) { if (perLineField.dataset[key] !== text) perLineField.dataset[key] = text; } else delete perLineField.dataset[key];
@@ -2607,8 +2610,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
         put(modeHelp, 'textContent', multiple ? t('Videos made in parts cannot use batch or loop.', '分段视频不能批量或循环生成。') : runMode === 'loop'
             ? t('Same settings, a new seed each time. Stops when this page closes.', '用当前设置，每次换一个种子；关闭网页后停止。')
             : byLine() ? (enhancer.element.dataset.enabled === 'true'
-                ? t('Each line of the description is one video, sent as written without enhancement.', '描述的每一行生成一个视频，按原文发送，不做描述增强。')
-                : t('Each line of the description is one video.', '描述的每一行生成一个视频。'))
+                ? t('Each line of the prompt is one video, sent as written without enhancement.', '提示词的每一行生成一个视频，按原文发送，不做提示词增强。')
+                : t('Each line of the prompt is one video.', '提示词的每一行生成一个视频。'))
             : t('Same settings, a new seed for each video.', '用当前设置，每个视频换一个种子。'));
         // With one video per GPU each running row carries its own Cancel; "current" would be ambiguous.
         put(cancelCurrent, 'hidden', !chainController?.active && (!queueState?.running || Boolean(queueState?.running_all)));
@@ -2804,7 +2807,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             invalid.focus(); return;
         }
         // One prompt per line with no lines: say what to write (generating without a prompt is not offered here).
-        if (byLine() && !lineTexts().length) { status.dataset.error = 'true'; status.textContent = t('Write one prompt per line, then add them.', '每行写一条描述后再添加。'); prompt.focus(); return; }
+        if (byLine() && !lineTexts().length) { status.dataset.error = 'true'; status.textContent = t('Write one prompt per line, then add them.', '每行写一条提示词后再添加。'); prompt.focus(); return; }
         if (!emptyAllowed && !extension.source && !prompt.disabled && !prompt.value.trim() && !untouched() && !swapState(mediaNode)) {
             showEmptyPrompt({t, anchor: runrow, field: prompt, onContinue: () => submitDraft({allowEmpty: true})}); return;
         }
@@ -2816,9 +2819,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
         if (timedNote) { status.dataset.error = 'true'; status.textContent = timedNote; prompt.focus(); return; }
         const chosenMode = runMode, texts = byLine() ? lineTexts() : null;
         const batchCount = texts ? texts.length : chosenMode === 'batch' ? Number(count.value) : 1;
-        if (texts && !texts.length) { status.dataset.error = 'true'; status.textContent = t('Write one prompt per line, then add them.', '每行写一条描述后再添加。'); prompt.focus(); return; }
+        if (texts && !texts.length) { status.dataset.error = 'true'; status.textContent = t('Write one prompt per line, then add them.', '每行写一条提示词后再添加。'); prompt.focus(); return; }
         if (texts && texts.length > 100) { status.dataset.error = 'true'; status.textContent = t('At most 100 lines at a time; there are {count}.', '一次最多 100 行，现在有 {count} 行。', { count: texts.length }); prompt.focus(); return; }
-        if (texts && timedParse(texts.join('\n'))[1].length) { status.dataset.error = 'true'; status.textContent = t('Timed lines cannot be split into separate videos. Turn off One prompt per line.', '带时间的台词不能拆成多个视频，请关闭“每行一条描述”。'); return; }
+        if (texts && timedParse(texts.join('\n'))[1].length) { status.dataset.error = 'true'; status.textContent = t('Timed lines cannot be split into separate videos. Turn off One prompt per line.', '带时间的台词不能拆成多个视频，请关闭“每行一条提示词”。'); return; }
         const originalSeed = value(node, 'seed'), seedMode = mode.value;
         // A request that is not accepted leaves the node mode as the user had it; a retry turns it on again.
         // Once the server has taken a request it stays taken; only a request it never took is undone.
@@ -2927,7 +2930,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         // An empty frame takes the chosen shape; a work on the stage keeps its own (the outline shows the new one).
         if (!busy && (nextShown || !stageMedia.querySelector('video, img'))) { previewSize(Number(w), Number(h)); if (nextShown) nextSize.textContent = `${w} × ${h}`; }
         framePicker?.set({shape: selected, ratio: studioShapes(t).find(([id]) => id === selected)?.[2] || Number(w) / Number(h) || ratio, pixels: Number(mp.value), width: Number(w), height: Number(h), locked: shapeKept, empty: emptySide,
-            unavailable: {input: mediaPicture() ? '' : t('Add a picture in Media first', '先在素材里添加图片')},
+            unavailable: {input: mediaPicture() ? '' : t('Add an image in Media first', '先在素材里添加图片')},
             disabled: dimensionsLinked || Boolean(extension.source)});
         refreshEffortEstimate();
         consoleUI?.sync();
@@ -3063,7 +3066,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             if (lengthControl.commit()) updateCanvas();
         }
     }
-    const mediaChanged = async e => { if (String(e.detail) !== String(mediaNode?.id)) return; syncOriginalAudio(); refreshEffortEstimate(true); framePicker?.set({unavailable: {input: mediaPicture() ? '' : t('Add a picture in Media first', '先在素材里添加图片')}}); if (selected !== 'input') return; try { await inputRatio(); } catch (error) { status.textContent = error.message; } };
+    const mediaChanged = async e => { if (String(e.detail) !== String(mediaNode?.id)) return; syncOriginalAudio(); refreshEffortEstimate(true); framePicker?.set({unavailable: {input: mediaPicture() ? '' : t('Add an image in Media first', '先在素材里添加图片')}}); if (selected !== 'input') return; try { await inputRatio(); } catch (error) { status.textContent = error.message; } };
     const lorasChanged = e => { if (String(e.detail) === String(loraNode?.id)) refreshEffortEstimate(true); };
     window.addEventListener('freevideo-loras', lorasChanged);
     cleanup.push(() => window.removeEventListener('freevideo-loras', lorasChanged));
@@ -3242,7 +3245,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     function syncExtension() {
         releaseExtendThumbnail(); extendMount.replaceChildren();
         const source = extension.source;
-        extendMount.hidden = !source; mediaMount.classList.toggle('fv-extend-active', Boolean(source)); blockOriginal('extend', Boolean(source), {text: ['"Use as is" is not available while continuing a video. Remove "Continues this video" first.', '接在视频之后时不能“原样使用”，请先移除“接在这条视频后面”。']});
+        extendMount.hidden = !source; mediaMount.classList.toggle('fv-extend-active', Boolean(source)); blockOriginal('extend', Boolean(source), {text: ['"Use as is" is not available while extending a video. Remove "Extends this video" first.', '接在视频之后时不能“原样使用”，请先移除“接在这条视频后面”。']});
         if (source) runMode = 'single';
         canvasLock.hidden = !source;
         mp.disabled = width.disabled = height.disabled = Boolean(source) || dimensionsLinked;
@@ -3314,8 +3317,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     function guideItem() {
         const item = el('a', null, 'fv-action fv-action-secondary fvs-phone-only');
         item.href = promptHelp.href; item.target = '_blank'; item.rel = 'noopener noreferrer';
-        item.append(el('span', t('How to write a prompt', '描述写法')));
-        item.dataset.fvTipName = t('How to write a prompt', '描述写法'); item.dataset.fvTipUse = t('Open the guide to writing a good prompt', '打开描述写法指南，写得更准');
+        item.append(el('span', t('How to write a prompt', '提示词写法')));
+        item.dataset.fvTipName = t('How to write a prompt', '提示词写法'); item.dataset.fvTipUse = t('Open the guide to writing a good prompt', '打开提示词写法指南，写得更准');
         return item;
     }
     // A press or focus anywhere outside the open tray (the description, another control, the picture, empty space) puts
@@ -3400,7 +3403,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         chips: [
             {id: 'media', tray: 'media', icon: 'media', read: () => {
                 const n = mediaCount();
-                return {label: t('Media', '素材'), badge: n || null, tip: [t('Media', '素材'), t('Add reference pictures, video and sound', '加参考图、视频和声音')]};
+                return {label: t('Media', '素材'), badge: n || null, tip: [t('Media', '素材'), t('Add reference images, video and sound', '加参考图、视频和声音')]};
             }},
             {element: mention},
             {element: framePicker.element},
@@ -3542,7 +3545,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         const shape = item.aspect && studioShapes(t).find(([id]) => id === item.aspect)?.[1];
         const size = item.w && item.h ? `${item.w} × ${item.h}` : item.pixels ? `${Number(item.pixels).toFixed(2)} MP` : '';
         return [shape, size, Number(item.seconds) > 0 ? t('{seconds} s', '{seconds} 秒', { seconds: item.seconds }) : '', level ? effortName(t, level) : '',
-            typeof item.prompt === 'string' ? t('with prompt', '含描述') : ''].filter(Boolean).join(' · ');
+            typeof item.prompt === 'string' ? t('with prompt', '含提示词') : ''].filter(Boolean).join(' · ');
     };
     const SAMPLING_LEVELS = () => effort.levels();
     // The panel stands over the console; in three columns the console is not on the page, so it stands in the body (a card beside the settings column), and in the editor's borrowed bar in the bar's own console.
@@ -3615,9 +3618,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
         const on = enhancer.reversing, why = reverseQueueWhy();
         reverseKey.dataset.state = on ? 'running' : '';
         reverseKey.setAttribute('aria-disabled', String(!on && !!why));
-        reverseKey.setAttribute('aria-label', on ? t('Stop', '停止') : t('Prompt from a picture or video', '从图片或视频生成提示词'));
-        reverseKey.dataset.fvTipName = on ? t('Stop', '停止') : t('Prompt from a picture or video', '从图片或视频生成提示词');
-        if (on) delete reverseKey.dataset.fvTipUse; else reverseKey.dataset.fvTipUse = t('Pick a picture or video; its description fills the box', '选一张图片或一段视频，生成的描述填入描述框');
+        reverseKey.setAttribute('aria-label', on ? t('Stop', '停止') : t('Prompt from an image or video', '从图片或视频生成提示词'));
+        reverseKey.dataset.fvTipName = on ? t('Stop', '停止') : t('Prompt from an image or video', '从图片或视频生成提示词');
+        if (on) delete reverseKey.dataset.fvTipUse; else reverseKey.dataset.fvTipUse = t('Pick an image or video; its prompt fills the box', '选一张图片或一段视频，生成的提示词填入提示词框');
         if (!on && why) reverseKey.dataset.fvTipWhy = why; else delete reverseKey.dataset.fvTipWhy;
         reverseKey.title = [reverseKey.dataset.fvTipName, reverseKey.dataset.fvTipUse].filter(Boolean).join(' · ');
         const html = on ? stopIcon : reverseIcon; if (reverseKey.dataset.icon !== String(on)) { reverseKey.innerHTML = html; reverseKey.dataset.icon = String(on); }
@@ -3675,7 +3678,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     consoleUI.trays.querySelector('[data-tray=size] .fvs-tray-title')?.append(canvasLock);
     consoleUI.element.classList.add('sgf-avoid');
     mention.dataset.fvTipName = t('Mention', '引用');
-    mention.dataset.fvTipUse = t('Bring a picture or character into the prompt', '在描述里引用素材或角色'); mention.dataset.fvTipKey = '@';
+    mention.dataset.fvTipUse = t('Bring an image or character into the prompt', '在提示词里引用素材或角色'); mention.dataset.fvTipKey = '@';
     // The Generate button's hover words follow its label (updateRunButton).
     updateRunButton();
     // The chips repeat what the trays hold: read them again whenever a setting or its estimate changes.

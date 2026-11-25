@@ -98,8 +98,8 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     label.append(toggle, el('span', t('Prompt enhancement', '提示词增强')));
     // Product words on screen: what it does, not what it is built on.
     label.dataset.fvTipName = t('Prompt enhancement', '提示词增强');
-    label.dataset.fvTipUse = t('Rewrite the prompt in more detail first, on this computer', '生成前在本机把描述改写得更具体');
-    label.title = t('Rewrites the prompt in more detail before generating, on this computer, using your reference pictures.', '生成前在本机结合参考图，把描述改写得更具体。');
+    label.dataset.fvTipUse = t('Rewrite the prompt in more detail first, on this computer', '生成前在本机把提示词改写得更具体');
+    label.title = t('Rewrites the prompt in more detail before generating, on this computer, using your reference images.', '生成前在本机结合参考图，把提示词改写得更具体。');
     const enhancementHint = label.title;
     // The compact form for a tool row: one key, lit while enhancement is on. A view that places it hides the switch;
     // the rest of the bar (versions, rewrite, cancel) can go beside it (`bar`), and shows only while enhancement is on.
@@ -114,15 +114,15 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     for (const [name, text] of [['original', t('Original', '原文')], ['rewritten', t('Enhanced', '改写')]]) {
         const b = el('button', text); b.type = 'button'; buttons[name] = b; tabs.append(b);
         b.dataset.fvTipName = text;
-        b.dataset.fvTipUse = name === 'original' ? t('Show the prompt as written', '显示原始描述') : t('Show the rewritten prompt', '显示改写后的描述');
+        b.dataset.fvTipUse = name === 'original' ? t('Show the prompt as written', '显示原始提示词') : t('Show the rewritten prompt', '显示改写后的提示词');
         b.onclick = () => { if (running) cancelJob().catch(() => {}); versions.select(name); apply(); };
     }
     const redo = el('button', t('Rewrite', '改写'), 'fv-quiet'); redo.type = 'button';
     redo.classList.add('fv-enhance-redo');
-    redo.dataset.fvTipName = t('Rewrite', '改写'); redo.dataset.fvTipUse = t('Rewrite the prompt again', '重新改写一次描述');
+    redo.dataset.fvTipName = t('Rewrite', '改写'); redo.dataset.fvTipUse = t('Rewrite the prompt again', '重新改写一次提示词');
     redo.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 6M20 4v7h-7"/></svg>';
     const cancel = el('button', t('Cancel', '取消'), 'fv-quiet'); cancel.type = 'button';
-    cancel.dataset.fvTipName = t('Cancel', '取消'); cancel.dataset.fvTipUse = t('Stop rewriting; keep the prompt as written', '停止改写，保留原来的描述');
+    cancel.dataset.fvTipName = t('Cancel', '取消'); cancel.dataset.fvTipUse = t('Stop rewriting; keep the prompt as written', '停止改写，保留原来的提示词');
     const status = el('div', null, 'fv-enhance-status'); status.setAttribute('role', 'status');
     const statusText = el('span', null, 'fv-enhance-status-text');
     const meter = el('div', null, 'fv-enhance-meter'), fill = el('i');
@@ -243,7 +243,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         unreadable_video: t('Could not read a frame from this video. Replace it with another video or an image, or use the original.', '读不出这个视频的画面，请换一个视频或图片，或使用原文。'),
         too_many_images: t('Use up to 8 reference images for enhancement.', '增强暂支持最多 8 张参考图。'),
         invalid_prompt: error?.characters ? (error.expanded
-            ? t('The prompt and character descriptions have {number} characters; enhancement supports up to 12,000. Shorten it or use the original.', '提示词连同角色描述共 {number} 字符，增强最多支持 12,000 字符，请精简或使用原文。', tooLong(error))
+            ? t('The prompt and character prompts have {number} characters; enhancement supports up to 12,000. Shorten it or use the original.', '提示词连同角色提示词共 {number} 字符，增强最多支持 12,000 字符，请精简或使用原文。', tooLong(error))
             : t('The prompt has {number} characters; enhancement supports up to 12,000. Shorten it or use the original.', '提示词共 {number} 字符，增强最多支持 12,000 字符，请精简或使用原文。', tooLong(error)))
             : t('Enter a prompt of up to 12,000 characters.', '请输入不超过 12,000 字符的提示词。'),
         invalid_output: error?.check
@@ -272,7 +272,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         disk_space: t('Not enough disk space for the optional model.', '磁盘空间不足，无法安装可选模型。'),
         ram_space: t('The rewrite model needs about {size} GiB of available RAM to load.', '改写模型加载需约 {size} GiB 可用内存。', { size: gib(error?.ramBytes || ramBytes) }),
         invalid_prompt: error?.characters ? (error.expanded
-            ? t('The prompt and character descriptions have {number} characters; rewriting supports up to 12,000. Shorten it before rewriting again.', '提示词连同角色描述共 {number} 字符，改写最多支持 12,000 字符，精简后可再改写。', tooLong(error))
+            ? t('The prompt and character prompts have {number} characters; rewriting supports up to 12,000. Shorten it before rewriting again.', '提示词连同角色提示词共 {number} 字符，改写最多支持 12,000 字符，精简后可再改写。', tooLong(error))
             : t('The prompt has {number} characters; rewriting supports up to 12,000. Shorten it before rewriting again.', '提示词共 {number} 字符，改写最多支持 12,000 字符，精简后可再改写。', tooLong(error)))
             : t('Rewriting supports prompts of up to 12,000 characters.', '改写只支持不超过 12,000 字符的提示词。'),
         invalid_output: error?.check
@@ -522,8 +522,8 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     const reverseErrorText = error => isNetworkTypeError(error) ? networkText(error) : ({
         busy: t('Finish the current queue before writing a prompt from media.', '请等待当前队列完成后再生成提示词。'),
         unreadable_video: t('Could not read frames from this video. Choose another file.', '无法读取这个视频的画面，请换一个文件。'),
-        unsupported_media: t('Only pictures and videos can be turned into a prompt.', '只能用图片或视频生成提示词。'),
-        invalid_media: t('Could not read this picture. Choose another file.', '无法读取这张图片，请换一个文件。'),
+        unsupported_media: t('Only images and videos can be turned into a prompt.', '只能用图片或视频生成提示词。'),
+        invalid_media: t('Could not read this image. Choose another file.', '无法读取这张图片，请换一个文件。'),
         out_of_memory: holderNames(error?.holders)
             ? t('Not enough graphics memory. In use: {programs}. Close them and try again.', '显存不足，无法生成提示词。正在占用：{programs}。关闭后再试。', { programs: holderNames(error.holders) })
             : t('Not enough graphics memory. Close other GPU apps and try again.', '显存不足，请关闭其他显卡程序后再试。'),
@@ -538,7 +538,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         not_enabled: t('Not enabled. Your prompt is unchanged.', '未启用，原文已保留。'),
     }[error?.message] || (reasonOf(error)
         ? t('Could not write the prompt: {reason}. Try again.', '暂时无法生成提示词。原因：{reason}。请重试。', { reason: reasonOf(error) })
-        : t('Could not write the prompt. Try again.', '暂时无法生成提示词请重试。')));
+        : t('Could not write the prompt. Try again.', '暂时无法生成提示词，请重试。')));
     const reverseListeners = new Set();
     let reverseState = {state: 'idle', fraction: 0, text: ''};
     const publishReverse = change => {
@@ -576,8 +576,8 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         const video = source.kind === 'video';
         const stages = video
             ? [{key: 'read', en: 'Reading the frames…', zh: '正在读取画面…', seconds: 2}, {key: 'describe', en: 'Describing the video…', zh: '正在描述视频…', seconds: 8},
-               {key: 'camera', en: 'Looking at the camera movement…', zh: '正在看镜头运动…', seconds: 1}, ...(shapeVideo ? [{key: 'shape', en: 'Shaping it into a video prompt…', zh: '正在整理成视频描述…', seconds: 10}] : [])]
-            : [{key: 'describe', en: 'Describing the picture…', zh: '正在描述图片…', seconds: 8}];
+               {key: 'camera', en: 'Looking at the camera movement…', zh: '正在看镜头运动…', seconds: 1}, ...(shapeVideo ? [{key: 'shape', en: 'Shaping it into a video prompt…', zh: '正在整理成视频提示词…', seconds: 10}] : [])]
+            : [{key: 'describe', en: 'Describing the image…', zh: '正在描述图片…', seconds: 8}];
         // The job is under way: the box is read-only and dimmed, the key says Stop, Generate waits.
         const begin = () => {
             input.readOnly = true; input.dataset.reversing = 'true'; element.dataset.reversing = 'true'; bar.dataset.reversing = 'true';
@@ -625,7 +625,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
             write(versions.text());
             setText(input.value); save(); render();
             if (before.trim()) {
-                show(t('Description filled in.', '已填入描述。'), 'note'); undoKey.hidden = false; undoState = {before, snapshot};
+                show(t('Prompt filled in.', '已填入提示词。'), 'note'); undoKey.hidden = false; undoState = {before, snapshot};
                 undoKey.onclick = () => { versions.value = snapshot; write(before); setText(input.value); save(); render(); show(''); };
                 clearTimeout(undoTimer); undoTimer = setTimeout(() => { if (!undoKey.hidden) show(''); }, 10000);
             } else show('');

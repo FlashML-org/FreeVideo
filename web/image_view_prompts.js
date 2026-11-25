@@ -97,7 +97,7 @@ export function promptLibrary({onUsePrompt, onApplyPreset, currentSettings, desc
         if (tab === 'history') {
             const items = orderedPrompts(prompts);
             list.replaceChildren(...items.slice(0, 30).map(p => row({title: p.text, sub: p.count > 1 ? t('used {count}×', '用过 {count} 次', { count: p.count }) : '', pinned: p.pinned,
-                useName: t('Use this prompt', '使用这条提示词'), useText: t('Puts it in the prompt box', '填入描述框'),
+                useName: t('Use this prompt', '使用这条提示词'), useText: t('Puts it in the prompt box', '填入提示词框'),
                 onUse: () => onUsePrompt(p.text),
                 onPin: () => { prompts = prompts.map(x => x.text === p.text ? {...x, pinned: !x.pinned} : x); writeStore(HISTORY_KEY, prompts); paint(); },
                 onRemove: () => { prompts = prompts.filter(x => x.text !== p.text); writeStore(HISTORY_KEY, prompts); paint(); }})));

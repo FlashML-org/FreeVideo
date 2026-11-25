@@ -26,15 +26,15 @@ export const PAGES = [
     // The 0.6.0 page: the creation panel, a work playing on the stage and earlier works open from Media; one picture per language.
     {id: 'interface', kind: 'still', since: '0.6.0', seen: ['freevideo.whatsnew-seen-interface', '1'], title: ['0.6.0: A new interface', '0.6.0 全新界面'],
         poster: {src: ['assets/whatsnew/interface-en.webp', 'assets/whatsnew/interface-zh.webp']},
-        list: [['See and manage every running and queued video and picture from any page', '在任何页面都能看到和管理所有生成中、排队的视频和图片'],
-            ['Switching pages keeps generation running, along with your prompt and references', '切换页面不会中断生成，描述和参考图都还在'],
+        list: [['See and manage every running and queued video and image from any page', '在任何页面都能看到和管理所有生成中、排队的视频和图片'],
+            ['Switching pages keeps generation running, along with your prompt and references', '切换页面不会中断生成，提示词和参考图都还在'],
             ['Use earlier videos directly as references', '以前生成的视频也能直接用作参考'],
             ['Hand-drawn sketches give finer control over image generation', '可以通过手绘草图更精细地控制生成']]},
     {id: 'overview', since: '0.5.0', seen: ['freevideo.whatsnew-seen', '0.5'], title: ['0.5.0: A fully upgraded sound system', '0.5.0 声音系统全面升级'], length: 11000, height: 400, list: [
-        ['Separate tracks: dialogue, music, ambience', '分离音轨：人声、音乐、环境声'], ['Replace music: from a text description', '替换配乐：根据文字描述重新生成'],
+        ['Separate tracks: dialogue, music, ambience', '分离音轨：人声、音乐、环境声'], ['Replace music: from a text prompt', '替换配乐：根据文字提示词重新生成'],
         ['Add music: generated to fit the selected length', '添加配乐：按选中的长度生成'], ['Edit lines: only changed lines are redubbed', '修改台词：只为改过的台词重新配音'],
         ["Dub: in the original speaker's voice", '配音：沿用原说话人的声音'], ['Record: onto an audio track', '录音：录制到声音轨'],
-        ['Generate picture from sound', '按声音生成画面']],
+        ['Generate video from sound', '按声音生成画面']],
     rows: [V, ...SOUND], menuItems: [['Copy', '复制'], ['Delete', '删除'], '-', ['Separate tracks', '分离音轨']],
     clips: [picture, mix, ...blocks(), music, guitar, rain, redub, take], preview: false,
     steps: [[0, {at: .12, bar: {mode: 'idle', ph: ['Describe this part', '描述这一段'], button: ['Generate', '生成']}}],
@@ -56,7 +56,7 @@ export const PAGES = [
     {id: 'image', kind: 'still', since: '0.5.1', seen: ['freevideo.whatsnew-seen-image', '1'], open: 'image', title: ['H3 Image', 'H3 Image'],
         poster: {src: 'assets/image/h3-7.webp', prompt: ['A quiet Chinese poster: tea hills in morning mist, with the brushed title “Tea in the Hills” down the right side',
             '一张清雅的中式海报：晨雾中的层层茶山，右侧竖排毛笔大字“山间茶事”']},
-        list: [['Images view: a picture from one sentence', '图像视图：一句话生成图片'], ['Text in pictures, such as poster titles', '图中可写文字，如海报标题'],
+        list: [['Images view: an image from one sentence', '图像视图：一句话生成图片'], ['Text in images, such as poster titles', '图中可写文字，如海报标题'],
             ['The image model can be installed on its own', '可只安装图像模型']]},
 ];
 

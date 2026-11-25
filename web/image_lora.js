@@ -89,7 +89,7 @@ export function createImageLoras({t, fetchApi, el = domEl, getPrompt = () => '',
         if (verdict?.usable !== false) return '';
         return verdict.reason === 'unreadable'
             ? t('The file could not be read. It may be incomplete; download it again.', '文件无法读取，可能未下载完整，请重新下载。')
-            : t('This LoRA cannot be used for pictures.', '此 LoRA 不适用于图片生成。');
+            : t('This LoRA cannot be used for images.', '此 LoRA 不适用于图片生成。');
     }
 
     function render() {

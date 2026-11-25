@@ -212,7 +212,7 @@ export function createSideRail(t, handlers = {}) {
         put(count, rows.length ? String(rows.length) : ''); count.hidden = !rows.length;
         count.setAttribute('aria-label', t('{count} tasks, {active} under way', '{count} 个任务，{active} 个进行中', { count: rows.length, active }));
         put(emptyTitle, rows.length ? (shown.length ? '' : t('No task matches', '没有匹配的任务')) : t('No tasks yet', '还没有任务'));
-        put(emptyText, rows.length ? (shown.length ? '' : t('Try other words or another filter.', '换个词或换个筛选试试。')) : t('Each video and picture the assistant makes is listed here, with its prompt, time and state.', '助手生成的每段视频和每张图片都会列在这里，带描述、时间和状态。'));
+        put(emptyText, rows.length ? (shown.length ? '' : t('Try other words or another filter.', '换个词或换个筛选试试。')) : t('Each video and image the assistant makes is listed here, with its prompt, time and state.', '助手生成的每段视频和每张图片都会列在这里，带提示词、时间和状态。'));
         emptyMark.hidden = !!rows.length;
         empty.hidden = !emptyTitle.textContent; searchRow.hidden = rows.length < 2 && !query; filters.hidden = !rows.length;
         drawDetail(); edges(list); edges(detail);
@@ -254,7 +254,7 @@ export function createSideRail(t, handlers = {}) {
         put(dPrompt, row.prompt || ''); dPrompt.hidden = !row.prompt;
         dPrompt.dataset.source = row.promptSource || 'request';
         setTip(dPrompt, {name: row.promptSource === 'job' ? t('Prompt', '提示词') : t('What you asked for', '你提出的要求')});
-        dFacts.replaceChildren(...fact(t('Kind', '类型'), job.kind === 'image' ? t('Picture', '图片') : job.kind === 'production' ? t('Film', '成片') : t('Video', '视频')),
+        dFacts.replaceChildren(...fact(t('Kind', '类型'), job.kind === 'image' ? t('Image', '图片') : job.kind === 'production' ? t('Film', '成片') : t('Video', '视频')),
             ...fact(t('Size', '尺寸'), job.width > 0 && job.height > 0 ? `${job.width} × ${job.height}` : ''),
             ...fact(t('Length', '时长'), job.seconds > 0 ? t('{seconds} s', '{seconds} 秒', { seconds: job.seconds }) : ''),
             ...fact(t('Started', '开始'), localTime(job.created_at, t)),

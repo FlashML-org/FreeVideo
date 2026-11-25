@@ -34,10 +34,10 @@ MISSING = 'The previous video has no usable continuation data. Generate it again
 SIZE_MISMATCH = 'Use the same aspect ratio as the previous video.'
 # Every refusal starts with UNSUPPORTED, then says what to change.
 UNSUPPORTED = 'Continue from video cannot be used with these settings.'
-UNSUPPORTED_DEVICE = UNSUPPORTED + ' Continuing a video needs an NVIDIA GPU or a Mac. To make a new video, clear "Continue from video".'
+UNSUPPORTED_DEVICE = UNSUPPORTED + ' Extending a video needs an NVIDIA GPU or a Mac. To make a new video, clear "Continue from video".'
 UNSUPPORTED_PASSES = UNSUPPORTED + ' Turn on "Two-pass acceleration" and turn off the first-pass preview.'
 UNSUPPORTED_REFINE = UNSUPPORTED + ' Clear either "Second pass of preview" or "Continue from video".'
-UNSUPPORTED_MEDIA = UNSUPPORTED + ' Connect up to 3 pictures as references, and remove video, audio and pre-encoded inputs.'
+UNSUPPORTED_MEDIA = UNSUPPORTED + ' Connect up to 3 images as references, and remove video, audio and pre-encoded inputs.'
 # A continued part keeps the cast's pictures, one per person and at most three people in a frame.
 PICTURES_MAX = 3
 
@@ -164,7 +164,7 @@ def encoded_references(conditions, task, anchor):
     sound = (task == ('ref2va_av' if anchor else 'ref2va_audio') and len(rows) == len(images) + 1
              and rows[-1]['kind'] == 'audio' and rows[-1].get('audio_latent') is not None)
     if not rows or anchor != bool(images) or len(images) + sound != len(rows) or len(images) > PICTURES_MAX:
-        raise ValueError('Continuation pictures must be one to %d images, followed only by its own sound' % PICTURES_MAX)
+        raise ValueError('Extending takes one to %d images, followed only by its own sound' % PICTURES_MAX)
     return sound
 
 

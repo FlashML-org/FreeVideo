@@ -156,7 +156,7 @@ class FreeVideoGenerate(io.ComfyNode):
                     tooltip='Reuses work between similar sampling steps to finish sooner, with a small change to the result.'),
                 io.Combo.Input('upscale_factor', display_name='Upscale factor', options=list(UPSCALE_OPTIONS), default='2',
                     optional=True, advanced=True,
-                    tooltip='Two-pass only: a smaller factor starts from a larger first pass, for more detail and a longer run.'),
+                    tooltip='Second pass only: a smaller factor starts from a larger first pass, for more detail and a longer run.'),
                 io.Boolean.Input('allow_empty_prompt', display_name='Allow empty prompt', default=False,
                     optional=True, advanced=True, tooltip='Generates from an empty prompt instead of asking for one.'),
                 io.String.Input('upscale_from', display_name='Upscale video', default='', optional=True, advanced=True,

@@ -15,6 +15,7 @@
 import { TIPS, MATCHES, LABELS } from './tooltip_copy.js';
 import { installA11y } from './a11y.js';
 import { isChinese, translator } from './i18n.js';
+import { englishOf } from './i18n_tables.js';
 
 if (globalThis.document?.head && !globalThis.document.head.querySelector?.('link[data-fv-sheet=tooltip]')) {
     const sheet = document.createElement('link');
@@ -117,8 +118,9 @@ export function copyFor(element) {
     if (matched !== undefined) return matched;
     const label = labelOf(element);
     if (!label) return null;
+    const names = [label, ...englishOf(label)];
     for (const [pattern, id, within] of LABELS) {
-        if (!pattern.test(label)) continue;
+        if (!names.some(name => pattern.test(name))) continue;
         if (within && !element.closest?.(within)) continue;
         return TIPS[id] ? {id, entry: TIPS[id]} : null;
     }
@@ -490,7 +492,8 @@ function collect(root) {
 }
 const labelHit = element => {
     const label = labelOf(element);
-    const hit = label && LABELS.find(([pattern, , within]) => pattern.test(label) && (!within || element.closest(within)));
+    const names = label ? [label, ...englishOf(label)] : [];
+    const hit = label && LABELS.find(([pattern, , within]) => names.some(name => pattern.test(name)) && (!within || element.closest(within)));
     return hit && TIPS[hit[1]] ? {id: hit[1], entry: TIPS[hit[1]]} : null;
 };
 

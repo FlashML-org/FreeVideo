@@ -185,12 +185,12 @@ export function placeMenu(at, size, view, margin = 8) {
 // show their name and key only. Unavailable rows show their `disabled` text, which says why and how to undo it. ──
 const USE = {
     open: ['View it large', '打开大图查看'], download: ['Save the file to this computer', '把文件存到这台电脑'],
-    reuse: ['Fill in its prompt and settings', '填入它的提示词和设置'], reference: ['Use it as a reference picture', '作为参考图放进当前视图'],
+    reuse: ['Fill in its prompt and settings', '填入它的提示词和设置'], reference: ['Use it as a reference image', '作为参考图放进当前视图'],
     'copy-prompt': ['Copy its prompt to paste elsewhere', '复制提示词，可粘贴到别处'], favorite: ['Keep it under Favorites', '加入收藏，方便再找'],
     tags: ['Group it with a tag', '用标签给它分组'], compare: ['Compare it with another one', '和另一个并排或滑块对比'],
     folder: ['Show the file in its folder', '在文件夹里找到这个文件'], trash: ['Move it to Recently deleted', '移到最近删除，可恢复'],
     restore: ['Put it back where it was', '放回原来的位置'], purge: ['Delete it for good; asks first', '永久删除，会先确认'],
-    'new-tag': ['Make a new tag for it', '新建一个标签'], extend: ['Continue it into a longer video', '接着生成更长的视频'],
+    'new-tag': ['Make a new tag for it', '新建一个标签'], extend: ['Extend it into a longer video', '接着生成更长的视频'],
     rename: ['Give it another name', '换一个名字'], duplicate: ['Make a copy next to it', '在旁边复制一份'],
     read: ['Clear its unread dot', '去掉未读标记'], remove: ['Take it off this list', '从列表里移除'],
 };

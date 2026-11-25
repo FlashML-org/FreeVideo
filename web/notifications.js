@@ -127,7 +127,7 @@ export function latestFinished(list = jobs.list()) {
 }
 
 // ── Words ──
-const KIND = {image: ['Picture', '图像'], video: ['Video', '视频'], chain: ['Long video', '长视频']};
+const KIND = {image: ['Image', '图像'], video: ['Video', '视频'], chain: ['Long video', '长视频']};
 const ago = (at, cn = CN) => {
     const s = Math.max(0, Math.round((Date.now() - at) / 1000));
     if (s < 60) return words(['Just now', '刚刚'], cn);

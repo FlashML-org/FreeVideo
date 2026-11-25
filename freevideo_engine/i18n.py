@@ -185,8 +185,28 @@ def lookup(catalog, en, zh, values=None):
         return value if isinstance(value, str) else None
     text = own(en + KEY_SEPARATOR + zh)
     text = own(en) if text is None else text
-    text = en if text is None else text
+    if text is None:
+        # A file whose fallback is zh-Hans (Traditional Chinese) shows text it does not hold as the code's Simplified
+        # Chinese in its own characters, not as English: the rule of web/i18n.js lookup.
+        meta = catalog.get('_meta') if isinstance(catalog, dict) else None
+        text = from_simplified(catalog, zh) if isinstance(meta, dict) and meta.get('fallback') == 'zh-Hans' else en
     return fill(text, values) if values else text
+
+
+_char_tables = {}
+
+
+def from_simplified(catalog, text):
+    """Simplified Chinese text in the characters of a file's _meta.chars (pairs of a Simplified character and the one it
+    becomes); the text itself when the file has none. web/i18n.js fromSimplified."""
+    meta = catalog.get('_meta') if isinstance(catalog, dict) else None
+    chars = meta.get('chars') if isinstance(meta, dict) else None
+    if not isinstance(chars, str) or not chars:
+        return str(text)
+    table = _char_tables.get(chars)
+    if table is None:
+        table = _char_tables[chars] = dict(zip(chars[0::2], chars[1::2]))
+    return ''.join(table.get(ch, ch) for ch in str(text))
 
 
 def catalog(language, folder=None):
@@ -200,6 +220,12 @@ def catalog(language, folder=None):
                 loaded = json.loads((Path(folder) / (language + '.json')).read_text(encoding='utf-8'))
                 if isinstance(loaded, dict):
                     value = {k: v for k, v in loaded.items() if k != '_meta' and isinstance(v, str)}
+                    # What a missing entry falls back to (web/i18n.js lookup): Traditional Chinese reads the code's
+                    # Simplified Chinese in its own characters.
+                    meta = loaded.get('_meta') if isinstance(loaded.get('_meta'), dict) else {}
+                    kept = {k: meta[k] for k in ('fallback', 'chars') if isinstance(meta.get(k), str)}
+                    if kept:
+                        value['_meta'] = kept
             except (OSError, ValueError):
                 pass
         _catalogs[key] = value

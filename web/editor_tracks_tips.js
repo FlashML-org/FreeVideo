@@ -19,7 +19,7 @@ const COPY = {
     loop: ['Loop', '循环播放', 'Start over when playback reaches the end', '播到结尾后从头再来', '⇧L'],
     playRange: ['Play range', '只播范围', 'Play only the selected part or range', '只播选中的片段或范围', '⇧Space'],
     fullscreen: ['Full screen', '全屏', 'Fill the screen with the picture', '画面铺满整个屏幕', 'F'],
-    saveFrame: ['Save frame', '保存当前帧', 'Save this frame as a picture', '把这一帧存成图片', ''],
+    saveFrame: ['Save frame', '保存当前帧', 'Save this frame as an image', '把这一帧存成图片', ''],
     previewVolume: ['Preview volume', '预览音量', 'Only what you hear here, not the export', '只调这里听到的，不影响导出', ''],
     previewVolumeSlider: ['Preview volume', '预览音量', 'Drag to set how loud the preview plays', '拖动调整预览的响度', '↑ ↓'],
     play: ['Play', '播放', 'Play from the playhead', '从播放头开始播放', 'Space'],

@@ -15,7 +15,7 @@ const COPY = {
     zh: {book: '教程', chapters: '章节', examples: '示例', contents: '目录', close: '关闭', search: '搜索教程', steps: '步骤', limits: '注意',
         follow: '跟着做', tryIt: '试一试', walk: '演示', goto: '带我去', prev: '上一篇', next: '下一篇', read: '已看过', none: '没有找到',
         noneHint: '换个词，或看“出错了怎么办”。', start: '新手指引', startLine: '三步认识界面', again: '再看一遍', featured: '精选', getStarted: '开始使用',
-        back: '示例', feature: '功能示例', fills: '描述、素材和参数会一起填好', prompt: '描述', newBadge: '新', play: '播放示例', playSound: '播放声音',
+        back: '示例', feature: '功能示例', fills: '提示词、素材和参数会一起填好', prompt: '提示词', newBadge: '新', play: '播放示例', playSound: '播放声音',
         stepOf: '第 {step} / {total} 步', done: '全部完成', doneNext: '做完了。下一篇：', stepDone: '这步做好了', stepBack: '上一步', expand: '展开教程',
         noView: '无法打开剪辑视图，请点顶部的“剪辑视图”。', noTarget: '当前界面中找不到这一项，请按上面的步骤操作。', noHidden: '时间线上还没有带声音的片段，请先导入或生成一段。',
         showcaseLine: '用白模定动作和镜头，生成写实视频。',
@@ -40,8 +40,8 @@ const COPY = {
 };
 const GROUPS = [
     [['Start', '入门'], ['quick-start', 'text-to-video', 'timed-lines', 'quality-tiers', 'refine', 'run-modes']],
-    [['Pictures and people', '用图片和人物'], ['first-last-frame', 'middle-frames', 'reference-video', 'cast-sheet', 'scenes-props', 'replace-person', 'replace-two-people', 'lora']],
-    [['Pictures', '图像'], ['image-gen', 'image-references', 'edit-image', 'local-image-edit', 'new-image-shape']],
+    [['Images and people', '用图片和人物'], ['first-last-frame', 'middle-frames', 'reference-video', 'cast-sheet', 'scenes-props', 'replace-person', 'replace-two-people', 'lora']],
+    [['Images', '图像'], ['image-gen', 'image-references', 'edit-image', 'local-image-edit', 'new-image-shape']],
     [['Longer videos', '更长的视频'], ['long-video', 'extend-video', 'continue-or-new-shot']],
     [['Edit and sound', '剪辑与声音'], ['editor', 'save-frame', 'editor-extend-refs', 'segment-prompt', 'separate-tracks', 'replace-music', 'beat-snap', 'voice-recording', 'narration', 'sound-to-picture', 'text-subtitles']],
     [['Autopilot', 'AI 全自动'], ['autopilot', 'drama-outline', 'film-project']],
@@ -64,7 +64,7 @@ const STEP_GO = {'quick-start': {0: 'prompt-box', 2: 'generate-btn'}, 'text-to-v
     'separate-tracks': {0: 'audio-a1-track', 1: 'audio-track-button'}, 'reference-video': {0: 'prompt-box'}, 'library-reuse': {0: 'works-entry'}, 'cast-sheet': {0: 'cast-add'}};
 const HOWTOS = new Set(['reference-video', 'long-video', 'editor-extend-refs', 'separate-tracks', 'replace-music', 'replace-voice']);
 const EX_GROUPS = [[['Video', '视频'], ['first-video', 'text-to-video', 'quality-tiers', 'reference-image', 'two-pass', 'first-last-frame', 'product-showcase', 'replace-person', 'character']],
-    [['Edit and sound', '剪辑与声音'], ['edit-view', 'extend', 'segment-prompt', 'separate-sound', 'add-sound', 'narration', 'sound-to-picture']], [['Pictures and library', '图片与作品'], ['edit-image', 'library-reuse', 'autopilot']]];
+    [['Edit and sound', '剪辑与声音'], ['edit-view', 'extend', 'segment-prompt', 'separate-sound', 'add-sound', 'narration', 'sound-to-picture']], [['Images and library', '图片与作品'], ['edit-image', 'library-reuse', 'autopilot']]];
 const CARD_CHAPTER = {'first-video': 'quick-start', 'text-to-video': 'text-to-video', 'first-last-frame': 'first-last-frame', 'quality-tiers': 'quality-tiers', 'reference-image': 'reference-video',
     'replace-person': 'replace-person', character: 'cast-sheet', 'edit-view': 'editor', 'separate-sound': 'separate-tracks', extend: 'extend-video', 'two-pass': 'refine', autopilot: 'autopilot',
     'sound-to-picture': 'sound-to-picture', narration: 'narration', 'add-sound': 'replace-music', 'segment-prompt': 'segment-prompt', 'library-reuse': 'library-reuse', 'edit-image': 'edit-image'};

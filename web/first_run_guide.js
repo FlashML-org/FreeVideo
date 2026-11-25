@@ -23,7 +23,7 @@ export const REPLAY_TEXT = {
 // It never starts by itself; Settings › Getting started and the tutorial replay it in the view in front.
 export const CHAPTERS = [
     {id: 'describe', anchor: '[data-fv-guide="describe"]', added: false, title: ['Write one sentence', '写一句描述'],
-        en: 'Say who is where, doing what. Type @ to use added pictures and videos.',
+        en: 'Say who is where, doing what. Type @ to use added images and videos.',
         zh: '说清谁在哪里做什么。输入 @ 可引用添加的图片和视频。'},
     {id: 'generate', anchor: '[data-fv-guide="generate"]', added: false, title: ['Generate', '生成'],
         en: 'Shape, length and quality are on this row; progress shows on the picture.',
@@ -581,7 +581,7 @@ export const FIRST_RUN_TEXT = {
     generate: ['Generate video', '生成视频'],
     hint: ['Click "Generate video" to get your first video.', '点“生成视频”，得到第一段视频。'],
     close: ['Close', '关闭'],
-    next: ['Continue this video', '接着生成这条视频'],
+    next: ['Extend this video', '接着生成这条视频'],
     longer: ['Extend', '接着生成'],
     edit: ['Edit', '剪辑'],
 };

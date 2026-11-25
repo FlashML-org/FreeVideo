@@ -1,4 +1,5 @@
 // One whole-video estimate and the same five rows in Studio and the node view.
+import { pageLanguage } from './i18n.js';
 import { saveReport, reportIssue, showReportTip, focusReportTip, REPORT_GONE, reportFetchError } from './report_issue.js';
 import { issueButton } from './issue_button.js';
 import { previewStyle, loadPreviewStyle, onPreviewStyle, hintWanted, markHintSeen, sheetLayout } from './preview_style.js';
@@ -109,7 +110,7 @@ const STALL_SECONDS_BY_PHASE = Object.freeze({
 // Stage words the product already uses: settings say 一采 / 二采, results say 解码.
 const ACTIVITY = {
     prepare: ['Preparing', '正在准备'],
-    describe: ['Writing part descriptions', '正在写各段描述'],
+    describe: ['Writing part prompts', '正在写各段提示词'],
     prompt: ['Processing the prompt', '正在处理提示词'],
     combined: ['Processing the prompt and references', '正在处理提示词和参考素材'],
     load: ['Loading the video model', '正在载入视频模型'],
@@ -230,7 +231,7 @@ function baseActivityLabel(message, t, plan = {}, secondPass = false, references
         if (twoPass && plan.preview) return steps('preview', 'preview', step, count);
         const sampling = steps('pass1', twoPass ? 'first' : 'single', step, count);
         if (!twoPass && ranOnePass(plan))
-            sampling.text += t(' (single pass; two-pass acceleration needs 8 first-pass steps)', '（只采样一遍；二采加速需一采 8 步）');
+            sampling.text += t(' (single pass; the faster second pass needs 8 first-pass steps)', '（只采样一遍；二采加速需一采 8 步）');
         return sampling;
     }
     const key = labelActivities.get(message.label) || {
@@ -480,7 +481,7 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
     const element = el('section', 'fv-generation-progress'); element.hidden = true;
     if (compact) element.classList.add('fv-generation-compact');
     // Chinese lines break between phrases, not inside a word (see the CSS).
-    element.lang = t('en', 'zh-CN');
+    element.lang = pageLanguage();
     const heading = el('div', 'fv-generation-heading');
     const label = el('div', 'fv-generation-label'), count = el('strong', 'fv-generation-count');
     const mini = el('div', 'fv-generation-mini'), miniFill = el('div', 'fv-generation-mini-fill');
@@ -979,8 +980,8 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
             automatic: compatibilityText,
             notice: trimStatus([...trims.values()], t),
             // A long video whose part descriptions could not be written: the server's own words stay in the report.
-            split: splitFailed === 'model_missing' ? t('Prompt model not installed. The description is split across the parts by sentence.', '未安装提示词模型，描述按句子顺序分到各段')
-                : t('The description is split across the parts by sentence.', '描述按句子顺序分到各段')}[level] || (!ended ? progressText : '');
+            split: splitFailed === 'model_missing' ? t('Prompt model not installed. The prompt is split across the parts by sentence.', '未安装提示词模型，提示词按句子顺序分到各段')
+                : t('The prompt is split across the parts by sentence.', '提示词按句子顺序分到各段')}[level] || (!ended ? progressText : '');
         if (status.textContent !== explanation) status.textContent = explanation;
         status.hidden = !explanation; status.dataset.level = level;
         const announcements = [];

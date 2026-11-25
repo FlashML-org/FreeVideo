@@ -15,11 +15,11 @@ MESSAGES = {
                               'LoRA 强度必须在 -2 到 2 之间。'),
     'duplicate_lora': ('Select each LoRA only once. Remove the duplicate.',
                        '同一个 LoRA 只能选择一次，请移除重复项。'),
-    'too_many_loras': ('Use at most eight LoRAs per picture.',
+    'too_many_loras': ('Use at most eight LoRAs per image.',
                        '一张图片最多使用 8 个 LoRA，请减少数量。'),
     'lora_not_found': ('The LoRA file could not be found. Choose it again.',
                        'LoRA 文件找不到，请重新选择。'),
-    'invalid_lora_model': ('This LoRA cannot be used for pictures. Choose another one.',
+    'invalid_lora_model': ('This LoRA cannot be used for images. Choose another one.',
                            '此 LoRA 不适用于图片生成，请换一个。'),
 }
 MESSAGE_EN = {code: pair[0] for code, pair in MESSAGES.items()}

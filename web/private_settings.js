@@ -32,8 +32,8 @@ export function privacySettings(t, api) {
     const size = el('span', 'st-sz'); size.setAttribute('role', 'status');
     const clean = button(t('Clean up', '清理'), {kind: 'fill'}); clean.disabled = true;
     tip(clean, t('Clean up', '清理'), t('Delete the listed files for good', '彻底删除清单上的文件'));
-    const unused = row({iconName: 'shield', title: t('Uploads and pictures no longer used', '不再使用的上传和图片'),
-        sub: t('Nothing that a work, character, conversation or open page uses', '作品、角色、对话和打开的页面都不再使用'), end: [size, clean]});
+    const unused = row({iconName: 'shield', title: t('Uploads and images no longer used', '不再使用的上传和图片'),
+        sub: t('Nothing that a creation, character, conversation or open page uses', '作品、角色、对话和打开的页面都不再使用'), end: [size, clean]});
     let tokens = [];
     const review = async () => {
         try {
@@ -63,7 +63,7 @@ export function privacySettings(t, api) {
     for (const gb of [1, 2, 5, 10, 20]) { const option = el('option', '', `${gb} GB`); option.value = String(gb * 1e9); limit.append(option); }
     limit.value = String(2e9);
     const clear = button(t('Clear cache', '清除缓存')); clear.disabled = true;
-    const cache = row({iconName: 'disk', title: t('Cache', '缓存'), sub: t('Kept so a repeated prompt or picture starts sooner', '让重复的提示词和图片更快开始'), end: [cacheSize, clear]});
+    const cache = row({iconName: 'disk', title: t('Cache', '缓存'), sub: t('Kept so a repeated prompt or image starts sooner', '让重复的提示词和图片更快开始'), end: [cacheSize, clear]});
     const cacheLimit = row({title: t('Cache limit', '缓存上限'), sub: t('The oldest goes first when it is full', '满了先删最久没用的'), end: [segmented(limit, {label: t('Cache limit', '缓存上限')})]});
     const busyWhy = t('Available when nothing is being generated.', '没有正在生成的任务时可用。');
     const usage = async () => {
@@ -89,16 +89,16 @@ export function privacySettings(t, api) {
 
     // Old reference pictures in the input folder itself. Counted when the page opens: with none there is nothing to
     // open, the line says so and the fold stays shut; otherwise one sentence over the pictures, each deleted on its own.
-    const oldSub = t('Pictures in ComfyUI’s input folder, deleted one by one', 'ComfyUI 输入文件夹中的图片，逐张删除');
-    const old = fold({iconName: 'img', title: t('Clean up old reference pictures', '清理旧参考图'), sub: oldSub, cls: 'st-private-old'});
+    const oldSub = t('Images in ComfyUI’s input folder, deleted one by one', 'ComfyUI 输入文件夹中的图片，逐张删除');
+    const old = fold({iconName: 'img', title: t('Clean up old reference images', '清理旧参考图'), sub: oldSub, cls: 'st-private-old'});
     const grid = el('div', 'st-private-grid'), status = el('div', 'st-private-status'); status.setAttribute('role', 'status');
-    const note = el('p', 'st-private-note'); note.append(icon('info', 'fv-i'), el('span', '', t('Earlier versions left reference pictures among your own files. Check each one before deleting it.',
+    const note = el('p', 'st-private-note'); note.append(icon('info', 'fv-i'), el('span', '', t('Earlier versions left reference images among your own files. Check each one before deleting it.',
         '旧版本的参考图与其他文件混在一起，请逐张确认后删除。')));
     old.body.append(note, grid, status);
     const nothingOld = none => {
         old.element.toggleAttribute('data-empty', none);
         old.summary.setAttribute('aria-disabled', String(none)); old.summary.tabIndex = none ? -1 : 0;
-        old.sub.textContent = none ? t('No pictures to clean up', '没有需要清理的图片') : oldSub;
+        old.sub.textContent = none ? t('No images to clean up', '没有需要清理的图片') : oldSub;
         if (none) old.element.open = false;
     };
     old.summary.addEventListener('click', event => { if (old.element.hasAttribute('data-empty')) event.preventDefault(); });
@@ -118,9 +118,9 @@ export function privacySettings(t, api) {
                 try {
                     const value = await json('/freevideo/private/legacy-delete', {name: item.name});
                     if (value.removed) cell.remove();
-                    else status.textContent = value.reason === 'in-use' ? t('This picture is still used by a work or workflow, so it was kept.', '这张图片仍被作品或工作流使用，已保留。')
-                        : t('This picture could not be deleted.', '这张图片无法删除。');
-                } catch { status.textContent = t('This picture could not be deleted.', '这张图片无法删除。'); }
+                    else status.textContent = value.reason === 'in-use' ? t('This image is still used by a creation or workflow, so it was kept.', '这张图片仍被作品或工作流使用，已保留。')
+                        : t('This image could not be deleted.', '这张图片无法删除。');
+                } catch { status.textContent = t('This image could not be deleted.', '这张图片无法删除。'); }
                 if (!grid.childElementCount) nothingOld(true);
             });
             cell.append(image, caption, el('span', 'st-private-size', amount(item.bytes || 0)), remove);

@@ -131,7 +131,7 @@ function generalItems() {
         {id: 'page-reload', label: pair('Reload', '刷新'), icon: 'reload', key: 'Mod+R', use: pair('Load this page again; the view in front comes back', '重新载入页面，回到当前视图'),
             run: () => location.reload()},
         '-',
-        {id: 'palette-open', label: pair('Command palette', '命令面板'), icon: 'search', key: 'Mod+K', use: pair('Search works and run any action', '搜索作品、提示词并执行操作'),
+        {id: 'palette-open', label: pair('Command palette', '命令面板'), icon: 'search', key: 'Mod+K', use: pair('Search creations and run any action', '搜索作品、提示词并执行操作'),
             when: () => Boolean(globalThis.FreeVideoCommands?.openPalette), run: () => globalThis.FreeVideoCommands.openPalette()},
         {id: 'shortcuts-open', label: pair('Keyboard shortcuts', '快捷键速查'), icon: 'keyboard', key: '?', use: pair('Every shortcut of every view', '所有视图的快捷键'),
             when: () => Boolean(command('shortcuts.open')), run: run('shortcuts.open')},
@@ -155,7 +155,7 @@ function itemsFor(target) {
     const picture = target.closest('img');
     const standalone = picture && !picture.closest('button, [role=button], [role=option], [role=tab], a, label');
     const source = picture?.currentSrc || picture?.src || '';
-    if (standalone && source && !source.startsWith('data:')) items.push({id: 'picture-open', label: pair('Open picture in a new tab', '在新标签页打开图片'), icon: 'image', use: pair('See the picture by itself', '单独查看这张图片'), run: () => window.open(source, '_blank', 'noopener')});
+    if (standalone && source && !source.startsWith('data:')) items.push({id: 'picture-open', label: pair('Open image in a new tab', '在新标签页打开图片'), icon: 'image', use: pair('See the image by itself', '单独查看这张图片'), run: () => window.open(source, '_blank', 'noopener')});
     if (items.length) return items;
     return generalItems();
 }

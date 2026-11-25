@@ -189,8 +189,8 @@ function reasonLong(row) {
     // A picture: why FreeVideo went away, as far as the launcher saw it end, and what next (#1121).
     if (row.kind === 'image' && (code === 'engine_closed' || code === 'engine_restarted')) return lostEngineText(code, row.failure?.cause, t).join(t(' ', ''));
     if (code === 'engine_closed') return lostEngineText(code, row.failure?.cause, t).join(t(' ', ''));
-    if (code === 'engine_restarted' || row.status === 'interrupted') return t('FreeVideo restarted while this was being made, so it did not finish. Finished parts are in your works.', 'FreeVideo 在生成过程中重新启动，这次没有完成。已经完成的部分在作品里。');
-    if (row.kind === 'image') return imageGenError(code, row.failure, t) || t('The picture did not finish.', '这张图没有完成。');
+    if (code === 'engine_restarted' || row.status === 'interrupted') return t('FreeVideo restarted while this was being made, so it did not finish. Finished parts are in your creations.', 'FreeVideo 在生成过程中重新启动，这次没有完成。已经完成的部分在作品里。');
+    if (row.kind === 'image') return imageGenError(code, row.failure, t) || t('The image did not finish.', '这张图没有完成。');
     // The engine's own text is raw; it goes through the same advice as the create panel, and an unknown cause says so.
     const told = row.failure?.message ? failureAdvice(String(row.failure.message), t) : null;
     if (told?.summary) return told.summary + t(' ', '') + told.action;
@@ -208,7 +208,7 @@ function line2(row) {
     if (row.status === 'running') return etaText(row.eta_seconds) || elapsedText(row);
     if (row.status === 'queued' || row.status === 'submitting') return t('Starts after the one before it', '等前一项完成后开始');
     if (row.status === 'cancelling') return elapsedText(row);
-    if (row.status === 'done') return t('Saved to your works', '已存入作品');
+    if (row.status === 'done') return t('Saved to your creations', '已存入作品');
     return reasonShort(row);
 }
 
@@ -257,10 +257,10 @@ export function confirmStop(anchor, {kind = 'video', queued = false, host = null
         if (agent) {
             title.textContent = queued ? t('Remove from the queue?', '取消排队？') : t('Stop this step?', '停止这一步？');
             text.textContent = queued ? t('It has not started; it will not run.', '这一步还没有开始，取消后不会进行。')
-                : t('What this step has made so far is not kept. Finished works stay.', '这一步做到一半的不会保留，已经完成的作品不受影响。');
+                : t('What this step has made so far is not kept. Finished creations stay.', '这一步做到一半的不会保留，已经完成的作品不受影响。');
         } else text.textContent = queued ? t('It has not started; it will not be made.', '这项还没有开始，取消后不会生成。')
             : voice ? t('Lines already dubbed are kept; the rest can be dubbed again later.', '已配好的台词会保留，其余台词可以稍后重新配音。')
-            : kind === 'image' ? t('This picture will not be kept.', '这张图不会保留。') : t('What has been made so far is not kept. Queued jobs go on.', '已生成的部分不会保留，排队的任务照常进行。');
+            : kind === 'image' ? t('This image will not be kept.', '这张图不会保留。') : t('What has been made so far is not kept. Queued jobs go on.', '已生成的部分不会保留，排队的任务照常进行。');
         const ask = el('div', 'sgf-ask'), acts = el('div', 'sgf-acts');
         const keep = el('button', 'pill line'), stop = el('button', 'pill danger');
         keep.type = stop.type = 'button'; keep.textContent = agent ? t('Keep going', '继续') : voice ? t('Keep dubbing', '继续配音') : t('Keep going', '继续生成'); stop.textContent = queued ? t('Remove', '取消排队') : t('Stop', '停止');
@@ -585,7 +585,7 @@ export function installTaskFloat() {
         close.setAttribute('aria-label', waiting ? t(...WAITING_TEXT.stop) : stoppable ? t('Stop', '停止') : t('Dismiss', '收起'));
         if (waiting) tip(close, t(...WAITING_TEXT.stop), t(...WAITING_TEXT.status));
         else if (stoppable) tip(close, t('Stop', '停止'), t('Stop this generation (asks first)', '停止这次生成（会先确认）'));
-        else tip(close, t('Dismiss', '收起'), row.status === 'done' ? t('Hide this; the result stays in your works', '收起提示，成品仍在作品里') : t('Hide this message', '收起这条提示'));
+        else tip(close, t('Dismiss', '收起'), row.status === 'done' ? t('Hide this; the result stays in your creations', '收起提示，成品仍在作品里') : t('Hide this message', '收起这条提示'));
         const action = state === 'done' ? [t('Open', '打开'), t('See what was made', '查看这次生成的成品')]
             : state === 'fail' ? [t('See why', '查看原因'), t('Reason, what to do, and the report', '原因、可做的事和诊断报告')]
             : [t('Back to it', '回到生成'), t('Return to the generation; nothing restarts', '展开回生成画面，进度不中断')];
@@ -628,7 +628,7 @@ export function installTaskFloat() {
             const row = rows.find(r => r.id === failCard);
             const box = el('div', 'sgf-fail'); box.setAttribute('role', 'dialog'); box.setAttribute('aria-label', t('What happened', '发生了什么'));
             const title = el('b'), text = el('p', 'fv-selectable'), acts = el('div', 'sgf-acts');
-            title.textContent = row.kind === 'image' ? t("The picture didn't finish", '这张图没有完成') : t("The video didn't finish", '这段视频没有完成');
+            title.textContent = row.kind === 'image' ? t("The image didn't finish", '这张图没有完成') : t("The video didn't finish", '这段视频没有完成');
             text.textContent = reasonLong(row);
             const report = row.failure?.report_id || row.meta?.report_id;
             if (report && row.kind === 'image') {
@@ -654,7 +654,7 @@ export function installTaskFloat() {
                 const th = el('span', 'sgf-rth'), pic = el('i', 'sgf-img'); th.append(pic, Object.assign(el('i', 'sgf-glyph', row.kind === 'image' ? ICON.image : ICON.video))); paintThumb(pic, row);
                 const tx = el('span', 'sgf-rtx'), name = el('b'), sub = el('span');
                 // A row's title is its kind, never its prompt (a prompt belongs to the work only).
-                name.textContent = row.kind === 'image' ? t('Picture', '图片任务') : viewFor(row) === 'editor' ? t('Edit', '剪辑任务') : t('Video', '视频任务');
+                name.textContent = row.kind === 'image' ? t('Image', '图片任务') : viewFor(row) === 'editor' ? t('Edit', '剪辑任务') : t('Video', '视频任务');
                 sub.textContent = `${t(...(VIEW_NAMES[viewFor(row)] || VIEW_NAMES.studio))} · ${row.status === 'running' ? `${percentOf(row)}%` : stateWord(row)}`;
                 tx.append(name, sub); line.append(th, tx);
                 if (row.status === 'running') { const bar = el('i', 'sgf-rbar'), fill = el('b'); fill.style.width = `${percentOf(row)}%`; bar.append(fill); line.append(bar); }

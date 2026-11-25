@@ -48,7 +48,7 @@ let chatNumber = 0;
 // What the agent is doing before it answers, by the key it reports. Words the page does not know are not shown.
 export const STAGE_TEXT = Object.freeze({
     reading: ['Reading the request', '正在理解要求'], scripting: ['Writing the script', '正在写剧本'],
-    storyboarding: ['Planning the shots', '正在拆分镜头'], prompting: ['Writing the shot prompts', '正在写画面描述'],
+    storyboarding: ['Planning the shots', '正在拆分镜头'], prompting: ['Writing the shot prompts', '正在写提示词'],
     checking: ['Checking the results', '正在检查结果'], assembling: ['Joining the shots', '正在拼接镜头'],
 });
 const WORKING = ['running', 'queued', 'waiting', 'cancelling'], VIDEOS = ['generate', 'assemble'];
@@ -66,7 +66,7 @@ const BUSY = {music: ['Making music', '制作配乐']};
 // A failed card's one action: go on keeping the finished parts, run the same request again, or say the words again.
 const AGAIN = {continue: ['Continue generating', '继续生成'], retry: ['Retry', '重试'], resend: ['Send again', '再发一次']};
 const WHITEBOX = {
-    generate: ['Generate video', '生成视频'], edit: ['Edit prompt', '改描述'], decline: ['Skip', '跳过'],
+    generate: ['Generate video', '生成视频'], edit: ['Edit prompt', '改提示词'], decline: ['Skip', '跳过'],
     approved: ['Approved', '已确认'], superseded: ['Replaced', '已被替换'], declined: ['Skipped', '已跳过'],
     preview: ['Whitebox preview', '白模预览'], unavailable: ['Preview could not load', '预览加载失败'],
     play: ['Play', '播放'], pause: ['Pause', '暂停'], seconds: ['s', '秒'],
@@ -107,7 +107,7 @@ export function failureCardReason(value, t) {
 
 export {about};
 export function clock(seconds) { const s = Math.max(0, Math.round(seconds)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
-export const jobName = (job, t) => job.label || (job.kind === 'image' ? t('Picture', '图片') : t('Video', '视频'));
+export const jobName = (job, t) => job.label || (job.kind === 'image' ? t('Image', '图片') : t('Video', '视频'));
 export {promptOf};
 export const jobFraction = job => Math.max(0, Math.min(1, Number(job.progress?.fraction) || 0));
 // What a job's last progress stands for `age` seconds after it was made, by the creation panel's rule.
@@ -395,7 +395,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
     const attachButton = press('fv-chat-attach', null, () => fileInput.click()), fileInput = el('input'), strip = el('ul', 'fv-chat-attached');
     attachButton.append(glyph(ATTACH.icon)); attachButton.title = t(...ATTACH.add); attachButton.setAttribute('aria-label', attachButton.title);
     fileInput.type = 'file'; fileInput.accept = ATTACH.types.join(','); fileInput.multiple = true; fileInput.hidden = true;
-    strip.hidden = true; strip.setAttribute('aria-label', t('Attached pictures', '已添加的图片'));
+    strip.hidden = true; strip.setAttribute('aria-label', t('Attached images', '已添加的图片'));
     const staged = new Map(), uploads = new Set();
     const stagedList = (session = draftSession) => { if (!staged.has(session)) staged.set(session, []); return staged.get(session); };
     const readyPictures = () => stagedList().filter(item => item.attachment).map(item => ({...item.attachment, preview: item.url}));

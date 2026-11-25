@@ -1,5 +1,6 @@
 // The editor owns its generation controls; progress can use the optional component.
 import { cutTip } from './cut_tip.js';
+import { pageLanguage } from './i18n.js';
 import {createFirstFrameSwitch} from './editor_first_frame.js';
 import {createDurationField} from './editor_duration.js';
 import {createEditorReferences} from './editor_references.js';
@@ -119,8 +120,8 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
     let stopPass = null, stopEffort = null;
     if (passMenu) {
         const toggle = el('summary'); toggle.setAttribute('aria-label', t('Sampling', '采样')); toggle.append(el('span', 'fv-chevron'));
-        tip(toggle, {name: t('Sampling', '采样'), use: t('Quality level and the two-pass choice for this part', '这一段的质量档位和二采')});
-        const panel = el('div', 'fv-ed-pass-menu'); twoPassTitle = el('strong', 'fv-ed-pass-sub', t('Two-pass', '二采'));
+        tip(toggle, {name: t('Sampling', '采样'), use: t('Quality level and the second pass choice for this part', '这一段的质量档位和二采')});
+        const panel = el('div', 'fv-ed-pass-menu'); twoPassTitle = el('strong', 'fv-ed-pass-sub', t('Second pass', '二采'));
         panel.append(el('strong', null, t('Sampling', '采样')), ...(effortControl ? [effortControl.element, twoPassTitle] : []), passControl.element);
         passMenu.append(toggle, panel); passMenu.hidden = true; generate.after(passMenu);
         stopPass = actions.onPass?.(() => render()) || null;
@@ -190,7 +191,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
     description.after(duration.element);
     // Where a narrow English bar starts Generate on a line of its own (editor.css); hidden elsewhere.
     const lineBreak = el('span', 'fv-ed-genbar-break'); lineBreak.setAttribute('aria-hidden', 'true');
-    generate.before(lineBreak); host.lang = t('en', 'zh-CN');
+    generate.before(lineBreak); host.lang = pageLanguage();
     // Dubbing: the lines of a chosen stretch of speech take the description box's place.
     const voice = actions.voice || null, voicePanel = voice ? createVoicePanel(host, voice.controller, {t}) : null;
     if (voicePanel) tray.append(voicePanel.element);
@@ -330,7 +331,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         input.placeholder = !writable ? t('Describe the part to generate', '描述要生成的片段') : musical ? t('Describe the music', '描述配乐') : narrated ? t('Write what to say', '写下要说的话') : sound ? t('Describe the picture', '描述画面') : t('Describe this part', '描述这一段');
         // The timeline's own stretch carries 'video-empty-range' (drawn on the picture row); the bar has a name of its own.
         if (sound) host.dataset.tourId = 'sound-range-bar'; else delete host.dataset.tourId;
-        input.setAttribute('aria-label', t('Description', '描述'));
+        input.setAttribute('aria-label', t('Prompt', '提示词'));
         // A video part becomes the next step once it has words: with the box empty Generate stays a secondary key (never
         // greyed; pressing it still asks whether to go on without a description).
         const wordless = !voiced && !musical && !narrated && !input.value.trim();
@@ -432,7 +433,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         tip(generate, {name: verbText.textContent, key: `${modKey}↵`,
             use: downloadText() || (musical ? t('Make music for the chosen stretch', '为选中的范围生成配乐') : narrated ? t('Say the words in the chosen voice', '用选中的音色说出这段话')
                 : voiced ? t('Say the changed lines again', '把改过的台词重新配音') : !selected ? t('Choose a part or drag a range on the timeline first', '先在时间线上选中一段或拖出范围')
-                : generate.dataset.wordless === 'true' ? t('Write a description first', '先写描述') : t('Make the chosen part from the description', '按描述生成选中的这一段')),
+                : generate.dataset.wordless === 'true' ? t('Write a prompt first', '先写提示词') : t('Make the chosen part from the prompt', '按提示词生成选中的这一段')),
             why: !generate.disabled ? '' : busy ? t('This part is generating; Cancel stops it', '这一段正在生成，可按“取消”停止')
                 : previewSelection ? t('Release the range first', '先松开拖动的范围')
                 : !narrated && actions.generationWaiting?.() ? t('Waiting for generation to be ready', '正在等生成服务就绪')
@@ -441,8 +442,8 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         tip(cancel, {name: t('Cancel', '取消'), use: t('Stop this part; it stays as a draft', '停止生成，这一段留作草稿')});
         tip(resume, {name: t('Continue', '继续'), use: t('Start the stopped parts again', '把停下的段接着生成')});
         historyButton.disabled = input.disabled;
-        tip(historyButton, {name: t('Earlier descriptions', '用过的描述'), use: t('Reuse a description you generated with', '重用以前生成时写过的描述'), why: input.disabled ? t('Choose a part first', '先选中一段') : ''});
-        tip(input, {name: t('Description', '描述'), use: t('What this part should show', '写下这一段要生成的内容'), key: `${modKey}↵ ${t('generates', '生成')}`,
+        tip(historyButton, {name: t('Earlier prompts', '用过的提示词'), use: t('Reuse a prompt you generated with', '重用以前生成时写过的提示词'), why: input.disabled ? t('Choose a part first', '先选中一段') : ''});
+        tip(input, {name: t('Prompt', '提示词'), use: t('What this part should show', '写下这一段要生成的内容'), key: `${modKey}↵ ${t('generates', '生成')}`,
             why: input.disabled ? (busy ? t('This part is generating', '这一段正在生成') : t('Choose a part or drag a range first', '先选中一段或在时间线上拖出范围')) : ''});
         if (assets) { if (selected && !busy && !musical && !narrated) assets.refresh(); else assets.element.hidden = true; }
         showMusicAssets(selected && !busy && musical && !previewSelection);
@@ -550,7 +551,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         emptyWatch?.disconnect();
         const watch = new ResizeObserver(() => place());
         const box = showEmptyPrompt({t, anchor: host.lastElementChild, field: input, onContinue: () => press(true),
-            text: t('The description is empty.', '描述为空。'), onGone: () => watch.disconnect()});
+            text: t('The prompt is empty.', '提示词为空。'), onGone: () => watch.disconnect()});
         // The press is still settling (Generate's label, Cancel), so it follows the keys until it is gone.
         const place = () => {
             if (!box.isConnected) { watch.disconnect(); return; }
@@ -605,16 +606,16 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
     const historyButton = el('button', 'fv-ed-history-button'); historyButton.type = 'button'; historyButton.setAttribute('aria-haspopup', 'menu'); historyButton.setAttribute('aria-expanded', 'false');
     { const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('viewBox', '0 0 16 16'); svg.setAttribute('aria-hidden', 'true'); svg.classList.add('fv-ed-glyph');
       const path = document.createElementNS(svg.namespaceURI, 'path'); path.setAttribute('d', 'M2.5 8a5.5 5.5 0 1 0 1.6-3.9M2.5 2.5v2.6h2.6M8 5v3l2 1.5'); svg.append(path); historyButton.append(svg); }
-    historyButton.setAttribute('aria-label', t('Earlier descriptions', '用过的描述'));
+    historyButton.setAttribute('aria-label', t('Earlier prompts', '用过的提示词'));
     const historyList = el('div', 'fv-ed-history'); historyList.hidden = true; historyList.setAttribute('role', 'menu'); tray.append(historyList);
     function closeHistory(focus = false) { historyList.hidden = true; historyButton.setAttribute('aria-expanded', 'false'); if (focus) historyButton.focus(); }
     function openHistory() {
         const items = readHistory();
-        historyList.replaceChildren(el('div', 'fv-ed-history-title', t('Earlier descriptions', '用过的描述')));
-        if (!items.length) historyList.append(el('p', 'fv-ed-history-empty', t('Descriptions you generate with show here.', '生成过的描述会出现在这里。')));
+        historyList.replaceChildren(el('div', 'fv-ed-history-title', t('Earlier prompts', '用过的提示词')));
+        if (!items.length) historyList.append(el('p', 'fv-ed-history-empty', t('Prompts you generate with show here.', '生成过的提示词会出现在这里。')));
         for (const text of items) {
             const item = el('button', 'fv-ed-history-item', text); item.type = 'button'; item.setAttribute('role', 'menuitem');
-            tip(item, {name: t('Use this description', '用这段描述'), use: t('Put it in the box; nothing is generated yet', '放进描述框，还不会生成')});
+            tip(item, {name: t('Use this prompt', '用这段提示词'), use: t('Put it in the box; nothing is generated yet', '放进描述框，还不会生成')});
             item.onclick = () => { input.value = text; typed(text); closeHistory(); render(); input.focus(); };
             historyList.append(item);
         }

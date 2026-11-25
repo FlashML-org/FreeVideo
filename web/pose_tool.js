@@ -307,7 +307,7 @@ export function createPoseTool(editor) {
     }
     function cameraPanel() {
         return [group(t('Camera', '机位'), chips(Object.entries(CAMERA_PRESETS).map(([id, c]) => [id, words(c.label)]), id => act(() => stage.cameraPreset(id, sel?.fig))),
-            chips([['fit', t('Fit everyone in the picture', '全部人物入画')]], () => act(() => stage.frameAll())))];
+            chips([['fit', t('Fit everyone in the image', '全部人物入画')]], () => act(() => stage.frameAll())))];
     }
     function openPop(id, anchor, build) {
         closePop();

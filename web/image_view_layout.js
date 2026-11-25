@@ -150,8 +150,8 @@ export function createLayout({host, layer = document.body, onChange = () => {}, 
             head.append(no);
             if (quotedParts(item.line).length) {
                 const T = el('button', 'fv-iv-lbox-t', 'T'); T.type = 'button';
-                T.setAttribute('aria-pressed', String(!item.textOff)); T.setAttribute('aria-label', t('Text in the picture', '写进画面的字'));
-                tip(T, t('Text in the picture', '写进画面的字'));
+                T.setAttribute('aria-pressed', String(!item.textOff)); T.setAttribute('aria-label', t('Text in the image', '写进画面的字'));
+                tip(T, t('Text in the image', '写进画面的字'));
                 T.addEventListener('pointerdown', event => event.stopPropagation());
                 T.addEventListener('click', event => { event.stopPropagation(); remember(); item.textOff = !item.textOff; changed(); });
                 head.append(T);

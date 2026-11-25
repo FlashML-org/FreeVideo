@@ -243,11 +243,11 @@ export async function openSetup(options) {
 
     // Picture models: both always listed, each with its own state (installed, not installed, downloading, failed).
     const imageCard = card(); const imageRows = new Map();
-    const imageHead = groupHead(t('Picture models', '图像模型'), el('span', '', ''));
+    const imageHead = groupHead(t('Image models', '图像模型'), el('span', '', ''));
     const IMAGE_WORDS = {
-        'minimax-h3-image': t('Default for the image view; clear lettering in pictures', '图像视图默认模型，图中文字清晰'),
+        'minimax-h3-image': t('Default for the image view; clear lettering in images', '图像视图默认模型，图中文字清晰'),
         'qwen-image-2.1-turbo': t('Another look, up to about 4 MP', '另一种画风，最大约 4 MP'),
-        'moss-image-sft': t('Pictures from a text prompt, up to about 4 MP', '根据文字提示出图，最大约 4 MP'),
+        'moss-image-sft': t('Images from a text prompt, up to about 4 MP', '根据文字提示出图，最大约 4 MP'),
     };
     for (const model of IMAGE_MODELS) {
         const r = row({iconName: 'img', title: model.short, sub: IMAGE_WORDS[model.id] || '', cls: 'st-mrow'});
@@ -495,11 +495,11 @@ export async function openSetup(options) {
     tip(tenSwitch, t('High color depth copy', '高色深版本'), t('Adds a 10-bit video beside it, for color grading', '另存一份 10 位视频，适合调色'));
     // Every finished picture is also copied into the output folder; the user can switch that off. The 10-bit row stays hidden.
     const imageSwitch = switchify(el('input')); imageSwitch.type = 'checkbox'; imageSwitch.checked = true;
-    imageSwitch.setAttribute('aria-label', t('Also save pictures to the output folder', '同时将图片保存到 output 文件夹'));
-    const imageRow = row({iconName: 'img', title: t('Also save pictures to the output folder', '同时将图片保存到 output 文件夹'), end: [imageSwitch]});
-    tip(imageSwitch, t('Also save pictures to the output folder', '同时将图片保存到 output 文件夹'));
+    imageSwitch.setAttribute('aria-label', t('Also save images to the output folder', '同时将图片保存到 output 文件夹'));
+    const imageRow = row({iconName: 'img', title: t('Also save images to the output folder', '同时将图片保存到 output 文件夹'), end: [imageSwitch]});
+    tip(imageSwitch, t('Also save images to the output folder', '同时将图片保存到 output 文件夹'));
     tenRow.element.hidden = true;
-    const outputCard = card(imageRow.element, tenRow.element); const outputHead = groupHead(t('Finished videos and pictures', '成片与图片'));
+    const outputCard = card(imageRow.element, tenRow.element); const outputHead = groupHead(t('Finished videos and images', '成片与图片'));
     let tenSaved = false, imageSaved = true;
     tenSwitch.onchange = async () => {
         const wanted = tenSwitch.checked; tenSwitch.disabled = true;
@@ -534,7 +534,7 @@ export async function openSetup(options) {
         try { localStorage.setItem('freevideo.theme', themeSelect.value); } catch { /* This page only. */ }
     };
     const themeRow = row({iconName: 'moon', title: t('Theme', '主题'), sub: t('Applies at once to every view', '立即应用到所有视图'),
-        end: [segmented(themeSelect, {label: t('Theme', '主题'), tips: {dark: t('Dark panels, best for pictures', '深色界面，适合看画面'), light: t('Light panels', '浅色界面')}})]});
+        end: [segmented(themeSelect, {label: t('Theme', '主题'), tips: {dark: t('Dark panels, best for viewing', '深色界面，适合看画面'), light: t('Light panels', '浅色界面')}})]});
     const solidSwitch = switchify(el('input')); solidSwitch.type = 'checkbox';
     solidSwitch.setAttribute('aria-label', t('Compatibility view', '兼容界面'));
     const solidNow = () => document.documentElement.dataset.glass === 'solid' || document.documentElement.classList.contains('lite');
@@ -626,10 +626,10 @@ export async function openSetup(options) {
 
     // ════════════ Page check ════════════
     const health = pane('health', t('Page check', '页面检查'));
-    const healthRun = button(t('Check now', '立即检查'), {kind: 'fill'});
+    const healthRun = button(t('Check for updates', '立即检查'), {kind: 'fill'});
     const healthReload = button(t('Reload page', '刷新页面'));
     const healthRow = row({iconName: 'shield', title: t('Page files', '页面文件'), sub: t('Not checked yet', '尚未检查'), end: [healthReload, healthRun]});
-    tip(healthRun, t('Check now', '立即检查'), t('Confirm every page file loads', '确认页面的每个文件都能载入'));
+    tip(healthRun, t('Check for updates', '立即检查'), t('Confirm every page file loads', '确认页面的每个文件都能载入'));
     tip(healthReload, t('Reload page', '刷新页面'), t('Load the page again; generations keep running', '重新载入页面，生成不受影响'));
     const healthList = el('div', 'st-sub st-hlist'); healthList.hidden = true;
     health.append(groupHead(t('This page', '本页面')), card(healthRow.element, healthList),
@@ -1066,7 +1066,7 @@ export async function openSetup(options) {
                 if (s.resume) { r.sub.className = 'is-caution'; r.sub.textContent = t('Stopped · {done} of {total} GiB kept', '已停止 · 已下载 {done} / {total} GiB', { done: gb(s.done), total: gb(s.total) }); }
                 act.hidden = false; act.className = 'st-btn is-fill'; act.replaceChildren(icon('down', 'fv-i s'), el('span', 'st-btn-t', s.resume ? t('Resume', '继续') : t('Install', '安装')));
                 act.onclick = () => imageAction(id, 'install');
-                tip(act, s.resume ? t('Resume', '继续') : t('Install', '安装'), t('Download this picture model', '下载这个图像模型'));
+                tip(act, s.resume ? t('Resume', '继续') : t('Install', '安装'), t('Download this image model', '下载这个图像模型'));
             } else if (s.state === 'unavailable') {
                 r.sub.textContent = t('Not available on this computer', '这台电脑不支持'); r.element.setAttribute('aria-disabled', 'true');
             } else r.sub.textContent = t('Checking…', '正在检查…');

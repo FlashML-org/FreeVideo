@@ -22,11 +22,11 @@ const idle = () => ({observe() {}, unobserve() {}, disconnect() {}});
 
 export function studioWorks({load, thumb, favorite = async () => true, onShow, onPick = () => {}, onChange = () => {}, entry = null, named = () => Promise.resolve(''), watch = idle, limit = 48}) {
     const root = el('div', 'fv-iv-works');
-    const head = el('div', 'fv-iv-panel-head'), title = el('h2', 'fv-iv-panel-title', t('Works', '作品')), count = el('span', 'fv-iv-count');
+    const head = el('div', 'fv-iv-panel-head'), title = el('h2', 'fv-iv-panel-title', t('Creations', '作品')), count = el('span', 'fv-iv-count');
     head.append(title, count);
     const searchRow = el('label', 'fv-iv-search'), query = el('input'); query.type = 'search'; query.placeholder = t('Search prompts', '搜索提示词');
     tip(query, t('Search', '搜索'), t('Find videos by their prompt', '按提示词查找视频')); searchRow.append(icon('search'), query);
-    const SORTS = {new: ['Newest first', '最新在前'], old: ['Oldest first', '最早在前'], fav: ['Favourites first', '收藏在前']};
+    const SORTS = {new: ['Newest first', '最新在前'], old: ['Oldest first', '最早在前'], fav: ['Favorites first', '收藏在前']};
     const sortBtn = button('fv-iv-icon-btn', {iconName: 'sort'});
     const selectBtn = button('fv-iv-icon-btn', {iconName: 'select', name: t('Select', '选择'), use: t('Pick two videos to compare them side by side', '选两条视频并排对比')});
     selectBtn.setAttribute('aria-pressed', 'false');
@@ -34,7 +34,7 @@ export function studioWorks({load, thumb, favorite = async () => true, onShow, o
     const sortMenu = el('div', 'fv-iv-menu'); sortMenu.hidden = true; sortMenu.setAttribute('role', 'menu');
     const chips = el('div', 'fv-iv-chips'); chips.setAttribute('role', 'tablist');
     const chipAll = button('fv-iv-chip', {}), chipFav = button('fv-iv-chip', {});
-    chipAll.append(el('span', 'fv-iv-btn-label', t('All', '全部'))); chipFav.append(el('span', 'fv-iv-btn-label', t('Favourites', '收藏')));
+    chipAll.append(el('span', 'fv-iv-btn-label', t('All', '全部'))); chipFav.append(el('span', 'fv-iv-btn-label', t('Favorites', '收藏')));
     for (const b of [chipAll, chipFav]) b.setAttribute('role', 'tab');
     chips.append(chipAll, chipFav);
     const body = el('div', 'fv-iv-works-body'), grid = el('div', 'fv-iv-grid');
@@ -64,7 +64,7 @@ export function studioWorks({load, thumb, favorite = async () => true, onShow, o
     function paintSort() {
         for (const item of sortMenu.querySelectorAll('[data-sort]')) item.setAttribute('aria-checked', String(item.dataset.sort === sort));
         // (Whole sentences, one for each order: the catalogue collects plain strings, not a sentence put together.)
-        const now = {new: t('Now: Newest first', '当前：最新在前'), old: t('Now: Oldest first', '当前：最早在前'), fav: t('Now: Favourites first', '当前：收藏在前')};
+        const now = {new: t('Now: Newest first', '当前：最新在前'), old: t('Now: Oldest first', '当前：最早在前'), fav: t('Now: Favorites first', '当前：收藏在前')};
         tip(sortBtn, t('Sort', '排序'), now[sort]);
     }
     // Select: a press on a tile picks it (two at most, to compare) until select is pressed again or Esc.

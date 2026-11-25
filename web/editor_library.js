@@ -158,7 +158,7 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
         button.onclick = () => { if (ready) Promise.resolve().then(() => actions.previewSource?.({kind, id: row.id})).catch(actions.error); else requestAdd(row, kind); };
         const plus = el('button', 'fv-ed-source-add', '＋'); plus.type = 'button'; plus.disabled = button.disabled; plus.title = button.title;
         plus.setAttribute('aria-label', `${t('Add to the tracks', '加到轨道上')}: ${label}`);
-        tip(plus, {name: t('Add to the timeline', '加入时间线'), use: t('A video goes after the last picture, a sound at the playhead', '视频接在最后，声音放在播放头处'), key: 'Enter'});
+        tip(plus, {name: t('Add to the timeline', '加入时间线'), use: t('A video goes after the last image, a sound at the playhead', '视频接在最后，声音放在播放头处'), key: 'Enter'});
         tip(button, {name: label, use: [prompt && prompt !== label ? prompt : '', facts, ready ? t('Click to preview; drag or double-click to place', '单击预览，拖动或双击放入时间线') : t('Preparing; it is placed when ready', '正在准备，好了会自动放入')].filter(Boolean).join(' · '), key: ready ? 'Enter' : ''});
         const insert = event => { event.preventDefault(); event.stopPropagation(); if (!(event.detail > 1)) requestAdd(row, kind, true); };
         plus.onclick = insert;

@@ -73,7 +73,7 @@ const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls)
 // A half of a surrogate pair left by a cut or a paste is dropped; the description limit counts characters, not code units.
 export const wellFormed = text => typeof text === 'string' ? text.replace(/[\ud800-\udbff][\udc00-\udfff]|[\ud800-\udfff]/g, pair => pair.length === 2 ? pair : '') : text;
 export const characters = text => Array.from(text).length;
-export const textLongText = (t, limit) => t('The description is too long. Shorten it to %d characters or fewer.', '描述过长，请缩短到 %d 字以内。').replace('%d', limit);
+export const textLongText = (t, limit) => t('The prompt is too long. Shorten it to %d characters or fewer.', '提示词过长，请缩短到 %d 字以内。').replace('%d', limit);
 // The engine's limits on continuing parts, refused before a generation starts; the engine says the same.
 export const PARTS_LIMIT_CODES = ['chain_too_long', 'chain_part_too_short', 'chain_short_parts', 'chain_source_full'];
 export function partsLimitText(code, t = translatorFor(null, false), limit = null) {
@@ -492,7 +492,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if (['busy', 'locked', 'text', 'audio_full', 'overlap', 'range', 'no_audio'].includes(code)) {
             if (['locked', 'audio_full', 'overlap', 'range'].includes(code)) tracks?.flashBlocked?.(value.displayFrame);
             const said = {busy: t('This part is generating.', '这一段正在生成。'), locked: t('This track is locked.', '这条轨道已锁定。'),
-                text: t('Write a description first.', '先写一句描述。'), overlap: t('That spot is taken. Use an empty spot.', '这里已经有片段了，请放到空白处。'),
+                text: t('Write a prompt first.', '先写一句提示词。'), overlap: t('That spot is taken. Use an empty spot.', '这里已经有片段了，请放到空白处。'),
                 audio_full: t('Both audio tracks are full here. Move an audio clip first.', '这里两条声音轨都满了，请先挪开一段声音。'),
                 no_audio: t('This clip has no sound. Please choose one with sound.', '这个素材没有声音，请选一段有声音的。')}[code];
             if (said) out(said);
@@ -814,7 +814,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 }
             }
             if (disposed || closing || epoch !== projectEpoch) return;
-            if (picture) notify(t('Saved the current frame to Edit image > Generate with AI > Works.',
+            if (picture) notify(t('Saved the current frame to Edit image > Generate with AI > Creations.',
                 '已保存当前帧，位于“编辑图片 > AI 生成 > 作品库”。'));
         } catch (value) {
             if (disposed || epoch !== projectEpoch) return;
@@ -822,7 +822,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 range: t('There is no picture at this position. Move the playhead onto a clip.', '这个位置没有画面，请把播放头移到片段上。'),
                 generating: t('This part is still being generated. Save the frame when it is done.', '这一段还在生成，完成后再保存。'),
                 unreadable: t('A source file cannot be read. Import it again from the library.', '有素材读不出来，请在素材库重新导入。'),
-                not_writable: t('The picture folder cannot be written to. Check that the folder can be written to, then save the frame again.', '图片文件夹不可写。请检查这个文件夹的写入权限后再保存。'),
+                not_writable: t('The image folder cannot be written to. Check that the folder can be written to, then save the frame again.', '图片文件夹不可写。请检查这个文件夹的写入权限后再保存。'),
                 disk_full: t('The disk is full. Free some space, then save the frame again.', '磁盘空间不足，请清理出空间后再保存。')}[value?.reason];
             if (said) notify(said); else error(value, 'frame');
         } finally { savingFrame = false; }
@@ -1614,7 +1614,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 selection = state.select(moved); said = t('Moved to the next empty spot.', '已挪到后面的空位。'); genbar?.say(said);
             }
             let used = null, texts = null, shown = selection === state.selection;
-            const before = t('Used the description of the part before.', '沿用了上一段的描述。'), latest = t('Used the latest description.', '沿用了最近一次的描述。');
+            const before = t('Used the prompt of the part before.', '沿用了上一段的提示词。'), latest = t('Used the latest prompt.', '沿用了最近一次的提示词。');
             let run = partRun(selection);
             if (run) {
                 // What is in the box is the chosen parts' description; each part goes with its own, and one with
@@ -2051,8 +2051,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             {id: 'editor.record', title: ['Record from the microphone', '用麦克风录音'], group: ['Sound', '声音'], run: () => recordTool.click()},
             {id: 'editor.adjust', title: ['Adjust the selection', '调整选中的片段'], use: ['Volume, speed, picture and text', '声音、速度、画面和文字'], run: () => adjust.narrow ? adjust.open() : adjustHost.querySelector('[role=tab][aria-selected=true]')?.focus()},
             {id: 'editor.import', title: ['Import files', '导入文件'], keywords: ['media', 'library', '素材'], run: press('.fv-ed-library-import')},
-            {id: 'editor.history', title: ['Earlier descriptions', '用过的描述'], keywords: ['prompt', 'history', '提示词', '历史'], why: () => genHost.querySelector('.fv-ed-history-button')?.disabled ? t('Choose a part first', '先选中一段') : '', run: press('.fv-ed-history-button')},
-            {id: 'editor.frame', title: ['Save the current frame as a picture', '把当前帧存成图片'], run: () => void saveFrame()},
+            {id: 'editor.history', title: ['Earlier prompts', '用过的提示词'], keywords: ['prompt', 'history', '提示词', '历史'], why: () => genHost.querySelector('.fv-ed-history-button')?.disabled ? t('Choose a part first', '先选中一段') : '', run: press('.fv-ed-history-button')},
+            {id: 'editor.frame', title: ['Save the current frame as an image', '把当前帧存成图片'], run: () => void saveFrame()},
             {id: 'editor.new', title: ['New edit', '新建剪辑'], group: ['Edit', '剪辑'], run: () => void switchProject(null)},
             {id: 'editor.rename', title: ['Rename or open another edit', '改名或打开其他剪辑'], group: ['Edit', '剪辑'], run: () => void showMenu()},
         ]);
@@ -2062,7 +2062,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     import('./shortcuts.js').then(module => {
         if (disposed) return;
         listeners.push(module.registerShortcuts('editor', [
-            {keys: 'Mod+Enter', title: ['Generate (in the description)', '生成（在描述框里）'], group: ['Generate', '生成']},
+            {keys: 'Mod+Enter', title: ['Generate (in the prompt)', '生成（在提示词框里）'], group: ['Generate', '生成']},
             {keys: 'Mod+Y', title: ['Redo', '重做'], group: ['Editing', '编辑']},
             {keys: 'Shift+← / Shift+→', title: ['Back / forward ten frames', '后退 / 前进 10 帧'], group: ['Playback', '播放']},
         ]));

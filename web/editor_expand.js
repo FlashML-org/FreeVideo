@@ -31,7 +31,7 @@ export function createExpandButton({t = translatorFor(null, false), textarea, on
     const element = el('button', 'fv-ed-expand'); element.type = 'button';
     // It opens a large box for a long description (it does not zoom anything): named for what it does.
     element.setAttribute('aria-label', t('Write in a large box', '在大窗口里写'));
-    setTip(element, {name: t('Expand', '放大编辑'), use: t('Write a long description in a large box', '在大窗口里写长描述')});
+    setTip(element, {name: t('Expand', '展开编辑'), use: t('Write a long prompt in a large box', '在大窗口里写长提示词')});
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true');
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
@@ -81,7 +81,7 @@ export function createExpandButton({t = translatorFor(null, false), textarea, on
     function sync() {
         if (disposed) return;
         element.disabled = !writable();
-        setTip(element, {name: t('Expand', '放大编辑'), use: t('Read or edit the description in a large box', '在大窗口里看或改描述'),
+        setTip(element, {name: t('Expand', '展开编辑'), use: t('Read or edit the prompt in a large box', '在大窗口里看或改提示词'),
             why: element.disabled ? t('Select a part or draw a range to describe first', '先选中一段或画出范围，再写描述') : ''});
         if (!dialog) return;
         // The small box changed from outside (another part selected, text restored): the panel follows.
@@ -136,8 +136,8 @@ export function createExpandButton({t = translatorFor(null, false), textarea, on
         dialog = el('dialog', 'fv-ed-expand-dialog');
         dialog.dataset.fvOwnTab = ''; // Tab cycles its three controls below; a11y.js stands aside
         dialog.setAttribute('role', 'dialog'); dialog.setAttribute('aria-modal', 'true');
-        dialog.setAttribute('aria-label', t('Description', '描述'));
-        const head = el('div', 'fv-ed-expand-head'), title = el('strong', 'fv-ed-expand-title', t('Description', '描述'));
+        dialog.setAttribute('aria-label', t('Prompt', '提示词'));
+        const head = el('div', 'fv-ed-expand-head'), title = el('strong', 'fv-ed-expand-title', t('Prompt', '提示词'));
         const dismiss = el('button', 'fv-ed-expand-close'); dismiss.type = 'button'; dismiss.onclick = close;
         dismiss.setAttribute('aria-label', t('Close', '关闭'));
         setTip(dismiss, {name: t('Close', '关闭'), use: t('Back to the panel; the text is already in it', '回到面板，改动已经在里面')});
@@ -147,7 +147,7 @@ export function createExpandButton({t = translatorFor(null, false), textarea, on
         seen = textarea.value;
         large = el('textarea', 'fv-ed-expand-text'); large.value = seen;
         if (textarea.maxLength >= 0) large.maxLength = textarea.maxLength;
-        large.setAttribute('aria-label', textarea.getAttribute('aria-label') || t('Description', '描述'));
+        large.setAttribute('aria-label', textarea.getAttribute('aria-label') || t('Prompt', '提示词'));
         large.placeholder = textarea.placeholder || '';
         const body = el('div', 'fv-ed-expand-body'); body.append(large);
         const foot = el('div', 'fv-ed-expand-foot');

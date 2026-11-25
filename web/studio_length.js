@@ -102,7 +102,7 @@ export function createStudioLength({api, node, seconds, advanced, fields, t, fie
     function paintModel() {
         const multiple = !absent && !error && plan?.count >= 2;
         put(modelNotice, 'hidden', !multiple || modelState.info?.ready !== false);
-        put(modelText, 'textContent', modelState.text || t('The prompt model is not installed, so the description will be split across the parts by sentence.', '未安装提示词模型，描述将按句子顺序分到各段。'));
+        put(modelText, 'textContent', modelState.text || t('The prompt model is not installed, so the prompt will be split across the parts by sentence.', '未安装提示词模型，提示词将按句子顺序分到各段。'));
         put(download, 'hidden', Boolean(modelState.busy)); put(download, 'disabled', Boolean(modelState.busy));
         // Pending plans do not reset the check on every keystroke. A known single part does.
         if (plan?.count === 1 || (!plan && !effectiveSingle() && total() <= singleLimitSeconds(planLimits?.maximum)
@@ -139,6 +139,7 @@ export function createStudioLength({api, node, seconds, advanced, fields, t, fie
         // The same sentence is the problem note once a length needs parts: say it once.
         put(hint, 'hidden', Boolean(absent || (noParts && Boolean(error))));
         put(note, 'hidden', Boolean(absent || !error));
+        if (note.dataset.fvLengthError !== (error || undefined)) { if (error) note.dataset.fvLengthError = error; else delete note.dataset.fvLengthError; }
         if (error === 'too_long') note.replaceChildren(TOO_LONG(), ...storyboard());
         else put(note, 'textContent', error ? errorMessage(error) : '');
         if (error === 'other') note.append(issueButton(t, () => ({where: ['Video length planning', '视频分段规划'], message: errorMessage('other')})));

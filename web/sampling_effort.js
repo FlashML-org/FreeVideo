@@ -214,5 +214,5 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}, levels 
         efforts = next;
         update({baseSteps: currentSteps, refineSteps: currentRefine, twoPass, stepCache, upscale, disabled, reason});
     }
-    return {element, update, setLevels, levels: () => efforts, setWarning(text) { warning.textContent = text; warning.hidden = !text; }, setEstimate(text, title = '') { estimate.textContent = text; if (title) estimate.title = title; else estimate.removeAttribute('title'); }, dispose: cancel};
+    return {element, update, setLevels, levels: () => efforts, setWarning(text) { warning.textContent = text; warning.hidden = !text; }, setEstimate(text, title = '', parts = 0) { estimate.textContent = text; if (parts > 1) estimate.dataset.parts = String(parts); else delete estimate.dataset.parts; if (title) estimate.title = title; else estimate.removeAttribute('title'); }, dispose: cancel};
 }

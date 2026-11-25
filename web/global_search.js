@@ -128,14 +128,14 @@ export function createSearch({fetchVideos, fetchPrompt, fetchPictures, pictureMe
     const pictureRow = row => {
         const meta = pictureMeta(row.file) || {};
         const time = meta.at || pictureTime(row.name || row.file);
-        const kind = words(['Picture', '图像'], cn), size = meta.width && meta.height ? `${meta.width} × ${meta.height}` : '';
+        const kind = words(['Image', '图像'], cn), size = meta.width && meta.height ? `${meta.width} × ${meta.height}` : '';
         return {kind: 'image', key: 'image:' + row.file, time, fields: [clean(meta.prompt || ''), '', String(row.name || row.file)], prompt: clean(meta.prompt || ''),
             fallback: String(row.name || row.file), sub: [kind, size, dateWords(time, cn)].filter(Boolean).join(' · '), badge: '', thumb: urls.picture?.(row) || '', icon: 'image',
             use: words(['Open in Images', '在图像视图里打开'], cn), open: () => open.picture?.(row)};
     };
     const KIND_WORDS = {character: ['Character', '角色'], setting: ['Scene', '场景'], prop: ['Prop', '道具']};
     const castRow = row => ({kind: 'cast', key: 'cast:' + row.id, time: 0, fields: [clean(row.name), clean(row.description || ''), ''], round: true,
-        fallback: clean(row.name), sub: `${words(KIND_WORDS[row.kind] || KIND_WORDS.character, cn)} · ${words(['type @{name} in a prompt', '在描述里输入 @{name}', { name: clean(row.name) }], cn)}`,
+        fallback: clean(row.name), sub: `${words(KIND_WORDS[row.kind] || KIND_WORDS.character, cn)} · ${words(['type @{name} in a prompt', '在提示词里输入 @{name}', { name: clean(row.name) }], cn)}`,
         thumb: row.thumbnail?.file ? urls.cast?.(row) || '' : '', icon: 'person', use: words(['Open this cast member', '打开这个角色'], cn), open: () => open.cast?.(row)});
     // Every prompt used here once, newest use first, with how often it was used.
     const promptRows = () => {
@@ -147,8 +147,8 @@ export function createSearch({fetchVideos, fetchPrompt, fetchPictures, pictureMe
             seen.set(key, {prompt: row.prompt, time: row.time, kind: row.kind, count: 1});
         }
         return [...seen.values()].map(item => ({kind: 'prompt', key: 'prompt:' + fold(item.prompt).slice(0, 80), time: item.time, fields: [item.prompt, '', ''], fallback: item.prompt,
-            sub: [item.count > 1 ? words(['Used {count} times', '用过 {count} 次', { count: item.count }], cn) : dateWords(item.time, cn), words(['fills the prompt', '填入描述框'], cn)].join(' · '),
-            thumb: '', icon: 'clock', use: words(['Put this prompt in the view in front', '把这段描述填进当前视图'], cn), open: () => open.prompt?.(item.prompt, item.kind)}));
+            sub: [item.count > 1 ? words(['Used {count} times', '用过 {count} 次', { count: item.count }], cn) : dateWords(item.time, cn), words(['fills the prompt', '填入提示词框'], cn)].join(' · '),
+            thumb: '', icon: 'clock', use: words(['Put this prompt in the view in front', '把这段提示词填进当前视图'], cn), open: () => open.prompt?.(item.prompt, item.kind)}));
     };
 
     function present(row, hit) {
@@ -288,10 +288,10 @@ export async function fillPrompt(text, {view = null, fallbackView = 'studio'} = 
         const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(box), 'value')?.set;
         if (setter) setter.call(box, text); else box.value = text;
         box.dispatchEvent(new Event('input', {bubbles: true})); box.dispatchEvent(new Event('change', {bubbles: true}));
-        toast(t('The prompt is in. Press Ctrl+Enter to generate.', '描述已填入，按 Ctrl+回车 生成。').replace('Ctrl', /Mac/.test(navigator.platform) ? '⌘' : 'Ctrl'), {tone: 'ok'});
+        toast(t('The prompt is in. Press Ctrl+Enter to generate.', '提示词已填入，按 Ctrl+回车 生成。').replace('Ctrl', /Mac/.test(navigator.platform) ? '⌘' : 'Ctrl'), {tone: 'ok'});
         return true;
     }
-    if (await copyText(text)) toast(t('Prompt copied. Paste it into the prompt box.', '已复制提示词，请粘贴到输入框。'), {icon: 'copy'});
+    if (await copyText(text)) toast(t('Prompt copied. Paste it into the prompt box.', '已复制提示词，请粘贴到提示词框。'), {icon: 'copy'});
     else toast(t('Could not fill in the prompt. Try again.', '未能填入提示词，请重试。'), {tone: 'warn'});
     return false;
 }

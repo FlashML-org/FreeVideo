@@ -114,7 +114,7 @@ export function createEditorReferences({t, source, size = () => null, seconds = 
                 const result = await source.upload(file);
                 write([...source.rows(), {file: result.file, role: 'reference', enabled: true}]);
             }
-            if (skipped && !disposed) notify(t('Could not read this picture. Please choose another one.', '无法读取这张图片，请换一张。'), ['Editor reference images', '剪辑器参考图']);
+            if (skipped && !disposed) notify(t('Could not read this image. Please choose another one.', '无法读取这张图片，请换一张。'), ['Editor reference images', '剪辑器参考图']);
         } catch (value) { error(value); }
         finally { working = uploading = false; picker.value = ''; update(); }
     }
@@ -235,7 +235,7 @@ export function createEditorReferences({t, source, size = () => null, seconds = 
         add.disabled = working;
         add.dataset.uploading = String(uploading);
         add.setAttribute('aria-disabled', String(busy || isFull));
-        tip(add, {name: t('Reference image', '参考图'), use: t('Guide this part with a picture: first frame, last frame or a person', '用图片指定首帧、尾帧或人物'),
+        tip(add, {name: t('Reference image', '参考图'), use: t('Guide this part with an image: first frame, last frame or a person', '用图片指定首帧、尾帧或人物'),
             why: uploading ? t('Uploading reference image…', '正在上传参考图…') : busy ? waitText() : isFull ? fullText() : ''});
         chips.replaceChildren(...used().map(entry => {
             const chip = el('button', 'fv-ed-ref-chip'); chip.type = 'button'; chip.disabled = working; chip.setAttribute('aria-disabled', String(busy));

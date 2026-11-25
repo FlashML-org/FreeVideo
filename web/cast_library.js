@@ -63,7 +63,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         const data = await response.json().catch(() => null);
         if (!response.ok) {
             // The dialog only sends pictures, so unreadable media here is always one of them.
-            const unreadable = data?.error?.code === 'invalid_media' && text('Could not read this picture. Please choose another one.', '无法读取这张图片，请换一张。');
+            const unreadable = data?.error?.code === 'invalid_media' && text('Could not read this image. Please choose another one.', '无法读取这张图片，请换一张。');
             const error = new Error(unreadable || data?.error?.message || (typeof data?.error === 'string' && data.error)
                 || data?.message || `HTTP ${response.status} ${response.statusText}`.trim());
             error.status = response.status;
@@ -168,10 +168,10 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         tipOf(remove, remove.textContent, word(text('Delete this character from the library', '从角色库删除这个角色'), text('Delete this scene from the library', '从角色库删除这个场景'), text('Delete this prop from the library', '从角色库删除这个道具')));
         tipOf(cancel, text('Cancel', '取消'), text('Close without saving', '不保存，关闭'));
         tipOf(save, text('Save', '保存'), text('Keep it in the library to reuse with @', '存进角色库，之后用 @ 引用'));
-        tipOf(uploadTab, text('Upload images', '上传图片'), views4 && !id ? text('Add your own views. Empty views are made from one picture in its style.', '放入各视角图片，空着的视角按原图风格生成。')
-            : text('Use pictures from this computer', '用电脑上的图片'));
-        tipOf(aiTab, text('Generate with AI', 'AI 生成'), views4 ? text('Make the face close-up, front, side and back from a description', '按描述生成脸部特写、正面、侧面和背面')
-            : text('Make the pictures from a description', '按描述生成图片'));
+        tipOf(uploadTab, text('Upload images', '上传图片'), views4 && !id ? text('Add your own views. Empty views are made from one image in its style.', '放入各视角图片，空着的视角按原图风格生成。')
+            : text('Use images from this computer', '用电脑上的图片'));
+        tipOf(aiTab, text('Generate with AI', 'AI 生成'), views4 ? text('Make the face close-up, front, side and back from a prompt', '按提示词生成脸部特写、正面、侧面和背面')
+            : text('Make the images from a prompt', '按提示词生成图片'));
         tipOf(photoTab, text('From a photo', '从照片生成'), text('Make the face close-up, front, side and back from one photo of the person', '用一张人物照片生成脸部特写、正面、侧面和背面'));
         const issue = issueButton(text, () => ({where: CAST_ISSUE, message: status.textContent})); issue.hidden = true;
         dialog.append(top, name, tabs, photoPane, uploadPane, imagePane, aiPane, status, issue, actions); tabs.append(photoTab, uploadTab, aiTab);
@@ -188,7 +188,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         // What is still missing before Save works ('' when nothing is); the button says so on hover and when pressed.
         let missing = '';
         const missingNow = () => !name.value.trim() ? text('Enter a name first', '先填写名字')
-            : aiBusy() ? word(text('Wait for the four pictures to finish', '等待四张图生成完成'), text('Wait for the pictures to finish', '等待图片生成完成'))
+            : aiBusy() ? word(text('Wait for the four images to finish', '等待四张图生成完成'), text('Wait for the images to finish', '等待图片生成完成'))
             : keyOf(active) ? makerStates[keyOf(active)]?.done ? '' : makerMissing[keyOf(active)]
             : active === 'upload' || scene ? (frontless ? slots.some(Boolean) : slots[0]) ? '' : frontless ? text('Add an image first', '先添加图片') : text('Add a front image first', '先添加正面图片')
             : aiState.done ? '' : word(text('Generate the images first', '先生成角色图片'), text('Generate the images first', '先生成场景图片'), text('Generate the images first', '先生成道具图片'));
@@ -286,8 +286,8 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
             const choose = button('fv-cast-choose', '', () => input.click()); choose.setAttribute('aria-label', label);
             const remove = button('fv-cast-remove', '×', () => { firstChanged(index); release(index); paint(index); });
             remove.setAttribute('aria-label', text('Remove image', '移除图片'));
-            choose.dataset.fvTipName = label; choose.dataset.fvTipUse = text('Choose a picture, or drop one here', '选择图片，或把图片拖到这里');
-            remove.dataset.fvTipName = text('Remove image', '移除图片'); remove.dataset.fvTipUse = text('Take this picture out', '拿掉这张图片');
+            choose.dataset.fvTipName = label; choose.dataset.fvTipUse = text('Choose an image, or drop one here', '选择图片，或把图片拖到这里');
+            remove.dataset.fvTipName = text('Remove image', '移除图片'); remove.dataset.fvTipUse = text('Take this image out', '拿掉这张图片');
             input.onchange = () => { chooseFiles(index, input.files); input.value = ''; };
             slot.ondragover = event => { event.preventDefault(); event.stopPropagation(); };
             slot.ondrop = event => { event.preventDefault(); event.stopPropagation(); chooseFiles(index, event.dataTransfer.files); };

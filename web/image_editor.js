@@ -757,11 +757,11 @@ async function openImageEditorNow({source = null, name = source || '', target = 
             const o = opts.heal;
             add(sizeSlider(o), segmented([['all', t('Whole stroke', '整个涂抹区域')], ['text', t('Captions only', '只去字幕')]], o.text ? 'text' : 'all',
                 v => { o.text = v === 'text'; renderOptions(); }, t('Heal', '修复范围')).group,
-                note(o.text ? t('Paint over a caption. Only the white letters and outline are removed; the picture between them stays.', '涂过字幕，只去掉白字和描边，字间的画面保留。')
+                note(o.text ? t('Paint over a caption. Only the white letters and outline are removed; the image between them stays.', '涂过字幕，只去掉白字和描边，字间的画面保留。')
                     : t('Paint over the whole mark in one stroke; it is filled with texture from around it.', '一笔涂满要去掉的部分，松开后用周围的纹理补上。')));
         } else if (tool === 'clone') {
             const o = opts.clone;
-            const pick = button(o.picking ? t('Click the source…', '点击取样位置…') : t('Set source', '设置取样点'), t('Or Alt-click the picture', '也可以按住 Alt 点击画面'),
+            const pick = button(o.picking ? t('Click the source…', '点击取样位置…') : t('Set source', '设置取样点'), t('Or Alt-click the image', '也可以按住 Alt 点击画面'),
                 () => { o.picking = !o.picking; renderOptions(); }, 'fv-ie-button' + (o.picking ? ' fv-ie-active' : ''));
             add(sizeSlider(o), pct(o, 'hardness', t('Hardness', '硬度')), pct(o, 'opacity', t('Opacity', '不透明度')), pick);
         } else if (tool === 'blur') {
@@ -770,9 +770,9 @@ async function openImageEditorNow({source = null, name = source || '', target = 
             const o = opts.gradient;
             add(segmented([['linear', t('Linear', '线性')], ['radial', t('Radial', '径向')]], o.shape, v => { o.shape = v; }, t('Type', '类型')).group,
                 segmented([['bg', t('To background color', '到背景色')], ['clear', t('To transparent', '到透明')]], o.end, v => { o.end = v; }, t('End', '终点')).group,
-                note(t('Drag across the picture.', '在画面上拖动。')));
+                note(t('Drag across the image.', '在画面上拖动。')));
         } else if (tool === 'text') {
-            add(note(t('Click the picture to add text; click text to edit it.', '点击画面添加文字；点击已有文字进行编辑。')));
+            add(note(t('Click the image to add text; click text to edit it.', '点击画面添加文字；点击已有文字进行编辑。')));
         } else if (tool === 'shape') {
             const o = opts.shape;
             add(segmented([['rect', t('Rectangle', '矩形')], ['ellipse', t('Ellipse', '椭圆')], ['line', t('Line', '直线')]], o.type, v => { o.type = v; }, t('Shape', '形状')).group,
@@ -1227,7 +1227,7 @@ async function openImageEditorNow({source = null, name = source || '', target = 
         }
         const color = el('input'); color.type = 'color'; color.value = e.color || bg; color.id = 'fv-ie-pad-color';
         const buttons = el('div', null, 'fv-ie-row fv-ie-end');
-        const advice = t('The picture is {ow} × {oh} px. Add space on each side:', '画面 {ow} × {oh} 像素，在四周补充空间：', { ow, oh });
+        const advice = t('The image is {ow} × {oh} px. Add space on each side:', '画面 {ow} × {oh} 像素，在四周补充空间：', { ow, oh });
         const reason = t('Enter whole numbers from 1 to 20000 for width and height.', '宽和高请填 1 到 20000 的整数。');
         const note = el('p', advice, 'fv-ie-opt-note');
         const values = () => Object.fromEntries(Object.entries(inputs).map(([key, input]) => [key, input.value.trim() ? Number(input.value) : NaN]));
@@ -1273,7 +1273,7 @@ async function openImageEditorNow({source = null, name = source || '', target = 
         // [id, label, size or null when it would not make the picture smaller, why not]
         const presets = [
             ...(target ? [['video', t('Video size', '视频尺寸'), video < 1 ? sized(video) : null,
-                t('The picture is no larger than the video', '图片已经不比视频大')]] : []),
+                t('The image is no larger than the video', '图片已经不比视频大')]] : []),
             ['half', '50%', sized(.5), ''],
             ['long', t('Long side 2048', '长边 2048'), long > 2048 ? sized(2048 / long) : null,
                 t('The long side is already 2048 px or less', '长边已经不超过 2048 像素')],
@@ -1302,7 +1302,7 @@ async function openImageEditorNow({source = null, name = source || '', target = 
         const dims = el('div', null, 'fv-ie-dims');
         dims.append(field(t('Width (px)', '宽（px）'), width), chain, field(t('Height (px)', '高（px）'), height));
         const notes = el('div', null, 'fv-ie-notes'), result = el('p', '', 'fv-ie-opt-note');
-        const stretch = el('p', t('With the proportions changed, pictures and shapes stretch; text keeps its shape.', '比例改变后，图片和形状会拉伸，文字保持原样。'), 'fv-ie-opt-note');
+        const stretch = el('p', t('With the proportions changed, images and shapes stretch; text keeps its shape.', '比例改变后，图片和形状会拉伸，文字保持原样。'), 'fv-ie-opt-note');
         const vector = doc.layers.some(l => l.kind === 'text' || l.kind === 'shape');
         const texts = doc.layers.some(l => l.kind === 'text');
         const scales = el('p', t('Text and shape layers scale too and stay editable.', '文字和形状图层会一起缩放，仍然可以编辑。'), 'fv-ie-opt-note');
@@ -1328,7 +1328,7 @@ async function openImageEditorNow({source = null, name = source || '', target = 
             else if (reason === 'pixels') { text = t('Up to 64 megapixels; reduce the width or height.', '最多 6400 万像素，请减小宽或高。'); warn = true; }
             else if (reason === 'unchanged') { text = t('The same size as now.', '和现在一样大。'); }
             else if (kx > 1 + 1e-9 || ky > 1 + 1e-9) {
-                text = t('{size}; enlarging makes the picture softer.', '{size}，画面会变模糊。', { size: share(true) }); warn = true;
+                text = t('{size}; enlarging makes the image softer.', '{size}，画面会变模糊。', { size: share(true) }); warn = true;
             } else if (target && presets[0][2] && w === presets[0][2][0] && h === presets[0][2][1]) {
                 text = t('{size}; fills a {vsize} video.', '{size}，刚好铺满 {vsize} 的视频。', { size: share(false), vsize });
             } else if (target && Math.max(target.width / w, target.height / h) > 1 + 1e-9) {

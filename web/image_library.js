@@ -104,12 +104,12 @@ const GLYPH = {
 // `over`: a side column the picker sits over (the editor's panel), so it never covers the picture; else under the anchor.
 export function openWorksPicker({anchor, t: tr = t, host = anchor.closest('dialog') || document.body, canReference = () => false, onPlace, onReference,
     onOpenLibrary = null, onClose = () => {}, over = null}) {
-    const box = el('div', 'fv-works'); box.setAttribute('role', 'dialog'); box.setAttribute('aria-label', tr('Works', '作品库')); box.dataset.fvTipScope = '';
-    const head = el('div', 'fv-works-head'), title = el('b', 'fv-works-title', tr('Works', '作品库')), count = el('span', 'fv-works-count');
+    const box = el('div', 'fv-works'); box.setAttribute('role', 'dialog'); box.setAttribute('aria-label', tr('Creations', '作品库')); box.dataset.fvTipScope = '';
+    const head = el('div', 'fv-works-head'), title = el('b', 'fv-works-title', tr('Creations', '作品库')), count = el('span', 'fv-works-count');
     head.append(title, count);
     if (onOpenLibrary) {
-        const open = el('button', 'fv-works-link'); open.type = 'button'; open.innerHTML = GLYPH.open; open.append(el('span', null, tr('Open works library', '打开作品库')));
-        tip(open, tr('Open works library', '打开作品库'), tr('See every picture and video, with their details', '查看全部图片和视频及其信息'));
+        const open = el('button', 'fv-works-link'); open.type = 'button'; open.innerHTML = GLYPH.open; open.append(el('span', null, tr('Open creations library', '打开作品库')));
+        tip(open, tr('Open creations library', '打开作品库'), tr('See every image and video, with their details', '查看全部图片和视频及其信息'));
         open.onclick = () => { close(); onOpenLibrary(); };
         head.append(open);
     }
@@ -158,7 +158,7 @@ export function openWorksPicker({anchor, t: tr = t, host = anchor.closest('dialo
         if (closed) return;
         const {worksThumbnailURL} = cached;
         count.textContent = rows.length ? String(rows.length) : '';
-        empty.textContent = cached.failed ? tr('The works could not be read. Try again.', '没能读取作品，请再试一次。') : tr('No pictures yet', '还没有图片');
+        empty.textContent = cached.failed ? tr('The creations could not be read. Try again.', '没能读取作品，请再试一次。') : tr('No images yet', '还没有图片');
         empty.hidden = !!rows.length || !cached.loaded;
         const reference = !selecting && canReference();
         const keep = new Set(rows.map(row => row.file));

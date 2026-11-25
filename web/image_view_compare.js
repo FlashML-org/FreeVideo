@@ -17,7 +17,7 @@ export function compareView({pictureURL, labelOf, ratioOf = () => 0, onPick, onR
     const root = el('div', 'fv-iv-compare'); root.dataset.shown = 'false'; root.inert = true; root.setAttribute('aria-hidden', 'true');
     const bar = el('div', 'fv-iv-compare-bar');
     const note = el('span', 'fv-iv-compare-note');
-    const close = button('fv-iv-text-btn', {iconName: 'x', label: t('Done', '完成'), name: t('Leave compare', '退出对比'), use: t('Clear the selection and see one picture', '取消多选，回到单张'), key: 'Esc'});
+    const close = button('fv-iv-text-btn', {iconName: 'x', label: t('Done', '完成'), name: t('Leave compare', '退出对比'), use: t('Clear the selection and see one image', '取消多选，回到单张'), key: 'Esc'});
     bar.append(note, el('span', 'fv-iv-grow'), close);
     const panes = el('div', 'fv-iv-compare-panes');
     root.append(bar, panes);
