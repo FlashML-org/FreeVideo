@@ -817,7 +817,8 @@ def register():
         return path == '/freevideo/agent' or path.startswith('/freevideo/agent/')
 
     async def no_cross_site_headers(request, response):
-        if agent_path(request.path) or request.path in ('/freevideo/lan', '/api/freevideo/lan'):
+        if agent_path(request.path) or request.path in ('/freevideo/lan', '/api/freevideo/lan', '/freevideo/language',
+                                                         '/api/freevideo/language'):
             for key in list(response.headers):
                 if key.lower().startswith('access-control-'):
                     del response.headers[key]
@@ -905,6 +906,38 @@ def register():
             return problem('storage_unavailable')
         except Exception:
             # Do not log exception text or request bodies from password controls.
+            return problem('internal_error')
+        finally:
+            errors.REQUEST_ID.reset(identity)
+
+    # The interface language, shared with the launcher: read anywhere on this computer, changed only by the page.
+    @routes.get('/freevideo/language')
+    @routes.post('/freevideo/language')
+    async def language_setting(request):
+        from .. import language_page
+        from ..comfy_bridge import installation_root
+        identity = errors.REQUEST_ID.set('r-' + uuid.uuid4().hex)
+        try:
+            access.check(request, local=True)
+            root = installation_root()
+            if request.method == 'POST':
+                if not valid_page_session(request):
+                    raise JobError('page_session_required', 'Page session required')
+                value = await read_body(request, contract.MAX_BODY_BYTES)
+                return reply(await asyncio.to_thread(language_page.apply, root, value))
+            return reply(await asyncio.to_thread(language_page.read, root))
+        except language_page.InvalidRequest as error:
+            field = error.field if error.field in ('language', '') else '<unknown>'
+            return reply({'error': errors.validation([contract.diagnostic('/' + field, error.allowed, error.got)])}, 422)
+        except JobError as error:
+            return reply({'error': error.view()}, errors.ERRORS[error.code][0])
+        except (json.JSONDecodeError, UnicodeDecodeError, RecursionError):
+            return problem('invalid_json')
+        except web.HTTPException as error:
+            return problem('too_large' if error.status == 413 else 'invalid_request')
+        except OSError:
+            return problem('storage_unavailable')
+        except Exception:
             return problem('internal_error')
         finally:
             errors.REQUEST_ID.reset(identity)

@@ -39,6 +39,7 @@ if (typeof document !== 'undefined') {
 import { nearestAllowed } from './field_note.js';
 import { cn, t, INSTALLED_HINT, gib, bytesText, atLeast, WAIT_REFUSAL, reportable, reportText, failureText, setupError, SECTIONS, sectionOf } from './settings_words.js';
 import { languageUrl } from './i18n.js';
+import { languagePicker, addressLanguage } from './language_picker.js';
 export { failureText, sectionOf, SECTIONS, bytesText };
 
 let current;
@@ -570,8 +571,20 @@ export async function openSetup(options) {
     langSelect.onchange = () => { langReload.hidden = langSelect.value === (cn ? 'zh' : 'en'); };
     langReload.onclick = () => { const url = languageUrl(location.href, langSelect.value); location.replace(url.href); };
     tip(langReload, t('Reload now', '立即重新载入'), t('Reload the page in the chosen language', '以所选语言重新载入页面'));
-    const langRow = row({iconName: 'globe', title: t('Interface language', '界面语言'), end: [segmented(langSelect, {label: t('Language', '语言'), tips: {zh: t('Show the interface in Chinese', '界面显示为中文'), en: t('Show the interface in English', '界面显示为英文')}})]});
+    const langSeg = segmented(langSelect, {label: t('Language', '语言'), tips: {zh: t('Show the interface in Chinese', '界面显示为中文'), en: t('Show the interface in English', '界面显示为英文')}});
+    const langRow = row({iconName: 'globe', title: t('Interface language', '界面语言'), end: [langSeg]});
     const langFoot = el('div', 'st-foot'); langFoot.append(langNote, langReload);
+    // Every language ready to offer, saved with the launcher's settings (language_picker.js); the two buttons stay when the
+    // list cannot be read.
+    api.fetchApi('/freevideo/language', {cache: 'no-store'}).then(response => response.ok ? response.json() : null).then(state => {
+        if (!Array.isArray(state?.languages) || !state.languages.length) return;
+        const note = langNote.textContent;
+        const picker = languagePicker({api, t, state,
+            onSaved: () => { langNote.textContent = note; langReload.hidden = !picker.differs(); },
+            onError: text => { langNote.textContent = text; }});
+        langSeg.replaceWith(picker.element);
+        langReload.onclick = () => location.replace(languageUrl(location.href, addressLanguage(picker.state.language)).href);
+    }).catch(() => {});
     appearance.append(groupHead(t('Look', '外观')), card(themeRow.element, solidRow.element, compactRow.element),
         groupHead(t('Top bar', '顶栏')), card(statusRow.element), groupHead(t('Language', '语言')), card(langRow.element, langFoot));
 

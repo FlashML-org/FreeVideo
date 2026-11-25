@@ -241,6 +241,13 @@ class Store:
             raise failures[0][1]
         return written, failures
 
+    def save_language(self, language):
+        """The interface language, set from the page's settings: the launcher and the page share it."""
+        with self.exclusive():
+            saved = self.read()
+            self.write_locked(saved, language, saved.get('installation'), saved.get('setup'))
+        return language
+
     def save_model_directories(self, values):
         from .local_models import directory_choices
         choices = directory_choices(values)
