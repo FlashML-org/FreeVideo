@@ -1373,13 +1373,23 @@ class Session:
                     'the previous model is restored.', '模型切换未完成。请在安装页点击“重试”；无法完成时会恢复原来的模型。'),
                                       kept=self._installation_ready())
 
+    def ui_language(self):
+        """The language the interface shows (a language file's tag: 'en', 'zh-Hans', 'zh-Hant', ...): the saved setting,
+        or the system language when it is 'auto', matched to the languages there are. Kept until the setting changes."""
+        if getattr(self, '_ui_language', (None, None))[0] != self.language:
+            from .i18n import interface_language
+            self._ui_language = (self.language, interface_language(self.language, default_language))
+        return self._ui_language[1]
+
     def _browser_url(self, address):
-        """Return the URL used by the browser, with the launcher locale hint."""
-        if not address or not self.language.startswith('zh'):
+        """Return the URL used by the browser, with the launcher locale hint: freevideo_lang=zh for Simplified Chinese,
+        nothing for English (the page then follows the browser, as before), the tag for any other language."""
+        language = self.ui_language()
+        if not address or language == 'en':
             return address
         parsed = urlsplit(address)
         query = dict(parse_qsl(parsed.query, keep_blank_values=True))
-        query['freevideo_lang'] = 'zh'
+        query['freevideo_lang'] = 'zh' if language == 'zh-Hans' else language
         return urlunsplit((parsed.scheme, parsed.netloc, parsed.path,
                            urlencode(query), parsed.fragment))
 
@@ -2868,7 +2878,8 @@ class Session:
             download_state.update(error=self.t(*DOWNLOAD_COPY['error_read']), needs_check=True)
         return plain_data(dict(download_list=download_state, sampling_cache_bytes=total_bytes(), version=__version__, image_pack=image_pack,
             prompt_model=prompt_model, bytes_per_second=speed,
-            disk=disk, decimal_sizes=sys.platform == 'darwin', zh=self.language.startswith('zh'), form=dict(self.form),
+            disk=disk, decimal_sizes=sys.platform == 'darwin', zh=self.language.startswith('zh'), ui_language=self.ui_language(),
+            form=dict(self.form),
             model_choice=self.model_choice(), image_only=self.image_only_choice(),
             image_installed=self.installed_machine().get('video_model') is False,
             video_missing=self.page == 'launcher' and self.video_missing(), can_add_video=self.can_repair(),

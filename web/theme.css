@@ -33,6 +33,13 @@
   font-family:var(--fv-font);
   color-scheme:dark;
 }
+/* Traditional Chinese (web/i18n.js marks the page) reads in Taiwan fonts and Taiwan glyph forms. */
+:root[data-fv-language="zh-Hant"],
+:root[data-fv-language="zh-Hant"] :where(.fv-phone,.fv-lan,.fv-studio,.fv-setup,.fv-panel,.fv-generation-progress,.fv-view-navigation,.fv-prompt-guide,.fv-failure-dialog,.fv-reference-picker,.fv-release-notes,.fv-whatsnew,.fv-image-editor,.fv-cast-dialog,.fv-tutorial-book,.fv-feature-tour){
+  --fv-font:-apple-system,BlinkMacSystemFont,"Segoe UI Variable Text","Segoe UI","FreeVideo Quotes",
+            "PingFang TC","Microsoft JhengHei UI","Noto Sans CJK TC","Noto Sans TC",system-ui,sans-serif;
+}
+:root[data-fv-language="zh-Hant"] .sgf{font-family:"Inter","Segoe UI","PingFang TC","Microsoft JhengHei UI","Noto Sans CJK TC",system-ui,sans-serif}
 .fv-wordmark{display:block;width:210px;height:auto;max-width:100%;object-fit:contain}
 :where(.fv-studio,.fv-setup,.fv-panel,.fv-view-navigation){overflow-wrap:anywhere}
 :where(.fv-studio,.fv-setup,.fv-panel) :is(input,select,textarea,button){font-family:inherit}

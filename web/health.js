@@ -10,7 +10,7 @@ const query = new URLSearchParams(location.search);
 // The language rule of web/i18n.js, written out here because this file imports nothing at load: it must still run and
 // report when i18n.js itself fails to load. tests/i18n_runtime.mjs checks that the two agree.
 const language = query.get('freevideo_lang');
-const cn = language === 'zh' || (language !== 'en' && String(navigator.language || '').toLowerCase().startsWith('zh'));
+const cn = /^zh([-_]|$)/i.test(language || '') || (!language && String(navigator.language || '').toLowerCase().startsWith('zh'));
 const t = (en, zh) => cn ? zh : en;
 // launcher.js removes this flag during setup; read it before that.
 const launchVisit = query.get('freevideo') === 'launch';
