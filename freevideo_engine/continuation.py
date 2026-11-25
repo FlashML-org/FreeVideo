@@ -30,13 +30,13 @@ FIRST_SOUND_SECONDS = 6
 FIRST_FRAME_REFERENCE_SHORT = 384
 VERSION = 1
 
-MISSING = 'The previous video has no usable continuation data. Generate it again with this version of FreeVideo.'
+MISSING = 'The previous video lacks the data needed to extend it. Generate it again with this version of FreeVideo.'
 SIZE_MISMATCH = 'Use the same aspect ratio as the previous video.'
 # Every refusal starts with UNSUPPORTED, then says what to change.
-UNSUPPORTED = 'Continue from video cannot be used with these settings.'
-UNSUPPORTED_DEVICE = UNSUPPORTED + ' Extending a video needs an NVIDIA GPU or a Mac. To make a new video, clear "Continue from video".'
-UNSUPPORTED_PASSES = UNSUPPORTED + ' Turn on "Two-pass acceleration" and turn off the first-pass preview.'
-UNSUPPORTED_REFINE = UNSUPPORTED + ' Clear either "Second pass of preview" or "Continue from video".'
+UNSUPPORTED = 'Extend from video cannot be used with these settings.'
+UNSUPPORTED_DEVICE = UNSUPPORTED + ' Extending a video needs an NVIDIA GPU or a Mac. To make a new video, clear "Extend from video".'
+UNSUPPORTED_PASSES = UNSUPPORTED + ' Turn on "Faster second pass" and turn off the first-pass preview.'
+UNSUPPORTED_REFINE = UNSUPPORTED + ' Clear either "Second pass of preview" or "Extend from video".'
 UNSUPPORTED_MEDIA = UNSUPPORTED + ' Connect up to 3 images as references, and remove video, audio and pre-encoded inputs.'
 # A continued part keeps the cast's pictures, one per person and at most three people in a frame.
 PICTURES_MAX = 3

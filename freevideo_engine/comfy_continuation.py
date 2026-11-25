@@ -52,7 +52,7 @@ def part_steps(base_steps, refine_steps, step_cache):
     if base_steps == TWO_PASS_BASE_STEPS:
         return base_steps, refine_steps, step_cache, None
     return (TWO_PASS_BASE_STEPS, 3, 'none',
-            'Parts of a long video and continued parts use %d + 3 steps with "Two-pass acceleration". '
+            'Parts of a long video and extended parts use %d + 3 steps with "Faster second pass". '
             '%d first-pass steps apply only to a single video.' % (TWO_PASS_BASE_STEPS, base_steps))
 
 

@@ -45,7 +45,7 @@ export function createEditorReferences({t, source, size = () => null, seconds = 
     const full = () => continuing ? used().length >= CONTINUE_MAX : active().length >= MAX;
     // On hover without a full stop; in the notice line with one.
     const waitText = () => t('Available after generation finishes', '生成完成后可改');
-    const fullText = () => continuing ? t('Up to 3 images when continuing', '接续时最多 3\u00a0张') : t('Up to 32 images', '最多 32\u00a0张');
+    const fullText = () => continuing ? t('Up to 3 images when extending', '接续时最多 3\u00a0张') : t('Up to 32 images', '最多 32\u00a0张');
     const sentence = text => text + t('.', '。');
     const label = (role, row) => role === 'first' ? t('First frame', '首帧') : role === 'last' ? t('Last frame', '尾帧')
         : role === 'middle' ? (Number.isFinite(secondsOf(row)) ? middleLabels.chipTitle(secondsOf(row), t) : middleLabels.role(t)) : t('Reference', '参考');

@@ -55,7 +55,7 @@ export const labels = {
     tooMany: t => t('Enable up to 3 middle frames.', '中间帧最多启用 3 张图片。'),
     needsBoth: t => t('Middle frames need both a first and a last frame.', '中间帧需要同时有首帧和尾帧。'),
     firstPartOnly: t => t('Middle frames apply to the first part only.', '中间帧只用于第一段。'),
-    continuing: t => t('When continuing a video, middle frames are not used; the first and last frames are used as references.',
+    continuing: t => t('When extending a video, middle frames are not used; the first and last frames are used as references.',
         '接续视频时不使用中间帧，首尾帧会用作参考图。'),
     mode: (count, t) => count === 1 ? t('First + last frame · 1 middle frame', '首尾帧生成 · 1 张中间帧')
         : t('First + last frame · {count} middle frames', '首尾帧生成 · {count} 张中间帧', { count }),

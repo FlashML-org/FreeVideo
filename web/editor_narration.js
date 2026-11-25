@@ -252,7 +252,7 @@ export function createEditorNarration({state, store, t, sources = () => new Map(
         describe(id, text) {
             const found = target({kind: 'clip', ids: [id]});
             if (!found?.clip || api.running({kind: 'clip', ids: [id]}) || found.clip.text === text || !text.trim()) return false;
-            state.apply(t('Edit description', '修改说明'), record => said.remakeNarration(record, id, text));
+            state.apply(t('Edit prompt', '修改提示词'), record => said.remakeNarration(record, id, text));
             return true;
         },
         failure(selection = state.selection) {

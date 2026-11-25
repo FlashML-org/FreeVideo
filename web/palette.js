@@ -427,8 +427,8 @@ function makeOfQuery(q) {
     const text = q.trim(); if (!text) return [];
     const short = text.length > 24 ? text.slice(0, 23) + '…' : text;
     return [
-        {id: 'make.image', icon: 'image', title: ['Make an image of “{prompt}”', '用“{prompt}”作为提示词生成图像', { prompt: short }], use: ['Puts it in the Images prompt', '填进图像视图的提示词框'], key: '', run: () => fillPrompt(text, {view: 'image', fallbackView: 'image'})},
-        {id: 'make.video', icon: 'film', title: ['Make a video of “{prompt}”', '用“{prompt}”作为提示词生成视频', { prompt: short }], use: ['Puts it in the Create prompt', '填进创作面板的提示词框'], key: '', run: () => fillPrompt(text, {view: 'studio', fallbackView: 'studio'})},
+        {id: 'make.image', icon: 'image', title: ['Make an image of “{prompt}”', '用“{prompt}”作为提示词生成图像', { prompt: short }], use: ['Puts it in the Images prompt box', '填进图像视图的提示词框'], key: '', run: () => fillPrompt(text, {view: 'image', fallbackView: 'image'})},
+        {id: 'make.video', icon: 'film', title: ['Make a video of “{prompt}”', '用“{prompt}”作为提示词生成视频', { prompt: short }], use: ['Puts it in the Create prompt box', '填进创作面板的提示词框'], key: '', run: () => fillPrompt(text, {view: 'studio', fallbackView: 'studio'})},
     ].map((command, order) => ({command, section: 'make', ranges: [], order: 1e6 + order}));
 }
 

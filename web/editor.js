@@ -1332,7 +1332,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             if (ids.length === 1 && music.target({kind: 'clip', ids})) return music.describe(ids[0], text);
             if (ids.length === 1 && narration.target({kind: 'clip', ids})) return narration.describe(ids[0], text);
             if (!ids.every(id => editablePart(model.find(state.record, id)))) return false;
-            try { state.apply(t('Edit description', '修改说明'), record => model.describePlanned(record, ids, text)); return true; }
+            try { state.apply(t('Edit prompt', '修改提示词'), record => model.describePlanned(record, ids, text)); return true; }
             catch (value) { if (value instanceof model.EditError) return false; throw value; }
         },
         needsText(selection = state.selection) {
@@ -2062,7 +2062,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     import('./shortcuts.js').then(module => {
         if (disposed) return;
         listeners.push(module.registerShortcuts('editor', [
-            {keys: 'Mod+Enter', title: ['Generate (in the prompt)', '生成（在提示词框里）'], group: ['Generate', '生成']},
+            {keys: 'Mod+Enter', title: ['Generate (in the prompt box)', '生成（在提示词框里）'], group: ['Generate', '生成']},
             {keys: 'Mod+Y', title: ['Redo', '重做'], group: ['Editing', '编辑']},
             {keys: 'Shift+← / Shift+→', title: ['Back / forward ten frames', '后退 / 前进 10 帧'], group: ['Playback', '播放']},
         ]));

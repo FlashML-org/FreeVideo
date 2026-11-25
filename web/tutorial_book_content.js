@@ -14,7 +14,7 @@ export const TUTORIAL_CHAPTERS = [
             alt: {zh: '创作面板：描述框和“生⁠成⁠视⁠频”按钮已用红框标出。', en: 'The creation panel, with the prompt box and the "Generate video" button outlined in red.'},
         },
         steps: {
-            zh: ['打开“创作面板”，在“提示词画面”中写一句话，说明谁在什么地方做什么。', '画幅选“横屏”或“竖屏”，其余保持默认。', '点“生⁠成⁠视⁠频”。', '完成后在预览区播放，点“下载视频”保存。'],
+            zh: ['打开“创作面板”，在“描述画面”中写一句话，说明谁在什么地方做什么。', '画幅选“横屏”或“竖屏”，其余保持默认。', '点“生⁠成⁠视⁠频”。', '完成后在预览区播放，点“下载视频”保存。'],
             en: ['Open "Create" and write one sentence under the prompt: who is where and doing what.', 'Choose "Landscape" or "Portrait" and keep the rest as it is.', 'Choose "Generate video".', 'When it finishes, play it in the preview and choose "Download video" to save it.'],
         },
         example: {
@@ -38,7 +38,7 @@ export const TUTORIAL_CHAPTERS = [
             alt: {zh: '创作面板：描述、画幅与尺寸区域已用红框标出。', en: 'The creation panel, with the prompt and the Frame & size fields outlined in red.'},
         },
         steps: {
-            zh: ['在“提示词画面”中写明主体、动作、场景和镜头，例如“镜头缓缓推近”。', '在“画幅与尺寸”中选择横屏、竖屏或方形，再在“尺寸”一行选择大小。', '点底栏的秒数，直接修改时长；“可⁠生⁠成⁠范⁠围”中可查看各尺寸的最长时长和预计用时。', '点“生⁠成⁠视⁠频”。提示词为空时会先提示，点“继⁠续⁠生⁠成”仍可生成。'],
+            zh: ['在“描述画面”中写明主体、动作、场景和镜头，例如“镜头缓缓推近”。', '在“画幅与尺寸”中选择横屏、竖屏或方形，再在“尺寸”一行选择大小。', '点底栏的秒数，直接修改时长；“可⁠生⁠成⁠范⁠围”中可查看各尺寸的最长时长和预计用时。', '点“生⁠成⁠视⁠频”。提示词为空时会先提示，点“继⁠续⁠生⁠成”仍可生成。'],
             en: ['Write the subject, action, place and camera in the prompt, for example "the camera slowly moves closer".', 'Under "Frame & size", choose landscape, portrait or square, then choose a size in the "Size" row.', 'Click the seconds in the bottom bar to change the length. "Available sizes and lengths" shows the longest length and the estimated time for each size.', 'Choose "Generate video". With an empty prompt, a note appears first; choose "Generate anyway" to go ahead.'],
         },
         example: {
@@ -89,7 +89,7 @@ export const TUTORIAL_CHAPTERS = [
         },
         limits: {
             zh: ['未安装图像模型时，“生成”显示为“下载模型”，点它下载；和视频共用的文件不重复下载。', '加参考图见“用参考图生成图片”。选 MOSS 时，点提示词框下方的“布局”，在画框上拖出框，每个框写一句放什么。框管位置和大致大小，不会把东西拉伸到填满框。', '“高清”用时更长；显存不足时，出错卡片上可点“改用标准并重试”。'],
-            en: ['Without an image model installed, "Generate" reads "Download model"; choose it to download. Files shared with video are not downloaded again.', 'For reference images, see "Make an image from reference images". When MOSS is selected, choose "Layout" below the prompt, drag boxes on the frame and write what goes in each one. A box sets where a thing goes and roughly how big it is; it does not stretch the thing to fill the box.', '"High" takes longer. If memory runs short, choose "Retry at Standard" on the error card.'],
+            en: ['Without an image model installed, "Generate" reads "Download model"; choose it to download. Files shared with video are not downloaded again.', 'For reference images, see "Make an image from reference images". When MOSS is selected, choose "Layout" below the prompt box, drag boxes on the frame and write what goes in each one. A box sets where a thing goes and roughly how big it is; it does not stretch the thing to fill the box.', '"High" takes longer. If memory runs short, choose "Retry at Standard" on the error card.'],
         },
     },
     {
@@ -103,7 +103,7 @@ export const TUTORIAL_CHAPTERS = [
         },
         steps: {
             zh: ['点顶部的“图像视图”，点提示词框下方的“参考图”，选“从电脑选择…”或作品中的一张图片；也可以把图片拖到左侧，或粘贴到提示词框中。', '参考图按加入的顺序编号为“图 1”“图 2”……在提示词中写明每张图的用途，例如“图 1 的人物手里托着图 2 的怀表”。点参考图的缩略图，可以裁剪或修图。', '比例默认为“跟随图片”，也可以改选其他比例；然后点“生成”。', '在结果下方点“编辑”，它会成为图 1，接着描述要改的地方；点“用作参考图”，它会加到参考图的最后。', '把鼠标移到缩略图上，点右上角的“×”，可移除这张参考图。'],
-            en: ['Choose "Images" at the top, then "References" below the prompt, and pick "From this computer…" or an image from your creations. You can also drag images onto the left side or paste them into the prompt.', 'Reference images are numbered in the order they were added: "Image 1", "Image 2" and so on. Say in the prompt what each one is for, for example "the person in Image 1 holds the pocket watch from Image 2". Choose a thumbnail to crop or retouch it.', 'The shape is "Match image" unless you choose another. Then choose "Generate".', 'Below the result, choose "Edit" to make it Image 1 and describe what to change, or "Use as reference" to add it after the other reference images.', 'To remove a reference image, point to its thumbnail and choose "×" at its top right.'],
+            en: ['Choose "Images" at the top, then "References" below the prompt box, and pick "From this computer…" or an image from your creations. You can also drag images onto the left side or paste them into the prompt box.', 'Reference images are numbered in the order they were added: "Image 1", "Image 2" and so on. Say in the prompt what each one is for, for example "the person in Image 1 holds the pocket watch from Image 2". Choose a thumbnail to crop or retouch it.', 'The shape is "Match image" unless you choose another. Then choose "Generate".', 'Below the result, choose "Edit" to make it Image 1 and describe what to change, or "Use as reference" to add it after the other reference images.', 'To remove a reference image, point to its thumbnail and choose "×" at its top right.'],
         },
         limits: {
             zh: ['提示词中没有写编号时，所有参考图按顺序一起使用。', 'H3 Image 最多使用 16 张参考图；换用其他图像模型后超出其上限时，会提示需要移除几张。'],
@@ -148,7 +148,7 @@ export const TUTORIAL_CHAPTERS = [
         },
         limits: {
             zh: ['中间帧需要同时有首帧和尾帧，时间需在视频时长以内。', '30 秒及以上的视频分段生成，中间帧只用于第一段。', '接续视频时不使用中间帧，首尾帧会用作参考图。'],
-            en: ['Middle frames need both a first and a last frame, and each time must fall within the video.', 'A video of 30 seconds or longer is made in parts, and middle frames apply to the first part only.', 'When continuing a video, middle frames are not used, and the first and last frames are used as references.'],
+            en: ['Middle frames need both a first and a last frame, and each time must fall within the video.', 'A video of 30 seconds or longer is made in parts, and middle frames apply to the first part only.', 'When extending a video, middle frames are not used, and the first and last frames are used as references.'],
         },
     },
     {
@@ -383,7 +383,7 @@ export const TUTORIAL_CHAPTERS = [
         },
         steps: {
             zh: ['点创作面板底部的“高级选项”（滑杆图标）。', '在“生成方式”中选“批量”，填写“生成数量”，再点生成：用当前设置连续生成这么多个视频，每个换一个种子。', '要一次试几种写法，打开“每行一条提示词”，在提示词框中每行写一条，每行生成一个视频。', '选“循环”后点“开始循环”，会一直生成新版本；点“完成当前后停止”结束。'],
-            en: ['Choose "Advanced" (the sliders icon) at the bottom of the creation panel.', 'Under "Generation mode", choose "Batch", set "Number of videos", then generate: that many videos are made in a row with the current settings, each with a new seed.', 'To try several prompts at once, turn on "One prompt per line" and write one prompt per line in the prompt. Each line becomes one video.', 'Choose "Loop" and then "Start loop" to keep making new takes; choose "Stop after this video" to end it.'],
+            en: ['Choose "Advanced" (the sliders icon) at the bottom of the creation panel.', 'Under "Generation mode", choose "Batch", set "Number of videos", then generate: that many videos are made in a row with the current settings, each with a new seed.', 'To try several prompts at once, turn on "One prompt per line" and write one prompt per line in the prompt box. Each line becomes one video.', 'Choose "Loop" and then "Start loop" to keep making new takes; choose "Stop after this video" to end it.'],
         },
         limits: {
             zh: ['分段视频每次生成一条，“批量”和“循环”用于单段视频。', '打开“增强”时，每行一条描述按原文发送，不做增强。', '循环在关闭网页后停止。'],
@@ -393,7 +393,7 @@ export const TUTORIAL_CHAPTERS = [
     {
         id: 'long-video',
         title: {zh: '连续的长视频', en: 'Make a longer video'},
-        summary: {zh: '填写更长的时长自动分段生成，也可逐段接续。', en: 'Enter a longer duration to generate in parts, or continue one part at a time.'},
+        summary: {zh: '填写更长的时长自动分段生成，也可逐段接续。', en: 'Enter a longer duration to generate in parts, or extend one part at a time.'},
         media: {
             type: 'image',
             src: {zh: 'long-video-1.webp', en: 'long-video-2.webp'},
@@ -401,7 +401,7 @@ export const TUTORIAL_CHAPTERS = [
         },
         steps: {
             zh: ['填写更长的时长，会自动分段生成；点画幅按钮（如“16:9 · 1M”），在“可⁠生⁠成⁠范⁠围”中可查看各尺寸的最长时长和预计用时。', '点“生⁠成⁠视⁠频”。', '在生成好的视频下方点“接着生成”，继续下一段。', '更长的多镜头视频，可在“剪辑视图”中另起新的镜头，或使用“AI 全自动”。'],
-            en: ['Enter a longer duration. It is made in parts automatically. Choose the frame button (such as "16:9 · 1M"); "Available sizes and lengths" there shows how long each size can be and about how long it takes.', 'Choose "Generate video".', 'Choose "Extend" below a finished video to continue it.', 'For a longer video with several shots, start new shots in "Edit", or use "Autopilot".'],
+            en: ['Enter a longer duration. It is made in parts automatically. Choose the frame button (such as "16:9 · 1M"); "Available sizes and lengths" there shows how long each size can be and about how long it takes.', 'Choose "Generate video".', 'Choose "Extend" below a finished video to add the next part.', 'For a longer video with several shots, start new shots in "Edit", or use "Autopilot".'],
         },
         example: {
             assets: [],
@@ -410,13 +410,13 @@ export const TUTORIAL_CHAPTERS = [
         },
         limits: {
             zh: ['接着生成的每一段至少 5 秒，最后一段可短至 2 秒。一个连续镜头最多 8 段，有短于 10 秒的段时最多 4 段；创作面板中时长最长 60 秒；分镜剧本可在剪辑视图中逐个镜头添加，或用 AI 全自动。', '分段生成和接着生成需要 NVIDIA 显卡或 Mac。', '段数越多，衔接处越容易出现变化；适合切换镜头处，可直接开始新的一段。'],
-            en: ['Each continued part is at least 5 seconds, and the last one can be as short as 2 seconds. One continuous shot has at most 8 parts, or 4 when a part is shorter than 10 seconds, and the creation panel accepts up to 60 seconds. For a storyboard, add shots one by one in Edit, or use Autopilot.', 'Generating in parts and Extend need an NVIDIA graphics card or a Mac.', 'The more parts are joined, the more the joins may change. Where a cut fits, cut to a new shot and start a fresh part.'],
+            en: ['Each added part is at least 5 seconds, and the last one can be as short as 2 seconds. One continuous shot has at most 8 parts, or 4 when a part is shorter than 10 seconds, and the creation panel accepts up to 60 seconds. For a storyboard, add shots one by one in Edit, or use Autopilot.', 'Generating in parts and Extend need an NVIDIA graphics card or a Mac.', 'The more parts are joined, the more the joins may change. Where a cut fits, cut to a new shot and start a fresh part.'],
         },
     },
     {
         id: 'extend-video',
         title: {zh: '延长已有视频', en: 'Extend an existing video'},
-        summary: {zh: '从一条已有视频的结尾继续往下生成。', en: 'Continue from the end of a video you already have.'},
+        summary: {zh: '从一条已有视频的结尾继续往下生成。', en: 'Extend a video you already have from its end.'},
         media: {
             type: 'image',
             src: {zh: 'extend-video-1.webp', en: 'extend-video-2.webp'},
@@ -447,7 +447,7 @@ export const TUTORIAL_CHAPTERS = [
         },
         steps: {
             zh: ['要让画面接着上一段往下发展，在生成好的视频下方点“接着生成”：新的一段紧接在后面，带有连接标记，与前面拼成同一个镜头。', '要换场景或切到另一个画面，在时间线的空白处拖出一段，写下描述再点“生⁠成”：它是独立镜头，不接前面的画面。', '看时间线：接续的一段紧贴前一段，带连接标记；独立镜头与前面的视频分开显示。'],
-            en: ['To carry the picture on from the previous part, choose "Extend" below a finished video. The new part follows right after it, carries a link mark, and joins the earlier part as one shot.', 'To change scene or cut to another picture, drag out a part in an empty place on the timeline, describe it and choose "Generate". It is a separate shot and does not continue the earlier picture.', 'Check the timeline: a continuing part sits right against the part before it and carries a link mark. A separate shot is drawn apart from the video before it.'],
+            en: ['To carry the picture on from the previous part, choose "Extend" below a finished video. The new part follows right after it, carries a link mark, and joins the earlier part as one shot.', 'To change scene or cut to another picture, drag out a part in an empty place on the timeline, describe it and choose "Generate". It is a separate shot and does not continue the earlier picture.', 'Check the timeline: an extended part sits right against the part before it and carries a link mark. A separate shot is drawn apart from the video before it.'],
         },
         example: {
             assets: [],
@@ -463,8 +463,8 @@ export const TUTORIAL_CHAPTERS = [
         id: 'editor',
         view: 'editor',
         goto: ['editor-timeline'],
-        title: {zh: '剪辑视图：裁剪、描述、接续', en: 'The Edit view: crop, describe, continue'},
-        summary: {zh: '在时间线上选中一段，描述它，并接着生成。', en: 'Select a part on the timeline, describe it and continue.'},
+        title: {zh: '剪辑视图：裁剪、描述、接续', en: 'The Edit view: crop, describe, extend'},
+        summary: {zh: '在时间线上选中一段，描述它，并接着生成。', en: 'Select a part on the timeline, describe it and extend the video.'},
         media: {
             type: 'image',
             src: {zh: 'editor-1.webp', en: 'editor-2.webp'},
@@ -472,7 +472,7 @@ export const TUTORIAL_CHAPTERS = [
         },
         steps: {
             zh: ['点顶部的“剪辑视图”。', '在时间线上选中要处理的一段。', '在下方描述框中填写这一段的内容，点“生⁠成”接续下一段。', '在右侧“画面”中可调整缩放、位置和旋转，或点“裁⁠剪”；窗口窄于 1280 时，先点“调⁠整”打开该面板。', '完成后点右上角的“导⁠出”保存。'],
-            en: ['Choose "Edit" at the top.', 'Select a part on the timeline.', 'Write what happens in this part in the box below and choose "Generate" to continue.', 'Under "Video" on the right, adjust scale, position and rotation, or choose "Crop". On a window narrower than 1280 pixels, choose "Adjust" first to open the panel.', 'When done, choose "Export" at the top right.'],
+            en: ['Choose "Edit" at the top.', 'Select a part on the timeline.', 'Write what happens in this part in the box below and choose "Generate" to extend the video.', 'Under "Video" on the right, adjust scale, position and rotation, or choose "Crop". On a window narrower than 1280 pixels, choose "Adjust" first to open the panel.', 'When done, choose "Export" at the top right.'],
         },
         example: {
             assets: [],
@@ -481,7 +481,7 @@ export const TUTORIAL_CHAPTERS = [
         },
         limits: {
             zh: ['同一个连续镜头最多 8 段，有短于 10 秒的段时最多 4 段；在时间线后面另起的新镜头不计入。', '接续需要 NVIDIA 显卡或 Mac。'],
-            en: ['One continuous shot has at most 8 parts, or 4 when a part is shorter than 10 seconds; a new shot started later on the timeline does not count.', 'Continuing needs an NVIDIA graphics card or a Mac.'],
+            en: ['One continuous shot has at most 8 parts, or 4 when a part is shorter than 10 seconds; a new shot started later on the timeline does not count.', 'Extending needs an NVIDIA graphics card or a Mac.'],
         },
     },
     {
@@ -515,7 +515,7 @@ export const TUTORIAL_CHAPTERS = [
         },
         steps: {
             zh: ['选中要接续的一段。', '点“素材”，上传或生成图片，最多 3 张。', '填写描述，然后点“生⁠成”。'],
-            en: ['Select the part to continue.', 'Choose "Media" to upload or generate images, up to 3.', 'Describe it, then choose "Generate".'],
+            en: ['Select the part to extend.', 'Choose "Media" to upload or generate images, up to 3.', 'Describe it, then choose "Generate".'],
         },
         example: {
             assets: [],
@@ -524,7 +524,7 @@ export const TUTORIAL_CHAPTERS = [
         },
         limits: {
             zh: ['接续生成最多使用 3 张参考图，不使用首帧和尾帧。', '剪辑视图只能添加图片；参考视频和音频在创作面板的“素材”中添加。', '段数限制相同；需要 NVIDIA 显卡或 Mac。'],
-            en: ['A part that continues the previous one uses up to 3 reference images and no first or last frames.', 'Edit takes images only. Add reference videos and audio under "Media" in the creation panel.', 'The same part limits apply. An NVIDIA graphics card or a Mac is required.'],
+            en: ['An extended part uses up to 3 reference images and no first or last frames.', 'Edit takes images only. Add reference videos and audio under "Media" in the creation panel.', 'The same part limits apply. An NVIDIA graphics card or a Mac is required.'],
         },
     },
     {
@@ -580,7 +580,7 @@ export const TUTORIAL_CHAPTERS = [
             alt: {zh: '剪辑视图：第二条声音轨上选中的一段和风格选项已用红框标出。', en: 'The Edit view, with a range on the second sound track and the style options outlined in red.'},
         },
         steps: {
-            zh: ['点“＋ 声音轨”，添加第二条声音轨“声音 2”。', '在“声音 2”轨的空白处拖出一段。', '在“风格”和“情绪”中各选一项，或在“提示词配乐”中写下想要的音乐。写了提示词时，只按提示词生成。', '点“生⁠成”。'],
+            zh: ['点“＋ 声音轨”，添加第二条声音轨“声音 2”。', '在“声音 2”轨的空白处拖出一段。', '在“风格”和“情绪”中各选一项，或在“描述配乐”中写下想要的音乐。写了提示词时，只按提示词生成。', '点“生⁠成”。'],
             en: ['Choose "+ Audio track" to add a second audio track, "Audio 2".', 'Drag a range on an empty part of the "Audio 2" track.', 'Choose one option under "Style" and one under "Mood", or describe the music under "Describe the music". When there is a prompt, the music follows it alone.', 'Choose "Generate".'],
         },
         limits: {
@@ -792,7 +792,7 @@ export const TUTORIAL_CHAPTERS = [
         },
         steps: {
             zh: ['点预览下方最近作品开头的“作品库”。', '选择一条视频，可播放，或点“接着生成”在剪辑视图中继续；要一次下载多个作品，点作品右上角的勾选框选中它，再点其他作品一起选中，然后点“下⁠载”，存成一个压缩包。', '在作品详情中点爱心图标收藏；在左侧选“收⁠藏”只看收藏的作品，选“全⁠部”看所有作品。', '需要成片时，在“剪辑视图”点“导⁠出”。', '在导出窗口选择范围、画质和内容；要更流畅的画面时，在“帧率”中选 48 或 60，中间的画面由显卡补出；要保留无损的声音，在“声音”中选“无损”。再点“导⁠出”。'],
-            en: ['Choose "Creations" at the start of the recent videos below the preview.', 'Pick a video to play it, or choose "Extend" to continue it in the Edit view. To download several at once, choose the check box at the top right of a creation, choose the others to add them, then choose "Download" to save them as one zip file.', 'In a creation\'s details, choose the heart to add it to favorites. On the left, choose "Favorites" to see only those, or "All" to see every creation.', 'For a finished file, choose "Export" in the Edit view.', 'In the export window choose the range, quality and content. For smoother motion, choose 48 or 60 under "Frame rate"; the graphics card makes the frames in between. To keep the sound lossless, choose "Lossless" under "Sound". Then choose "Export".'],
+            en: ['Choose "Creations" at the start of the recent videos below the preview.', 'Pick a video to play it, or choose "Extend" to add the next part in the Edit view. To download several at once, choose the check box at the top right of a creation, choose the others to add them, then choose "Download" to save them as one zip file.', 'In a creation\'s details, choose the heart to add it to favorites. On the left, choose "Favorites" to see only those, or "All" to see every creation.', 'For a finished file, choose "Export" in the Edit view.', 'In the export window choose the range, quality and content. For smoother motion, choose 48 or 60 under "Frame rate"; the graphics card makes the frames in between. To keep the sound lossless, choose "Lossless" under "Sound". Then choose "Export".'],
         },
         limits: {
             zh: ['删除作品前会确认；被剪辑使用的作品不能删除。', '导出窗口每次打开时，“内容”默认选“画面和声音”，“画质”默认选“高”；窗口里没有“帧率”时，这台电脑不支持 48 和 60 帧导出。', '导出过程中取消不会留下不完整的文件。'],

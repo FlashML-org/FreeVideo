@@ -328,7 +328,7 @@ export function resultActions(record, t, {diagnostic = null, secondPass = null, 
         let problem;
         const fault = () => {
             problem?.remove();
-            problem = issueButton(t, () => ({where: ['Continue video', '延长视频'], message: label.textContent}));
+            problem = issueButton(t, () => ({where: ['Extend video', '延长视频'], message: label.textContent}));
             button.after(problem);
         };
         // Only a video the server says is gone keeps the issue button; a check that could not finish just retries.

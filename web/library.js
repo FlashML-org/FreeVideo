@@ -945,7 +945,7 @@ export function openLibrary(t, options = {}) {
             if (editor && !disposed) { dialog.close(); editor.element?.focus({preventScroll: true}); }
             return editor;
         }
-        catch (error) { fault(notice, userMessage(error, t, t('Could not open the editor. Try again.', '无法打开剪辑，请重试。')), ['Continue video', '延长视频'], null, error); }
+        catch (error) { fault(notice, userMessage(error, t, t('Could not open the editor. Try again.', '无法打开剪辑，请重试。')), ['Extend video', '延长视频'], null, error); }
     }
     // Fill the creation panel with a video's prompt, size, length and seed, then go back to it.
     async function reuseSaved(row) {
@@ -1501,7 +1501,7 @@ export function openLibrary(t, options = {}) {
                 items.push({id: 'reuse', icon: 'reuse', label: ['Reuse settings', '复用设置'],
                     disabled: one.preview ? ['A first-pass preview: finish it first', '这是一采预览，先继续二采'] : '',
                     run: () => reuseSaved(one)});
-                items.push({id: 'extend', icon: 'arrow', label: ['Extend', '接着生成'], disabled: canExtend(one) ? '' : ['This video cannot be continued', '这条视频不能接着生成'],
+                items.push({id: 'extend', icon: 'arrow', label: ['Extend', '接着生成'], disabled: canExtend(one) ? '' : ['This video cannot be extended', '这条视频不能接着生成'],
                     run: () => extendSaved(one)});
             }
             if (one.kind === 'image') {
@@ -2236,7 +2236,7 @@ export function openLibrary(t, options = {}) {
         }
         const download = el('a', null, 'fv-library-viewer-action'); download.href = outputDownloadURL(api, row.video); download.download = '';
         download.append(icon('download'), el('span', t('Download', '下载'))); tip(download, t('Download video', '下载视频'), t('Save the MP4 to this computer', '把视频文件保存到电脑'));
-        const extendButton = viewerAction(t('Extend', '接着生成'), canExtend(row) ? t('Make a longer video from its end', '从结尾继续生成更长的视频') : t('This video cannot be continued', '这条视频不能接着生成'), icon('extend'), () => { closeViewer(); extendSaved(row); });
+        const extendButton = viewerAction(t('Extend', '接着生成'), canExtend(row) ? t('Make a longer video from its end', '从结尾继续生成更长的视频') : t('This video cannot be extended', '这条视频不能接着生成'), icon('extend'), () => { closeViewer(); extendSaved(row); });
         extendButton.disabled = !canExtend(row);
         const again = row.preview && secondPassRunner()
             ? viewerAction(t('Run second pass', '继续二采'), t('Finish the full-resolution video', '从预览继续生成全分辨率视频'), icon('reuse'), () => { closeViewer(); secondPass(row); })

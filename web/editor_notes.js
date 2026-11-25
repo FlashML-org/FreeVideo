@@ -30,9 +30,9 @@ export function blockStatus(clip, t, fraction = 0, interrupted = false) {
 let serial = 0;
 export function createBlockNotes({state, t, actions}) {
     const element = el('div', 'fv-ed-notes'), head = el('div', 'fv-ed-notes-head');
-    const label = el('label', 'fv-ed-adjust-label', t('Description', '说明'));
+    const label = el('label', 'fv-ed-adjust-label', t('Prompt', '提示词'));
     const again = button(t('Regenerate', '重新生成'), {onClick: () => regenerate()}); again.classList.add('fv-ed-notes-again'); again.prepend(glyph(AGAIN));
-    setTip(again, {name: t('Regenerate', '重新生成'), use: t('Make this block again from its description', '按这一段的说明重新生成')});
+    setTip(again, {name: t('Regenerate', '重新生成'), use: t('Make this block again from its prompt', '按这一段的提示词重新生成')});
     const box = el('textarea', 'fv-ed-notes-text'); box.id = `fv-ed-notes-${++serial}`; box.rows = 1; label.htmlFor = box.id;
     const versions = el('div', 'fv-ed-notes-versions'), versionsLabel = el('span', 'fv-ed-adjust-label', t('Version', '版本'));
     head.append(label, again); element.append(head, box, versions);
@@ -49,7 +49,7 @@ export function createBlockNotes({state, t, actions}) {
     function save(id, text) {
         const clip = model.find(state.record, id); text = text.trim();
         if (!clip || text === clip.text) return;
-        try { state.apply(t('Edit description', '修改说明'), record => model.describe(record, [id], text)); } catch (value) { actions.editError?.(value); }
+        try { state.apply(t('Edit prompt', '修改提示词'), record => model.describe(record, [id], text)); } catch (value) { actions.editError?.(value); }
     }
     function commit() { const id = editing; editing = null; if (id) save(id, box.value); }
     box.oninput = () => { editing ||= block?.id || null; grow(); };
@@ -144,7 +144,7 @@ export function createBlockNotes({state, t, actions}) {
         if (!clip || model.pair(state.record, clip.id).some(generating)) return false;
         event.preventDefault(); hideTip(); closeInline();
         if (clip.text.trim().includes('\n')) { box.focus(); return true; }
-        const input = inline = el('input', 'fv-ed-note-input'); input.value = clip.text; input.setAttribute('aria-label', t('Description', '说明'));
+        const input = inline = el('input', 'fv-ed-note-input'); input.value = clip.text; input.setAttribute('aria-label', t('Prompt', '提示词'));
         input.style.left = item.element.style.left; input.style.width = item.element.style.width;
         let done = false;
         const finish = keep => { if (done) return; done = true; const text = input.value; closeInline(); if (keep) save(clip.id, text); };

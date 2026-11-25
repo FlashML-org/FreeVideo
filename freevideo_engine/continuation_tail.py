@@ -24,9 +24,9 @@ AUDIO_RATE = 32000
 TICK_SAMPLES = 800
 AUDIO_WINDOW_TICKS = 600  # 15 s, the longest sound H3 generates
 FPS = 24
-TOO_SHORT = 'The previous video is too short to continue; it needs to be at least 1.7 s long.'  # NOMINAL_FRAMES is 1.625 s at 24 fps; the message rounds up so a 1.7 s video always fits
+TOO_SHORT = 'The previous video is too short to extend; it needs to be at least 1.7 s long.'  # NOMINAL_FRAMES is 1.625 s at 24 fps; the message rounds up so a 1.7 s video always fits
 UNREADABLE = 'The previous video cannot be read.'
-LOW_RATE = "The previous video's frame rate is too low to continue; it needs at least 10 frames per second."
+LOW_RATE = "The previous video's frame rate is too low to extend; it needs at least 10 frames per second."
 
 
 def _fit(image, width, height):

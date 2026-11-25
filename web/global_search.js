@@ -147,7 +147,7 @@ export function createSearch({fetchVideos, fetchPrompt, fetchPictures, pictureMe
             seen.set(key, {prompt: row.prompt, time: row.time, kind: row.kind, count: 1});
         }
         return [...seen.values()].map(item => ({kind: 'prompt', key: 'prompt:' + fold(item.prompt).slice(0, 80), time: item.time, fields: [item.prompt, '', ''], fallback: item.prompt,
-            sub: [item.count > 1 ? words(['Used {count} times', '用过 {count} 次', { count: item.count }], cn) : dateWords(item.time, cn), words(['fills the prompt', '填入提示词框'], cn)].join(' · '),
+            sub: [item.count > 1 ? words(['Used {count} times', '用过 {count} 次', { count: item.count }], cn) : dateWords(item.time, cn), words(['fills the prompt box', '填入提示词框'], cn)].join(' · '),
             thumb: '', icon: 'clock', use: words(['Put this prompt in the view in front', '把这段提示词填进当前视图'], cn), open: () => open.prompt?.(item.prompt, item.kind)}));
     };
 

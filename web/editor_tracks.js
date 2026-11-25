@@ -743,7 +743,7 @@ export function createTracks(host, {state, sources = {}, t = translatorFor(null,
                 const said = (clip.text || '').trim(), words = [...said];
                 setTip(item.element, {name: t('{name} · clip {number}', '{name} · 第 {number} 段', { name, number: index + 1 }),
                     use: words.length ? (words.length > 24 ? `${words.slice(0, 24).join('')}…` : said) : t('{seconds} s · {status}', '{seconds} 秒 · {status}', { seconds, status })});
-                const seamText = seam === 'continued' ? t(', continues the clip before', '，接续上一段') : seam === 'separate' ? t(', separate shot', '，独立镜头') : '';
+                const seamText = seam === 'continued' ? t(', extends the clip before', '，接续上一段') : seam === 'separate' ? t(', separate shot', '，独立镜头') : '';
                 item.element.setAttribute('aria-label', t('{name}, clip {number}, {seconds} s, {status}{seamText}',
                     '{name}，第 {number} 段，{seconds} 秒，{status}{seamText}', { name, number: index + 1, seconds, status, seamText }));
                 // Pending replacements can retain their old media; state styling
@@ -863,7 +863,7 @@ export function createTracks(host, {state, sources = {}, t = translatorFor(null,
             clicked = drawn.find(clip => frame >= clip.start && frame < clip.start + clip.frames) ?? (frame < range.start ? drawn[0] : drawn.at(-1));
             if (text) next = model.describe(next, [drawn[0].id], text);
         } catch (error) { if (error instanceof model.EditError) return; throw error; }
-        attempt(t('Edit description', '修改说明'), () => next, {selectionAfter: {kind: 'clip', ids: model.pair(next, clicked.id).map(clip => clip.id)}});
+        attempt(t('Edit prompt', '修改提示词'), () => next, {selectionAfter: {kind: 'clip', ids: model.pair(next, clicked.id).map(clip => clip.id)}});
     }
     function clickSelection(event) {
         if (event.range) { choosePart(event); return; }

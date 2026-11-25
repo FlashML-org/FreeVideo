@@ -54,7 +54,7 @@ export const TIPS = Object.freeze({
     seek: {name: ['Position', '播放位置'], use: ['Drag to move through the video', '拖动以跳到视频的任意位置']},
     more8: {name: ['More beats', '更多节拍'], use: ['Show the rest of the outline', '展开剩下的分镜']},
     whiteboxGo: {name: ['Generate video', '生成视频'], use: ['Make the video from this white model', '按这个白模生成视频']},
-    whiteboxEdit: {name: ['Edit prompt', '改提示词'], use: ['Put the prompt in the box to change', '把提示词放进输入框修改']},
+    whiteboxEdit: {name: ['Edit prompt', '修改提示词'], use: ['Put the prompt in the box to change', '把提示词放进输入框修改']},
     whiteboxSkip: {name: ['Skip', '跳过'], use: ['Go on without this preview', '不用这个预览，继续']},
     editCancel: {name: ['Cancel', '取消'], use: ['Keep the message as it was', '保留原来的消息']},
     editSend: {name: ['Send', '发送'], use: ['Send the changed message', '发送修改后的消息'], key: 'Enter'},

@@ -412,7 +412,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
                     const medium = effortFor(8, true, 3, null, levels || undefined, Number(factor))?.name === 'Medium';
                     quality = {baseSteps: 8, refineSteps: 3, twoPass: true, stepCache: null, upscale: Number(factor), disabled: true,
                         reason: lock === 'continuation'
-                            ? (medium ? t('A continuation uses the Medium level.', '接着生成使用标准档。') : t('A continuation uses the Light level.', '接着生成使用轻量档。'))
+                            ? (medium ? t('An extended part uses the Medium level.', '接着生成使用标准档。') : t('An extended part uses the Light level.', '接着生成使用轻量档。'))
                             : (medium ? t('Each part of a video made in parts uses the Medium level.', '分段生成时，每段使用标准档。') : t('Each part of a video made in parts uses the Light level.', '分段生成时，每段使用轻量档。'))};
                 }
                 effortControl.update(quality);
@@ -431,7 +431,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         resizeDescription();
         input.dispatchEvent(new Event('change'));
         tip(generate, {name: verbText.textContent, key: `${modKey}↵`,
-            use: downloadText() || (musical ? t('Make music for the chosen stretch', '为选中的范围生成配乐') : narrated ? t('Say the words in the chosen voice', '用选中的音色说出这段话')
+            use: downloadText() || (musical ? t('Make music for the chosen range', '为选中的范围生成配乐') : narrated ? t('Say the words in the chosen voice', '用选中的音色说出这段话')
                 : voiced ? t('Say the changed lines again', '把改过的台词重新配音') : !selected ? t('Choose a part or drag a range on the timeline first', '先在时间线上选中一段或拖出范围')
                 : generate.dataset.wordless === 'true' ? t('Write a prompt first', '先写提示词') : t('Make the chosen part from the prompt', '按提示词生成选中的这一段')),
             why: !generate.disabled ? '' : busy ? t('This part is generating; Cancel stops it', '这一段正在生成，可按“取消”停止')

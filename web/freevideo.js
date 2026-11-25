@@ -108,12 +108,12 @@ const INPUT_WORDS = [
     ['seconds', ['Duration (s)', '时长（秒）']],
     ['seed', ['Seed', '种子']],
     ['force_regenerate', ['Force regeneration', '重新生成'], ['Generate again even when an identical completed video is saved locally.', '跳过已保存结果的缓存。']],
-    ['preview', ['Two-pass: preview first pass', '先出预览'], ['Part of the faster second pass: pause after the half-resolution first pass and save it as a preview. Run the second pass from the result when it looks right; it continues from the same latents.', '先出低分辨率预览，满意后在结果里点“继续二采”，成片与直接生成一致。']],
+    ['preview', ['Preview first', '先出预览'], ['Part of the faster second pass: pause after the half-resolution first pass and save it as a preview. Run the second pass from the result when it looks right; it continues from the same latents.', '先出低分辨率预览，满意后在结果里点“继续二采”，成片与直接生成一致。']],
     ['refine_from', ['Second pass of preview', '继续二采'], ["Set by the Run second pass button: the preview video to continue. The second pass uses the preview's own prompt, seed, size and inputs.", '从这个预览继续生成全分辨率视频。']],
-    ['continue_from', ['Continue from video', '接着生成']],
+    ['continue_from', ['Extend from video', '接着生成']],
     ['frames', ['Total frames', '帧数']],
     ['first_frame_reference', ['First-frame reference', '首帧参考'], ['Reduces drift.', '减小漂移']],
-    ['voice_reference', ['Voice reference', '声音参考'], ['Keeps the opening voice consistent in continued dialogue.', '接着生成对白时，沿用原视频开头的声音，让前后声音一致。']],
+    ['voice_reference', ['Voice reference', '声音参考'], ['Keeps the opening voice consistent in extended dialogue.', '接着生成对白时，沿用原视频开头的声音，让前后声音一致。']],
     ['hide_tail', ['Hide dialogue tail', '隐藏对白尾段'], ['Generates and discards 17 extra frames to keep dialogue moving between parts.', '多生成 17 帧后丢弃，让对白在前后两段之间连贯。']],
     ['step_cache', ['Step cache', '步间缓存'], ['Reuses work between similar sampling steps to finish sooner, with a small change to the result.', '复用相近采样步之间的计算，更快完成，结果会有细微变化。']],
     ['upscale_factor', ['Upscale factor', '放大倍数'], ['Second pass only: a smaller factor starts from a larger first pass, for more detail and a longer run.', '二采时成片相对一采的放大倍数。']],
@@ -457,7 +457,7 @@ function mediaPanel(node, mount = null) {
         }
         const middleProblem = middleNotice(active, {first, last, references: refs, seconds: videoSeconds()}, text);
         const audioUnlinked = node.widgets?.find(w => w.name === 'audio_use')?.value === 'original' && !linked('reference_audio');
-        message(audioUnlinked ? text('Connect audio to "Reference audio", or set "Audio use" to "reference", before generating.', '请连接“参考音频”，或把“音频用途”改为“参考”后再生成。') : refs > 32 ? text('There are more than 32 references; remove some before generating.', '参考素材超过 32 个，可移除部分后再生成。') : continuing && active.filter(row => row.role === 'reference' && mediaKind(row.file) === 'image').length > 3 ? text('When continuing, only the first 3 images are used.', '接续时只用前 3\u00a0张图片。') : (first || last || middle.length) && continuing ? (middle.length ? middleLabels.continuing(text) : text("When continuing a video, the first and last frames are used as references.", "接续视频时，首尾帧会用作参考图。")) : first > 1 || last > 1 ? text("Keep only one first frame and one last frame enabled.", "首帧和尾帧各只能启用一张图片。") : middleProblem ? middleProblem : middleInfo(active, videoSeconds(), text) ? middleInfo(active, videoSeconds(), text) : "", Boolean(audioUnlinked || refs > 32 || first > 1 || last > 1 || middleProblem && !continuing));
+        message(audioUnlinked ? text('Connect audio to "Reference audio", or set "Audio use" to "reference", before generating.', '请连接“参考音频”，或把“音频用途”改为“参考”后再生成。') : refs > 32 ? text('There are more than 32 references; remove some before generating.', '参考素材超过 32 个，可移除部分后再生成。') : continuing && active.filter(row => row.role === 'reference' && mediaKind(row.file) === 'image').length > 3 ? text('When extending, only the first 3 images are used.', '接续时只用前 3\u00a0张图片。') : (first || last || middle.length) && continuing ? (middle.length ? middleLabels.continuing(text) : text("When extending a video, the first and last frames are used as references.", "接续视频时，首尾帧会用作参考图。")) : first > 1 || last > 1 ? text("Keep only one first frame and one last frame enabled.", "首帧和尾帧各只能启用一张图片。") : middleProblem ? middleProblem : middleInfo(active, videoSeconds(), text) ? middleInfo(active, videoSeconds(), text) : "", Boolean(audioUnlinked || refs > 32 || first > 1 || last > 1 || middleProblem && !continuing));
         if (!rows.length && !connections.childElementCount) cards.append(el("div", text("Drop images or video here", "拖入图片或视频"), "fv-empty"));
         if (!rows.length && connections.childElementCount) cards.append(el('div', text('Media comes from the connected inputs; no upload is needed.', '素材来自已连接的输入，无需上传。'), 'fv-connected-card'));
         rows.forEach((row, index) => {
@@ -1058,7 +1058,7 @@ app.registerExtension({
                 }
                 const quality = this.widgets?.find(w => w.name === 'two_pass');
                 if (quality) {
-                    quality.label = text('Two-pass acceleration', '二采加速');
+                    quality.label = text('Faster second pass', '二采加速');
                     quality.tooltip = text('Usually faster: generates at a lower resolution, then upscales and refines.', '通常更快：先用低分辨率生成，再放大细化。');
                 }
                 // The same names as the creation panel's Advanced tray.

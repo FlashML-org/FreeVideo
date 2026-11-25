@@ -30,7 +30,7 @@ export const CHAPTERS = [
         zh: '画幅、时长和质量在这一行；进度显示在画面上。'},
     {id: 'longer', anchor: '[data-view="editor"]', target: dialog => tabsOrLength(dialog), added: true,
         title: ['Longer and more', '更长、更完整'],
-        en: 'A longer duration is made in parts; continue part by part in Edit, or let Autopilot film it.',
+        en: 'A longer duration is made in parts; extend part by part in Edit, or let Autopilot film it.',
         zh: '填更长的时长会自动分段；也可以到剪辑视图逐段接续，或交给 AI 全自动拍完。'},
     {id: 'editor-timeline', group: 'editor', anchor: '[data-fv-guide="editor-timeline"]', added: true, title: ['Drag it in', '拖进来'],
         en: 'Drag a video here.', zh: '把视频拖到这里。'},
@@ -655,7 +655,7 @@ export function createFirstStart({dialog, api, cn, prompt, onPrefill, onGenerate
         const longer = tipped(el('button', text('longer'), 'fv-tour-btn fv-primary'), text('longer'), t('Make the next part from the end', '从结尾生成下一段'));
         edit.type = longer.type = 'button'; edit.dataset.kind = 'fill'; longer.dataset.kind = 'primary'; longer.dataset.fvTourPrimary = '';
         foot.append(edit, longer);
-        body.append(head, el('p', t('Continue from the end, or arrange it in Edit.', '从结尾继续下一段，或到剪辑视图里排列。'), 'fv-tour-text'), foot);
+        body.append(head, el('p', t('Extend from the end, or arrange it in Edit.', '从结尾继续下一段，或到剪辑视图里排列。'), 'fv-tour-text'), foot);
         const leave = async action => { next?.close('now', 'replace'); next = null; await action(); };
         // The real result button continues the clip directly; the tutorial is the fallback when it is not on screen.
         longer.onclick = () => leave(() => { const real = dialog.querySelector('.fv-action-extend'); return real && !real.disabled ? real.click() : onLonger(); });

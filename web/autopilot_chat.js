@@ -67,7 +67,7 @@ const BUSY = {music: ['Making music', '制作配乐']};
 // A failed card's one action: go on keeping the finished parts, run the same request again, or say the words again.
 const AGAIN = {continue: ['Continue generating', '继续生成'], retry: ['Retry', '重试'], resend: ['Send again', '再发一次']};
 const WHITEBOX = {
-    generate: ['Generate video', '生成视频'], edit: ['Edit prompt', '改提示词'], decline: ['Skip', '跳过'],
+    generate: ['Generate video', '生成视频'], edit: ['Edit prompt', '修改提示词'], decline: ['Skip', '跳过'],
     approved: ['Approved', '已确认'], superseded: ['Replaced', '已被替换'], declined: ['Skipped', '已跳过'],
     preview: ['Whitebox preview', '白模预览'], unavailable: ['Preview could not load', '预览加载失败'],
     play: ['Play', '播放'], pause: ['Pause', '暂停'], seconds: ['s', '秒'],

@@ -208,7 +208,7 @@ function baseActivityLabel(message, t, plan = {}, secondPass = false, references
     if (message.prediction || message.sampling_plan) {
         if (!ranOnePass(plan)) return named('prepare');
         const n = plan.base_steps;
-        return {key: 'prepare', text: t('Two-pass acceleration needs 8 first-pass steps. This video uses a single {n}-step pass.',
+        return {key: 'prepare', text: t('The faster second pass needs 8 first-pass steps. This video uses a single {n}-step pass.',
             '只有一采为 8 步时才会使用二采加速，这次按 {n} 步只采样一遍。', { n })};
     }
     if (phase === 'recovery') return message.retry?.reuse_sampling === true ? named('decode')

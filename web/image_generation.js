@@ -291,6 +291,9 @@ export function imageGenError(code, info, t) {
         too_many_boxes: ['A layout takes at most 8 boxes. Delete one, then generate again.', '布局最多 8 个框。请删掉一个，再生成。'],
         layout_too_long: ['The words in the layout are too long. Shorten the lines in the boxes, then generate again.', '布局里的文字太长。请把框里的话写短一些，再生成。'],
         invalid_media: ['This image cannot be read or is larger than 4096×4096 pixels. Choose another image.', '这张图片读不出来，或超过 4096×4096 像素。请换一张图片。'],
+        invalid_points: ['Choose 1 to 16 points inside the image, with at least one to select (1 selects, 0 excludes).',
+            '请在图片内选 1 到 16 个点，其中至少一个是选中点（1 表示选中，0 表示排除）。'],
+        segment_not_installed: ['The click-select model is not installed. Download it first.', '点选模型尚未安装，请先下载点选模型。'],
         reload: ['Image generation was interrupted. Try again.', '图片生成中途被打断，请重试。'],
         engine_error: ['The image engine returned an unreadable answer. Try again; if it keeps failing, report the problem.', '图像引擎返回了无法读取的结果。请重试；仍然失败请提交问题。'],
         connection_lost: ['Lost the connection to FreeVideo. Try again once it is back.', '与 FreeVideo 的连接已断开，恢复后请重试。'],
@@ -404,6 +407,15 @@ export function imageReportBar(card, report_id, t, {productVersion = () => null,
 
 // Shared by the editor and the other image entry points. Only the opaque report
 // ID goes in the request; raw service messages are never shown in the page.
+// The failures the person fixes by changing a setting or making room (image_gen/failure.py NO_REPORT; a test keeps the two
+// equal): the engine makes no report for them and the card offers no "Report a problem".
+export const NO_REPORT = new Set([
+    'busy', 'cancelled', 'disk_full', 'duplicate_lora', 'invalid_dimensions', 'invalid_lora_model',
+    'invalid_lora_strength', 'invalid_loras', 'invalid_media', 'invalid_points', 'invalid_prompt', 'invalid_request',
+    'invalid_seed', 'lora_not_found', 'output_unwritable', 'segment_not_installed', 'small_memory',
+    'too_many_images', 'too_many_loras'
+]);
+
 export function renderImageFailure(host, {error, report_id, stage, step, fitted, info, memory, other_usage, cause, misses} = {}, t,
     {productVersion = () => null, fetchApi = globalThis.fetch.bind(globalThis), retry = null, retried = Boolean(retry)} = {}) {
     // `retry` ({label: [en, zh], onClick}) puts the page's Retry first in the card's own action row;
@@ -425,8 +437,8 @@ export function renderImageFailure(host, {error, report_id, stage, step, fitted,
         again.className = 'fv-action fv-action-primary fv-image-retry'; again.textContent = t(...retry.label);
         again.onclick = () => retry.onClick();
     }
-    // The card always has a way to report: the diagnostic report (with its own technical details) when the engine made one,
-    // else a form that carries the code and stage, and the same facts under a details fold.
+    // A failure the engine reports has a way to report it: the diagnostic report (with its own technical details) when the
+    // engine made one, else a form that carries the code and stage. The same facts stay under a details fold either way.
     let bar;
     if (report_id) ({bar} = imageReportBar(card, report_id, t, {productVersion, fetchApi}));
     else {
@@ -435,9 +447,10 @@ export function renderImageFailure(host, {error, report_id, stage, step, fitted,
             [['Cause', '原因'], cause], [['Last attempts', '最后几次请求'], Array.isArray(misses) ? misses.slice(-3).map(miss => typeof miss === 'string' && /^[a-z][a-z0-9_]{0,31}$/.test(miss) ? miss : 'other').join(', ') : ''], [['Memory', '内存'], memory]].filter(([, v]) => v);
         bar = doc.createElement('div'); bar.className = 'fv-actions';
         // Drawn as the card's other actions (Retry, Download report): their border, focus ring and press.
-        bar.append(issueButton(t, () => ({where: ['Image generation', '图像生成'], message: facts.map(([[en, zh], v]) => `${t(en, zh)}: ${v}`).join('\n')}), {className: 'fv-action'}));
+        if (!NO_REPORT.has(error))
+            bar.append(issueButton(t, () => ({where: ['Image generation', '图像生成'], message: facts.map(([[en, zh], v]) => `${t(en, zh)}: ${v}`).join('\n')}), {className: 'fv-action'}));
         if (again) bar.prepend(again);
-        card.append(bar);
+        if (bar.childElementCount) card.append(bar);
         const details = doc.createElement('details'); details.className = 'fv-image-failure-details';
         const summary = doc.createElement('summary'); summary.textContent = t('Technical details', '技术详情'); details.append(summary);
         for (const [[en, zh], v] of facts) { const row = doc.createElement('div'); row.textContent = `${t(en, zh)}: ${v}`; details.append(row); }

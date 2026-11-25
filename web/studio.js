@@ -831,7 +831,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // The library's own upload of a picture goes to the same streaming upload the media panel uses.
     const castUpload = file => uploadMedia(api, file);
     const castBlocked = reason => ({people: t('Up to 3 characters', '最多 3 个角色'), props: t('Up to 2 props', '最多 2 个道具'), full: t('Up to 32 references', '参考素材最多 32 个'),
-        continued: t('No room left when continuing', '接续段位置已满')}[reason] || '');
+        continued: t('No room left when extending', '接续段位置已满')}[reason] || '');
     const castPending = new Map();
     // The feature tour's "try it": one example into this panel's media list, prompt and settings.
     const canTryTour = entry => !busy && !queued && !capturing && (!entry.prompt || !linked(node, 'text'))
@@ -1111,7 +1111,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         for (const mark of sizeTicks.children) { mark.disabled = mp.disabled; setAttr(mark, 'aria-pressed', String(Math.abs(Number(mark.dataset.pixels) - Number(mp.value)) < .005)); }
         const w = extension.source?.geometry.width ?? value(node, 'width'), h = extension.source?.geometry.height ?? value(node, 'height');
         sizeReadout.textContent = dimensionsLinked && !extension.source ? t('Size from connected nodes', '尺寸来自已连接节点') : `${Number(mp.value).toFixed(2)} MP · ${w} × ${h}`;
-        if (mp.disabled) sizeSlider.dataset.fvTipWhy = extension.source ? t('A continued video keeps its size', '接着生成时沿用原视频尺寸') : t('Set by connected nodes', '由连接的节点决定');
+        if (mp.disabled) sizeSlider.dataset.fvTipWhy = extension.source ? t('An extended video keeps its size', '接着生成时沿用原视频尺寸') : t('Set by connected nodes', '由连接的节点决定');
         else delete sizeSlider.dataset.fvTipWhy;
     };
     resolutionControl.append(sizeSlider, sizeTicks, resolutionSelect);
@@ -1500,7 +1500,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // A continuation keeps a two-pass level (Light or Medium).
     function continuationReason() {
         const level = effortFor(8, true, 3, null, effort.levels(), upscaleNow());
-        return level?.name === 'Medium' ? t('A continuation uses the Medium level.', '接着生成使用标准档。') : t('A continuation uses the Light level.', '接着生成使用轻量档。');
+        return level?.name === 'Medium' ? t('An extended part uses the Medium level.', '接着生成使用标准档。') : t('An extended part uses the Light level.', '接着生成使用轻量档。');
     }
     function showEffortEstimate(steps = Number(baseSteps.value), twoPassPlan = twoPass.checked, cache = stepCacheNow(), factor = upscaleNow()) {
         effort.setWarning('');
