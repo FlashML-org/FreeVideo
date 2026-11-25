@@ -4,6 +4,7 @@ import re
 from .terminal_ui import clean
 from .model_repair import PROGRESS as MODEL_REPAIR_PROGRESS
 from .model_status import NAMES
+from .i18n import KEY_SEPARATOR, catalog, code_language, lookup
 
 
 ACTION_COPY = {
@@ -185,26 +186,33 @@ def size_text(value, decimal_sizes=False):
 
 
 class Phrase(str):
-    """Text shown in one interface language that keeps the other, so a message already
-    on screen can follow a language switch. Equal to, and used as, the shown text."""
+    """Text shown in one interface language that keeps the others, so a message already on screen can follow a language
+    switch. Equal to, and used as, the shown text. language is a tag ('en', 'zh-Hans', a language file's) or, as before,
+    True for Simplified Chinese and False for English. Another language is built from make with the file's entries."""
 
-    def __new__(cls, en, zh, chinese):
-        text = super().__new__(cls, zh if chinese else en)
-        text.en, text.zh = en, zh
+    def __new__(cls, en, zh, language, make=None):
+        from .i18n import code_language, tr
+        tag = 'zh-Hans' if language is True else 'en' if language in (False, None) else code_language(language)
+        shown = zh if tag == 'zh-Hans' else en if tag == 'en' or make is None else \
+            make(lambda e, z, values=None: tr(e, z, tag, values))
+        text = super().__new__(cls, shown)
+        text.en, text.zh, text.make = en, zh, make
         return text
 
     @classmethod
-    def build(cls, make, chinese):
-        """make(t) builds the text with t(en, zh); it is built once per language."""
-        return cls(make(lambda en, zh: en), make(lambda en, zh: zh), chinese)
+    def build(cls, make, language):
+        """make(t) builds the text with t(en, zh) or t(en, zh, values); it is built once per language."""
+        from .i18n import fill
+        return cls(make(lambda en, zh, values=None: fill(en, values) if values else en),
+                   make(lambda en, zh, values=None: fill(zh, values) if values else zh), language, make)
 
-    def follow(self, chinese):
-        return Phrase(self.en, self.zh, chinese)
+    def follow(self, language):
+        return Phrase(self.en, self.zh, language, self.make)
 
 
-def follow_language(value, chinese):
+def follow_language(value, language):
     """The value in the interface language now chosen; text that kept no other language is unchanged."""
-    return value.follow(chinese) if isinstance(value, Phrase) else value
+    return value.follow(language) if isinstance(value, Phrase) else value
 
 
 def source_name(value, zh=False):
@@ -298,7 +306,45 @@ EN_PLAIN = {r'\d+ files / folders scanned': 'Finding files', r'shard \d+ / \d+':
             r'retry \d+ in \d+s': 'Retrying download'}
 
 
+# Progress text the engine sends in English: a beginning followed by more text, and whole lines with values. The Chinese is
+# the code's own; another language's file holds the same English (the pattern itself for a line with values, its
+# replacement written with \\1, \\2) and its own text.
+# Stage names the engine reports in Chinese, with their English: written (English, Chinese) so the language files collect
+# them like every other pair.
+CHINESE_STAGES = (('Checking offline packages', '检查离线包'), ('Checking packages', '检查配套包'), ('Downloading models', '下载模型'))
+ZH_PREFIXES = (
+    MODEL_REPAIR_PROGRESS,
+        ('Switched current download to ', '已切换至 '), ('Connecting to ', '正在连接'),
+        ('Assemble downloaded parts', '合并已下载文件'), ('Reuse verified FP8 ', '使用已有模型文件 '),
+        ('Prepare FP8 ', '准备模型文件 '), ('Verified ', '已校验'), ('Verify ', '正在校验'),
+        ('Download ', '正在下载'), ('Prepare ', '准备 '), ('Source: ', '下载源：'), ('Log: ', '日志：'),
+)
+ZH_PATTERNS = (
+        (r'Downloading packages · about (.+) across (\d+) files', r'下载组件 · 约 \1，共 \2 个文件'),
+        (r'about (.+) across (\d+) files', r'约 \1，共 \2 个文件'),
+        (r'This is the first installation of the native runtime for this computer, so the runtime components are downloaded '
+         r'again \(about (.+)\)\.', r'首次安装适用于这台电脑的原生运行环境，需要重新下载运行组件（约 \1）。'),
+        (r'This is the first installation of the native runtime for this computer, so the runtime components are downloaded '
+         r'again\.', '首次安装适用于这台电脑的原生运行环境，需要重新下载运行组件。'),
+        (r'(\d+) files / folders scanned', '正在查找文件'),
+        (r'Testing download sources (\d+ / \d+)', r'正在测试下载源 \1'),
+        (r'(\d+ / \d+) files', r'\1 个文件'), (r'shard (\d+ / \d+)', '正在下载'),
+        (r'([\d.]+ MiB) retained', r'已保留 \1'), (r'([\d.]+ GiB) released', r'已释放 \1'),
+        (r'([\d.]+ MiB) downloaded', r'已下载 \1'),
+        (r'Resuming ([\d.]+ MiB) retained', r'继续下载，已保留 \1'),
+        (r'retry (\d+) in (\d+)s', '正在重试下载'),
+        (r'Receiving objects:.*', '正在下载组件'), (r'Resolving deltas:.*', '正在整理组件'),
+        (r'Updating files:.*', '正在准备文件'),
+)
+
+
 def display(value, zh=False):
+    """Engine progress text as the interface shows it. `zh` is True or False (Simplified Chinese or English) or an interface
+    language tag; a language with a file takes its entries, and plain English where the file has none."""
+    language = 'zh-Hans' if zh is True else 'en' if not zh else code_language(zh)
+    if language not in ('en', 'zh-Hans'):
+        return display_from(without_names(clean(value)), catalog(language))
+    zh = language == 'zh-Hans'
     value = without_names(clean(value))
     if not zh:
         if ' · ' in value:
@@ -310,7 +356,7 @@ def display(value, zh=False):
             if value.startswith(prefix):
                 return translated + display(value[len(prefix):])
         # English names for stages whose internal names describe how they run, not what they do.
-        value = {'检查离线包': 'Checking offline packages', '检查配套包': 'Checking packages', '下载模型': 'Downloading models',
+        value = {**{zh: en for en, zh in CHINESE_STAGES},
                 'Prepare Python': 'Prepare environment',
                 'Install Python': 'Install environment',
                 'Download PyTorch + CUDA': 'Download runtime components',
@@ -354,35 +400,42 @@ def display(value, zh=False):
         return source_name(value, True)
     if ' · ' in value:
         return ' · '.join(display(part, True) for part in value.split(' · '))
-    for prefix, translated in (
-        MODEL_REPAIR_PROGRESS,
-        ('Switched current download to ', '已切换至 '), ('Connecting to ', '正在连接'),
-        ('Assemble downloaded parts', '合并已下载文件'), ('Reuse verified FP8 ', '使用已有模型文件 '),
-        ('Prepare FP8 ', '准备模型文件 '), ('Verified ', '已校验'), ('Verify ', '正在校验'),
-        ('Download ', '正在下载'), ('Prepare ', '准备 '), ('Source: ', '下载源：'), ('Log: ', '日志：'),
-    ):
+    for prefix, translated in ZH_PREFIXES:
         if value.startswith(prefix):
             return translated + display(value[len(prefix):], True)
-    for pattern, translated in (
-        (r'Downloading packages · about (.+) across (\d+) files', r'下载组件 · 约 \1，共 \2 个文件'),
-        (r'about (.+) across (\d+) files', r'约 \1，共 \2 个文件'),
-        (r'This is the first installation of the native runtime for this computer, so the runtime components are downloaded '
-         r'again \(about (.+)\)\.', r'首次安装适用于这台电脑的原生运行环境，需要重新下载运行组件（约 \1）。'),
-        (r'This is the first installation of the native runtime for this computer, so the runtime components are downloaded '
-         r'again\.', '首次安装适用于这台电脑的原生运行环境，需要重新下载运行组件。'),
-        (r'(\d+) files / folders scanned', '正在查找文件'),
-        (r'Testing download sources (\d+ / \d+)', r'正在测试下载源 \1'),
-        (r'(\d+ / \d+) files', r'\1 个文件'), (r'shard (\d+ / \d+)', '正在下载'),
-        (r'([\d.]+ MiB) retained', r'已保留 \1'), (r'([\d.]+ GiB) released', r'已释放 \1'),
-        (r'([\d.]+ MiB) downloaded', r'已下载 \1'),
-        (r'Resuming ([\d.]+ MiB) retained', r'继续下载，已保留 \1'),
-        (r'retry (\d+) in (\d+)s', '正在重试下载'),
-        (r'Receiving objects:.*', '正在下载组件'), (r'Resolving deltas:.*', '正在整理组件'),
-        (r'Updating files:.*', '正在准备文件'),
-    ):
+    for pattern, translated in ZH_PATTERNS:
         if re.fullmatch(pattern, value):
             return re.sub(pattern, translated, value)
     return value
+
+
+def display_from(value, entries):
+    """display() for a language with a file: the same steps as the Chinese, each looked up in the file's entries (the
+    English with its Chinese first, for an English with more than one meaning, then the English alone)."""
+    def own(en, zh):
+        for key in (en + KEY_SEPARATOR + zh, en):
+            if isinstance(entries.get(key), str):
+                return entries[key]
+        return None
+
+    text = own(value, ZH[value]) if value in ZH else entries.get(value)
+    if text is not None:
+        return text
+    if value in SOURCES:
+        return lookup(entries, *SOURCES[value])
+    if ' · ' in value:
+        return ' · '.join(display_from(part, entries) for part in value.split(' · '))
+    for prefix, zh in ZH_PREFIXES:
+        if value.startswith(prefix) and own(prefix, zh) is not None:
+            return own(prefix, zh) + display_from(value[len(prefix):], entries)
+    for pattern, zh in ZH_PATTERNS:
+        sentence = own(pattern, zh)
+        match = re.fullmatch(pattern, value) if sentence is not None else None
+        if match:
+            # \1, \2 in the file's sentence take the values; any other backslash is text, never an error.
+            return re.sub(r'\\([1-9])', lambda ref: match.group(int(ref.group(1))) or '', sentence)
+    plain = display(value)
+    return entries.get(plain, plain)
 
 
 def progress_view(event, zh=False):

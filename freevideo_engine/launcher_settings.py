@@ -32,8 +32,37 @@ def default_language():
                 return language
         except (OSError, AttributeError, ValueError):
             pass
+    if sys.platform == 'win32':
+        language = windows_language()
+        if language:
+            return language
     import locale
-    return (locale.getlocale()[0] or '').lower()
+    try:
+        return (locale.getlocale()[0] or '').lower()
+    except ValueError:                        # an unparsable locale setting: no system language, English follows
+        return ''
+
+
+def windows_language():
+    """Windows's display language as a tag ('zh-CN', 'en-US'), else its regional format's; '' when neither can be read.
+    locale.getlocale() there gives a full name such as 'Chinese (Simplified)_China', which no language tag matches."""
+    try:
+        import ctypes
+        kernel = ctypes.windll.kernel32
+        count, size = ctypes.c_ulong(0), ctypes.c_ulong(0)
+        MUI_LANGUAGE_NAME = 0x8
+        if kernel.GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, ctypes.byref(count), None, ctypes.byref(size)) and size.value:
+            buffer = ctypes.create_unicode_buffer(size.value)
+            if kernel.GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, ctypes.byref(count), buffer, ctypes.byref(size)):
+                first = buffer.value          # the list is NUL-separated; value stops at the first NUL
+                if first:
+                    return first
+        buffer = ctypes.create_unicode_buffer(85)
+        if kernel.GetUserDefaultLocaleName(buffer, 85):
+            return buffer.value
+    except Exception:                         # any failure of the system call reads as "not known": English follows
+        pass
+    return ''
 
 
 def sanitize(value):

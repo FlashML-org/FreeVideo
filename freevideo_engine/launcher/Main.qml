@@ -9,6 +9,10 @@ ApplicationWindow {
     color: unifiedChrome ? theme.canvas : theme.bg
     width: 1280; height: 860
     property var s: initialState
+    // Controls take the window's font; plain text items bind the same list (FText and the few below).
+    font.family: backend.fontFamily
+    // The web page's settings change the same interface language; take it when the launcher comes back to the front.
+    onActiveChanged: if (active) backend.followSavedLanguage()
     readonly property var downloads: backend.downloadList
     // Keep expansion by family across language changes and new checked lists.
     property var downloadExpanded: ({})
@@ -54,7 +58,20 @@ ApplicationWindow {
     property string previousPage: ""
     property bool errorDetailsOpen: false
     property string previousError: ""
-    function t(en, zh) { return s.zh ? zh : en }
+    // The interface text for a pair, the rule of web/i18n.js: English and Simplified Chinese are the text written here;
+    // another language reads its file (the entry for both, then for the English, then the English itself). {name}
+    // placeholders are filled from values. A binding through t() follows the language and its file, not every state change.
+    readonly property string uiLanguage: s.ui_language || (s.zh ? "zh-Hans" : "en")
+    readonly property var catalog: backend.catalog
+    function fill(text, values) {
+        return values ? String(text).replace(/\{(\w+)\}/g, (whole, name) => Object.prototype.hasOwnProperty.call(values, name) ? String(values[name]) : whole) : text
+    }
+    function t(en, zh, values) {
+        if (uiLanguage === "zh-Hans") return fill(zh, values)
+        if (uiLanguage === "en") return fill(en, values)
+        const own = key => catalog && typeof catalog[key] === "string" ? catalog[key] : null
+        return fill(own(en + "\u241f" + zh) ?? own(en) ?? en, values)
+    }
     function releaseVersion(value) { return value && value.product_version ? "v" + value.product_version : value && value.version || "—" }
     function releaseSummary(value) { return value && value.release_notes ? value.release_notes[s.zh ? "zh" : "en"].summary : "" }
     readonly property var currentRelease: s.update.current_release || {version: s.update.current}
@@ -72,7 +89,7 @@ ApplicationWindow {
     // While something downloads, the installer gives the seconds left from its bytes and speed; nothing otherwise.
     readonly property string remainingText: !number(s.remaining_seconds) || s.remaining_seconds <= 0 ? ""
         : s.remaining_seconds < 60 ? t("Less than a minute left", "预计还需不到 1 分钟")
-        : t("About " + Math.round(s.remaining_seconds / 60) + "\u00a0min left", "预计还需约 " + Math.round(s.remaining_seconds / 60) + "\u00a0分钟")
+        : t("About {minutes}\u00a0min left", "预计还需约 {minutes}\u00a0分钟", {minutes: Math.round(s.remaining_seconds / 60)})
     readonly property var availableRelease: s.update.candidate || (s.update.engine ? currentRelease : null)
     readonly property var availableEarlier: s.update.candidate ? (s.update.candidate_earlier || []) : s.update.engine ? (s.update.engine_earlier || []) : []
     function sourceName(value) { return ({"auto": t("Automatic", "自动选择"), "official": "Hugging Face", "hf-mirror": t("HF Mirror", "HF 镜像"), "modelscope": t("ModelScope", "魔搭")})[value] || value }
@@ -102,7 +119,7 @@ ApplicationWindow {
         var size = gb(n), speed = rate > 0 ? rate : s.bytes_per_second
         if (!(speed > 0) || !(n > 0)) return size
         var seconds = n / speed, minutes = Math.ceil(seconds / 60)
-        return size + " · " + (seconds >= 60 ? t("about " + minutes + " min", "约 " + minutes + " 分钟") : t("under 1 min", "不到 1 分钟"))
+        return size + " · " + (seconds >= 60 ? t("about {minutes} min", "约 {minutes} 分钟", {minutes: minutes}) : t("under 1 min", "不到 1 分钟"))
     }
     // The home-page line for the prompt model: the suggestion, then progress, a pause or the reason it stopped.
     function promptModelLine() {
@@ -110,13 +127,13 @@ ApplicationWindow {
         if (m.busy) {
             var rate = m.install.bytes_per_second, left = m.total_bytes - m.install.done
             var more = rate > 0 || s.bytes_per_second > 0 ? sizeAndTime(left, rate).split(" · ")[1] : ""
-            return t("Downloading the prompt model · ", "正在下载提示词模型 · ") + gb(m.install.done) + " / " + total + (more ? " · " + more : "")
+            return t("Downloading the prompt model · {done} / {total}", "正在下载提示词模型 · {done} / {total}", {done: gb(m.install.done), total: total}) + (more ? " · " + more : "")
         }
         if (m.checking) return t("Checking the prompt model…", "正在检查提示词模型…")
         if (m.failure) return m.failure
-        if (m.install.state === "cancelled") return t("Prompt model download paused · ", "提示词模型下载已暂停 · ") + done + " / " + total
-        return t("You can also download the prompt model (", "可以再下载提示词模型（") + sizeAndTime(m.total_bytes).replace(" · ", t(", ", "，"))
-               + t(") to refine prompts before generating.", "），生成前会自动完善提示词。")
+        if (m.install.state === "cancelled") return t("Prompt model download paused · {done} / {total}", "提示词模型下载已暂停 · {done} / {total}", {done: done, total: total})
+        return t("You can also download the prompt model ({size}) to refine prompts before generating.", "可以再下载提示词模型（{size}），生成前会自动完善提示词。",
+                 {size: sizeAndTime(m.total_bytes).replace(" · ", t(", ", "，"))})
     }
     function bytes(n) {
         // macOS counts in decimal units like Finder: 1.26 TB, 64.4 GB.
@@ -135,15 +152,14 @@ ApplicationWindow {
     function diskLine() {
         var d = disk
         if (!d) return ""
-        var en = "\"" + d.name + "\"", zh = "“" + d.name + "”"
-        if (d.problem === "fat32") return t(en + " can't store files over 4 GB. Choose another disk.", zh + " 不能存放 4 GB 以上的文件，请换一块硬盘。")
-        if (d.problem === "exfat") return t(en + " can't hold FreeVideo. Choose another disk.", zh + " 不能安装 FreeVideo，请换一块硬盘。")
-        if (d.problem === "disconnected") return t(en + " is not connected. Connect it to continue.", zh + "没有连接，请接上这块硬盘。")
-        if (d.problem === "read-only") return t(en + " is read-only. Choose another disk.", zh + " 不能写入，请换一块硬盘。")
-        if (d.short) return t(en + " has " + d.free + " available; this installation needs about " + d.need + ".",
-                              zh + "可用 " + d.free + "，这次安装需要约 " + d.need + "。")
-        return t(d.name + " · " + d.free + " available", d.name + " · 可用 " + d.free)
-            + (d.need ? t(" · about " + d.need + " needed", " · 需要约 " + d.need) : "")
+        var named = {name: d.name, free: d.free, need: d.need}
+        if (d.problem === "fat32") return t("\"{name}\" can't store files over 4 GB. Choose another disk.", "“{name}” 不能存放 4 GB 以上的文件，请换一块硬盘。", named)
+        if (d.problem === "exfat") return t("\"{name}\" can't hold FreeVideo. Choose another disk.", "“{name}” 不能安装 FreeVideo，请换一块硬盘。", named)
+        if (d.problem === "disconnected") return t("\"{name}\" is not connected. Connect it to continue.", "“{name}”没有连接，请接上这块硬盘。", named)
+        if (d.problem === "read-only") return t("\"{name}\" is read-only. Choose another disk.", "“{name}” 不能写入，请换一块硬盘。", named)
+        if (d.short) return t("\"{name}\" has {free} available; this installation needs about {need}.", "“{name}”可用 {free}，这次安装需要约 {need}。", named)
+        return t("{name} · {free} available", "{name} · 可用 {free}", named)
+            + (d.need ? t(" · about {size} needed", " · 需要约 {size}", {size: d.need}) : "")
     }
     // The label before diskLine() when the line states the disk rather than a problem.
     function diskLabel() { return disk && !disk.problem && !disk.short ? t("Disk:", "所在硬盘：") : "" }
@@ -202,15 +218,17 @@ ApplicationWindow {
                                                  : t("about 10–30% faster on this GPU", "在这张显卡上预计快约 10–30%")
         if (u.status === "available")
             return (u.resized ? t("Download size updated. ", "下载量已更新。") : "")
-                + t("The faster model is ", "更快的模型") + speed + t(" and closer to the original quality. It downloads ", "，画质也更接近原版。需要下载约 ") + bytes(u.download_bytes)
+                + t("The faster model is {speed} and closer to the original quality. It downloads {size}", "更快的模型{speed}，画质也更接近原版。需要下载约 {size}",
+                    {speed: speed, size: bytes(u.download_bytes)})
                 + (lora ? t("; the old model stays so your LoRAs keep working, and no space is freed.", "；为了继续使用已有的 LoRA，旧模型会保留，空间不会释放。")
-                        : t(", then removes the old model and frees about ", "，完成后删除旧模型，释放约 ") + bytes(u.release_bytes) + t(".", "。"))
+                        : t(", then removes the old model and frees about {size}.", "，完成后删除旧模型，释放约 {size}。", {size: bytes(u.release_bytes)}))
                 + t(" You can keep generating while it downloads.", "下载期间可以继续生成。")
         if (u.status === "low-disk")
-            return t("It needs about ", "需要约 ") + bytes(u.required_bytes) + t(" free; ", " 可用空间，目前剩 ") + bytes(u.free_bytes)
-                + t(" is free. Clean the download cache in Settings → Storage or free some space, then reopen FreeVideo.", "。可以在 设置 → 存储 清理下载缓存，或者腾出空间后重新打开 FreeVideo。")
+            return t("It needs about {required} free; {free} is free. Clean the download cache in Settings → Storage or free some space, then reopen FreeVideo.",
+                     "需要约 {required} 可用空间，目前剩 {free}。可以在 设置 → 存储 清理下载缓存，或者腾出空间后重新打开 FreeVideo。",
+                     {required: bytes(u.required_bytes), free: bytes(u.free_bytes)})
         if (u.status === "downloading")
-            return u.progress && u.progress.unit === "bytes" && u.progress.total ? bytes(u.progress.done) + " / " + bytes(u.progress.total) + t(" · you can keep generating", " · 可以继续生成")
+            return u.progress && u.progress.unit === "bytes" && u.progress.total ? t("{done} / {total} · you can keep generating", "{done} / {total} · 可以继续生成", {done: bytes(u.progress.done), total: bytes(u.progress.total)})
                                                                                    : t("Checking the download…", "正在检查下载内容…")
         if (u.status === "downloaded" && u.waiting === "comfy")
             return t("FreeVideo was not started by the launcher, so it cannot be restarted automatically. Once it is closed, the switch starts; until then the current model keeps working.",
@@ -218,14 +236,14 @@ ApplicationWindow {
         if (u.status === "downloaded" || u.status === "switching")
             return t("Generation pauses for about 2 minutes during the switch; settings and videos are kept.", "切换期间暂停生成约 2 分钟，设置和视频会保留。")
         if (u.status === "releasable" && u.in_use === "int8_convrot")
-            return t("FreeVideo now uses the faster model. Removing the old model frees about ", "已在用更快的模型，删除旧模型可释放约 ") + bytes(u.release_bytes)
-                + t("; only its own files are removed.", "，只删除旧模型自己的文件。")
+            return t("FreeVideo now uses the faster model. Removing the old model frees about {size}; only its own files are removed.",
+                     "已在用更快的模型，删除旧模型可释放约 {size}，只删除旧模型自己的文件。", {size: bytes(u.release_bytes)})
         if (u.status === "releasable")
-            return t("Removing unused model files frees about ", "删除未使用的模型文件可释放约 ") + bytes(u.release_bytes)
-                + t("; the model in use is not touched.", "，正在使用的模型不受影响。")
+            return t("Removing unused model files frees about {size}; the model in use is not touched.", "删除未使用的模型文件可释放约 {size}，正在使用的模型不受影响。",
+                     {size: bytes(u.release_bytes)})
         if (u.status === "releasing") return t("Only the old model's own files are removed.", "只删除旧模型自己的文件。")
         if (u.status === "complete")
-            return (u.released_bytes ? t("Freed ", "已释放 ") + bytes(u.released_bytes) + t(".", "。") : "")
+            return (u.released_bytes ? t("Freed {size}.", "已释放 {size}。", {size: bytes(u.released_bytes)}) : "")
                 + (lora ? t(" The old model stays for your fused LoRAs.", "旧模型为需要合并的 LoRA 保留。") : "")
         if (u.status === "failed")
             return (u.blockers && u.blockers.length ? upgradeBlocker(u.blockers[0]) + t(" ", "") : upgradeCause(u.cause, u.step) + "\n")
@@ -236,14 +254,14 @@ ApplicationWindow {
     }
     function updateHeadline() {
         var phase = s.update.phase
-        if (phase === "downloading") return t("Downloading update ", "正在下载更新 ") + percent(s.update.progress)
+        if (phase === "downloading") return t("Downloading update {percent}", "正在下载更新 {percent}", {percent: percent(s.update.progress)})
         if (phase === "waiting") return t("Updating after the current video finishes", "当前视频生成完成后自动更新")
         if (phase === "restarting") return t("Restarting FreeVideo…", "正在重启 FreeVideo…")
         if (phase === "engine") return t("Updating…", "正在更新…")
         if (phase === "checking") return t("Checking for updates…", "正在检查更新…")
         if (s.update.status === "error") return t("Update incomplete", "更新未完成")
-        if (s.update.candidate) return t("FreeVideo ", "FreeVideo ") + releaseVersion(s.update.candidate) + t(" is available", " 可以更新")
-        return t("New engine ", "新版引擎 ") + releaseVersion(currentRelease) + t(" is ready", " 已就绪")
+        if (s.update.candidate) return t("FreeVideo {version} is available", "FreeVideo {version} 可以更新", {version: releaseVersion(s.update.candidate)})
+        return t("New engine {version} is ready", "新版引擎 {version} 已就绪", {version: releaseVersion(currentRelease)})
     }
     function updateExplanation() {
         var phase = s.update.phase
@@ -252,9 +270,12 @@ ApplicationWindow {
         if (phase === "restarting" || phase === "engine") return t("FreeVideo restarts once; open pages refresh automatically.", "FreeVideo 会重启一次，已打开的页面会自动刷新。")
         if (phase === "checking") return ""
         if (s.update.status === "error" && s.update.error) return s.update.error
-        if (s.update.candidate && s.update.manual) return t("Current version ", "当前版本 ") + releaseVersion(currentRelease) + t(". Download it and replace this version; models and settings are kept.", "。下载新版后替换当前版本，模型和设置会保留。")
-        if (s.update.candidate) return t("Current version ", "当前版本 ") + releaseVersion(currentRelease) + t(". Updating keeps your models and settings and takes about a minute.", "。更新会保留模型和设置，约需 1 分钟。")
-        return t("Installed engine ", "已安装引擎 ") + engineVersion + t(". Updating takes about a minute and keeps your models and settings.", "。更新约需 1 分钟，模型和设置都会保留。")
+        if (s.update.candidate && s.update.manual) return t("Current version {version}. Download it and replace this version; models and settings are kept.",
+            "当前版本 {version}。下载新版后替换当前版本，模型和设置会保留。", {version: releaseVersion(currentRelease)})
+        if (s.update.candidate) return t("Current version {version}. Updating keeps your models and settings and takes about a minute.",
+            "当前版本 {version}。更新会保留模型和设置，约需 1 分钟。", {version: releaseVersion(currentRelease)})
+        return t("Installed engine {version}. Updating takes about a minute and keeps your models and settings.", "已安装引擎 {version}。更新约需 1 分钟，模型和设置都会保留。",
+                 {version: engineVersion})
     }
     // A narrow window may wrap the waiting sentence; "自动继续" is not split in the middle.
     function keepTogether(text) { return String(text).replace("自动继续", "自\u2060动\u2060继\u2060续") }
@@ -375,8 +396,8 @@ ApplicationWindow {
                     spacing: 2
                     Text { objectName: "launcherVersionLabel"; text: versionInfoButton.text; font: versionInfoButton.font
                            color: versionInfoButton.hovered ? theme.text : theme.muted; horizontalAlignment: Text.AlignLeft; Layout.fillWidth: true }
-                    Text { objectName: "engineVersionLabel"; visible: separateVersions; text: t("Engine ", "引擎 ") + engineVersion
-                           font.pixelSize: 10; color: theme.muted; horizontalAlignment: Text.AlignLeft; Layout.fillWidth: true }
+                    Text { objectName: "engineVersionLabel"; visible: separateVersions; text: t("Engine {version}", "引擎 {version}", {version: engineVersion})
+                           font.family: backend.fontFamily; font.pixelSize: 10; color: theme.muted; horizontalAlignment: Text.AlignLeft; Layout.fillWidth: true }
                 }
             }
         }
@@ -433,26 +454,48 @@ ApplicationWindow {
                 id: headerTools
                 anchors.right: parent.right; anchors.rightMargin: win.narrow ? 12 : 20; anchors.verticalCenter: parent.verticalCenter
                 spacing: 12
+                // The same height as the language key, with its top and bottom edges; fully round, since it only shows a state.
+                // The dot and the word are centred as one by their ink (measured as in the language key).
                 Rectangle {
+                    id: pill; objectName: "connectedPill"
                     visible: s.status === "open"; anchors.verticalCenter: parent.verticalCenter
-                    height: 26; width: connected.implicitWidth + 30; radius: 13; color: theme.successSubtle
+                    readonly property real dpr: Screen.devicePixelRatio || 1
+                    readonly property real px: theme.micro
+                    readonly property int dotSize: 7
+                    readonly property int gap: 6
+                    readonly property int pad: 12
+                    TextMetrics { id: connectedInk; font.hintingPreference: Font.PreferNoHinting; font.pixelSize: pill.px * 16; text: connected.text }
+                    readonly property real inkLeft: connectedInk.tightBoundingRect.x / 16
+                    readonly property real inkRight: (connectedInk.tightBoundingRect.x + connectedInk.tightBoundingRect.width) / 16
+                    TextMetrics { id: connectedFirst; font.hintingPreference: Font.PreferNoHinting; font.pixelSize: pill.px * 16; text: connected.text.charAt(0) }
+                    readonly property real inkMiddle: (connectedFirst.tightBoundingRect.y + connectedFirst.tightBoundingRect.height / 2) / 16
+                    readonly property real inkWidth: dotSize + gap + inkRight - inkLeft
+                    readonly property real start: Math.round((width - inkWidth) / 2 * dpr) / dpr
+                    readonly property real baselineY: Math.round((height / 2 - inkMiddle) * dpr) / dpr
+                    height: theme.heightSm; radius: height / 2; color: theme.successSubtle
+                    width: Math.ceil((inkWidth + 2 * pad) * dpr) / dpr
                     Rectangle {
-                        id: liveDot; x: 11; anchors.verticalCenter: parent.verticalCenter; width: 7; height: 7; radius: 4; color: theme.success
+                        id: liveDot; objectName: "connectedDot"
+                        x: pill.start; y: (pill.height - pill.dotSize) / 2
+                        width: pill.dotSize; height: pill.dotSize; radius: pill.dotSize / 2; color: theme.success
                         SequentialAnimation on opacity {
                             running: liveDot.visible; loops: Animation.Infinite
                             NumberAnimation { to: 0.35; duration: 1400; easing.type: Easing.InOutSine }
                             NumberAnimation { to: 1; duration: 1400; easing.type: Easing.InOutSine }
                         }
                     }
-                    FText { id: connected; x: 23; anchors.verticalCenter: parent.verticalCenter; text: t("Connected", "已连接"); font.pixelSize: theme.micro; color: theme.success }
+                    FText {
+                        id: connected; objectName: "connectedText"; wrapMode: Text.NoWrap
+                        x: pill.start + pill.dotSize + pill.gap - pill.inkLeft; y: pill.baselineY - baselineOffset
+                        text: t("Connected", "已连接"); font.pixelSize: pill.px; font.hintingPreference: Font.PreferNoHinting; color: theme.success
+                    }
                 }
-                // Both languages stay visible; the current one is marked.
-                FSegmented {
-                    objectName: "languageSwitch"; compact: true; anchors.verticalCenter: parent.verticalCenter
-                    width: 104; current: s.zh ? "zh" : "en"
-                    options: [{value: "zh", label: "中文"}, {value: "en", label: "EN"}]
-                    onPicked: function(value) { if (value !== current) backend.edit("language", value) }
-                    Accessible.name: t("Language", "语言")
+                // The interface language: a globe and the shown language's own name; the list follows the system or names one.
+                FLanguage {
+                    objectName: "languageSwitch"; anchors.verticalCenter: parent.verticalCenter
+                    languages: s.languages || []; setting: s.language_setting || "auto"; shown: win.uiLanguage; system: s.system_language || win.uiLanguage
+                    t: win.t
+                    onPicked: function(value) { backend.edit("language", value) }
                 }
             }
         }
@@ -503,19 +546,19 @@ ApplicationWindow {
                         // What each download source returned: one short line per source.
                         FText { objectName: "failureSources"; visible: !!s.failure.sources; text: sourceLines(s.failure.sources); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
                         TextEdit {
-                            objectName: "failurePath"; visible: !!s.failure.path; text: s.failure.path || ""
+                            objectName: "failurePath"; visible: !!s.failure.path; text: s.failure.path || ""; font.family: backend.fontFamily
                             readOnly: true; selectByMouse: true; wrapMode: Text.WrapAnywhere; textFormat: TextEdit.PlainText
                             color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true
                             selectionColor: theme.accentDim; selectedTextColor: theme.text
                         }
                         // Repair sets up again from the launcher's own engine, so it brings the update along.
                         FText { objectName: "repairUpdatesEngine"; visible: !!s.update.with_repair; Layout.fillWidth: true; color: theme.text
-                                text: t("Repair also updates the engine to " + releaseVersion(currentRelease) + ".", "修复时会一并更新到新版引擎 " + releaseVersion(currentRelease) + "。") }
+                                text: t("Repair also updates the engine to {version}.", "修复时会一并更新到新版引擎 {version}。", {version: releaseVersion(currentRelease)}) }
                         Flow {
                             visible: !notAFault; Layout.fillWidth: true; spacing: 8
                             // Actions that resolve the problem first, then the report buttons.
                             FButton { objectName: "moveToDisk"; visible: diskFailure && s.form.new_comfy && !!bestDisk; enabled: !s.busy; primary: true
-                                      text: bestDisk ? t("Install on \"" + bestDisk.name + "\"", "改装到“" + bestDisk.name + "”") : ""
+                                      text: bestDisk ? t("Install on \"{name}\"", "改装到“{name}”", {name: bestDisk.name}) : ""
                                       onClicked: backend.useDisk(bestDisk.path) }
                             FButton { objectName: "chooseDisk"; visible: diskFailure && s.form.new_comfy && diskChoices.length > (bestDisk ? 1 : 0); enabled: !s.busy
                                       text: t("Other disks…", "其他硬盘…"); onClicked: diskDialogOpen = true }
@@ -555,9 +598,9 @@ ApplicationWindow {
                     objectName: "reportStatus"
                     visible: s.report.status !== "idle"; Layout.fillWidth: true; font.pixelSize: theme.micro
                     color: s.report.status === "error" ? theme.danger : theme.muted
-                    text: s.report.status === "running" ? t("Exporting full logs…", "正在导出完整日志…") + (s.report.files > 0 ? t(" · " + s.report.files + " files packed", " · 已打包 " + s.report.files + " 个文件") : "") :
-                        s.report.status === "error" ? t("Export failed: ", "导出失败：") + s.report.error :
-                        t("Report saved locally: ", "报告已保存到本机：") + s.report.path +
+                    text: s.report.status === "running" ? t("Exporting full logs…", "正在导出完整日志…") + (s.report.files > 0 ? t(" · {count} files packed", " · 已打包 {count} 个文件", {count: s.report.files}) : "") :
+                        s.report.status === "error" ? t("Export failed: {error}", "导出失败：{error}", {error: s.report.error}) :
+                        t("Report saved locally: {path}", "报告已保存到本机：{path}", {path: s.report.path}) +
                         (s.report.collection_errors ? t("\nReport saved with some diagnostic information missing.", "\n报告已保存，部分诊断信息未能收集。") : "")
                 }
 
@@ -649,7 +692,7 @@ ApplicationWindow {
                         }
                         FMeter { visible: ["running", "preparing"].indexOf(s.offline.status) >= 0; Layout.fillWidth: true; fraction: win.fraction(s.offline); active: visible }
                         FText { visible: !!s.offline.detail; text: s.offline.detail + (number(s.offline.total) ? " · " + bytes(s.offline.done) + " / " + bytes(s.offline.total) : ""); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
-                        FText { visible: s.offline.models > 0; text: t("Model packages also saved for the next step: ", "同时导入的模型包将在下一步使用：") + s.offline.models; color: theme.success; font.pixelSize: theme.micro; Layout.fillWidth: true }
+                        FText { visible: s.offline.models > 0; text: t("Model packages also saved for the next step: {count}", "同时导入的模型包将在下一步使用：{count}", {count: s.offline.models}); color: theme.success; font.pixelSize: theme.micro; Layout.fillWidth: true }
                     }
                 }
 
@@ -822,7 +865,7 @@ ApplicationWindow {
                             }
                         }
                     }
-                    FText { visible: s.offline.models > 0; text: "✓  " + t("Model packages: ", "已导入模型包：") + s.offline.models; color: theme.success; font.pixelSize: theme.micro; Layout.fillWidth: true }
+                    FText { visible: s.offline.models > 0; text: "✓  " + t("Model packages: {count}", "已导入模型包：{count}", {count: s.offline.models}); color: theme.success; font.pixelSize: theme.micro; Layout.fillWidth: true }
                 }
 
                 FCard {
@@ -846,7 +889,7 @@ ApplicationWindow {
                         // the elapsed time and, while something downloads, one estimate of what is left.
                         RowLayout {
                             Layout.alignment: Qt.AlignRight; spacing: 20; visible: !!s.elapsed
-                            FText { objectName: "elapsedText"; text: t("Elapsed ", "已用时 ") + s.elapsed; font.pixelSize: theme.micro; color: theme.muted }
+                            FText { objectName: "elapsedText"; text: t("Elapsed {time}", "已用时 {time}", {time: s.elapsed}); font.pixelSize: theme.micro; color: theme.muted }
                             FText { objectName: "remainingText"; visible: !!remainingText; text: remainingText; font.pixelSize: theme.micro; color: theme.muted }
                         }
                         Rectangle { visible: !!stepText; Layout.fillWidth: true; Layout.topMargin: 4; Layout.bottomMargin: 4; height: 1; color: theme.border }
@@ -1313,7 +1356,7 @@ ApplicationWindow {
                                 ColumnLayout {
                                     Layout.fillWidth: true; spacing: 2
                                     FText { text: t("Connection speed", "连接速度"); Layout.fillWidth: true }
-                                    FText { text: s.probe.status === "running" ? t("Testing sources: ", "正在测速：") + (s.probe.progress?.done || 0) + "/" + (s.probe.progress?.total || "…") : t("Compare sources on this computer.", "比较本机下载源速度。"); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
+                                    FText { text: s.probe.status === "running" ? t("Testing sources: {done}/{total}", "正在测速：{done}/{total}", {done: s.probe.progress?.done || 0, total: s.probe.progress?.total || "…"}) : t("Compare sources on this computer.", "比较本机下载源速度。"); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
                                 }
                                 FButton { text: s.probe.status === "running" ? t("Testing…", "测速中…") : t("Test speed", "测速"); implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1; enabled: s.probe.status !== "running"; onClicked: backend.speedTest() }
                             }
@@ -1347,10 +1390,13 @@ ApplicationWindow {
                             Layout.fillWidth: true; title: t("General", "通用")
                             RowLayout {
                                 Layout.fillWidth: true; spacing: 12
-                                FText { text: t("Language", "语言"); Layout.fillWidth: true }
-                                FSegmented {
-                                    Layout.preferredWidth: 200; current: s.zh ? "zh" : "en"; onPicked: function(value) { if (value !== current) backend.edit("language", value) }
-                                    options: [{value: "zh", label: "简体中文"}, {value: "en", label: "English"}]
+                                FText { text: t("Interface language", "界面语言"); Layout.fillWidth: true }
+                                FLanguage {
+                                    objectName: "settingsLanguage"
+                                    Layout.preferredWidth: implicitWidth; Layout.preferredHeight: implicitHeight
+                                    languages: s.languages || []; setting: s.language_setting || "auto"; shown: win.uiLanguage; system: s.system_language || win.uiLanguage
+                                    t: win.t
+                                    onPicked: function(value) { backend.edit("language", value) }
                                 }
                             }
                             FDivider {}
@@ -1467,8 +1513,9 @@ ApplicationWindow {
                                         color: s.cleanup.status === "error" ? theme.danger : theme.muted
                                         text: s.cleanup.status === "scanning" ? t("Checking…", "正在检查…") :
                                             s.cleanup.status === "cleaning" ? t("Cleaning…", "正在清理…") :
-                                            s.cleanup.status === "ready" ? (s.cleanup.bytes > 0 ? t("About ", "约 ") + bytes(s.cleanup.bytes) + t(" can be freed. Models, environments and videos are kept.", " 可清理，保留模型、运行环境和视频。") : t("Nothing to clean.", "暂无可清理的下载缓存。")) :
-                                            s.cleanup.status === "complete" ? t("Freed ", "已释放 ") + bytes(s.cleanup.released_bytes || 0) + (s.cleanup.skipped ? t(". Some files changed; check again.", "。部分文件已变化，请重新检查。") : t(".", "。")) :
+                                            s.cleanup.status === "ready" ? (s.cleanup.bytes > 0 ? t("About {size} can be freed. Models, environments and videos are kept.", "约 {size} 可清理，保留模型、运行环境和视频。", {size: bytes(s.cleanup.bytes)}) : t("Nothing to clean.", "暂无可清理的下载缓存。")) :
+                                            s.cleanup.status === "complete" ? (s.cleanup.skipped ? t("Freed {size}. Some files changed; check again.", "已释放 {size}。部分文件已变化，请重新检查。", {size: bytes(s.cleanup.released_bytes || 0)})
+                                                                  : t("Freed {size}.", "已释放 {size}。", {size: bytes(s.cleanup.released_bytes || 0)})) :
                                             s.cleanup.status === "busy" ? t("Another task is using these files. Try again when it finishes.", "其他任务正在使用这些文件，完成后可重试。") :
                                             s.cleanup.status === "error" ? (s.cleanup.message || t("Cleanup could not finish. Check again to retry.", "清理未完成，可重新检查后再试。")) :
                                             t("Installation files kept for repairs. Models, environments and videos are never removed.", "安装时缓存的文件，清理时不会删除模型、运行环境和视频。")
@@ -1518,9 +1565,13 @@ ApplicationWindow {
                                     FText { text: t("Video model", "视频模型"); Layout.fillWidth: true }
                                     FText {
                                         objectName: "modelStorageStatus"; Layout.fillWidth: true; font.pixelSize: theme.micro; color: theme.muted; wrapMode: Text.WordWrap
-                                        text: upgrade.status === "available" ? t("A faster model is available: about ", "有更快的模型：下载约 ") + bytes(upgrade.download_bytes)
-                                                  + (upgrade.release_bytes ? t(" to download, about ", "，完成后删除旧模型，释放约 ") + bytes(upgrade.release_bytes) + t(" freed afterwards.", "。") : t(" to download.", "。"))
-                                            : upgrade.status === "releasable" ? (upgrade.in_use === "int8_convrot" ? t("The old model is no longer used; about ", "旧模型已不再使用，删除可释放约 ") : t("Model files not in use; about ", "有没在使用的模型文件，删除可释放约 ")) + bytes(upgrade.release_bytes) + t(" can be freed.", "。")
+                                        text: upgrade.status === "available" ? (upgrade.release_bytes
+                                                    ? t("A faster model is available: about {size} to download, about {freed} freed afterwards.", "有更快的模型：下载约 {size}，完成后删除旧模型，释放约 {freed}。",
+                                                        {size: bytes(upgrade.download_bytes), freed: bytes(upgrade.release_bytes)})
+                                                    : t("A faster model is available: about {size} to download.", "有更快的模型：下载约 {size}。", {size: bytes(upgrade.download_bytes)}))
+                                            : upgrade.status === "releasable" ? (upgrade.in_use === "int8_convrot"
+                                                    ? t("The old model is no longer used; about {size} can be freed.", "旧模型已不再使用，删除可释放约 {size}。", {size: bytes(upgrade.release_bytes)})
+                                                    : t("Model files not in use; about {size} can be freed.", "有没在使用的模型文件，删除可释放约 {size}。", {size: bytes(upgrade.release_bytes)}))
                                             : upgradeHeadline()
                                     }
                                 }
@@ -1591,7 +1642,7 @@ ApplicationWindow {
                             FText { text: s.failure.title + "\n" + (s.failure.action || s.failure.detail); color: theme.danger; font.pixelSize: theme.micro + 1; Layout.fillWidth: true }
                             FText { objectName: "settingsFailureSources"; visible: !!s.failure.sources; text: sourceLines(s.failure.sources); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
                             TextEdit {
-                                objectName: "settingsFailurePath"; visible: !!s.failure.path; text: s.failure.path || ""
+                                objectName: "settingsFailurePath"; visible: !!s.failure.path; text: s.failure.path || ""; font.family: backend.fontFamily
                                 readOnly: true; selectByMouse: true; wrapMode: Text.WrapAnywhere; textFormat: TextEdit.PlainText
                                 color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true
                                 selectionColor: theme.accentDim; selectedTextColor: theme.text
@@ -1604,8 +1655,8 @@ ApplicationWindow {
                             }
                             FText {
                                 visible: s.report.status !== "idle"; Layout.fillWidth: true; font.pixelSize: theme.micro; color: theme.muted
-                                text: s.report.status === "running" ? t("Exporting full logs…", "正在导出完整日志…") + (s.report.files > 0 ? t(" · " + s.report.files + " files packed", " · 已打包 " + s.report.files + " 个文件") : "") :
-                                    s.report.status === "error" ? s.report.error : t("Saved: ", "已保存：") + s.report.path
+                                text: s.report.status === "running" ? t("Exporting full logs…", "正在导出完整日志…") + (s.report.files > 0 ? t(" · {count} files packed", " · 已打包 {count} 个文件", {count: s.report.files}) : "") :
+                                    s.report.status === "error" ? s.report.error : t("Saved: {path}", "已保存：{path}", {path: s.report.path})
                             }
                         }
                     }
@@ -1622,7 +1673,7 @@ ApplicationWindow {
             id: diskContents; spacing: 12
             FText { text: t("Choose a disk", "选择安装硬盘"); font.pixelSize: theme.section + 2; font.weight: Font.DemiBold; Layout.fillWidth: true }
             FText { objectName: "diskDialogText"; Layout.fillWidth: true; color: theme.muted; font.pixelSize: theme.micro + 1
-                    text: (disk && disk.need ? t("This installation needs about " + disk.need + ".\n", "这次安装需要约 " + disk.need + "。\n") : "")
+                    text: (disk && disk.need ? t("This installation needs about {size}.\n", "这次安装需要约 {size}。\n", {size: disk.need}) : "")
                           + t("FreeVideo is installed in a FreeVideo folder on the disk you choose.", "FreeVideo 会装在所选硬盘的 FreeVideo 文件夹里。") }
             Repeater {
                 model: diskChoices
@@ -1644,7 +1695,7 @@ ApplicationWindow {
                                         : modelData.problem === "fat32" ? t("Cannot install", "无法安装")
                                         : t("Not enough space", "空间不够") }
                         }
-                        FText { text: t(modelData.free + " available", "可用 " + modelData.free); color: theme.muted; font.pixelSize: theme.micro + 1; font.features: { "tnum": 1 }; wrapMode: Text.NoWrap; Layout.alignment: Qt.AlignVCenter }
+                        FText { text: t("{free} available", "可用 {free}", {free: modelData.free}); color: theme.muted; font.pixelSize: theme.micro + 1; font.features: { "tnum": 1 }; wrapMode: Text.NoWrap; Layout.alignment: Qt.AlignVCenter }
                     }
                     MouseArea {
                         id: diskArea; anchors.fill: parent; hoverEnabled: true; enabled: modelData.enough && !s.busy
@@ -1807,7 +1858,7 @@ ApplicationWindow {
                         objectName: "archivesDialogText"; color: theme.muted; Layout.fillWidth: true
                         visible: !!s.archives_dialog.body; text: s.archives_dialog.body
                     }
-                    FButton { objectName: "archivesFilesToggle"; visible: !s.archives_dialog.retry; text: t("Show these files (" + s.archives_dialog.count + ")", "查看这些文件（" + s.archives_dialog.count + " 个）") + (archivesExpanded ? "  −" : "  +"); flat: true; leftPadding: 0; onClicked: archivesExpanded = !archivesExpanded }
+                    FButton { objectName: "archivesFilesToggle"; visible: !s.archives_dialog.retry; text: t("Show these files ({count})", "查看这些文件（{count} 个）", {count: s.archives_dialog.count}) + (archivesExpanded ? "  −" : "  +"); flat: true; leftPadding: 0; onClicked: archivesExpanded = !archivesExpanded }
                     ColumnLayout {
                         objectName: "archivesFileList"; visible: archivesExpanded && !s.archives_dialog.retry; Layout.fillWidth: true; spacing: 12
                         Repeater {
@@ -1864,6 +1915,7 @@ ApplicationWindow {
             spacing: 14
             // The update's picture or video on the window's top edge, above what changed.
             FReleaseMedia {
+                t: win.t
                 id: updateMedia; objectName: "updateDialogMedia"
                 Layout.fillWidth: true; Layout.preferredHeight: implicitHeight
                 Layout.topMargin: -updateDialog.topPadding; Layout.leftMargin: -updateDialog.leftPadding
@@ -1903,7 +1955,7 @@ ApplicationWindow {
                 FButton { objectName: "updateDialogReport"; text: reportOpened(s.update.error, t("Update", "更新")) ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(s.update.error, t("Update", "更新")); flat: true; visible: s.update.status === "error" && !!s.update.error; onClicked: backend.reportProblem(s.update.error, t("Update", "更新")) }
             }
             FMeter { Layout.fillWidth: true; visible: s.update.status === "downloading"; active: true; fraction: s.update.progress && s.update.progress.total ? s.update.progress.done/s.update.progress.total : -1 }
-            FReleaseNotes { objectName: "updateReleaseNotes"; visible: !!availableRelease; Layout.fillWidth: true; room: updateDialog.availableWidth; release: availableRelease; earlier: availableEarlier; zh: s.zh; heading: releaseVersion(availableRelease) }
+            FReleaseNotes { t: win.t; objectName: "updateReleaseNotes"; visible: !!availableRelease; Layout.fillWidth: true; room: updateDialog.availableWidth; release: availableRelease; earlier: availableEarlier; zh: s.zh; heading: releaseVersion(availableRelease) }
             FButton { text: t("Version & release notes", "版本与更新说明"); flat: true; Layout.maximumWidth: updateContents.width; onClicked: releaseNotesOpen = true }
             }
             }
@@ -1997,6 +2049,7 @@ ApplicationWindow {
             spacing: 14
             // On the window's top edge, as wide as the window: the update's media, else the current version's.
             FReleaseMedia {
+                t: win.t
                 id: releaseMedia; objectName: "releaseNotesMedia"
                 Layout.fillWidth: true; Layout.preferredHeight: implicitHeight
                 Layout.topMargin: -releaseNotesPopup.topPadding; Layout.leftMargin: -releaseNotesPopup.leftPadding
@@ -2012,13 +2065,13 @@ ApplicationWindow {
                 ColumnLayout {
                     id: releaseContents; width: releaseScroll.availableWidth - releaseScroll.ScrollBar.vertical.width; spacing: 18
                     FText { text: t("Version & release notes", "版本与更新说明"); font.pixelSize: theme.section + 2; font.weight: Font.DemiBold; Layout.fillWidth: true }
-                    FReleaseNotes { visible: !!s.update.candidate; Layout.fillWidth: true; room: releaseNotesPopup.availableWidth; release: s.update.candidate; earlier: s.update.candidate_earlier || []; zh: s.zh; heading: releaseVersion(s.update.candidate) }
+                    FReleaseNotes { t: win.t; visible: !!s.update.candidate; Layout.fillWidth: true; room: releaseNotesPopup.availableWidth; release: s.update.candidate; earlier: s.update.candidate_earlier || []; zh: s.zh; heading: releaseVersion(s.update.candidate) }
                     FDivider { visible: !!s.update.candidate }
-                    FReleaseNotes { objectName: "currentReleaseNotes"; Layout.fillWidth: true; room: releaseNotesPopup.availableWidth; release: currentRelease; zh: s.zh; heading: (separateVersions ? t("Launcher", "启动器") : t("Current version", "当前版本")) + " · " + releaseVersion(currentRelease) }
+                    FReleaseNotes { t: win.t; objectName: "currentReleaseNotes"; Layout.fillWidth: true; room: releaseNotesPopup.availableWidth; release: currentRelease; zh: s.zh; heading: (separateVersions ? t("Launcher", "启动器") : t("Current version", "当前版本")) + " · " + releaseVersion(currentRelease) }
                     FText { objectName: "engineReleaseInfo"; visible: !!engineRelease.product_version || !!engineBuild
-                            text: t("Engine in use: ", "正在使用的引擎：") + (engineRelease.product_version
-                                  ? engineVersion + (engineBuild ? t(" (build ", "（构建号 ") + engineBuild + t(")", "）") : "")
-                                  : t("build ", "构建号 ") + engineBuild)
+                            text: !engineRelease.product_version ? t("Engine in use: build {build}", "正在使用的引擎：构建号 {build}", {build: engineBuild})
+                                  : engineBuild ? t("Engine in use: {version} (build {build})", "正在使用的引擎：{version}（构建号 {build}）", {version: engineVersion, build: engineBuild})
+                                  : t("Engine in use: {version}", "正在使用的引擎：{version}", {version: engineVersion})
                             color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
                 }
             }
@@ -2030,7 +2083,8 @@ ApplicationWindow {
     FDialog {
         objectName: "cleanupConfirmation"; visible: cleanupConfirm
         title: t("Clean download cache?", "清理下载缓存？")
-        text: t("About ", "将释放约 ") + bytes(s.cleanup.bytes || 0) + t(" will be freed. Future repairs may need to download these installation files again.", "。以后修复环境时，可能需要重新下载这些安装文件。")
+        text: t("About {size} will be freed. Future repairs may need to download these installation files again.", "将释放约 {size}。以后修复环境时，可能需要重新下载这些安装文件。",
+                           {size: bytes(s.cleanup.bytes || 0)})
         acceptText: t("Clean", "清理"); rejectText: t("Cancel", "取消")
         onAccepted: { cleanupConfirm = false; backend.cleanupDownloads(true) }
         onRejected: cleanupConfirm = false
@@ -2058,10 +2112,18 @@ ApplicationWindow {
         objectName: "closeChoiceDialog"; visible: closeChoice !== ""
         title: t("Close FreeVideo?", "关闭 FreeVideo？")
         text: closeChoice === "generating"
-              ? t("A video is being generated. Exit stops FreeVideo and this generation. In the background, the generation continues, and this window can be reopened from the " + (closePlace === "menubar" ? "menu bar icon." : closePlace === "taskbar" ? "taskbar." : "tray icon."),
-                  "正在生成视频。退出会停止 FreeVideo 和这次生成；后台运行时生成会继续，可从" + (closePlace === "menubar" ? "菜单栏图标" : closePlace === "taskbar" ? "任务栏" : "托盘图标") + "重新打开此窗口。")
-              : t("Exit stops FreeVideo. In the background, FreeVideo keeps running, and this window can be reopened from the " + (closePlace === "menubar" ? "menu bar icon." : closePlace === "taskbar" ? "taskbar." : "tray icon."),
-                  "退出会停止 FreeVideo。后台运行时 FreeVideo 继续运行，可从" + (closePlace === "menubar" ? "菜单栏图标" : closePlace === "taskbar" ? "任务栏" : "托盘图标") + "重新打开此窗口。")
+              ? (closePlace === "menubar" ? t("A video is being generated. Exit stops FreeVideo and this generation. In the background, the generation continues, and this window can be reopened from the menu bar icon.",
+                  "正在生成视频。退出会停止 FreeVideo 和这次生成；后台运行时生成会继续，可从菜单栏图标重新打开此窗口。")
+                : closePlace === "taskbar" ? t("A video is being generated. Exit stops FreeVideo and this generation. In the background, the generation continues, and this window can be reopened from the taskbar.",
+                  "正在生成视频。退出会停止 FreeVideo 和这次生成；后台运行时生成会继续，可从任务栏重新打开此窗口。")
+                : t("A video is being generated. Exit stops FreeVideo and this generation. In the background, the generation continues, and this window can be reopened from the tray icon.",
+                  "正在生成视频。退出会停止 FreeVideo 和这次生成；后台运行时生成会继续，可从托盘图标重新打开此窗口。"))
+              : (closePlace === "menubar" ? t("Exit stops FreeVideo. In the background, FreeVideo keeps running, and this window can be reopened from the menu bar icon.",
+                  "退出会停止 FreeVideo。后台运行时 FreeVideo 继续运行，可从菜单栏图标重新打开此窗口。")
+                : closePlace === "taskbar" ? t("Exit stops FreeVideo. In the background, FreeVideo keeps running, and this window can be reopened from the taskbar.",
+                  "退出会停止 FreeVideo。后台运行时 FreeVideo 继续运行，可从任务栏重新打开此窗口。")
+                : t("Exit stops FreeVideo. In the background, FreeVideo keeps running, and this window can be reopened from the tray icon.",
+                  "退出会停止 FreeVideo。后台运行时 FreeVideo 继续运行，可从托盘图标重新打开此窗口。"))
         acceptText: t("Run in background", "后台运行"); altText: t("Exit", "退出"); rejectText: t("Cancel", "取消"); defaultFocus: true
         onAccepted: { closeChoice = ""; backend.runInBackground() }
         onAlternative: { closeChoice = ""; backend.close() }

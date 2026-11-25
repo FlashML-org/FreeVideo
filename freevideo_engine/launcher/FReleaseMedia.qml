@@ -9,6 +9,8 @@ Item {
     // {kind: "video" | "animated" | "image", poster, source}: file URLs, "" while absent.
     property var media: null
     property bool zh: false
+    // The interface text for a pair; Main.qml passes its own t (the language file lookup), this is the fallback.
+    property var t: function(en, cn, values) { var text = zh ? cn : en; return values ? text.replace(/\{(\w+)\}/g, (whole, name) => name in values ? String(values[name]) : whole) : text }
     // The window's corner radius; the top corners are rounded to it when the block sits on the window's top edge.
     property real radius: 0
     property color cornerColor: theme.canvas
@@ -60,7 +62,7 @@ Item {
         anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: 12
         color: soundArea.containsMouse ? "#2a2c31" : "#141518"
         Accessible.role: Accessible.Button
-        Accessible.name: root.zh ? (root.soundOn ? "关闭声音" : "打开声音") : (root.soundOn ? "Turn the sound off" : "Turn the sound on")
+        Accessible.name: root.soundOn ? root.t("Turn the sound off", "关闭声音") : root.t("Turn the sound on", "打开声音")
         Canvas {
             id: speaker; anchors.centerIn: parent; width: 16; height: 16
             property bool on: root.soundOn

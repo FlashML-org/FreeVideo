@@ -12,6 +12,8 @@ Canvas {
         var c = getContext("2d"); c.reset(); c.scale(width/24, height/24)
         c.strokeStyle = ink; c.lineWidth = 1.6; c.lineCap = "round"; c.lineJoin = "round"; c.beginPath()
         if (kind === "folder") { c.moveTo(3,7); c.lineTo(3,19); c.lineTo(21,19); c.lineTo(21,7); c.lineTo(12,7); c.lineTo(10,4); c.lineTo(3,4); c.closePath() }
+        else if (kind === "search") { c.moveTo(17,10.5); c.arc(10.5,10.5,6.5,0,Math.PI*2); c.moveTo(15.2,15.2); c.lineTo(20.5,20.5) }
+        else if (kind === "check") { c.moveTo(5,12.5); c.lineTo(10,17.5); c.lineTo(19.5,7) }
         else if (kind === "chevron-down") { c.moveTo(5,9); c.lineTo(12,16); c.lineTo(19,9) }
         else if (kind === "play") { c.moveTo(8,4); c.lineTo(20,12); c.lineTo(8,20); c.closePath() }
         else if (kind === "terminal") { c.rect(2,4,20,16); c.moveTo(6,9); c.lineTo(9,12); c.lineTo(6,15); c.moveTo(12,15); c.lineTo(17,15) }

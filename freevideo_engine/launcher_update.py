@@ -52,7 +52,8 @@ def mirror_url(relative):
 
 
 def source_order(language=None):
-    language = (default_language() if language is None else language).lower()
+    # 'auto' (follow the system) and nothing both mean the system's language.
+    language = (default_language() if language is None or str(language).strip().lower() in ('', 'auto') else language).lower()
     # Windows names its locales in words ('Chinese (Simplified)_China'), not 'zh_CN'.
     return ('mirror', 'github') if language.startswith(('zh', 'chinese')) else ('github', 'mirror')
 

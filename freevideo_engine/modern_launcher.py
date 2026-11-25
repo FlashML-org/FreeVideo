@@ -9,6 +9,14 @@ import traceback
 from .long_paths import io_path, plain
 
 
+# Font order by interface language: Latin first, then the system's Chinese, Japanese and Korean fonts. Traditional Chinese takes
+# its own fonts (Traditional glyph forms), the same order as the web page; every other language keeps the Simplified ones.
+FONT_FAMILIES = {
+    '': ('FreeVideo UI', ('Segoe UI', 'Microsoft YaHei UI', 'Noto Sans', 'Noto Sans CJK SC')),
+    'zh-Hant': ('FreeVideo UI Hant', ('Segoe UI', 'PingFang TC', 'Microsoft JhengHei UI', 'Noto Sans', 'Noto Sans CJK TC')),
+}
+
+
 def theme():
     """branding.py's palette for QML, so the launcher and ComfyUI views match.
 
@@ -153,15 +161,23 @@ def create_ui(session, *, show=True, instance=None):
     app.setOrganizationName('FreeVideo')
     app.styleHints().setColorScheme(Qt.ColorScheme.Dark)
     font = QFont()
-    families = ['Segoe UI', 'Microsoft YaHei UI', 'Noto Sans', 'Noto Sans CJK SC']
     # The Linux AppImage carries the launcher's Chinese characters for desktops
     # without a Chinese font; a complete system font still comes first.
     from PySide6.QtGui import QFontDatabase
+    carried = []
     for path in sorted((io_path(Path(__file__).parent) / 'assets/fonts').glob('*.otf')):
-        for family in QFontDatabase.applicationFontFamilies(QFontDatabase.addApplicationFont(plain(path))):
-            if family not in families:
-                families.append(family)
-    font.setFamilies(families + ['sans-serif'])
+        carried += QFontDatabase.applicationFontFamilies(QFontDatabase.addApplicationFont(plain(path)))
+
+    # QML text takes one family name, so each font order is registered under a name of its own (its substitutes are tried
+    # in order, glyph by glyph) and the window and text items bind that name; switching it lays the text out again.
+    for language, (name, families) in FONT_FAMILIES.items():
+        QFont.removeSubstitutions(name)
+        QFont.insertSubstitutions(name, list(families) + [family for family in carried if family not in families] + ['sans-serif'])
+
+    def fonts_for(language):
+        return FONT_FAMILIES.get(language, FONT_FAMILIES[''])[0]
+
+    font.setFamily(fonts_for(session.ui_language()))
     font.setPointSize(10)
     app.setFont(font)
     icon = launcher_icon()
@@ -170,6 +186,8 @@ def create_ui(session, *, show=True, instance=None):
     class Bridge(QObject):
         changed = Signal()
         downloadsChanged = Signal()
+        catalogChanged = Signal()
+        fontsChanged = Signal()
         def __init__(self):
             super().__init__(engine)
             self.alerted = None
@@ -178,6 +196,9 @@ def create_ui(session, *, show=True, instance=None):
             self.menu = None
             self.value = session.snapshot()
             self.download_value = session.downloads_view()
+            self.catalog_language, self.catalog_value = None, {}
+            self.read_catalog(self.value)
+            self.font_value = fonts_for(self.value.get('ui_language'))
             self.timer = QTimer(self)
             self.timer.setInterval(250)
             self.timer.timeout.connect(self.refresh)
@@ -190,6 +211,25 @@ def create_ui(session, *, show=True, instance=None):
         @Property('QVariantMap', notify=downloadsChanged)
         def downloadList(self):
             return self.download_value
+
+        @Property(str, notify=fontsChanged)
+        def fontFamily(self):
+            """The font name for the interface language (its order is in FONT_FAMILIES); the window and text items use it."""
+            return self.font_value
+
+        @Property('QVariantMap', notify=catalogChanged)
+        def catalog(self):
+            """The interface language's file entries ({} for English and Simplified Chinese, whose text is in Main.qml)."""
+            return self.catalog_value
+
+        def read_catalog(self, value):
+            """Read the language file when the interface language changed; True when it did."""
+            from .i18n import catalog, code_language
+            language = code_language(value.get('ui_language') or ('zh-Hans' if value.get('zh') else 'en'))
+            if language == self.catalog_language:
+                return False
+            self.catalog_language, self.catalog_value = language, catalog(language)
+            return True
 
         def invoke(self, function, *args, **kwargs):
             try:
@@ -204,6 +244,12 @@ def create_ui(session, *, show=True, instance=None):
             try:
                 session.tick()
                 value = session.snapshot()
+                if self.read_catalog(value):
+                    self.catalogChanged.emit()   # before the state: a new language never shows with the old file
+                fonts = fonts_for(value.get('ui_language'))
+                if fonts != self.font_value:
+                    self.font_value = fonts
+                    self.fontsChanged.emit()
                 if value != self.value:
                     self.value = value
                     self.changed.emit()
@@ -235,7 +281,7 @@ def create_ui(session, *, show=True, instance=None):
                 if alias_failure(session.error):
                     # The card says what to do; the details keep the cause.
                     from .failure_details import launcher_failure
-                    zh = session.language.startswith('zh')
+                    zh = session.chinese()
                     value = dict(self.value, error=session.error, failure=launcher_failure(session.error, zh=zh))
                 else:
                     value = dict(self.value, error=session.error)
@@ -253,6 +299,11 @@ def create_ui(session, *, show=True, instance=None):
                         raise
                     session.field_error = dict(key=key, message=str(exc))
             self.invoke(edit_field)
+
+        @Slot()
+        def followSavedLanguage(self):
+            # The window came to the front: the language may have been changed on the web page meanwhile.
+            self.invoke(session.follow_saved_language)
 
         @Slot(str, bool)
         def action(self, name, accepted=False):
@@ -430,7 +481,7 @@ def create_ui(session, *, show=True, instance=None):
             # The release (0.4.x) is named, not the build number; only fields that carry no path or user name travel.
             version = session.installed_product_version() or product_version(__version__)
             engine = session.installation_engine()
-            url = issue_url(error, version, title, zh=session.language.startswith('zh'),
+            url = issue_url(error, version, title, zh=session.chinese(),
                             environment=environment_line(version, machine_hardware(engine) if engine else {}),
                             diagnostics=[adapter_line()] + update_report_lines(title))
             self.invoke(open_browser, url)

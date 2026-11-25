@@ -146,3 +146,80 @@ def all_keywords(kind, folder=LOCALES):
             if word not in words:
                 words.append(word)
     return words[:MAX_KEYWORDS * 64]
+
+
+# The language list (the launcher's language key, the page's settings): languages in this order first, the rest by tag.
+# Each is shown by its own name; the English name is for search only.
+LANGUAGE_ORDER = ('zh-Hans', 'zh-Hant', 'en', 'es', 'pt-BR', 'ru', 'uk', 'ja', 'ko', 'fr', 'de', 'tr', 'id', 'vi', 'it', 'ar', 'fa')
+ENGLISH_NAMES = {'zh-Hans': 'Chinese Simplified', 'zh-Hant': 'Chinese Traditional', 'en': 'English', 'es': 'Spanish',
+                 'pt-BR': 'Portuguese Brazil', 'ru': 'Russian', 'uk': 'Ukrainian', 'ja': 'Japanese', 'ko': 'Korean',
+                 'fr': 'French', 'de': 'German', 'tr': 'Turkish', 'id': 'Indonesian', 'vi': 'Vietnamese', 'it': 'Italian',
+                 'ar': 'Arabic', 'fa': 'Persian'}
+
+
+def language_choices(folder=None):
+    """[{"tag", "name" (its own), "english", "dir"}] for every language the interface can show, in list order."""
+    languages = interface_languages(folder)
+    rank = {tag: index for index, tag in enumerate(LANGUAGE_ORDER)}
+    return [dict(tag=tag, name=meta['name'], english=ENGLISH_NAMES.get(tag, tag), dir=meta.get('dir', 'ltr'))
+            for tag, meta in sorted(languages.items(), key=lambda item: (rank.get(item[0], len(rank)), item[0]))]
+
+# Looking up text (the launcher and Python side; web/i18n.js lookup is the same rule).
+KEY_SEPARATOR = '␟'
+CODE_LANGUAGES = ('en', 'zh-Hans')   # their text is the en and zh written in the code, never read from a file
+_catalogs = {}
+
+
+def fill(text, values):
+    """{name} placeholders filled from values; a name values does not hold stays as written."""
+    import re
+    return re.sub(r'\{(\w+)\}', lambda match: str(values[match.group(1)]) if match.group(1) in values else match.group(0),
+                  str(text))
+
+
+def lookup(catalog, en, zh, values=None):
+    """A language file's text for a pair: the entry for the English and Chinese together (when the English has more than
+    one meaning), then for the English alone, then the English itself."""
+    def own(key):
+        value = catalog.get(key) if isinstance(catalog, dict) else None
+        return value if isinstance(value, str) else None
+    text = own(en + KEY_SEPARATOR + zh)
+    text = own(en) if text is None else text
+    text = en if text is None else text
+    return fill(text, values) if values else text
+
+
+def catalog(language, folder=None):
+    """The entries of a language file ({} for the code's own languages, a missing file or an unreadable one). Read once."""
+    folder = LOCALES if folder is None else folder
+    key = (str(folder), language)
+    if key not in _catalogs:
+        value = {}
+        if language and language not in CODE_LANGUAGES and '/' not in language and '\\' not in language:
+            try:
+                loaded = json.loads((Path(folder) / (language + '.json')).read_text(encoding='utf-8'))
+                if isinstance(loaded, dict):
+                    value = {k: v for k, v in loaded.items() if k != '_meta' and isinstance(v, str)}
+            except (OSError, ValueError):
+                pass
+        _catalogs[key] = value
+    return _catalogs[key]
+
+
+def code_language(language):
+    """The code language a tag reads as during the change-over: 'zh' (and any zh-Hans form) is Simplified Chinese."""
+    tag = str(language or '').replace('_', '-').lower()
+    if tag == 'zh' or tag.startswith('zh-hans') or tag in ('zh-cn', 'zh-sg'):
+        return 'zh-Hans'
+    return 'en' if tag in ('', 'en') or tag.startswith('en-') else language
+
+
+def tr(en, zh, language, values=None, folder=None):
+    """The text for a pair in a language: the code's own English or Chinese, else the language file's entry (English
+    when it has none). {name} placeholders are filled from values in every language."""
+    language = code_language(language)
+    if language == 'zh-Hans':
+        return fill(zh, values) if values else zh
+    if language == 'en':
+        return fill(en, values) if values else en
+    return lookup(catalog(language, folder), en, zh, values)

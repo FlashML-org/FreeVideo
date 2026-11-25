@@ -145,8 +145,10 @@ class Desktop:
         self.update_buttons()
         self.poll_timer = window.after(100, self.poll)
 
-    def t(self, english, chinese):
-        return chinese if self.zh else english
+    def t(self, english, chinese, values=None):
+        from .i18n import fill
+        text = chinese if self.zh else english
+        return fill(text, values) if values else text
 
     def label(self, parent, english, chinese, **kwargs):
         widget = self.ttk.Label(parent, text=self.t(english, chinese), **kwargs)
@@ -559,7 +561,7 @@ class Desktop:
             total, done = value.get('total') or 0, value.get('done') or 0
             self.progress.stop()
             self.progress.configure(mode='determinate', maximum=max(1, total), value=done)
-            self.phase_status.set(self.t('Stages', '阶段') + ' %d / %d · %s' % (done, total, value.get('label', '')))
+            self.phase_status.set(self.t('Stages {done} / {total} · {label}', '阶段 {done} / {total} · {label}', dict(done=done, total=total, label=value.get('label', ''))))
             return
         key = value.get('key') or value.get('label', 'task')
         if key not in self.progress_rows:
@@ -611,7 +613,7 @@ class Desktop:
             value, age = row['value'], time.monotonic() - row['received']
             finished = value.get('state') in ('complete', 'failed', 'cancelled')
             elapsed = (value.get('elapsed_seconds') or 0) + (0 if finished else age)
-            pieces = [self.t('Elapsed ', '已用 ') + duration(elapsed)]
+            pieces = [self.t('Elapsed {time}', '已用 {time}', dict(time=duration(elapsed)))]
             if value.get('total'):
                 pieces.insert(0, '%.0f%%' % min(100, max(0, 100*(value.get('done') or 0)/value['total'])))
             remaining = value.get('remaining_seconds') if age <= 10 else None
@@ -620,7 +622,7 @@ class Desktop:
             elif remaining == 0:
                 pieces.append(self.t('Finalizing', '正在收尾'))
             elif remaining is not None:
-                pieces.append(self.t('ETA ~', '预计剩余约 ') + duration(remaining))
+                pieces.append(self.t('ETA ~{time}', '预计剩余约 {time}', dict(time=duration(remaining))))
             else:
                 pieces.append(self.t('Estimating…', '估算中…'))
             row['meta'].set(' · '.join(pieces))
