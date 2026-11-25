@@ -10,11 +10,42 @@ const WRITTEN = /\[Shot \d+\]|\bAt \d{2,}:\d{2}\.\d{3}/;
 const CJK = /[぀-ヿ㐀-鿿]/;
 const ENDS = '.!?。！？…"”';
 
+// Cyrillic lines: Ukrainian or Russian, by weighing the words; the same rule as freevideo_engine/timed_prompt.py, which says why.
+const UKRAINIAN_LETTERS = /[\u0404\u0406\u0407\u0454\u0456\u0457\u0490\u0491]/;
+const RUSSIAN_LETTERS = /[\u042b\u044b\u042d\u044d\u042a\u044a\u0401\u0451]/;
+const OTHER_CYRILLIC = /[\u040e\u045e\u0492\u0493\u049a\u049b\u04a2\u04a3\u04ae\u04af\u04b0\u04b1\u04ba\u04bb\u04d8\u04d9\u04e8\u04e9\u0402\u0403\u0405\u0408-\u040c\u040f\u0452\u0453\u0455\u0458-\u045c\u045f]/;
+const UKRAINIAN_WORDS = new Set('що щоб цей цього ця цю ці вже дуже щось немає тобі зараз дякую'.split(' '));
+const RUSSIAN_WORDS = new Set('и что чтобы это этот эта как он она они его меня тебя где когда если нет есть но или только еще мне с к'.split(' '));
+const CYRILLIC_WORD = /[\u0400-\u04ff](?:['\u2019\u02bc]?[\u0400-\u04ff])*/g;
+const OPENING = /[ \t\n\r"'\u00ab\u00bb\u201c\u201d\u201e\u2018\u2019()[\]\u2014\u2013-]+$/;
+const ROMAN = /^[\u0406\u0425]+$/;
+const isUpper = ch => ch !== ch.toLowerCase();
+const isLower = ch => ch !== ch.toUpperCase();
+
+function ukrainian(words) {
+    if (OTHER_CYRILLIC.test(words)) return false;
+    if (!/[\u0430-\u045f\u0491]/.test(words)) words = words.toLowerCase();
+    let ukrainianWords = 0, russianWords = 0;
+    for (const match of words.matchAll(CYRILLIC_WORD)) {
+        const word = match[0], lower = word.toLowerCase();
+        if (RUSSIAN_LETTERS.test(word) || RUSSIAN_WORDS.has(lower)) russianWords += 1;
+        else if (UKRAINIAN_WORDS.has(lower)) ukrainianWords += 1;
+        else if (UKRAINIAN_LETTERS.test(word)) {
+            const before = words.slice(0, match.index).replace(OPENING, '');
+            const inside = Boolean(before) && !'.!?:;\u2026'.includes(before[before.length - 1]);
+            if (ROMAN.test(word) && before) continue;
+            if (inside && isUpper(word[0]) && (word.length === 1 || [...word.slice(1)].some(isLower))) continue;
+            ukrainianWords += 1;
+        }
+    }
+    return ukrainianWords > russianWords;
+}
+
 export function language(words) {
     if (/[぀-ヿ]/.test(words)) return 'Japanese';
     if (/[가-힯]/.test(words)) return 'Korean';
     if (/[一-鿿]/.test(words)) return 'Chinese';
-    if (/[Ѐ-ӿ]/.test(words)) return 'Russian';
+    if (/[Ѐ-ӿ]/.test(words)) return ukrainian(words) ? 'Ukrainian' : 'Russian';
     return 'English';
 }
 

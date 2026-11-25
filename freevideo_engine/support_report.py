@@ -665,6 +665,15 @@ def write(output, report=None, bridge=None, *, _retry=None, live=False, restarte
                 cleaned['engine_exit'] = stopped
         except Exception:
             pass
+        try:
+            # When the engine's event loop was held up: what every thread was doing (file names, lines and functions only).
+            from .comfy_bridge import installation_root
+            from .loop_stall import read as read_stalls
+            stalls = read_stalls(installation_root())
+            if stalls:
+                cleaned['loop_stalls'] = stalls
+        except Exception:
+            pass
         save(target, cleaned)
         return target
     except Exception:

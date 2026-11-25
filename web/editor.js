@@ -1910,6 +1910,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     const adjust = adjustPanel = createAdjustPanel(adjustHost, {state, t, actions});
     {
         const adjustRail = button('', () => adjust.toggleButton.click(), 'fv-ed-rail-button');
+        adjustRail.dataset.adjustRail = 'true';
         adjustRail.append(railGlyph('M3 1v14M8 1v14M13 1v14M1 5h4M6 11h4M11 5h4'), el('span', 'fv-ed-rail-label', t('Adjust', '调整')));
         tip(adjustRail, {name: t('Adjust', '调整'), use: t('Volume, speed, picture and text of the selection', '调整选中片段的声音、速度、画面和文字')});
         rightRail.append(adjustRail);

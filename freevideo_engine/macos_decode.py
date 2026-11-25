@@ -54,7 +54,7 @@ def decode_to_file(latents, audio_latents, output, *, base, artifacts_dir,
     import torch
     import numpy as np
     from diffusers import AutoencoderKLMiniMaxH3
-    from diffusers.utils.export_utils import encode_video
+    from .video_threads import encode_video
     from src.inference.render import PIXEL_MEAN, PIXEL_STD, FPS
     from .backends import get_backend
     from .vae_weights import skeleton, load_parameters, load_audio_vae

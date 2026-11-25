@@ -156,6 +156,15 @@ def register():
     async def launcher(request):
         return web.json_response(info)
 
+    # Observes the event loop only: when it stops answering for five seconds, what every thread was doing is written down once.
+    from . import loop_stall
+    server._freevideo_loop_watchdog = loop_stall.install(getattr(server, 'loop', None), info['engine_root'])
+
+    @server.routes.get('/freevideo/launcher/loop-stalls')
+    async def loop_stalls(request):
+        """The latest times the engine's loop was held up: when, how long, the loop thread's innermost calls."""
+        return web.json_response(dict(stalls=loop_stall.public(loop_stall.read(info['engine_root']))), headers={'Cache-Control': 'no-store'})
+
     @server.routes.get('/freevideo/launcher/last-exit')
     async def last_exit(request):
         """When the ComfyUI before this one stopped by itself: numbers and fixed words, never log text."""

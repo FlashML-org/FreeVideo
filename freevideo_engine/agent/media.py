@@ -5,6 +5,7 @@ import math
 from pathlib import Path
 import uuid
 
+from .. import video_threads
 from ..comfy_assets import media_kind_of
 
 FPS = 24
@@ -248,7 +249,7 @@ def assemble(clips, out, *, transition='cut', transition_seconds=.5, width=None,
             progress(dict(done=written, total=total))
     try:
         with av.open(str(temporary), 'w', format='mp4', options={'movflags': 'faststart'}) as writer:
-            stream = writer.add_stream('libx264', rate=FPS)
+            stream = video_threads.pin(writer.add_stream('libx264', rate=FPS))
             stream.width, stream.height, stream.pix_fmt = width, height, 'yuv420p'
             stream.options = dict(VIDEO_OPTIONS)
             sound = _Audio(writer, rate) if rate else None

@@ -174,6 +174,8 @@ export function createAdjustPanel(host, {state, t, actions}) {
     // Only a press outside the editor's working areas (the header, the library) folds it away.
     const outside = event => {
         if (!overlay || host.contains(event.target) || toggleButton.contains(event.target)) return;
+        // The right rail's Adjust button is the drawer's switch from 681 to 1279 px: its press must not close the drawer first and its click then reopen it.
+        if (event.target.closest('[data-adjust-rail]')) return;
         if (event.target.closest('.fv-ed-preview, .fv-ed-transport, .fv-ed-tracks, .fv-ed-toolbar, .fv-ed-genbar, .fv-ed-project-row, .fv-ed-notice-stack, .fv-ed-record, [role=menu], .fv-select-menu, .fv-ed-clip-popover')) return;
         if (!event.target.closest('.fv-editor')) return;
         close();

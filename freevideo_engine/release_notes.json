@@ -1,41 +1,66 @@
 {
   "schema": 1,
-  "product_version": "0.6.11",
+  "product_version": "0.6.12",
   "en": {
-    "summary": "0.6.11 can write a prompt from a picture or a video, makes local network access and first, middle and last frames on the Mac work as expected, and no longer stops a second generation on two graphics cards with an error on Windows. Failure messages now also say what went wrong and what to do next.",
+    "summary": "0.6.12 fixes the Linux and Mac launchers failing to open ComfyUI in 0.6.11, keeps dialogue in more languages when prompts are enhanced, and voices Ukrainian dialogue in Ukrainian.",
     "changes": [
-      "Reverse prompt: in the image view and the create panel, choose a picture or a video and FreeVideo writes the description.",
-      "Fuller local network access: when FreeVideo is opened through its local network address, you can generate with reference pictures, edit generated pictures and copy prompts.",
-      "First, middle and last frames on the Mac: generating with a first, middle and last frame works on the Mac.",
-      "Two graphics cards at once: on Windows, a generation started on the second graphics card no longer stops with an error while the first one is working.",
-      "Clearer failure messages: every kind of failure says what to do next. When a prompt enhancement result is incomplete, the message says what was wrong.",
-      "More accurate driver messages: when no working driver is found, the launcher shows the graphics card it detected and tells \"driver not installed\" apart from \"driver not working\".",
-      "LoRAs and reference pictures are kept: the LoRAs and reference pictures set in the create panel are still there after FreeVideo restarts, and scene and prop cards remember the LoRAs used to make their picture.",
-      "Steadier running: FreeVideo commands use the installed program from any folder. When graphics memory runs short while the prompt is processed, FreeVideo retries once instead of failing.",
-      "Easier image models: Repair asks you first and keeps the original shared file under a new name. A download that starts while FreeVideo is installing, updating or cleaning up continues by itself when that finishes.",
-      "Saved prompts work right after an update: prompts saved before updating FreeVideo do not need to be processed again.",
-      "More reliable long video redo: after a lost or late reply, choosing \"Redo from here\" again shows the part already started instead of making another one.",
-      "A steadier first generation after an update: cleaning up old versions no longer changes the model files in use, so the first generation after an update is not interrupted by it."
+      "Linux and Mac: the 0.6.11 launcher failed to open ComfyUI; it now opens normally.",
+      "Prompt enhancement keeps dialogue in more languages: when a scene is written in Russian, Ukrainian, Spanish, French, German, Turkish, Vietnamese or a similar language, the quoted lines are passed to the voice word for word instead of being left out, and text on signs and posters stays on screen.",
+      "Ukrainian dialogue is voiced more accurately: lines are passed to the model as Ukrainian instead of Russian, so they no longer take on a Russian accent, while Russian lines that mention a Ukrainian place are still spoken as Russian.",
+      "Picture editing on Windows: when Windows has little memory left to commit, FreeVideo now places less of the text encoder on the graphics card and tries once more if that is still not enough, so editing with several reference pictures is less likely to stop at the text step for lack of memory.",
+      "More complete diagnostic reports: when the engine stops answering for more than five seconds, FreeVideo records what each part was doing at the time and includes it in feedback and diagnostic reports, to help find the cause.",
+      "Feedback and diagnostic reports keep numbers such as \"2.00 GiB\" intact when a field holds a short value."
     ]
   },
   "zh": {
-    "summary": "0.6.11 新增从图片或视频反推提示词，局域网访问和 Mac 首中尾帧生成可以正常使用，Windows 上两张显卡同时生成也不再报错停下。失败提示会说明原因和下一步。",
+    "summary": "0.6.12 修复了 0.6.11 在 Linux 和 Mac 上无法打开 ComfyUI 的问题；提示词改写会保留更多语言的台词，乌克兰语台词按乌克兰语配音。",
     "changes": [
-      "反推提示词：在图像视图和创作面板中，可以选一张图片或一段视频，自动写出描述。",
-      "局域网访问更完整：通过局域网地址打开 FreeVideo 时，可以带参考图生成、编辑已生成的图片，也可以复制提示词。",
-      "Mac 首中尾帧生成：在 Mac 上同时使用首帧、中间帧和尾帧，可以正常生成。",
-      "多显卡同时生成：在 Windows 上使用两张显卡时，第二张显卡开始的生成不再因等待第一张而报错停下。",
-      "失败提示更清楚：各类失败都会说明下一步怎么做。提示词增强的结果不完整时，会写明是哪里不对。",
-      "显卡驱动提示更准确：缺少可用驱动时，启动器会显示检测到的显卡型号，并区分“未安装驱动”和“驱动未正常工作”。",
-      "LoRA 和参考图会保留：创作面板设置的 LoRA 和参考图在重启 FreeVideo 后仍在；场景卡和道具卡也会记住生成图片时用的 LoRA。",
-      "运行更稳定：从任何文件夹运行 FreeVideo 命令，都会使用已安装的程序。处理提示词时显存不足，会自动重试一次，不再直接失败。",
-      "图像模型更省心：修复时会先请您确认，原有的共用文件改名保留。FreeVideo 正在安装、更新或清理时开始的下载，会在结束后自动继续。",
-      "更新后可直接使用已保存的提示词：更新 FreeVideo 后，已保存的提示词不需要重新处理。",
-      "长视频重新生成更可靠：在网络回复丢失或延迟后再次点击“从这段重新生成”，会继续显示已经开始的那一段，不会多生成一段。",
-      "更新后第一次生成更稳定：清理旧版本时不再改动正在使用的模型文件，更新后的第一次生成不会因此中断。"
+      "Linux 和 Mac：0.6.11 的启动器打开 ComfyUI 时会失败，现在可以正常打开。",
+      "提示词改写能保留更多语言的台词：用俄语、乌克兰语、西班牙语、法语、德语、土耳其语、越南语等写场景时，引号里的台词会原样交给模型配音，不再被漏掉；招牌、海报上的文字仍作为画面中的文字。",
+      "乌克兰语台词的配音更准：台词按乌克兰语交给模型，不再标成俄语，发音不再带俄语腔；俄语台词里提到乌克兰地名时仍按俄语念。",
+      "Windows 上编辑图片：当 Windows 可提交的内存所剩不多时，FreeVideo 在文本编码时少放一部分到显卡上，仍不足时再试一次，带多张参考图编辑时，文本这一步不容易再因内存不足停下。",
+      "诊断报告更完整：引擎停止应答超过五秒时，FreeVideo 会记下各部分当时在做什么，并随反馈和诊断报告一起带出，便于找出原因。",
+      "反馈和诊断报告里，输入框中的短内容不再改坏“2.00 GiB”这类数字。"
     ]
   },
   "history": [
+    {
+      "product_version": "0.6.11",
+      "en": {
+        "summary": "0.6.11 can write a prompt from a picture or a video, makes local network access and first, middle and last frames on the Mac work as expected, and no longer stops a second generation on two graphics cards with an error on Windows. Failure messages now also say what went wrong and what to do next.",
+        "changes": [
+          "Reverse prompt: in the image view and the create panel, choose a picture or a video and FreeVideo writes the description.",
+          "Fuller local network access: when FreeVideo is opened through its local network address, you can generate with reference pictures, edit generated pictures and copy prompts.",
+          "First, middle and last frames on the Mac: generating with a first, middle and last frame works on the Mac.",
+          "Two graphics cards at once: on Windows, a generation started on the second graphics card no longer stops with an error while the first one is working.",
+          "Clearer failure messages: every kind of failure says what to do next. When a prompt enhancement result is incomplete, the message says what was wrong.",
+          "More accurate driver messages: when no working driver is found, the launcher shows the graphics card it detected and tells \"driver not installed\" apart from \"driver not working\".",
+          "LoRAs and reference pictures are kept: the LoRAs and reference pictures set in the create panel are still there after FreeVideo restarts, and scene and prop cards remember the LoRAs used to make their picture.",
+          "Steadier running: FreeVideo commands use the installed program from any folder. When graphics memory runs short while the prompt is processed, FreeVideo retries once instead of failing.",
+          "Easier image models: Repair asks you first and keeps the original shared file under a new name. A download that starts while FreeVideo is installing, updating or cleaning up continues by itself when that finishes.",
+          "Saved prompts work right after an update: prompts saved before updating FreeVideo do not need to be processed again.",
+          "More reliable long video redo: after a lost or late reply, choosing \"Redo from here\" again shows the part already started instead of making another one.",
+          "A steadier first generation after an update: cleaning up old versions no longer changes the model files in use, so the first generation after an update is not interrupted by it."
+        ]
+      },
+      "zh": {
+        "summary": "0.6.11 新增从图片或视频反推提示词，局域网访问和 Mac 首中尾帧生成可以正常使用，Windows 上两张显卡同时生成也不再报错停下。失败提示会说明原因和下一步。",
+        "changes": [
+          "反推提示词：在图像视图和创作面板中，可以选一张图片或一段视频，自动写出描述。",
+          "局域网访问更完整：通过局域网地址打开 FreeVideo 时，可以带参考图生成、编辑已生成的图片，也可以复制提示词。",
+          "Mac 首中尾帧生成：在 Mac 上同时使用首帧、中间帧和尾帧，可以正常生成。",
+          "多显卡同时生成：在 Windows 上使用两张显卡时，第二张显卡开始的生成不再因等待第一张而报错停下。",
+          "失败提示更清楚：各类失败都会说明下一步怎么做。提示词增强的结果不完整时，会写明是哪里不对。",
+          "显卡驱动提示更准确：缺少可用驱动时，启动器会显示检测到的显卡型号，并区分“未安装驱动”和“驱动未正常工作”。",
+          "LoRA 和参考图会保留：创作面板设置的 LoRA 和参考图在重启 FreeVideo 后仍在；场景卡和道具卡也会记住生成图片时用的 LoRA。",
+          "运行更稳定：从任何文件夹运行 FreeVideo 命令，都会使用已安装的程序。处理提示词时显存不足，会自动重试一次，不再直接失败。",
+          "图像模型更省心：修复时会先请您确认，原有的共用文件改名保留。FreeVideo 正在安装、更新或清理时开始的下载，会在结束后自动继续。",
+          "更新后可直接使用已保存的提示词：更新 FreeVideo 后，已保存的提示词不需要重新处理。",
+          "长视频重新生成更可靠：在网络回复丢失或延迟后再次点击“从这段重新生成”，会继续显示已经开始的那一段，不会多生成一段。",
+          "更新后第一次生成更稳定：清理旧版本时不再改动正在使用的模型文件，更新后的第一次生成不会因此中断。"
+        ]
+      }
+    },
     {
       "product_version": "0.6.10",
       "en": {
@@ -407,41 +432,6 @@
           "内置导演与智能体工具：导演的选择和镜头拼接过程显示在对话中，智能体工具会报告任务的排队位置，并兼容更多客户端。",
           "ComfyUI 控制台：每行日志只显示一次。",
           "教程：新增关闭启动器、修复模型文件、在画布上做不同比例图片三章。"
-        ]
-      }
-    },
-    {
-      "product_version": "0.5.4",
-      "en": {
-        "summary": "Closing the launcher offers Exit or Run in background. Offline installation saves disk space and reuses an existing model folder. An interrupted second pass resumes from its last completed step, the second pass uses less graphics memory, and extending the same video again starts sooner. Picture shape can be chosen on a canvas with pictures, and several installation stops are fixed.",
-        "changes": [
-          "Closing the launcher: a choice appears with Exit, which stops generation and quits, and Run in background, which hides the window while generation continues and can be reopened or quit from the tray icon (the menu bar icon on Mac).",
-          "Second pass: after an interruption by a lack of system memory, the retry continues from the last completed step instead of starting again, and the result is identical to an uninterrupted run. At high resolution the second pass uses up to about 2 GB less graphics memory, which leaves 8 GB cards more room. With a long reference video, a refused locked-page copy falls back to ordinary memory instead of failing the second pass at its start.",
-          "Extending videos: memory for the ending clip is estimated from its real size, so a loaded model is no longer released and read from disk again. Extending the same video again does not encode its ending a second time, so the next extension starts sooner.",
-          "Offline installation: importing the runtime package again in place counts model packs that are already installed, without unpacking them again or keeping two copies. An existing model folder can be chosen when installing from the runtime package, and matching models are used directly, which saves a download of about 49 GiB. After a move, model pack status follows the new location, and imported folders have shorter paths, so an installation in an ordinary folder starts from where it is.",
-          "Model files: when a model file differs from the tested version, the failure card names the package to import again, and the original file is kept under a new name while the version from the package replaces it.",
-          "Pictures: choose the shape of a new picture on a canvas that already holds pictures; with another shape the new picture is placed on a new canvas and can be undone in one step. A long description expands only while focused and shows on one line otherwise, so a multi-line description no longer moves the canvas in narrow windows. Prompt rewriting without pictures keeps the unused vision part in main memory when it would leave little graphics memory to spare.",
-          "Launcher and image models: while an image model is in use, Repair and Delete are gray, with the reason and what to do written beside them.",
-          "Linux installation: the chosen drive is checked first, and FAT32, exFAT or a location that does not allow running programs stops the installation with an explanation and a request to choose another drive.",
-          "Windows installation: setup no longer stops at a PowerShell debugger prompt, and the launcher no longer stops at the check step with Access denied when Windows briefly holds a file that was just written; it retries for a few seconds and then copies the folder into place. Installing node dependencies and updating the engine also use short paths.",
-          "Export and dubbing: several calculations no longer depend on a component that Windows application control can block, and the output is unchanged.",
-          "Long videos and reports: when the record of a seam is missing, that part is generated again once; a seam that still has no record at join time is joined directly, so the video can still be saved. Failed long video requests, chat sends and high-resolution image runs leave the diagnostic report the facts needed to find the cause."
-        ]
-      },
-      "zh": {
-        "summary": "关闭启动器时可选“退出”或“后台运行”。离线安装更省空间，并可直接使用已有模型文件夹。第二遍被中断后从已完成的步骤继续，第二遍少占显存，再次续写同一个视频起步更快。已有图片的画布可以选择新图比例，Windows 和 Linux 的若干安装中断问题已修复。",
-        "changes": [
-          "关闭启动器：弹出选择，“退出”停止生成并退出，“后台运行”隐藏窗口、生成继续，可从托盘图标（Mac 为菜单栏图标）重新打开或退出。",
-          "第二遍：因系统内存不足中断后，重试从已完成的步骤继续，不再全部重做，结果与不中断时完全一致。高分辨率时第二遍最多少占约 2 GB 显存，8 GB 显卡的余量更大。带长参考视频时，锁页内存被系统拒绝就改用普通内存，不再在第二遍开始时整个失败。",
-          "续写：按结尾片段的实际大小估算内存，已载入的模型不再被放掉、重新读盘。续写同一个视频时不再重复编码它的结尾，再次续写起步更快。",
-          "离线安装：原地重新导入运行环境包时，已装好的模型包直接算数，不再重新解压，也不再占双份空间。用运行环境包安装时也能选已有的模型文件夹，对得上的模型直接使用，免下约 49 GiB。换了安装位置后，模型包状态按新位置显示；导入后的文件夹路径变短，放在普通文件夹里的安装直接从原位置启动。",
-          "模型文件：模型文件与测试过的版本不一致时，出错卡片写明重新导入哪个包；原文件改名保留，再换成包里的版本。",
-          "图片：画布已有图片时可选择新图的比例；选了别的比例，新图放在新画布上，可一次撤销。较长的描述只在输入框获得焦点时展开，否则以一行加省略号显示，窄窗口里输入多行描述时画布不再被顶动。无图的提示词改写在显存余量不大时，把用不到的视觉部分留在内存。",
-          "启动器与图像模型：图像模型正在使用时，“修复”“删除”变灰，旁边写明原因和怎么做。",
-          "Linux 安装：安装前检查所选硬盘，FAT32、exFAT 或不允许运行程序的位置会先停下并说明，请选择其他硬盘。",
-          "Windows 安装：安装不再停在 PowerShell 调试提示符；Windows 短暂占用刚写好的文件时，启动器不再停在检查步骤报“访问被拒绝”，改为重试数秒再复制到位。安装节点依赖、更新引擎时也使用短路径。",
-          "导出和配音：几处计算不再依赖可能被 Windows 应用控制拦截的组件，输出不变。",
-          "长视频与报告：接缝记录缺失时，该段重新生成一次；合并时仍缺少记录的接缝按直接拼接保存，不再因此无法保存。长视频提交、聊天发送和高分辨率图片生成失败时，诊断报告记下判断原因所需的信息。"
         ]
       }
     }
