@@ -3,6 +3,7 @@ import {retryAgentPost} from './agent_session.js';
 import {issueButton} from './issue_button.js';
 import {tip} from './autopilot_tips.js';
 import {failureAdvice} from './error_panel.js';
+import {engineReason} from './other_usage.js';
 // What agents connected to this FreeVideo are doing. Their requests share the
 // studio's queue, so people can see them, follow progress and stop them.
 const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('./agent_activity.css', import.meta.url).href; document.head.append(css);
@@ -44,9 +45,7 @@ export function failureReason(job, t) {
 }
 function failureLine(error, t) {
     // The engine's reason, then its next step when it has one.
-    const next = (said, step, zh) => said && step ? said.replace(/[。.]$/, '') + (zh ? '。' : '. ') + step : said;
-    if (error.error_en && error.error_en !== 'Did not finish')
-        return t(next(error.error_en, error.next_en), next(error.error_zh || error.error_en, error.next_zh, !!error.error_zh));
+    if (error.error_en && error.error_en !== 'Did not finish') return engineReason(error, t);
     const message = String(error.message || '').trim();
     const advice = message && failureAdvice(message, t);
     if (advice && advice.kind !== 'unknown') return [advice.title, advice.action].filter(Boolean).join(t('. ', '，'));

@@ -4,6 +4,7 @@ import { cutTip } from './cut_tip.js';
 import { setTip } from './tip_words.js';
 import {agentGet, agentPost, retryAgentPost} from './agent_session.js';
 import {emptyFrameIcon} from './empty_frame.js';
+import {engineReason} from './other_usage.js';
 import {ATTACH, attachmentURL, pickPictures, pictureGone, picturesOf, releasePicture, releasePictures, thumbnail, uploadPicture} from './chat_attachments.js';
 import {SCENE_TEXT, pickScene, sceneList, startScene, watchScene} from './whitebox_scenes.js';
 import {chatData, chatDelay, chatReadRequest, emptyChat, chatMerge, chatEntries, canSend, newId, SEND_ATTEMPTS, WAIT_FOR_AGENT, sendRefused, sendError, messageTooLong} from './chat_data.js';
@@ -75,8 +76,6 @@ const WHITEBOX = {
 const GENERIC_FAILURE_ZH = '没有完成';
 // The failures whose next step is the problem report (agent/errors.py FAILURE_NEXT_*).
 const UNEXPECTED_FAILURES = ['internal_error', 'generation_failed'];
-// The engine's next step for a reason, as the sentence after it.
-const withNext = (reason, next, zh) => next ? reason.replace(/[。.]$/, '') + (zh ? '。' : '. ') + next : reason;
 // Sends and failure cards use the same public reason, including the engine's Chinese mapping.
 function failureReason(value, t) {
     const error = value.error, reason = error?.error_zh || value.error_zh, reasonEn = error?.error_en || value.error_en;
@@ -86,8 +85,9 @@ function failureReason(value, t) {
     const own = error?.error_zh ? error : value;
     // `message` is written for programs; people read the engine's own English reason. A refusal the engine
     // did not classify keeps its sentence, as before.
-    return t(withNext(reasonEn || error?.message || 'Did not finish', reasonEn && own.next_en),
-        withNext(reason || GENERIC_FAILURE_ZH, reason && own.next_zh, true));
+    return engineReason({error_en: reasonEn || error?.message || 'Did not finish', error_zh: reason || GENERIC_FAILURE_ZH,
+        reason_en: own.reason_en, reason_zh: own.reason_zh, other_usage: own.other_usage ?? error?.other_usage,
+        next_en: reasonEn && own.next_en, next_zh: reason && own.next_zh}, t);
 }
 
 // A failed job's one reason line. The engine's classified sentence (both languages) is for people; anything else is

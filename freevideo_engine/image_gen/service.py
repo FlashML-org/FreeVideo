@@ -29,8 +29,13 @@ from ..disk_space import ran_out
 from ..download_settings import observed_speed
 from ..exit_diagnostics import clean_reading
 from ..monitoring import save
-from .failure import (Context, classify_exception, HOST_MESSAGE_ZH, host_memory_shortage, ERRORS, FailureError, MESSAGE_ZH, NO_REPORT, STAGES, UNIFIED_MESSAGE_ZH,
+from .failure import (Context, classify_exception, HOST_MESSAGE, host_memory_shortage, ERRORS, FailureError, MESSAGE_ZH, MESSAGES, NO_REPORT, STAGES, UNIFIED_MESSAGES,
                       classify_exception)
+
+def messages(code):
+    """A failure's sentence in English and Chinese, as message_en and message_zh; nothing for a code without one."""
+    return dict(zip(('message_en', 'message_zh'), MESSAGES[code])) if code in MESSAGES else {}
+
 
 def write_refused(error):
     """Whether an OSError says a folder or file cannot be written (no permission, read-only volume, in use)."""
@@ -2103,13 +2108,14 @@ class Service:
         stage = row.get('stage') if isinstance(row, dict) else None
         stage = stage if stage in STAGES else context.timing.stage
         result = dict(phase='failed', error=code, report_id=None, stage=stage)
-        if code in MESSAGE_ZH:
-            result['message_zh'] = MESSAGE_ZH[code]
-            if context.machine.get('device_backend') == 'mps' and code in UNIFIED_MESSAGE_ZH:
-                result['message_zh'] = UNIFIED_MESSAGE_ZH[code]
+        if code in MESSAGES:
+            pair = MESSAGES[code]
+            if context.machine.get('device_backend') == 'mps' and code in UNIFIED_MESSAGES:
+                pair = UNIFIED_MESSAGES[code]
             if code == 'no_memory' and (isinstance(row, dict) and row.get('memory') == 'host'
                                         or error is not None and host_memory_shortage(error)):
-                result.update(memory='host', message_zh=HOST_MESSAGE_ZH)
+                result['memory'], pair = 'host', HOST_MESSAGE
+            result.update(message_en=pair[0], message_zh=pair[1])
         if code in ('no_memory', 'small_memory'):
             from .failure import append_other_usage
             append_other_usage(result, context.machine)
@@ -3112,7 +3118,7 @@ def register():
         except Exception:
             # A damaged model folder or pack record must not turn into a plain-text 500 that blocks every later action.
             logging.getLogger(__name__).exception('image info failed')
-            return web.json_response(dict(error='model_unreadable', message_zh=MESSAGE_ZH['model_unreadable']), status=500)
+            return web.json_response(dict(error='model_unreadable', **messages('model_unreadable')), status=500)
 
     @server.routes.get('/freevideo/image-gen/report/{report_id}')
     async def report(request):
@@ -3221,8 +3227,7 @@ def register():
             elif isinstance(error, ValueError):
                 code = code if code in ERRORS else 'invalid_request'
                 result = dict(phase='failed', error=code, report_id=None, stage='start')
-                if code in MESSAGE_ZH:
-                    result['message_zh'] = MESSAGE_ZH[code]
+                result.update(messages(code))
             else:
                 # An OSError is not one of the request checks: a disk, a folder or a file went wrong, or something unexpected did.
                 # It says what it is and carries a report, instead of being called a wrong setting.
@@ -3237,12 +3242,10 @@ def register():
                     context = Context(request.match_info.get('action', ''), value if isinstance(value, dict) else {})
                     result = service.failed(reason, context, error=error)
                     result.setdefault('error', reason)
-                    if result['error'] in MESSAGE_ZH:
-                        result.setdefault('message_zh', MESSAGE_ZH[result['error']])
+                    result = dict(messages(result['error']), **result)
                 except Exception:
                     result = dict(phase='failed', error=reason, report_id=None, stage='start')
-                    if reason in MESSAGE_ZH:
-                        result['message_zh'] = MESSAGE_ZH[reason]
+                    result.update(messages(reason))
                 return web.json_response(result, status=500)
             return web.json_response(result, status=400)
         except Exception as error:
@@ -3255,6 +3258,5 @@ def register():
             except Exception:
                 result = dict(phase='failed', error='generation_failed', report_id=None, stage='start')
             result.setdefault('error', 'generation_failed')
-            if result['error'] in MESSAGE_ZH:
-                result.setdefault('message_zh', MESSAGE_ZH[result['error']])
+            result = dict(messages(result['error']), **result)
             return web.json_response(result, status=500)

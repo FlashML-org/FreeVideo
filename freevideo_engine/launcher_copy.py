@@ -4,7 +4,7 @@ import re
 from .terminal_ui import clean
 from .model_repair import PROGRESS as MODEL_REPAIR_PROGRESS
 from .model_status import NAMES
-from .i18n import KEY_SEPARATOR, catalog, code_language, lookup
+from .i18n import KEY_SEPARATOR, catalog, code_language, from_simplified, lookup
 
 
 ACTION_COPY = {
@@ -435,7 +435,14 @@ def display_from(value, entries):
             # \1, \2 in the file's sentence take the values; any other backslash is text, never an error.
             return re.sub(r'\\([1-9])', lambda ref: match.group(int(ref.group(1))) or '', sentence)
     plain = display(value)
-    return entries.get(plain, plain)
+    if isinstance(entries.get(plain), str):
+        return entries[plain]
+    # A file whose fallback is zh-Hans (Traditional Chinese) shows what it does not hold as the code's Simplified Chinese in
+    # its own characters, as i18n.lookup does; any other file shows the plain English.
+    meta = entries.get('_meta') if isinstance(entries, dict) else None
+    if isinstance(meta, dict) and meta.get('fallback') == 'zh-Hans':
+        return from_simplified(entries, display(value, True))
+    return plain
 
 
 def progress_view(event, zh=False):

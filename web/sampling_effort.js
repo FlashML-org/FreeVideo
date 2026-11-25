@@ -3,6 +3,11 @@
 // told apart by the learned upscale factor (Medium starts from a larger first pass); High and Max
 // sample 16 and 20 steps once, both with the guarded step cache. `upscale` is 2 for every single-pass level.
 const frozen = rows => Object.freeze(rows.map(row => Object.freeze({...row})));
+// Steps as words: "8 steps", "1 step", "8 + 3 steps" (the second pass's steps after the plus). One sentence each, so a
+// language whose nouns change with the number writes plural forms for them.
+export const stepsWords = (t, steps, twoPass = false, refine = 3) => twoPass
+    ? t('{steps} + {refine} steps', '{steps} + {refine} 步', {steps, refine})
+    : steps === 1 ? t('1 step', '1 步') : t('{steps} steps', '{steps} 步', {steps});
 export const SAMPLING_EFFORTS = frozen([
     {name: 'Light', zh: '轻量', steps: 8, twoPass: true, stepCache: null, upscale: 2, color: '#3dd6b5'},
     {name: 'Medium', zh: '标准', steps: 8, twoPass: true, stepCache: null, upscale: 1.5, color: '#4ea8ff'},
@@ -135,7 +140,7 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}, levels 
         nameButtons.forEach((b, i) => b.toggleAttribute('data-active', i === index));
         stops.forEach((stop, i) => stop.toggleAttribute('data-filled', i <= position + .01));
         rail.setAttribute('aria-valuenow', String(index));
-        rail.setAttribute('aria-valuetext', `${effortName(t, tier)}, ${tier.steps}${tier.twoPass ? ' + 3' : ''} ${t('steps', '步')}`);
+        rail.setAttribute('aria-valuetext', `${effortName(t, tier)}, ${stepsWords(t, tier.steps, tier.twoPass, 3)}`);
     }
     function position(event) {
         const box = rail.getBoundingClientRect();
@@ -197,10 +202,9 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}, levels 
         selected = level ? efforts.indexOf(level) : efforts.reduce((best, v, i) => distance(v) < distance(efforts[best]) ? i : best, 0);
         const isCustom = !level;
         element.dataset.custom = String(isCustom); custom.hidden = !isCustom;
-        const unit = currentSteps === 1 && !twoPass ? t('step', '步') : t('steps', '步');
         paint(selected);
         if (isCustom) nameButtons.forEach(b => b.removeAttribute('data-active'));  // No level is highlighted for custom steps.
-        if (isCustom) rail.setAttribute('aria-valuetext', `${t('Custom', '自定义')} · ${currentSteps}${twoPass ? ' + ' + currentRefine : ''} ${unit}`);
+        if (isCustom) rail.setAttribute('aria-valuetext', `${t('Custom', '自定义')} · ${stepsWords(t, currentSteps, twoPass, currentRefine)}`);
         rail.title = disabled ? reason || t('Controlled by connected nodes.', '由连接的节点控制。')
             : t('Same model. Higher effort uses more sampling steps; results vary by scene.', '使用同一模型，提高档位会增加采样步数；效果因场景而异。');
         if (disabled) rail.dataset.fvTipWhy = reason || t('Set by connected nodes', '由连接的节点决定'); else delete rail.dataset.fvTipWhy;

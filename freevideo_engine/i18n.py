@@ -177,12 +177,61 @@ def fill(text, values):
                   str(text))
 
 
-def lookup(catalog, en, zh, values=None):
+PLURAL_FORMS = ('zero', 'one', 'two', 'few', 'many', 'other')
+# Languages whose nouns do not change with the number: every number reads as 'other'.
+_PLURAL_OTHER_ONLY = {'ja', 'ko', 'zh', 'vi', 'id', 'th', 'ms'}
+
+
+def plural_form(language, number):
+    """The CLDR cardinal plural form of a number in a language, as Intl.PluralRules gives it in the page (one, few, many,
+    other), for the languages FreeVideo has files for; tests/i18n_plural_cases.json holds the browser's answers."""
+    try:
+        n = abs(float(number))
+    except (TypeError, ValueError):
+        return 'other'
+    if n != n or n == float('inf'):
+        return 'other'
+    whole = n == int(n)
+    i = int(n)
+    base = str(language or '').replace('_', '-').split('-')[0].lower()
+    if base in _PLURAL_OTHER_ONLY:
+        return 'other'
+    if base in ('ru', 'uk'):
+        if not whole:
+            return 'other'
+        if i % 10 == 1 and i % 100 != 11:
+            return 'one'
+        if 2 <= i % 10 <= 4 and not 12 <= i % 100 <= 14:
+            return 'few'
+        return 'many'
+    if base in ('fr', 'pt') and str(language).lower() != 'pt-pt':
+        return 'one' if i in (0, 1) else 'other'
+    return 'one' if whole and i == 1 else 'other'
+
+
+def plural_text(entry, values, language):
+    """An entry written as plural forms ({"one": ..., "few": ..., "many": ..., "other": ...}) as the text for the number in
+    values: the placeholder its "_by" names, else n, else count. A form the entry lacks, or no number, gives "other".
+    A string is itself; anything else is None. web/i18n.js pluralText."""
+    if isinstance(entry, str):
+        return entry
+    if not isinstance(entry, dict) or not isinstance(entry.get('other'), str):
+        return None
+    name = entry.get('_by') if isinstance(entry.get('_by'), str) else next((k for k in ('n', 'count') if values and k in values), None)
+    form = plural_form(language, values[name]) if name and values and name in values else 'other'
+    return entry[form] if form in PLURAL_FORMS and isinstance(entry.get(form), str) else entry['other']
+
+
+def lookup(catalog, en, zh, values=None, language=None):
     """A language file's text for a pair: the entry for the English and Chinese together (when the English has more than
-    one meaning), then for the English alone, then the English itself."""
+    one meaning), then for the English alone, then the English itself. An entry with plural forms gives the one for the
+    number in values, by the plural rules of language (the file's own tag when it was read by catalog())."""
+    meta_tag = (catalog.get('_meta') or {}).get('tag') if isinstance(catalog, dict) and isinstance(catalog.get('_meta'), dict) else None
+    rules = language or meta_tag
+
     def own(key):
         value = catalog.get(key) if isinstance(catalog, dict) else None
-        return value if isinstance(value, str) else None
+        return plural_text(value, values, rules) if key != '_meta' else None
     text = own(en + KEY_SEPARATOR + zh)
     text = own(en) if text is None else text
     if text is None:
@@ -219,13 +268,15 @@ def catalog(language, folder=None):
             try:
                 loaded = json.loads((Path(folder) / (language + '.json')).read_text(encoding='utf-8'))
                 if isinstance(loaded, dict):
-                    value = {k: v for k, v in loaded.items() if k != '_meta' and isinstance(v, str)}
+                    # Texts, and entries with plural forms (an object whose "other" is a text).
+                    value = {k: v for k, v in loaded.items() if k != '_meta'
+                             and (isinstance(v, str) or isinstance(v, dict) and isinstance(v.get('other'), str))}
                     # What a missing entry falls back to (web/i18n.js lookup): Traditional Chinese reads the code's
                     # Simplified Chinese in its own characters.
                     meta = loaded.get('_meta') if isinstance(loaded.get('_meta'), dict) else {}
                     kept = {k: meta[k] for k in ('fallback', 'chars') if isinstance(meta.get(k), str)}
-                    if kept:
-                        value['_meta'] = kept
+                    # Its plural rules are the file's language.
+                    value['_meta'] = dict(kept, tag=language)
             except (OSError, ValueError):
                 pass
         _catalogs[key] = value
@@ -248,4 +299,4 @@ def tr(en, zh, language, values=None, folder=None):
         return fill(zh, values) if values else zh
     if language == 'en':
         return fill(en, values) if values else en
-    return lookup(catalog(language, folder), en, zh, values)
+    return lookup(catalog(language, folder), en, zh, values, language)

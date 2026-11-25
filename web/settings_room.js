@@ -1423,7 +1423,7 @@ export async function openSetup(options) {
         overall.hidden = !busy;
         overallBar.max = phases.total > 0 ? phases.total : 1; overallBar.value = phases.done || 0;
         overallText.replaceChildren(el('b', '', phases.total > 0 ? `${t("Overall", "整体进度")} · ${Math.floor(100 * phases.done / phases.total)}%` : t("Preparing installation…", "正在准备安装…")),
-            el('span', '', phases.total > 0 ? `${phases.done} / ${phases.total} ${t("stages complete", "阶段已完成")}` : ''));
+            el('span', '', phases.total > 0 ? t("{done} / {total} stages complete", "{done} / {total} 阶段已完成", {done: phases.done, total: phases.total}) : ''));
         fileBar.hidden = !busy; fileBar.max = valid ? p.total : 1; fileBar.value = valid ? p.done : 0;
         if (busy && !valid) fileBar.set(null);
         const amount = n => p.total >= 2 ** 30 ? gib(n) : `${(n / 2 ** 20).toFixed(1)} MiB`;

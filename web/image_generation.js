@@ -268,7 +268,7 @@ export function imageGenError(code, info, t) {
         no_memory: ['Not enough GPU memory, even at the smallest size. Close other apps using the GPU, then try again.',
             '显存不足，最小尺寸也无法生成。请关闭其他占用显卡的程序后重试。'],
         busy_video: ['A video is generating. Try again when it finishes.', '视频正在生成，完成后再试。'],
-        busy: ['An image is already being generated. Try again when it finishes.', '已有一张图在生成，完成后再试。'],
+        busy: ['The image queue is full. Wait for the earlier images to finish, then try again.', '等待生成的图片已满，请等前面的图片完成后再试。'],
         model_unavailable: ['This computer does not support the chosen image model. Use Qwen-Image 2.1.', '这台电脑不支持所选的图片模型。请改用 Qwen-Image 2.1。'],
         // Lane 11-25 (image-prompt-read-failure-reason copy_lane_gpu_kernels).
         gpu_kernels_failed: ["The graphics card's computation check did not pass. Update the graphics card driver, then restart FreeVideo. If the check still does not pass, download the report and report the problem.", "\u663e\u5361\u7684\u8ba1\u7b97\u68c0\u67e5\u672a\u901a\u8fc7\u3002\u8bf7\u66f4\u65b0\u663e\u5361\u9a71\u52a8\u540e\u91cd\u65b0\u542f\u52a8 FreeVideo\uff1b\u5982\u4ecd\u672a\u901a\u8fc7\uff0c\u8bf7\u4e0b\u8f7d\u62a5\u544a\u5e76\u63d0\u4ea4\u95ee\u9898\u3002"],
@@ -290,7 +290,7 @@ export function imageGenError(code, info, t) {
         invalid_layout: ['A layout box cannot be used. Draw it larger or change its words, then generate again.', '有一个布局框用不了。请把它画大一些或改一下文字，再生成。'],
         too_many_boxes: ['A layout takes at most 8 boxes. Delete one, then generate again.', '布局最多 8 个框。请删掉一个，再生成。'],
         layout_too_long: ['The words in the layout are too long. Shorten the lines in the boxes, then generate again.', '布局里的文字太长。请把框里的话写短一些，再生成。'],
-        invalid_media: ['The reference image cannot be read. Choose another image.', '参考图读不出来，请换一张图。'],
+        invalid_media: ['This image cannot be read or is larger than 4096×4096 pixels. Choose another image.', '这张图片读不出来，或超过 4096×4096 像素。请换一张图片。'],
         reload: ['Image generation was interrupted. Try again.', '图片生成中途被打断，请重试。'],
         engine_error: ['The image engine returned an unreadable answer. Try again; if it keeps failing, report the problem.', '图像引擎返回了无法读取的结果。请重试；仍然失败请提交问题。'],
         connection_lost: ['Lost the connection to FreeVideo. Try again once it is back.', '与 FreeVideo 的连接已断开，恢复后请重试。'],

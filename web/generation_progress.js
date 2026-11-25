@@ -153,7 +153,9 @@ const DOWNLOADS = {
 // Stages whose engine counts are real completed work inside one long step.
 const COUNTED_STAGES = new Set(['video', 'media', 'weight_pin', 'weight_read',
   'encoder_device_load', 'encoder_compute', 'encoder_compute_reference', 'media_encode_audio', 'media_prepare']);
-const COUNT_UNITS = {frames: ['frames', '帧'], layers: ['layers', '层'], files: ['files', '个文件'], chunks: ['parts', '段']};
+// Whole sentences with both numbers: a language whose nouns change with the number writes plural forms for them.
+const COUNT_UNITS = {frames: ['{done} / {total} frames', '{done} / {total} 帧'], layers: ['{done} / {total} layers', '{done} / {total} 层'],
+    files: ['{done} / {total} files', '{done} / {total} 个文件'], chunks: ['{done} / {total} parts', '{done} / {total} 段']};
 const size = (bytes, unit) => (bytes / (unit === 'GiB' ? 2**30 : 2**20)).toFixed(1);
 // Asked for two passes with a first pass other than 8 steps: the engine ran one pass.
 const ranOnePass = plan => plan.requested === true && plan.enabled === false && plan.preview !== true
@@ -169,7 +171,7 @@ function activityLabel(message, t, plan = {}, secondPass = false, references = f
         const unit = message.total >= 2**30 ? 'GiB' : 'MiB';
         detail = `${size(done, unit)} / ${size(message.total, unit)} ${unit}`;
     } else if (COUNT_UNITS[message.unit]) {
-        detail = `${done} / ${message.total} ${t(...COUNT_UNITS[message.unit])}`;
+        detail = t(...COUNT_UNITS[message.unit], {done, total: message.total});
     } else return result;
     return {...result, text: `${result.text} · ${detail}`, parts: [...result.parts || [result.text], detail]};
 }

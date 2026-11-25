@@ -12,7 +12,7 @@ import {waitingText} from './chain_support.js';
 import {showEmptyPrompt} from './empty_prompt_notice.js';
 import {segmented} from './editor_adjust.js';
 import {createPassMode} from './pass_mode.js';
-import {createSamplingEffort, continuationUpscale, effortFor} from './sampling_effort.js';
+import {createSamplingEffort, continuationUpscale, effortFor, stepsWords} from './sampling_effort.js';
 import {createVoicePanel} from './editor_voice.js';
 import {createInstallPanel} from './editor_voice_install.js';
 import * as dubbing from './editor_voice_model.js';
@@ -107,7 +107,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
     const passControl = passMenu ? createPassMode({t, onChoose: mode => { actions.choosePass(mode); render(); }, listen: routed}) : null;
     // The creative panel's quality control (same component, same levels), above the two-pass choice in the same menu.
     // The steps are told where the control shows its estimate, which an edit has no use for: "8 + 3 steps", "8 steps", "12 steps".
-    const stepsText = (steps, twoPass, refine) => `${steps}${twoPass ? ' + ' + refine : ''} ${steps === 1 && !twoPass ? t('step', '步') : t('steps', '步')}`;
+    const stepsText = (steps, twoPass, refine) => stepsWords(t, steps, twoPass, refine);
     let quality = null, previewing = false, twoPassTitle = null;
     const effortControl = passMenu && actions.effort ? createSamplingEffort(t, {onChange: tier => { previewing = false; actions.chooseEffort(tier); render(); },
         onPreview: tier => {

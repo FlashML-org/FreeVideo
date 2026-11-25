@@ -1,4 +1,5 @@
 import {issueButton} from './issue_button.js';
+import {LANGUAGE} from './i18n.js';
 import {tip} from './autopilot_tips.js';
 // 0.6.11 only (remove in 0.6.12): the note on updated steps stays away once this card's Copy was used on this computer.
 const NOTE_SEEN = 'freevideo.agentConnectNote.0611';
@@ -281,8 +282,10 @@ export function agentConnectCard(t, api, shown = () => true, changed = () => {})
         // What the lookup lacked if it fails without a refusal: the request itself fails first, then the reply is read.
         let lacked = 'unreachable';
         try {
-            // The sentence carries no parameter: the server gives the agent the language this card showed.
-            const response = await api.fetchApi('/freevideo/agent/connect?lang=' + t('en', 'zh'), {cache: 'no-store', signal: request.signal});
+            // The sentence carries no parameter: the server gives the agent the language this card showed. The guide is
+            // written in Chinese and English only (an agent reads English); the page's language picks, not a language file.
+            const response = await api.fetchApi('/freevideo/agent/connect?lang=' + (LANGUAGE.startsWith('zh') ? 'zh' : 'en'),
+                {cache: 'no-store', signal: request.signal});
             const connect = await response.json().catch(() => null);
             if (current !== generation) return;
             if (!response.ok || !connect?.address) {

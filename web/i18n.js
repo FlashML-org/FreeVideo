@@ -33,6 +33,9 @@ export function fileLanguage(asked = askedLanguage()) {
 // the whole page blank).
 export const CATALOG_WAIT_MS = 3000;
 
+// The tag each loaded language file was read for: its plural rules are that language's.
+const catalogTags = new WeakMap();
+
 // A language file as an object of texts, or null when it cannot be read within the wait.
 export async function loadCatalog(tag, base = import.meta.url, fetcher = globalThis.fetch, wait = CATALOG_WAIT_MS) {
     const stop = typeof AbortController === 'function' ? new AbortController() : null;
@@ -43,7 +46,9 @@ export async function loadCatalog(tag, base = import.meta.url, fetcher = globalT
             const response = await fetcher(new URL(`./locales/${tag}.json`, base), stop ? {signal: stop.signal} : undefined);
             if (!response.ok) return null;
             const catalog = await response.json();
-            return catalog && typeof catalog === 'object' && !Array.isArray(catalog) ? catalog : null;
+            if (!catalog || typeof catalog !== 'object' || Array.isArray(catalog)) return null;
+            catalogTags.set(catalog, tag);
+            return catalog;
         } catch { return null; }
     })();
     try { return await Promise.race([read, late]); } finally { clearTimeout(timer); }
@@ -131,9 +136,33 @@ export function languageUrl(href, language) {
 // builds with a number in it, as the code's Simplified Chinese in its own characters (_meta.chars: pairs of a Simplified
 // character and the one it becomes), not as English.
 export function lookup(catalog, en, zh, values) {
-    const own = key => catalog && Object.prototype.hasOwnProperty.call(catalog, key) && typeof catalog[key] === 'string' ? catalog[key] : null;
+    const own = key => {
+        if (!catalog || !Object.prototype.hasOwnProperty.call(catalog, key)) return null;
+        const value = catalog[key];
+        return typeof value === 'string' ? value : pluralText(value, values, catalogLanguage(catalog));
+    };
     const text = own(en + KEY_SEPARATOR + zh) ?? own(en) ?? (catalog?._meta?.fallback === 'zh-Hans' ? fromSimplified(catalog, zh) : en);
     return values ? fill(text, values) : text;
+}
+
+// The language whose plural rules a file follows: the tag it was loaded for, else its _meta.tag, else the page's.
+export const catalogLanguage = catalog => catalogTags.get(catalog) ?? catalog?._meta?.tag ?? LANGUAGE;
+
+const PLURAL_FORMS = ['zero', 'one', 'two', 'few', 'many', 'other'];
+
+// An entry written as plural forms ({"one": ..., "few": ..., "many": ..., "other": ...}) as the text for the number in
+// values: the placeholder its "_by" names, else n, else count. The language's plural rules pick the form; a form the
+// entry lacks, or no number, gives "other". Null when the entry is neither a string nor such an object.
+export function pluralText(entry, values, language) {
+    if (typeof entry === 'string') return entry;
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry) || typeof entry.other !== 'string') return null;
+    const name = typeof entry._by === 'string' ? entry._by : ['n', 'count'].find(key => values && Object.prototype.hasOwnProperty.call(values, key));
+    const number = name && values ? Number(values[name]) : NaN;
+    let form = 'other';
+    if (Number.isFinite(number)) {
+        try { form = new Intl.PluralRules(language || undefined).select(number); } catch { form = 'other'; }
+    }
+    return PLURAL_FORMS.includes(form) && typeof entry[form] === 'string' ? entry[form] : entry.other;
 }
 
 const charTables = new WeakMap();

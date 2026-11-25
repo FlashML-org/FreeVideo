@@ -137,6 +137,9 @@ class BrowserRefused(OSError):
     """The system did not accept the request to open the browser."""
 
 
+# Texts a function gave only in Chinese (no English to look the pair up by); Session.both notes them, tests read it.
+CHINESE_ONLY = set()
+
 class Session:
     # A launcher started from an offline package (portable_launcher.PortableSession).
     bundled = False
@@ -1157,7 +1160,7 @@ class Session:
         elif active.get('state') == 'cancelled':
             detail = self.t('Paused', '已暂停')
         elif active.get('state') == 'failed':
-            failure = image_pack_failure(active.get('reason'), zh=self.chinese())
+            failure = self.both(lambda zh: image_pack_failure(active.get('reason'), zh=zh))
             detail = failure['detail']
             repairable = repairable or active.get('reason') in ('needs_repair', 'integrity_failed')
         blocked = (self.controller.busy or self.importer.busy or self.cleaner.busy or self.archives_busy
@@ -1173,7 +1176,7 @@ class Session:
                     repairable=repairable, failure=failure, report_id=active.get('report_id'),
                     report_line=self._image_pack_report_line(),
                     engine_state=engine_state,
-                    engine_note=image_pack_failure('busy_engine', zh=self.chinese())['detail'] if running else '',
+                    engine_note=self.both(lambda zh: image_pack_failure('busy_engine', zh=zh))['detail'] if running else '',
                     engine_clicked=running and self.image_engine_clicked)
 
     def _image_pack_report_line(self):
@@ -1420,6 +1423,38 @@ class Session:
                 system_language=interface_language('auto', default_language)))
         return self._language_view[1]
 
+    def both(self, make):
+        """make(zh) in the interface language. English and Simplified Chinese call it once; any other language calls it in
+        both and takes every text through t(English, Chinese): the language file's entry, Traditional Chinese's own
+        characters, else the English. A Chinese text without its English is noted in CHINESE_ONLY (tests read it)."""
+        language = self.ui_language()
+        if language in ('en', 'zh-Hans'):
+            return make(language == 'zh-Hans')
+        return self._paired(make(False), make(True), getattr(make, '__qualname__', 'text'))
+
+    def _paired(self, en, zh, where):
+        if isinstance(en, dict) and isinstance(zh, dict):
+            return {key: self._paired(en.get(key), zh.get(key), where + '.' + str(key)) for key in {**en, **zh}}
+        if isinstance(en, (list, tuple)) and isinstance(zh, (list, tuple)) and len(en) == len(zh):
+            return type(en)(self._paired(a, b, where) for a, b in zip(en, zh))
+        if isinstance(zh, str) and zh and not (isinstance(en, str) and en):
+            CHINESE_ONLY.add(where)
+            return self.t('', zh)
+        if isinstance(en, str) and isinstance(zh, str) and en != zh:
+            # A card's text is often a few sentences joined line by line (a detected model, then the steps): when the
+            # whole is not in the file, each line is looked up on its own.
+            lines_en, lines_zh = en.split('\n'), zh.split('\n')
+            if len(lines_en) > 1 and len(lines_en) == len(lines_zh) and not self._held(en, zh):
+                return '\n'.join(self._paired(a, b, where) for a, b in zip(lines_en, lines_zh))
+            return self.t(en, zh)
+        return en
+
+    def _held(self, en, zh):
+        """Whether the interface language's file holds this text (as English␟Chinese or as the English)."""
+        from .i18n import KEY_SEPARATOR, catalog
+        entries = catalog(self.ui_language())
+        return isinstance(entries.get(en + KEY_SEPARATOR + zh), str) or isinstance(entries.get(en), str)
+
     def notes_zh(self):
         """Whether release notes and their media captions show in Chinese: Simplified Chinese, and a language whose file
         falls back to it (Traditional Chinese reads the Chinese notes in its own characters, not the English)."""
@@ -1526,7 +1561,7 @@ class Session:
                 if self.compatibility.get('notice'):
                     from .compatibility_copy import notice_text
                     self.notice = Phrase(notice_text(self.compatibility, False), notice_text(self.compatibility, True),
-                                         self.chinese())
+                                         self.ui_language())
         except (OSError, ValueError, RuntimeError):
             self.compatibility = dict(available=False, level=0, automatic=False)
 
@@ -1564,7 +1599,7 @@ class Session:
         if installer:
             errors += [row.get('error', ''), *row.get('errors', [])]
             if shortcut.get('status') == 'failed':
-                errors.append(shortcut.get('error_zh' if self.chinese() else 'error') or shortcut.get('error', ''))
+                errors.append(self.both(lambda zh: shortcut.get('error_zh' if zh else 'error') or shortcut.get('error', '')))
         message = plain_text('\n'.join(str(e) for e in errors if e))
         if installer and row.get('error') and row.get('denied'):
             from .denied_access import text
@@ -1572,7 +1607,7 @@ class Session:
             # Windows words many refusals alike and often names no file; where it happened travels with the message.
             # Only a permission failure takes the line: the other cards read the first lines of the message.
             if launcher_failure(message)['kind'] in ('permission', 'engine-folder-denied'):
-                message = plain_text(text(row['denied'], self.chinese()) + '\n' + message)
+                message = plain_text(self.both(lambda zh: text(row['denied'], zh)) + '\n' + message)
         return message
 
     def diagnostic_error(self):
@@ -2030,14 +2065,15 @@ class Session:
         view = {k: row[k] for k in ('status', 'error', 'progress', 'candidate') if k in row}
         from .launcher_update import error_text, manual_install, release_page
         if row.get('error_code'):
-            view['error'] = error_text(row, self.chinese())
+            view['error'] = self.both(lambda zh: error_text(row, zh))
         view['release_page'] = release_page(self.updater.current) if self.updater else ''
         if self.updater and self.updater.install_failed and view.get('candidate'):
             # The new app did not go in and the old one is back: the reminder says so.
             from .launcher_update import mac_install_failure
-            reason = mac_install_failure(self.updater.install_failed_reason, self.chinese())
-            view['status'], view['error'] = 'error', self.t(*ACTION_COPY['update_install_failed']) + (
-                ('' if self.chinese() else ' ') + reason if reason else '')
+            reason = self.both(lambda zh: mac_install_failure(self.updater.install_failed_reason, zh))
+            first = self.t(*ACTION_COPY['update_install_failed'])
+            # Sentences that end in a full stop of their own (Chinese, Japanese) need no space between them.
+            view['status'], view['error'] = 'error', first + (('' if first.endswith(('。', '．', '！', '？')) else ' ') + reason if reason else '')
         key = self.update_key()
         view.update(engine=self.engine_update_pending(), current=__version__,
                     current_release=public_details(self.updater.current) if self.updater else self.release_details,
@@ -2398,7 +2434,7 @@ class Session:
         if row.get('status') != 'restart-required' or not isinstance(value, dict) or type(value.get('at')) not in (int, float):
             return ''
         from .engine_exit import describe
-        return describe(value, self.chinese())
+        return self.both(lambda zh: describe(value, zh))
 
     def old_versions_text(self):
         """What the background removal of earlier FreeVideo copies freed this session."""
@@ -2685,7 +2721,6 @@ class Session:
     def snapshot(self):
         from .failure_details import REPAIR_KINDS, launcher_failure, redacted_launcher_error, display_launcher_error, model_mismatch_package
         from .launcher_copy import display, progress_view, source_name
-        zh = self.chinese()
         language = self.ui_language()     # engine progress text in any language with a file
         row = self.controller.state
         busy = self.controller.busy or self.importer.busy or self.cleaner.busy
@@ -2811,19 +2846,19 @@ class Session:
         file_text = progress_text(current, self.ui_language(), decimal_sizes=sys.platform == 'darwin')
         if not hasattr(self, 'model_line'):
             self.model_line = ModelLine()
-        steady = self.model_line.line(progress, groups, display('Connecting to download server', language), zh,
+        steady = self.model_line.line(progress, groups, display('Connecting to download server', language), language,
                                       sys.platform == 'darwin')
         file_text = steady if steady is not None else file_text
         if self.importer.busy and self.importer.state.get('activity'):
             imported = self.importer.state
             file_text = progress_text(dict(activity=imported['activity'], unit='bytes',
-                name=display('Package files', language), done=imported.get('activity_done'), total=imported.get('activity_total')), zh)
+                name=display('Package files', language), done=imported.get('activity_done'), total=imported.get('activity_total')), language)
         if not hasattr(self, 'line_hold'):
             self.line_hold = LineHold()
         detail = clean(progress.get('detail', ''))
         urgent = (progress.get('notice') or progress.get('activity') == 'resume'
                   or progress.get('state') in ('failed', 'cancelled') or steady == display('Connecting to download server', language))
-        held = self.line_hold.text(file_text or detail, immediate=bool(urgent), zh=zh)
+        held = self.line_hold.text(file_text or detail, immediate=bool(urgent), zh=language)   # a change of language resets the hold
         if held != (file_text or detail):
             file_text, detail = held, ''
         else:
@@ -2840,8 +2875,8 @@ class Session:
         source = preferences['source']
         plan = row.get('plan', {})
         from .model_repair import review_lines
-        replace_models = review_lines(self.importer.state.get('replace_models', []) if offline_review else
-                                     plan.get('replace_models', []), zh=zh, offline=offline_review)
+        replace_models = self.both(lambda zh: review_lines(self.importer.state.get('replace_models', []) if offline_review else
+                                                           plan.get('replace_models', []), zh=zh, offline=offline_review))
         estimate = []
         if plan.get('disk_mode') == 'extreme':
             estimate.append(self.t('Space saver (automatic)', '极限省空间（自动启用）'))
@@ -2869,34 +2904,33 @@ class Session:
                 if group.startswith('torch-'):
                     names[group] = ('GPU packages', 'GPU 依赖')
                 route = self.t('direct', '直连') if entry.get('route') == 'direct' else self.t('current connection', '当前连接')
-                speeds.append(dict(source=source_name(entry['id'], zh)+' · '+route, group=self.t(*names.get(group, (group, group))),
-                    ok=entry.get('ok', False), rate=speed_text(entry, self.chinese())))
+                speeds.append(dict(source=self.both(lambda zh: source_name(entry['id'], zh))+' · '+route, group=self.t(*names.get(group, (group, group))),
+                    ok=entry.get('ok', False), rate=self.both(lambda zh: speed_text(entry, zh))))
         from .sampling_assets import total_bytes
         # The controller's record of the exception (class names and errno) belongs to its own message only: it tells an
         # unexpected failure from a message the launcher wrote, which str(error) alone cannot.
         own = (bool(row.get('error')) and not (self.error or self.browser_error or self.page_error)
                and not self.offline_page())
-        failure = launcher_failure(error, zh=self.chinese(), can_repair=self.can_repair(),
-                                   repairs_comfy=self.repairs_comfy(), unavailable=self.repair_unavailable(),
-                                   model_package=model_mismatch_package(raw_error, zh),
-                                   exception=row.get('exception') if own else None)
+        repair_state = dict(can_repair=self.can_repair(), repairs_comfy=self.repairs_comfy(), unavailable=self.repair_unavailable())
+        failure = self.both(lambda zh: launcher_failure(error, zh=zh, **repair_state, model_package=model_mismatch_package(raw_error, zh),
+                                                        exception=row.get('exception') if own else None))
         if failure.get('kind') == 'gpu-driver-missing':
             from .display_adapters import adapters, line, nvidia_driver_listed, only_other_vendors
-            zh = self.chinese()
             names = adapters()
-            if line(zh, names):
-                failure['note'] = line(zh, names)
+            note = self.both(lambda zh: line(zh, names))
+            if note:
+                failure['note'] = note
             if only_other_vendors(names):
                 # No NVIDIA card is listed: the card says what FreeVideo needs; the note names what was found.
                 from .failure_details import UNSUPPORTED_VENDOR
-                failure['title'], failure['action'] = UNSUPPORTED_VENDOR[1 if zh else 0]
+                failure['title'], failure['action'] = self.both(lambda zh: UNSUPPORTED_VENDOR[1 if zh else 0])
             elif nvidia_driver_listed(names):
                 # Its driver named the card, so a driver is installed but does not answer: reinstall it.
                 from .failure_details import DRIVER_NOT_WORKING
-                failure['title'], failure['action'] = DRIVER_NOT_WORKING[1 if zh else 0]
+                failure['title'], failure['action'] = self.both(lambda zh: DRIVER_NOT_WORKING[1 if zh else 0])
             elif names:
                 from .failure_details import DRIVER_FOR_LISTED_CARD
-                failure['title'], failure['action'] = DRIVER_FOR_LISTED_CARD[1 if zh else 0]
+                failure['title'], failure['action'] = self.both(lambda zh: DRIVER_FOR_LISTED_CARD[1 if zh else 0])
         if failure.get('path'):
             # The local repair instruction needs the actual file location; copied details stay redacted.
             from .model_repair import MISMATCH_PATH
@@ -2907,20 +2941,20 @@ class Session:
         if failure.get('kind') in ('permission', 'engine-folder-denied') and row.get('error') and row.get('denied'):
             from .denied_access import card_text
             # The card shows the detail instead of the action, so the action goes under the location.
-            location = card_text(row['denied'], zh)
+            location = self.both(lambda zh: card_text(row['denied'], zh))
             if location:
                 failure = dict(failure, detail=location + '\n' + failure['action'], action='')
         reasons = self.importer.state.get('write_reasons') or []
         if (self.importer.state.get('status') == 'error' and reasons
                 and self.error == self.importer.state.get('error') and failure.get('kind') != 'runtime-alias'):
             from .offline_errors import guidance
-            failure = dict(title=guidance('import-title', zh),
-                           detail=guidance(reasons[0], zh), action='', kind='offline-write')
+            failure = dict(title=self.both(lambda zh: guidance('import-title', zh)),
+                           detail=self.both(lambda zh: guidance(reasons[0], zh)), action='', kind='offline-write')
         disk = self.disk_view(row, failure)
         if disk and str(failure.get('kind', '')).startswith('disk'):
-            failure = launcher_failure(error, zh=self.chinese(),
-                other_disk=self.form['new_comfy'] and any(d['enough'] for d in disk['others']),
-                disk_name=disk['name'] if disk['problem'] == 'disconnected' else '')
+            other_disk = self.form['new_comfy'] and any(d['enough'] for d in disk['others'])
+            failure = self.both(lambda zh: launcher_failure(error, zh=zh, other_disk=other_disk,
+                                                            disk_name=disk['name'] if disk['problem'] == 'disconnected' else ''))
         # A problem card comes first: no update window opens over it (one already open closes
         # without counting as "Later", and reminds again once the card is gone). Repair installs
         # the launcher's own engine as it sets up again, so with Repair on the card the engine
@@ -2931,12 +2965,12 @@ class Session:
         cleanup = dict(self.cleaner.state, busy=self.cleaner.busy)
         from .offline_errors import alias_failure
         if alias_failure(cleanup.get('error', '')):
-            cleanup['error'] = display_launcher_error(cleanup['error'], zh=zh)
+            cleanup['error'] = self.both(lambda zh: display_launcher_error(cleanup['error'], zh=zh))
         elif cleanup.get('status') == 'error':
             cleanup['message'] = self.t(*CLEANUP_FAILURES.get(cleanup.get('reason'), CLEANUP_FAILURES['failed']))
         model_upgrade = dict(self.upgrade.state, busy=self.upgrade.busy)
         if alias_failure(model_upgrade.get('error', '')):
-            model_upgrade['error'] = display_launcher_error(model_upgrade['error'], zh=zh)
+            model_upgrade['error'] = self.both(lambda zh: display_launcher_error(model_upgrade['error'], zh=zh))
         archive_offer = (self.archives_deleting_offer if self.archives_busy else
                          self.archives_prompt_offer if self.archives_retry_dialog else self.archive_offer())
         archives_idle = bool(archive_offer and archive_offer['paths']) and self.archives_idle()
@@ -2971,9 +3005,9 @@ class Session:
             model_upgrade=dict(model_upgrade, switching=bool(self.model_switch)),
             offline=dict(progress_view(self.importer.state, language), runtime=bool(self.form['offline_runtime']),
                 runtime_supported=runtime_packages_supported(),
-                models=self.offline_model_count(), guide=package_instructions(self.form['new_comfy'] and self.form['environment_method'] == 'manual'
-                                           and not self.form['offline_runtime'], zh)),
-            video_model_guide=video_instructions(zh),
+                models=self.offline_model_count(), guide=self.both(lambda zh: package_instructions(
+                    self.form['new_comfy'] and self.form['environment_method'] == 'manual' and not self.form['offline_runtime'], zh))),
+            video_model_guide=self.both(video_instructions),
             adaln_dialog=self.adaln_dialog_view(error, update),
             selected=bool(self.selected), can_repair=self.can_repair(), repair_offered=repair_offered, error=error,
             field_error=dict(self.field_error or {}), retry_kind=self.retry_kind(), notice=self.notice,
@@ -2988,7 +3022,7 @@ class Session:
             # keep publishing changed snapshots after a launch has failed.
             elapsed=duration(time.monotonic()-self.started) if self.started and busy else '', summary=' · '.join(estimate),
             failure=failure, report_opened=self.report_opened[0] if self.report_cooling(self.report_opened[0]) else '',
-            source=source, source_name=source_name(source, zh), proxy_mode=preferences['proxy_mode'],
+            source=source, source_name=self.both(lambda zh: source_name(source, zh)), proxy_mode=preferences['proxy_mode'],
             probe=probe, speeds=speeds, token_set=bool(self.token),
             log=self.tail.text, logs=[dict(label=display(n, language), path=str(p)) for n, p in self.controller.terminal_sources()],
             url=(self._browser_url(row.get('url', '')) if row.get('status') == 'open' else ''), shortcut=shortcut,

@@ -16,7 +16,7 @@ MODEL_IDS = (H3, QWEN)
 from ..exit_diagnostics import clean_reading, clean_sample, clean_memory_during_request
 from ..diagnostic_resources import commit_exhausted
 from ..failure_details import KERNEL_CHECKS_FAILED, Redactor
-from .loras import ERRORS as LORA_ERRORS, MESSAGE_ZH as LORA_MESSAGE_ZH
+from .loras import ERRORS as LORA_ERRORS, MESSAGES as LORA_MESSAGES
 
 
 ERRORS = frozenset(('no_memory', 'small_memory', 'busy_video', 'busy', 'pack_missing', 'model_unavailable', 'model_unreadable',
@@ -28,31 +28,58 @@ NO_REPORT = frozenset(('small_memory', 'busy', 'invalid_request', 'invalid_promp
                        'disk_full')) | LORA_ERRORS
 STAGES = ('start', 'load', 'text', 'encode', 'denoise', 'decode')
 KINDS = ('generate', 'edit', 'cast', 'compose', 'download', 'install')
-MESSAGE_ZH = {
-    **LORA_MESSAGE_ZH,
-    'no_memory': '显存不足，最小尺寸也无法生成。请关闭其他占用显卡的程序后重试。',
-    'small_memory': '这台 Mac 的内存不足 16 GB，无法生成图片。',
-    'busy_video': '视频正在生成，完成后再试。',
-    'busy': '排队的图已满，请等前面的完成后再试。',
-    'pack_missing': '请先在启动器里下载“图像生成模型”。',
-    'model_unavailable': '这台电脑不支持所选的图片模型。请改用 Qwen-Image 2.1。',
-    'model_unreadable': '图像生成模型的文件读不出来。在启动器里修复后再试。',
-    'device_unavailable': '显卡暂时用不了，稍后再试。',
-    'gpu_kernels_failed': '显卡的计算检查未通过。请更新显卡驱动后重新启动 FreeVideo；如仍未通过，请下载报告并提交问题。',
-    'worker_exit': '图像生成意外停止了，请再试一次。',
-    'timeout': '这一张用时太长，已停止。请再试一次。',
-    'disk_full': '保存图片时出错：磁盘空间不够，空出空间后再生成。',
-    'generation_failed': '图像生成出错了，请再试一次。',
-    'invalid_request': '图片设置有误，请调整后重试。',
-    'invalid_prompt': '提示词为空，或加上图片引用后超过 2000 字。请缩短提示词后重试。',
-    'invalid_dimensions': '图片尺寸超出所选模型支持的范围。请调整尺寸后重试。',
-    'invalid_seed': '随机种子无效。请清空种子或改用较小的整数后重试。',
-    'too_many_images': '参考图超过所选模型支持的数量。请减少参考图后重试。',
-    'output_unwritable': '无法写入保存图片的文件夹（ComfyUI 的 input 目录下的 freevideo-image）。请确认该目录存在、可写，且没有同名文件，然后重试。',
-    'invalid_media': '图片无效，请重新选择输入目录中的图片。点选支持不超过 4096×4096 像素总数的图片。',
-    'invalid_points': '请选择 1–16 个图片范围内的点，且至少有一个选中点；1 为选中，0 为排除。',
-    'segment_not_installed': '点选模型未安装，请先下载点选模型（SAM 2.1 small）。',
+# Each failure in English and Chinese. The image page writes the same sentences in imageGenError (a test keeps the
+# codes both have equal); these reach API and agent callers as message_en and message_zh. Wording: Lane, 11-25.
+MESSAGES = {
+    **LORA_MESSAGES,
+    'no_memory': ('Not enough GPU memory, even at the smallest size. Close other apps using the GPU, then try again.',
+                 '显存不足，最小尺寸也无法生成。请关闭其他占用显卡的程序后重试。'),
+    'small_memory': ('This Mac has less than 16 GB of memory and cannot generate images.',
+                    '这台 Mac 的内存不足 16 GB，无法生成图片。'),
+    'busy_video': ('A video is generating. Try again when it finishes.',
+                  '视频正在生成，完成后再试。'),
+    'busy': ('The image queue is full. Wait for the earlier images to finish, then try again.',
+            '等待生成的图片已满，请等前面的图片完成后再试。'),
+    'pack_missing': ('Download the image model in the launcher first.',
+                    '请先在启动器中下载图片模型。'),
+    'model_unavailable': ('This computer does not support the chosen image model. Use Qwen-Image 2.1.',
+                         '这台电脑不支持所选的图片模型。请改用 Qwen-Image 2.1。'),
+    'model_unreadable': ('The image generation model files could not be read. Repair them in the launcher and try again.',
+                        '图像生成模型的文件读不出来。在启动器里修复后再试。'),
+    'device_unavailable': ('The graphics card is not available right now. Try again later.',
+                          '显卡暂时用不了，稍后再试。'),
+    'gpu_kernels_failed': ("The graphics card's computation check did not pass. Update the graphics card driver, then restart "
+                           'FreeVideo. If the check still does not pass, download the report and report the problem.',
+                           '显卡的计算检查未通过。请更新显卡驱动后重新启动 FreeVideo；如仍未通过，请下载报告并提交问题。'),
+    'worker_exit': ('Image generation stopped unexpectedly. Try again.',
+                   '图像生成意外停止了，请再试一次。'),
+    'timeout': ('This image took too long and was stopped. Try again.',
+               '这一张用时太长，已停止。请再试一次。'),
+    'disk_full': ('Saving the image failed: the disk is full. Free some space, then generate again.',
+                 '保存图片时出错：磁盘空间不够，空出空间后再生成。'),
+    'generation_failed': ('Image generation ran into an error. Try again.',
+                         '图像生成出错了，请再试一次。'),
+    'invalid_request': ('The image settings are invalid. Adjust them and try again.',
+                       '图片设置有误，请调整后重试。'),
+    'invalid_prompt': ('The prompt is empty, or longer than 2,000 characters once the image references are counted. Shorten it and try again.',
+                      '提示词为空，或加上图片引用后超过 2000 字。请缩短提示词后重试。'),
+    'invalid_dimensions': ('The image size is outside what the chosen model supports. Change the size and try again.',
+                          '图片尺寸超出所选模型支持的范围。请调整尺寸后重试。'),
+    'invalid_seed': ('The seed is not valid. Clear it or use a smaller whole number, then try again.',
+                    '随机种子无效。请清空种子或改用较小的整数后重试。'),
+    'too_many_images': ('There are more reference images than the chosen model supports. Remove some and try again.',
+                       '参考图超过所选模型支持的数量。请减少参考图后重试。'),
+    'output_unwritable': ('The folder that keeps the images cannot be written (freevideo-image in the ComfyUI input folder). Check that it exists, is writable and has no file of the same name, then try again.',
+                         '无法写入保存图片的文件夹（ComfyUI 的 input 目录下的 freevideo-image）。请确认该目录存在、可写，且没有同名文件，然后重试。'),
+    'invalid_media': ('This image cannot be read or is larger than 4096×4096 pixels. Choose another image.',
+                     '这张图片读不出来，或超过 4096×4096 像素。请换一张图片。'),
+    'invalid_points': ('Choose 1 to 16 points inside the image, with at least one to select (1 selects, 0 excludes).',
+                      '请在图片内选 1 到 16 个点，其中至少一个是选中点（1 表示选中，0 表示排除）。'),
+    'segment_not_installed': ('The click-select model is not installed. Download it first.',
+                             '点选模型尚未安装，请先下载点选模型。'),
 }
+MESSAGE_EN = {code: pair[0] for code, pair in MESSAGES.items()}
+MESSAGE_ZH = {code: pair[1] for code, pair in MESSAGES.items()}
 _DEVICE = re.compile(
     r'cuda.*(?:initializ|device.*(?:lost|unavailable|removed)|invalid device ordinal|'
     r'driver.*(?:insufficient|too old|mismatch|shutting down)|context.*destroyed|system not yet initialized)|'
@@ -69,8 +96,12 @@ _MODEL = re.compile(
 _MPS_MEMORY = re.compile(r'MPS backend out of memory', re.I)
 _LIMIT = 16 * 1024
 # On a Mac the GPU's memory is the machine's: the same failure, in its words.
-UNIFIED_MESSAGE_ZH = {'no_memory': '内存不足，最小尺寸也无法生成。请关闭其他程序后重试。'}
-HOST_MESSAGE_ZH = '虚拟内存不足，无法载入图像模型。请关闭其他程序，或在系统设置中调大虚拟内存，然后重试。'
+UNIFIED_MESSAGES = {'no_memory': ('Not enough memory, even at the smallest size. Close other apps, then try again.',
+                                  '内存不足，最小尺寸也无法生成。请关闭其他程序后重试。')}
+HOST_MESSAGE = ('Not enough virtual memory to load the image model. Close other apps, or increase virtual memory in system '
+                'settings, then try again.', '虚拟内存不足，无法载入图像模型。请关闭其他程序，或在系统设置中调大虚拟内存，然后重试。')
+UNIFIED_MESSAGE_ZH = {code: pair[1] for code, pair in UNIFIED_MESSAGES.items()}
+HOST_MESSAGE_ZH = HOST_MESSAGE[1]
 
 
 def host_memory_shortage(error):
@@ -82,8 +113,9 @@ def append_other_usage(result, machine):
     from ..other_usage import at_failure, fact, join
     value = at_failure(result.get('error'), machine)
     result['other_usage'] = value
-    if value and result.get('message_zh'):
-        result['message_zh'] = join(result['message_zh'], fact(value, zh=True), zh=True)
+    for key, zh in (('message_zh', True), ('message_en', False)):
+        if value and result.get(key):
+            result[key] = join(result[key], fact(value, zh=zh), zh=zh)
     return result
 
 

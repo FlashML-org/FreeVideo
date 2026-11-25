@@ -110,13 +110,17 @@ export function installChanges(before = {}, after = {}) {
     return notes;
 }
 // What the worker says about each model, reduced to {state, done, total, label, ready, reason}.
-export function installState(info, cn = CN) {
+export function installState(info, cn = null) {
+    // The worker's reason comes in English and Chinese: the page's language reads it through t() (its language file); a
+    // caller may still ask for one of the two (true: Chinese, false: English).
+    const say = typeof cn === 'boolean' ? (en, zh) => cn ? zh : en : t;
     const out = {};
     for (const model of info?.models || []) {
         const install = model.install || {};
         const state = model.ready ? 'done' : install.state === 'running' || install.state === 'paused_for_generation' || model.downloading ? 'running' : install.state || 'idle';
         out[model.id] = {state, ready: Boolean(model.ready), done: install.done ?? model.bytes_done ?? 0, total: install.total ?? model.bytes_total ?? 0, label: model.label || model.id,
-            paused: install.state === 'paused_for_generation', reason: clean(cn ? install.message_zh || install.message_en : install.message_en || install.message_zh)};
+            paused: install.state === 'paused_for_generation',
+            reason: clean(install.message_en && install.message_zh ? say(install.message_en, install.message_zh) : install.message_en || install.message_zh || '')};
     }
     return out;
 }

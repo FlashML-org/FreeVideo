@@ -167,8 +167,8 @@ IMAGE_REASONS = {
     'disk_full': ('Saving the image failed: the disk is full. Free some space, then generate again.',
                   '保存图片时出错：磁盘空间不够，空出空间后再生成。'),
     'generation_failed': ('Image generation ran into an error. Try again.', '图像生成出错了，请再试一次。'),
-    'invalid_media': ('The reference image could not be read. Choose another one.',
-                      '参考图读不出来，请换一张。'),
+    'invalid_media': ('This image cannot be read or is larger than 4096×4096 pixels. Choose another image.',
+                      '这张图片读不出来，或超过 4096×4096 像素。请换一张图片。'),
     'invalid_request': ('The image settings are invalid. Adjust them and try again.', '图片设置有误，请调整后重试。'),
     'invalid_prompt': ('The prompt is empty, or longer than 2,000 characters once the image references are counted. Shorten it and try again.',
                        '提示词为空，或加上图片引用后超过 2000 字。请缩短提示词后重试。'),
@@ -180,7 +180,8 @@ IMAGE_REASONS = {
                         '参考图超过所选模型支持的数量。请减少参考图后重试。'),
     'output_unwritable': ('The folder that keeps the images cannot be written (freevideo-image in the ComfyUI input folder). Check that it exists, is writable and has no file of the same name, then try again.',
                           '无法写入保存图片的文件夹（ComfyUI 的 input 目录下的 freevideo-image）。请确认该目录存在、可写，且没有同名文件，然后重试。'),
-    'busy': ('Another image is being generated. Try again when it finishes.', '已有一张图在生成，完成后再试。'),
+    'busy': ('The image queue is full. Wait for the earlier images to finish, then try again.',
+             '等待生成的图片已满，请等前面的图片完成后再试。'),
     'cancelled': ('The image was cancelled.', '已取消这张图片。'),
 }
 
@@ -793,8 +794,10 @@ def failure_reason_en(error):
     return FAILURE_REASONS_EN.get(error.get('code'), 'Did not finish')
 
 
-# The people-facing fields reasons() writes; next_zh/next_en only when the reason has a next step.
-REASON_KEYS = ('error_zh', 'error_en', 'next_zh', 'next_en')
+# The people-facing fields reasons() writes; next_zh/next_en only when the reason has a next step, reason_zh/reason_en
+# (the reason without the note on other programs' memory) only when that note was added, so a page in another language
+# looks the reason up whole and writes the note from its own template.
+REASON_KEYS = ('error_zh', 'error_en', 'next_zh', 'next_en', 'reason_zh', 'reason_en')
 
 
 def reasons(error):
@@ -802,10 +805,13 @@ def reasons(error):
     result = dict(error_zh=failure_reason(error), error_en=failure_reason_en(error))
     code = error.get('code')
     step = code in FAILURE_NEXT_ZH and result['error_zh'] == FAILURE_REASONS_ZH.get(code)
+    plain = dict(reason_zh=result['error_zh'], reason_en=result['error_en'])
     for key, zh in (('error_zh', True), ('error_en', False)):
         suffix = fact(error.get('other_usage'), zh=zh)
         if suffix and suffix not in result[key]:
             result[key] = join(result[key], suffix, zh=zh)
+    if all(result[key] != plain['reason_' + key[-2:]] for key in ('error_zh', 'error_en')):
+        result.update(plain)
     if step:
         result.update(next_zh=FAILURE_NEXT_ZH[code], next_en=FAILURE_NEXT_EN[code])
     return result
