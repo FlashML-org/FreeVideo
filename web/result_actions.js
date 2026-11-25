@@ -25,6 +25,7 @@ const ICONS = {
     expand: '<path d="M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9"/>',
     copy: '<rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 5.5v-1a1 1 0 0 0-1-1h-5a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h1"/>',
     trash: '<path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.1a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-8.1M7 7v4M9 7v4"/>',
+    star: '<path d="M8 1.9 9.9 5.8l4.3.6-3.1 3 .8 4.3L8 11.7l-3.9 2 .8-4.3-3.1-3 4.3-.6Z"/>',
     heart: '<path d="M8 13.5 2.6 8.3a3.3 3.3 0 0 1 4.7-4.6L8 4.4l.7-.7a3.3 3.3 0 0 1 4.7 4.6Z"/>',
     reuse: '<path d="M2.8 8a5.2 5.2 0 1 0 1.6-3.8M2.8 2.6v2.8h2.8"/><path d="M8 5.6V8l1.8 1.2"/>',
     upscale: '<circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3M7 5v4M5 7h4"/>',
@@ -264,12 +265,20 @@ export function resultActions(record, t, {diagnostic = null, secondPass = null, 
     const bar = document.createElement('div'); bar.className = 'fv-actions';
     const stage = layout === 'stage';
     if (stage) bar.dataset.layout = 'stage';
-    let download = null, copy = null;
+    let download = null, copy = null, favoriteButton = null;
     if (secondPass) bar.append(secondPassAction(t, secondPass));
     if (favorite) {
-        const button = action('button', '', 'heart', 'fv-action-secondary fv-action-favorite');
+        const button = action('button', '', stage ? 'star' : 'heart', 'fv-action-secondary fv-action-favorite');
         const sync = () => {
             button.setAttribute('aria-pressed', String(!!record.favorite));
+            if (stage) {
+                // Under the picture the key names the state ("Favourite" / "Favourited"), after Download; its hover card says what a press does.
+                button.lastElementChild.textContent = record.favorite ? t('Favourited', '已收藏') : t('Favourite', '收藏');
+                button.dataset.fvTipName = record.favorite ? t('Favourited', '已收藏') : t('Favourite', '收藏');
+                button.dataset.fvTipUse = record.favorite ? t('Take this video out of favourites', '把这条视频移出收藏') : t('Keep it at the top of Creations', '在作品里置顶保留');
+                button.setAttribute('aria-label', button.lastElementChild.textContent);
+                return;
+            }
             button.lastElementChild.textContent = button.title = record.favorite
                 ? t('Remove from favorites', '取消收藏') : t('Add to favorites', '收藏');
             button.setAttribute('aria-label', button.title);
@@ -284,6 +293,7 @@ export function resultActions(record, t, {diagnostic = null, secondPass = null, 
             catch { /* Shown by the caller. */ }
             finally { sync(); button.disabled = false; button.removeAttribute('aria-busy'); }
         };
+        favoriteButton = button;
         bar.append(button);
     }
     if (record.video) {
@@ -294,6 +304,7 @@ export function resultActions(record, t, {diagnostic = null, secondPass = null, 
         download.dataset.fvTipName = t('Download video', '下载视频');
         download.dataset.fvTipUse = t('Save the video to this computer', '把视频保存到本机');
         bar.append(download);
+        if (stage && favoriteButton) download.after(favoriteButton);
         copy = action('button', t('Copy path', '复制路径'), 'copy', 'fv-action-secondary fv-action-copy');
         copy.dataset.fvTipName = t('Copy path', '复制路径');
         copy.dataset.fvTipUse = t('Copy where the file is saved', '复制视频文件所在位置');
@@ -308,7 +319,7 @@ export function resultActions(record, t, {diagnostic = null, secondPass = null, 
         };
         bar.append(copy);
         // The creative panel puts Reuse right after the primary action; Copy path goes under More there.
-        if (reuse) reuseAction(record, t, reuse).then(button => { if (button && bar.isConnected) (stage ? download : copy).after(button); });
+        if (reuse) reuseAction(record, t, reuse).then(button => { if (button && bar.isConnected) (stage ? favoriteButton || download : copy).after(button); });
     }
     if (extend && canExtend(record)) {
         const button = action('button', extendText(t, 'action'), 'extend', 'fv-action-secondary fv-action-extend');

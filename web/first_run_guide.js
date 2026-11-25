@@ -40,11 +40,23 @@ export const CHAPTERS = [
 ];
 
 // "Longer and more" points at the Edit and Autopilot tabs that are on screen, or at the length on a phone.
+// An anchor in a settings or works column folded to its rail (a window narrower than 1280 px) is not a missing target: it stands
+// as that rail until the step is shown, and showing the step (reveal) opens the column as a drawer. Asking whether a step exists
+// opens nothing, so a person who has seen the guide is never given a drawer.
+const foldedPanel = node => node?.closest?.('.fv-body [data-collapsed=true]') || null;
+const atRail = (panel, node, reveal = null) => {
+    const box = (panel.querySelector(':scope > .fv-iv-rail') || panel).getBoundingClientRect(), shell = panel.closest('.fv-body')?.studioPanels;
+    return {node, folded: true, rect: {left: box.left, top: box.top, right: box.right, bottom: box.bottom, width: box.width, height: box.height},
+        reveal: () => { shell?.setPanel(panel.matches('.fv-work-column') ? 'right' : 'left', true); reveal?.(); }};
+};
 function tabsOrLength(dialog) {
     const shown = node => node?.isConnected && !node.closest('[hidden]') && node.getClientRects().length && node.getBoundingClientRect().width > 0;
     const tabs = [...dialog.querySelectorAll(':scope > .fv-header .fv-view-switch [data-view="editor"], :scope > .fv-header .fv-view-switch [data-view="autopilot"]')].filter(shown);
     const nodes = tabs.length ? tabs : [dialog.querySelector('[data-fv-guide="seconds"]')].filter(shown);
-    if (!nodes.length) return null;
+    if (!nodes.length) {
+        const field = dialog.querySelector('[data-fv-guide="seconds"]'), panel = field && !shown(field) ? foldedPanel(field) : null;
+        return panel ? atRail(panel, field) : null;
+    }
     const rects = nodes.map(node => node.getBoundingClientRect());
     const left = Math.min(...rects.map(r => r.left)), top = Math.min(...rects.map(r => r.top)), right = Math.max(...rects.map(r => r.right)), bottom = Math.max(...rects.map(r => r.bottom));
     return {node: nodes[0], rect: {left, top, right, bottom, width: right - left, height: bottom - top}};
@@ -245,9 +257,15 @@ export function createGuideReplayEntry({dialog, cn, api, openWorkspace, replay =
 // Custom targets return viewport rectangles on every layout pass. They never
 // insert hit targets or change the editor's pointer handling.
 export function guideTarget(dialog, chapter, targets = {}) {
-    if (chapter.target) return chapter.target(dialog);
-    if (targets[chapter.id]) return targets[chapter.id]();
+    const customFn = chapter.target ? () => chapter.target(dialog) : targets[chapter.id];
+    if (customFn) {
+        const custom = customFn();
+        const panel = custom && !visible(custom.node) ? foldedPanel(custom.node) : null;
+        return panel ? atRail(panel, custom.node, custom.reveal) : custom;
+    }
     const nodes = (chapter.anchors || [chapter.anchor]).map(selector => dialog.querySelector(selector));
+    const folded = nodes.map(node => (node && !visible(node) ? foldedPanel(node) : null)).find(Boolean);
+    if (folded && nodes.every(node => node && (visible(node) || foldedPanel(node)))) return atRail(folded, nodes[0]);
     if (nodes.some(node => !visible(node))) return null;
     const rects = nodes.map(node => node.getBoundingClientRect());
     const left = Math.min(...rects.map(r => r.left)), top = Math.min(...rects.map(r => r.top));
@@ -271,7 +289,7 @@ export function createFirstRunGuide({dialog, api, cn, isBusy = () => false, grou
     const heldKeys = new Set();
     const resolved = chapter => {
         const value = guideTarget(dialog, chapter, targets);
-        return value && visible(value.node) && value.rect.width > 0 && value.rect.height > 0 ? value : null;
+        return value && (value.folded || visible(value.node)) && value.rect.width > 0 && value.rect.height > 0 ? value : null;
     };
     const available = () => chapters.filter(c => resolved(c)).map(c => c.id);
     const shown = step => resolved(step) || (step.image && touring);

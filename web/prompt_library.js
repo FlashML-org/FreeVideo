@@ -122,7 +122,9 @@ export function createPromptLibrary({t, host, fill, snapshot, apply, describe = 
     const list = el('div', 'fvs-library-list'); list.setAttribute('role', 'listbox');
     const foot = el('div', 'fvs-library-foot');
     panel.append(head, list, foot);
-    host.append(panel);
+    // The host may be a function: the panel stands where the console is now (the column layout has no console on the page).
+    const home = () => (typeof host === 'function' ? host() : host);
+    home().append(panel);
     let tab = 'history', query = '';
     const TABS = [['history', t('History', '历史')], ['templates', t('Templates', '模板')], ['presets', t('Presets', '预设')]];
     const tabButtons = TABS.map(([id, label]) => {
@@ -205,6 +207,7 @@ export function createPromptLibrary({t, host, fill, snapshot, apply, describe = 
     function show(which) {
         if (which) tab = which;
         query = ''; search.value = '';
+        if (panel.parentNode !== home()) home().append(panel);
         panel.hidden = false; button.setAttribute('aria-expanded', 'true'); render();
         document.addEventListener('pointerdown', outside, true);
         (tab === 'presets' ? panel.querySelector('.fvs-preset-name') : search)?.focus({preventScroll: true});

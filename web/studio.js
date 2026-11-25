@@ -24,7 +24,6 @@ import { createPreviewScene } from './preview_scene.js?v=20261115-still';
 import { animateDetails, closeDialog } from './motion.js';
 import { openLibrary, setDefaultUpscale, setDefaultUpscaleWork, videoThumbnailURL, admittedFrames } from './library.js';
 import { createUpscaleOffer, upscaleChoices, UPSCALE_USE, UPSCALE_QUEUED, UPSCALE_FAILED } from './upscale_offer.js';
-import { createRecentVideos } from './studio_recent.js';
 import { createStudioQueue, randomSeed, turnNodeOn } from './studio_queue.js';
 import { isNetworkTypeError, connectionLostText, wrappedFetchOnly } from './browser_extension.js';
 import { newEngineExit, engineExitText, watchEngineExit, refreshLoopStalls } from './engine_exit.js';
@@ -38,12 +37,16 @@ import { mediaName, uploadMedia } from './media_upload.js';
 import { reconcileLoraTriggers, promptLines } from './lora_triggers.js';
 import { createVerdicts, describeVerdict, feedbackDraft } from './lora_check.js';
 import { continuationUpscale, createSamplingEffort, effortFor, effortsFrom, passSwitch, stepCacheOf, upscaleOf } from './sampling_effort.js';
+import { createPanelShell } from './panel_shell.js';
+import { layoutColumns } from './studio_columns.js';
+import { mountStudioColumn } from './studio_right_column.js';
+import { button as railButton, icon as railIcon, readStore as readLocal, writeStore as writeLocal } from './image_view_ui.js';
 import { resultActions, previewBadge, icon, actionsUnavailable, liftMenu } from './result_actions.js';
 import { TIPS } from './tooltip_copy.js';
 import { createFrameChip, createFrameIcon, createPopChip } from './glass/frame_picker.js';
 import { createWarm } from './studio_warm.js';
 import { attach as attachPlayer } from './glass/player_bar.js';
-import { framesOf, savedPrompt } from './result_reuse.js';
+import { framesOf, savedPrompt, savedSettings } from './result_reuse.js';
 import { addVideoLabel, addVideoModel, missingVideoText, videoModelState } from './video_model.js';
 import { createPromptEnhancer } from './prompt_enhance.js';
 import { requestText, shownRewrite } from './prompt_sections.js';
@@ -122,6 +125,7 @@ const glassCss = document.createElement('link'); glassCss.rel = 'stylesheet'; gl
 // The panel reports ready only once this layer applies, so its first frame is never laid out without it.
 const glassReady = new Promise(resolve => { glassCss.addEventListener('load', resolve, {once: true}); glassCss.addEventListener('error', resolve, {once: true}); setTimeout(resolve, 3000); });
 document.head.append(glassCss);
+const shellCss = document.createElement('link'); shellCss.rel = 'stylesheet'; shellCss.href = new URL('./panel_shell.css', import.meta.url).href; document.head.append(shellCss);
 const el = (tag, label, cls) => { const e = document.createElement(tag); if (label != null) e.textContent = label; if (cls) e.className = cls; return e; };
 // One line per part of a long video, under the preview. A part that has not started opens in
 // place for editing and saves when it loses focus; the server's reply decides what stays.
@@ -759,7 +763,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // The console (studio_console.js) is put together once every control exists; until then nothing reads it.
     let consoleUI = null, promptLibrary = null, reverseKey = null, reversePick = null;
     // Set while the editor borrows this panel's bar (current.borrow below).
-    let borrowed = null;
+    let borrowed = null, columns = null;
     // Frame & size picker and the stage's outline of a new frame (set with the size tray).
     let framePicker = null;
     const header = el('header', null, 'fv-header'), brand = el('div', null, 'fv-brand');
@@ -785,6 +789,21 @@ export function openStudio(node, {extendFrom = null} = {}) {
     body.style.visibility = 'hidden';
     glassReady.then(() => { body.style.visibility = ''; });
     dialog.append(header, body); body.append(controls, output);
+    // The three-column layout (settings | stage | works) shares the picture view's shell; the right column stays hidden until the works page mounts in it.
+    {
+        const works = el('aside', null, 'fv-work-column'); works.hidden = true; body.append(works);
+        const settingsRail = el('div', null, 'fv-iv-rail'), worksRail = el('div', null, 'fv-iv-rail');
+        const panels = readLocal('freevideo.studio.panels', {}), panelShell = {};
+        const open = side => railButton('fv-iv-icon-btn', {iconName: side === 'left' ? 'panelL' : 'panelR', name: side === 'left' ? t('Show settings', '展开设置栏') : t('Show works', '展开作品栏'), onClick: () => panelShell.api.setPanel(side, true)});
+        const fold = side => railButton('fv-iv-icon-btn fv-iv-collapse', {iconName: side === 'left' ? 'panelL' : 'panelR', name: side === 'left' ? t('Hide settings', '收起设置栏') : t('Hide works', '收起作品栏'), onClick: () => panelShell.api.setPanel(side, false)});
+        settingsRail.append(open('left')); worksRail.append(open('right'));
+        const foldLeft = fold('left'); body.foldLeft = foldLeft; body.settingsRail = settingsRail; works.append(worksRail);
+        body.dataset.cols = '3';
+        controls.classList.add('fv-glass', 'fv-g2'); works.classList.add('fv-glass', 'fv-g2');
+        panelShell.api = createPanelShell({body, left: controls, right: works, stage: output, panels, save: () => writeLocal('freevideo.studio.panels', panels)});
+        panelShell.api.paint();
+        body.studioPanels = panelShell.api;
+    }
     const portNotice = createPortNotice(cn);
     if (portNotice) output.append(portNotice);
     const updateNotice = createUpdateNotice(cn);
@@ -1629,7 +1648,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // The floating task window grows out of this picture and returns to it.
     stage.dataset.fvTaskStage = 'studio';
     // Before the first video: one quiet line under the empty frame's icon says where to start.
-    stage.style.setProperty('--fvs-empty-hint', JSON.stringify(t('Describe a scene below to start', '在下方写一句描述，开始生成')));
+    stage.style.setProperty('--fvs-empty-hint', JSON.stringify(t('Describe a scene to start', '写一句描述，开始生成')));
     const stageMedia = el('div', null, 'fv-stage-media');
     // The next generation's empty frame: the stage itself, at the chosen (or pointed-at) shape, with its pixels.
     const nextSize = el('span', null, 'fvs-next-size');
@@ -1760,11 +1779,16 @@ export function openStudio(node, {extendFrom = null} = {}) {
     tall?.addEventListener?.('change', tallChange); cleanup.push(() => tall?.removeEventListener?.('change', tallChange));
     function fitTall(gap) {
         const playerShown = getComputedStyle(playerRow).display !== 'none';
-        const room = output.clientHeight - 2 * (TALL_EDGE / 2) - 40 - gap - (playerShown ? playerRoom() + gap : 0);
+        // Three columns: the works have a column (or a row under the stage) of their own, so there is no grid to make room for;
+        // the picture takes the column's width less its own padding, and the picture, bar and actions stand in the middle.
+        const columns = body.dataset.cols === '3', style = getComputedStyle(output);
+        const edges = columns ? parseFloat(style.paddingTop) + parseFloat(style.paddingBottom) : 2 * (TALL_EDGE / 2);
+        const room = output.clientHeight - edges - 40 - gap - (playerShown ? playerRoom() + gap : 0);
         const gridWidth = output.clientWidth - 2 * TALL_EDGE, gridHeight = gridWidth / previewRatio;
-        const grid = recentCount() > 0 && gridHeight <= room && room - gridHeight >= GRID_MIN;
+        const grid = !columns && recentCount() > 0 && gridHeight <= room && room - gridHeight >= GRID_MIN;
         body.dataset.grid = String(grid);
-        return {room, width: grid ? gridWidth : output.clientWidth - TALL_EDGE - TALL_RAIL, grid, barRoom: 40 + gap + (playerShown ? playerRoom() + gap : 0)};
+        const width = columns ? output.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) : grid ? gridWidth : output.clientWidth - TALL_EDGE - TALL_RAIL;
+        return {room, width, grid, barRoom: 40 + gap + (playerShown ? playerRoom() + gap : 0)};
     }
     function fitPreview() {
         const isTall = !phone?.matches && !!tall?.matches;
@@ -2010,11 +2034,11 @@ export function openStudio(node, {extendFrom = null} = {}) {
         source: row => ({src: view(row.video, 'output') + (row.version ? `&fv=${encodeURIComponent(row.version)}` : ''), poster: savedVideo(row.video) && !row.preview ? videoThumbnailURL(row) : ''}),
         // The two sides are A and B only: nothing about the works is written on them.
         describe: () => '',
-        onChange: active => { stage.dataset.comparing = String(active); compareButton.setAttribute('aria-pressed', String(active)); if (!active) recent?.clearPicks({quiet: true}); }});
+        onChange: active => { stage.dataset.comparing = String(active); compareButton.setAttribute('aria-pressed', String(active)); if (!active) worksColumn?.clearPicks({quiet: true}); }});
     cleanup.push(() => compare.dispose());
     const compareButton = button('', () => {
         if (compare.active) { compare.close(); return; }
-        const rows = recent.rows(), index = recent.index();
+        const rows = worksColumn.rows(), index = worksColumn.index();
         const other = rows[index + 1] || rows[index - 1] || rows.find(row => row?.video !== result?.video);
         if (!result?.video || !other) return;
         stageMedia.querySelector('video')?.pause();
@@ -2023,31 +2047,33 @@ export function openStudio(node, {extendFrom = null} = {}) {
     compareButton.innerHTML = `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true">${COMPARE_ICON}</svg>`;
     compareButton.setAttribute('aria-label', t('Compare', '对比'));
     tip(compareButton, t('Compare', '对比'), t('Side by side or with a divider, with another video', '和另一条视频并排或滑动对比'));
-    // No Compare button on the bar: two videos picked together in the rail compare on the stage (F9 still opens it).
-    let shownCount = 0;
-    const recent = createRecentVideos(t, {body, rail: true, named: row => savedPrompt(api, row),
-        onSelect: row => { if (compare.active) compare.close(); showResult(row, {chosen: true}); },
+    // No Compare button on the bar: two videos picked together in the works column compare on the stage (F9 still opens it).
+    let shownCount = 0, worksColumn = null;
+    // The right column of the three-column layout: the library's videos, the shown video's facts, the queue. The owner's
+    // Creations button stands beside its search.
+    worksColumn = mountStudioColumn({slot: body.querySelector('.fv-work-column'), shell: body.studioPanels, entry: worksButton,
+        onShow: row => { if (compare.active) compare.close(); showResult(row, {chosen: true}); }, named: row => savedPrompt(api, row),
         onPick: rows => {
             if (rows.length === 2) { if (compare.active) compare.close(); compare.open(rows[0], rows[1]); }
             else { if (compare.active) compare.close(); if (rows[0]) showResult(rows[0], {chosen: true}); }
         },
-        onChange: () => { syncHistory(); const count = recent.rows().length; if (count !== shownCount) { shownCount = count; fitPreview(); } }});
-    recentCount = () => recent.rows().length;
-    recent.element.classList.add('sgf-avoid');
-    recent.element.prepend(worksButton); body.append(recent.element);
+        onChange: () => { syncHistory(); const count = worksColumn ? worksColumn.rows().length : 0; if (count !== shownCount) { shownCount = count; fitPreview(); } },
+        // The info page's Reuse settings fills the panel as the result bar's does.
+        onReuse: async row => { const saved = await savedSettings(api, row); if (saved) reuse.apply(saved); }});
+    recentCount = () => worksColumn.rows().length;
+    cleanup.push(() => worksColumn.dispose());
     // Phones have no rail; Creations is the top bar's works entry, there at every width.
     function syncHistory() {
         stageBar.element.dataset.empty = String(!result?.video);
-        stageBar.setHistory(recent.index(), recent.rows().length);
-        compareButton.disabled = !result?.video || recent.rows().length < 2;
+        stageBar.setHistory(worksColumn.index(), worksColumn.rows().length);
+        compareButton.disabled = !result?.video || worksColumn.rows().length < 2;
         compareButton.dataset.fvTipWhy = compareButton.disabled ? t('Needs a second video in the history', '历史里还要有另一条视频') : '';
         if (!compareButton.disabled) delete compareButton.dataset.fvTipWhy;
     }
     function stepHistory(delta) {
-        const rows = recent.rows(), index = recent.index(), row = rows[index + delta];
+        const rows = worksColumn.rows(), index = worksColumn.index(), row = rows[index + delta];
         if (row) showResult(row, {chosen: true});
     }
-    cleanup.push(() => recent.dispose());
     // A run this window watched. Its result can arrive before or after the
     // final progress message, and more than once; the tip stays with that video.
     // "Reuse settings" in the result bar: what the panel holds now, filling an earlier video's settings back,
@@ -2100,7 +2126,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // chosen: a video picked from Recent videos. It only changes the picture; a run in progress keeps its progress.
     function showResult(r, {chosen = false} = {}) {
         if (!r?.video || disposed) return; result = r; leaveNext();
-        recent.setSelected(r.video); syncPartList();
+        worksColumn?.setShown(r); syncPartList();
         refreshEffortEstimate(true);
         // The report belongs to the video that run made; a video picked from Recent videos
         // shows its own report, or none when this window never saw its run.
@@ -2190,7 +2216,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
         links.replaceChildren(resultActions(r, t, {diagnostic: reported ? downloadReport : null,
                                                    extend: saved => openExtendEditor(saved, node, {studio: dialog,
                                                        isCurrent: () => dialog.open && dialog.dataset.closing !== 'true' && topDialog() === dialog && result === r}),
-                                                   secondPass: r.preview ? secondPass(r) : null, reuse: r.preview ? null : reuse, layout: 'stage', more: [...upscaleItems(r), guideItem()]}));
+                                                   secondPass: r.preview ? secondPass(r) : null, reuse: r.preview ? null : reuse, layout: 'stage',
+                                                   favorite: worksColumn && r.video ? value => worksColumn.setFavorite(r, value).catch(error => { notify(t('The favourite was not saved. Try again.', '收藏未能保存，请重试。'), null, 'fail'); throw error; }) : null, more: [...upscaleItems(r), guideItem()]}));
         refreshUpscaleItems(r);
         if (runButtonReady) updateExtendButton();
         stageBar.sync(); syncHistory();
@@ -2742,7 +2769,14 @@ export function openStudio(node, {extendFrom = null} = {}) {
         const invalid = [...dialog.querySelectorAll('input:not(:disabled)')].find(e => !e.form && !e.classList.contains('fvp-dim') && !e.checkValidity());
         if (invalid) {
             const details = invalid.closest('details'); if (details) details.open = true;
-            if (invalid.dataset.fvLength === 'block') { lengthControl.reportBlock(); invalid.focus(); invalid.scrollIntoView({block: 'center'}); return; }
+            // Three columns: a field in the folded Advanced options section opens it (the field must be on screen to say what is wrong).
+            const folded = invalid.closest('.fv-sc-section[data-open=false]'); if (folded) folded.querySelector('.fv-iv-sec-toggle')?.click();
+            if (invalid.dataset.fvLength === 'block') {
+                lengthControl.reportBlock();
+                // The Advanced options tray repaints its rows on events inside it; the tray was already open (three columns keep it so), so it hears of the reason from here.
+                invalid.closest('.fvs-tray')?.dispatchEvent(new Event('click'));
+                invalid.focus(); invalid.scrollIntoView({block: 'center'}); return;
+            }
             if (invalid.validity.valueMissing) {
                 const message = new Map([[seconds, t('Fill in the duration.', '请填写时长。')],
                     [width, t('Fill in the width.', '请填写宽度。')], [height, t('Fill in the height.', '请填写高度。')],
@@ -3100,14 +3134,20 @@ export function openStudio(node, {extendFrom = null} = {}) {
     cleanup.push(listenDialogKey(dialog, 'keydown', escape));
     cleanup.push(isolateDialogKeys(dialog, event => routeDialogKey(event, dialog)));
 
-    // Escape first closes the recent videos panel of a narrower window, then the studio.
+    // Escape first closes a drawer of a narrower window (the settings or the works), then the studio.
+    const closeWorksDrawer = () => {
+        const panels = body.studioPanels;
+        if (panels.drawer()) { panels.closeDrawer(); return true; }
+        if (panels.below()) { panels.setPanel('right', false); return true; }
+        return false;
+    };
     // An open result menu (More, delete) closes first, wherever the focus is, and gives it back to the menu's button.
     const closeMenu = () => {
         const open = [...dialog.querySelectorAll('details.fv-action-menu[open]')].pop();
         if (!open) return false;
         open.open = false; open.querySelector(':scope>summary')?.focus({preventScroll: true}); return true;
     };
-    dialog.addEventListener('cancel', e => { e.preventDefault(); if (!closeMenu() && !compare.close() && !promptLibrary?.hide() && !consoleUI?.dismiss() && !recent.dismiss()) closeDialog(dialog); });
+    dialog.addEventListener('cancel', e => { e.preventDefault(); if (!closeMenu() && !compare.close() && !promptLibrary?.hide() && !consoleUI?.dismiss() && !closeWorksDrawer()) closeDialog(dialog); });
     const dispose = () => { if (disposed) return; disposed = true; borrowed?.release({disposing: true}); blockOriginal('extend', false); blockOriginal('preview', false); for (const f of cleanup) f(); stage.querySelector('video')?.pause(); dialog.remove(); if (current?.dialog === dialog) { current = null; viewChanged('nodes', node); } };
     const onClose = () => {
         // The browser's own close event of a switch comes with the next frame; if the panel was opened again before it
@@ -3125,6 +3165,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     let popHolder = null;
     current.borrow = ({mount, submit, label = null, previews = null, disabled = null, onSeconds = null, onFirstFrame = null, initial = {}, locked = []}) => {
         if (borrowed || disposed) return null;
+        columns?.restore(); // the editor shows the console bar, not the column
         const outer = mount.closest('dialog') || document.body;
         const home = {parent: controls.parentNode, next: controls.nextSibling};
         // The pop-ups travel inside one display:contents holder, so a switch moves one node instead of every pop-up.
@@ -3156,6 +3197,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
                 if (!disposing) {
                     if (home.next?.parentNode === home.parent) home.parent.insertBefore(controls, home.next); else home.parent.append(controls);
                     dialog.append(popHolder);
+                    columns?.apply();
                 }
                 updateRunButton();
             }};
@@ -3281,6 +3323,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const keepsTray = target => {
         const open = consoleUI?.open(); if (!open || !target?.closest) return true;
         if (target.closest('.fvs-tray[open]') || target.closest('.fvs-chip[aria-controls]')) return true;
+        // Three columns: the Media tray stands inside the Prompt section (not floating over the console), so a press or focus elsewhere
+        // does not fold it; its chip, Generate and Esc do (a continuation keeps its source in it).
+        if (body.dataset.cols === '3' && dialog.querySelector('.fv-sc-section .fvs-tray[open]:not([data-pinned])')) return true;
         if (target.closest('[popover], [role=listbox], [role=menu], .fv-select-menu, .fv-tip, .fv-ed-expand-dialog')) return true;
         return target.closest('dialog') !== dialog;
     };
@@ -3373,6 +3418,13 @@ export function openStudio(node, {extendFrom = null} = {}) {
             // An open tray: the play bar and the bar under the picture step back (CSS); they show again when it closes.
             void open;
         }});
+    // The console replaced the controls' children: the fold button and the rail (how a folded settings column opens again) go back in.
+    if (body.dataset.cols === '3') controls.prepend(body.foldLeft), controls.append(body.settingsRail);
+    if (body.dataset.cols === '3') {
+        const part = id => consoleUI.chip(id);
+        columns = layoutColumns({t, controls, consoleUI, fold: body.foldLeft, rail: body.settingsRail, parts: {media: part('media'), mention, enhance: enhancer.chip, size: framePicker.element,
+            duration: stepper.element, quality: effort.element, pass: passMode, runbar}});
+    }
     // The two panels repaint whenever the console's row does.
     { const sync = consoleUI.sync; consoleUI.sync = () => { sync(); paintDuration(); paintQuality(); }; }
     paintDuration(); paintQuality();
@@ -3411,11 +3463,13 @@ export function openStudio(node, {extendFrom = null} = {}) {
     for (const tray of consoleUI.trays.querySelectorAll('.fvs-tray')) trayWatch?.observe(tray);
     cleanup.push(() => trayWatch?.disconnect());
     // The one-line slot sits at the top of the dock, above an open tray and the console, in room kept for it.
-    controls.prepend(consoleUI.slot);
+    // (In three columns the settings column keeps it in its foot, under Generate, whether or not the editor has borrowed the bar.)
+    if (body.dataset.cols !== '3') controls.prepend(consoleUI.slot);
     // The run's status line: in that notes line on wider windows (one band between the picture's bar and the console),
     // on its own row under the bar on phones.
     const placeStatus = () => {
-        if (!phone?.matches) { if (status.parentElement !== consoleUI.slot) consoleUI.slot.append(status); }
+        // (Three columns: the settings column's foot at every width, so a reason says itself beside the field it is about, also on a phone.)
+        if (!phone?.matches || body.dataset.cols === '3') { if (status.parentElement !== consoleUI.slot) consoleUI.slot.append(status); }
         else if (status.parentElement !== output) reuseRow.before(status);
         fitPreview();
     };
@@ -3490,7 +3544,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
             typeof item.prompt === 'string' ? t('with prompt', '含描述') : ''].filter(Boolean).join(' · ');
     };
     const SAMPLING_LEVELS = () => effort.levels();
-    promptLibrary = createPromptLibrary({t, host: consoleUI.element, notify, describe: describeSettings, guide: promptHelp.href,
+    // The panel stands over the console; in three columns the console is not on the page, so it stands in the body (a card beside the settings column), and in the editor's borrowed bar in the bar's own console.
+    promptLibrary = createPromptLibrary({t, host: () => (borrowed || body.dataset.cols !== '3' ? consoleUI.element : body), notify, describe: describeSettings, guide: promptHelp.href,
         fill: text => {
             if (prompt.disabled) return null;
             const before = value(node, 'text');
@@ -3608,7 +3663,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // is without reverse: there the key sits in the options row, right of Enhance, as an icon (same key, same words).
     const reversePhone = window.matchMedia?.('(max-width:760px)');
     const placeReverse = () => {
-        const inRow = Boolean(reversePhone?.matches);
+        // (The three-column panel has no tools column beside the box: the key stays in the Prompt section's head at every width.)
+        const inRow = Boolean(reversePhone?.matches) && body.dataset.cols !== '3';
         // In the row it is one of the round keys (like LoRA and Settings); in the tools column it is a library-style key.
         reverseKey.classList.toggle('fvs-chip', inRow); reverseKey.classList.toggle('fvs-library-button', !inRow);
         if (inRow) enhancer.chip.after(reverseKey); else promptTools.prepend(reverseKey);
@@ -3658,7 +3714,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     cleanup.push(registerTourWorkspace(tourContext));
     const tourTimer = setTimeout(async () => { const state = await firstStart.ready; if (!closed && !state?.firstRun && !tourContext.isBusy()) offerVersionTour(tourContext); }, 1400);
     cleanup.push(() => clearTimeout(tourTimer));
-    const recentLoad = recent.refresh();
+    const recentLoad = worksColumn.refresh();
     if (node.freevideoProgress && !node.freevideoProgress.chain) { showProgress(node.freevideoProgress); markReady(); }
     else if (result) showResult(result);
     // Do not change any saved width/height simply by opening a workflow.

@@ -97,8 +97,8 @@ export function writeStore(key, value) {
 
 // A collapsible group with a fixed header row; its open state is kept per name.
 // fixed: a group that is always open (its head is a plain title, nothing to fold).
-export function section(name, {title, iconName, open = true, meta = null, actions = [], fixed = false} = {}) {
-    const key = 'freevideo.imageView.sections';
+export function section(name, {title, iconName, open = true, meta = null, actions = [], fixed = false, store = 'freevideo.imageView.sections'} = {}) {
+    const key = store;
     const saved = readStore(key, {});
     const box = el('section', 'fv-iv-sec'); box.dataset.section = name; if (fixed) box.dataset.fixed = 'true';
     const head = el('div', 'fv-iv-sec-head');

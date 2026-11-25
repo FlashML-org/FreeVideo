@@ -57,6 +57,7 @@
   --fv-rad-dock:20px;                 /* ▲ changed 22→20 · dock panel, sheet, floating window card */
   --fv-rad-console:24px;              /* ▲ changed 26→24 · console, dialog (12 pad + 12 control) */
   --fv-rad-pill:999px;                /* tabs, status capsule, filter chips */
+  --fv-col-w:300px;                   /* side column of the picture view and of the creation panel (one width, both views) */
 
   /* ── 5 · Heights ───────────────────────────────────────────────────────────────────────── */
   --fv-ctl-s:28px;                    /* compact control, toolbar icon button in dense panels */

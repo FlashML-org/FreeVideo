@@ -334,7 +334,8 @@ export function historyPanel({pictureURL, thumbURL = pictureURL, queue = null, o
             reconcile(grid, blocks);
             for (const [file, tile] of tiles) if (!order.includes(file) && !state.allFiles.has(file)) originals?.unobserve(tile), tiles.delete(file), tile.remove();
             empty.hidden = state.rows.length > 0 || !!state.running || !!state.loading;
-            empty.replaceChildren(icon(state.total ? 'search' : 'asref'), el('span', '', state.total ? t('Nothing matches', '没有符合条件的图片') : t('Pictures you make appear here', '生成的图片会出现在这里')));
+            // With no work at all the page stays empty: no sentence (design 11-19); a filter that hides every work says so.
+            if (state.total) empty.replaceChildren(icon('search'), el('span', '', t('Nothing matches', '没有符合条件的图片'))); else empty.replaceChildren();
         } else {
             empty.hidden = true;
             const rows = state.trash;

@@ -200,6 +200,7 @@ html[data-fv-lux]:root dialog.fv-studio.fv-create .fvs-tray :is(textarea,select,
 
 /* ── 8. The works rail and the image view's panels: L1 glass ────────────────────────────────────────────────── */
 html[data-fv-lux]:root dialog.fv-studio.fv-create :is(.fv-recent,.fvs-rail),
+html[data-fv-lux]:root dialog.fv-studio.fv-create .fv-body[data-cols="3"]>:is(.fv-controls,.fv-work-column),
 html[data-fv-lux]:root dialog.fv-studio.fv-image .fv-iv-panel{
   background:var(--lx-g1)!important;border-color:var(--lx-edge)!important;
   box-shadow:inset 0 1px 0 var(--lx-hi),var(--fv-sh1)!important;

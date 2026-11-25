@@ -108,6 +108,9 @@
 .fv-studio.fv-create .fv-actions[data-layout=stage] .fv-action-primary{padding:0 var(--fv-sp-16);background:var(--fv-accent-fill);color:#fff;font-weight:600;box-shadow:inset 0 1px 0 rgb(255 255 255 / .2)}
 .fv-studio.fv-create .fv-actions[data-layout=stage] .fv-action-primary:hover{background:#1078df;color:#fff}
 .fv-studio.fv-create .fv-actions[data-layout=stage] .fv-action-icon{width:var(--fv-ctl);padding:0}
+/* the favourite key under the picture: lit and filled once the video is a favourite */
+.fv-studio.fv-create .fv-actions[data-layout=stage] .fv-action-favorite[aria-pressed=true]{color:var(--fv-accent-ink)}
+.fv-studio.fv-create .fv-actions[data-layout=stage] .fv-action-favorite[aria-pressed=true] svg{fill:currentColor}
 .fv-studio.fv-create .fv-actions[data-layout=stage] .fv-action-icon:not([data-state])>span:last-child:not(.fv-icon){position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .fv-studio.fv-create .fv-actions[data-layout=stage] .fv-action-icon[data-state]{width:auto;padding:0 var(--fv-sp-12)}
 .fv-studio.fv-create .fv-actions[data-layout=stage] .fv-action-more[open]>summary{background:var(--fv-ctl-hover);color:var(--fv-fg)}

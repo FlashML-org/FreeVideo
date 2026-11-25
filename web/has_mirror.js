@@ -33,7 +33,9 @@ const RULES = [
     ['pass', '.fv-ed-generate', host => !!host.nextElementSibling?.matches('.fv-ed-pass-options:not([hidden])')],
     ['nodev', '.fv-ed-record-side', host => shown(host, '.fv-ed-record-device[hidden]')],
     ['rec', '.fv-editor', host => shown(host, '.fv-ed-record:not([hidden])')],
-    ['pop', '.fv-body,:root', host => shown(host, '.fvs-tray[data-fv-pop][open]')],
+    // (A tray the column keeps open on its own, data-pinned, is no floating pop-up: it must not hide the hover tips and move the dock.)
+    // (A tray inside the settings column, pinned or the inline Media tray, is no floating pop-up either.)
+    ['pop', '.fv-body,:root', host => [...host.querySelectorAll('.fvs-tray[data-fv-pop][open]')].some(tray => !tray.dataset.pinned && !tray.closest('.fv-sc-section'))],
     ['fp', ':root', host => shown(host, '.fvp-pop[data-open=true]')],
     ['sec', '.fvp-pop-body section,.fvp-pop-body .fv-section,.fvp-pop-body .fv-sampling-settings',
         host => kid(host, c => !c.matches('[hidden],.fv-label,.fvs-size-fields,.fv-shapes,:empty'))],
@@ -84,6 +86,8 @@ const RULES = [
     ['miss', '.fv-iv-pic', host => shown(host, '.fv-iv-picture[data-missing=true]')],
     ['btn1', '.fv-iv-pic', host => kid(host, c => c.matches('button'))],
     ['es', '.fv-mt-cards', host => kid(host, c => c.matches('.fv-mt-slot-empty'))],
+    ['wcol', '.fv-body', host => kid(host, c => c.matches('.fv-work-column:not([hidden])'))],
+    ['rst', '.fvs-tray-head', host => shown(host, '.fv-at-reset:not([hidden])')],
     ['sw2', 'label.fv-check', host => kid(host, c => c.matches('input[role=switch]'))],
 ];
 const set = (host, id, on) => { if (host.hasAttribute('data-hx-' + id) !== on) host.toggleAttribute('data-hx-' + id, on); };
@@ -103,6 +107,9 @@ const scan = (root, found) => {
     }
 };
 const focusState = event => {
+    // The Quality slider's rail answers the keys without being seen: a ring shows round the four names while it has keyboard focus.
+    const effort = event.target.closest?.('.fv-effort');
+    if (effort) effort.toggleAttribute('data-hx-rail', event.type === 'focusin' && event.target.matches('.fv-effort-rail:focus-visible'));
     const console = event.target.closest?.('.fvs-console');
     if (!console) return;
     const on = event.type === 'focusin';
@@ -152,7 +159,7 @@ export function installHasMirror(doc = document) {
     doc.addEventListener('focusin', focusState, true);
     doc.addEventListener('focusout', focusState, true);
     doc.addEventListener('pointerover', event => {
-        const inside = !!event.target.closest?.('.fvs-tray[data-fv-pop][open]');
+        const inside = !!event.target.closest?.('.fvs-tray[data-fv-pop][open]:not([data-pinned])') && !event.target.closest?.('.fv-sc-section');
         if (doc.documentElement.hasAttribute('data-hx-pophover') !== inside) doc.documentElement.toggleAttribute('data-hx-pophover', inside);
     }, true);
 }

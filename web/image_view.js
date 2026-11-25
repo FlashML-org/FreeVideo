@@ -34,6 +34,8 @@ import { brokenMentions, mentionText, mentionsToEngine, posePrompt, promptMentio
 import { HISTORY_KEY, forgetDeletedPrompts, promptLibrary, rememberPrompt } from './image_view_prompts.js';
 import { COMPARE_MAX, compareView } from './image_view_compare.js';
 import { queuePanel } from './image_view_queue.js';
+import { createWorkColumn } from './work_column.js';
+import { pictureURL } from './picture_url.js';
 import { isHeld, worksClient, saveToWorks } from './image_works.js';
 import { createWarmer } from './image_view_warm.js';
 import { preloadMode } from './preload_setting.js';
@@ -41,6 +43,7 @@ import { openPictureViewer } from './image_view_viewer.js';
 import { LORA_MODEL, imageViewLora } from './image_view_lora.js';
 import { hasPictureThumbnail, mediaQueue, pictureThumbnailURL } from './work_media.js';
 import { fieldNote } from './field_note.js';
+import { createPanelShell } from './panel_shell.js';
 import { copyText } from './clipboard_text.js';
 
 export { IMAGE_MODELS, RATIOS };
@@ -123,7 +126,6 @@ export function createFakeImageClient({delay = 600, ready = {'minimax-h3-image':
     };
 }
 
-const pictureURL = file => { const at = file.lastIndexOf('/'); return api.apiURL('/view?' + new URLSearchParams({filename: file.slice(at + 1), subfolder: at < 0 ? '' : file.slice(0, at), type: 'input'})); };
 // Tiles, the rail and the source line show a picture's small copy; the stage, the viewer and comparisons the picture.
 const thumbURL = file => hasPictureThumbnail(file) ? pictureThumbnailURL(file) : pictureURL(file);
 const SAMPLE_PROMPTS = {
@@ -452,7 +454,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     // The picture's facts, the prompt among them (selectable, to copy), one click from its caption.
     const infoBtn = button('fv-iv-icon-btn fv-iv-info-btn', {iconName: 'info', name: t('About this picture', '图片信息'), use: t('Prompt, model, size and time', '提示词、模型、尺寸和用时'), key: 'I'});
     const infoPop = el('div', 'fv-iv-info'); infoPop.setAttribute('aria-label', t('About this picture', '图片信息'));
-    infoBtn.addEventListener('click', () => { if (rightTab === 'info' && column.dataset.collapsed !== 'true') setRightTab('works'); else { setRightTab('info'); setPanel('right', true); } });
+    infoBtn.addEventListener('click', () => { if (workColumn.tab === 'info' && column.dataset.collapsed !== 'true') setRightTab('works'); else { setRightTab('info'); setPanel('right', true); } });
     info_.append(infoBtn, infoText, doneReport);
     const editThis = button('fv-iv-text-btn fv-image-action', {iconName: 'edit', label: t('Edit', '编辑'), name: t('Edit', '编辑'), use: t('Make a new version: it becomes Image 1', '以这张为图 1，描述要改的地方')});
     const asReference = button('fv-iv-text-btn fv-image-action', {iconName: 'asref', label: t('Use as reference', '用作参考图'), name: t('Use as reference', '用作参考图'), use: t('Add it to the reference pictures', '加入参考图')});
@@ -597,39 +599,14 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         onPurge: () => { void trash.flush(); },
         onOpenFolder: () => void openFolder(),
         onCollapse: () => setPanel('right', false), onRun: () => returnToRun()});
-    const rightRail = el('div', 'fv-iv-rail fv-iv-rail-right');
-    const rightRailOpen = button('fv-iv-icon-btn', {iconName: 'panelR', name: t('Show works', '展开作品栏'), use: t('Your pictures, newest first', '你的图片，最新在前')});
-    const railThumbs = el('div', 'fv-iv-rail-thumbs');
-    rightRail.append(rightRailOpen, el('i', 'fv-iv-rail-sep'), railThumbs);
-    // The right column's three pages: works, the shown picture's facts, and the queue of every view.
-    const colHead = el('div', 'fv-iv-panel-head fv-iv-col-head');
-    const tabs = el('div', 'fv-iv-seg fv-iv-col-tabs'); tabs.setAttribute('role', 'tablist');
-    const tabWorks = button('', {label: t('Works', '作品'), name: t('Works', '作品'), use: t('Every picture made here', '在这里生成的所有图片')});
-    const tabInfo = button('', {label: t('Info', '信息'), name: t('Info', '信息'), use: t('Prompt, model, size and time of the shown picture', '当前图片的提示词、模型、尺寸和用时'), key: 'I'});
-    const tabQueue = button('', {label: t('Queue', '队列'), name: t('Queue', '队列'), use: t('What is generating in every view', '各个视图正在生成和排队的任务')});
-    const tabWorksN = el('span', 'fv-iv-tab-n'), tabQueueN = el('span', 'fv-iv-tab-n'); tabWorks.append(tabWorksN); tabQueue.append(tabQueueN);
-    for (const b of [tabWorks, tabInfo, tabQueue]) b.setAttribute('role', 'tab');
-    tabs.append(tabWorks, tabInfo, tabQueue);
-    const colCollapse = button('fv-iv-icon-btn fv-iv-collapse', {iconName: 'panelR', name: t('Hide works', '收起作品栏'), use: t('More room for the picture', '给画面腾出空间')});
-    colHead.append(tabs, colCollapse);
-    const infoPane = el('div', 'fv-iv-col-pane fv-iv-info-pane'); infoPane.append(infoPop);
+    // The right column (works, info, queue) is the shared component of web/work_column.js.
     const queue = queuePanel({jobs, confirmStop, pictureURL, onOpen: row => openQueued(row)});
-    queue.element.classList.add('fv-iv-col-pane');
-    let rightTab = readStore('freevideo.imageView.rightTab', 'works');
-    function setRightTab(name) {
-        rightTab = name; writeStore('freevideo.imageView.rightTab', name === 'info' ? 'works' : name);
-        column.dataset.tab = name;
-        for (const [b, n] of [[tabWorks, 'works'], [tabInfo, 'info'], [tabQueue, 'queue']]) { b.setAttribute('aria-pressed', String(n === name)); b.setAttribute('aria-selected', String(n === name)); }
-        works.element.hidden = name !== 'works'; infoPane.hidden = name !== 'info'; queue.element.hidden = name !== 'queue';
-        infoBtn.setAttribute('aria-pressed', String(name === 'info'));
-        if (name === 'info') paintInfo();
-    }
-    tabWorks.addEventListener('click', () => setRightTab('works'));
-    tabInfo.addEventListener('click', () => setRightTab('info'));
-    tabQueue.addEventListener('click', () => setRightTab('queue'));
-    colCollapse.addEventListener('click', () => setPanel('right', false));
-    column.addEventListener('fv-iv-queue', event => { tabQueueN.textContent = event.detail.active ? String(event.detail.active) : ''; });
-    column.append(colHead, works.element, infoPane, queue.element, rightRail);
+    const workColumn = createWorkColumn({works, info: infoPop, queue, storeKey: 'freevideo.imageView.rightTab',
+        onCollapse: () => setPanel('right', false), onOpen: () => setPanel('right', true),
+        onTab: name => { infoBtn.setAttribute('aria-pressed', String(name === 'info')); if (name === 'info') paintInfo(); }});
+    const setRightTab = name => workColumn.setTab(name);
+    const railThumbs = workColumn.railThumbs;
+    workColumn.mount(column);
     // A queued row opens its own generation screen: here for a picture, in its view otherwise.
     function openQueued(row) {
         if (row.kind === 'image' && (row.view === 'image' || !row.view)) {
@@ -664,28 +641,10 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     // ───── Panels fold to a rail; the stage stays centred on the window either way ─────
     // Under 1280 wide both panels rest as rails and open as drawers over the stage, one at a time, so the picture
     // keeps the room; the stage still measures from the two rails, so it stays centred. Wide, they dock and fold.
-    const narrowQuery = matchMedia('(min-width: 720px) and (max-width: 1279px)');
-    // A tall window (portrait, wider than a phone): the settings open as a drawer over the works, and the works panel
-    // opens below them, taking the height they leave (at least 320 px), so it never narrows them from the side.
     const tallQuery = matchMedia('(orientation: portrait) and (min-width: 720px)');
-    let drawer = '', below = false;
-    function paintPanels() {
-        if (tallQuery.matches) {
-            if (drawer === 'right') drawer = '';
-            left.dataset.collapsed = String(drawer !== 'left'); column.dataset.collapsed = String(!below);
-            body.dataset.tall = 'true'; body.dataset.below = String(below); body.dataset.narrow = 'true'; body.dataset.drawer = drawer;
-            body.dataset.left = 'rail'; body.dataset.right = 'rail';
-            paintCover(); fitTallSoon();
-            return;
-        }
-        delete body.dataset.tall; delete body.dataset.below;
-        const narrow = narrowQuery.matches;
-        const leftShown = narrow ? drawer === 'left' : panels.left !== false, rightShown = narrow ? drawer === 'right' : panels.right !== false;
-        left.dataset.collapsed = String(!leftShown); column.dataset.collapsed = String(!rightShown);
-        body.dataset.narrow = String(narrow); body.dataset.drawer = narrow ? drawer : '';
-        body.dataset.left = leftShown && !narrow ? 'open' : 'rail'; body.dataset.right = rightShown && !narrow ? 'open' : 'rail';
-        paintCover();
-    }
+    const narrowQuery = matchMedia('(min-width: 720px) and (max-width: 1279px)');
+    const shell = createPanelShell({body, left, right: column, stage, panels, save: () => writeStore(PANEL_KEY, panels),
+        onPaint: () => { paintCover(); if (tallQuery.matches) fitTallSoon(); }, onOpenLeft: () => fitSoon()});
     // The next picture's empty frame is shown whole where the stage is not covered: an open settings drawer (narrow
     // windows) covers its left part, so the frame centres in the rest.
     function paintCover() {
@@ -696,17 +655,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         }
         shot.style.setProperty('--iv-cover', `${cover}px`);
     }
-    function setPanel(side, open) {
-        if (tallQuery.matches && side === 'right') below = open;
-        else if (tallQuery.matches || narrowQuery.matches) drawer = open ? side : drawer === side ? '' : drawer;
-        else { panels[side] = open; writeStore(PANEL_KEY, panels); }
-        paintPanels(); if (open && side === 'left') fitSoon();
-    }
-    narrowQuery.addEventListener('change', () => { drawer = ''; paintPanels(); fitSoon(); });
-    tallQuery.addEventListener('change', () => { drawer = ''; below = false; paintPanels(); fitSoon(); });
-    // A drawer closes when the stage is touched; on a tall window, when anything outside it is.
-    stage.addEventListener('pointerdown', () => { if (drawer) { drawer = ''; paintPanels(); } });
-    body.addEventListener('pointerdown', event => { if (tallQuery.matches && drawer === 'left' && !left.contains(event.target)) { drawer = ''; paintPanels(); } });
+    const setPanel = shell.setPanel, paintPanels = shell.paint;
     // The works grid on a tall window (the four samples, or three or four works compared): of one to four columns, the
     // layout that gives each picture the most room in the width and height there are; it keeps to the top. With the
     // works panel open below, the panel takes the height the grid leaves.
@@ -735,7 +684,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         if (stage.dataset.mode === 'compare' && comparer.element.dataset.mode === 'grid' && panes) {
             const files = compare?.files || [], ratios = files.map(file => { const m = meta.get(file); return m?.width ? m.width / m.height : 0; }).filter(r => r > 0);
             const ratio = ratios.length ? ratios.reduce((a, b) => a + b, 0) / ratios.length : 1;
-            const extra = below ? now - (TALL_PANEL + 12) : 0, height = panes.clientHeight + extra;
+            const extra = shell.below() ? now - (TALL_PANEL + 12) : 0, height = panes.clientHeight + extra;
             const g = bestGrid(files.length, ratio, panes.clientWidth, height, 12);
             if (g) {
                 for (const [name, value] of [['--iv-cols', g.cols], ['--iv-rows', g.rows], ['--iv-tw', `${g.w}px`], ['--iv-th', `${g.h}px`]]) panes.style.setProperty(name, String(value));
@@ -744,7 +693,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         } else if (stage.dataset.state === 'blank') {
             const pictures = [...grid.querySelectorAll('img')], first = pictures.find(i => i.naturalWidth);
             const ratio = first ? first.naturalWidth / first.naturalHeight : 1;
-            const extra = below ? now - (TALL_PANEL + 12) : 0, height = canvasArea.clientHeight - 88 + extra;
+            const extra = shell.below() ? now - (TALL_PANEL + 12) : 0, height = canvasArea.clientHeight - 88 + extra;
             const g = bestGrid(pictures.length, ratio, canvasArea.clientWidth, height, 12);
             if (g) {
                 for (const [name, value] of [['--iv-cols', g.cols], ['--iv-rows', g.rows]]) shot.style.setProperty(name, String(value));
@@ -752,7 +701,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
                 used = 1; spare = height - g.height;
             }
         }
-        const want = below ? Math.round(TALL_PANEL + 12 + (used ? Math.max(0, spare) : 0)) : 0;
+        const want = shell.below() ? Math.round(TALL_PANEL + 12 + (used ? Math.max(0, spare) : 0)) : 0;
         if (want) { if (Math.abs(want - now) > 1 || !body.style.getPropertyValue('--iv-below')) body.style.setProperty('--iv-below', `${want}px`); }
         else body.style.removeProperty('--iv-below');
     }
@@ -762,9 +711,8 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     comparer.element.addEventListener('load', () => { if (tallQuery.matches) fitTallSoon(); }, true);
     leftCollapse.addEventListener('click', () => setPanel('left', false));
     railOpen.addEventListener('click', () => setPanel('left', true));
-    rightRailOpen.addEventListener('click', () => setPanel('right', true));
     railGen.addEventListener('click', () => go.click());
-    paintPanels(); setRightTab(rightTab);
+    paintPanels(); setRightTab(workColumn.tab);
 
     // ───── Drop and paste ─────
     for (const target of [inputs, frame]) {
@@ -1317,8 +1265,8 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         comparer.paint(compare);
         stage.dataset.mode = compare ? 'compare' : 'single';
         if (tallQuery.matches) fitTallSoon();
-        if (rightTab === 'info' && infoPop.dataset.file !== shownFile) { infoPop.dataset.file = shownFile; paintInfo(); }
-        tabWorksN.textContent = '';
+        if (workColumn.tab === 'info' && infoPop.dataset.file !== shownFile) { infoPop.dataset.file = shownFile; paintInfo(); }
+        workColumn.setWorksCount('');
     }
     picture.onload = () => {
         // Its real shape is kept, so the next time this picture opens its frame is the right size from the first frame.
@@ -1600,7 +1548,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         else if (!hasWords()) { promptGroup.open(true); prompt.focus(); }
         else void generate();
     };
-    go.addEventListener('click', () => { if (drawer === 'left' && go.dataset.state === 'ready' && hasWords()) { drawer = ''; paintPanels(); } }, {capture: true});
+    go.addEventListener('click', () => { if (shell.drawer() === 'left' && go.dataset.state === 'ready' && hasWords()) shell.closeDrawer(); }, {capture: true});
     prompt.addEventListener('input', () => { growPrompt(); render(); });
     // Getting the model ready before Generate is pressed (nothing of it shows): being here a few seconds loads the model
     // where the card has free room for it (eager loading; the engine reads the files ahead where it would take the
@@ -1733,7 +1681,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         if (layout.tookEscape() || layout.escape()) return;
         if (!more.hidden) more.hidden = true;
         else if (!keysPop.hidden) { keysPop.hidden = true; keysBtn.setAttribute('aria-pressed', 'false'); }
-        else if (drawer) { drawer = ''; paintPanels(); }
+        else if (shell.drawer()) shell.closeDrawer();
         else if (compare) { selecting = false; picked.clear(); drawWorks(); render(); }
         else if (draft && shownFile) { draft = false; draftPreview = null; render(); }
         else if (view === 'trash') { view = 'works'; drawWorks(); }

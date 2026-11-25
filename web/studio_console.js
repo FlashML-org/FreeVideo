@@ -66,7 +66,8 @@ export function createConsole({t, body, controls, prompt, runbar, trays, chips, 
         host.append(details);
         rows.set(tray.id, {details, chip: null});
         details.addEventListener('toggle', () => {
-            if (details.open) for (const [id, other] of rows) if (id !== tray.id && other.details.open) other.details.open = false;
+            // (A tray the column keeps open on its own — data-pinned: LoRA, Advanced options — never puts another one away, or a Media tray a continuation opened would be closed by their first toggle.)
+            if (details.open && !details.dataset.pinned) for (const [id, other] of rows) if (id !== tray.id && other.details.open && !other.details.dataset.pinned) other.details.open = false;
             paint();
         });
     }
@@ -95,7 +96,7 @@ export function createConsole({t, body, controls, prompt, runbar, trays, chips, 
     const calm = () => globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     function stopClosing() { if (!closing) return; clearTimeout(closing.timer); delete closing.details.dataset.closing; closing = null; }
     function putAway(item, animate) {
-        if (!item?.details.open) return;
+        if (!item?.details.open || item.details.dataset.pinned) return; // a pinned tray (the settings column's) stays open
         if (!animate || calm()) { stopClosing(); item.details.open = false; return; }
         if (closing?.details === item.details) return;
         stopClosing();
@@ -108,7 +109,7 @@ export function createConsole({t, body, controls, prompt, runbar, trays, chips, 
         item.details.open = force ?? !item.details.open;
         if (item.details.open) item.details.scrollTop = 0;
     }
-    function openId() { for (const [id, item] of rows) if (item.details.open) return id; return ''; }
+    function openId() { for (const [id, item] of rows) if (item.details.open && !item.details.dataset.pinned) return id; return ''; }
     function paint() {
         const open = openId();
         body.dataset.tray = open;

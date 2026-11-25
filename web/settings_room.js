@@ -543,6 +543,16 @@ export async function openSetup(options) {
     };
     tip(solidSwitch, t('Compatibility view', '兼容界面'), t('For older computers', '适合较旧的电脑'));
     const solidRow = row({iconName: 'layers', title: t('Compatibility view', '兼容界面'), sub: t('Solid panels, fewer animations, no autoplay', '实体背景，减少动画，视频不自动播放'), end: [solidSwitch]});
+    // Compact layout: the creation panel keeps only the prompt, the preview and Create. Read by the panel when it opens
+    // and told at once through an event when this switch moves.
+    const compactSwitch = switchify(el('input')); compactSwitch.type = 'checkbox';
+    compactSwitch.setAttribute('aria-label', t('Compact layout', '简洁模式'));
+    try { compactSwitch.checked = localStorage.getItem('freevideo.studio.compact') === '1'; } catch { /* off */ }
+    compactSwitch.onchange = () => {
+        try { localStorage.setItem('freevideo.studio.compact', compactSwitch.checked ? '1' : '0'); } catch { /* this page only */ }
+        window.dispatchEvent(new CustomEvent('fv-studio-compact', {detail: compactSwitch.checked}));
+    };
+    const compactRow = row({iconName: 'film', title: t('Compact layout', '简洁模式'), sub: t('Only the prompt, preview and Create in the creation panel', '创作面板只显示描述、预览和生成'), end: [compactSwitch]});
     // The top bar's status capsule follows the same key (freevideo.monitor.shown): on only when set to "1"; never set
     // reads as off. Writing goes through setMonitorShown, whose event repaints the capsule in the same frame.
     const statusShown = () => { try { return localStorage.getItem('freevideo.monitor.shown') === '1'; } catch { return false; } };
@@ -562,7 +572,7 @@ export async function openSetup(options) {
     tip(langReload, t('Reload now', '立即重新载入'), t('Reload the page in the chosen language', '以所选语言重新载入页面'));
     const langRow = row({iconName: 'globe', title: t('Interface language', '界面语言'), end: [segmented(langSelect, {label: t('Language', '语言'), tips: {zh: t('Show the interface in Chinese', '界面显示为中文'), en: t('Show the interface in English', '界面显示为英文')}})]});
     const langFoot = el('div', 'st-foot'); langFoot.append(langNote, langReload);
-    appearance.append(groupHead(t('Look', '外观')), card(themeRow.element, solidRow.element),
+    appearance.append(groupHead(t('Look', '外观')), card(themeRow.element, solidRow.element, compactRow.element),
         groupHead(t('Top bar', '顶栏')), card(statusRow.element), groupHead(t('Language', '语言')), card(langRow.element, langFoot));
 
     // ════════════ Assistant ════════════
