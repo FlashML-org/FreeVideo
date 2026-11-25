@@ -1172,6 +1172,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // (effortPointed: the quality panel's line on what the pointed-at level gives; set with that panel.)
     let effortPointed = () => {};
     const effort = createSamplingEffort(t, {onChange: chooseLevel, onPreview: tier => { if (tier) showEffortEstimate(tier.steps, tier.twoPass, tier.stepCache, tier.upscale); else showEffortEstimate(); effortPointed(tier); }});
+    // The Advanced options find this strip by the mark (the editor's own bar has another one, with its own state).
+    effort.element.dataset.fvStudioEffort = '';
     // What the quality control shows now; the editor's generation bar shows the same control from this.
     const effortState = () => ({baseSteps: Number(baseSteps.value), refineSteps: Number(refineSteps.value),
         twoPass: twoPass.checked, stepCache: stepCacheNow(), upscale: upscaleNow(),

@@ -225,15 +225,16 @@ function state(tray, dialog) {
     const single = tray.querySelector('.fv-at-group[data-at=length] input[type=checkbox]');
     const unset = tray.querySelector('.fv-at-unset');
     const seedMode = tray.querySelector('.fv-at-group[data-at=seed] select');
-    // The Quality key in the console's row says Custom while the steps are set by hand (its small window, or the older tray chip).
-    const quality = (dialog.querySelector(`.fvs-chips .fvp-chip[aria-label="${say(tray, 'Quality', '质量')}"] .fvp-chip-label`)
-        || dialog.querySelector('.fvs-chip[data-chip=quality] .fvs-chip-label'))?.textContent.trim() || '';
+    // The studio's Quality levels strip says so itself while the steps are set by hand (data-custom), wherever it stands: in the
+    // Quality window beside its key (closed or open), or in the Quality section of the three-column panel, which has no such key.
+    // The tray may be lent to the editor's bar, a dialog other than the one it was made in: look where it stands now.
+    const custom = (tray.closest('dialog') || dialog).querySelector('.fv-effort[data-fv-studio-effort][data-custom=true]');
     return {
         mode: mode !== 'single',
         single: Boolean(single && single.checked && !single.disabled),
         length: Boolean(unset && !unset.hidden && !unset.disabled),
         seed: Boolean(seedMode && !seedMode.disabled && seedMode.value !== 'randomize'),
-        steps: quality === say(tray, 'Custom', '自定义'),
+        steps: Boolean(custom),
     };
 }
 function paintReset(tray, dialog) {
