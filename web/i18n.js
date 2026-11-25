@@ -64,6 +64,55 @@ export const translatorFor = (catalog, chinese) => catalog
 // A module's t(en, zh) for the language it read.
 export const translator = chinese => translatorFor(CATALOG, chinese);
 
+// Words the page reads back from text: what a person types ("Cut:", "@Image2", "Subject 1") and what the page wrote itself
+// in its own language. A language file names its own in _meta.keywords, e.g. {"cut": ["Corte"], "subject": ["Sujeto"],
+// "image": ["Imagen"]}; the page then reads those and the built-in words alike (English and Chinese, Simplified and
+// Traditional, always work). Adding a language is still adding one file. freevideo_engine/i18n.py has the same rule;
+// tests/i18n_keywords_cases.json holds the cases both must pass.
+export const KEYWORD_KINDS = ['cut', 'subject', 'image'];
+export const BUILT_IN_KEYWORDS = Object.freeze({
+    // Chinese first: the collector (scripts/i18n_extract.py) reads an English text followed by a Chinese one as a pair to translate.
+    cut: Object.freeze(['切', 'cut', 'CUT', 'Cut']),
+    subject: Object.freeze(['主体', '主體', 'Subject']),
+    image: Object.freeze(['图', '圖', 'Image']),
+});
+export const MAX_KEYWORDS = 8;
+const MAX_KEYWORD_LENGTH = 24;
+// A keyword is read before a number or a colon, so it holds no colon, digit, mark of a mention or tag, or line break.
+const validKeyword = word => typeof word === 'string' && word.length >= 1 && word.length <= MAX_KEYWORD_LENGTH
+    && !/[:：@<>\d\r\n\t]|^\s|\s$|\s{2,}/.test(word);
+
+// A list of words as the page reads it: the valid ones, once each, at most MAX_KEYWORDS.
+export const keywordList = list => Array.isArray(list) ? [...new Set(list.filter(validKeyword))].slice(0, MAX_KEYWORDS) : [];
+
+// The words a language file names, {cut: [...], subject: [...], image: [...]}; a kind it does not name has none.
+export function keywordsIn(catalog) {
+    const given = catalog?._meta?.keywords, own = given && typeof given === 'object' && !Array.isArray(given) ? given : {};
+    return Object.fromEntries(KEYWORD_KINDS.map(kind => [kind, Object.prototype.hasOwnProperty.call(own, kind) ? keywordList(own[kind]) : []]));
+}
+
+// The page's own words (those of the language it shows).
+export const KEYWORDS = keywordsIn(CATALOG);
+
+// A word as typed in capitals, lower case or with a capital first letter, as the built-in "cut" is read.
+const spellings = word => [...new Set([word, word.toLowerCase(), word.toUpperCase(), word.charAt(0).toUpperCase() + word.slice(1)])];
+const CJK_END = /[぀-ヿ㐀-鿿가-힯]$/;
+
+// Every word of a kind that is read: the built-in ones, then the language's own (in the spellings above), longest first.
+export function keywordWords(kind, own = KEYWORDS[kind]) {
+    const words = [...BUILT_IN_KEYWORDS[kind], ...keywordList(own).flatMap(spellings)];
+    return [...new Set(words)].sort((a, b) => b.length - a.length || (a < b ? -1 : a > b ? 1 : 0));
+}
+
+const escapeRegExp = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// A regular expression source that matches any word of a kind. With `separators` ({latin, cjk}) each word is followed by
+// the separator for its script: a word written in letters needs a space before the number ("Subject 2"), one written in
+// Chinese, Japanese or Korean characters may have none ("主体2").
+export function keywordSource(kind, own = KEYWORDS[kind], separators = null) {
+    return '(?:' + keywordWords(kind, own).map(word => escapeRegExp(word) + (separators ? (CJK_END.test(word) ? separators.cjk : separators.latin) : '')).join('|') + ')';
+}
+
 // The address that opens this page in a language (Settings, the command palette, reloading into an update).
 export function languageUrl(href, language) {
     const url = new URL(href);

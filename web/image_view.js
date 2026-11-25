@@ -30,7 +30,7 @@ import { el, icon, t, cn, tip, button, section, readStore, writeStore, mod } fro
 import { IMAGE_MODELS, modelPicker, modelState, verifyText, pausedText } from './image_view_models.js';
 import { RANGES, RATIOS, areaRange, estimateSeconds, machineLimit, presetAt, ratioValue, sizePicker, sizeFor, sizeText, megapixels } from './image_view_size.js';
 import { createMetaStore, createTrash, filterCounts, filterRows, groupRows, historyPanel, sessionPrompts } from './image_view_history.js';
-import { brokenMentions, mentionText, mentionsToEngine, posePrompt, promptMentions, renumberMentions, sketchPrompt } from './image_view_mentions.js';
+import { PICTURE_WORDS, SUBJECT_WORDS, brokenMentions, mentionText, mentionsToEngine, posePrompt, promptMentions, renumberMentions, sketchPrompt } from './image_view_mentions.js';
 import { HISTORY_KEY, forgetDeletedPrompts, promptLibrary, rememberPrompt } from './image_view_prompts.js';
 import { COMPARE_MAX, compareView } from './image_view_compare.js';
 import { queuePanel } from './image_view_queue.js';
@@ -289,8 +289,8 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         // The rewrite names only the pictures sent with it, as the generation does.
         prepare: text => {
             const sent = references.slice(0, cap_(model)).length;
-            return mentionsToEngine(text, sent).replace(/(?:图\s?|Image\s)(\d+)/g, (all, n) => Number(n) >= 1 && Number(n) <= sent ? `<Picture ${n}>` : all)
-                .replace(/(?:主体\s?|Subject\s)(\d+)/g, (_, n) => `<Subject ${n}>`);
+            return mentionsToEngine(text, sent).replace(PICTURE_WORDS, (all, n) => Number(n) >= 1 && Number(n) <= sent ? `<Picture ${n}>` : all)
+                .replace(SUBJECT_WORDS, (_, n) => `<Subject ${n}>`);
         },
         restore: text => text.replace(/<Picture (\d+)>/g, (_, n) => mentionText(n)).replace(/<Subject (\d+)>/g, (_, n) => subject(Number(n)))});
     let enhancerReady = false;
@@ -796,8 +796,8 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     // The engine reads <Picture N>; the page writes "@图N" / "@Image N" (and older prompts "图 N"). A prompt that names none gets them
     // listed, all but the sketches: the words around the description name those.
     function engineText(seed) {
-        const swapped = mentionsToEngine(prompt.value, references.length).replace(/(?:图\s?|Image\s)(\d+)/g, (_, n) => `<Picture ${n}>`)
-            .replace(/(?:主体\s?|Subject\s)(\d+)/g, (_, n) => `<Subject ${n}>`);
+        const swapped = mentionsToEngine(prompt.value, references.length).replace(PICTURE_WORDS, (_, n) => `<Picture ${n}>`)
+            .replace(SUBJECT_WORDS, (_, n) => `<Subject ${n}>`);
         // A sketch with mannequins takes the pose words (the other pictures listed in front when the text names none).
         const poseAt = references.findIndex((r, at) => r.sketch && r.pose && at < cap_(model));
         if (poseAt >= 0) {

@@ -4,8 +4,15 @@
 // and is marked until it is chosen again. The marks are drawn over the box (the text stays the box's own).
 import { listenDialogKey } from './dialog_keys.js';
 import { el, t, icon } from './image_view_ui.js';
+import { keywordSource } from './i18n.js';
 
-const TOKEN = /@(?:图|Image) ?(\d+|\?)/g;
+// The words a picture is named by in text, from the language's file and the built-in ones ("Image", "图", "圖"), and the
+// ones a rewrite names a subject by ("Subject", "主体", "主體"): read before a number, with a space where the word is
+// written in letters.
+const SEPARATORS = {latin: '\\s', cjk: '\\s?'};
+export const PICTURE_WORDS = new RegExp(keywordSource('image', undefined, SEPARATORS) + '(\\d+)', 'g');
+export const SUBJECT_WORDS = new RegExp(keywordSource('subject', undefined, SEPARATORS) + '(\\d+)', 'g');
+const TOKEN = new RegExp('@' + keywordSource('image') + ' ?(\\d+|\\?)', 'g');
 export const mentionText = n => t(`@Image${n}`, `@图${n}`);
 
 // The text with each mention renumbered from `before` (the pictures as they were) to `after` (as they are now).
@@ -183,7 +190,7 @@ export function promptMentions({prompt, host, pictures, onAdd, onPick = () => {}
 
     function items(query) {
         const all = pictures().map((p, at) => ({n: at + 1, ...p}));
-        const q = query.replace(/^(图|image)/i, '').trim();
+        const q = query.replace(new RegExp('^' + keywordSource('image'), 'i'), '').trim();
         return q ? all.filter(p => String(p.n).startsWith(q)) : all;
     }
     function draw() {

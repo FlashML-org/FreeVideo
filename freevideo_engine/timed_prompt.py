@@ -6,14 +6,15 @@ already written in the H3 notation, is returned unchanged. web/timed_prompt.js i
 are checked against tests/fixtures/timed_prompt_cases.json.
 """
 import re
+from functools import lru_cache
+
+from .i18n import keyword_list, keyword_words
 
 # The same space set as ECMAScript's \s and trim(), written out so Python and JavaScript read a line alike.
 SP = '\t\n\v\f\r \xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff'
 SPACES = '\t\n\v\f\r \xa0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff'
 TIME = re.compile(r'^[ \t　]*([0-9]{1,3}):([0-5][0-9])(?:\.([0-9]{1,3}))?(?![0-9.:])[ \t　]*(.*)$')
 LOOSE = re.compile(r'^[ \t　]*[0-9]{1,3}:[0-9]{1,2}(?![0-9:])')
-CUT = re.compile(r'^(?:cut|CUT|Cut|切)[ \t　]*[:：][ \t　]*(.*)$')
-CUT_BARE = re.compile(r'^(?:cut|CUT|Cut|切)$')
 SPEECH = re.compile(r'^@?([^:：' + SP + r'][^:：]{0,11}?)[ \t　]*[:：][ \t　]*([^' + SP + r'].*)$')
 NAME_BREAK = re.compile(r'[,.;!?，。；！？]')
 WRITTEN = re.compile(r'\[Shot [0-9]+\]|\bAt [0-9]{2,}:[0-9]{2}\.[0-9]{3}', re.ASCII)
@@ -67,6 +68,13 @@ def ukrainian(words):
     return ukrainian_words > russian_words
 
 
+@lru_cache(maxsize=64)
+def _cuts(own):
+    """(line, bare) patterns for the built-in cut words ("Cut:", "切：") and a language's own (_meta.keywords.cut)."""
+    source = '(?:' + '|'.join(re.escape(word) for word in keyword_words('cut', own)) + ')'
+    return re.compile('^' + source + r'[ \t　]*[:：][ \t　]*(.*)$'), re.compile('^' + source + '$')
+
+
 def language(words):
     if re.search('[぀-ヿ]', words):
         return 'Japanese'
@@ -90,9 +98,11 @@ def sentence(words):
     return words + ('。' if CJK.search(words) else '.')
 
 
-def parse(text):
-    """(head lines, timed lines, errors); a timed line is {n, ms, kind, who, words}."""
+def parse(text, cut_words=()):
+    """(head lines, timed lines, errors); a timed line is {n, ms, kind, who, words}. `cut_words`: the language's own
+    words for a new shot, besides "Cut" and "切" (language_keywords(tag)['cut'] in freevideo_engine/i18n.py)."""
     head, lines, errors = [], [], []
+    CUT, CUT_BARE = _cuts(tuple(keyword_list(cut_words)))
     for n, raw in enumerate(re.split(r'\r\n|\r|\n', text), 1):
         found = TIME.match(raw)
         if not found:
@@ -117,12 +127,12 @@ def parse(text):
     return head, lines, errors
 
 
-def convert(text, seconds, speakers=None, offset=0):
+def convert(text, seconds, speakers=None, offset=0, cut_words=()):
     """{text, errors, timed}: errors name the lines left out ({line, code}); the caller stops on any.
-    Times are read on a ruler that starts `offset` seconds before this text's first second."""
+    Times are read on a ruler that starts `offset` seconds before this text's first second. `cut_words` as in parse."""
     if not isinstance(text, str) or WRITTEN.search(text):
         return {'text': text, 'errors': [], 'timed': False}
-    head, lines, errors = parse(text)
+    head, lines, errors = parse(text, cut_words)
     if not lines and not errors:
         return {'text': text, 'errors': [], 'timed': False}
     limit = round(seconds * 1000)
