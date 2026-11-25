@@ -145,7 +145,8 @@
 /* compact layout: only the prompt (taller) and the main button */
 .fv-body[data-cols="3"] .fv-controls[data-compact=true] .fv-sc-section:not([data-section=prompt]),.fv-body[data-cols="3"] .fv-controls[data-compact=true] :is(.fv-sc-tools,.fv-sc-section[data-section=prompt] .fvs-tray){display:none}
 .fv-body[data-cols="3"] .fv-controls[data-compact=true] .fvs-console-prompt textarea{min-height:min(52vh,420px)}
-.fv-body[data-cols="3"] .fv-sc-section .fvs-tray.fv-at>.fv-at-body{grid-template-columns:minmax(0,1fr);row-gap:12px;padding-top:0;--fv-at-w:132px}
+/* (position: the words only a screen reader reads are placed absolutely and stay inside the tray, in every look; as a window the tray is their place already) */
+.fv-body[data-cols="3"] .fv-sc-section .fvs-tray.fv-at>.fv-at-body{position:relative;grid-template-columns:minmax(0,1fr);row-gap:12px;padding-top:0;--fv-at-w:132px}
 .fv-body[data-cols="3"] .fv-sc-section .fvs-tray.fv-at{min-width:0;max-width:100%;box-sizing:border-box}
 .fv-studio.fv-create .fv-body[data-cols="3"] .fv-sc-section .fvs-tray[data-fv-pop][open]{position:static!important;inset:auto!important;transform:none!important;animation:none!important;width:auto!important;max-width:100%!important;margin:8px 0 0!important;padding:0!important;border:0!important;background:none!important;box-shadow:none!important;overflow:visible!important}
 .fv-body[data-cols="3"] .fv-sc-section .fvs-tray .fv-mt>.fv-mt-media{grid-template-columns:repeat(3,minmax(0,1fr))}
