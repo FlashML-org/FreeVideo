@@ -21,6 +21,52 @@ CJK = re.compile('[぀-ヿ㐀-鿿]')
 ENDS = '.!?。！？…"”'
 
 
+# Cyrillic lines: Ukrainian or Russian, decided by weighing the words (tests/test_prompt_vlm_dialogue.py lists cases).
+# Ukrainian words: those with і ї є ґ, and common words only Ukrainian writes (що, цей, вже, дуже ...). Russian words:
+# those with ы э ъ ё, and common Russian words (и, что, это, как, он, нет ...). The line is Ukrainian only when it has
+# more Ukrainian words; a tie is Russian. A name inside a sentence (a capitalised word after no sentence end, colon or
+# semicolon: "Завтра я еду в Київ") and a Roman numeral (Пётр І, Екатерина ІІ) count for neither side; a line written
+# in capitals is read in lower case first, so its words are not names. Belarusian ў, Kazakh ә ғ қ ң ө ұ ү һ and the
+# Serbian and Macedonian ђ ѓ ѕ ј љ њ ћ ќ џ keep the Russian tag, the closest of the two.
+# Known limits: Ukrainian with neither kind of word (Я тебе кохаю, Я чекаю на тебе) reads as Russian, and Belarusian or
+# Kazakh with і but none of their own letters (Мен білемін) as Ukrainian.
+UKRAINIAN_LETTERS = re.compile('[\u0404\u0406\u0407\u0454\u0456\u0457\u0490\u0491]')
+RUSSIAN_LETTERS = re.compile('[\u042b\u044b\u042d\u044d\u042a\u044a\u0401\u0451]')
+OTHER_CYRILLIC = re.compile('[\u040e\u045e\u0492\u0493\u049a\u049b\u04a2\u04a3\u04ae\u04af\u04b0\u04b1\u04ba\u04bb\u04d8\u04d9'
+                            '\u04e8\u04e9\u0402\u0403\u0405\u0408-\u040c\u040f\u0452\u0453\u0455\u0458-\u045c\u045f]')
+UKRAINIAN_WORDS = frozenset('що щоб цей цього ця цю ці вже дуже щось немає тобі зараз дякую'.split())
+RUSSIAN_WORDS = frozenset('и что чтобы это этот эта как он она они его меня тебя где когда если нет есть но или только '
+                          'еще мне с к'.split())
+CYRILLIC_WORD = re.compile("[\u0400-\u04ff](?:['\u2019\u02bc]?[\u0400-\u04ff])*")
+# What may stand between the end of a sentence (or a colon) and the next word.
+OPENING = ' \t\n\r"\'\u00ab\u00bb\u201c\u201d\u201e\u2018\u2019()[]\u2014\u2013-'
+ROMAN = frozenset('\u0406\u0425')
+
+
+def ukrainian(words):
+    if OTHER_CYRILLIC.search(words):
+        return False
+    if not re.search('[\u0430-\u045f\u0491]', words):
+        words = words.lower()
+    ukrainian_words = russian_words = 0
+    for match in CYRILLIC_WORD.finditer(words):
+        word = match.group(0)
+        lower = word.lower()
+        if RUSSIAN_LETTERS.search(word) or lower in RUSSIAN_WORDS:
+            russian_words += 1
+        elif lower in UKRAINIAN_WORDS:
+            ukrainian_words += 1
+        elif UKRAINIAN_LETTERS.search(word):
+            before = words[:match.start()].rstrip(OPENING)
+            inside = bool(before) and before[-1] not in '.!?:;\u2026'
+            if set(word) <= ROMAN and before:
+                continue
+            if inside and word[0].isupper() and (len(word) == 1 or any(c.islower() for c in word[1:])):
+                continue
+            ukrainian_words += 1
+    return ukrainian_words > russian_words
+
+
 def language(words):
     if re.search('[぀-ヿ]', words):
         return 'Japanese'
@@ -29,7 +75,7 @@ def language(words):
     if re.search('[一-鿿]', words):
         return 'Chinese'
     if re.search('[Ѐ-ӿ]', words):
-        return 'Russian'
+        return 'Ukrainian' if ukrainian(words) else 'Russian'
     return 'English'
 
 

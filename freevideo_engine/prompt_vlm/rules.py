@@ -7,6 +7,7 @@ import math
 import re
 
 from ..music_request import asks_for_no_music, writes_own_music
+from ..timed_prompt import language  # the tag timed lines get, so both paths agree
 
 BASE_FIELDS = ('integrated_multimodal_description', 'overall_soundscape', 'non_diegetic_music')
 REF_FIELDS = ('subject_definitions', 'summary', 'retention_analysis', 'detailed_description',
@@ -326,18 +327,6 @@ WRITING = re.compile(NOUNS, re.I)
 OTHER_WRITING = re.compile(r'\bcartel(?:es)?\b|\binscriptions?\b', re.I)
 TURKISH_WRITING = re.compile(r'\btabela\w*', re.I)
 SIGN_SAYS = re.compile(r'(?:%s)\w*\s+(?:that\s+|which\s+)?(?:says|said|reads|shows|displays)$' % NOUNS, re.I)
-
-
-def language(words):
-    if re.search('[\u3040-\u30ff]', words):
-        return 'Japanese'
-    if re.search('[\uac00-\ud7af]', words):
-        return 'Korean'
-    if re.search('[\u4e00-\u9fff]', words):
-        return 'Chinese'
-    if re.search('[\u0400-\u04ff]', words):
-        return 'Russian'
-    return 'English'
 
 
 def plain(words):
