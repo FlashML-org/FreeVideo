@@ -289,9 +289,11 @@ def validate_output(text, value):
 
 # Spoken lines -------------------------------------------------------------------------------------------
 # H3 reads double-quoted text as writing visible on screen; speech must be (S1) <d>[Language] ...</d>.
-QUOTES = {'\u201c': '\u201d', '\u300c': '\u300d', '\u300e': '\u300f', '"': '"', '\uff02': '\uff02'}
-QUOTED = re.compile('|'.join('%s([^%s\n]{1,400})%s' % (re.escape(a), re.escape(b), re.escape(b))
-                             for a, b in QUOTES.items()))
+# Opening and closing marks: “…” 「…」 『…』 "…" ＂…＂, and «…» „…“ „…” »…« as Russian, Ukrainian, French, German and
+# others write them.
+QUOTES = (('\u201c', '\u201d'), ('\u300c', '\u300d'), ('\u300e', '\u300f'), ('"', '"'), ('\uff02', '\uff02'),
+          ('\u00ab', '\u00bb'), ('\u201e', '\u201c'), ('\u201e', '\u201d'), ('\u00bb', '\u00ab'))
+QUOTED = re.compile('|'.join('%s([^%s\n]{1,400})%s' % (re.escape(a), re.escape(b), re.escape(b)) for a, b in QUOTES))
 # Verbs that end the words right before a spoken quote. Bare 叫/道/喝 also mean "named",
 # "road" or "drink", so only their speech compounds count; the strong verbs may be followed
 # by a few characters (说了一句：).
@@ -335,9 +337,49 @@ def plain(words):
     return re.sub(r'[\W_]+', '', words).lower()
 
 
+# A scene written in another language than Chinese, Japanese, Korean or English: its speech verbs are not listed above,
+# so a quoted span counts as speech when it follows a colon or ends like a sentence (говорит: «…», dice: "¿…?",
+# ruft: „…!“); a quoted name or sign without either (вывеска «Кафе») does not. A sign after a colon (une enseigne :
+# « Café de la Gare ») is taken as speech: keeping a few words too many costs less than losing a line.
+EN_WORDS = frozenset('the and of with is are was were she he his her him they their them this that from into while '
+                     'for an as by its then there who which says said a in on at to it you we i be not no up down '
+                     'over under out off my your our me us do does did have has had will would can could'.split())
+# Only words no English prompt uses (son, die, Dan, la, le ... are left out).
+OTHER_WORDS = frozenset('el los las un una unos unas al y que por con dos su sus es esta este pero muy como para les une '
+                        'des du et avec dans sa il elle ils elles je nous vous pas sont der das ein eine und ist mit im '
+                        'sie ich nicht auf uma não gli che ile yang dengan dit répond demande murmure crie sagt ruft '
+                        'fragt flüstert antwortet dice responde pregunta grita susurra diz pergunta risponde chiede'.split())
+# Speech verbs that follow the quote: « Je reviens demain », dit la femme; „Ich komme morgen“, sagt sie.
+AFTER_SPEECH = re.compile(r'[\s,.!?…\u2014\u2013-]*(?:\w+\s+){0,3}?(?P<verb>dit|répond|demande|murmure|crie|sagt|ruft|fragt|'
+                          r'flüstert|antwortet|dice|responde|pregunta|grita|susurra|diz|pergunta|risponde|chiede|'
+                          r'говорит|сказал|сказала|кричит|спрашивает|отвечает|шепчет|каже|сказав|кричить|питає|'
+                          r'відповідає|шепоче|dedi|diyor|sordu|nói)\b', re.I)
+# Of those, the ones that are also English words (dice) count when the scene or the quoted words are in another
+# language, or when the quote has the shape of a Spanish speech tag: a comma or dash, dice, then a word that follows it
+# in Spanish or the end of the sentence ("Hola", dice la mujer.). The English noun does not take that shape
+# ("Seven", dice spill across the table).
+AFTER_SPEECH_ENGLISH = frozenset(('dice',))
+SPANISH_DICE = re.compile(r'\s*[,\u2014\u2013-]\s*dice(?=\s+(?:el|la|ella|él|un|una|ya|mientras|con|y)\b|\s*[.,!?…]|\s*$)')
+
+
+def other_language(scene):
+    """Whether the scene, outside its quotes, is written in another language than Chinese, Japanese, Korean or
+    English: at least two of its words, and more than are common English words, are not English (a letter outside
+    ASCII, or a common Spanish, French, German, Portuguese, Italian, Turkish or Indonesian word). One accented name
+    or loanword (José, café, résumé) in an English scene is not enough."""
+    outside = QUOTED.sub(' ', scene)
+    if re.search('[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]', outside):
+        return False
+    words = re.findall(r'[^\W\d_]+', outside.lower())
+    english = sum(word in EN_WORDS for word in words)
+    other = sum(not word.isascii() or word in OTHER_WORDS for word in words)
+    return other >= 2 and other > english
+
+
 def spoken_lines(scene):
     """Quoted spans the user introduced as speech (not signs or captions), in order."""
     lines = []
+    other = other_language(scene)
     for match in QUOTED.finditer(scene):
         words = next(group for group in match.groups() if group is not None).strip()
         before = scene[max(0, match.start() - 40):match.start()]
@@ -360,6 +402,15 @@ def spoken_lines(scene):
                          % '|'.join(CJK_SPEECH + CJK_STRONG), after)
                 or re.match(r'[\s,]*(?:\w+\s+){0,3}(?:says|said|asks|asked|replies|replied|shouts|shouted|'
                             r'whispers|whispered|calls|called|cries|cried)\b', after, re.I))
+            if not speech and writing < 0:
+                # Speech verbs of other languages after the quote; English and CJK scenes do not use them, except the
+                # few that are English words too (rolls the dice), which count when the scene or the quoted words
+                # themselves are in another language ("Volveré mañana", dice la mujer).
+                verb = AFTER_SPEECH.match(scene[match.end():match.end() + 40])
+                speech = bool(verb) and (verb.group('verb').lower() not in AFTER_SPEECH_ENGLISH or other or
+                                         other_language(words) or bool(SPANISH_DICE.match(scene[match.end():])))
+            if not speech and other and writing < 0:
+                speech = bool(re.search(r'[:：]\s*$', before)) or words[-1] in '.!?…'
         if speech:
             lines.append(words)
     return lines
