@@ -13,6 +13,8 @@ html body .fv-topbar.fv-topbar.fv-topbar{
   border:0!important;background:transparent!important;box-shadow:none!important;
   --fv-font:"Segoe UI","FreeVideo Quotes","Microsoft YaHei UI","Noto Sans CJK SC","Noto Sans SC",system-ui,sans-serif; /* theme.css's, also in the settings room */
   font:400 var(--fv-fs-2)/1.5 var(--fv-font);color:var(--fv-fg);-webkit-user-select:none;user-select:none}
+/* Traditional Chinese: the page's own list (theme.css gives the page and every view the same one). */
+html[data-fv-language="zh-Hant"] body .fv-topbar.fv-topbar.fv-topbar{--fv-font:inherit}
 /* The editor scrolls under its bar: keep it pinned and opaque. */
 html body .fv-editor .fv-header.fv-topbar.fv-topbar.fv-topbar{position:sticky;top:0;z-index:9;background:var(--fv-bg)!important}
 html body .fv-topbar.fv-topbar.fv-topbar:is([data-fv-fit="1"],[data-fv-fit="2"]){column-gap:var(--fv-sp-8)}
