@@ -614,6 +614,14 @@ export function failureAdvice(value, t, known = knownError(value)) {
         return row('disk', ['Disk space is insufficient', '磁盘空间不足'],
             ['FreeVideo could not write a required file.', 'FreeVideo 无法写入所需文件。'],
             ['Free space on the installation/output drive and retry. Keep model downloads and retained outputs if you want to resume or inspect them.', '清理安装目录或输出目录所在磁盘的空间后重试；保留模型下载和输出文件，便于续传或排查。']);
+    // freevideo_engine/network.py PackageResolutionError: the versions do not fit this computer, not the download.
+    if (/Required packages cannot be installed on this computer/.test(text)) {
+        const names = /Required packages cannot be installed on this computer: ([^\r\n]+?)\.(?:\r?\n|$)/.exec(text);
+        return row('package-resolution', ['No version of the required packages is available for this computer', '所需的软件包没有适用于这台电脑的版本'],
+            names ? [names[1], names[1]] : ['', ''],
+            ['Switching the download source or connection mode gives the same result. Choose "Export report", then "Report a problem", and attach the report.',
+             '更换下载源或连接方式后结果相同。请先点击“导出报告”，再点击“提交问题”并附上报告。']);
+    }
     if (/Model download paused|unexpected-transfer-size|ConnectionError|ConnectTimeout|ReadTimeout|Every download source failed|All Git sources failed|All package sources failed|curl-28/i.test(text))
         return row('download', ['Download needs attention', '下载未完成'],
             ['A transfer failed or its received data did not match the expected file.', '传输中断，或收到的数据与预期文件不一致。'],

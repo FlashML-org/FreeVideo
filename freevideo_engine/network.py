@@ -591,6 +591,51 @@ class PackageSourcesError(RuntimeError):
         super().__init__(message + sources_text(self.attempts))
 
 
+# Every source answered that no set of versions satisfies the requirements: the versions themselves do not
+# fit this computer (a package without a build for it, or two pins that disagree), so another source or the
+# network cannot help. The error names the packages and keeps the package manager's reason.
+RESOLUTION_MESSAGE = 'Required packages cannot be installed on this computer'
+
+
+class PackageResolutionError(PackageSourcesError):
+    """No set of package versions fits this computer; every source tried gave the same answer."""
+
+    def __init__(self, family, attempts, reason):
+        super().__init__(family, attempts)
+        self.reason = reason
+        self.packages = resolution_packages(reason)
+        message = '%s: %s.' % (RESOLUTION_MESSAGE, ', '.join(self.packages)) if self.packages else RESOLUTION_MESSAGE + '.'
+        self.args = (message + ('\nReason: ' + reason if reason else '') + sources_text(self.attempts),)
+
+
+def resolution_reason(text):
+    """uv's explanation after "No solution found when resolving dependencies:" (pip's ResolutionImpossible
+    line otherwise) on one redacted line, without hints; '' when the output is not a resolution failure."""
+    text = _ANSI_ESCAPE.sub('', str(text or ''))
+    found = re.search(r'No solution found when resolving dependencies[^:\n]*:[ \t]*\n?(.*)', text, re.S)
+    if found:
+        body = re.split(r'\n\s*(?:hint|help|warning):|\n(?:Failed step|Retained step log|Full step output|Stopped):', found[1])[0]
+    else:
+        found = re.search(r'ResolutionImpossible[^\n]*', text)
+        if not found:
+            return ''
+        body = found[0]
+    body = re.sub(r'[\u2500-\u257f\u25b6\u00d7]+', ' ', _redact(body))
+    return re.sub(r'\s+', ' ', body).strip()[:600]
+
+
+def resolution_packages(reason):
+    """The packages a resolution failure names with a version, in order, FreeVideo's own engine left out."""
+    names = []
+    # uv writes a requirement's markers in braces (triton-windows{sys_platform == 'win32'}==3.7.1); they are not packages.
+    plain = re.sub(r'\{[^{}]*\}', '', reason)
+    for name in re.findall(r'(?<![\w.-])([A-Za-z0-9][A-Za-z0-9._-]*)(?:\[[^\]]*\])?\s*(?:===|==|>=|<=|~=|!=|<|>)\s*[\w*]', plain):
+        name = re.sub(r'[-_.]+', '-', name).lower()
+        if name not in names and name != 'freevideo-engine':
+            names.append(name)
+    return names[:6]
+
+
 _ANSI_ESCAPE = re.compile(r'\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
 
@@ -749,8 +794,11 @@ def _package_attempt(error, source, route, host='', seconds=0.):
     error_class, message = failure_reason(error)
     returncode = getattr(error, 'returncode', None)
     code = exit_code(error) if returncode is None else None
+    output = getattr(error, 'stderr', None) or getattr(error, 'stdout', None) or str(error)
+    reason = resolution_reason(output.decode('utf-8', errors='replace') if isinstance(output, bytes) else output)
     return _source_row(source, route, host, error_class, message, seconds, '' if code is None else 'exit %d' % code,
-                       error_type=type(error).__name__, returncode=returncode, detail=detail, summary=summary)
+                       error_type=type(error).__name__, returncode=returncode, detail=detail, summary=summary,
+                       **({'resolution': reason} if reason else {}))
 
 
 def download_environment(environ, retry_mode='fast'):
@@ -925,6 +973,12 @@ def download_command(network, family, run, env=None, *, category=None, extra_sou
         if retry_mode == 'patient':
             event(network, category=category, action='download-round-result', retry_mode=retry_mode,
                   result='failed', attempts=len(attempts)-round_start)
+    # A mirror can lack a new version, so a resolution failure there moves on to the next source. When every
+    # source answered so, or the official index did, the versions are what fails, not the download.
+    resolved = [row for row in attempts if row.get('resolution')]
+    if resolved and (len(resolved) == len(attempts) or any(row['source'] == 'official' for row in resolved)):
+        reason = next((row['resolution'] for row in resolved if row['source'] == 'official'), resolved[-1]['resolution'])
+        raise PackageResolutionError(category, attempts, reason)
     raise PackageSourcesError(category, attempts)
 
 

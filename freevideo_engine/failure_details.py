@@ -1043,6 +1043,11 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
          ('The model download sources cannot be reached', '无法连接模型下载源'),
          ('Check your network or proxy, or change the source or connection mode, then retry.',
           '请检查网络或代理，或切换下载源、连接模式后重试。')),
+        # network.PackageResolutionError: every source answered that the versions do not fit this computer.
+        (r'Required packages cannot be installed on this computer', 'package-resolution',
+         ('No version of the required packages is available for this computer', '所需的软件包没有适用于这台电脑的版本'),
+         ('Switching the download source or connection mode gives the same result. Choose "Export report", then "Report a problem", and attach the report.',
+          '更换下载源或连接方式后结果相同。请先点击“导出报告”，再点击“提交问题”并附上报告。')),
         (r'Model download paused|unexpected-transfer-size|ConnectionError|ConnectTimeout|ReadTimeout|HTTP probe failed|Could not resolve host|SSL certificate|Every download source failed|All Git sources failed|All package sources failed|Python download failed on every route', 'download',
          ('Download interrupted', '下载中断了'),
          ('Check your network or change the source or connection mode in Settings → Downloads, then retry.', '检查网络，或在“设置 → 下载”中切换下载源、连接模式后重试。')),
@@ -1155,6 +1160,11 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
                 found = re.search(r'\[CUDA_ARCH_UNSUPPORTED\]\s+(.+?)\s+\(SMunknown;', text)
                 if found:
                     detail = ('检测到：%s' if zh else 'Detected: %s') % found[1]
+                    return dict(title=title[zh], detail=detail + '\n' + action[zh], action='', kind=kind)
+            if kind == 'package-resolution':
+                found = re.search(r'Required packages cannot be installed on this computer: ([^\r\n]+?)\.(?:\r?\n|$)', text)
+                if found:
+                    detail = ('软件包：%s' if zh else 'Packages: %s') % found[1]
                     return dict(title=title[zh], detail=detail + '\n' + action[zh], action='', kind=kind)
             if kind == 'path-too-long':
                 # A dependency folder Git cannot read is named, above the same next step.

@@ -15,7 +15,8 @@ dependencies = ["psutil>=6", "safetensors>=0.8.0", "numpy>=2", "pillow>=11", "av
 launcher = ["PySide6-Essentials==6.11.2"]
 runtime = [
   "triton==3.7.1; sys_platform == 'linux'",
-  "triton-windows==3.7.1.post27; sys_platform == 'win32'",
+  "triton-windows==3.7.1.post27; sys_platform == 'win32' and platform_machine != 'ARM64'",
+  "triton-windows==3.8.0.post28; sys_platform == 'win32' and platform_machine == 'ARM64'",
   "transformers==5.15.0", "accelerate==1.14.0", "peft==0.20.0",
   "safetensors==0.8.0", "huggingface_hub==1.30.0", "hf-xet==1.6.1a0",
   "omegaconf==2.3.1", "pyyaml==6.0.3", "einops==0.8.2",

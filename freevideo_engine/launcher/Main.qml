@@ -527,8 +527,8 @@ ApplicationWindow {
                                       text: t("Open install folder", "打开安装目录"); onClicked: backend.openInstallFolder() }
                             FButton { objectName: "latestLauncherLink"; visible: s.failure.kind === "older-launcher"; flat: true
                                       text: t("Download the latest ↗", "下载最新版 ↗"); onClicked: backend.link("https://github.com/FlashML-org/FreeVideo/releases/latest") }
-                            FButton { objectName: "reportProblem"; visible: !diskFailure && !notAFault && s.failure.kind !== "port-taken" && s.failure.kind !== "comfy-restart" && s.failure.kind !== "comfy-folder" && s.failure.kind !== "engine-folder-denied"; text: reportOpened(s.error, s.failure.title || "") ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(s.error, s.failure.title || ""); onClicked: backend.reportProblem(s.error, s.failure.title || "") }
                             FButton { objectName: "exportError"; visible: !diskFailure && !notAFault; text: t("Export report", "导出报告"); enabled: s.report.status !== "running"; onClicked: backend.exportReport() }
+                            FButton { objectName: "reportProblem"; visible: !diskFailure && !notAFault && s.failure.kind !== "port-taken" && s.failure.kind !== "comfy-restart" && s.failure.kind !== "comfy-folder" && s.failure.kind !== "engine-folder-denied"; text: reportOpened(s.error, s.failure.title || "") ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(s.error, s.failure.title || ""); onClicked: backend.reportProblem(s.error, s.failure.title || "") }
                         }
                         FButton {
                             objectName: "showError"; visible: !notAFault; text: t("Technical details", "技术详情"); flat: true
