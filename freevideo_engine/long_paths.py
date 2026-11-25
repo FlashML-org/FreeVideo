@@ -294,3 +294,19 @@ def path_match(match):
     if match.string.endswith('<PATH>', 0, match.start()) and not re.search(r'[\\/]', value[1:].rstrip('\\/')):
         return value
     return path_placeholder(value)
+
+
+# Report text: an email address on its own (not the user part of a URL, removed as such) and an
+# authorization value of any kind, as a header, a query, JSON (also with escaped quotes) or a Python repr
+# writes it. A quoted value goes to its closing quote. After a known scheme ("Bearer", "token", "Digest" ...) only its credentials
+# go, a single word or a list of name=value pairs, so the reason after them stays ("... timed out"); any
+# other value goes to the end of its line. Replace with ``\1\2\3`` and the placeholder.
+# "icon@2x.png" is a file name and "git@host:org/repo" a repository, not an address.
+EMAIL = re.compile(r'(?<![\w.+%-])(?!git@)[\w.+%-]+@(?!\d+x\.)[\w-]+(?:\.[\w-]+)*\.[^\W\d_]{2,}(?![^\W\d_])')
+_AUTH_PARAM = r'''[\w-]+=(?:"[^"\r\n]*"|[^\s,"]*)'''
+AUTHORIZATION = re.compile(
+    r'''(?i)(\b(?:proxy-)?authori[sz]ation(?:\\?['"][ \t]*[:=,]|[ \t]*[:=])[ \t]*)'''
+    r'''(?:(\\?['"])(?:(?!\2)[^\r\n])+'''
+    r'''|((?:bearer|basic|digest|token|negotiate|ntlm|oauth|hawk|aws4-hmac-sha256|apikey|kerberos|mutual|scram-sha-\d+)[ \t]+)'''
+    r'''(?:''' + _AUTH_PARAM + r'''(?:[ \t]*,[ \t]*''' + _AUTH_PARAM + r''')*|[^\s,;'"]+)'''
+    r'''|[^\r\n'"][^\r\n]*)''')

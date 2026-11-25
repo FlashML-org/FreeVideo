@@ -24,7 +24,7 @@ import threading
 import time
 from urllib.parse import quote, unquote, urlencode, urljoin, urlsplit
 from . import proxy
-from .long_paths import io_path, is_windows, path_chars, plain, plain_errors, ABSOLUTE_PATH, path_match
+from .long_paths import io_path, is_windows, path_chars, plain, plain_errors, ABSOLUTE_PATH, AUTHORIZATION, EMAIL, path_match
 from .system import curl_executable, curl_ca_arguments, missing_curl_message, windows
 
 
@@ -640,7 +640,7 @@ _ANSI_ESCAPE = re.compile(r'\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
 
 def _redact(value):
-    """Report-safe text: no credentials, URL parameters, tokens or local paths."""
+    """Report-safe text: no credentials, email addresses, URL parameters, tokens or local paths."""
     if isinstance(value, bytes):
         value = value.decode('utf-8', errors='replace')
     value = _ANSI_ESCAPE.sub('', str(value)).replace('\x00', '')
@@ -651,6 +651,9 @@ def _redact(value):
     value = re.sub(r'(?<![^\s\x27\x22(=,;])[^\s/:@\x27\x22]+:[^\s/\x27\x22]*@(?=[A-Za-z0-9[])', '<REDACTED>@', value)
     # Query strings routinely carry signed URLs and access tokens.
     value = re.sub(r'(?i)(https?://[^\s?\x27\x22]+)\?[^\s\x27\x22]+', r'\1', value)
+    # Any authorization value, not only a token-shaped one; then an email address on its own.
+    value = AUTHORIZATION.sub(r'\1\2\3<REDACTED>', value)
+    value = EMAIL.sub('<REDACTED>', value)
     value = re.sub(r'(?i)(\b(?:Bearer|Basic)\s+)[A-Za-z0-9._~+/=-]+', r'\1<REDACTED>', value)
     # Hugging Face, GitHub and API keys, wherever they appear (a URL path, a header).
     value = re.sub(r'\b(?:hf_|sk-|gh[pousr]_|github_pat_)[A-Za-z0-9_-]{8,}\b', '<REDACTED>', value)
