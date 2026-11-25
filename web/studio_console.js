@@ -34,6 +34,9 @@ const promptMax = () => globalThis.matchMedia?.('(max-width:760px)').matches ? 1
 
 // trays: [{id, title, element}] where element is a <details> (its summary is hidden; open is the tray's state)
 // or any element, which is then wrapped in one. chips: what each chip shows, read again on sync().
+// The chips that fold to their icon and count first when the row is short of room (see fitRow).
+const FOLDS = new Set(['media', 'lora']);
+
 export function createConsole({t, body, controls, prompt, runbar, trays, chips, status = [], onTray = () => {}}) {
     const host = el('div', 'fvs-trays');
     const box = el('div', 'fvs-console');
@@ -135,13 +138,65 @@ export function createConsole({t, body, controls, prompt, runbar, trays, chips, 
             const value = spec.read() || {};
             if (spec.label && spec.label.textContent !== (value.label ?? '')) spec.label.textContent = value.label ?? '';
             if (spec.extra) { if (spec.extra.textContent !== (value.extra ?? '')) spec.extra.textContent = value.extra ?? ''; if (spec.extra.hidden !== !value.extra) spec.extra.hidden = !value.extra; }
+            if (spec.chip && FOLDS.has(spec.id)) spec.chip.toggleAttribute('data-empty', !value.extra);
             if (spec.chip) {
                 if (spec.chip.disabled !== Boolean(value.disabled)) spec.chip.disabled = Boolean(value.disabled);
                 if (value.badge != null) { if (spec.chip.dataset.badge !== String(value.badge)) spec.chip.dataset.badge = String(value.badge); } else if ('badge' in spec.chip.dataset) delete spec.chip.dataset.badge;
                 if (value.tip) tip(spec.chip, value.tip[0], value.tip[1], value.tip[2]);
             }
         }
+        fitRow();
     }
+    // A row that cannot hold every chip on one line folds them (Iris 11-24, review/i18n/shots-widest/collapse-spec-iris.md):
+    // first Media and LoRA show their icon and count, then Enhance its star, then (Lane 11-24) the duration shows its number
+    // and the size and quality keys drop their drawings, as on a phone; the row never wraps. Judged by the row's own
+    // width in every language, not by a set breakpoint; the words come back once the row is 16 px wider than where it
+    // folded (no back and forth while a window is dragged). The narrow layout (760 px and less) wraps by design and does
+    // not fold. Folded chips keep their words for screen readers, and Media and LoRA say their count ("Media, 12").
+    let fold = 0;
+    // Where each step was taken: the row's width and what its chips showed. Without the 16 px margin a step is only undone
+    // when that content has changed (a shorter level, fewer media); a resize back and forth or a refresh with the same
+    // content keeps it (c1-boot review 11-24).
+    const foldedAt = [0, 0, 0, 0], shownAt = ['', '', '', ''];
+    const shown = () => [...row.querySelectorAll('.fvs-chip-label,.fvs-chip-extra,.fvs-step-number,.fvp-chip-label,.fv-enhance-chip>span')]
+        .map(node => node.hidden ? '' : node.textContent).join('\u241f');
+    const narrow = () => Boolean(globalThis.matchMedia?.('(max-width:760px)').matches);
+    function wraps() {
+        const shown = [...row.children].filter(node => node.offsetParent !== null && !node.classList.contains('fvs-chip-spacer'));
+        if (shown.length < 2) return false;
+        const top = Math.min(...shown.map(node => node.offsetTop));
+        return shown.some(node => node.offsetTop > top + 2) || row.scrollWidth > row.clientWidth + 1;
+    }
+    function nameFolded() {
+        for (const spec of built) {
+            if (!spec.chip || !FOLDS.has(spec.id)) continue;
+            const name = spec.label?.textContent || '', count = spec.extra?.hidden ? '' : spec.extra?.textContent || '';
+            // Square only without a count: read from what the chip shows now, not from the last sync.
+            spec.chip.toggleAttribute('data-empty', !count);
+            if (fold && name) spec.chip.setAttribute('aria-label', count ? t('{name}, {count}', '{name}，{count}', {name, count}) : name);
+            else spec.chip.removeAttribute('aria-label');
+        }
+    }
+    function setFold(level) {
+        fold = level;
+        if (level) row.dataset.fold = String(level); else delete row.dataset.fold;
+    }
+    function fitRow() {
+        if (!row.isConnected || !row.clientWidth) return;
+        if (narrow()) setFold(0);
+        else {
+            const width = row.clientWidth, now = shown();
+            while (fold > 0 && (width >= foldedAt[fold] + 16 || now !== shownAt[fold])) {
+                const was = fold; setFold(fold - 1);
+                // Still too long: this width and content become the step's reference, so the next look does not try again
+                // (and the try's change of layout cannot call this back in a loop).
+                if (wraps()) { setFold(was); foldedAt[was] = width; shownAt[was] = now; break; }
+            }
+            while (fold < 3 && wraps()) { foldedAt[fold + 1] = width; shownAt[fold + 1] = now; setFold(fold + 1); }
+        }
+        nameFolded();
+    }
+    if (globalThis.ResizeObserver) new ResizeObserver(() => fitRow()).observe(row);
     // Every tray starts closed: the picture keeps its full size until a setting is opened.
     for (const item of rows.values()) item.details.open = false;
     paint(); sync();
