@@ -111,16 +111,21 @@ def keywords_in(meta):
     return {kind: keyword_list(given.get(kind)) for kind in KEYWORD_KINDS}
 
 
-def _spellings(word):
-    return [word, word.lower(), word.upper(), word[:1].upper() + word[1:]]
+def _spellings(word, kind):
+    """How a word is read: as written, in capitals and with a capital first letter, and for a cut in lower case too. An image
+    or subject word is not read in lower case unless the language file wrote it so ("image 4", "una imagen 4K")."""
+    if kind == 'cut':
+        return [word, word.lower(), word.upper(), word[:1].upper() + word[1:]]
+    return [word, word.upper(), word[:1].upper() + word[1:]]
 
 
 def keyword_words(kind, own=()):
-    """Every word of a kind that is read: the built-in ones, then the language's own in capitals, lower case and with a
-    capital first letter, longest first."""
+    """Every word of a kind that is read: the built-in ones, then the language's own (see _spellings), longest first.
+    The page reads an image or subject word of the language's own only where it stands on its own, not after a letter or
+    digit and not before a quantity such as "4K" (web/i18n.js keywordSource); the engine reads no such word."""
     words = list(BUILT_IN_KEYWORDS[kind])
     for word in keyword_list(own):
-        words.extend(_spellings(word))
+        words.extend(_spellings(word, kind))
     return sorted(dict.fromkeys(words), key=lambda w: (-len(w), w))
 
 

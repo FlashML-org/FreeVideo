@@ -447,10 +447,12 @@ export function renderImageFailure(host, {error, report_id, stage, step, fitted,
             [['Cause', '原因'], cause], [['Last attempts', '最后几次请求'], Array.isArray(misses) ? misses.slice(-3).map(miss => typeof miss === 'string' && /^[a-z][a-z0-9_]{0,31}$/.test(miss) ? miss : 'other').join(', ') : ''], [['Memory', '内存'], memory]].filter(([, v]) => v);
         bar = doc.createElement('div'); bar.className = 'fv-actions';
         // Drawn as the card's other actions (Retry, Download report): their border, focus ring and press.
-        if (!NO_REPORT.has(error))
+        const reportable = !NO_REPORT.has(error);
+        if (reportable)
             bar.append(issueButton(t, () => ({where: ['Image generation', '图像生成'], message: facts.map(([[en, zh], v]) => `${t(en, zh)}: ${v}`).join('\n')}), {className: 'fv-action'}));
         if (again) bar.prepend(again);
-        if (bar.childElementCount) card.append(bar);
+        // The row is shown when it holds Retry or the report button (decided from them, not by counting its children).
+        if (again || reportable) card.append(bar);
         const details = doc.createElement('details'); details.className = 'fv-image-failure-details';
         const summary = doc.createElement('summary'); summary.textContent = t('Technical details', '技术详情'); details.append(summary);
         for (const [[en, zh], v] of facts) { const row = doc.createElement('div'); row.textContent = `${t(en, zh)}: ${v}`; details.append(row); }

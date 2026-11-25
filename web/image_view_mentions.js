@@ -8,11 +8,12 @@ import { keywordSource } from './i18n.js';
 
 // The words a picture is named by in text, from the language's file and the built-in ones ("Image", "图", "圖"), and the
 // ones a rewrite names a subject by ("Subject", "主体", "主體"): read before a number, with a space where the word is
-// written in letters.
+// written in letters. Built with the `u` flag: a word of the language's own is bounded by what stands before and after it
+// (web/i18n.js keywordSource).
 const SEPARATORS = {latin: '\\s', cjk: '\\s?'};
-export const PICTURE_WORDS = new RegExp(keywordSource('image', undefined, SEPARATORS) + '(\\d+)', 'g');
-export const SUBJECT_WORDS = new RegExp(keywordSource('subject', undefined, SEPARATORS) + '(\\d+)', 'g');
-const TOKEN = new RegExp('@' + keywordSource('image') + ' ?(\\d+|\\?)', 'g');
+export const PICTURE_WORDS = new RegExp(keywordSource('image', undefined, SEPARATORS) + '(\\d+)', 'gu');
+export const SUBJECT_WORDS = new RegExp(keywordSource('subject', undefined, SEPARATORS) + '(\\d+)', 'gu');
+const TOKEN = new RegExp('@' + keywordSource('image') + ' ?(\\d+|\\?)', 'gu');
 export const mentionText = n => t('@Image{n}', '@图{n}', { n });
 
 // The text with each mention renumbered from `before` (the pictures as they were) to `after` (as they are now).
@@ -135,7 +136,7 @@ export function posePrompt(text, n, words, seed) {
     return `${desc ? desc + close : ''}${who ? who + (who.endsWith('.') ? ' ' : '') : ''}${lead ? lead + '。' : ''}${place ? `场景是${place}。` : ''}${POSE_SKETCH(n)}${words?.arms ? words.arms + '。' : ''}${desc && STYLE_WORDS.test(desc) ? POSE_STYLED : POSE_REAL}`;
 }
 export const brokenMentions = (text, count) => [...text.matchAll(TOKEN)].filter(([, n]) => n === '?' || Number(n) < 1 || Number(n) > count).length;
-export const hasMentions = text => new RegExp(TOKEN.source).test(text);
+export const hasMentions = text => new RegExp(TOKEN.source, 'u').test(text);
 
 // The marks over the box and the "@" list. pictures(): [{url, label}] in order; onAdd(anchor): the way to add one.
 export function promptMentions({prompt, host, pictures, onAdd, onPick = () => {}}) {
@@ -190,7 +191,7 @@ export function promptMentions({prompt, host, pictures, onAdd, onPick = () => {}
 
     function items(query) {
         const all = pictures().map((p, at) => ({n: at + 1, ...p}));
-        const q = query.replace(new RegExp('^' + keywordSource('image'), 'i'), '').trim();
+        const q = query.replace(new RegExp('^' + keywordSource('image'), 'iu'), '').trim();
         return q ? all.filter(p => String(p.n).startsWith(q)) : all;
     }
     function draw() {

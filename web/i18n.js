@@ -75,8 +75,9 @@ export const translator = chinese => translatorFor(CATALOG, chinese);
 // Words the page reads back from text: what a person types ("Cut:", "@Image2", "Subject 1") and what the page wrote itself
 // in its own language. A language file names its own in _meta.keywords, e.g. {"cut": ["Corte"], "subject": ["Sujeto"],
 // "image": ["Imagen"]}; the page then reads those and the built-in words alike (English and Chinese, Simplified and
-// Traditional, always work). Adding a language is still adding one file. freevideo_engine/i18n.py has the same rule;
-// tests/i18n_keywords_cases.json holds the cases both must pass.
+// Traditional, always work). Adding a language is still adding one file. freevideo_engine/i18n.py has the same rule for
+// the words; tests/i18n_keywords_cases.json holds the cases both must pass. A word of the language's own that names an
+// image or a subject is also read only where it stands on its own (see keywordSource); the built-in words are read as always.
 export const KEYWORD_KINDS = ['cut', 'subject', 'image'];
 export const BUILT_IN_KEYWORDS = Object.freeze({
     // Chinese first: the collector (scripts/i18n_extract.py) reads an English text followed by a Chinese one as a pair to translate.
@@ -102,23 +103,45 @@ export function keywordsIn(catalog) {
 // The page's own words (those of the language it shows).
 export const KEYWORDS = keywordsIn(CATALOG);
 
-// A word as typed in capitals, lower case or with a capital first letter, as the built-in "cut" is read.
-const spellings = word => [...new Set([word, word.toLowerCase(), word.toUpperCase(), word.charAt(0).toUpperCase() + word.slice(1)])];
+// A word as typed in capitals or with a capital first letter, and for "cut" in lower case too ("cut:" is a line's first word,
+// before a colon). An image or subject word is not read in lower case unless the language file wrote it so: the built-in
+// "Image" is read only with its capital, because "image 4" and "una imagen 4K" are ordinary sentences.
+const spellings = (word, kind) => [...new Set(kind === 'cut' ? [word, word.toLowerCase(), word.toUpperCase(), word.charAt(0).toUpperCase() + word.slice(1)]
+    : [word, word.toUpperCase(), word.charAt(0).toUpperCase() + word.slice(1)])];
 const CJK_END = /[぀-ヿ㐀-鿿가-힯]$/;
 
 // Every word of a kind that is read: the built-in ones, then the language's own (in the spellings above), longest first.
 export function keywordWords(kind, own = KEYWORDS[kind]) {
-    const words = [...BUILT_IN_KEYWORDS[kind], ...keywordList(own).flatMap(spellings)];
+    const words = [...BUILT_IN_KEYWORDS[kind], ...keywordList(own).flatMap(word => spellings(word, kind))];
     return [...new Set(words)].sort((a, b) => b.length - a.length || (a < b ? -1 : a > b ? 1 : 0));
 }
 
 const escapeRegExp = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-// A regular expression source that matches any word of a kind. With `separators` ({latin, cjk}) each word is followed by
-// the separator for its script: a word written in letters needs a space before the number ("Subject 2"), one written in
-// Chinese, Japanese or Korean characters may have none ("主体2").
+// What may not stand before a word of the language's own: a letter or a digit, and for a word written in Han characters,
+// kana or Hangul, a character of that script ("動画像2" is not "画像2", "この画像2" is). A Han word after other Han
+// characters is not read ("参考画像2": a file that writes it so names "参考画像" itself).
+const LEFT_EDGES = [[/^\p{Script=Han}/u, '\\p{Script=Han}'], [/^\p{Script=Hiragana}/u, '\\p{Script=Hiragana}'],
+    [/^\p{Script=Katakana}/u, '\\p{Script=Katakana}ー'], [/^\p{Script=Hangul}/u, '\\p{Script=Hangul}']];
+// A browser that cannot read a lookbehind (Safari before 16.4) reads such a word without the limit rather than failing to load.
+const LOOKBEHIND = (() => { try { return new RegExp('(?<!a)b', 'u').test('b'); } catch { return false; } })();
+const leftEdge = word => LOOKBEHIND ? '(?<![' + (LEFT_EDGES.find(([first]) => first.test(word))?.[1] ?? '\\p{L}\\p{N}') + '])' : '';
+// A number that is a quantity, not a picture number: "4K", "3rd", "3.5", "3,5" (letters of the alphabets written with spaces;
+// "画像2を" and "이미지2를" are numbers). A full stop or comma after the number ends a sentence unless a digit follows.
+const QUANTITY = '\\d+(?!\\d)(?:[A-Za-z\\u00C0-\\u024F\\u0370-\\u04FF]|[.,]\\d)';
+
+// A regular expression source that matches any word of a kind; build the expression with the `u` flag. With `separators`
+// ({latin, cjk}) each word is followed by the separator for its script: a word written in letters needs a space before
+// the number ("Subject 2"), one written in Chinese, Japanese or Korean characters may have none ("主体2").
+// A subject or image word of the language's own must stand on its own: not after a letter or digit ("Vorbild 3" is not
+// "Bild 3") and not before a quantity ("Imagen 4K"). The built-in words are matched as they always were, and so are the
+// words of a cut, which a line's start and colon already bound.
 export function keywordSource(kind, own = KEYWORDS[kind], separators = null) {
-    return '(?:' + keywordWords(kind, own).map(word => escapeRegExp(word) + (separators ? (CJK_END.test(word) ? separators.cjk : separators.latin) : '')).join('|') + ')';
+    const builtIn = new Set(BUILT_IN_KEYWORDS[kind]);
+    return '(?:' + keywordWords(kind, own).map(word => {
+        const text = escapeRegExp(word) + (separators ? (CJK_END.test(word) ? separators.cjk : separators.latin) : '');
+        return kind === 'cut' || builtIn.has(word) ? text : leftEdge(word) + text + `(?!${separators ? '' : ' ?'}${QUANTITY})`;
+    }).join('|') + ')';
 }
 
 // The address that opens this page in a language (Settings, the command palette, reloading into an update).

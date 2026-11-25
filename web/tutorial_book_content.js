@@ -11,7 +11,7 @@ export const TUTORIAL_CHAPTERS = [
         media: {
             type: 'image',
             src: {zh: 'quick-start-1.webp', en: 'quick-start-2.webp'},
-            alt: {zh: '创作面板：描述框和“生⁠成⁠视⁠频”按钮已用红框标出。', en: 'The creation panel, with the prompt box and the "Generate video" button outlined in red.'},
+            alt: {zh: '创作面板：提示词框和“生⁠成⁠视⁠频”按钮已用红框标出。', en: 'The creation panel, with the prompt box and the "Generate video" button outlined in red.'},
         },
         steps: {
             zh: ['打开“创作面板”，在“描述画面”中写一句话，说明谁在什么地方做什么。', '画幅选“横屏”或“竖屏”，其余保持默认。', '点“生⁠成⁠视⁠频”。', '完成后在预览区播放，点“下载视频”保存。'],
@@ -81,7 +81,7 @@ export const TUTORIAL_CHAPTERS = [
         media: {
             type: 'image',
             src: {zh: 'image-gen-1.webp', en: 'image-gen-2.webp'},
-            alt: {zh: '图像视图：描述框、比例与清晰度、“生成”和图片下方的“⋯”已用红框标出。', en: 'The Images view, with the prompt, the shape and clarity, "Generate" and the "⋯" below the picture outlined in red.'},
+            alt: {zh: '图像视图：提示词框、比例与清晰度、“生成”和图片下方的“⋯”已用红框标出。', en: 'The Images view, with the prompt, the shape and clarity, "Generate" and the "⋯" below the picture outlined in red.'},
         },
         steps: {
             zh: ['点顶部的“图像视图”。', '在“描述画面”中写下主体、场景和风格；图中要出现的文字，用引号写出原文。', '在“画幅与尺寸”中选择比例，再在“尺寸”中选择“4M”（约 400 万像素）或“16M”（约 1600 万像素）。显存为 8 GB 的显卡，选“4M”。', '点“生成”。图片显示在中间，并加入右侧的作品列表；图片下方一行写明生成它的模型、尺寸和比例。用图片下方一行的图标下载、打开文件夹或复制提示词。图片也会另存一份到 output 文件夹，在“设置”中可以关闭。', '在“AI 全自动”中，连接助手 后说“画一张……”，助手只生成图片，不生成视频；完成后点“打开”查看，点“下载”保存。'],
@@ -99,7 +99,7 @@ export const TUTORIAL_CHAPTERS = [
         media: {
             type: 'image',
             src: {zh: 'image-references-1.webp', en: 'image-references-2.webp'},
-            alt: {zh: '图像视图：描述框和其下方的参考图（图 1、图 2 和“+”）已用红框标出。', en: 'The Images view, with the description and the reference pictures below it (Image 1, Image 2 and "+") outlined in red.'},
+            alt: {zh: '图像视图：提示词框和其下方的参考图（图 1、图 2 和“+”）已用红框标出。', en: 'The Images view, with the prompt box and the reference images below it (Image 1, Image 2 and "+") outlined in red.'},
         },
         steps: {
             zh: ['点顶部的“图像视图”，点提示词框下方的“参考图”，选“从电脑选择…”或作品中的一张图片；也可以把图片拖到左侧，或粘贴到提示词框中。', '参考图按加入的顺序编号为“图 1”“图 2”……在提示词中写明每张图的用途，例如“图 1 的人物手里托着图 2 的怀表”。点参考图的缩略图，可以裁剪或修图。', '比例默认为“跟随图片”，也可以改选其他比例；然后点“生成”。', '在结果下方点“编辑”，它会成为图 1，接着描述要改的地方；点“用作参考图”，它会加到参考图的最后。', '把鼠标移到缩略图上，点右上角的“×”，可移除这张参考图。'],
@@ -420,7 +420,7 @@ export const TUTORIAL_CHAPTERS = [
         media: {
             type: 'image',
             src: {zh: 'extend-video-1.webp', en: 'extend-video-2.webp'},
-            alt: {zh: '剪辑视图：接着生成的草稿段和描述框已用红框标出。', en: 'The Edit view, with the draft part that continues the video and the prompt box outlined in red.'},
+            alt: {zh: '剪辑视图：接着生成的草稿段和提示词框已用红框标出。', en: 'The Edit view, with the draft part that continues the video and the prompt box outlined in red.'},
         },
         steps: {
             zh: ['在生成好的视频下方点“接着生成”，打开剪辑视图。', '选中后面自动加上的那一段，在底部提示词框写明接下来发生什么。这一段默认 10 秒，在 Mac 和一次生成不了 10 秒的设备上为 5 秒。', '需要更长时，拖长这一段，每段至少 5 秒，然后点“生⁠成”。', '新的一段会接在原视频之后，并自动拼成一条。'],
@@ -468,7 +468,7 @@ export const TUTORIAL_CHAPTERS = [
         media: {
             type: 'image',
             src: {zh: 'editor-1.webp', en: 'editor-2.webp'},
-            alt: {zh: '剪辑视图：选中的一段和描述框已用红框标出。', en: 'The Edit view, with the selected part and the prompt box outlined in red.'},
+            alt: {zh: '剪辑视图：选中的一段和提示词框已用红框标出。', en: 'The Edit view, with the selected part and the prompt box outlined in red.'},
         },
         steps: {
             zh: ['点顶部的“剪辑视图”。', '在时间线上选中要处理的一段。', '在下方提示词框中填写这一段的内容，点“生⁠成”接续下一段。', '在右侧“画面”中可调整缩放、位置和旋转，或点“裁⁠剪”；窗口窄于 1280 时，先点“调⁠整”打开该面板。', '完成后点右上角的“导⁠出”保存。'],
@@ -536,7 +536,7 @@ export const TUTORIAL_CHAPTERS = [
         media: {
             type: 'image',
             src: {zh: 'segment-prompt-1.webp', en: 'segment-prompt-2.webp'},
-            alt: {zh: '剪辑视图：选中的一段和描述框已用红框标出。', en: 'The Edit view, with the selected part and the prompt box outlined in red.'},
+            alt: {zh: '剪辑视图：选中的一段和提示词框已用红框标出。', en: 'The Edit view, with the selected part and the prompt box outlined in red.'},
         },
         steps: {
             zh: ['在“画面”轨上拖出一段较长的范围，它会分成带序号的多段。', '点选其中一段，在提示词框中写下这一段的内容。', '再点选另一段，写下它的内容；每段的提示词保存在这一段上。', '点“生⁠成”，各段按顺序生成并连成一个视频。'],
@@ -656,7 +656,7 @@ export const TUTORIAL_CHAPTERS = [
         media: {
             type: 'image',
             src: {zh: 'sound-to-picture-1.webp', en: 'sound-to-picture-2.webp'},
-            alt: {zh: '剪辑视图：画面轨上选中的一段和描述框已用红框标出。', en: 'The Edit view, with a range on the picture track and the prompt box outlined in red.'},
+            alt: {zh: '剪辑视图：画面轨上选中的一段和提示词框已用红框标出。', en: 'The Edit view, with a range on the picture track and the prompt box outlined in red.'},
         },
         steps: {
             zh: ['在剪辑视图中放入一段只有声音的素材。', '在“画面”轨上，对着声音拖出一段。', '在“描述这一段”中写下想看到的画面。', '点“生⁠成”。'],

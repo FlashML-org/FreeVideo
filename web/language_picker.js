@@ -1,7 +1,7 @@
 // The interface language in Settings: a button with the globe and the language's own name, and a list of the languages
 // ready to offer (Lane-5x, review/i18n/language-switch.md, direction A). The choice is saved with the launcher's settings
 // (/freevideo/language), so the launcher and the page show the same language; the page reloads to change it.
-import { el, icon } from './settings_kit.js';
+import { el, icon, tip } from './settings_kit.js';
 import { listenDialogKey } from './dialog_keys.js';
 import { agentPost } from './agent_session.js';
 import { LANGUAGE } from './i18n.js';
@@ -43,6 +43,8 @@ export function languagePicker({api, t, state, onSaved, onError}) {
     trigger.setAttribute('aria-haspopup', 'listbox'); trigger.setAttribute('aria-expanded', 'false');
     const name = el('span', 'w');
     trigger.append(icon('globe'), name, icon('chev'));
+    // FreeVideo's own tip, as on the other settings buttons (no browser tooltip); the same words as before.
+    tip(trigger, t('Interface language', '界面语言'), '');
     const pop = el('div', 'st-lang-pop'); pop.hidden = true;
     const search = el('input', 'st-lang-find'); search.type = 'search';
     search.placeholder = t('Search languages', '搜索语言'); search.setAttribute('aria-label', t('Search languages', '搜索语言'));
@@ -67,7 +69,7 @@ export function languagePicker({api, t, state, onSaved, onError}) {
     let rows = [], active = -1, saving = false;
 
     const nameOf = tag => state.languages.find(row => row.tag === tag)?.name || tag;
-    function paintButton() { name.textContent = nameOf(state.language); trigger.title = t('Interface language', '界面语言'); }
+    function paintButton() { name.textContent = nameOf(state.language); }
     function items() {
         const query = find.hidden ? '' : search.value;
         const offered = sortLanguages(state.languages).filter(row => matches(row, query));
