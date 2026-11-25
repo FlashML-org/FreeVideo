@@ -11,7 +11,7 @@
    the glass becomes solid under data-glass=solid, .lite or reduced transparency. */
 
 /* ── 1. Blacks and glass values ─────────────────────────────────────────────────────────────────────────────── */
-html[data-fv-lux]:root dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot),
+html[data-fv-lux]:root :is(dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot),dialog.fv-set),
 html[data-fv-lux]:root :is(.fvp.fvp-pop,.fv-select-menu){
   --lx-l0:#06080c;
   --lx-g1:rgb(22 25 33 / .60); --lx-g2:rgb(27 30 39 / .94); --lx-l3:#1c1f27;
@@ -27,7 +27,7 @@ html[data-fv-lux]:root :is(.fvp.fvp-pop,.fv-select-menu){
   --lx-key-glow:0 10px 28px -12px rgb(27 148 252 / .55);
   --lx-ease:cubic-bezier(.2,.8,.2,1);
 }
-html[data-fv-lux][data-theme=light]:root dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot),
+html[data-fv-lux][data-theme=light]:root :is(dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot),dialog.fv-set),
 html[data-fv-lux][data-theme=light]:root :is(.fvp.fvp-pop,.fv-select-menu){
   --lx-l0:#eef1f5;
   --lx-g1:rgb(255 255 255 / .62); --lx-g2:rgb(255 255 255 / .94); --lx-l3:#ffffff;
@@ -79,19 +79,23 @@ html[data-fv-lux]:root dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-a
 
 /* ── 3. Top bar ─────────────────────────────────────────────────────────────────────────────────────────────── */
 html[data-fv-lux]:root body dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot) .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch,
-html[data-fv-lux]:root body dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot) .fv-topbar .fv-tb-cap{
+html[data-fv-lux]:root body dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot) .fv-topbar .fv-tb-cap,
+html[data-fv-lux]:not([data-glass=solid],.lite):root body dialog.fv-set .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch,
+html[data-fv-lux]:not([data-glass=solid],.lite):root body dialog.fv-set .fv-topbar .fv-tb-cap{
   background:var(--lx-g1)!important;
   box-shadow:inset 0 0 0 1px var(--lx-edge),inset 0 1px 0 var(--lx-hi),var(--fv-sh1)!important;
   -webkit-backdrop-filter:var(--lx-blur1)!important;backdrop-filter:var(--lx-blur1)!important;
 }
 /* The chosen view: a raised block with a short blue line of light on its lower edge. */
-html[data-fv-lux]:root body dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot) .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch::before{
+html[data-fv-lux]:root body dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot) .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch::before,
+html[data-fv-lux]:not([data-glass=solid],.lite):root body dialog.fv-set .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch::before{
   background:
     radial-gradient(ellipse 34px 1.5px at var(--lx-ink-x,50%) 100%,rgb(102 182 255 / .9),transparent 100%),
     linear-gradient(180deg,rgb(255 255 255 / .11),rgb(255 255 255 / .06));
   box-shadow:inset 0 1px 0 rgb(255 255 255 / .16);
 }
-html[data-fv-lux][data-theme=light]:root body dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot) .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch::before{
+html[data-fv-lux][data-theme=light]:root body dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot) .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch::before,
+html[data-fv-lux][data-theme=light]:not([data-glass=solid],.lite):root body dialog.fv-set .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch::before{
   background:linear-gradient(180deg,#fff,rgb(255 255 255 / .82));
   box-shadow:inset 0 0 0 1px rgb(20 24 32 / .05),0 1px 2px rgb(30 40 60 / .1);
 }
@@ -236,6 +240,7 @@ html[data-fv-lux][data-theme=light]:root dialog.fv-studio.fv-create .fv-stage{bo
 /* Glass off also means a weak machine: the light stays, and stays still. */
 :is(html[data-glass=solid],html.lite)[data-fv-lux]{--lx-in-play:paused!important}
 @media (prefers-reduced-transparency:reduce){
+  html[data-fv-lux]:not([data-glass=solid],.lite):root body dialog.fv-set .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch,html[data-fv-lux]:not([data-glass=solid],.lite):root body dialog.fv-set .fv-topbar .fv-tb-cap{-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:rgb(var(--fv-solid1))!important}
   html[data-fv-lux]:root dialog.fv-studio :is(.fvs-console,.fv-recent,.fvs-rail,.fv-iv-panel,.fv-view-switch,.fv-tb-cap,.fv-ed-library,.fv-ed-adjust-host,.fv-ed-genbar,.fv-chat-rail,.fv-chat-side){-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:var(--lx-s1)!important}
   html[data-fv-lux]:root :is(dialog.fv-studio .fvs-tray[open],dialog.fv-studio .fvs-info-panel,.fvp.fvp-pop){-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:var(--lx-s2)!important}
 }
