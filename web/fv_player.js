@@ -60,5 +60,7 @@ export function createPlayBar(media, t = (en) => en) {
     events.forEach(name => media.addEventListener(name, paint)); paint();
     const click = () => toggle();
     if (media.tagName === 'VIDEO') { media.addEventListener('click', click); media.classList.add('fv-player-video'); }
-    return {bar, destroy() { events.forEach(name => media.removeEventListener(name, paint)); media.removeEventListener('click', click); bar.remove(); }};
+    // A sound has nothing to show but its bar (fv_player.css hides the browser's own).
+    if (media.tagName === 'AUDIO') media.classList.add('fv-player-audio');
+    return {bar, destroy() { events.forEach(name => media.removeEventListener(name, paint)); media.removeEventListener('click', click); media.classList.remove('fv-player-audio'); bar.remove(); }};
 }
