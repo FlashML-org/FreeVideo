@@ -44,6 +44,19 @@ PATH_KEYS = frozenset(('base', 'checkpoint', 'encoder', 'output', 'directory',
 ABSOLUTE_PATH = long_paths.ABSOLUTE_PATH
 
 
+SHORT_PROMPT = 4
+# Scripts written without spaces between words (Myanmar, Hangul, Khmer, CJK, kana, Thai,
+# Lao and others): a short prompt in one is removed at any position. web/error_panel.js
+# has the same ranges (NO_WORD_BOUNDARY); a test compares the two.
+NO_WORD_BOUNDARY_RANGES = (
+    (0x0e00, 0x0eff), (0x1000, 0x109f), (0x1100, 0x11ff), (0x1780, 0x17ff), (0x19e0, 0x19ff),
+    (0x2e80, 0x2fdf), (0x3005, 0x3007), (0x3021, 0x3029), (0x3038, 0x303b), (0x3040, 0x30ff),
+    (0x3130, 0x318f), (0x31f0, 0x31ff), (0x3400, 0x4dbf), (0x4e00, 0x9fff), (0xa960, 0xa97f),
+    (0xa9e0, 0xa9ff), (0xaa60, 0xaa7f), (0xac00, 0xd7ff), (0xf900, 0xfaff), (0xff66, 0xff9f),
+    (0xffa0, 0xffdc), (0x1b000, 0x1b16f), (0x20000, 0x3134f))
+NO_WORD_BOUNDARY = re.compile('[%s]' % ''.join('%s-%s' % (chr(low), chr(high)) for low, high in NO_WORD_BOUNDARY_RANGES))
+
+
 class Redactor:
     def __init__(self, replacements=()):
         self.replacements = sorted(((str(a), b) for a, b in replacements if len(str(a)) > 1),
@@ -76,7 +89,7 @@ class Redactor:
     def text(self, value):
         value = plain_text(value)
         for prompt in sorted(self.prompts, key=len, reverse=True):
-            value = value.replace(prompt, '<PROMPT REMOVED>')
+            value = self._hide_prompt(value, prompt)
         for secret in sorted(self.secrets, key=len, reverse=True):
             value = value.replace(secret, '<REDACTED>')
         for source, target in self.replacements:
@@ -92,6 +105,29 @@ class Redactor:
         # removing usernames, drive letters, mounts and parent directories.
         value = ABSOLUTE_PATH.sub(self._path_match, value)
         return value
+
+    @staticmethod
+    def _hide_prompt(value, prompt):
+        """Remove a prompt; one under 4 characters only as a whole word.
+
+        "2" must not turn "2.00 GiB" into "<PROMPT REMOVED>.00 GiB". A short prompt is
+        not removed next to a letter (digits and underscores do not protect it:
+        "cat_0001", "Li2024@example.com"); a prompt of digits only is not removed next
+        to a digit or inside a decimal number. A side that is itself a symbol ("@xy",
+        "C++") has no such limit; a prompt in a script without word boundaries goes
+        everywhere, and so does any prompt of 4 characters or more."""
+        if len(prompt) >= SHORT_PROMPT or NO_WORD_BOUNDARY.search(prompt):
+            return value.replace(prompt, '<PROMPT REMOVED>')
+        if not any(ch.isalnum() for ch in prompt):
+            return value  # spaces, ".", "-": nothing to hide, and removing them would ruin the text
+        digits = prompt.isascii() and prompt.strip('0123456789.,') == '' and any(ch.isdigit() for ch in prompt)
+        near = r'\d' if digits else r'[^\W\d_]'
+        left = '(?<!%s)' % near if prompt[0].isalnum() or prompt[0] == '_' else ''
+        right = '(?!%s)' % near if prompt[-1].isalnum() or prompt[-1] == '_' else ''
+        if digits:
+            left += r'(?<!\d[.,])'
+            right += r'(?![.,]\d)'
+        return re.sub(left + re.escape(prompt) + right, '<PROMPT REMOVED>', value)
 
     @staticmethod
     def _path_match(match):

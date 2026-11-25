@@ -198,6 +198,37 @@ export function errorText(detail) {
     return rows.join('\n');
 }
 
+// Scripts written without spaces between words (Myanmar, Hangul, Khmer, CJK, kana,
+// Thai, Lao and others): a short input in one is removed at any position. The same
+// ranges are in freevideo_engine/diagnostics.py (NO_WORD_BOUNDARY_RANGES); a test
+// compares the two.
+const NO_WORD_BOUNDARY = /[\u0e00-\u0eff\u1000-\u109f\u1100-\u11ff\u1780-\u17ff\u19e0-\u19ff\u2e80-\u2fdf\u3005-\u3007\u3021-\u3029\u3038-\u303b\u3040-\u30ff\u3130-\u318f\u31f0-\u31ff\u3400-\u4dbf\u4e00-\u9fff\ua960-\ua97f\ua9e0-\ua9ff\uaa60-\uaa7f\uac00-\ud7ff\uf900-\ufaff\uff66-\uff9f\uffa0-\uffdc\u{1b000}-\u{1b16f}\u{20000}-\u{3134f}]/u;
+const WORD_CHARACTER = /^[\p{L}\p{N}_]$/u;
+
+// A short input (under 4 characters, such as "2" or "a") is removed as a whole word:
+// not next to a letter, digit or underscore. A side that is itself a symbol ("@xy",
+// "C++") has no such limit. An input with no letter or digit (spaces, ".", "-") says
+// nothing and is not removed, or every dot of the report would go. An input of digits (and . or ,) only is also kept inside a decimal
+// number ("2.00", "1,5"), so the engine's own figures stay readable.
+function hideShortInput(text, secret) {
+    const characters = Array.from(secret);
+    const left = WORD_CHARACTER.test(characters[0]), right = WORD_CHARACTER.test(characters[characters.length - 1]);
+    const digits = /^[0-9.,]*[0-9][0-9.,]*$/.test(secret);
+    let result = '', from = 0, at;
+    while ((at = text.indexOf(secret, from)) !== -1) {
+        const end = at + secret.length;
+        const before = Array.from(text.slice(Math.max(0, at - 2), at)), after = Array.from(text.slice(end, end + 2));
+        const previous = before[before.length - 1] ?? '', next = after[0] ?? '';
+        let keep = (left && WORD_CHARACTER.test(previous)) || (right && WORD_CHARACTER.test(next));
+        if (!keep && digits)
+            keep = (/^[.,]$/.test(previous) && /^[0-9]$/.test(before[before.length - 2] ?? ''))
+                || (/^[.,]$/.test(next) && /^[0-9]$/.test(after[1] ?? ''));
+        result += text.slice(from, at) + (keep ? secret : '<INPUT REMOVED>');
+        from = end;
+    }
+    return result + text.slice(from);
+}
+
 function reportRedactor(detail, context) {
     // Input values are used only to remove echoed private content. They are
     // never included in the report, nor are workflow/inputs/extra_info objects.
@@ -240,13 +271,10 @@ function reportRedactor(detail, context) {
     const removeInputs = value => {
         let text = scalar(value);
         for (const secret of values) {
-            // Short widget values (e.g. "a") must not erase every occurrence
-            // inside exception names. Still remove standalone/quoted values.
-            if (secret.length >= 4) text = text.split(secret).join('<INPUT REMOVED>');
-            else {
-                const escaped = secret.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                text = text.replace(new RegExp(`(^|[^\\p{L}\\p{N}_])${escaped}(?=$|[^\\p{L}\\p{N}_])`, 'gu'), '$1<INPUT REMOVED>');
-            }
+            // Short values (under 4 characters) must not erase fragments of the
+            // engine's own sentences or numbers ("2.00 GiB"): see hideShortInput.
+            if (secret.length >= 4 || NO_WORD_BOUNDARY.test(secret)) text = text.split(secret).join('<INPUT REMOVED>');
+            else if (/[\p{L}\p{N}]/u.test(secret)) text = hideShortInput(text, secret);
         }
         return text;
     };
