@@ -18,6 +18,8 @@ function editorPanel(node) {
         get passMode() { return node.freevideoPassMode || null; },
         // The creative panel's quality control (levels and steps), shared the same way; null without an open panel.
         get effort() { return node.freevideoEffort || null; },
+        // Whether the planner lists the Fast level on this machine.
+        get fastOffered() { return node.freevideoFastOffered?.() === true; },
         // What a two-pass choice leaves in the panel's sampling settings now.
         sampling() {
             const now = read();

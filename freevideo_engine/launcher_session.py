@@ -1490,10 +1490,11 @@ class Session:
         return self._ui_language[1]
 
     def _browser_url(self, address):
-        """Return the URL used by the browser, with the launcher locale hint: freevideo_lang=zh for Simplified Chinese,
-        nothing for English (the page then follows the browser, as before), the tag for any other language."""
+        """Return the URL used by the browser, with the launcher's interface language: freevideo_lang=zh for Simplified
+        Chinese, en for English, the tag for any other language. English is named too, so a page in a Chinese browser
+        still shows English when English is the chosen language."""
         language = self.ui_language()
-        if not address or language == 'en':
+        if not address:
             return address
         parsed = urlsplit(address)
         query = dict(parse_qsl(parsed.query, keep_blank_values=True))

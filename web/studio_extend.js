@@ -106,6 +106,7 @@ export function extendSnapshot(snapshot, node, source, {multiple = false} = {}) 
     inputs.width = source.geometry.width; inputs.height = source.geometry.height;
     const factor = continuationUpscale(inputs.base_steps ?? 8, inputs.two_pass, inputs.refine_steps ?? 3, inputs.step_cache, inputs.upscale_factor);
     inputs.preview = false; inputs.refine_from = ''; inputs.two_pass = true;
+    if ('fast_mode' in inputs) inputs.fast_mode = 'none';
     for (const [key, value] of [['base_steps', 8], ['refine_steps', 3], ['step_cache', 'none'], ['upscale_factor', factor]]) if (key in inputs) inputs[key] = value;
     // A continuation takes no first or last frame and no pre-encoded conditioning.
     for (const key of ['first', 'last', 'conditioning']) delete inputs[key];

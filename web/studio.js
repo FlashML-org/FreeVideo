@@ -36,7 +36,8 @@ import { openCastLibrary } from './cast_source.js';
 import { mediaName, uploadMedia } from './media_upload.js';
 import { reconcileLoraTriggers, promptLines } from './lora_triggers.js';
 import { createVerdicts, describeVerdict, feedbackDraft } from './lora_check.js';
-import { continuationUpscale, createSamplingEffort, effortFor, effortsFrom, passSwitch, stepCacheOf, upscaleOf } from './sampling_effort.js';
+import { FAST_EFFORT, FAST_OPTION_TEXT, continuationUpscale, createSamplingEffort, effortFor, effortsFrom, fastOfferOf, passSwitch, stepCacheOf, upscaleOf, withFastLevel } from './sampling_effort.js';
+import { fastPackControl } from './fast_pack.js';
 import { createPanelShell } from './panel_shell.js';
 import { layoutColumns } from './studio_columns.js';
 import { mountStudioColumn } from './studio_right_column.js';
@@ -1148,6 +1149,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const passControl = createPassMode({t, onChoose: mode => choosePassMode(mode), listen: listenDialogKey});
     const passMode = passControl.element;
     cleanup.push(passControl.dispose);
+    const fastRowWords = () => fastParts() ? t('Each part runs a second pass', '每段使用二采') : t('Fast uses one pass', '极速档一次生成');
     const previewPassHint = t('Stops at a lower-resolution preview. Choose "Run second pass" in the result when it looks right; the video matches a direct run.',
         '先出低分辨率预览，满意后在结果里点“继续二采”，成片与直接生成一致。');
     twoPassLabel.append(el('span', t('Second pass', '二采')), twoPassStatus, passMode);
@@ -1158,7 +1160,17 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // The two-pass learned upscale factor; a single pass has none (2).
     const upscaleNow = () => upscaleOf(value(node, 'upscale_factor'));
     const setUpscale = factor => { if (widget(node, 'upscale_factor') && value(node, 'upscale_factor') !== String(factor)) set(node, 'upscale_factor', String(factor)); };
+    // The Fast level is the `fast_mode` input; the engine takes its steps from it. The other sampling inputs hold the values
+    // it accepts beside it (8 + 3, one pass, no cache, factor 2). The two-pass choice made before it comes back when it is left.
+    let fastOffer = null, fastBack = null;
+    const fastOn = () => Boolean(widget(node, 'fast_mode')) && value(node, 'fast_mode') === 'fast2';
+    const fastLeft = () => { if (fastOn()) set(node, 'fast_mode', 'none'); };
+    // A video made in parts is sampled at Light in two passes, whatever is chosen (the request says so at submission).
+    const fastParts = () => fastOn() && lengthControl?.plan?.count > 1;
     const chooseEffort = tier => {
+        if (tier.fast) { chooseFast(); return; }
+        const back = fastOn() ? fastBack : null;
+        fastLeft(); fastBack = null;
         baseSteps.value = tier.steps;
         refineSteps.value = 3;
         twoPass.checked = tier.twoPass;
@@ -1168,17 +1180,53 @@ export function openStudio(node, {extendFrom = null} = {}) {
         set(node, 'step_cache', tier.stepCache || 'none');
         set(node, 'upscale_factor', String(tier.upscale));
         syncSamplingSteps();
+        if (back?.preview && tier.twoPass) choosePassMode('preview');
     };
     // (effortPointed: the quality panel's line on what the pointed-at level gives; set with that panel.)
     let effortPointed = () => {};
-    const effort = createSamplingEffort(t, {onChange: chooseLevel, onPreview: tier => { if (tier) showEffortEstimate(tier.steps, tier.twoPass, tier.stepCache, tier.upscale); else showEffortEstimate(); effortPointed(tier); }});
+    const effort = createSamplingEffort(t, {onChange: chooseLevel, onPreview: tier => { if (tier?.fast) { effort.setWarning(''); effort.setEstimate(''); } else if (tier) showEffortEstimate(tier.steps, tier.twoPass, tier.stepCache, tier.upscale); else showEffortEstimate(); effortPointed(tier); }});
     // The Advanced options find this strip by the mark (the editor's own bar has another one, with its own state).
     effort.element.dataset.fvStudioEffort = '';
+    let fastGrid = null, fastPublished = null;
+    const fastPack = fastPackControl({t, api, onResize: () => qualityChip.place(), onChange: () => {
+        effort.setFastUse(fastPack.needs());
+        if ((!fastPack.present || fastPack.published === false) && fastOn()) chooseEffort(effort.levels().find(tier => tier.name === 'Light'));
+        // Files not yet on the download sources: the level is not listed (fast_pack.published).
+        if (fastPack.published !== fastPublished) { fastPublished = fastPack.published; effort.setLevels(fastLevels()); }
+        if (qualityChip.element.isConnected) paintQuality();
+    }});
+    cleanup.push(() => fastPack.dispose());
+    // The Edit view sends the level only while this panel lists it with its files here (editor.js).
+    const fastOffered = () => Boolean(fastOffer) && fastPack.published === true && fastPack.present;
+    node.freevideoFastOffered = fastOffered;
+    cleanup.push(() => { if (node.freevideoFastOffered === fastOffered) delete node.freevideoFastOffered; });
+    function chooseFast() {
+        if (!fastPack.present) { fastPack.ask(); syncSamplingSteps(); updateRunButton(); return; }
+        if (originalOn) { syncSamplingSteps(); effort.setWarning(t('With "Use as is", choose another level.', '选择“原样使用”时，请使用其他档位。')); qualityChip.place(); return; }
+        if (!fastOffer) return;
+        if (!fastOn()) fastBack = {preview: previewFirst.checked};
+        baseSteps.value = '8'; refineSteps.value = '3'; twoPass.checked = false; autoSinglePass = false;
+        set(node, 'two_pass', false); set(node, 'refine_steps', 3); set(node, 'step_cache', 'none'); setUpscale(2);
+        if (previewFirst.checked) { previewFirst.checked = false; set(node, 'preview', false); }
+        set(node, 'fast_mode', 'fast2');
+        syncSamplingSteps(); updateRunButton();
+    }
+    // The planner's answer for this machine (capabilities.fast_mode): no answer lists no Fast level.
+    // Listed only once the files are known to be published; until then the four levels.
+    const fastLevels = () => withFastLevel(effortsFrom(fastGrid), fastOffer && fastPack.published === true ? fastOffer : null);
+    function applyFastOffer(grid) {
+        fastGrid = grid;
+        if (grid?.status === 'ready') fastOffer = widget(node, 'fast_mode') ? fastOfferOf(grid) : null;
+        effort.setLevels(fastLevels());
+        if (fastOffer) fastPack.refresh();
+        if (grid?.status !== 'ready' || !fastOn()) return;
+        if (!fastOffer) chooseEffort(effort.levels().find(tier => tier.name === 'Light'));
+    }
     // What the quality control shows now; the editor's generation bar shows the same control from this.
     const effortState = () => ({baseSteps: Number(baseSteps.value), refineSteps: Number(refineSteps.value),
         twoPass: twoPass.checked, stepCache: stepCacheNow(), upscale: upscaleNow(),
         disabled: baseSteps.disabled || linked(node, 'two_pass') || linked(node, 'refine_steps') || linked(node, 'step_cache') || linked(node, 'upscale_factor'),
-        reason: extension.source ? continuationReason() : ''});
+        reason: extension.source ? continuationReason() : '', fast: fastOn()});
     const effortListeners = new Set();
     const sharedEffort = {state: effortState, choose: chooseLevel, levels: () => effort.levels(),
         subscribe(listener) { effortListeners.add(listener); return () => effortListeners.delete(listener); }};
@@ -1200,6 +1248,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     }
     // A level chosen on the control.
     function chooseLevel(tier) {
+        if (!tier.fast) fastPack.forget();
         chooseEffort(tier);
         if (tier.twoPass) returnHeldPreview(); else holdPreview(false);
     }
@@ -1213,6 +1262,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     function choosePassMode(mode) {
         if (extension.source) return;
         const wantsTwoPass = mode !== 'off', wantsPreview = mode === 'preview';
+        if (fastOn()) return;
         // Chosen, so nothing waits; the workflow has to record that even when no other setting changes.
         if (!wantsPreview && node.properties?.freevideo_preview_held) { delete node.properties.freevideo_preview_held; node.graph?.change?.(); }
         if (twoPass.checked !== wantsTwoPass) {
@@ -1228,6 +1278,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
         syncSamplingSteps(); updateRunButton();
     }
     function passState() {
+        if (fastOn()) return {mode: fastParts() ? 'on' : 'off', disabled: {off: true, on: true, preview: true}, hidden: {preview: !widget(node, 'preview')}, hint: '',
+            why: fastParts() ? fastRowWords() : t('Fast makes the full size in one pass. Choose another level to use it.', '极速档一次生成全分辨率。选其他档位后可用。')};
         const passLinked = linked(node, 'two_pass'), previewLinked = linked(node, 'preview');
         return {mode: !twoPass.checked ? 'off' : previewFirst.checked ? 'preview' : 'on',
             disabled: {off: Boolean(extension.source) || passLinked || !widget(node, 'two_pass'), on: twoPass.disabled,
@@ -1454,26 +1506,29 @@ export function openStudio(node, {extendFrom = null} = {}) {
         if (extension.source) {
             const factor = continuationUpscale(baseSteps.value, twoPass.checked, refineSteps.value, stepCacheNow(), value(node, 'upscale_factor'), effort.levels());
             baseSteps.value = '8'; refineSteps.value = '3'; twoPass.checked = true; set(node, 'two_pass', true); clearStepCache(); setUpscale(factor); autoSinglePass = false;
+            fastLeft();
         }
+        samplingFields.hidden = fastOn();  // The Fast level's steps are the engine's.
         const baseLinked = linked(node, 'base_steps');
         // Two-pass is offered at 8 first-pass steps, and from a single-pass level (it then gives Light).
         // A saved workflow that already uses it with other steps is shown as custom and left unchanged.
         const onePassLevel = !twoPass.checked && !baseLinked && Boolean(effortFor(Number(baseSteps.value), false, Number(refineSteps.value), stepCacheNow(), effort.levels()));
         const unavailable = Number(baseSteps.value) !== 8 && !twoPass.checked && !onePassLevel;
-        twoPass.disabled = Boolean(extension.source) || unavailable || linked(node, 'two_pass') || !widget(node, 'two_pass');
-        twoPassStatus.textContent = Number(baseSteps.value) !== 8 && !onePassLevel ? t('Needs 8 first-pass steps', '一采需 8 步') : '';
+        twoPass.disabled = Boolean(extension.source) || unavailable || fastOn() || linked(node, 'two_pass') || !widget(node, 'two_pass');
+        twoPassStatus.textContent = fastOn() ? fastRowWords() : Number(baseSteps.value) !== 8 && !onePassLevel ? t('Needs 8 first-pass steps', '一采需 8 步') : '';
         twoPassLabel.classList.toggle('fv-two-pass-unavailable', unavailable);
         // A preview stops after the first pass, so it needs two-pass sampling.
         // Steps half typed decide nothing; the two-pass rule above is applied to them once they are committed.
         const stepsWrong = !typing && previewStepsWrong();
-        if ((!twoPass.checked || stepsWrong) && previewFirst.checked) {
+        if ((!twoPass.checked || stepsWrong || fastOn()) && previewFirst.checked) {
             // A linked value is another node's to change.
             if (stepsWrong && !linked(node, 'preview')) holdPreview(true);
             previewFirst.checked = false; set(node, 'preview', false);
             if (runButtonReady) updateRunButton();
         }
-        previewFirst.disabled = !twoPass.checked || previewStepsWrong() || linked(node, 'preview') || !widget(node, 'preview');
+        previewFirst.disabled = !twoPass.checked || fastOn() || previewStepsWrong() || linked(node, 'preview') || !widget(node, 'preview');
         blockOriginal('preview', previewFirst.checked && !previewFirst.disabled, {release() { choosePassMode('on'); return ['Preview first was turned off for "Use as is".', '已为“原样使用”关闭“先出预览”。']; }});
+        blockOriginal('fast', fastOn(), {release() { chooseEffort(effort.levels().find(tier => tier.name === 'Light')); return ['Switched to Light for "Use as is".', '已为“原样使用”改用轻量档。']; }});
         syncPassMode();
         baseSteps.disabled = baseLinked || !widget(node, 'base_steps') || Boolean(extension.source);
         refineSteps.disabled = !twoPass.checked || linked(node, 'refine_steps') || !widget(node, 'refine_steps') || Boolean(extension.source);
@@ -1504,8 +1559,71 @@ export function openStudio(node, {extendFrom = null} = {}) {
         const level = effortFor(8, true, 3, null, effort.levels(), upscaleNow());
         return level?.name === 'Medium' ? t('An extended part uses the Medium level.', '接着生成使用标准档。') : t('An extended part uses the Light level.', '接着生成使用轻量档。');
     }
+    // The Fast level where the chosen size and length do not fit (capabilities.fast_mode): why, and the ways out. A video
+    // made in parts is sampled at Light, so this is about one run only.
+    // Declared, not assigned: a saved Fast setting asks for the estimate while the panel is still being built.
+    function fastCell() { return fastOn() && !(lengthControl?.plan?.count > 1) ? capabilityView?.fast?.() ?? null : null; }
+    function fastShortfall() { const cell = fastCell(); return cell && !cell.fits ? cell : null; }
+    // Where the page cannot tell yet: 'checking' (the planner's grid is not in) holds the key; 'linked' (the size comes from
+    // another node, so it never can) lets it go, and a refusal then comes back as the failure card (Lane 11-24).
+    function fastUnknown() {
+        // Not listed (no answer from the planner either): it is sent at Light, so nothing waits.
+        if (!fastOn() || !fastOffer || lengthControl?.plan?.count > 1 || fastCell()) return null;
+        return linked(node, 'width') || linked(node, 'height') ? 'linked' : 'checking';
+    }
+    function fastUnknownWords(kind) {
+        return kind === 'linked'
+            ? t('The size comes from a connected node, so the Fast level is checked when you generate.', '宽高来自连接的节点，生成时再确认极\u2060速\u2060档能否生成。')
+            : t('Checking whether the Fast level can make this video…', '正在检查极\u2060速\u2060档能否生成这个视频…');
+    }
+    function fastWays(cell) {
+        const ways = [];
+        if (cell.actions.includes('use_light') && cell.lightFits)
+            ways.push({id: 'use_light', label: t('Use Light', '改用轻量档'), run: () => { chooseLevel(effort.levels().find(tier => tier.name === 'Light')); refreshFast(); }});
+        if (cell.actions.includes('shorten') && cell.shorten && !seconds.disabled)
+            ways.push({id: 'shorten', label: t('Shorten to {seconds} s', '缩短到 {seconds} 秒', { seconds: cell.shorten }), run: () => {
+                seconds.value = String(cell.shorten);
+                seconds.dispatchEvent(new Event('input', {bubbles: true})); seconds.dispatchEvent(new Event('change', {bubbles: true}));
+                refreshFast();
+            }});
+        // Neither level fits this size at any length: a smaller size is the one way out.
+        if (!ways.length) ways.push({id: 'size', label: t('Change size', '更改尺寸'), run: () => { qualityChip.close?.(); framePicker?.element.click(); }});
+        return ways;
+    }
+    function fastShortfallWords(cell) {
+        const kind = ['gpu_memory', 'decode_gpu_memory'].includes(cell.limit) ? 'vram' : cell.limit === 'memory' ? 'ram' : 'either';
+        // Whole sentences for each shortage, so a language whose words change with the noun can say each its own way.
+        if (fastWays(cell)[0].id === 'size') return {
+            vram: () => t('This computer does not have enough graphics memory for the Fast or Light level at this size. Use a smaller size, then generate again.',
+                '这台电脑的显存不足以用极\u2060速\u2060档或轻\u2060量\u2060档生成这个尺寸的视频。请缩小尺寸后重新生成。'),
+            ram: () => t('This computer does not have enough memory for the Fast or Light level at this size. Use a smaller size, then generate again.',
+                '这台电脑的内存不足以用极\u2060速\u2060档或轻\u2060量\u2060档生成这个尺寸的视频。请缩小尺寸后重新生成。'),
+            either: () => t('This computer does not have enough graphics memory or memory for the Fast or Light level at this size. Use a smaller size, then generate again.',
+                '这台电脑的显存或内存不足以用极\u2060速\u2060档或轻\u2060量\u2060档生成这个尺寸的视频。请缩小尺寸后重新生成。'),
+        }[kind]();
+        const s = Number(seconds.value);
+        return {
+            vram: () => t('This computer does not have enough graphics memory for the Fast level at {seconds} s.', '这台电脑的显存不足以用极\u2060速\u2060档生成 {seconds} 秒视频。', { seconds: s }),
+            ram: () => t('This computer does not have enough memory for the Fast level at {seconds} s.', '这台电脑的内存不足以用极\u2060速\u2060档生成 {seconds} 秒视频。', { seconds: s }),
+            either: () => t('This computer does not have enough graphics memory or memory for the Fast level at {seconds} s.', '这台电脑的显存或内存不足以用极\u2060速\u2060档生成 {seconds} 秒视频。', { seconds: s }),
+        }[kind]();
+    }
+    function refreshFast() { showEffortEstimate(); if (qualityChip.element.isConnected) qualityChip.place(); }
     function showEffortEstimate(steps = Number(baseSteps.value), twoPassPlan = twoPass.checked, cache = stepCacheNow(), factor = upscaleNow()) {
-        effort.setWarning('');
+        effort.setWarning(''); effort.setWays();
+        if (!arguments.length && fastOn()) {
+            // Its time where the planner has one; a video made in parts is sampled at Light.
+            const cell = fastCell();
+            effort.setEstimate(cell?.fits ? cell.estimate : '');
+            if (lengthControl.plan?.count > 1) effort.setWarning(t('Each part of a video made in parts uses the Light level.', '分段生成时，每段使用轻量档。'));
+            else if (cell && !cell.fits) { effort.setWarning(fastShortfallWords(cell)); effort.setWays(fastWays(cell)); }
+            else if (!cell && fastUnknown()) effort.setWarning(fastUnknownWords(fastUnknown()));
+            if (runButtonReady) updateRunButton();
+            // The length decides what the two-pass row and the line under the track say.
+            twoPassStatus.textContent = fastRowWords(); syncPassMode(); effortPointed(null);
+            if (runButtonReady) syncKeyMore();
+            return;
+        }
         const parts = lengthControl.plan?.count > 1 ? t('{count} parts', '分 {count} 段', { count: lengthControl.plan.count }) : '';
         // A request that fits one run keeps its own estimate while the longest run is unknown.
         if ((lengthControl.capabilityState === 'pending' || lengthControl.capabilityState === 'unavailable')
@@ -1569,13 +1687,16 @@ export function openStudio(node, {extendFrom = null} = {}) {
         if (loraNode && !widget(loraNode, 'adapters')) adapters = value(loraNode, 'lora') !== 'None';
         const requestWidth = extension.source?.geometry.width ?? value(node, 'width');
         const requestHeight = extension.source?.geometry.height ?? value(node, 'height');
+        // With the Fast level the length is planned at Light: a video made in parts is sampled at Light, and whether one run
+        // fits the Fast level is its own cell (capabilityView.fast), which says so rather than splitting the video.
         lengthControl?.refresh({width: requestWidth, height: requestHeight, task, adapters,
-            settings: {tier: effortFor(Number(baseSteps.value), twoPass.checked, Number(refineSteps.value), stepCacheNow(), effort.levels(), upscaleNow())?.name.toLowerCase() || 'custom',
+            settings: fastOn() ? {tier: 'light', base_steps: 8, refine_steps: 3, two_pass: true, step_cache: null, upscale_factor: 2}
+                : {tier: effortFor(Number(baseSteps.value), twoPass.checked, Number(refineSteps.value), stepCacheNow(), effort.levels(), upscaleNow())?.name.toLowerCase() || 'custom',
                 base_steps: Number(baseSteps.value), refine_steps: Number(refineSteps.value), two_pass: twoPass.checked,
                 step_cache: stepCacheNow(), upscale_factor: upscaleNow()}}, force);
         requestAssetsQuery = () => {
             const query = new URLSearchParams({width: requestWidth, height: requestHeight, seconds: value(node, 'seconds'), task,
-                base_steps: baseSteps.value, refine_steps: refineSteps.value, two_pass: twoPass.checked ? '1' : '0',
+                base_steps: baseSteps.value, refine_steps: refineSteps.value, two_pass: twoPass.checked || fastOn() ? '1' : '0',
                 enhance: node.properties?.freevideo_prompt_versions?.enabled ? '1' : '0'});
             for (const name of enabledLoras(loraNode, {upstream, widget, value})) query.append('lora', name);
             for (const row of referenceFiles(requestRefs)) query.append('ref', row);
@@ -2403,7 +2524,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         keyMore.hidden = runMode !== 'single' || videoMissing || Boolean(state.hidden.preview) || Boolean(extension.source);
         for (const b of keyChoices) setAttr(b, 'aria-pressed', String((b.dataset.choice === 'preview') === (state.mode === 'preview')));
         keyChoices[1].disabled = state.disabled.preview && !(state.mode === 'preview');
-        keyMenuWhy.hidden = !previewStepsWrong(); keyMenuWhy.textContent = keyMenuWhy.hidden ? '' : previewNeedsSteps();
+        keyMenuWhy.hidden = !fastOn() && !previewStepsWrong(); keyMenuWhy.textContent = fastOn() ? fastRowWords() : previewStepsWrong() ? previewNeedsSteps() : '';
         if (keyMore.hidden) keyMore.open = false;
     };
     runrow.append(generate, runOptions, keyMore);
@@ -2546,7 +2667,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
             ? t('Joining the parts…', '正在接合各段…')
             : chain?.state === 'queued' ? (chain.waiting ? waitingText(chain.waiting, t) : t('Queued…', '排队中…'))
             : t('Generating part {part}…', '正在生成第 {part} 段…', { part: position.index + 1 });
-        generate.disabled = submitting || chainWait || (lengthControl.blocked && !lengthControl.retryable) || (runMode === 'loop' && queueState?.looping) || enhancer.reversing;
+        const fastShort = fastShortfall(), fastWait = fastUnknown();
+        generate.disabled = submitting || chainWait || (lengthControl.blocked && !lengthControl.retryable) || Boolean(fastShort) || fastWait === 'checking' || (runMode === 'loop' && queueState?.looping) || enhancer.reversing;
         paintReverse?.();
         // Planning the parts and adding a batch are different waits; a count is only shown when the queue really has one.
         const adding = queueState?.batch ? t('Adding {current}/{total}…',
@@ -2580,8 +2702,11 @@ export function openStudio(node, {extendFrom = null} = {}) {
             : chainWait ? t('Parts are generating. Wait, or cancel them in the queue.', '分段视频生成中，完成或在队列里取消后可再生成')
             : enhancer.reversing ? t('Writing the prompt. One moment.', '正在生成提示词，请稍候')
             : lengthControl.blocked ? lengthControl.message || ''
+            : fastShort ? fastShortfallWords(fastShort)
+            : fastWait === 'checking' ? fastUnknownWords(fastWait)
             : t('A loop is running. Stop it to start again.', '正在循环生成，停止后可重新开始');
-        const lengthSaid = lengthControl.blocked && !videoMissing ? lengthControl.visibleMessage : '';
+        const lengthSaid = videoMissing ? '' : lengthControl.blocked ? lengthControl.visibleMessage : fastShort ? fastShortfallWords(fastShort)
+            : fastWait ? fastUnknownWords(fastWait) : '';
         if (lengthWhy.textContent !== lengthSaid) lengthWhy.textContent = lengthSaid;
         if (lengthWhy.hidden !== !lengthSaid) lengthWhy.hidden = !lengthSaid;
         const words = {fvTipName: keyLabel.textContent.replace(/…$/, ''), fvTipUse: use && keySetup && keyShowsEta ? `${use} · ${t('Includes first-time setup', '含首次准备')}` : use, fvTipKey: TIPS['studio.generate'].key, fvTipWhy: why};
@@ -2839,6 +2964,11 @@ export function openStudio(node, {extendFrom = null} = {}) {
             if (selected === 'input' && !dimensionsLinked) await inputRatio(true);
             const lengthPlan = await lengthControl.ready();
             if (disposed || lengthControl.blocked) return;
+            // A saved or restored Fast setting on a machine the planner has not offered it to is sampled at Light.
+            if (fastOn() && !fastOffered()) chooseEffort(effort.levels().find(tier => tier.name === 'Light'));
+            const short = fastShortfall();
+            if (short) { status.dataset.error = 'true'; status.textContent = fastShortfallWords(short); return; }
+            if (fastUnknown() === 'checking') { status.dataset.error = 'true'; status.textContent = fastUnknownWords('checking'); return; }
             if (lengthControl.absent && !durationNote.settle()) return;
             if (originalOn && lengthPlan?.count > 1 && !twoPass.checked) { status.dataset.error = 'true'; status.textContent = partsNeedTwoPassText(t); return; }
             if (lengthPlan?.count > 1 && chosenMode !== 'single') { status.textContent = t('Videos made in parts cannot use batch or loop.', '分段视频不能批量或循环生成。'); return; }
@@ -2870,6 +3000,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
             snapshot = singleRunSnapshot(extendSnapshot(graph, node.id, source,
                 {multiple: lengthPlan?.count > 1}), node.id, lengthPlan);
             if (!snapshot) { fault(t('Could not prepare this run. Try again.', '没能准备这次生成，请重试。')); return; }
+            // The Fast level makes one whole video: the parts of a longer one are sampled at Light.
+            if (fastOn() && lengthPlan?.count > 1) Object.assign(snapshot.output[node.id].inputs, {fast_mode: 'none', two_pass: true, preview: false});
             const seedIndex = node.widgets.findIndex(w => w.name === 'seed');
             capturing = false;
             for (const section of controls.querySelectorAll('.fv-section')) section.inert = false;
@@ -2897,7 +3029,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             if (accepted) held?.done(); else held?.restore();
             // A prompt that was generated goes to the top of the history, with the size, length and level it used.
             if (accepted && prompt.value.trim()) rememberPrompt({text: prompt.value, w: Number(value(node, 'width')), h: Number(value(node, 'height')),
-                seconds: Number(seconds.value), level: effortFor(Number(baseSteps.value), twoPass.checked, Number(refineSteps.value), stepCacheNow(), effort.levels(), upscaleNow())?.name || null});
+                seconds: Number(seconds.value), level: fastOn() ? FAST_EFFORT.name : effortFor(Number(baseSteps.value), twoPass.checked, Number(refineSteps.value), stepCacheNow(), effort.levels(), upscaleNow())?.name || null});
             capturing = false;
             for (const section of controls.querySelectorAll('.fv-section')) section.inert = false;
             updateRunButton();
@@ -3154,7 +3286,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         open.open = false; open.querySelector(':scope>summary')?.focus({preventScroll: true}); return true;
     };
     dialog.addEventListener('cancel', e => { e.preventDefault(); if (!closeMenu() && !compare.close() && !promptLibrary?.hide() && !consoleUI?.dismiss() && !closeWorksDrawer()) closeDialog(dialog); });
-    const dispose = () => { if (disposed) return; disposed = true; borrowed?.release({disposing: true}); blockOriginal('extend', false); blockOriginal('preview', false); for (const f of cleanup) f(); stage.querySelector('video')?.pause(); dialog.remove(); if (current?.dialog === dialog) { current = null; viewChanged('nodes', node); } };
+    const dispose = () => { if (disposed) return; disposed = true; borrowed?.release({disposing: true}); blockOriginal('extend', false); blockOriginal('preview', false); blockOriginal('fast', false); for (const f of cleanup) f(); stage.querySelector('video')?.pause(); dialog.remove(); if (current?.dialog === dialog) { current = null; viewChanged('nodes', node); } };
     const onClose = () => {
         // The browser's own close event of a switch comes with the next frame; if the panel was opened again before it
         // (back from the node view at once), that late event is not a close and must not take the panel away.
@@ -3236,7 +3368,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     capabilityView = createCapabilityView({node, api, t, getState: () => ({ratio,
         custom: selected === 'custom', steps: Number(baseSteps.value), twoPass: twoPass.checked,
         refine: Number(refineSteps.value), stepCache: stepCacheNow(), upscale: upscaleNow(), disabled: Boolean(extension.source) || dimensionsLinked || seconds.disabled}),
-        onEstimate: () => showEffortEstimate(), onGrid: grid => effort.setLevels(effortsFrom(grid)), onPick: point => {
+        onEstimate: () => showEffortEstimate(), onGrid: applyFastOffer, onPick: point => {
         pixels = point.pixels; mp.value = String(pixels);
         set(node, 'width', point.width); set(node, 'height', point.height);
         node.properties.freevideo_pixels = pixels;
@@ -3370,11 +3502,11 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // track with the knob inside, as before), one line under it on what the level gives (no times), and the two-pass
     // choice.
     const qualityChip = createPopChip({host: dialog, kind: 'quality', onOpen: () => paintQuality(), name: t('Quality', '质量'), icon: 'M8 2l1.6 3.6L13.5 6l-2.9 2.7.8 3.9L8 10.7 4.6 12.6l.8-3.9L2.5 6l3.9-.4Z'});
-    const LEVEL_WORDS = {Light: ['Fastest, for trying ideas', '最快，适合试效果'], Medium: ['For everyday use', '日常使用'], High: ['More detail, slower', '细节更多，较慢'], Max: ['The most detail, slowest', '细节最多，最慢']};
+    const LEVEL_WORDS = {Fast: FAST_OPTION_TEXT, Light: ['Fastest, for trying ideas', '最快，适合试效果'], Medium: ['For everyday use', '日常使用'], High: ['More detail, slower', '细节更多，较慢'], Max: ['The most detail, slowest', '细节最多，最慢']};
     const levelUse = el('p', '', 'fvp-level-use'); levelUse.setAttribute('aria-live', 'polite');
-    effort.element.after(levelUse); qualityChip.body.append(samplingSettings);
-    const qualityLevel = () => effortFor(Number(baseSteps.value), twoPass.checked, Number(refineSteps.value), stepCacheNow(), effort.levels(), upscaleNow());
-    const sayLevel = tier => { const said = tier ? t(...(LEVEL_WORDS[tier.name] || ['', ''])) : t('Custom steps', '自定义步数'); if (levelUse.textContent !== said) levelUse.textContent = said; };
+    effort.element.after(levelUse, fastPack.element); qualityChip.body.append(samplingSettings);
+    const qualityLevel = () => fastOn() ? effort.levels().find(tier => tier.fast) || FAST_EFFORT : effortFor(Number(baseSteps.value), twoPass.checked, Number(refineSteps.value), stepCacheNow(), effort.levels(), upscaleNow());
+    const sayLevel = tier => { const said = tier?.fast && fastParts() ? '' : tier?.fast && fastPack.needs() ? fastPack.needs() : tier?.name === 'Light' && effort.levels().some(level => level.fast) ? t('Quick, for trying ideas', '速度较快，适合试效果') : tier ? t(...(LEVEL_WORDS[tier.name] || ['', ''])) : t('Custom steps', '自定义步数'); if (levelUse.textContent !== said) levelUse.textContent = said; };
     effortPointed = tier => sayLevel(tier || qualityLevel());
     const paintQuality = () => {
         const level = qualityLevel();
@@ -3429,7 +3561,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
     if (body.dataset.cols === '3') {
         const part = id => consoleUI.chip(id);
         columns = layoutColumns({t, controls, consoleUI, fold: body.foldLeft, rail: body.settingsRail, parts: {media: part('media'), mention, enhance: enhancer.chip, size: framePicker.element,
-            duration: stepper.element, quality: effort.element, pass: passMode, runbar}});
+            duration: stepper.element, quality: effort.element, pass: passMode, runbar,
+            // The level's line and the Fast level's download row stand under the levels, as in the Quality window (the column has no such window).
+            qualityMore: [levelUse, fastPack.element]}});
     }
     // The two panels repaint whenever the console's row does.
     { const sync = consoleUI.sync; consoleUI.sync = () => { sync(); paintDuration(); paintQuality(); }; }
@@ -3486,7 +3620,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const coverBand = () => {
         coverFrame = 0;
         const notes = [...consoleUI.slot.children].filter(item => !item.hidden && item.textContent.trim()).map(item => item.getBoundingClientRect()).filter(r => r.width && r.height);
-        const windows = [...dialog.querySelectorAll('.fvs-tray[open], .fvp-pop:not([hidden])')].map(item => item.getBoundingClientRect()).filter(r => r.width && r.height);
+        // Only what floats is a window: in three columns a tray is a part of the column, and one scrolled out of sight still has its place.
+        const windows = [...dialog.querySelectorAll('.fvs-tray[open], .fvp-pop:not([hidden])')].filter(item => /^(fixed|absolute)$/.test(getComputedStyle(item).position))
+            .map(item => item.getBoundingClientRect()).filter(r => r.width && r.height);
         const covered = notes.some(n => windows.some(w => w.left < n.right && w.right > n.left && w.top < n.bottom && w.bottom > n.top));
         if (controls.dataset.statusCovered !== String(covered)) controls.dataset.statusCovered = String(covered);
     };
@@ -3540,7 +3676,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     reuse.receipt = (text, undo) => toast.actions === true && notify(text, undo);
     cleanup.push(() => clearTimeout(noticeTimer));
     // Prompt history, templates and presets (F4): history is written when a request is accepted, below in submitDraft.
-    const levelNow = () => effortFor(Number(baseSteps.value), twoPass.checked, Number(refineSteps.value), stepCacheNow(), effort.levels(), upscaleNow());
+    const levelNow = () => fastOn() ? FAST_EFFORT : effortFor(Number(baseSteps.value), twoPass.checked, Number(refineSteps.value), stepCacheNow(), effort.levels(), upscaleNow());
     const enhanceSwitch = () => enhancer.element.querySelector('.fv-enhance-toggle input');
     const describeSettings = item => {
         const level = item.level && SAMPLING_LEVELS().find(tier => tier.name === item.level);
@@ -3582,8 +3718,14 @@ export function openStudio(node, {extendFrom = null} = {}) {
             if (!baseSteps.disabled) {
                 holdPreview(false);
                 const tier = settings.level && effort.levels().find(level => level.name === settings.level);
-                if (tier) chooseEffort(tier);
+                // A Fast preset where this machine does not list it, or before its files are here, is sampled at Light;
+                // with the level listed, its download is offered.
+                if (settings.level === FAST_EFFORT.name && (!tier || !fastPack.present)) {
+                    chooseEffort(effort.levels().find(level => level.name === 'Light'));
+                    if (tier) fastPack.ask();
+                } else if (tier) chooseEffort(tier);
                 else if (settings.steps) {
+                    fastLeft();
                     baseSteps.value = String(settings.steps.base); refineSteps.value = String(settings.steps.refine); twoPass.checked = Boolean(settings.steps.twoPass);
                     set(node, 'two_pass', twoPass.checked); set(node, 'step_cache', settings.steps.stepCache || 'none'); setUpscale(settings.steps.upscale || 2);
                     syncSamplingSteps();

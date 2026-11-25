@@ -413,6 +413,32 @@ export function createCapabilityView({node, api, t, getState, onPick, onEstimate
         if (!positive(seconds)) return '';
         // The suffix stays in one piece so a narrow line moves it whole to the next line.
         return aboutTime(seconds, t) + (grid.machine?.compile_owed === true ? setupNote(t) : '');
+    }, fast() {
+        // The fastest mode at the chosen size and length (capabilities.fast_mode): whether it fits, its time, and where it
+        // does not, why (the limit past this size's longest length) and the planner's ways out.
+        const fast = grid?.fast_mode;
+        // Read from the grid alone: the chart's surface follows the steps of a plain level, which the Fast level has not.
+        if (!fast?.listed) return null;
+        const i = grid.sizes.findIndex(s => s.width === Number(value(node, 'width')) && s.height === Number(value(node, 'height')));
+        if (i < 0) return null;
+        // A listed length is read from its cell; any other from the longest request that fits this size (the frames a
+        // one-run request of these seconds asks for, as the length control counts them).
+        const asked = Number(value(node, 'seconds')), j = grid.lengths.findIndex(l => l.seconds === asked);
+        const frames = Math.max(39, 5 + 17 * Math.ceil((24 * asked - 5) / 17));
+        const admits = row => {
+            if (j >= 0 && typeof row?.plan?.[i]?.[j] === 'number') return row.plan[i][j] >= 0;
+            // No length at all at this size is null in the grid: it does not fit.
+            const most = row?.max_frames?.[i];
+            return most === null ? false : Number.isInteger(most) ? most >= 0 && frames <= most : null;
+        };
+        const fits = admits(fast);
+        if (fits === null || !positive(asked)) return null;
+        const seconds = j >= 0 ? fast.estimate_seconds?.[i]?.[j] : null;
+        return {fits, limit: fast.limit?.[i] ?? null, actions: Array.isArray(fast.actions?.[i]) ? fast.actions[i] : [],
+            shorten: positive(fast.shorten_seconds?.[i]) ? fast.shorten_seconds[i] : null,
+            lightFits: admits(grid.tiers?.light) === true,
+            estimate: fits && positive(seconds) ? aboutTime(seconds, t) + (grid.machine?.compile_owed === true
+                ? setupNote(t) : '') : ''};
     }, warning(steps, twoPass, refine, stepCache = null, upscale = 2) {
         if (!grid || !surface) return '';
         const tier = gridTier(grid, steps, twoPass, refine, stepCache, upscale);

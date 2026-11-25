@@ -229,6 +229,8 @@ export function suspendCanvasPointer(canvas) {
 }
 
 // `components` replaces the optional progress module (see loadEditorComponents); tests also pass their generation stand-in here.
+// The sampling settings an edit's project keeps (editor_model.js SAMPLING_KEYS).
+const EDIT_SAMPLING = ['two_pass', 'base_steps', 'refine_steps', 'step_cache', 'upscale_factor'];
 export function openEditor({api, app, from = null, panel = {}, components: given = undefined, onView = view => viewChanged(view)}) {
     // A kept view (hidden when the user went to another view) comes back as it was: no rebuild, no reload. Opening a
     // work, another node's panel or a new creation panel builds a fresh one instead.
@@ -862,8 +864,11 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if (!value.node || !value.prompt?.[value.node]) throw new Error('missing_node');
         const inputs = value.prompt[value.node].inputs;
         // With the creation panel's bar in the editor, its values are the request's (the edit's size is its starting point).
-        if (!panel.barActive) Object.assign(inputs, state.record.settings || {}, capability.generationSize || generationSize(state.record));
-        else if (bar?.overrides) for (const [name, setting] of Object.entries(bar.overrides())) if (name in inputs && !Array.isArray(inputs[name])) inputs[name] = setting;
+        if (!panel.barActive) {
+            Object.assign(inputs, state.record.settings || {}, capability.generationSize || generationSize(state.record));
+            // Its own level is the edit's (its project cannot hold the Fast level): the node's Fast setting does not come with it.
+            if ('fast_mode' in inputs && EDIT_SAMPLING.some(key => key in (state.record.settings || {}))) inputs.fast_mode = 'none';
+        } else if (bar?.overrides) for (const [name, setting] of Object.entries(bar.overrides())) if (name in inputs && !Array.isArray(inputs[name])) inputs[name] = setting;
         // The first-frame reference is the work's own setting, the one the length limit is worked out from.
         if (panel.barActive && 'first_frame_reference' in inputs && !Array.isArray(inputs.first_frame_reference)) inputs.first_frame_reference = state.record.settings?.first_frame_reference === true;
         // The media panel's pictures guide every part (the engine keeps only the references for a part that continues);
@@ -1514,13 +1519,16 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 Object.assign(frozen.prompt[frozen.node].inputs, follow || {});
                 // A preview is one part; any other part samples both passes, whatever the panel shows.
                 const inputs = frozen.prompt[frozen.node].inputs, alone = request.blocks.length === 1 && (store.continuationPreview || !beforeKeys.some(Boolean));
+                // The Fast level makes one part that continues nothing; any other part samples as the control then says.
+                if ('fast_mode' in inputs && inputs.fast_mode !== 'none' && (!panel.fastOffered || secondPass || request.blocks.length !== 1 || beforeKeys.some(Boolean)))
+                    Object.assign(inputs, {fast_mode: 'none', two_pass: true, base_steps: 8, refine_steps: 3, step_cache: 'none', upscale_factor: '2'});
                 if (secondPass) {
                     if (!alone) throw new model.EditError('unsupported');
                     Object.assign(inputs, {two_pass: true, preview: false, refine_from: secondPass});
                 } else {
                     // By the steps in this very request: they may have changed on the node since the key was drawn.
                     const stepsFit = beforeKeys.some(Boolean) || typeof inputs.base_steps !== 'number' || inputs.base_steps === 8;
-                    if ('preview' in inputs || previewing) inputs.preview = previewing && alone && stepsFit;
+                    if ('preview' in inputs || previewing) inputs.preview = previewing && alone && stepsFit && (inputs.fast_mode || 'none') === 'none';
                     if ('refine_from' in inputs) inputs.refine_from = '';
                 }
                 await followSound(frozen, prepared, ids);

@@ -36,6 +36,8 @@ export function createPassMode({t, onChoose, listen = plainListen}) {
             option.disabled = Boolean(state.disabled?.[key]);
             option.hidden = Boolean(state.hidden?.[key]);
             option.title = key === 'preview' ? state.hint || '' : '';
+            // Why the choice is closed, for its hover card (the Fast level is one pass).
+            if (state.why && option.disabled) option.dataset.fvTipWhy = state.why; else delete option.dataset.fvTipWhy;
         }
     }
     return {element, options, sync, dispose: stop};

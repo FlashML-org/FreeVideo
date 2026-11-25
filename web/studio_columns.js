@@ -9,7 +9,7 @@ export function layoutColumns({t, controls, consoleUI, parts, fold, rail}) {
     // (the editor borrows the console bar as it is) and apply() lays the column out again.
     const promptTools = consoleUI.element.querySelector('.fv-prompt-tools');
     const expand = promptTools?.querySelector('.fv-ed-expand'); // the prompt history key is added to promptTools after this runs, so the whole holder moves
-    const movers = [promptTools, expand, parts.media, parts.mention, parts.enhance, parts.size, parts.duration, parts.quality, parts.pass, parts.runbar, consoleUI.slot, consoleUI.element.querySelector('.fvs-console-prompt'),
+    const movers = [promptTools, expand, parts.media, parts.mention, parts.enhance, parts.size, parts.duration, parts.quality, ...(parts.qualityMore || []), parts.pass, parts.runbar, consoleUI.slot, consoleUI.element.querySelector('.fvs-console-prompt'),
         ...consoleUI.trays.querySelectorAll('[data-tray]')].filter(Boolean);
     const parents = [...new Set([controls, ...movers.map(node => node.parentNode).filter(Boolean)])];
     const before = parents.map(parent => [parent, [...parent.childNodes]]);
@@ -87,7 +87,7 @@ export function layoutColumns({t, controls, consoleUI, parts, fold, rail}) {
         section('prompt', t('Prompt', '描述'), 'prompt', [prompt, tools, bar, mediaTray], {fixed: true, actions: [promptTools].filter(Boolean)}).element,
         section('size', t('Frame & size', '画幅与尺寸'), 'size', [parts.size], {fixed: true}).element,
         section('duration', t('Duration', '时长'), 'clock', [parts.duration], {fixed: true}).element,
-        section('quality', t('Quality', '质量'), 'gen', [parts.quality], {fixed: true}).element,
+        section('quality', t('Quality', '质量'), 'gen', [parts.quality, ...(parts.qualityMore || [])], {fixed: true}).element,
         section('pass', t('Second pass', '二采'), 'split', [parts.pass], {fixed: true}).element,
         advanced.element);
     // On the narrow rail every section has its own icon, in the column's order; it opens the drawer at that section.

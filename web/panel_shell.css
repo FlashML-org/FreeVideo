@@ -93,6 +93,8 @@
 .fv-body[data-cols="3"] .fv-effort-rail{position:absolute;left:0;top:0;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none}
 .fv-body[data-cols="3"] .fv-effort[data-hx-rail] .fv-effort-names{outline:2px solid var(--fv-accent,#1a8cff);outline-offset:2px}
 .fv-body[data-cols="3"] .fv-effort-names{height:auto;margin:0;display:grid;grid-template-columns:repeat(4,1fr);gap:2px;padding:2px;border-radius:var(--fv-r-md,10px);background:var(--fv-ctl-bg,rgb(var(--fv-tint) / .06))}
+/* With the Fast level listed (sampling_effort.js data-fast) the strip has five levels, one row of five. */
+.fv-body[data-cols="3"] .fv-effort-names[data-fast]{grid-template-columns:repeat(5,1fr)}
 .fv-studio .fv-body[data-cols="3"] .fv-effort .fv-effort-name{position:static;transform:none;height:28px;min-width:0;padding:0 2px;border-radius:var(--fv-r-sm,8px);font-size:var(--fv-fs-1,12px);line-height:28px;text-align:center;overflow:hidden;text-overflow:ellipsis}
 .fv-studio .fv-body[data-cols="3"] .fv-effort .fv-effort-name[data-active]{background:var(--fv-ctl-hover,rgb(var(--fv-tint) / .14));color:var(--fv-fg,inherit)}
 /* second pass: three equal segments */

@@ -1,6 +1,7 @@
 // The page's interface language, read one way for every module. The launcher passes its language in the address:
-// freevideo_lang=zh for Simplified Chinese, a language file's tag for any other language (zh-Hant, pt-BR, ...), nothing
-// for English; without it the browser's language decides (Chinese when it starts with "zh"). English and Simplified
+// freevideo_lang=zh for Simplified Chinese, en for English, a language file's tag for any other language (zh-Hant,
+// pt-BR, ...); without it (a page not opened by the launcher) the browser's language decides (Chinese when it starts
+// with "zh"). English and Simplified
 // Chinese are written in the code as t(en, zh); any other language is read from web/locales/<tag>.json before the
 // modules that use this one run, and a language whose file cannot be read shows as English (Simplified for zh-*).
 // Each module still decides when it reads: most read once when they load, the tour and the tutorial when they open.

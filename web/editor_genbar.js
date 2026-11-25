@@ -112,7 +112,8 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
     const effortControl = passMenu && actions.effort ? createSamplingEffort(t, {onChange: tier => { previewing = false; actions.chooseEffort(tier); render(); },
         onPreview: tier => {
             previewing = !!tier;
-            if (tier) effortControl.setEstimate(stepsText(tier.steps, tier.twoPass, 3));
+            // The Fast level's steps are the engine's: no count is shown for it.
+            if (tier) effortControl.setEstimate(tier.fast ? '' : stepsText(tier.steps, tier.twoPass, 3));
             else if (quality) effortControl.setEstimate(stepsText(quality.baseSteps, quality.twoPass, quality.refineSteps));
         },
         levels: actions.effortLevels?.() || undefined}) : null;
@@ -418,7 +419,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
                 effortControl.update(quality);
                 // On the wrapper too: a disabled control may not raise its own hover.
                 effortControl.element.title = lock ? quality.reason : '';
-                if (!previewing) effortControl.setEstimate(stepsText(quality.baseSteps, quality.twoPass, quality.refineSteps));
+                if (!previewing) effortControl.setEstimate(quality.fast ? '' : stepsText(quality.baseSteps, quality.twoPass, quality.refineSteps));
             }
             if (passMenu.hidden) passMenu.open = false;
         }

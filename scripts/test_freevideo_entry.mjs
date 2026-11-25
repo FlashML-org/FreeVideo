@@ -134,7 +134,12 @@ test('main browser entry registers both views and preserves node hooks', async t
         source = source.replace("from './fv_player.js'", `from '${new URL('../web/fv_player.js', import.meta.url).href}'`);
         source = source.replace("from './fv_select.js'", `from '${new URL('../web/fv_select.js', import.meta.url).href}'`);
         source = source.replace("from './tip_words.js'", `from '${new URL('../web/tip_words.js', import.meta.url).href}'`);
-        source = source.replace("from './i18n.js'", `from '${new URL('../web/i18n.js', import.meta.url).href}'`);
+        // i18n.js decides the page's language once, when it loads (as a page does on each load). Each round below sets
+        // navigator.language and loads freevideo.js again, so it gets an i18n.js of its own, read under that language;
+        // a single shared one would keep the system language Node started with (LANG=zh_CN gave the zh rules in en rounds).
+        const i18nHref = new URL('../web/i18n.js', import.meta.url).href;
+        source = source.replace("from './i18n.js'", `from '${i18nHref}'`);
+        const withLanguage = text => text.replaceAll(`from '${i18nHref}'`, `from '${i18nHref}?navigator=${encodeURIComponent(globalThis.navigator.language)}'`);
         source = source.replace("from './cut_tip.js'", `from '${new URL('../web/cut_tip.js', import.meta.url).href}'`);
         source = source.replace("from './middle_frames.js'", `from '${new URL('../web/middle_frames.js', import.meta.url).href}'`);
         source = source.replace("from './workflow_drafts.js'", `from '${new URL('../web/workflow_drafts.js', import.meta.url).href}'`);
@@ -182,7 +187,7 @@ test('main browser entry registers both views and preserves node hooks', async t
             .replace("import { installNativeErrorGuard } from './native_errors.js';", 'const installNativeErrorGuard = () => {};')
             .replace("import { installTranslateGuard } from './translate_guard.js';", 'const installTranslateGuard = () => {};')
             .replace("import { AUDIO_USE, usesOriginal, checkOriginal, checkedLength, failureText, multipleText, createUseSwitch, originalBlocked, stuckText, liftBlock } from './audio_original.js';", 'const {AUDIO_USE,usesOriginal,checkOriginal,checkedLength,failureText,multipleText,createUseSwitch,originalBlocked,stuckText,liftBlock} = globalThis.__freevideoEntryTest;');
-        await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
+        await import('data:text/javascript;base64,' + Buffer.from(withLanguage(source)).toString('base64'));
         const extension = extensions.find(row => row.name === 'FreeVideo.UnifiedMedia');
         assert.ok(extension, 'the main extension must register');
         await extension.setup();
@@ -253,7 +258,7 @@ test('main browser entry registers both views and preserves node hooks', async t
             await t.test(`${language} node step tooltips include the three-step exception for valid plans`, async () => {
                 navigator.language = language;
                 try {
-                    await import('data:text/javascript;base64,' + Buffer.from(source + `\n// tooltip language: ${language}`).toString('base64'));
+                    await import('data:text/javascript;base64,' + Buffer.from(withLanguage(source) + `\n// tooltip language: ${language}`).toString('base64'));
                     const localized = extensions.at(-1);
                     class LocalizedGenerateNode extends GenerateNode {}
                     await localized.beforeRegisterNodeDef(LocalizedGenerateNode, {name: 'FreeVideoGenerate'});
@@ -271,7 +276,7 @@ test('main browser entry registers both views and preserves node hooks', async t
             await t.test(`${language} advanced node labels preserve keys, values and untranslated copy`, async () => {
                 navigator.language = language;
                 try {
-                    await import('data:text/javascript;base64,' + Buffer.from(source + `\n// label language: ${language}`).toString('base64'));
+                    await import('data:text/javascript;base64,' + Buffer.from(withLanguage(source) + `\n// label language: ${language}`).toString('base64'));
                     const localized = extensions.at(-1);
                     class LocalizedGenerateNode extends GenerateNode {}
                     await localized.beforeRegisterNodeDef(LocalizedGenerateNode, {name: 'FreeVideoGenerate'});
@@ -617,7 +622,7 @@ test('main browser entry registers both views and preserves node hooks', async t
                 const calls = [], changes = [];
                 const callback = function (...args) { calls.push({receiver: this, args}); return 'chosen'; };
                 try {
-                    await import('data:text/javascript;base64,' + Buffer.from(source + `\n// audio warning: ${language}`).toString('base64'));
+                    await import('data:text/javascript;base64,' + Buffer.from(withLanguage(source) + `\n// audio warning: ${language}`).toString('base64'));
                     class AudioMedia extends GenerateNode {
                         constructor() {
                             super(); this.id = 570; this.type = 'FreeVideoMedia';
