@@ -638,6 +638,8 @@
 .fv-ed-genbar-borrowed>.fv-borrowed{flex:1 1 100%;min-width:0;position:static;display:block;width:auto;height:auto;max-height:none;padding:0;border:0;background:none;box-shadow:none;transform:none;inset:auto}
 .fv-ed-genbar-borrowed>.fv-borrowed>.fv-body{display:block;position:static;width:auto;height:auto;padding:0}
 .fv-editor[data-bar-borrowed=true] .fv-ed-genbar-borrowed>.fv-borrowed .fv-controls{position:static;justify-self:stretch;width:auto;max-width:none}
+/* The lent bar draws no blur of its own: a backdrop-filter makes the box the containing block of every position:fixed window inside it (the Media, LoRA and Advanced windows), which are placed in window coordinates and would land outside it, clipped by the dialog. The bar lies on the editor's flat ground, so there is nothing for the blur to show. */
+.fv-editor[data-bar-borrowed=true] .fv-ed-genbar-borrowed>.fv-borrowed .fv-controls.fv-glass{-webkit-backdrop-filter:none;backdrop-filter:none}
 /* While a part is generating, the editor's Cancel (never its Continue, named by its tip) stands on the lent bar's greyed Generate key. On a row of its own under the bar it lay beneath the timeline toolbar, out of the mouse's reach. */
 @media(min-width:681px){.fv-ed-genbar-borrowed[data-mode=running][data-voice=false]>button:is([data-fv-tip-name="取消"],[data-fv-tip-name=Cancel]):not([hidden]){position:absolute;z-index:2;right:17px;top:var(--fv-ed-cancel-top,auto);bottom:var(--fv-ed-cancel-bottom,39px);width:140px;height:80px;background:var(--fv-ctl-solid,var(--fv-card));border:1px solid var(--fv-line2,var(--fv-border))}}
 [data-fv-locked]{opacity:.5}
