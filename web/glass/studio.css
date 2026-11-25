@@ -173,6 +173,9 @@
   overflow:hidden;font-size:var(--fv-fs-1);line-height:20px;color:var(--fv-fg3);pointer-events:none}
 .fvs-console-status>*{pointer-events:auto;min-width:0;margin:0!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .fvs-console-status>[hidden]{display:none!important}
+/* A tray or a small window over the line: its glass would let the words show through faintly, so the line goes clear
+   under it (studio.js coverBand); it stays in the page and is still read out. */
+.fv-studio.fv-create .fv-controls[data-status-covered=true] .fvs-console-status{opacity:0}
 /* The run's status takes no room in the line while it says nothing, so a note beside it (a rewrite's failure and its
    report key) reads whole. */
 .fvs-console-status>.fv-status:empty{display:none!important}
