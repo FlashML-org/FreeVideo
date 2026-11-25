@@ -56,6 +56,9 @@
  /* The drawer opens under the project row so the name and Export stay whole beside it (editor.css says so for the
     library too; the base rule above, loaded later at the same weight, kept the drawer on the project row). */
  .fv-studio.fv-editor .fv-ed-adjust-host{grid-row:3/5}
+ /* Export is centred in the project row, so the row ends (row height - 32 px) / 2 under it: the drawer's top margin
+    takes that off, for the same 8 px gap under Export as up to 680 px (Iris 11-25: 8 px is a spacing step, 14 is not). */
+ .fv-studio.fv-editor .fv-ed-adjust-host{margin-top:calc(8px - (var(--fv-ed-project-h) - 32px) / 2)}
 }
 /* Up to 680 px the drawer has no margin of its own: the same 8 px gap under Export as wider windows (Iris). */
 @media(max-width:680px){.fv-studio.fv-editor .fv-ed-adjust-host{margin-top:8px}}
