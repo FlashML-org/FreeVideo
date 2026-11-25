@@ -17,6 +17,8 @@ from pathlib import Path
 import shutil
 import uuid
 
+from . import video_threads
+
 FPS = 24
 SEAM_TAIL = 12000
 SEAM_HEAD = 240
@@ -110,10 +112,10 @@ def _exact_tail(source, target, wanted, cancelled=None):
             # Seek to the preceding key frame; only the remaining shown frames are encoded.
             container.seek(begin + prefix * step, stream=video, backward=True)
             with av.open(str(temporary), 'w', format='mp4') as output:
-                tail = output.add_stream('libx264', rate=FPS)
+                tail = video_threads.pin(output.add_stream('libx264', rate=FPS))
                 tail.width, tail.height, tail.pix_fmt = shape[1:4]
                 tail.time_base = shape[4]
-                # decode_to_file's encode_video uses these libx264 defaults and yuv420p.
+                # decode_to_file's encode_video uses these libx264 defaults (and its fixed thread count) and yuv420p.
                 encoded = 0
                 for frame in container.decode(video):
                     _check(cancelled)
@@ -221,7 +223,7 @@ def _conform(source, shape, directory, cancelled):
             video = container.streams.video[0]
             if abs(float(video.average_rate or 0) - FPS) > .01:
                 return None
-            picture = output.add_stream('libx264', rate=FPS)
+            picture = video_threads.pin(output.add_stream('libx264', rate=FPS))
             picture.width, picture.height, picture.pix_fmt = shape[1:4]
             picture.time_base = shape[4]
             sound = container.streams.audio[0] if container.streams.audio else None

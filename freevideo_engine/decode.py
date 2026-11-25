@@ -43,7 +43,7 @@ def decode_to_file(latents, audio_latents, out_path, *, base, offload=False, pre
         wide_path.parent.mkdir(parents=True, exist_ok=True)
     phase('vae_load')
     from diffusers import AutoencoderKLMiniMaxH3
-    from diffusers.utils.export_utils import encode_video
+    from .video_threads import encode_video
     from src.inference.render import PIXEL_MEAN, PIXEL_STD, FPS
 
     started = time.perf_counter()

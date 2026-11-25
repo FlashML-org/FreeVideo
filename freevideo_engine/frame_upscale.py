@@ -20,7 +20,7 @@ import subprocess
 import tempfile
 import time
 
-from . import processes
+from . import processes, video_threads
 
 STAGE = 'frame_upscale'
 LONG_SIDE = 3840
@@ -303,7 +303,7 @@ def write(source, target, video, frame, emit, check):
         sound = sound_reader.streams.audio[0] if sound_reader.streams.audio else None
         with av.open(str(target), 'w', format='mp4',
                      options={'movflags': 'use_metadata_tags+faststart', 'movie_timescale': '48000'}) as output:
-            picture_stream = output.add_stream('libx264', rate=24)
+            picture_stream = video_threads.pin(output.add_stream('libx264', rate=24))
             picture_stream.width, picture_stream.height, picture_stream.pix_fmt = width, height, 'yuv420p'
             picture_stream.options = {'crf': '18', 'preset': 'fast'}
             audio = output.add_stream_from_template(sound) if sound is not None else None
