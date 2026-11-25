@@ -3,6 +3,10 @@ import inspect
 import math
 import types
 
+SHORTEST_LATENT_FRAMES = 12
+# The shortest video in seconds: the fewest frames that give SHORTEST_LATENT_FRAMES on the 17*n+5 grid, at 24 fps.
+SHORTEST_SECONDS = ((SHORTEST_LATENT_FRAMES - 2) // 5 * 17 + 5) / 24
+
 
 def geometry(width=1344, height=768, frames=None, seconds=None):
     if any(not isinstance(n, int) or n < 256 or n % 32 for n in (width, height)):
@@ -16,8 +20,8 @@ def geometry(width=1344, height=768, frames=None, seconds=None):
         raise ValueError('Frame count must be a positive integer.')
     aligned = requested + (5 - requested) % 17
     latent_frames = (aligned - 5) // 17 * 5 + 2
-    if latent_frames < 12:
-        raise ValueError('The video must be at least 1.625 s long.')
+    if latent_frames < SHORTEST_LATENT_FRAMES:
+        raise ValueError('The video must be at least %g s long.' % SHORTEST_SECONDS)
     return dict(width=width, height=height, fps=24, requested_frames=requested,
                 requested_seconds=seconds, frames=aligned, seconds=aligned / 24,
                 latent_frames=latent_frames, video_tokens=latent_frames * (height // 32) * (width // 32),

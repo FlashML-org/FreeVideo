@@ -448,7 +448,7 @@ def register(host_factory=None):
                 raise chain_plan.PlanError('device_limit', 'This device cannot generate this length at this size')
             return response({'plan': result})
         except chain_plan.PlanError as failure:
-            return response({'error': str(failure), 'code': failure.code}, 400)
+            return response({**failure.details, 'error': str(failure), 'code': failure.code}, 400)
         except ValueError as failure:
             return response({'error': str(failure), 'code': 'invalid'}, 400)
 
@@ -472,7 +472,7 @@ def register(host_factory=None):
             return response({'error': str(failure), 'error_zh': failure.message_zh, 'code': failure.code,
                              'min_seconds': failure.limit}, 400)
         if isinstance(failure, chain_plan.PlanError):
-            return response({'error': str(failure), 'code': failure.code}, 400)
+            return response({**failure.details, 'error': str(failure), 'code': failure.code}, 400)
         if hasattr(failure, 'as_dict'):
             value = failure.as_dict()
             if isinstance(value.get('message_zh'), str):

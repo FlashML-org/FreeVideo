@@ -33,8 +33,9 @@ export function readLengthPlan(reply) {
 export function classifyPlanError(reply) {
     if (reply?.code === 'device_limit') return 'continuation_unavailable';
     if (reply?.code === 'too_long' || ['too_many_parts', 'too_many_short_parts'].includes(reply?.code)) return 'too_long';
-    if (reply?.code === 'block_too_short' || reply?.code === 'block_too_long') return reply.code;
-    if (['too_short', 'invalid'].includes(reply?.code)) return 'other';
+    // A length below the shortest video is the same answer every time: say so, do not offer another try.
+    if (['too_short', 'block_too_short', 'block_too_long'].includes(reply?.code)) return reply.code;
+    if (reply?.code === 'invalid') return 'other';
     const value = reply?.error;
     const message = reply?.code || (typeof value === 'string' ? value : value?.code || value?.message || '');
     if (/single.*(?:limit|long|cannot|unavailable|impossible)|force.*single|强制单次/i.test(message)) return 'single_unavailable';

@@ -5,6 +5,9 @@ import {buildPlanRequest, readLengthPlan, classifyPlanError, singleLimitSeconds,
 
 export const LENGTH_PROPERTIES = Object.freeze({seconds: 'freevideo_seconds', single: 'freevideo_single', block: 'freevideo_block_seconds'});
 const positive = value => typeof value === 'number' && Number.isFinite(value) && value > 0;
+// A shortest length as said to a person: up to the next tenth of a second, so the length said is always long enough
+// (1.625 is 1.7), with no trailing .0.
+export const tenthUp = value => String(Math.ceil(Number((value * 10).toFixed(6))) / 10);
 export const savedSeconds = (node, fallback) => positive(node.properties?.[LENGTH_PROPERTIES.seconds]) ? node.properties[LENGTH_PROPERTIES.seconds] : fallback;
 
 // Use the editor's capability adapter, including its new 30s display ceiling.
@@ -80,7 +83,7 @@ export function createStudioLength({api, node, seconds, advanced, fields, t, fie
 
     let limits = null, planLimits = null, contextKey = '', revision = 0, timer = null, request = null, capabilityRequest = null, capabilityRevision = 0;
     let capabilityState = 'idle', waiting = false, waitingTimer = null, timeoutTimer = null, submitted = false;
-    let plan = null, error = null, absent = false, disposed = false, pending = null, edited = false, blockEdited = false, plannedSeconds = null;
+    let plan = null, error = null, shortest = null, absent = false, disposed = false, pending = null, edited = false, blockEdited = false, plannedSeconds = null;
     const remember = (key, value) => { node.properties ||= {}; node.properties[key] = value; node.graph?.change(); node.setDirtyCanvas?.(true, true); };
     const total = () => Number(seconds.value);
     let forced = false;
@@ -148,6 +151,10 @@ export function createStudioLength({api, node, seconds, advanced, fields, t, fie
                 : t('Choose a smaller picture size to make a longer video.', '如需生成更长的视频，请选择更小的画面大小。'),
             too_long: TOO_LONG() + storyboardText(),
             block_missing: t('Fill in the longest part length.', '请填写每段最长时长。'),
+            too_short: shortest
+                ? t('The video must be at least {seconds}\u00a0seconds long. Set a longer duration.', '视频时长至少为 {seconds}\u00a0秒，请加长时长。')
+                    .replace('{seconds}', () => tenthUp(shortest))
+                : t('The video is too short. Set a longer duration.', '视频时长过短，请加长时长。'),
             block_too_short: t('The part length is too short. Set a longer part length.', '每段时长过短，请加长。'),
             block_too_long: t('The part length is longer than one run allows at this size. Set a shorter part length.', '每段时长超过当前画面大小的单次上限，请缩短。'),
             other: t('Could not plan this video. Try again.', '暂时无法安排这条视频的分段，请重试。')}[kind];
@@ -169,6 +176,8 @@ export function createStudioLength({api, node, seconds, advanced, fields, t, fie
             if (response.status === 404) { absent = true; plan = null; error = null; }
             else if (response.status === 400) {
                 error = classifyPlanError(reply);
+                // The shortest length is the planner's own, said in its reply; the length field's minimum stands in for it.
+                shortest = positive(reply?.min_seconds) ? reply.min_seconds : Number(seconds.min) || null;
                 // A part length the user cannot edit is not the cause: the device limit is.
                 if (block.disabled && (error === 'block_too_short' || error === 'block_too_long')) error = 'continuation_unavailable';
             }
