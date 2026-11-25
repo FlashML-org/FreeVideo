@@ -280,7 +280,10 @@ function reportRedactor(detail, context) {
     };
     const redact = value => {
         let text = removeInputs(value);
-        text = text.replace(/\b(?:https?|wss?|ftp|file):\/\/[^\s<>"']+/gi, '<URL REMOVED>')
+        // A local file written as a URL first (file:///C:/Users/..., file:/C:/..., file:C:/..., %-escaped): to the end of
+        // the path like any path, spaces included, so no part of a user name is left after it.
+        text = text.replace(/(^|[^A-Za-z0-9_\/])file:(?:\/\/[^\/\s<>"']*)?(?:\/+|(?=[A-Za-z]:[\\/]))[^\r\n"'<>;,\)\]]*/gi, '$1<PATH REMOVED>')
+            .replace(/\b(?:https?|wss?|ftp|file):\/\/[^\s<>"']+/gi, '<URL REMOVED>')
             .replace(/\b(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, '<CREDENTIAL REMOVED>')
             .replace(/\b(?:hf_|sk-|gh[pousr]_|github_pat_)[A-Za-z0-9_-]{8,}\b/g, '<CREDENTIAL REMOVED>')
             .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, '<CREDENTIAL REMOVED>')

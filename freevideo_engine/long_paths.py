@@ -234,6 +234,12 @@ def path_chars(path):
     return len(str(path).encode('utf-16-le', errors='surrogatepass')) // 2
 
 
+# A local file written as a URL, as package managers print local wheels, find-links folders and build
+# directories: file:///C:/Users/..., file://localhost/..., file://server/share/..., file:/C:/..., file:C:/...,
+# with %-escapes (%20, a user name in UTF-8). It must start a path after "file:" ("file: name.txt" is prose).
+FILE_URL = (r'''(?P<url>(?i:file):(?://(?P<host>[^/\s"'<>]*))?(?:/+|(?=[A-Za-z]:[\\/]))'''
+            r'''[^"'<>;\r\n,\)\]}]*)''')
+
 ABSOLUTE_PATH = re.compile(
     # The preceding character guard prevents URL slashes from being treated
     # as local paths while still matching a drive path after prose such as
@@ -242,20 +248,44 @@ ABSOLUTE_PATH = re.compile(
     # Consume explicit relative paths too, spaces included, so an interior
     # slash (after e.g. a hyphen) cannot subsequently be mistaken for an
     # absolute path. Only our own ``./setup.sh`` command stays as written.
+    # A file URL comes first, with its own guard (a word or a URL's slash before "file" stops it, so
+    # "uri:file:///..." counts and "https://host/file:x" stays a URL): its slashes are a path, which the
+    # guard below would otherwise leave as a URL's.
+    r'''(?<![A-Za-z0-9_/])''' + FILE_URL + r'''|'''
     r'''(?<![A-Za-z0-9_:/])(?:(?P<command>\./setup\.sh(?![\w/\\-]|\.\w))|\.{1,2}/[^"'<>;\r\n,\)\]}]*|'''
     r'''(?:(?:[A-Za-z]:[\\/])|(?:\\\\[^\\/\s"'<>]+[\\/])|/(?![/\s]))[^"'<>;\r\n,\)\]}]*)''')
+
+# A path that ends at a user's own folder: its last component is the user name, so none is kept.
+HOME_FOLDER = re.compile(r'(?i)^(?:[A-Za-z]:)?[\\/]+(?:users|home|documents and settings)[\\/]+[^\\/]+$')
 
 
 def path_placeholder(value):
     """``<PATH>/`` and the last component: no usernames, drives, shares or parent directories."""
     normalized = str(value).rstrip('\\/')
+    if HOME_FOLDER.match(normalized):
+        return '<PATH>'
     name = re.split(r'[\\/]', normalized)[-1]
     return '<PATH>/' + name if name else '<PATH>'
+
+
+def file_url_path(url):
+    """The local path a file URL names, %-escapes decoded (an unreadable escape stays as it is)."""
+    from urllib.parse import unquote
+    rest = re.sub(r'(?i)^file:', '', url)
+    if rest.startswith('//'):
+        rest = rest[2:]
+        host, slash, rest = rest.partition('/')
+        rest = slash + rest if host.lower() in ('', 'localhost') else '//' + host + '/' + rest
+    rest = unquote(rest, errors='replace')
+    # file:///C:/x is the drive path C:/x.
+    return rest[1:] if re.match(r'/[A-Za-z]:[\\/]', rest) else rest
 
 
 def path_match(match):
     """Replacement for an ``ABSOLUTE_PATH`` match. Spaces, UNC shares and ``\\\\?\\`` prefixes count."""
     value = match.group(0)
+    if match.groupdict().get('url') is not None:
+        return path_placeholder(file_url_path(value))
     if match.group('command') is not None:
         return value
     # Text is often redacted again (a worker's log inside a report, the

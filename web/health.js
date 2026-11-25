@@ -562,6 +562,8 @@ function details(problems) {
 // fail to load, so it builds the address itself (no shared module) and removes places and addresses.
 const ISSUE_FORM = 'https://github.com/FlashML-org/FreeVideo/issues/new';
 const forgetPlaces = text => String(text)
+    // A local file written as a URL (file:///C:/Users/..., file://localhost/..., %-escaped) is a place too.
+    .replace(/(^|[^A-Za-z0-9_\/])file:(?:\/\/[^\/\s'"<>]*)?(?:\/+|(?=[A-Za-z]:[\\/]))[^'"<>|\r\n]*/gi, '$1<path>')
     .replace(/https?:\/\/[^\s'"<>)]+/g, '<url>')
     .replace(/\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b/g, '<address>')
     .replace(/(?:[A-Za-z]:[\\/]|\\\\|~[\\/])[^'"<>|\r\n]+/g, '<path>')

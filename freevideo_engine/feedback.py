@@ -12,7 +12,9 @@ from .exit_diagnostics import OWN_MEMORY_KEYS
 MAX_DIAGNOSTICS = 3000
 # Anything that looks like a file location or a long secret-like token is replaced.
 # A location may contain spaces, so it is removed to the end of the line or quote.
-PATH = re.compile(r'(?:[A-Za-z]:[\\/]|\\\\|~[\\/])[^\'"<>|\r\n]+|(?<![\w/.])/[\w.\-]+(?:/[^\'"<>|\r\n]+)+')
+# A file URL first (file:///home/..., file://localhost/C:/..., %-escaped): its slashes would not start a path below.
+PATH = re.compile(r'''(?<![\w/])(?i:file):(?://[^/\s"'<>]*)?(?:/+|(?=[A-Za-z]:[\\/]))[^'"<>|\r\n]*'''
+                  r'|(?:[A-Za-z]:[\\/]|\\\\|~[\\/])[^\'"<>|\r\n]+|(?<![\w/.])/[\w.\-]+(?:/[^\'"<>|\r\n]+)+')
 TOKEN = re.compile(r'\b[A-Za-z0-9_\-]{32,}\b')
 HARDWARE_KEYS = ('gpu_name', 'vram_total', 'ram_total', 'system', 'architecture', 'driver_version',
                  'torch_version', 'cuda_version')
