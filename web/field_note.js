@@ -40,9 +40,9 @@ export function nearestAllowed(input) {
 export function fieldNote(input, {t = (en, zh) => en, place = null, limits = {}, className = ''} = {}) {
     let line = null;
     const words = {
-        max: n => t(`At most ${n}`, `最多 ${n}`),
-        min: n => t(`At least ${n}`, `最少 ${n}`),
-        step: n => t(`Changed to ${n}`, `已改为 ${n}`),
+        max: n => t('At most {n}', '最多 {n}', { n }),
+        min: n => t('At least {n}', '最少 {n}', { n }),
+        step: n => t('Changed to {n}', '已改为 {n}', { n }),
         ...limits,
     };
     function say(text) {

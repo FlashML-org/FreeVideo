@@ -3,7 +3,8 @@ import {readGuideRecord, saveGuideRecord, guideRecord, CARDS_OFF} from './first_
 import './glass/library.js';
 import {openAnchor, anchorOpen, closeAnchor} from './feature_tour_layer.js';
 import {reducedMotion} from './context_menu.js';
-import { isChinese } from './i18n.js';
+import { isChinese, translator, fill } from './i18n.js';
+import { localized } from './i18n_tables.js';
 
 export const TOUR_TEXT = {
     en: {examples: 'Feature examples', use: 'Use example', next: 'Next', goto: 'Take me there', noView: 'Could not open the Edit view. Choose "Edit" at the top.', noTarget: 'This item is not available here. Follow the steps above.', noHidden: 'The timeline has no clip with sound yet. Import or generate one first.', book: 'Read the tutorial', done: 'Done', close: 'Close', gotIt: 'Got it',
@@ -108,7 +109,7 @@ export async function openFeatureTour({api = contextFor()?.api, cn = contextFor(
             // A card that comes by itself on entering a view needs its control on screen; it waits (unseen) otherwise.
             // The cards of an update without a control on screen are centred.
             if (trigger && !cardTarget(loaded[0].card, owner?.isConnected ? owner : document)) { release(loaded); return false; }
-            return openAnchorCard({api, cn, loaded, owner, badge: version ? CARD_TEXT[cn ? 'zh' : 'en'].newIn(version) : ''});
+            return openAnchorCard({api, cn, loaded, owner, badge: version ? fill(localized(CARD_TEXT, translator(cn)).newIn, { version }) : ''});
         }
         return false;
     } finally { opening = false; }
@@ -167,11 +168,12 @@ function icon(name) {
     svg.setAttribute('class', `fv-tour-i${name === 'play' || name === 'pause' ? ' is-solid' : ''}`);
     const path = document.createElementNS(SVG_NS, 'path'); path.setAttribute('d', ICONS[name]); svg.append(path); return svg;
 }
+// i18n-table
 const CARD_TEXT = {
-    en: {gotIt: 'Got it', next: 'Next', close: 'Close', book: 'Read the tutorial', tryIt: 'Try it', play: 'Play with sound', pause: 'Pause', newIn: v => `New in ${v}`,
+    en: {gotIt: 'Got it', next: 'Next', close: 'Close', book: 'Read the tutorial', tryIt: 'Try it', play: 'Play with sound', pause: 'Pause', newIn: 'New in {version}',
         xUse: 'Hide this; nothing else changes', gotItUse: 'Hide it; it will not show again', bookUse: 'Open the chapter about this', nextUse: 'See the next one',
         tryUse: 'Fill in this example to generate', playUse: 'Play this example with sound', segUse: 'Play this version with sound', key: 'Space'},
-    zh: {gotIt: '知道了', next: '下一张', close: '关闭', book: '看教程', tryIt: '试一试', play: '播放声音', pause: '暂停', newIn: v => `${v} 新功能`,
+    zh: {gotIt: '知道了', next: '下一张', close: '关闭', book: '看教程', tryIt: '试一试', play: '播放声音', pause: '暂停', newIn: '{version} 新功能',
         xUse: '收起说明，不影响当前操作', gotItUse: '收起，下次不再出现', bookUse: '打开讲这个功能的那一章', nextUse: '看下一个功能',
         tryUse: '把示例的描述和素材填进去', playUse: '有声播放这段示例', segUse: '有声播放这一版', key: '空格'},
 };
@@ -182,12 +184,12 @@ const button = (text, kind, [name, use, key = '']) => {
 
 // The card's example: one muted loop (or four for the quality levels); a card about sound shows the waveform and plays
 // with sound from one button; versions of the same example are a segmented choice that plays the chosen one with sound.
-function cardMedia(card, videos, lang, text, reduced) {
+function cardMedia(card, videos, t, text, reduced) {
     const box = el('div', 'fv-tour-mediabox');
-    const loop = video => { video.muted = true; video.loop = true; video.hidden = false; video.tabIndex = -1; video.removeAttribute('role'); video.onclick = null; video.onkeydown = null; video.setAttribute('aria-label', card.title[lang]); return video; };
+    const loop = video => { video.muted = true; video.loop = true; video.hidden = false; video.tabIndex = -1; video.removeAttribute('role'); video.onclick = null; video.onkeydown = null; video.setAttribute('aria-label', localized(card.title, t)); return video; };
     if (card.quality) {
         const quad = el('div', 'fv-tour-quad');
-        card.quality.forEach((preview, i) => { const cell = el('figure'); cell.append(loop(videos[i]), el('figcaption', null, preview.label[lang])); quad.append(cell); });
+        card.quality.forEach((preview, i) => { const cell = el('figure'); cell.append(loop(videos[i]), el('figcaption', null, localized(preview.label, t))); quad.append(cell); });
         box.append(quad);
         return {box, playing: () => videos.slice(0, card.quality.length)};
     }
@@ -196,7 +198,7 @@ function cardMedia(card, videos, lang, text, reduced) {
     const labelled = card.sequence?.filter(item => item.label) || [];
     let shown = 0, sound = false;
     const playButton = el('button', 'fv-tour-play'); playButton.type = 'button';
-    const setPlay = () => { playButton.replaceChildren(icon(sound ? 'pause' : 'play'), document.createTextNode(sound ? text.pause : labelled.length === 1 ? labelled[0].label[lang] : text.play)); };
+    const setPlay = () => { playButton.replaceChildren(icon(sound ? 'pause' : 'play'), document.createTextNode(sound ? text.pause : labelled.length === 1 ? localized(labelled[0].label, t) : text.play)); };
     const all = (card.sequence ? videos.slice(0, card.sequence.length) : [videos[0]]).map(loop);
     all.forEach((video, i) => { video.hidden = i !== shown; figure.append(video); });
     let waveImage = null;
@@ -219,9 +221,9 @@ function cardMedia(card, videos, lang, text, reduced) {
     }
     box.append(figure);
     if (labelled.length > 1) {
-        const group = el('div', 'fv-tour-seg'); group.setAttribute('role', 'group'); group.setAttribute('aria-label', card.title[lang]);
+        const group = el('div', 'fv-tour-seg'); group.setAttribute('role', 'group'); group.setAttribute('aria-label', localized(card.title, t));
         card.sequence.forEach((item, i) => {
-            const segment = el('button', null, item.label[lang]); segment.type = 'button'; tip(segment, item.label[lang], text.segUse);
+            const label = localized(item.label, t), segment = el('button', null, label); segment.type = 'button'; tip(segment, label, text.segUse);
             segment.setAttribute('aria-pressed', String(i === 0)); segment.onclick = () => show(i, true); segments.push(segment); group.append(segment);
         });
         box.append(group);
@@ -236,7 +238,7 @@ function cardMedia(card, videos, lang, text, reduced) {
  * it does not take focus, and closing it counts as seen. Returns false when nothing could be shown.
  */
 function openAnchorCard({api, cn, loaded, owner, automatic = true, badge = ''}) {
-    const lang = cn ? 'zh' : 'en', text = CARD_TEXT[lang], reduced = reducedMotion();
+    const t = translator(cn), text = localized(CARD_TEXT, t), reduced = reducedMotion();
     const scope = owner?.isConnected ? owner : document;
     let index = 0, media = null, layer = null, finished = false;
     const stopAll = () => { media?.stop?.(); for (const {videos} of loaded) for (const video of videos) video.pause(); };
@@ -249,14 +251,14 @@ function openAnchorCard({api, cn, loaded, owner, automatic = true, badge = ''}) 
         stopAll();
         const {card, videos} = loaded[index];
         const found = cardTarget(card, scope);
-        media = cardMedia(card, videos, lang, text, reduced);
+        media = cardMedia(card, videos, t, text, reduced);
         const body = el('div', 'fv-tour-body');
         if (badge) { const eyebrow = el('div', 'fv-tour-eyebrow'); eyebrow.append(el('span', 'fv-tour-badge', badge)); body.append(eyebrow); }
-        const head = el('div', 'fv-tour-head'), title = el('h3', null, card.title[lang]); title.id = 'fv-tour-card-title';
+        const head = el('div', 'fv-tour-head'), title = el('h3', null, localized(card.title, t)); title.id = 'fv-tour-card-title';
         const x = el('button', 'fv-tour-x'); x.type = 'button'; x.setAttribute('aria-label', text.close); x.append(icon('x')); tip(x, text.close, text.xUse, 'Esc');
         x.onclick = () => layer?.close('fade', 'dismiss');
         head.append(title, x);
-        const live = el('span', 'fv-tour-live', card.title[lang]); live.setAttribute('aria-live', 'polite');
+        const live = el('span', 'fv-tour-live', localized(card.title, t)); live.setAttribute('aria-live', 'polite');
         const foot = el('div', 'fv-tour-foot');
         const chapter = BOOK_CHAPTER[card.id];
         if (chapter) {
@@ -281,7 +283,7 @@ function openAnchorCard({api, cn, loaded, owner, automatic = true, badge = ''}) 
             const done = button(text.gotIt, 'fill', [text.gotIt, text.gotItUse, 'Esc']); done.dataset.fvTourPrimary = '';
             done.onclick = () => layer?.close('fade', 'dismiss'); foot.append(done);
         }
-        body.append(head, el('p', 'fv-tour-text', card.line[lang]), live, foot);
+        body.append(head, el('p', 'fv-tour-text', localized(card.line, t)), live, foot);
         const keep = found?.keep || [];
         layer = openAnchor({owner, target: found ? (TARGETS[card.target] || found.node) : null, keep, level: 2, shapes: card.quality ? ['stand'] : ['stand', 'wide'],
             content: [media.box, body], ghost: card.target === 'sound-range', focus, label: title.id, onClose: finish});

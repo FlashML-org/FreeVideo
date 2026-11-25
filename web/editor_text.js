@@ -74,7 +74,7 @@ export function createEditorText({element,state,t,actions,adjust,player,toolbar,
     // `need` is what has to be downloaded before the first use, in bytes; the same press downloads it and goes on.
     const speech={buttons:new Set(),available:false,need:0,busy:false,loading:false,shown:null,job:null,stop:null,run:0};
     // Once every byte is in, the download is unpacked; the button says so and keeps the width it had, so it does not jump.
-    function speechLabel(fraction,phase=null){speech.shown=fraction;const unpacking=fraction!=null&&speech.loading&&phase==='unpack',p=Math.round(Math.min(1,Math.max(0,Number(fraction)||0))*100),size=Math.max(1,Math.round(speech.need/1e6)),text=fraction==null?(speech.need?t(`Auto subtitles · Download ${size} MB`,`自动字幕 · 下载 ${size} MB`):t('Auto subtitles','自动字幕')):unpacking?t('Cancel · Unpacking','取消 · 正在解压'):speech.loading?t(`Cancel · Downloading ${p}%`,`取消 · 下载 ${p}%`):t(`Cancel · ${p}%`,`取消 · ${p}%`);for(const b of speech.buttons){if(unpacking&&!b.style.minWidth&&b.offsetWidth)b.style.minWidth=`min(${b.offsetWidth}px, 100%)`;else if(!unpacking)b.style.minWidth='';b.textContent=text;b.hidden=!(speech.available||speech.need);}}
+    function speechLabel(fraction,phase=null){speech.shown=fraction;const unpacking=fraction!=null&&speech.loading&&phase==='unpack',p=Math.round(Math.min(1,Math.max(0,Number(fraction)||0))*100),size=Math.max(1,Math.round(speech.need/1e6)),text=fraction==null?(speech.need?t('Auto subtitles · Download {size} MB','自动字幕 · 下载 {size} MB', { size }):t('Auto subtitles','自动字幕')):unpacking?t('Cancel · Unpacking','取消 · 正在解压'):speech.loading?t('Cancel · Downloading {p}%','取消 · 下载 {p}%', { p }):t('Cancel · {p}%','取消 · {p}%', { p });for(const b of speech.buttons){if(unpacking&&!b.style.minWidth&&b.offsetWidth)b.style.minWidth=`min(${b.offsetWidth}px, 100%)`;else if(!unpacking)b.style.minWidth='';b.textContent=text;b.hidden=!(speech.available||speech.need);}}
     function speechEnd(text,where=null){speech.stop?.();speech.stop=null;speech.job=null;speech.busy=false;speech.loading=false;speechLabel(null);if(text)actions.notify?.(text,where);}
     const speechFailed=()=>t('Could not create subtitles. Try again; if it keeps failing, report the problem.','没能生成字幕。请重试；仍然失败时，请提交问题。'),speechSilent=()=>t('No speech found','没有听到说话声');
     const speechDisk=()=>t('The disk is full. Free some space, then try again.','磁盘空间不足，请清理出空间后重试。');
@@ -190,7 +190,7 @@ export function createEditorText({element,state,t,actions,adjust,player,toolbar,
                 }finally{file.value='';}
                 if(apply(t('Import subtitle file','导入字幕文件'),r=>importSRT(r,text))){const missing=projectMissing(state.record);if(missing.length)actions.notify?.(missingHint([...new Set(missing.flatMap(r=>r.chars))],t));
                     if(result.truncated)actions.notify?.(t('Only the first 500 subtitles were imported.','只导入了前 500 条字幕。'));
-                    else if(result.skipped)actions.notify?.(t(`${result.skipped} subtitles could not be read and were skipped.`,`${result.skipped} 条字幕无法读取，已跳过。`));}};
+                    else if(result.skipped)actions.notify?.(t('{skipped} subtitles could not be read and were skipped.','{skipped} 条字幕无法读取，已跳过。', { skipped: result.skipped }));}};
             // Shown only where this computer can recognise speech.
             const hear=button(t('Auto subtitles','自动字幕'),{onClick:toggleSpeech});hear.classList.add('fv-ed-auto-subtitles');for(const b of speech.buttons)if(!b.isConnected)speech.buttons.delete(b);speech.buttons.add(hear);speechLabel(speech.busy?speech.shown:null);
             host.append(importButton,hear,file);
@@ -215,7 +215,7 @@ export function createEditorText({element,state,t,actions,adjust,player,toolbar,
         list.forEach((value,index)=>{
             const full={...SUBTITLE_DEFAULTS,...value},chip=el('span','fv-ed-preset');chip.dataset.current=String(index===found);
             const apply_=button('Aa',{onClick:()=>modifyStyle({...SUBTITLE_DEFAULTS,...value})});apply_.classList.add('fv-ed-preset-apply');
-            apply_.setAttribute('aria-label',t(`Use style ${index+1}`,`套用样式 ${index+1}`));apply_.title=t(`Use style ${index+1}`,`套用样式 ${index+1}`);
+            apply_.setAttribute('aria-label',t('Use style {number}','套用样式 {number}', { number: index+1 }));apply_.title=t('Use style {number}','套用样式 {number}', { number: index+1 });
             apply_.style.fontFamily=textFontStack(full.font);apply_.style.color=full.color;
             const light=parseInt(full.color.slice(1,3),16)*.3+parseInt(full.color.slice(3,5),16)*.59+parseInt(full.color.slice(5,7),16)*.11>140;
             apply_.style.backgroundColor=full.backing==='box'?'#000000':light?'#2a2f38':'#e5e7eb';
@@ -223,9 +223,9 @@ export function createEditorText({element,state,t,actions,adjust,player,toolbar,
             // A deleted look comes back from the notice it leaves (E24: the × deleted at once, with no way back).
             const remove=button('×',{onClick:()=>{const next=readPresets(),[gone]=next.splice(index,1);writePresets(next);renderPresets(host,current);
                 actions.notify?.(t('Style deleted.','已删除样式。'),null,null,{label:t('Undo','撤销'),use:t('Put the style back','把这套样式放回去'),run:()=>{const list=readPresets();list.splice(Math.min(index,list.length),0,gone);writePresets(list);renderPresets(host,current);}});}});
-            remove.classList.add('fv-ed-preset-remove');remove.setAttribute('aria-label',t(`Delete style ${index+1}`,`删除样式 ${index+1}`));
+            remove.classList.add('fv-ed-preset-remove');remove.setAttribute('aria-label',t('Delete style {number}','删除样式 {number}', { number: index+1 }));
             tip(remove,{name:t('Delete style','删除样式'),use:t('Remove this saved look (can be undone)','删掉这套保存的样式（可撤销）')});
-            tip(apply_,{name:t(`Style ${index+1}`,`样式 ${index+1}`),use:t('Use this look on every subtitle','把这套样式用到所有字幕')});
+            tip(apply_,{name:t('Style {number}','样式 {number}', { number: index+1 }),use:t('Use this look on every subtitle','把这套样式用到所有字幕')});
             chip.append(apply_,remove);host.append(chip);
         });
         const save=button(t('Save style','保存样式'),{onClick:()=>{
@@ -410,7 +410,7 @@ export function createEditorText({element,state,t,actions,adjust,player,toolbar,
         const stop=isolateDialogKeys(dialog,(e)=>{if(e.type==='keydown'&&e.key==='Escape'){e.preventDefault();dialog.close();}else if(e.type==='keydown'&&e.key==='Enter'&&!e.target.closest?.('.fv-issue-button')){e.preventDefault();dialog.close();}});
         dialog.onclose=()=>{stop();dialog.remove();jumpMissing();};dialog.showModal();close.focus();return false;
     }
-    const menuEntries=['empty','part'].map(where=>registerMenuItem({where,group:'text',label:context=>speech.busy?context.t('Stop auto subtitles','停止自动字幕'):speech.need?context.t(`Auto subtitles (downloads ${Math.max(1,Math.round(speech.need/1e6))} MB first)`,`自动字幕（先下载 ${Math.max(1,Math.round(speech.need/1e6))} MB）`):context.t('Auto subtitles','自动字幕'),
+    const menuEntries=['empty','part'].map(where=>registerMenuItem({where,group:'text',label:context=>speech.busy?context.t('Stop auto subtitles','停止自动字幕'):speech.need?context.t('Auto subtitles (downloads {size} MB first)','自动字幕（先下载 {size} MB）',{size:Math.max(1,Math.round(speech.need/1e6))}):context.t('Auto subtitles','自动字幕'),
         visible:()=>!disposed&&(speech.available||speech.need>0),enabled:()=>!disposed,run:()=>toggleSpeech()}));
     return {get ready(){return ensureFonts();},beforeExport,speech(value){speech.available=value?.available===true;speech.need=Number(value?.need)||0;if(!speech.busy)speechLabel(null);},flush(){finishInline();commitDraft();},keyboard(e){
         if(isTyping(e.target)||e.ctrlKey||e.metaKey||e.altKey||e.isComposing)return false;

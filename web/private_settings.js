@@ -40,7 +40,7 @@ export function privacySettings(t, api) {
             const value = await json('/freevideo/private/review');
             group.hidden = false;
             tokens = (value.items || []).map(item => item.token);
-            size.textContent = tokens.length ? t(`${tokens.length} files, ${amount(value.bytes || 0)}`, `${tokens.length} 个文件，共 ${amount(value.bytes || 0)}`)
+            size.textContent = tokens.length ? t('{count} files, {size}', '{count} 个文件，共 {size}', { count: tokens.length, size: amount(value.bytes || 0) })
                 : t('Nothing to clean up', '没有可清理的文件');
         } catch (error) {
             tokens = [];
@@ -52,7 +52,7 @@ export function privacySettings(t, api) {
     confirming(clean, t('Clean up', '清理'), t('Confirm clean up', '确认清理'), async () => {
         try {
             const value = await json('/freevideo/private/clean', {tokens});
-            size.textContent = t(`Removed ${value.removed} files, ${amount(value.freed_bytes || 0)}`, `已删除 ${value.removed} 个文件，共 ${amount(value.freed_bytes || 0)}`);
+            size.textContent = t('Removed {removed} files, {size}', '已删除 {removed} 个文件，共 {size}', { removed: value.removed, size: amount(value.freed_bytes || 0) });
         } catch { size.textContent = t('The clean up did not finish. Try again.', '清理没有完成，请再试一次。'); }
         await new Promise(done => setTimeout(done, 1500)); await review();
     });
@@ -82,7 +82,7 @@ export function privacySettings(t, api) {
     confirming(clear, t('Clear cache', '清除缓存'), t('Confirm clear', '确认清除'), async () => {
         try {
             const value = await json('/freevideo/private/cache-clear', {});
-            cacheSize.textContent = t(`Cleared ${amount(value.freed_bytes || 0)}`, `已清除 ${amount(value.freed_bytes || 0)}`);
+            cacheSize.textContent = t('Cleared {size}', '已清除 {size}', { size: amount(value.freed_bytes || 0) });
         } catch (error) { cacheSize.textContent = error.message === 'busy' ? busyWhy : t('The cache could not be cleared.', '缓存未能清除。'); }
         await new Promise(done => setTimeout(done, 1500)); await usage();
     });

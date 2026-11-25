@@ -5,7 +5,8 @@ import { userMessage } from './user_message.js';
 import './glass/library.js';
 import { hasWhatsNew } from './whatsnew_pages.js';
 import { releaseMedia, mediaKind, mediaPath, splitChange } from './release_media.js';
-import { LANGUAGE_PARAM, askedLanguage } from './i18n.js';
+import { LANGUAGE, LANGUAGE_PARAM, askedLanguage, translator } from './i18n.js';
+import { localized } from './i18n_tables.js';
 
 // Every platform downloads from one release: the latest vX.Y.Z.
 const releasePage = 'https://github.com/FlashML-org/FreeVideo/releases/latest';
@@ -52,7 +53,7 @@ const SOUND_ON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9
 export function createReleaseMedia(release, which, cn) {
     const media = releaseMedia(release);
     if (!media) return null;
-    const t = (en, zh) => cn ? zh : en, kind = mediaKind(media);
+    const t = translator(cn), kind = mediaKind(media);
     const element = document.createElement('figure'); element.className = 'fv-release-media';
     element.dataset.kind = kind; element.dataset.state = 'cover';
     const cover = document.createElement('img'); cover.className = 'fv-release-cover'; cover.alt = '';
@@ -235,7 +236,7 @@ export function startUpdateChecks() {
 }
 
 export function createUpdateNotice(cn) {
-    const t = (en, zh) => cn ? zh : en;
+    const t = translator(cn);
     const element = document.createElement('aside'); element.className = 'fv-update-notice fv-update-bar';
     element.hidden = true; element.setAttribute('role', 'status');
     const label = document.createElement('span');
@@ -294,7 +295,7 @@ export function createUpdateNotice(cn) {
         let text = '', actions = false, reason = '', cause = '', short = '';
         issueText = '';
         if (failure === 'cancel') {
-            text = t(CANCEL_FAILURE.en, CANCEL_FAILURE.zh);
+            text = localized(CANCEL_FAILURE, t);
         } else if (busy) {
             text = model === 'switching' || (model && offline)
                 ? t('Switching to the faster model. This page reconnects by itself.', '正在切换到更快的模型，页面会自动恢复。')
@@ -318,8 +319,8 @@ export function createUpdateNotice(cn) {
                 const prefix = t('Last attempt failed', '上次更新未完成');
                 reason = userMessage(launcher.error, t, '');
                 const first = (/^.+?(?:[。！？]|[.!?](?=\s|$))/u.exec(reason)?.[0] || reason).replace(/[。！？.!?]+$/u, '');
-                // Lower-case the first word unless it is a name (FreeVideo, GitHub).
-                cause = first && t(first.replace(/^[A-Z][a-z]*\b/, w => w.toLowerCase()), first);
+                // In English, lower-case the first word unless it is a name (FreeVideo, GitHub).
+                cause = !cn && LANGUAGE === 'en' ? first.replace(/^[A-Z][a-z]*\b/, w => w.toLowerCase()) : first;
                 text += ' · ' + prefix; short = text;
                 if (cause) text += t(': ', '：') + cause;
                 issueText = short + (reason ? t(': ', '：') + reason : '');
@@ -365,7 +366,7 @@ export function createUpdateNotice(cn) {
 // The notes, newest first: the available update (with every version it skips), then the current version. Returns
 // whether this version has a "What's new" tour. Used by the release-notes sheet and by Settings › Version & updates.
 function fillNotes(body, cn) {
-    const t = (en, zh) => cn ? zh : en;
+    const t = translator(cn);
     body.replaceChildren();
     for (const [label, release, kind] of [[t('Available update', '可用更新'), value?.available, 'new'],
         [t('Current version', '当前版本'), value?.current_release || (value?.current_version ? {version: value.current_version} : null), 'now']]) {
@@ -424,7 +425,7 @@ export function releaseNotesInto(body, cn, {onNews = () => {}} = {}) {
 }
 
 function noteRows(release, cn) {
-    const t = (en, zh) => cn ? zh : en, notes = localizedNotes(release, cn), rows = [];
+    const t = translator(cn), notes = localizedNotes(release, cn), rows = [];
     const summary = document.createElement('p'); summary.className = 'fv-release-summary';
     summary.textContent = notes?.summary || t('No release notes were included with this version.', '此版本未附带更新说明。');
     rows.push(summary);
@@ -446,7 +447,7 @@ const versionName = release => release?.product_version || release?.version || '
 // The update window: the newest version's picture or video, its full notes (with every version it skips), then the
 // version in use in one line. Returns whether the version in use has a "What's new" tour.
 function fillSheet(body, cn) {
-    const t = (en, zh) => cn ? zh : en;
+    const t = translator(cn);
     body.replaceChildren();
     const available = value?.available, current = value?.current_release || (value?.current_version ? {version: value.current_version} : null);
     const release = available || current;
@@ -475,7 +476,7 @@ function fillSheet(body, cn) {
 }
 
 function showReleaseNotes(cn) {
-    const t = (en, zh) => cn ? zh : en;
+    const t = translator(cn);
     loadStyles();
     const dialog = document.createElement('dialog'); dialog.className = 'fv-release-notes fv-release-rich';
     dialog.setAttribute('aria-label', t('Version & updates', '版本与更新'));
@@ -535,7 +536,8 @@ function showReleaseNotes(cn) {
 
 export function createVersionInfo(cn) {
     const element = document.createElement('button'); element.type = 'button'; element.className = 'fv-version-info';
-    element.title = cn ? '版本与更新说明' : 'Version & release notes'; element.setAttribute('aria-label', element.title);
+    const t = translator(cn);
+    element.title = t('Version & release notes', '版本与更新说明'); element.setAttribute('aria-label', element.title);
     let closeNotes = () => {};
     // Version & updates is a page of Settings (one place for the version, the update and the notes); the sheet is the
     // fallback when Settings cannot open.
@@ -545,7 +547,7 @@ export function createVersionInfo(cn) {
         catch { closeNotes = showReleaseNotes(cn); }
     };
     const render = () => {
-        element.textContent = cn ? '版本' : 'Version';
+        element.textContent = t('Version', '版本');
         if (value?.available) { const dot = document.createElement('i'); dot.className = 'fv-version-dot'; dot.setAttribute('aria-hidden', 'true'); element.append(dot); }
     };
     listeners.add(render); render();

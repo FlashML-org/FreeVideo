@@ -3,6 +3,7 @@ import './fv_select.js';
 import './glass/library.js';
 import {userMessage} from './user_message.js';
 import { isChinese, translator } from './i18n.js';
+import { localized } from './i18n_tables.js';
 
 // FreeVideo's own reason keeps the lead-in that says what failed; browser or program wording becomes a plain sentence.
 const saveFailure = (error, tt) => { const text = userMessage(error, tt, tt('Could not save. Try again.', '没能保存，请重试。'));
@@ -91,7 +92,7 @@ export function compatibilityCard({t: tt = t, api: client0 = api} = {}) {
     tip(automatic, tt('Raise automatically', '自动提高'), tt('Raise the level after an unexpected interruption', '意外中断后自动提高档位'));
     const dirty = () => value && (Number(level.value) !== value.level || automatic.checked !== value.automatic);
     const paint = () => {
-        const levelName = value?.levels?.[Number(level.value)]?.[cn ? 'zh' : 'en'];
+        const levelName = localized(value?.levels?.[Number(level.value)], t) || undefined;
         title.textContent = Number(level.value) ? `${tt('Compatibility level', '兼容档位')} · ${level.selectedOptions[0]?.textContent || ''}` : tt('Compatibility level', '兼容档位');
         if (value?.available) line.textContent = levelName || '';
         const changed = dirty();
@@ -163,7 +164,7 @@ async function openCompatibilitySheet() {
         const note = element('p', t('Applies from the next generation. Higher levels have the GPU handle less at a time, so generation is slower and the picture differs slightly; resolution, duration and steps stay the same.', '从下一次生成起生效。档位越高，显卡每次处理的数据越少，生成越慢，画面也会有细微差别；分辨率、时长和步数不变。'));
         note.className = 'fv-muted';
         status.before(name, slider, autoLabel, note);
-        const render = () => { name.textContent = value.levels[Number(slider.value)][cn ? 'zh' : 'en']; }; render();
+        const render = () => { name.textContent = localized(value.levels[Number(slider.value)], t); }; render();
         slider.oninput = () => { render(); if (Number(slider.value) === 0) automatic.checked = false; };
         let saving = false;
         panel.addEventListener('cancel', event => { if (saving) event.preventDefault(); });

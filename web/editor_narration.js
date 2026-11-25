@@ -38,10 +38,10 @@ export function narrationFailureText(reason, t) {
     }[reason] || t('The voice could not be generated. Generate again; if it keeps failing, report the problem.', '无法生成配音。请重新生成；仍然失败时，请提交问题。');
 }
 // How much longer than the stretch a line came out, as the bar says it: one decimal, a no-break space before the unit.
-const longer = (seconds, t) => { const value = (Math.round(seconds * 10) / 10).toFixed(1); return t(`${value}${NBSP}s`, `${value}${NBSP}秒`); };
-export const placedLongerText = (seconds, t) => t(`${longer(seconds, t)} longer than the selection. Placed at full length.`, `比选区长 ${longer(seconds, t)}，已按完整长度放入。`);
-export const blockedLongerText = (seconds, t) => t(`${longer(seconds, t)} longer than the selection and would cover the next clip. Shorten the line or extend the selection.`,
-    `比选区长 ${longer(seconds, t)}，会盖住后面的片段。请缩短这句或拉长选区。`);
+const longer = (seconds, t) => { const value = (Math.round(seconds * 10) / 10).toFixed(1); return t('{value}{NBSP}s', '{value}{NBSP}秒', { value, NBSP }); };
+export const placedLongerText = (seconds, t) => t('{length} longer than the selection. Placed at full length.', '比选区长 {length}，已按完整长度放入。', { length: longer(seconds, t) });
+export const blockedLongerText = (seconds, t) => t('{length} longer than the selection and would cover the next clip. Shorten the line or extend the selection.',
+    '比选区长 {length}，会盖住后面的片段。请缩短这句或拉长选区。', { length: longer(seconds, t) });
 
 /**
  * state, t: the editor's. store: the dubbing calls (editor_voice_store). sources(): the source metadata map.
@@ -98,7 +98,7 @@ export function createEditorNarration({state, store, t, sources = () => new Map(
     function voices(found = target()) {
         if (!found) return {speakers: [], clips: [], finding: false};
         const entry = hear(found);
-        const speakers = entry?.phase === 'done' ? said.speakerVoices(entry.lines).map(voice => ({...voice, label: t(`Speaker ${voice.number}`, `说话人 ${voice.number}`)})) : [];
+        const speakers = entry?.phase === 'done' ? said.speakerVoices(entry.lines).map(voice => ({...voice, label: t('Speaker {number}', '说话人 {number}', { number: voice.number })})) : [];
         const list = [];
         let takes = 0;
         for (const {clip, track} of clips().sort((a, b) => a.clip.start - b.clip.start)) {
@@ -108,14 +108,14 @@ export function createEditorNarration({state, store, t, sources = () => new Map(
             const name = metaOf(clip)?.name;
             if (clip.source.kind !== 'import' || typeof name !== 'string' || !name) continue;
             const take = RECORDING.test(name) ? ++takes : 0;
-            const label = take ? t(`Recording ${take}`, `录音 ${take}`) : name;
+            const label = take ? t('Recording {take}', '录音 {take}', { take }) : name;
             list.push({key: `clip:${clip.id}`, kind: 'clip', recording: Boolean(take), label, reference: {clip_id: clip.id},
                 listen: {clip: clip.id, start: 0, end: Math.min(clip.frames / FPS, 10)}});
         }
         const picked = pickedClip && state.record.tracks.some(track => track.clips.some(clip => clip.id === pickedClip.id && clip.source)) ? pickedClip : null;
         if (picked && !list.some(voice => voice.key === `clip:${picked.id}`)) {
             const clip = clips().find(item => item.clip.id === picked.id).clip;
-            list.push({key: `clip:${clip.id}`, kind: 'clip', label: metaOf(clip)?.name || t(`Sound at ${clock(clip.start / FPS)}`, `${clock(clip.start / FPS)} 处的声音`),
+            list.push({key: `clip:${clip.id}`, kind: 'clip', label: metaOf(clip)?.name || t('Sound at {time}', '{time} 处的声音', { time: clock(clip.start / FPS) }),
                 reference: {clip_id: clip.id}, listen: {clip: clip.id, start: 0, end: Math.min(clip.frames / FPS, 10)}});
         }
         return {speakers, clips: list, finding: entry?.phase === 'finding', lines: entry?.lines || []};

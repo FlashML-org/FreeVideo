@@ -1,4 +1,5 @@
 // What the LoRA check found, as words for the row; the check itself is /freevideo/lora/check.
+import { translatorFor } from './i18n.js';
 const FAMILIES = {wan: true, hunyuan: true, ltx: true, sd: true, llm: true};
 const size = shape => Array.isArray(shape) ? shape.join('×') : '';
 
@@ -22,20 +23,20 @@ export function describeVerdict(verdict, t) {
     const summary = verdict.summary || {};
     const lines = [];
     if (verdict.reason === 'shape') {
-        const where = Number.isInteger(verdict.block) ? t(`Layer ${verdict.block}: `, `第 ${verdict.block} 层：`) : '';
-        lines.push(where + t(`expected ${size(verdict.expected)}, file has ${size(verdict.actual)}`, `期望 ${size(verdict.expected)}，文件是 ${size(verdict.actual)}`));
+        const where = Number.isInteger(verdict.block) ? t('Layer {block}: ', '第 {block} 层：', { block: verdict.block }) : '';
+        lines.push(where + t('expected {expected}, file has {actual}', '期望 {expected}，文件是 {actual}', { expected: size(verdict.expected), actual: size(verdict.actual) }));
     }
     if (verdict.layer) lines.push(t('Layer: ', '层：') + verdict.layer);
     if (Array.isArray(verdict.ranks) && verdict.ranks.length) lines.push(t('Ranks: ', 'Rank：') + verdict.ranks.join(', '));
-    if (verdict.count > 1) lines.push(t(`${verdict.count} layers do not match`, `共 ${verdict.count} 层不匹配`));
-    if (Number.isInteger(summary.keys)) lines.push(t(`${summary.keys} tensors`, `共 ${summary.keys} 个张量`));
+    if (verdict.count > 1) lines.push(t('{count} layers do not match', '共 {count} 层不匹配', { count: verdict.count }));
+    if (Number.isInteger(summary.keys)) lines.push(t('{keys} tensors', '共 {keys} 个张量', { keys: summary.keys }));
     for (const [key, shape] of summary.first || []) lines.push(`${key}  ${size(shape)}`);
     for (const [key, value] of Object.entries(summary.base || {})) lines.push(`${key}: ${value}`);
     return {reason, lines};
 }
 
 /** The text and header summary for a prefilled issue; never the file or its path. */
-export function feedbackDraft(name, verdict, described, t = (en) => en) {
+export function feedbackDraft(name, verdict, described, t = translatorFor(null, false)) {
     const base = String(name).split('/').pop();
     const text = ['FreeVideo marked this LoRA as unusable. The verdict is reported as a misjudgment.', `File: ${base}`,
         `Check result: ${verdict.reason || 'unknown'}${verdict.family ? ` (${verdict.family})` : ''}${described ? `, ${described.reason}` : ''}`].join('\n');

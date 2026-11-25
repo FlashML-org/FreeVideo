@@ -198,7 +198,7 @@ export async function openCreations({selectedWork = null} = {}) {
     if (own && !selectedWork && own.getClientRects().length) { own.click(); return; }
     const {openLibrary} = await import('./library.js');
     const name = words(VIEW_NAMES[view] || VIEW_NAMES.studio);
-    openLibrary(t, {selectedWork, back: view === 'studio' ? null : t(`Back to ${name}`, `返回${name}`)});
+    openLibrary(t, {selectedWork, back: view === 'studio' ? null : t('Back to {name}', '返回{name}', { name })});
 }
 const THEME_KEY = 'freevideo.theme';
 function setTheme(theme) {
@@ -245,7 +245,8 @@ const G = {views: ['Views', '视图'], generate: ['Generate', '生成'], works: 
 export function builtinCommands() {
     const viewCommands = VIEW_KEYS.map((view, index) => ({
         id: `view.${view}`, group: G.views, icon: VIEW_ICONS[view], key: `Alt+${index + 1}`,
-        title: [`Go to ${words(VIEW_NAMES[view], false)}`, `切换到${/^[A-Za-z]/.test(words(VIEW_NAMES[view], true)) ? ' ' : ''}${words(VIEW_NAMES[view], true)}`],
+        title: {studio: ['Go to Create', '切换到创作面板'], image: ['Go to Images', '切换到图像视图'], nodes: ['Go to Nodes', '切换到节点视图'],
+            editor: ['Go to Edit', '切换到剪辑视图'], autopilot: ['Go to Autopilot', '切换到 AI 全自动']}[view],
         use: {studio: ['Make videos from a description', '用描述生成视频'], image: ['Make and edit pictures', '生成和编辑图片'], nodes: ['The workflow behind the views', '各视图背后的工作流'],
             editor: ['Cut, join and add sound', '剪辑、拼接和配声音'], autopilot: ['Let the assistant make a film', '让助手做一部片子']}[view],
         keywords: {studio: ['create', 'video', 'chuangzuo', 'czmb'], image: ['picture', 'tuxiang', 'txst'], nodes: ['workflow', 'graph', 'jiedian', 'jdst'], editor: ['edit', 'cut', 'timeline', 'jianji', 'jjst'], autopilot: ['agent', 'assistant', 'ai', 'quanzidong', 'qzd']}[view],
@@ -426,8 +427,8 @@ function makeOfQuery(q) {
     const text = q.trim(); if (!text) return [];
     const short = text.length > 24 ? text.slice(0, 23) + '…' : text;
     return [
-        {id: 'make.image', icon: 'image', title: [`Make a picture of “${short}”`, `用“${short}”作为描述生成图像`], use: ['Puts it in the Images prompt', '填进图像视图的描述框'], key: '', run: () => fillPrompt(text, {view: 'image', fallbackView: 'image'})},
-        {id: 'make.video', icon: 'film', title: [`Make a video of “${short}”`, `用“${short}”作为描述生成视频`], use: ['Puts it in the Create prompt', '填进创作面板的描述框'], key: '', run: () => fillPrompt(text, {view: 'studio', fallbackView: 'studio'})},
+        {id: 'make.image', icon: 'image', title: ['Make a picture of “{prompt}”', '用“{prompt}”作为描述生成图像', { prompt: short }], use: ['Puts it in the Images prompt', '填进图像视图的描述框'], key: '', run: () => fillPrompt(text, {view: 'image', fallbackView: 'image'})},
+        {id: 'make.video', icon: 'film', title: ['Make a video of “{prompt}”', '用“{prompt}”作为描述生成视频', { prompt: short }], use: ['Puts it in the Create prompt', '填进创作面板的描述框'], key: '', run: () => fillPrompt(text, {view: 'studio', fallbackView: 'studio'})},
     ].map((command, order) => ({command, section: 'make', ranges: [], order: 1e6 + order}));
 }
 
@@ -457,7 +458,7 @@ function draw() {
     const addResults = (id, {limit = Infinity, label = null, gridded = false} = {}) => {
         const found = group(id); if (!found?.items.length) return 0;
         const items = found.items.slice(0, limit);
-        const more = scope === 'all' && found.total > items.length ? {scope: id === 'prompt' ? 'prompt' : id, label: t(`See all ${found.total}`, `查看全部 ${found.total} 项`)} : null;
+        const more = scope === 'all' && found.total > items.length ? {scope: id === 'prompt' ? 'prompt' : id, label: t('See all {total}', '查看全部 {total} 项', { total: found.total })} : null;
         heading(label || words(found.label), more);
         if (gridded) {
             const grid = document.createElement('div'); grid.className = 'fv-pal-grid'; grid.setAttribute('role', 'group'); const gridId = ++grids;
@@ -504,7 +505,7 @@ function draw() {
         const head = document.createElement('b');
         const line = document.createElement('span');
         if (searchState === 'error' && scope !== 'actions') { head.textContent = t('Could not search the creations', '暂时无法搜索作品'); line.textContent = t('Try again in a moment.', '请稍后再试。'); }
-        else if (q) { head.textContent = t(`No results for “${q}”`, `没有找到“${q}”`); line.textContent = onlyMake ? t('Try another word, or use it as a prompt.', '换个词，或直接用它作为描述生成。') : t('Try another word.', '换个词试试。'); }
+        else if (q) { head.textContent = t('No results for “{q}”', '没有找到“{q}”', { q }); line.textContent = onlyMake ? t('Try another word, or use it as a prompt.', '换个词，或直接用它作为描述生成。') : t('Try another word.', '换个词试试。'); }
         else { head.textContent = t('Nothing here yet', '这里还没有内容'); line.textContent = {works: t('Videos and pictures show here once made.', '生成的视频和图片会出现在这里。'), prompt: t('Prompts show here once used.', '用过的描述会出现在这里。'), cast: t('Characters show here once created.', '创建的角色会出现在这里。')}[scope] || ''; }
         empty.append(art, head, line);
         if (onlyMake) ui.list.replaceChildren(empty, fragment); else { ui.list.replaceChildren(empty); }
@@ -621,7 +622,7 @@ export function commandFailure(command, error, report = openIssue) {
     const server = /\bHTTP\s*\d{3}\b/.test(String(error?.message ?? error ?? '')) || Number.isInteger(error?.status);
     if (reason && !server) return [reason, {tone: 'fail'}];
     // The pill holds one short line beside the button; the server's sentence goes in the detail (the bell keeps both).
-    return [t(`Failed: “${name}”`, `“${name}”没有完成`), {tone: 'fail', ...(reason ? {detail: reason} : {}), action: {
+    return [t('Failed: “{name}”', '“{name}”没有完成', { name }), {tone: 'fail', ...(reason ? {detail: reason} : {}), action: {
         label: t('Report', '提交问题'), use: t('Open the feedback form with this error filled in', '打开反馈表，已填好这条错误'),
         run: () => report(t, {where: ['Command palette', '命令面板'], message: `${name}: ${String(error?.message ?? error ?? '')}`, kind: 'command', facts: {command: command.id}})}}];
 }

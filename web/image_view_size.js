@@ -181,7 +181,7 @@ export function sizePicker({onChange, onPreview = () => {}}) {
         // Each quick size says what it makes at this shape.
         for (const b of picker.picker.parts.size.querySelectorAll('button[data-pixels]')) {
             const area = presetIn(next.model, Number(b.dataset.pixels)), made = area ? sizeText(sizeFor(next.model, next.ratioValue, area)) : '';
-            tip(b, b.querySelector('.fvp-sub')?.textContent || '', t(`Quick size: ${made} at this shape`, `快捷尺寸：当前画幅下 ${made}`));
+            tip(b, b.querySelector('.fvp-sub')?.textContent || '', t('Quick size: {made} at this shape', '快捷尺寸：当前画幅下 {made}', { made }));
         }
         refocus?.();
     }

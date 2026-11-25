@@ -22,6 +22,7 @@
 //          'dimensions' with side 'width' | 'height', 'lock'); the caller applies it and calls set() with what it accepted.
 // onPreview({ratio, width, height} | null) while an option is pointed at or focused, and when it is left. The views show
 //          the next generation's empty frame at that shape (nextFrame below gives its box), not an outline over a work.
+import { translatorFor } from '../i18n.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 let styled = false;
@@ -70,7 +71,7 @@ export function nextFrame(room, ratio, pad = 0) {
     return {width, height, left: (room.width - width) / 2, top: (room.height - height) / 2};
 }
 
-export function createFramePicker({t = en => en, shapes = [], sizes = [], sizeFor = (ratio, pixels) => frameSize(ratio, pixels), custom = null,
+export function createFramePicker({t = translatorFor(null, false), shapes = [], sizes = [], sizeFor = (ratio, pixels) => frameSize(ratio, pixels), custom = null,
     onChange = () => {}, onPreview = () => {}, onPaint = () => {}} = {}) {
     loadStyle();
     shapes = shapes.filter(shape => shape.id !== 'custom'); sizes = sizes.filter(size => !size.more);
@@ -196,7 +197,7 @@ export function createFramePicker({t = en => en, shapes = [], sizes = [], sizeFo
             // Generate stopped on an empty side (the caller sets ask): the panel covers the studio's status line, so it asks here.
             if (!state.empty) state.ask = false;
             const ask = state.ask && (state.empty === 'height' ? t('Fill in the height.', '请填写高度。') : t('Fill in the width.', '请填写宽度。'));
-            const said = state.capped ? t(`The largest on this computer is ${state.capped}; that size is used.`, `本机最大 ${state.capped}，已按最大生成。`) : ask || limit?.note || '';
+            const said = state.capped ? t('The largest on this computer is {capped}; that size is used.', '本机最大 {capped}，已按最大生成。', { capped: state.capped }) : ask || limit?.note || '';
             status.textContent = said; status.hidden = !said; status.toggleAttribute('data-capped', Boolean(state.capped || ask));
         }
         onPaint();
@@ -390,7 +391,7 @@ export function createPopChip({host = null, name = '', icon = '', placement = 'a
 
 // area: () => {left, top, width, height} in the stage's own box, the part not covered (by an open tray); the frame
 // is fitted and centred there, whole. Outside the frame the stage is dimmed; inside it stays as it is.
-export function createFrameGhost(stage, {t = en => en, area = null} = {}) {
+export function createFrameGhost(stage, {t = translatorFor(null, false), area = null} = {}) {
     loadStyle();
     const ghost = el('div', 'fvp-ghost'), label = el('span', 'fvp-ghost-label');
     ghost.append(label); ghost.setAttribute('aria-hidden', 'true'); stage.append(ghost);

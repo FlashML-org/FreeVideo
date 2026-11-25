@@ -32,9 +32,9 @@ export function imageGenerationSupported() {
     return true;
 }
 // On a Mac the GPU's memory is the machine's: the same notes without the graphics card.
-function memoryWords([en, zh], unified) {
+function memoryWords([en, zh, values], unified) {
     return unified ? [en.replace('GPU memory', 'memory').replace(' using the GPU', ''),
-        zh.replace('显存', '内存').replace('占用显卡的程序', '程序')] : [en, zh];
+        zh.replace('显存', '内存').replace('占用显卡的程序', '程序'), values] : [en, zh, values];
 }
 // The preset a canvas of this size has exactly, or null.
 export function presetRatio(width, height) {
@@ -194,7 +194,7 @@ export function imagePackMessage(info, t) {
     // A non-breaking space keeps the number and its unit on one line.
     const size = (info?.pack_size || (bytes > 0 ? (bytes / 2 ** 30).toFixed(1) + ' GiB' : '17.3 GB'))
         .replace(/ (?=[KMGT]i?B$)/, '\u00a0');
-    return t(`Download "${name}" in the launcher first, ${size}.`, `先在启动器里下载“${name}”，${size}。`);
+    return t('Download "{name}" in the launcher first, {size}.', '先在启动器里下载“{name}”，{size}。', { name, size });
 }
 // What the page offers while the image models are missing: one button, one muted line, and the bar once loading.
 export function packView(info, t) {
@@ -216,7 +216,7 @@ export function packView(info, t) {
                 : install.reason === 'busy_picture' ? t('Paused while a picture is made', '正在出图，已暂停')
                 : install.reason === 'busy_setup' ? t('Paused while FreeVideo installs, updates or cleans up', 'FreeVideo 正在安装、更新或清理，已暂停')
                 : t('Paused while FreeVideo uses the graphics card for another task', 'FreeVideo 正在用显卡做别的任务，已暂停'))
-                : t(`Downloading · ${gb(install.done || 0)}\u00a0GB / ${size}${time}`, `正在下载 · ${gb(install.done || 0)}\u00a0GB / ${size}${time}`)};
+                : t('Downloading · {done}\u00a0GB / {size}{time}', '正在下载 · {done}\u00a0GB / {size}{time}', { done: gb(install.done || 0), size, time })};
     }
     const resume = install.state === 'failed' || install.state === 'cancelled' || install.done > 0;
     const reason = install.state === 'failed' ? t(install.message_en, install.message_zh) : '';
@@ -224,7 +224,7 @@ export function packView(info, t) {
     // (named in the note) is the way on, so no button is offered here.
     if (install.state === 'failed' && install.reason === 'shared_mismatch' && reason) return {loading: false, fraction: null, reason: true, button: '', note: reason};
     return {loading: false, fraction: null, reason: !!reason, button: resume ? t('Resume download', '继续下载') : t('Download image generation models', '下载图像生成模型'),
-        note: reason || (resume ? t(`${gb(install.done || 0)}\u00a0GB / ${size}${time}`, `${gb(install.done || 0)}\u00a0GB / ${size}${time}`) : size + time)};
+        note: reason || (resume ? t('{done}\u00a0GB / {size}{time}', '{done}\u00a0GB / {size}{time}', { done: gb(install.done || 0), size, time }) : size + time)};
 }
 // FreeVideo went away while a picture was being made (#1121): why, as far as the launcher saw it end, and what next. The
 // page's cause (task_store, engine_exit.js exitCause) picks the row; a restart without a record reads as quitting
@@ -299,7 +299,7 @@ export function imageGenError(code, info, t) {
             '这台 Mac 的内存不足 16 GB，无法生成图片。'],
     };
     const fact = ['no_memory', 'small_memory'].includes(code) ? otherUsageText(info?.other_usage, t, true) : '';
-    const say = (en, zh) => t(...memoryWords([en, zh], info?.unified)) + (fact ? t(' ', '') + fact : '');
+    const say = (en, zh, values) => t(...memoryWords([en, zh, values], info?.unified)) + (fact ? t(' ', '') + fact : '');
     if (code === 'pack_missing') return imagePackUnavailableMessage(info, t);
     if (code === 'no_memory' && info?.memory === 'host')
         return t('Not enough virtual memory to load the image model. Close other apps, or increase virtual memory in system settings, then try again.',
@@ -315,15 +315,14 @@ export function imageGenError(code, info, t) {
             return say('Not enough GPU memory to load the model. Close other apps using the GPU, then try again.',
                 '显存不足，无法载入模型。请关闭其他占用显卡的程序后重试。');
         if (size?.width && size?.height)
-            return say(`Not enough GPU memory, even at ${size.width}\u00a0×\u00a0${size.height}. Close other apps using the GPU, then try again.`,
-                `显存不足，${size.width}\u00a0×\u00a0${size.height} 也无法生成。请关闭其他占用显卡的程序后重试。`);
+            return say('Not enough GPU memory, even at {width}\u00a0×\u00a0{height}. Close other apps using the GPU, then try again.',
+                '显存不足，{width}\u00a0×\u00a0{height} 也无法生成。请关闭其他占用显卡的程序后重试。', { width: size.width, height: size.height });
     }
     const known = Object.hasOwn(reasons, code) ? code : 'generation_failed';
     // An unnamed error still says which step it stopped at; a page with its own
     // Retry button does not repeat "try again" in the sentence.
     if (known === 'generation_failed' && Object.hasOwn(FAILED_AT, info?.stage)) {
-        const [en, zh] = FAILED_AT[info.stage];
-        return info?.retried ? say(en, zh) : say(`${en} Try again.`, `${zh}请再试一次。`);
+        return info?.retried ? say(...FAILED_AT[info.stage]) : say('{failure} Try again.', '{failure}请再试一次。', { failure: t(...FAILED_AT[info.stage]) });
     }
     return say(...(info?.retried && Object.hasOwn(RETRIED, known) ? RETRIED[known] : reasons[known]));
 }
@@ -350,8 +349,8 @@ export const QUEUE_LABELS = Object.freeze({
     image: ['Added to the queue. It starts when the previous one finishes.', '已加入队列，前面的完成后自动开始。'],
     video: ['Queued. It starts when the video finishes.', '已排队，视频生成完后自动开始。'],
 });
-export const fittedNote = (size, t, unified = false) => t(...memoryWords([`Not enough GPU memory. Made at ${size.width}\u00a0×\u00a0${size.height} instead.`,
-    `显存不足，已改为 ${size.width}\u00a0×\u00a0${size.height} 生成。`], unified));
+export const fittedNote = (size, t, unified = false) => t(...memoryWords(['Not enough GPU memory. Made at {width}\u00a0×\u00a0{height} instead.',
+    '显存不足，已改为 {width}\u00a0×\u00a0{height} 生成。', { width: size.width, height: size.height }], unified));
 export const REPORT_LABELS = Object.freeze({
     download: ['Download report', '下载报告'],
     description: ['Diagnostic report: hardware, settings and timings', '诊断报告：硬件、设置和耗时'],
@@ -609,7 +608,7 @@ export function imageGenProgress(stage, fraction, withImages = false, overall = 
 // Seconds left as the service predicts them, in the video's words; null while there is none.
 export function imageRemainingText(seconds, t) {
     if (!Number.isFinite(seconds)) return '';
-    return seconds >= 60 ? t(`About ${Math.ceil(seconds / 60)}\u00a0min left`, `预计还需约 ${Math.ceil(seconds / 60)}\u00a0分钟`)
+    return seconds >= 60 ? t('About {minutes}\u00a0min left', '预计还需约 {minutes}\u00a0分钟', { minutes: Math.ceil(seconds / 60) })
         : t('Less than a minute left', '预计还需不到 1\u00a0分钟');
 }
 
@@ -1101,11 +1100,11 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
                 : missing ? imagePackUnavailableMessage(state.info, t)
                 // A trigger word a LoRA adds in front can take the prompt past what the engine accepts.
                 : promptRequired ? (prompt.length > 2000
-                    ? t(`The prompt is over 2,000 characters. Shorten it by ${prompt.length - 2000} and try again.`, `提示词超过 2000 字。请缩短 ${prompt.length - 2000} 字后重试。`)
+                    ? t('The prompt is over 2,000 characters. Shorten it by {count} and try again.', '提示词超过 2000 字。请缩短 {count} 字后重试。', { count: prompt.length - 2000 })
                     : t('Enter a prompt first.', '请先填写提示词。'))
                 : state.running && state.waiting ? t(...(QUEUE_LABELS[state.waiting] || QUEUE_LABELS.image))
-                : state.running && state.fitted ? t(...memoryWords([`Not enough GPU memory. Retrying at ${state.fitted.width}\u00a0×\u00a0${state.fitted.height}`,
-                    `显存不足，改用 ${state.fitted.width}\u00a0×\u00a0${state.fitted.height} 重试`], state.info?.unified_memory)) + ' · ' + percent
+                : state.running && state.fitted ? t(...memoryWords(['Not enough GPU memory. Retrying at {width}\u00a0×\u00a0{height}',
+                    '显存不足，改用 {width}\u00a0×\u00a0{height} 重试', { width: state.fitted.width, height: state.fitted.height }], state.info?.unified_memory)) + ' · ' + percent
                 : state.running && state.stage === 'upload' ? t('Uploading reference images', '正在上传参考图')
                 : state.running ? (state.stage === 'load' ? t('Loading the model', '加载模型') + ' '
                     : state.stage === 'encode' ? t('Reading reference images', '读取参考图') + ' ' : '') + percent

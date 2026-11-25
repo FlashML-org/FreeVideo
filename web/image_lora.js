@@ -127,7 +127,7 @@ export function createImageLoras({t, fetchApi, el = domEl, getPrompt = () => '',
             strength.onchange = () => {
                 if (!strengthNote.settle()) {
                     if (strength.value !== '') return;
-                    const kept = row.strength ?? 1; strength.value = String(kept); strengthNote.say(t(`Back to ${kept}`, `已恢复为 ${kept}`)); return;
+                    const kept = row.strength ?? 1; strength.value = String(kept); strengthNote.say(t('Back to {kept}', '已恢复为 {kept}', { kept })); return;
                 }
                 row.strength = Number(strength.value); changed();
             };
@@ -149,7 +149,8 @@ export function createImageLoras({t, fetchApi, el = domEl, getPrompt = () => '',
         });
         add.disabled = rows.length >= IMAGE_LORA_LIMIT;
         if (!note.textContent || !rows.some(r => drafts.has(r.name))) note.textContent = skipped
-            ? t(`${skipped} other LoRA file${skipped === 1 ? '' : 's'} in the folder ${skipped === 1 ? 'is' : 'are'} not in .safetensors format and not listed.`, `文件夹中另有 ${skipped} 个 LoRA 文件不是 .safetensors 格式，未列出。`) : '';
+            ? (skipped === 1 ? t('1 other LoRA file in the folder is not in .safetensors format and not listed.', '文件夹中另有 1 个 LoRA 文件不是 .safetensors 格式，未列出。')
+                : t('{count} other LoRA files in the folder are not in .safetensors format and not listed.', '文件夹中另有 {count} 个 LoRA 文件不是 .safetensors 格式，未列出。', { count: skipped })) : '';
         drawSummary();
     }
 
@@ -170,7 +171,7 @@ export function createImageLoras({t, fetchApi, el = domEl, getPrompt = () => '',
     }
     add.onclick = async () => {
         await refresh();
-        if (rows.length >= IMAGE_LORA_LIMIT) { note.textContent = t(`Use at most ${IMAGE_LORA_LIMIT} LoRAs`, `最多使用 ${IMAGE_LORA_LIMIT} 个 LoRA`); return; }
+        if (rows.length >= IMAGE_LORA_LIMIT) { note.textContent = t('Use at most {IMAGE_LORA_LIMIT} LoRAs', '最多使用 {IMAGE_LORA_LIMIT} 个 LoRA', { IMAGE_LORA_LIMIT }); return; }
         if (!names?.length) { note.textContent = t('Put LoRA files (.safetensors) in the models/loras folder, then choose "Add".', '把 LoRA 文件（.safetensors）放进 models/loras 文件夹，再点“添加”。'); return; }
         rows.push({name: names.find(n => !rows.some(r => r.name === n)) ?? names[0], strength: 1, enabled: true});
         render(); changed();

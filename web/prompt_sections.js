@@ -1,16 +1,35 @@
 // A rewrite in H3's sections, as the prompt box shows it: the scene, then a "Sound:" paragraph (any music joins it).
 // The section names, the summary and the retention analysis stay out of sight; `modelText` puts them back when the
 // prompt is sent, so an untouched rewrite reaches the model exactly as the model wrote it.
+import { CATALOG, translator, translatorFor } from './i18n.js';
+
 const ORDERS = [
     ['subject_definitions', 'summary', 'retention_analysis', 'detailed_description', 'overall_soundscape', 'non_diegetic_music'],
     ['integrated_multimodal_description', 'overall_soundscape', 'non_diegetic_music'],
 ];
 const SCENE = new Set(['detailed_description', 'integrated_multimodal_description']);
-const LABELS = [['en', 'Sound: '], ['zh', '声音：']];
+// The box's own words, as the page writes them. Text written on a page of another language is read back too: English,
+// Chinese in both scripts, and the language of this page.
+const shotText = (t, number, time, text) => t('Shot {number} ({time}): {text}', '镜头 {number}（{time}）：{text}', { number, time, text });
+const soundText = (t, text) => t('Sound: {text}', '声音：{text}', { text });
+const TRADITIONAL = translatorFor({'Shot {number} ({time}): {text}': '鏡頭 {number}（{time}）：{text}', 'Sound: {text}': '聲音：{text}'}, true);
+const WRITERS = [translatorFor(null, false), translatorFor(null, true), TRADITIONAL, ...(CATALOG ? [translator(true), translator(false)] : [])];
 const NO_MUSIC = /^n\/?a\.?$/i;
 // "[Shot 2] At 00:03.000, ..." in the model's words; "Shot 2 (0:03): ..." or "镜头 2（0:03）：..." in the box.
 const AT = /^At (\d{1,2}):(\d{2}(?:\.\d+)?),[ \t]*/;
-const SHOT_HEAD = /^(?:Shot|镜头) (\d+)(?: ?[(（](\d{1,2}):(\d{2}(?:\.\d+)?)[)）])?[：:][ \t]*/;
+const SHOT_HEAD = /^(?:Shot|镜头|鏡頭) (?:\d+)(?: ?[(（](?<m>\d{1,2}):(?<s>\d{2}(?:\.\d+)?)[)）])?[：:][ \t]*/;
+// What this page's language file writes in front of {text}, as a pattern; null when the file has no such text or writes
+// something after it.
+function ownHead(written, start) {
+    if (!CATALOG || !written.endsWith('{text}')) return null;
+    const pattern = written.slice(0, -'{text}'.length).trimEnd().replace(/[.*+?^$()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s*')
+        .replace('{number}', '\\d+').replace('{time}', '(?<m>\\d{1,2}):(?<s>\\d{2}(?:\\.\\d+)?)');
+    return pattern ? `${start}${pattern}[ \\t]*` : null;
+}
+const OWN_SHOT = ownHead(translator(false)('Shot {number} ({time}): {text}', '镜头 {number}（{time}）：{text}'), '^');
+const OWN_SOUND = ownHead(translator(false)('Sound: {text}', '声音：{text}'), '');
+const ownShot = OWN_SHOT && new RegExp(OWN_SHOT), shotHead = paragraph => SHOT_HEAD.exec(paragraph) || (ownShot ? ownShot.exec(paragraph) : null);
+const SOUND_HEAD = new RegExp(`(?:^|\\n\\n+)(?:(?:Sound:|声音：|聲音：)[ \\t]*${OWN_SOUND ? `|${OWN_SOUND}` : ''})`, 'g');
 
 // [[name, body]] when the text is exactly H3's sections in order (subject definitions may be absent), else null.
 function sections(text) {
@@ -40,20 +59,17 @@ const clock = (minutes, seconds) => `${minutes}:${seconds.replace(/(\.\d*?)0+$/,
 
 // What the box shows for a rewrite, or null to show it as it is. A single shot shows without its marker; several shots
 // each start a paragraph with their number and start time.
-export function shownRewrite(text, language = 'en') {
+export function shownRewrite(text, language = 'en', t = translator(language === 'zh')) {
     const rows = sections(text);
     if (!rows) return null;
     const get = name => rows.find(([key]) => key === name)?.[1] ?? '';
     const list = shots(rows.find(([key]) => SCENE.has(key))[1]);
     if (!list) return null;
-    const zh = language === 'zh';
-    const scene = list.length === 1 ? list[0].text : list.map((shot, index) => {
-        const time = clock(shot.minutes, shot.seconds);
-        return (zh ? `镜头 ${index + 1}（${time}）：` : `Shot ${index + 1} (${time}): `) + shot.text;
-    }).join('\n\n');
+    const scene = list.length === 1 ? list[0].text
+        : list.map((shot, index) => shotText(t, index + 1, clock(shot.minutes, shot.seconds), shot.text)).join('\n\n');
     const music = get('non_diegetic_music');
     const sound = [get('overall_soundscape'), NO_MUSIC.test(music) ? '' : music].filter(Boolean).join(' ');
-    return scene + '\n\n' + (zh ? LABELS[1][1] : LABELS[0][1]) + sound;
+    return scene + '\n\n' + soundText(t, sound);
 }
 
 // The scene section for the scene part of an edited box. Paragraphs that open with a shot number become that shot,
@@ -61,7 +77,7 @@ export function shownRewrite(text, language = 'en') {
 function sceneFromBox(box, original) {
     const shot = [];
     for (const paragraph of box.split(/\n\n+/)) {
-        const head = SHOT_HEAD.exec(paragraph);
+        const head = shotHead(paragraph);
         if (head || !shot.length) shot.push({head, text: paragraph.slice(head ? head[0].length : 0).trim()});
         else shot[shot.length - 1].text += ' ' + paragraph.trim();
     }
@@ -69,10 +85,11 @@ function sceneFromBox(box, original) {
     return shot.map(({head, text}, index) => {
         const old = original?.[index];
         let at = '';
-        if (head?.[2] !== undefined) {
-            const time = clock(Number(head[2]), head[3]);
+        const { m, s } = head?.groups || {};
+        if (m !== undefined) {
+            const time = clock(Number(m), s);
             at = old && clock(old.minutes, old.seconds) === time ? old.at
-                : time === '0:00' && index === 0 ? '' : `At ${head[2].padStart(2, '0')}:${head[3]},`;
+                : time === '0:00' && index === 0 ? '' : `At ${m.padStart(2, '0')}:${s},`;
         } else if (old?.at) at = old.at;
         return `[Shot ${index + 1}] ${at ? at + ' ' : ''}${text}`;
     }).join(' ');
@@ -82,14 +99,14 @@ function sceneFromBox(box, original) {
 // definitions and retention analysis but drops the summary, which may no longer match the edited scene.
 export function modelText(shown, rewrite) {
     const rows = sections(rewrite);
-    if (!rows || LABELS.some(([code]) => shownRewrite(rewrite, code) === shown)) return rows ? rewrite : shown;
+    if (!rows || WRITERS.some(t => shownRewrite(rewrite, 'en', t) === shown)) return rows ? rewrite : shown;
     const get = name => rows.find(([key]) => key === name)?.[1] ?? '';
     const [sceneName, sceneText] = rows.find(([key]) => SCENE.has(key));
     const box = String(shown ?? '').trim();
-    // The last paragraph that opens with "Sound:" or "声音：" (in either language) is the sound; the music goes on while
+    // The last paragraph that opens with "Sound:" or "声音：" (in any language above) is the sound; the music goes on while
     // its words still end it. Without one, the whole box is the scene and no sound is described, as the box shows.
     let scene = box, soundscape = 'N/A', music = get('non_diegetic_music');
-    const heads = [...box.matchAll(/(?:^|\n\n+)(?:Sound:|声音：)[ \t]*/g)];
+    const heads = [...box.matchAll(SOUND_HEAD)];
     const head = heads[heads.length - 1];
     let sound = head ? box.slice(head.index + head[0].length).trim() : '';
     if (head) scene = box.slice(0, head.index).trim();

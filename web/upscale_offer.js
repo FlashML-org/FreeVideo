@@ -78,6 +78,6 @@ export function upscaleChoices(row, offer) {
         .filter(([, larger]) => larger)
         .map(([id, larger, options]) => {
             const size = `${larger.width} × ${larger.height}`;
-            return {id, width: larger.width, height: larger.height, options, label: [`Upscale to ${size}`, `放大到 ${size}`]};
+            return {id, width: larger.width, height: larger.height, options, label: ['Upscale to {size}', '放大到 {size}', { size }]};
         });
 }

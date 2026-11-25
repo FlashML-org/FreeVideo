@@ -25,13 +25,14 @@ function loadEffortSheet() {
 }
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 export const timeEstimate = (seconds, t) => seconds == null ? '' : seconds < 60
-    ? t(`about ${Math.max(1, Math.ceil(seconds))} s`, `约 ${Math.max(1, Math.ceil(seconds))} 秒`)
-    : t(`about ${Math.ceil(seconds / 60)} minutes`, `约 ${Math.ceil(seconds / 60)} 分钟`);
+    ? t('about {seconds} s', '约 {seconds} 秒', { seconds: Math.max(1, Math.ceil(seconds)) })
+    : t('about {minutes} minutes', '约 {minutes} 分钟', { minutes: Math.ceil(seconds / 60) });
 // A start of a few seconds reads "Starting…"; a longer one counts in the same form as the other waiting lines.
 export const startingText = (s, t) => {
     const m = Math.floor(s / 60), r = s % 60;
-    return s < 3 ? t('Starting…', '正在开始…') : s < 60 ? t(`Starting · ${s} s`, `正在开始 · ${s} 秒`)
-        : t(`Starting · ${m} min${r ? ` ${r} s` : ''}`, `正在开始 · ${m} 分${r ? ` ${r} 秒` : ''}`);
+    return s < 3 ? t('Starting…', '正在开始…') : s < 60 ? t('Starting · {s} s', '正在开始 · {s} 秒', { s })
+        : r ? t('Starting · {minutes} min {seconds} s', '正在开始 · {minutes} 分 {seconds} 秒', { minutes: m, seconds: r })
+        : t('Starting · {minutes} min', '正在开始 · {minutes} 分', { minutes: m });
 };
 // Provisional copy keys for Iris; decode/save sentences follow Studio's stage vocabulary.
 export const CLIP_FINALIZATION_COPY = {
@@ -174,7 +175,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
             musicBytes = await music.downloadBytes();
             if (disposed) return;
         }
-        musicAssets.textContent = musicBytes > 0 ? t(`Downloads before generating: music model ${size(musicBytes)}`, `生成前会先下载：配乐模型 ${size(musicBytes)}`) : '';
+        musicAssets.textContent = musicBytes > 0 ? t('Downloads before generating: music model {size}', '生成前会先下载：配乐模型 {size}', { size: size(musicBytes) }) : '';
         musicAssets.hidden = !(musicBytes > 0) || host.dataset.mode !== 'selected' || !music.target();
     }
     // A new line said on an empty stretch of the recording track: the voice row above the description, and the dubbing
@@ -259,7 +260,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
             await actions.downloadFailureReport?.(id, {bar: failureBar, anchor: report.hidden ? failureReason : report, t,
                 current: () => !disposed && failureId === id && !failure.hidden});
         } catch (value) {
-            actions.notify?.(t(`Downloading the diagnostic report failed: ${value.message || value}`, `下载诊断报告时出错：${value.message || value}`), ['Editor diagnostic report', '剪辑器诊断报告']);
+            actions.notify?.(t('Downloading the diagnostic report failed: {reason}', '下载诊断报告时出错：{reason}', { reason: value.message || value }), ['Editor diagnostic report', '剪辑器诊断报告']);
         } finally { downloading = false; report.disabled = false; }
     }
     report.onclick = () => downloadFailure();
@@ -362,7 +363,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
             const left = words?.over ? null : words?.left ?? remaining;
             const time = finalization ? '' : words?.stall || (words?.over ? t('Taking longer than expected', '比预计久，仍在生成') : words?.time || (left != null ? timeEstimate(left, t) : ''));
             const stage = finalization ? t(...CLIP_FINALIZATION_COPY[finalization.key]) : words?.stage || (count === 1 && !time ? t('Preparing', '正在准备') : '');
-            const spans = [['fv-ed-gen-part', count > 1 ? t(`Part ${number}/${count}`, `第 ${number}/${count} 段`) : ''],
+            const spans = [['fv-ed-gen-part', count > 1 ? t('Part {number}/{count}', '第 {number}/{count} 段', { number, count }) : ''],
                 ['fv-ed-gen-stage', stage], ['fv-ed-gen-time', time]];
             const shown = spans.filter(([, text]) => text).map(([cls, text], index) => [cls, index ? ` · ${text}` : text]);
             hint.replaceChildren(...shown.map(([cls, text]) => el('span', cls, text)));
@@ -447,7 +448,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         showMusicAssets(selected && !busy && musical && !previewSelection);
         if (sayAssets) {
             const bytes = narrated && !busy ? narration.downloadBytes() : 0;
-            sayAssets.textContent = bytes > 0 ? t(`Downloads before generating: dubbing model ${size(bytes)}`, `生成前会先下载：配音模型 ${size(bytes)}`) : '';
+            sayAssets.textContent = bytes > 0 ? t('Downloads before generating: dubbing model {size}', '生成前会先下载：配音模型 {size}', { size: size(bytes) }) : '';
             sayAssets.hidden = !(bytes > 0);
         }
         if (selected && !busy && !voiced && !installing) {
@@ -533,7 +534,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
     // A large first download (the dubbing model) is asked about in the tray before it starts (E26).
     const askDownload = el('div', 'fv-ed-gen-ask'); askDownload.hidden = true; askDownload.setAttribute('role', 'alertdialog'); tray.append(askDownload);
     function confirmDownload(bytes) {
-        const words = el('span', 'fv-ed-gen-ask-text', t(`The first line downloads the dubbing model (${size(bytes)}) before it is made.`, `第一次配音要先下载配音模型（${size(bytes)}），下载完再生成。`));
+        const words = el('span', 'fv-ed-gen-ask-text', t('The first line downloads the dubbing model ({size}) before it is made.', '第一次配音要先下载配音模型（{size}），下载完再生成。', { size: size(bytes) }));
         const go = el('button', 'fv-primary', t('Download and generate', '下载并生成')), no = el('button', null, t('Not now', '先不下载'));
         go.type = no.type = 'button';
         tip(go, {name: t('Download and generate', '下载并生成'), use: t('Fetch the model once, then say the line', '下载一次模型，然后生成这句')});

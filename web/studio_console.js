@@ -237,8 +237,8 @@ export function durationStepper(t, seconds, {onOpen, max = () => Infinity, locke
             // It sits inside the number (not a grid column of its own), so the button grows by the lock and 4 px only.
             if (locked === 'audio') { const mark = lockMark(); mark.hidden = false; mark.classList.add('fvs-step-lock'); number.classList.add('fvs-step-locked'); number.prepend(mark); }
             value.replaceChildren(number, unit);
-            value.setAttribute('aria-label', locked === 'audio' ? t(`${shown} s, set by the audio`, `${shown} 秒，由音频决定`)
-                : locked === 'linked' ? t(`${shown} s, set by connected nodes`, `${shown} 秒，由连接的节点决定`) : t(`${shown} s`, `${shown} 秒`));
+            value.setAttribute('aria-label', locked === 'audio' ? t('{shown} s, set by the audio', '{shown} 秒，由音频决定', { shown })
+                : locked === 'linked' ? t('{shown} s, set by connected nodes', '{shown} 秒，由连接的节点决定', { shown }) : t('{shown} s', '{shown} 秒', { shown }));
         }
         // The page writes its own hover words for the length (how many parts it is made in) as it changes; while the
         // length is locked those are kept for later and the reason stays.

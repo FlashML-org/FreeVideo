@@ -1,4 +1,5 @@
 import {isolateDialogKeys, listenDialogKey, routeDialogKey} from './dialog_keys.js';
+import {translatorFor} from './i18n.js';
 // The creative panel loads this file eagerly, so the hover-help writer is local (the timeline's tips module stays lazy).
 function setTip(element, {name, use, why = ''}) {
     for (const [attribute, value] of [['data-fv-tip-name', name], ['data-fv-tip-use', use], ['data-fv-tip-why', why]]) {
@@ -25,7 +26,7 @@ const el = (tag, cls, text) => {
 
 // The supplied textarea owns the text. Both views use its input handler; callers
 // changing its value or generation policy programmatically send input or change.
-export function createExpandButton({t = en => en, textarea, onGenerate, canGenerate, onDraft = () => {}}) {
+export function createExpandButton({t = translatorFor(null, false), textarea, onGenerate, canGenerate, onDraft = () => {}}) {
     loadStyle();
     const element = el('button', 'fv-ed-expand'); element.type = 'button';
     // It opens a large box for a long description (it does not zoom anything): named for what it does.
@@ -75,7 +76,7 @@ export function createExpandButton({t = en => en, textarea, onGenerate, canGener
     const counted = () => {
         if (!count) return;
         const n = Array.from(large.value).length, max = textarea.maxLength > 0 ? textarea.maxLength : 0;
-        count.textContent = max ? `${n} / ${max}` : t(`${n} characters`, `${n} 字`);
+        count.textContent = max ? `${n} / ${max}` : t('{n} characters', '{n} 字', { n });
     };
     function sync() {
         if (disposed) return;
@@ -154,7 +155,7 @@ export function createExpandButton({t = en => en, textarea, onGenerate, canGener
         notice = el('div', 'fv-ed-expand-note'); notice.setAttribute('role', 'status');
         const done = el('button', 'fv-ed-expand-done', t('Done', '完成')); done.type = 'button'; done.onclick = close;
         const mod = /Mac|iPhone|iPad/.test(navigator.platform || '') ? '⌘' : 'Ctrl+';
-        setTip(done, {name: t('Done', '完成'), use: onGenerate ? t(`Close the panel; ${mod}Enter generates`, `关闭面板；${mod}Enter 直接生成`) : t('Close the panel', '关闭面板')});
+        setTip(done, {name: t('Done', '完成'), use: onGenerate ? t('Close the panel; {mod}Enter generates', '关闭面板；{mod}Enter 直接生成', { mod }) : t('Close the panel', '关闭面板')});
         foot.append(count, notice, done);
         dialog.append(head, body, foot);
         large.oninput = () => {

@@ -172,7 +172,7 @@ export function createEditorTransport({element, preview, transport, toolbar, edi
         for (const value of state.record.markers || []) {
             const mark = previous.get(value.frame) || el('button', 'fv-ed-timeline-marker'); previous.delete(value.frame); mark.type = 'button'; mark.dataset.frame = String(value.frame);
             mark.style.left = `${value.frame * state.zoom / 24}px`; applyTip(mark, 'timelineMarker', t);
-            mark.setAttribute('aria-label', t(`Marker at ${Math.floor(value.frame / 24 / 60)}:${String(Math.floor(value.frame / 24) % 60).padStart(2, '0')}`, `标记 ${Math.floor(value.frame / 24 / 60)}:${String(Math.floor(value.frame / 24) % 60).padStart(2, '0')}`)); mark.setAttribute('aria-pressed', String(markerSelection === value.frame));
+            mark.setAttribute('aria-label', t('Marker at {minutes}:{seconds}', '标记 {minutes}:{seconds}', { minutes: Math.floor(value.frame / 24 / 60), seconds: String(Math.floor(value.frame / 24) % 60).padStart(2, '0') })); mark.setAttribute('aria-pressed', String(markerSelection === value.frame));
             mark.onpointerdown = event => {
                 if (event.button !== 0 || drag) return;
                 event.preventDefault(); event.stopPropagation(); mark.focus({preventScroll: true});

@@ -45,6 +45,7 @@ import { hasPictureThumbnail, mediaQueue, pictureThumbnailURL } from './work_med
 import { fieldNote } from './field_note.js';
 import { createPanelShell } from './panel_shell.js';
 import { copyText } from './clipboard_text.js';
+import { pageLang } from './i18n_tables.js';
 
 export { IMAGE_MODELS, RATIOS };
 for (const name of ['./image_view.css']) {
@@ -189,7 +190,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     kept?.dispose(); kept = null;
     void poll;
     studio?.querySelectorAll('video,audio').forEach(media => media.pause());
-    const dialog = el('dialog', 'fv-studio fv-image'); dialog.dataset.fvReady = 'false'; dialog.lang = cn ? 'zh' : 'en'; dialog.setAttribute('aria-label', t('Images', '图像视图'));
+    const dialog = el('dialog', 'fv-studio fv-image'); dialog.dataset.fvReady = 'false'; dialog.lang = pageLang(); dialog.setAttribute('aria-label', t('Images', '图像视图'));
     const header = el('header', 'fv-header'), brand = el('div', 'fv-brand'), tools = el('div', 'fv-header-actions');
     brand.append(wordmark());
     const settings = el('button', 'fv-quiet', t('Settings', '设置')); settings.type = 'button'; settings.onclick = openSetup;
@@ -497,10 +498,10 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         if (model_) parts.push(row(t('Model', '模型'), model_));
         const w = picture.dataset.file === shownFile && picture.naturalWidth ? picture.naturalWidth : m.width, h = picture.dataset.file === shownFile && picture.naturalHeight ? picture.naturalHeight : m.height;
         if (w) parts.push(row(t('Size', '尺寸'), `${w} × ${h} · ${megapixels(w * h)} MP`));
-        if (m.seconds) parts.push(row(t('Time', '用时'), t(`${m.seconds} s`, `${m.seconds} 秒`)));
+        if (m.seconds) parts.push(row(t('Time', '用时'), t('{seconds} s', '{seconds} 秒', { seconds: m.seconds })));
         if (m.seed) parts.push(row(t('Seed', '种子'), String(m.seed)));
         const drawn = layoutOf[shownFile]?.length;
-        if (drawn) parts.push(row(t('Layout', '布局'), t(`${drawn} ${drawn === 1 ? 'box' : 'boxes'}`, `${drawn} 个框`)));
+        if (drawn) parts.push(row(t('Layout', '布局'), (drawn === 1 ? t('1 box', '1 个框') : t('{count} boxes', '{count} 个框', { count: drawn }))));
         // Where it came from (an edit of another work): its thumbnail and name, opening it on the stage.
         if (m.source) {
             const name = String(m.source).slice(String(m.source).lastIndexOf('/') + 1), there = rows.find(r => r.file === m.source || r.name === name);
@@ -579,7 +580,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     keysBtn.addEventListener('click', () => { keysPop.hidden = !keysPop.hidden; keysBtn.setAttribute('aria-pressed', String(!keysPop.hidden)); });
     function paintStatus() {
         const live = rows.filter(r => !isGone(r.file)).length;
-        sbarState.replaceChildren(el('i', 'fv-iv-dot' + (info ? '' : ' fv-iv-dot-wait')), el('span', '', info ? t(`Ready · ${live} pictures`, `就绪 · ${live} 张`) : t('Connecting…', '正在连接…')));
+        sbarState.replaceChildren(el('i', 'fv-iv-dot' + (info ? '' : ' fv-iv-dot-wait')), el('span', '', info ? t('Ready · {live} pictures', '就绪 · {live} 张', { live }) : t('Connecting…', '正在连接…')));
     }
     paintSettings();
 
@@ -632,7 +633,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             // The engine's own bin answers without a list: what it deleted leaves the works here, not only on the next load.
             if (answer.items) rows = answer.items; else rows = rows.filter(r => !gone.includes(r.file));
             if (gone.length) { meta.forget(gone); void removeSavedImages(api, gone).catch(() => {}); announce('freevideo-works-removed', gone, {undoable: false}); }
-            if (kept.size) say(t(`Could not delete ${kept.size}.`, `有 ${kept.size} 张没能删除。`));
+            if (kept.size) say(t('Could not delete {size}.', '有 {size} 张没能删除。', { size: kept.size }));
             if (undoNote && list?.some(f => undoNote.files.includes(f))) undoNote = null;
         }
         if (alive) { drawWorks(); render(); }
@@ -750,8 +751,8 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         });
         return [icon('info'), tx];
     }
-    const label = number => t(`Image ${number}`, `图 ${number}`);
-    const subject = number => t(`Subject ${number}`, `主体 ${number}`);
+    const label = number => t('Image {number}', '图 {number}', { number });
+    const subject = number => t('Subject {number}', '主体 {number}', { number });
     // Each model row says how many pictures it takes; the strip holds as many as the most generous one.
     // Until the engine answers, each model's usual reference count, so the strip has its final height from the first frame.
     const USUAL_CAPS = {'minimax-h3-image': 16, 'qwen-image-2.1-turbo': 4, 'moss-image-sft': 0};
@@ -769,7 +770,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         }
         // The note stays until the strip changes again.
         notice.dataset.keep = String(skipped > 0);
-        notice.textContent = skipped ? t(`At most ${most()}, ${skipped} more were not added.`, `最多 ${most()} 张，多出的 ${skipped} 张没有加入。`) : '';
+        notice.textContent = skipped ? t('At most {most}, {skipped} more were not added.', '最多 {most} 张，多出的 {skipped} 张没有加入。', { most: most(), skipped }) : '';
         render();
     }
     async function useAsReference(file, first) {
@@ -821,7 +822,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     // The sketch canvas: the current frame, its long side at most 1536; a sketch opens again with its strokes.
     function sketchTarget() { const s = size(), k = Math.min(1, 1536 / Math.max(s.width, s.height)); return {width: Math.max(256, Math.round(s.width * k / 32) * 32), height: Math.max(256, Math.round(s.height * k / 32) * 32)}; }
     async function drawSketch(record = null) {
-        if (cap_(model) === 0) { say(t(`${model.short} does not take reference pictures; choose the other model`, `${model.short} 不使用参考图，请换另一个模型`)); return; }
+        if (cap_(model) === 0) { say(t('{short} does not take reference pictures; choose the other model', '{short} 不使用参考图，请换另一个模型', { short: model.short })); return; }
         if (!record && references.length >= most()) { say(t('The reference slots are full; remove one', '参考图已满，先移除一张')); return; }
         let outcome;
         try {
@@ -874,8 +875,8 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             const cell = el('span', 'fv-image-reference fv-iv-ref'), use = el('button', 'fv-image-reference-use'), x = el('button', 'fv-image-reference-remove');
             cell.dataset.over = String(at >= cap_(model)); cell.dataset.edited = String(!!r.original);
             use.type = x.type = 'button';
-            tip(use, t('Edit', '编辑'), r.original ? t(`${label(at + 1)}, edited. Crop or retouch it again`, `${label(at + 1)}（已编辑）：继续裁剪或修图`) : t(`Crop or retouch ${label(at + 1)}; it stays in its place`, `裁剪或修图${label(at + 1)}，改完放回原位`));
-            tip(x, t('Remove', '移除'), cell.dataset.over === 'true' ? t(`${model.short} takes ${cap_(model)}; remove this one`, `${model.short} 最多 ${cap_(model)} 张，请移除这张`) : t('Take this picture out', '去掉这张参考图'));
+            tip(use, t('Edit', '编辑'), r.original ? t('{name}, edited. Crop or retouch it again', '{name}（已编辑）：继续裁剪或修图', { name: label(at + 1) }) : t('Crop or retouch {name}; it stays in its place', '裁剪或修图{name}，改完放回原位', { name: label(at + 1) }));
+            tip(x, t('Remove', '移除'), cell.dataset.over === 'true' ? t('{short} takes {limit}; remove this one', '{short} 最多 {limit} 张，请移除这张', { short: model.short, limit: cap_(model) }) : t('Take this picture out', '去掉这张参考图'));
             x.append(icon('x'));
             const i = el('img'); i.src = r.url; i.alt = ''; i.draggable = false; use.append(i, el('b', '', String(at + 1)));
             use.onclick = () => void editReference(r);
@@ -906,8 +907,8 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         refCount.textContent = cap_(model) && references.length >= cap_(model) ? t('Full', '已满') : '';
         refAdd.setAttribute('aria-disabled', String(!room));
         tip(refAdd, t('Reference pictures', '参考图'), room ? t('Add from works, the library or this computer; or drop or paste', '从作品、素材库或电脑添加；也可拖入或粘贴') : '');
-        if (!room) refAdd.dataset.fvTipWhy = cap_(model) === 0 ? t(`${model.short} does not take reference pictures; choose the other model`, `${model.short} 不使用参考图，请换另一个模型`) : t('The reference slots are full; remove one', '参考图已满，先移除一张'); else delete refAdd.dataset.fvTipWhy;
-        refNote.textContent = info && cap_(model) === 0 && references.length ? t(`${model.short} does not take reference pictures.`, `${model.short} 不使用参考图。`) : '';
+        if (!room) refAdd.dataset.fvTipWhy = cap_(model) === 0 ? t('{short} does not take reference pictures; choose the other model', '{short} 不使用参考图，请换另一个模型', { short: model.short }) : t('The reference slots are full; remove one', '参考图已满，先移除一张'); else delete refAdd.dataset.fvTipWhy;
+        refNote.textContent = info && cap_(model) === 0 && references.length ? t('{short} does not take reference pictures.', '{short} 不使用参考图。', { short: model.short }) : '';
         refNote.hidden = !refNote.textContent;
         refHeadAdd.hidden = true;
     }
@@ -1016,7 +1017,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
 
     // ───── Drawing ─────
     const visible = () => filterRows(rows.filter(r => !isGone(r.file)), {filter, query, sort}, meta);
-    const labelOf = file => { const m = meta.get(file); return [IMAGE_MODELS.find(x => x.id === m?.model)?.short, m?.width ? `${m.width} × ${m.height}` : '', m?.seconds ? t(`${m.seconds} s`, `${m.seconds} 秒`) : ''].filter(Boolean).join(' · ') || t('Picture', '图片'); };
+    const labelOf = file => { const m = meta.get(file); return [IMAGE_MODELS.find(x => x.id === m?.model)?.short, m?.width ? `${m.width} × ${m.height}` : '', m?.seconds ? t('{seconds} s', '{seconds} 秒', { seconds: m.seconds }) : ''].filter(Boolean).join(' · ') || t('Picture', '图片'); };
     const runRow = () => running?.id ? jobs.get(running.id) : null;
 
     function paintSlot() {
@@ -1027,21 +1028,24 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         else if (note.textContent) { kind = note.dataset.kind === 'busy' ? 'info' : 'warn'; parts = [icon(kind === 'info' ? 'clock' : 'warn'), el('span', 'fv-iv-slot-tx', note.textContent)]; }
         else if (tooMany) {
             kind = 'warn';
-            parts = [icon('warn'), el('span', 'fv-iv-slot-tx', cap_(model) === 0 ? t(`${model.short} does not take reference pictures. Remove ${over()}.`, `${model.short} 暂不支持参考图，请移除 ${over()} 张。`) : t(`${model.short} takes at most ${cap_(model)}. Remove ${over()}.`, `${model.short} 最多 ${cap_(model)} 张，请移除 ${over()} 张。`))];
+            parts = [icon('warn'), el('span', 'fv-iv-slot-tx', cap_(model) === 0 ? t('{short} does not take reference pictures. Remove {extra}.', '{short} 暂不支持参考图，请移除 {extra} 张。', { short: model.short, extra: over() }) : t('{short} takes at most {limit}. Remove {extra}.', '{short} 最多 {limit} 张，请移除 {extra} 张。', { short: model.short, limit: cap_(model), extra: over() }))];
         } else if (notice.dataset.keep === 'true' && notice.textContent) { kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', notice.textContent)]; }
         else if (brokenMentions(prompt.value, references.length)) {
             kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', t('A picture named in the prompt was removed; choose it again with @', '描述里引用的参考图已移除，请用 @ 重新选择'))];
         }
         else if (s.state === 'failed') {
-            kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', t(`${model.short} download failed${s.reason ? ': ' + s.reason.replace(/[.。]$/, '') : ''}. Retry to continue; if it keeps failing, report the problem.`, `${model.short} 下载失败${s.reason ? '：' + s.reason.replace(/[.。]$/, '') : ''}。请重试以继续下载；仍然失败时，请提交问题。`))];
+            kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', s.reason
+                ? t('{model} download failed: {reason}. Retry to continue; if it keeps failing, report the problem.', '{model} 下载失败：{reason}。请重试以继续下载；仍然失败时，请提交问题。',
+                    { model: model.short, reason: s.reason.replace(/[.。]$/, '') })
+                : t('{model} download failed. Retry to continue; if it keeps failing, report the problem.', '{model} 下载失败。请重试以继续下载；仍然失败时，请提交问题。', { model: model.short }))];
         } else if (s.state === 'downloading' && s.paused) {
             // What the download waits for, and that the model row's Continue download runs it now.
-            kind = 'info'; parts = [icon('clock'), el('span', 'fv-iv-slot-tx', t(`${model.short}: ${pausedText(s)}`, `${model.short}：${pausedText(s)}`))];
+            kind = 'info'; parts = [icon('clock'), el('span', 'fv-iv-slot-tx', t('{short}: {state}', '{short}：{state}', { short: model.short, state: pausedText(s) }))];
         } else if (s.state === 'downloading') {
-            kind = 'info'; parts = [icon(s.unknown ? 'clock' : 'down'), el('span', 'fv-iv-slot-tx', s.verifying ? (pendingGenerate ? t(`Verifying ${model.short}; it generates when done`, `正在校验 ${model.short}，完成后自动生成`) : t(`Verifying ${model.short}`, `正在校验 ${model.short}`))
-                : pendingGenerate ? t(`Installing ${model.short}; it generates when done`, `正在安装 ${model.short}，完成后自动生成`) : t(`Installing ${model.short}`, `正在安装 ${model.short}`))];
+            kind = 'info'; parts = [icon(s.unknown ? 'clock' : 'down'), el('span', 'fv-iv-slot-tx', s.verifying ? (pendingGenerate ? t('Verifying {short}; it generates when done', '正在校验 {short}，完成后自动生成', { short: model.short }) : t('Verifying {short}', '正在校验 {short}', { short: model.short }))
+                : pendingGenerate ? t('Installing {short}; it generates when done', '正在安装 {short}，完成后自动生成', { short: model.short }) : t('Installing {short}', '正在安装 {short}', { short: model.short }))];
         } else if (s.state === 'missing') {
-            kind = 'info'; parts = [icon('cloud'), el('span', 'fv-iv-slot-tx', t(`${model.short} is not installed; Generate installs it first`, `${model.short} 未安装，点生成会先安装`))];
+            kind = 'info'; parts = [icon('cloud'), el('span', 'fv-iv-slot-tx', t('{short} is not installed; Generate installs it first', '{short} 未安装，点生成会先安装', { short: model.short }))];
         } else if (sizeWarning()) { kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', sizeWarning())]; }
         else if (fitted && fitted.file === shownFile) { kind = 'info'; parts = [icon('info'), el('span', 'fv-iv-slot-tx', fittedNote(fitted, t, !!info?.unified_memory))]; }
         else parts = running ? [el('span', 'fv-iv-slot-tx', t('Generating; you can leave this view', '正在生成，可以离开这个视图'))] : [];
@@ -1056,7 +1060,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         const limit = machineLimit(model.id, info, fittedAreas[model.id]), now = size();
         if (!Number.isFinite(limit.area) || now.width * now.height <= limit.area * 1.02) return '';
         const smaller = sizeFor(model.id, ratioValue(shapeOf()), limit.area);
-        return t(`May not fit this computer; it would be made at about ${sizeText(smaller)}`, `这台电脑可能放不下，会自动改为约 ${sizeText(smaller)}`);
+        return t('May not fit this computer; it would be made at about {size}', '这台电脑可能放不下，会自动改为约 {size}', { size: sizeText(smaller) });
     }
     // The left panel's first screen is whole: groups that would be cut at its bottom fold for this screen only
     // (the saved choice stays), least needed first; more room opens them again. A group the user opens stays open.
@@ -1105,17 +1109,17 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             goLabel.textContent = t('Stop', '停止'); goSub.textContent = '';
             tip(go, t('Stop', '停止'), t('Cancel this picture; asks first', '取消这一张，会先确认'));
         } else if (s.state === 'downloading') {
-            goLabel.textContent = s.verifying ? verifyText(s) : s.paused ? t(`Paused ${Math.floor(s.fraction * 100)}%`, `已暂停 ${Math.floor(s.fraction * 100)}%`)
-                : t(`Installing ${Math.floor(s.fraction * 100)}%`, `正在安装 ${Math.floor(s.fraction * 100)}%`);
+            goLabel.textContent = s.verifying ? verifyText(s) : s.paused ? t('Paused {percent}%', '已暂停 {percent}%', { percent: Math.floor(s.fraction * 100) })
+                : t('Installing {percent}%', '正在安装 {percent}%', { percent: Math.floor(s.fraction * 100) });
             goSub.textContent = pendingGenerate ? t('then generates', '完成后生成') : '';
             tip(go, pendingGenerate ? t('Generates when installed', '安装完自动生成') : t('Generate when installed', '安装完再生成'), pendingGenerate ? t('Press to not generate after it', '再按一次取消自动生成') : t('Press to generate as soon as it is installed', '按下后，安装完成即自动生成'));
         } else if (s.state === 'missing' || s.state === 'failed') {
-            goLabel.textContent = t('Install and generate', '安装并生成'); goSub.textContent = s.total ? t(`about ${(s.total / 1e9).toFixed(1)} GB`, `约 ${(s.total / 1e9).toFixed(1)} GB`) : '';
-            tip(go, t('Install and generate', '安装并生成'), t(`Downloads ${model.short}, then makes the picture`, `先下载 ${model.short}，再生成图片`), `${mod}+Enter`);
+            goLabel.textContent = t('Install and generate', '安装并生成'); goSub.textContent = s.total ? t('about {size} GB', '约 {size} GB', { size: (s.total / 1e9).toFixed(1) }) : '';
+            tip(go, t('Install and generate', '安装并生成'), t('Downloads {short}, then makes the picture', '先下载 {short}，再生成图片', { short: model.short }), `${mod}+Enter`);
         } else {
             // The size is said once, on its own chip; Generate says only how long it may take.
-            goLabel.textContent = t('Generate', '生成'); goSub.textContent = est ? t(`about ${est} s`, `约 ${est} 秒`) : '';
-            tip(go, t('Generate', '生成'), t(`Makes a ${sizeText(now)} picture`, `生成一张 ${sizeText(now)} 的图片`), `${mod}+Enter`);
+            goLabel.textContent = t('Generate', '生成'); goSub.textContent = est ? t('about {est} s', '约 {est} 秒', { est }) : '';
+            tip(go, t('Generate', '生成'), t('Makes a {size} picture', '生成一张 {size} 的图片', { size: sizeText(now) }), `${mod}+Enter`);
             if (!hasWords()) go.dataset.fvTipWhy = t('Describe the picture first', '先写一句描述');
         }
         // With no time (or size) to say beside it, the word sits alone in the middle of the key.
@@ -1177,7 +1181,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         sizer.paint({model: model.id, ratio, ref: references.length && firstRef() ? {url: references[0].url, ratio: ratioValue(firstRef())} : null, custom,
             area, size: sent, locked, limit, ratioValue: ratioValue(shapeOf())});
         seedInput.disabled = busy;
-        advGroup.meta.textContent = seedInput.value ? t(`Seed ${seedInput.value}`, `种子 ${seedInput.value}`) : '';
+        advGroup.meta.textContent = seedInput.value ? t('Seed {value}', '种子 {value}', { value: seedInput.value }) : '';
         paintGo(); paintSlot();
         drawStage();
         const row = runRow(); paintRunTile(row?.percent || 0);
@@ -1222,7 +1226,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         if (next) {
             draftSize.textContent = sizeText(next);
             const est = estimateSeconds(meta.samples(), model.id, next.width * next.height);
-            draftHint.textContent = draftPreview ? '' : [t('Next picture', '下一张'), est ? t(`about ${est} s`, `约 ${est} 秒`) : ''].filter(Boolean).join(' · ');
+            draftHint.textContent = draftPreview ? '' : [t('Next picture', '下一张'), est ? t('about {est} s', '约 {est} 秒', { est }) : ''].filter(Boolean).join(' · ');
         }
         if (state === 'done') {
             const mine = lastReport?.file === shownFile ? lastReport.id : null;
@@ -1249,7 +1253,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             save.href = url; save.setAttribute('download', shownFile.slice(shownFile.lastIndexOf('/') + 1));
             const full = references.length >= most() || cap_(model) === 0;
             editThis.disabled = asReference.disabled = full;
-            const why = cap_(model) === 0 ? t(`${model.short} takes no references; choose the other model`, `${model.short} 不用参考图，请换另一个模型`) : t('The reference slots are full; remove one', '参考图已满，先移除一张');
+            const why = cap_(model) === 0 ? t('{short} takes no references; choose the other model', '{short} 不用参考图，请换另一个模型', { short: model.short }) : t('The reference slots are full; remove one', '参考图已满，先移除一张');
             tip(editThis, t('Edit', '编辑'), t('Make a new version: it becomes Image 1', '以这张为图 1，描述要改的地方'));
             tip(asReference, t('Use as reference', '用作参考图'), t('Add it to the reference pictures', '加入参考图'));
             for (const b of [editThis, asReference]) { if (full) b.dataset.fvTipWhy = why; else delete b.dataset.fvTipWhy; }
@@ -1260,7 +1264,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             const width = picture.naturalWidth && picture.dataset.file === shownFile ? picture.naturalWidth : shown?.width || 0, height = picture.naturalWidth && picture.dataset.file === shownFile ? picture.naturalHeight : shown?.height || 0;
             const madeBy = IMAGE_MODELS.find(m => m.id === (shown?.model || rows.find(r => r.file === shownFile)?.model))?.name;
             infoText.textContent = [madeBy, width ? `${width} × ${height}` : '', width ? pictureShape(width, height) : '',
-                shown?.seconds ? t(`${shown.seconds} s`, `${shown.seconds} 秒`) : started ? t(`${started} s`, `${started} 秒`) : ''].filter(Boolean).join(' · ');
+                shown?.seconds ? t('{seconds} s', '{seconds} 秒', { seconds: shown.seconds }) : started ? t('{started} s', '{started} 秒', { started }) : ''].filter(Boolean).join(' · ');
         }
         comparer.paint(compare);
         stage.dataset.mode = compare ? 'compare' : 'single';
@@ -1385,8 +1389,8 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             if (length > 0 && length <= 2000) return true;
             note.dataset.kind = '';
             say(length > 2000
-                ? t(`With the picture references counted, the prompt is over 2,000 characters. Shorten it by ${length - 2000} and try again.`,
-                    `加上图片引用后，提示词超过 2000 字。请缩短 ${length - 2000} 字后重试。`)
+                ? t('With the picture references counted, the prompt is over 2,000 characters. Shorten it by {count} and try again.',
+                    '加上图片引用后，提示词超过 2000 字。请缩短 {count} 字后重试。', { count: length - 2000 })
                 : t('The prompt has only picture references and no words. Describe the picture you want, then try again.', '提示词里只有图片引用，没有文字。请写上要生成的画面后重试。'));
             return false;
         };
@@ -1500,7 +1504,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         // A model this computer does not run: the way on is the other model, one press.
         const other = failure.error === 'model_unavailable' ? IMAGE_MODELS.find(m => m.id !== model.id && offers(m)) : null;
         renderImageFailure(failHost, {...failure, info}, t, {retry: other ? {
-            label: [`Use ${other.name}`, `改用 ${other.name}`],
+            label: ['Use {model}', '改用 {model}', { model: other.name }],
             onClick: () => { chooseModel(other); void generate(); }} : {
             label: failure.retryStandard ? ['Retry at Standard', '改用标准并重试'] : ['Retry', '重试'],
             onClick: () => { if (failure.noList) { failure = null; render(); go.onclick(); return; } if (failure.retryStandard) { area = RANGES[model.id].presets.standard; keepSize(); } void generate(); }}});
@@ -1510,7 +1514,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         failHost.prepend(head);
         const stage_ = STAGE_WORDS[failure.stage];
         // No request was made when the list could not be fetched: there is no model or size to name.
-        if (!failure.noList) failHost.append(el('p', 'fv-iv-fail-facts', [model.short, sizeText(asked), stage_ ? t(`stopped at: ${stage_[0].toLowerCase()}`, `停在：${stage_[1]}`) : ''].filter(Boolean).join(' · ')));
+        if (!failure.noList) failHost.append(el('p', 'fv-iv-fail-facts', [model.short, sizeText(asked), stage_ ? t('stopped at: {stage}', '停在：{stage}', { stage: t(...[stage_[0].toLowerCase(), stage_[1]]) }) : ''].filter(Boolean).join(' · ')));
     }
     // ── run: tasks owns this block (job store) ──
     // Stop asks first; closing the page or switching views never stops the job.

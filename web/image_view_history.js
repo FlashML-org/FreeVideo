@@ -282,7 +282,7 @@ export function historyPanel({pictureURL, thumbURL = pictureURL, queue = null, o
                 'moss-image-sft': t('Only pictures made with MOSS-Image', '只看 MOSS-Image 生成的')}[f]);
         }
         for (const item of sortItems) item.setAttribute('aria-checked', String(item.dataset.sort === state.sort));
-        tip(sortBtn, t('Sort', '排序'), t(`Now: ${t(...SORT_WORDS[state.sort])}`, `当前：${t(...SORT_WORDS[state.sort])}`));
+        tip(sortBtn, t('Sort', '排序'), t('Now: {order}', '当前：{order}', { order: t(...SORT_WORDS[state.sort]) }));
         selectBtn.setAttribute('aria-pressed', String(state.selecting));
         if (query.value !== state.query && document.activeElement !== query) query.value = state.query;
         // Grid.
@@ -344,12 +344,12 @@ export function historyPanel({pictureURL, thumbURL = pictureURL, queue = null, o
             back.addEventListener('click', () => onTrash(false));
             headRow.append(back, el('span', 'fv-iv-grow'));
             if (rows.length) { const all = button('fv-iv-text-btn fv-iv-danger', {label: t('Delete now', '立即删除'), name: t('Delete now', '立即删除'), use: t('Remove these for good, without waiting', '不再等待，永久删除这些图片')}); all.addEventListener('click', () => onPurge(null)); headRow.append(all); }
-            const note = el('p', 'fv-iv-trash-note', t(`Deleted pictures stay here for ${Math.round(state.holdSeconds)} s, then they are gone.`, `删除的图片在这里保留 ${Math.round(state.holdSeconds)} 秒，之后永久删除。`));
+            const note = el('p', 'fv-iv-trash-note', t('Deleted pictures stay here for {seconds} s, then they are gone.', '删除的图片在这里保留 {seconds} 秒，之后永久删除。', { seconds: Math.round(state.holdSeconds) }));
             const list = el('div', 'fv-iv-trash-list');
             for (const h of rows) {
                 const item = el('div', 'fv-iv-trash-row'); const th = el('img'); th.alt = ''; th.src = pictureURL(h.row.file);
                 const left = Math.max(0, Math.ceil((h.at + state.holdSeconds * 1000 - Date.now()) / 1000));
-                const tx = el('span', 'fv-iv-trash-tx'); tx.append(el('b', '', promptOfRow(h.row) || h.row.name || h.row.file), el('small', '', t(`Gone in ${left} s`, `${left} 秒后永久删除`)));
+                const tx = el('span', 'fv-iv-trash-tx'); tx.append(el('b', '', promptOfRow(h.row) || h.row.name || h.row.file), el('small', '', t('Gone in {left} s', '{left} 秒后永久删除', { left })));
                 const restore = button('fv-iv-text-btn', {iconName: 'restore', label: t('Restore', '恢复'), name: t('Restore', '恢复'), use: t('Put it back in works', '放回作品里')});
                 restore.addEventListener('click', () => onRestore([h.row.file]));
                 item.append(th, tx, restore); list.append(item);
@@ -359,7 +359,7 @@ export function historyPanel({pictureURL, thumbURL = pictureURL, queue = null, o
         }
         // Foot.
         batch.hidden = !state.selecting; links.hidden = state.selecting;
-        picked.textContent = t(`${state.picked.size} selected`, `已选 ${state.picked.size} 张`);
+        picked.textContent = t('{size} selected', '已选 {size} 张', { size: state.picked.size });
         const none = state.picked.size === 0;
         const allFav = !none && [...state.picked].every(f => state.meta.isFav(f));
         favBtn.setAttribute('aria-disabled', String(none)); deleteBtn.setAttribute('aria-disabled', String(none));

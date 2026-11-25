@@ -1,6 +1,8 @@
 import {SHOWCASE_TEXT, showcaseChapter, loadShowcaseImage} from './entry_showcase.js';
 import './glass/library.js';
 import {openAnchor} from './feature_tour_layer.js';
+import {translator} from './i18n.js';
+import {localized, promptText} from './i18n_tables.js';
 
 const FILE = '/userdata/' + encodeURIComponent('freevideo/guide.json');
 const attempted = new Set();
@@ -171,7 +173,7 @@ const ROW_ICONS = {flag: 'M4 13.5V3M4 3.5h7.5l-1.5 2.5 1.5 2.5H4', play: 'M5 3.2
 const rowIcon = name => { const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('viewBox', '0 0 16 16'); svg.setAttribute('aria-hidden', 'true');
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path'); path.setAttribute('d', ROW_ICONS[name]); svg.append(path); return svg; };
 export function createGuideReplayEntry({dialog, cn, api, openWorkspace, replay = replayInFront}) {
-    const text = key => REPLAY_TEXT[key][cn ? 1 : 0], t = (en, zh) => cn ? zh : en;
+    const t = translator(cn), text = key => t(...REPLAY_TEXT[key]);
     const tipped = (node, name, use) => { node.dataset.fvTipName = name; node.dataset.fvTipUse = use; return node; };
     const section = el('section', null, 'fv-guide-replay'), row = el('div', null, 'fv-guide-replay-row'), rows = el('div', null, 'fv-guide-rows');
     const line = (icon, name, small, control) => { const item = el('div', null, 'fv-guide-row'), words = el('span'); words.append(el('b', name), el('small', small)); item.append(rowIcon(icon), words, control); return item; };
@@ -274,7 +276,7 @@ export function guideTarget(dialog, chapter, targets = {}) {
 }
 
 export function createFirstRunGuide({dialog, api, cn, isBusy = () => false, group = 'studio', targets = {}, onShowcaseTry = null}) {
-    const t = (en, zh) => cn ? zh : en;
+    const t = translator(cn);
     const automatic = !attempted.has(group), editor = group === 'editor';
     const chapters = chaptersFor(group);
     if (!document.querySelector('link[data-fv-first-run-guide]')) {
@@ -353,7 +355,7 @@ export function createFirstRunGuide({dialog, api, cn, isBusy = () => false, grou
             head.append(title, close);
             const foot = el('div', null, 'fv-tour-foot'); foot.append(el('span', null, 'fv-tour-grow'));
             const next = button(t(...SHOWCASE_TEXT.try), 'primary', t(...SHOWCASE_TEXT.try), t('Fill this example in Autopilot', '在 AI 全自动里填好这个示例'));
-            next.dataset.fvTourPrimary = ''; next.onclick = () => { finish(); onShowcaseTry(t(...SHOWCASE_TEXT.example)); };
+            next.dataset.fvTourPrimary = ''; next.onclick = () => { finish(); onShowcaseTry(promptText(SHOWCASE_TEXT.example, cn)); };
             foot.append(next); body.append(head, foot);
             const media = el('div', null, 'fv-tour-mediabox'), figure = el('figure', null, 'fv-tour-media fv-showcase-media'); figure.append(showcase.image); media.append(figure);
             anchor = openAnchor({owner: dialog, target: null, level: 2, shapes: ['stand'], content: [media, body], focus: true, label: title.id,
@@ -380,7 +382,7 @@ export function createFirstRunGuide({dialog, api, cn, isBusy = () => false, grou
         const head = el('div', null, 'fv-tour-head'), title = el('h3', touring ? tourTitle || t('Walkthrough', '演示') : t(...(step.title || ['Getting started', '新手指引'])));
         title.id = 'fv-guide-title';
         head.append(title);
-        const message = el('p', cn ? step.zh : step.en, 'fv-tour-text fv-guide-message'); message.id = 'fv-guide-message';
+        const message = el('p', localized(step, t), 'fv-tour-text fv-guide-message'); message.id = 'fv-guide-message';
         message.setAttribute('aria-live', 'polite'); message.setAttribute('aria-atomic', 'true');
         const foot = el('div', null, 'fv-tour-foot');
         if (count > 1) {
@@ -614,7 +616,7 @@ export async function openFirstNextLonger() {
 
 export function createFirstStart({dialog, api, cn, prompt, onPrefill, onGenerate, onEdit,
     onLonger = openFirstNextLonger, isBusy = () => false}) {
-    const text = key => FIRST_RUN_TEXT[key][cn ? 1 : 0];
+    const t = translator(cn), text = key => key === 'prompt' ? promptText(FIRST_RUN_TEXT.prompt, cn) : t(...FIRST_RUN_TEXT[key]);
     let disposed = false, hint = null, next = null, timer = null, pending = null, showing = false;
     const hideBubble = () => { const shown = hint; hint = null; shown?.close('fade', 'replace'); };
     const tipped = (node, name, use, key = '') => { node.dataset.fvTipName = name; node.dataset.fvTipUse = use; if (key) node.dataset.fvTipKey = key; return node; };
@@ -646,14 +648,14 @@ export function createFirstStart({dialog, api, cn, prompt, onPrefill, onGenerate
         const body = el('div', null, 'fv-tour-body'), head = el('div', null, 'fv-tour-head'), title = el('h3', text('next')); title.id = 'fv-next-title';
         const close = el('button', null, 'fv-tour-x'); close.type = 'button'; close.setAttribute('aria-label', text('close'));
         close.innerHTML = '<svg class="fv-tour-i" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg>';
-        tipped(close, text('close'), cn ? '收起说明，不影响当前操作' : 'Hide this; nothing else changes', 'Esc');
+        tipped(close, text('close'), t('Hide this; nothing else changes', '收起说明，不影响当前操作'), 'Esc');
         head.append(title, close);
         const foot = el('div', null, 'fv-tour-foot'); foot.append(el('span', null, 'fv-tour-grow'));
-        const edit = tipped(el('button', text('edit'), 'fv-tour-btn'), text('edit'), cn ? '放进剪辑视图继续改' : 'Open it in Edit');
-        const longer = tipped(el('button', text('longer'), 'fv-tour-btn fv-primary'), text('longer'), cn ? '从结尾生成下一段' : 'Make the next part from the end');
+        const edit = tipped(el('button', text('edit'), 'fv-tour-btn'), text('edit'), t('Open it in Edit', '放进剪辑视图继续改'));
+        const longer = tipped(el('button', text('longer'), 'fv-tour-btn fv-primary'), text('longer'), t('Make the next part from the end', '从结尾生成下一段'));
         edit.type = longer.type = 'button'; edit.dataset.kind = 'fill'; longer.dataset.kind = 'primary'; longer.dataset.fvTourPrimary = '';
         foot.append(edit, longer);
-        body.append(head, el('p', cn ? '从结尾继续下一段，或到剪辑视图里排列。' : 'Continue from the end, or arrange it in Edit.', 'fv-tour-text'), foot);
+        body.append(head, el('p', t('Continue from the end, or arrange it in Edit.', '从结尾继续下一段，或到剪辑视图里排列。'), 'fv-tour-text'), foot);
         const leave = async action => { next?.close('now', 'replace'); next = null; await action(); };
         // The real result button continues the clip directly; the tutorial is the fallback when it is not on screen.
         longer.onclick = () => leave(() => { const real = dialog.querySelector('.fv-action-extend'); return real && !real.disabled ? real.click() : onLonger(); });

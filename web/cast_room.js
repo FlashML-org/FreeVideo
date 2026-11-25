@@ -181,15 +181,15 @@ export function createCastRoom({api, t, viewURL: outputURL}) {
         if (images.length > 1) images.forEach((picture, index) => {
             const thumb = button('', () => { view = index; paint(); }, 'fv-cast-view-thumb'); thumb.setAttribute('aria-pressed', String(index === view));
             const image = el('img'); image.alt = ''; image.src = inputURL(fileOf(picture.media)); thumb.append(image);
-            const label = picture.label === 'front' ? t('Front', '正面') : t(`Picture ${index + 1}`, `图片 ${index + 1}`);
+            const label = picture.label === 'front' ? t('Front', '正面') : t('Picture {number}', '图片 {number}', { number: index + 1 });
             thumb.setAttribute('aria-label', label); tip(thumb, label, t('Show this picture large', '放大显示这张图片'));
             viewsRow.append(thumb);
         });
         nameLine.textContent = card.name || ONE[card.kind];
-        metaLine.textContent = [ONE[card.kind], images.length ? t(`${images.length} ${images.length === 1 ? 'picture' : 'pictures'}`, `${images.length} 张图`) : ''].filter(Boolean).join(' · ');
-        use.lastElementChild.textContent = t(`Copy @${card.name}`, `复制 @${card.name}`);
+        metaLine.textContent = [ONE[card.kind], !images.length ? '' : images.length === 1 ? t('1 picture', '1 张图') : t('{count} pictures', '{count} 张图', { count: images.length })].filter(Boolean).join(' · ');
+        use.lastElementChild.textContent = t('Copy @{name}', '复制 @{name}', { name: card.name });
         tip(use, t('Copy mention', '复制引用'), t('Paste it in a prompt to use this one', '粘贴到提示词里即可引用'));
-        hint.textContent = t(`Type @${card.name} in a prompt to use it in a shot.`, `在提示词中输入 @${card.name} 即可在镜头里使用。`);
+        hint.textContent = t('Type @{name} in a prompt to use it in a shot.', '在提示词中输入 @{name} 即可在镜头里使用。', { name: card.name });
         voiceBox.replaceChildren();
         if (card.voice?.clip?.file || card.voice?.clip?.url) {
             voiceBox.append(el('div', t('Voice', '声音'), 'fv-cast-voice-label'));
@@ -202,7 +202,7 @@ export function createCastRoom({api, t, viewURL: outputURL}) {
         if (!card) return;
         const text = '@' + card.name + ' ';
         const ok = await copyText(text);
-        notice.textContent = ok ? t(`Copied @${card.name}. Paste it in a prompt.`, `已复制 @${card.name}，粘贴到提示词里使用。`) : t('Could not copy. Type the name after @ in a prompt.', '没能复制。可在提示词中输入 @ 加名字。');
+        notice.textContent = ok ? t('Copied @{name}. Paste it in a prompt.', '已复制 @{name}，粘贴到提示词里使用。', { name: card.name }) : t('Could not copy. Type the name after @ in a prompt.', '没能复制。可在提示词中输入 @ 加名字。');
     }
     function resetRemove() { clearTimeout(arm); arm = 0; remove.classList.remove('fv-library-arming'); remove.lastElementChild.textContent = t('Delete', '删除'); }
     async function removeCard() {

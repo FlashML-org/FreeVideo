@@ -20,7 +20,7 @@ export function queuePanel({jobs, confirmStop, pictureURL, onOpen}) {
         const preview = row.meta?.preview || (row.status === 'done' && row.kind === 'image' && row.result?.file ? pictureURL(row.result.file) : '');
         if (preview) { const i = el('img'); i.alt = ''; i.src = preview; i.draggable = false; th.append(i); } else th.append(icon(row.kind === 'image' ? 'asref' : 'single'));
         const tx = el('span', 'fv-iv-qtx');
-        const title = (row.meta?.text || row.prompt || '').trim() || t(row.kind === 'image' ? 'Picture' : 'Video', row.kind === 'image' ? '图片' : '视频');
+        const title = (row.meta?.text || row.prompt || '').trim() || (row.kind === 'image' ? t('Picture', '图片') : t('Video', '视频'));
         const status = t(...(STATUS_WORDS[row.status] || STATUS_WORDS.running)) + (row.status === 'running' && Number.isFinite(row.percent) ? ` ${Math.floor(row.percent * 100)}%` : '');
         tx.append(el('b', '', title), el('small', '', [t(...(VIEW_WORDS[row.view] || VIEW_WORDS.studio)), status].join(' · ')));
         open.append(th, tx);

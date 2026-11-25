@@ -14,7 +14,7 @@
 // the words a hover shows; the moment a view writes its own attributes, the copy steps aside.
 import { TIPS, MATCHES, LABELS } from './tooltip_copy.js';
 import { installA11y } from './a11y.js';
-import { isChinese } from './i18n.js';
+import { isChinese, translator } from './i18n.js';
 
 if (globalThis.document?.head && !globalThis.document.head.querySelector?.('link[data-fv-sheet=tooltip]')) {
     const sheet = document.createElement('link');
@@ -23,8 +23,8 @@ if (globalThis.document?.head && !globalThis.document.head.querySelector?.('link
 }
 
 const query = new URLSearchParams(globalThis.location?.search || '');
-const cn = isChinese();
-const pick = value => Array.isArray(value) ? value[cn ? 1 : 0] : value;
+const t = translator(isChinese());
+const pick = value => Array.isArray(value) ? t(...value) : value;
 
 export const SHOW_DELAY = 500, HIDE_DELAY = 100, WARM_FOR = 700, GAP = 8, MARGIN = 8, LONG_PRESS = 500, MAX_WIDTH = 320;
 const timing = {show: SHOW_DELAY, hide: HIDE_DELAY, warm: WARM_FOR};

@@ -108,7 +108,7 @@ function loraStrengthBox(initial, commit, said = null) {  // said: {text, value,
     // An emptied box goes back to the strength in use, and the line says so.
     let kept = String(initial);
     input.oninput = () => { if (said) said.text = ''; sync(); }; input.onchange = () => {
-        if (input.value === '' && kept !== '') { input.value = kept; sync(); note.say(t(`Back to ${kept}`, `已恢复为 ${kept}`)); mark.hidden = true; return; }
+        if (input.value === '' && kept !== '') { input.value = kept; sync(); note.say(t('Back to {kept}', '已恢复为 {kept}', { kept })); mark.hidden = true; return; }
         const ok = note.settle(); sync();
         if (said) { said.text = note.line && !note.line.hidden ? note.line.textContent : ''; said.value = Number(input.value); }
         if (note.line && !note.line.hidden) mark.hidden = true; // one line under the box: this one replaces the range note until the next input
@@ -152,15 +152,15 @@ function createChainPartList(t, save, {onShow = () => {}, onHide = () => {}, red
         // In the joined video a continuing part plays its seam: two seconds either side.
         const seam = playSeam && part.seam != null;
         row.meta.disabled = !seam; row.meta.dataset.seam = String(seam);
-        if (seam) row.meta.setAttribute('aria-label', t(`Play the seam before part ${part.index + 1}`, `播放第 ${part.index + 1} 段的接缝`));
+        if (seam) row.meta.setAttribute('aria-label', t('Play the seam before part {part}', '播放第 {part} 段的接缝', { part: part.index + 1 }));
         else row.meta.removeAttribute('aria-label');
         // One way on per part: a stopped video continues from its first unfinished part; a finished part makes a new video.
         const action = part.action, number = part.index + 1;
         row.redo.hidden = !action;
         if (action) {
             row.redo.textContent = action === 'resume' ? t('Continue from here', '从这段继续') : t('Redo from here', '从这段重新生成');
-            row.redo.setAttribute('aria-label', action === 'resume' ? t(`Continue from part ${number}`, `从第 ${number} 段继续`)
-                : t(`Redo from part ${number}`, `从第 ${number} 段重新生成`));
+            row.redo.setAttribute('aria-label', action === 'resume' ? t('Continue from part {number}', '从第 {number} 段继续', { number })
+                : t('Redo from part {number}', '从第 {number} 段重新生成', { number }));
         }
         if (timers.has(part.id) || row.tag.dataset.kind === 'error' || row.starting) return;
         const ended = {done: t('Done', '已完成'), failed: t('Failed', '失败'), cancelled: t('Stopped', '已停止'), interrupted: t('Stopped', '已停止')}[part.state];
@@ -180,7 +180,7 @@ function createChainPartList(t, save, {onShow = () => {}, onHide = () => {}, red
             // The line says the server's own sentence when it gave one; the card carries what failed and a report.
             // A redo refused for its changed settings is told on the card; its line stays the short one.
             const said = error.code === 'redo_request_changed' ? null : error.said || error.cause?.said;
-            if (rows.get(row.part.id) === row) flash(row, said ? t(said[0], said[1])
+            if (rows.get(row.part.id) === row) flash(row, said ? t(...said)
                 : t('Could not start. See the details on the picture.', '没能开始，原因见画面上的说明。'), 'error');
             onError(error);
         } finally { row.starting = false; row.redo.disabled = false; }
@@ -214,7 +214,7 @@ function createChainPartList(t, save, {onShow = () => {}, onHide = () => {}, red
         editing = row; clearTimeout(timers.get(row.part.id)); timers.delete(row.part.id); tag(row, '');
         const editor = row.editor = el('textarea', null, 'fv-chain-part-editor');
         editor.maxLength = 20000; editor.value = row.draft = row.part.text;
-        editor.setAttribute('aria-label', t(`Part ${row.part.index + 1} description`, `第 ${row.part.index + 1} 段描述`));
+        editor.setAttribute('aria-label', t('Part {part} description', '第 {part} 段描述', { part: row.part.index + 1 }));
         editor.addEventListener('input', () => { row.draft = editor.value; });
         listenDialogKey(editor, 'keydown', event => {
             // Escape leaves the edit, never the studio.
@@ -263,10 +263,10 @@ function createChainPartList(t, save, {onShow = () => {}, onHide = () => {}, red
                 row.redo.onclick = event => { event.stopPropagation(); remake(row); };
                 row.element.onclick = () => open(row);
                 const joins = part.continues === 'part' ? t('After the previous part', '接上一段') : part.continues === 'video' ? t('After the video', '接原视频') : '';
-                row.meta = el('button', [joins, t(`${part.seconds} s`, `${part.seconds} 秒`)].filter(Boolean).join(' · '), 'fv-chain-part-meta');
+                row.meta = el('button', [joins, t('{seconds} s', '{seconds} 秒', { seconds: part.seconds })].filter(Boolean).join(' · '), 'fv-chain-part-meta');
                 row.meta.type = 'button';
                 row.meta.onclick = event => { event.stopPropagation(); if (row.part.seam != null) playSeam?.(row.part.seam); };
-                row.element.append(el('span', t(`Part ${index + 1}`, `第 ${index + 1} 段`), 'fv-chain-part-name'), row.meta, row.text, row.tag, row.redo);
+                row.element.append(el('span', t('Part {number}', '第 {number} 段', { number: index + 1 }), 'fv-chain-part-name'), row.meta, row.text, row.tag, row.redo);
                 rows.set(part.id, row); element.append(row.element);
             }
             if (editing === row && !part.editable) {
@@ -386,7 +386,8 @@ export function loraPanel(node, panel, {promptNode = null} = {}) {
     let names = [], disposed = false, rendering = false, renderAgain = false;
     const drafts = new Map(), errors = new Map(), saves = new Map();
     let skipped = 0;
-    const idleNote = () => (skipped ? t(skipped === 1 ? ' 1 other LoRA file in the folder is not in .safetensors format and is not listed.' : ` ${skipped} other LoRA files in the folder are not in .safetensors format and are not listed.`, ` 文件夹中另有 ${skipped} 个 LoRA 文件不是 .safetensors 格式，未列出。`) : '');
+    const idleNote = () => (!skipped ? '' : skipped === 1 ? t(' 1 other LoRA file in the folder is not in .safetensors format and is not listed.', ' 文件夹中另有 1 个 LoRA 文件不是 .safetensors 格式，未列出。')
+        : t(' {count} other LoRA files in the folder are not in .safetensors format and are not listed.', ' 文件夹中另有 {count} 个 LoRA 文件不是 .safetensors 格式，未列出。', { count: skipped }));
     const verdicts = createVerdicts((path, options) => api.fetchApi(path, options));
     let rowChecks = [];
     const strengthSaid = new Map(); // row index -> {text}: the "At most 100" line of its strength box
@@ -855,7 +856,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             unknown_example: ['This example is not available yet.', '这个示例暂时不能用'],
         }[reason];
         const detail = String(error?.message || error || '').split('\n')[0].slice(0, 160);
-        fault(say ? t(...say) : detail ? t(`The example was not filled in: ${detail}`, `示例没有填入：${detail}`) : t('The example was not filled in.', '示例没有填入'));
+        fault(say ? t(...say) : detail ? t('The example was not filled in: {detail}', '示例没有填入：{detail}', { detail }) : t('The example was not filled in.', '示例没有填入'));
     };
     const tourBlock = example => busy || queued || capturing ? 'busy'
         : (example.prompt && linked(node, 'text')) || Object.keys(example.settings || {}).some(name => linked(node, name)) ? 'linked' : 'unavailable';
@@ -1503,7 +1504,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     }
     function showEffortEstimate(steps = Number(baseSteps.value), twoPassPlan = twoPass.checked, cache = stepCacheNow(), factor = upscaleNow()) {
         effort.setWarning('');
-        const parts = lengthControl.plan?.count > 1 ? t(`${lengthControl.plan.count} parts`, `分 ${lengthControl.plan.count} 段`) : '';
+        const parts = lengthControl.plan?.count > 1 ? t('{count} parts', '分 {count} 段', { count: lengthControl.plan.count }) : '';
         // A request that fits one run keeps its own estimate while the longest run is unknown.
         if ((lengthControl.capabilityState === 'pending' || lengthControl.capabilityState === 'unavailable')
             && (lengthControl.needsPlan || lengthControl.plan?.count > 1)) {
@@ -1517,8 +1518,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
             const plan = lengthControl.plan;
             const seconds = steps === Number(baseSteps.value) && twoPassPlan === twoPass.checked && cache === stepCacheNow() && factor === upscaleNow()
                 ? sumPartEstimates(plan, lengthControl.estimate) : null;
-            effort.setEstimate(seconds > 0 ? t(`${plan.count} parts · about ${Math.ceil(seconds / 60)} min`, `分 ${plan.count} 段 · 约 ${Math.ceil(seconds / 60)} 分钟`)
-                : t(`${plan.count} parts`, `分 ${plan.count} 段`));
+            effort.setEstimate(seconds > 0 ? t('{count} parts · about {minutes} min', '分 {count} 段 · 约 {minutes} 分钟', { count: plan.count, minutes: Math.ceil(seconds / 60) })
+                : t('{count} parts', '分 {count} 段', { count: plan.count }));
             return;
         }
         const rangeEstimate = capabilityView?.estimate(steps, twoPassPlan, arguments.length ? 3 : Number(refineSteps.value), cache, factor);
@@ -1678,7 +1679,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // The queued count sits after the part number; a line too narrow for both puts the count on its own line.
     const setChainLine = text => {
         const main = el('span', text), more = chainController?.waiting, queued = el('span', null, 'fv-chain-queued');
-        if (more) queued.append(el('span', ' · ', 'fv-chain-sep'), t(`${more} more queued`, `另有 ${more} 条排队`));
+        if (more) queued.append(el('span', ' · ', 'fv-chain-sep'), t('{more} more queued', '另有 {more} 条排队', { more }));
         chainLine.replaceChildren(main, ...(more ? [queued] : []));
     };
     progress.updateReport({report_id: node.freevideoReportId});
@@ -1745,7 +1746,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         const g = r?.geometry || {}, parts = [];
         const length = g.seconds || (g.frames && g.frames / (g.fps || 24));
         if (g.width && g.height) parts.push({key: 'size', text: `${g.width} × ${g.height}`});
-        if (length) parts.push({key: 'length', text: t(`${Number(length).toFixed(1)} s`, `${Number(length).toFixed(1)} 秒`)});
+        if (length) parts.push({key: 'length', text: t('{seconds} s', '{seconds} 秒', { seconds: Number(length).toFixed(1) })});
         // The work's own size and length; the level is the console's (a first-pass preview is still named).
         if (r?.preview) parts.push({key: 'level', text: t('First-pass preview', '一采预览')});
         return asParts ? parts : parts.map(part => part.text).join(' · ');
@@ -2265,8 +2266,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
             const position = chainPosition(chain, message);
             const joining = readChainResult(chain).joining, waiting = chain.state === 'queued' && message.phase === 'prepare';
             setChainLine(joining ? joiningText(chain.joining_part, t)
-                : waiting ? (chain.waiting ? waitingText(chain.waiting, t) : t(`Waiting in queue · Part ${position.index + 1} of ${position.count}`, `正在排队 · 第 ${position.index + 1} 段，共 ${position.count} 段`))
-                : t(`Part ${position.index + 1} of ${position.count}`, `第 ${position.index + 1} 段，共 ${position.count} 段`));
+                : waiting ? (chain.waiting ? waitingText(chain.waiting, t) : t('Waiting in queue · Part {part} of {count}', '正在排队 · 第 {part} 段，共 {count} 段', { part: position.index + 1, count: position.count }))
+                : t('Part {part} of {count}', '第 {part} 段，共 {count} 段', { part: position.index + 1, count: position.count }));
             progress.element.querySelector('.fv-generation-label').hidden = joining || waiting;
             progress.element.classList.toggle('fv-generation-waiting', waiting);
             progress.updateReport(message); showProgress(message);
@@ -2284,7 +2285,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             busy = active || Boolean(queueState?.running || queueState?.pending.length); queued = chain?.state === 'queued';
             chainLine.hidden = !active;
             setChainLine(outcome?.joining ? joiningText(chain?.joining_part, t)
-                : t(`Part ${position.index + 1} of ${position.count}`, `第 ${position.index + 1} 段，共 ${position.count} 段`));
+                : t('Part {part} of {count}', '第 {part} 段，共 {count} 段', { part: position.index + 1, count: position.count }));
             if (active && node.properties.freevideo_chain?.width) previewSize(node.properties.freevideo_chain.width, node.properties.freevideo_chain.height);
             if (!active) { cancelling = false; hideProgress(); }
             if (!active) { progress.element.querySelector('.fv-generation-label').hidden = false; progress.element.classList.remove('fv-generation-waiting'); }
@@ -2450,7 +2451,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     cleanup.push(() => otherUsage.dispose());
     runbar.append(requestAssets.element, runrow, addVideoNote, queueActions); controls.append(runbar);
     // A chain action the server refused with its own sentence says that sentence, not the general "could not continue".
-    const queueError = error => (error?.action && error.said ? t(error.said[0], error.said[1]) : null) || ({
+    const queueError = error => (error?.action && error.said ? t(...error.said) : null) || ({
         queue_unavailable: t('Could not read the queue. The loop has stopped; videos already added stay queued.', '暂时读不到队列，循环已停止；已加入的视频还在队列中。'),
         cancel_failed: t('Could not cancel. Try again.', '没有取消成功，请重试。'),
         move_failed: t('Could not move it. Try again.', '没有移动成功，请重试。'),
@@ -2461,7 +2462,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         missing_node: t('This node is disabled or no longer in the workflow.', '该节点已禁用或已从工作流移除。'),
         chain_cancel_failed: t('Could not cancel. Refresh the page and try again.', '没有取消成功，请刷新页面后再试。'),
         chain_resume_failed: t('Could not continue. Refresh the page and try again.', '没有继续生成，请刷新页面后再试。'),
-    }[error?.message] || (error?.said ? t(error.said[0], error.said[1]) : null) || userMessage(error, t));
+    }[error?.message] || (error?.said ? t(...error.said) : null) || userMessage(error, t));
     let lastQueueError = null, connectionNotice = false;
     watchEngineExit(api).catch(() => {});
     refreshLoopStalls(api);
@@ -2511,9 +2512,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
         if (disposed) return;
         status.dataset.error = 'true';
         // The server's plain sentence (a full disk, unreadable storage) when it has one; what failed stays in the card.
-        status.textContent = error.said ? (error.joining ? '' : t(`Part ${error.index + 1}: `, `第 ${error.index + 1} 段：`)) + t(error.said[0], error.said[1])
+        status.textContent = error.said ? (error.joining ? '' : t('Part {part}: ', '第 {part} 段：', { part: error.index + 1 })) + t(...error.said)
             : error.joining ? t('Could not join the parts. See the details on the picture.', '未能接合各段，原因见画面上的说明。')
-            : t(`Part ${error.index + 1} could not be generated. See the details on the picture.`, `第 ${error.index + 1} 段未能生成，原因见画面上的说明。`);
+            : t('Part {part} could not be generated. See the details on the picture.', '第 {part} 段未能生成，原因见画面上的说明。', { part: error.index + 1 });
         if (lastQueueError === error.message) return;
         lastQueueError = error.message;
         const report = failure.show(error.message, false,
@@ -2522,7 +2523,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     }
     function lineLabel() {
         const n = lineTexts().length;
-        return n ? t(n === 1 ? 'Add 1 video' : `Add ${n} videos`, `添加 ${n} 个视频`) : t('Add videos', '添加视频');
+        return !n ? t('Add videos', '添加视频') : n === 1 ? t('Add 1 video', '添加 1 个视频') : t('Add {n} videos', '添加 {n} 个视频', { n });
     }
     function updateRunButton() {
         const submitting = capturing || queueState?.submitting;
@@ -2539,16 +2540,16 @@ export function openStudio(node, {extendFrom = null} = {}) {
         const chainReason = !chainWait ? '' : readChainResult(chain)?.joining
             ? t('Joining the parts…', '正在接合各段…')
             : chain?.state === 'queued' ? (chain.waiting ? waitingText(chain.waiting, t) : t('Queued…', '排队中…'))
-            : t(`Generating part ${position.index + 1}…`, `正在生成第 ${position.index + 1} 段…`);
+            : t('Generating part {part}…', '正在生成第 {part} 段…', { part: position.index + 1 });
         generate.disabled = submitting || chainWait || (lengthControl.blocked && !lengthControl.retryable) || (runMode === 'loop' && queueState?.looping) || enhancer.reversing;
         paintReverse?.();
         // Planning the parts and adding a batch are different waits; a count is only shown when the queue really has one.
-        const adding = queueState?.batch ? t(`Adding ${Math.min(queueState.batch.done + 1, queueState.batch.total)}/${queueState.batch.total}…`,
-            `正在添加 ${Math.min(queueState.batch.done + 1, queueState.batch.total)}/${queueState.batch.total}…`)
+        const adding = queueState?.batch ? t('Adding {current}/{total}…',
+            '正在添加 {current}/{total}…', { current: Math.min(queueState.batch.done + 1, queueState.batch.total), total: queueState.batch.total })
             : capturing ? t('Planning segments…', '正在规划分段…') : t('Adding…', '正在添加…');
         const label = submitting ? adding
             : chainReason || (byLine() ? lineLabel()
-            : runMode === 'batch' ? t(`Add ${count.value || '…'} videos`, `添加 ${count.value || '…'} 个视频`)
+            : runMode === 'batch' ? t('Add {count} videos', '添加 {count} 个视频', { count: count.value || '…' })
             : runMode === 'loop' ? (queueState?.looping ? t('Looping', '循环中') : t('Start loop', '开始循环'))
             : busy ? t('Add to queue', '加入队列')
             : !borrowed && previewFirst.checked && !previewFirst.disabled ? t('Generate preview', '生成预览') : t('Generate video', '生成视频'));
@@ -2651,14 +2652,14 @@ export function openStudio(node, {extendFrom = null} = {}) {
         if (wasBusy && !busy) { requestAssets?.refresh(true); }
         const g = active?.inputs;
         runningSummary = Number.isFinite(g?.width) && Number.isFinite(g?.height)
-            ? [t('Generating', '正在生成'), `${g.width} × ${g.height}`, Number(g.seconds) > 0 ? t(`${g.seconds} s`, `${g.seconds} 秒`) : ''].filter(Boolean).join(' · ') : '';
+            ? [t('Generating', '正在生成'), `${g.width} × ${g.height}`, Number(g.seconds) > 0 ? t('{seconds} s', '{seconds} 秒', { seconds: g.seconds }) : ''].filter(Boolean).join(' · ') : '';
         // The right-hand frame belongs to the submitted video. Draft edits on
         // the left must never reshape a video currently being generated.
         if (Number.isFinite(g?.width) && Number.isFinite(g?.height)) previewSize(g.width, g.height);
         const queueRows = state.running_all ? [...state.running_all, ...state.pending] : state.pending;
         const running = state.running_all?.length || 0, waiting = state.pending.length;
-        queueToggle.textContent = !state.running_all ? t(`Queued · ${waiting}`, `排队 ${waiting} 个`)
-            : [running && t(`${running} generating`, `生成中 ${running} 个`), waiting && t(`${waiting} queued`, `排队 ${waiting} 个`)]
+        queueToggle.textContent = !state.running_all ? t('Queued · {waiting}', '排队 {waiting} 个', { waiting })
+            : [running && t('{running} generating', '生成中 {running} 个', { running }), waiting && t('{waiting} queued', '排队 {waiting} 个', { waiting })]
                 .filter(Boolean).join(' · ');
         queueDetails.hidden = queueRows.length === 0;
         const signature = JSON.stringify(queueRows.map(row => [row.id, row.inputs.width, row.inputs.height,
@@ -2681,7 +2682,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
                 if (executing) {
                     const bar = el('div', null, 'fv-queue-bar'), fill = el('div', null, 'fv-queue-fill');
                     bar.setAttribute('role', 'progressbar'); bar.setAttribute('aria-valuemin', '0'); bar.setAttribute('aria-valuemax', '100');
-                    bar.setAttribute('aria-label', t(`${size} · ${row.inputs.seconds} s`, `${size} · ${row.inputs.seconds} 秒`));
+                    bar.setAttribute('aria-label', t('{size} · {seconds} s', '{size} · {seconds} 秒', { size, seconds: row.inputs.seconds }));
                     const fraction = row.progress?.overall?.fraction;
                     if (Number.isFinite(fraction)) {
                         const percent = Math.min(100, Math.max(0, fraction * 100));
@@ -2694,8 +2695,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
                     try { await queueController.cancel(row.id); }
                     catch (error) { showQueueError(error); remove.disabled = false; }
                 }, 'fv-quiet');
-                remove.setAttribute('aria-label', executing ? t(`Cancel ${size} · ${row.inputs.seconds} s`, `取消 ${size} · ${row.inputs.seconds} 秒`)
-                    : t(`Remove queued video ${index + 1}`, `移除排队的第 ${index + 1} 个`));
+                remove.setAttribute('aria-label', executing ? t('Cancel {size} · {seconds} s', '取消 {size} · {seconds} 秒', { size, seconds: row.inputs.seconds })
+                    : t('Remove queued video {number}', '移除排队的第 {number} 个', { number: index + 1 }));
                 item.append(description);
                 // The buttons move together: on a narrow list they drop below the text, aligned right.
                 const actions = el('div', null, 'fv-queue-buttons');
@@ -2706,7 +2707,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
                         try { await queueController.moveFirst(row.id); showMoved(); }
                         catch (error) { movedId = null; showQueueError(error); first.disabled = remove.disabled = false; }
                     }, 'fv-quiet');
-                    first.setAttribute('aria-label', t(`Move queued video ${index + 1} to front`, `把排队的第 ${index + 1} 个排到最前`));
+                    first.setAttribute('aria-label', t('Move queued video {number} to front', '把排队的第 {number} 个排到最前', { number: index + 1 }));
                     actions.append(first);
                 }
                 actions.append(remove); item.append(actions); queueList.append(item);
@@ -2816,7 +2817,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         const chosenMode = runMode, texts = byLine() ? lineTexts() : null;
         const batchCount = texts ? texts.length : chosenMode === 'batch' ? Number(count.value) : 1;
         if (texts && !texts.length) { status.dataset.error = 'true'; status.textContent = t('Write one prompt per line, then add them.', '每行写一条描述后再添加。'); prompt.focus(); return; }
-        if (texts && texts.length > 100) { status.dataset.error = 'true'; status.textContent = t(`At most 100 lines at a time; there are ${texts.length}.`, `一次最多 100 行，现在有 ${texts.length} 行。`); prompt.focus(); return; }
+        if (texts && texts.length > 100) { status.dataset.error = 'true'; status.textContent = t('At most 100 lines at a time; there are {count}.', '一次最多 100 行，现在有 {count} 行。', { count: texts.length }); prompt.focus(); return; }
         if (texts && timedParse(texts.join('\n'))[1].length) { status.dataset.error = 'true'; status.textContent = t('Timed lines cannot be split into separate videos. Turn off One prompt per line.', '带时间的台词不能拆成多个视频，请关闭“每行一条描述”。'); return; }
         const originalSeed = value(node, 'seed'), seedMode = mode.value;
         // A request that is not accepted leaves the node mode as the user had it; a retry turns it on again.
@@ -2908,7 +2909,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         const length = lengthControl.plan?.count > 1 ? lengthControl.plan.seconds : Number.isFinite(frames) ? frames / 24 : null;
         const whole = Math.round(length), minutes = Math.floor(whole / 60), rest = whole % 60;
         duration.textContent = length === null ? '—' : `${length <= 60 ? `${lengthControl.plan?.count > 1 ? length : length.toFixed(3)} s`
-            : rest ? t(`${minutes} min ${rest} s`, `${minutes} 分 ${rest} 秒`) : t(`${minutes} min`, `${minutes} 分钟`)} · 24 fps`;
+            : rest ? t('{minutes} min {seconds} s', '{minutes} 分 {seconds} 秒', { minutes, seconds: rest }) : t('{minutes} min', '{minutes} 分钟', { minutes })} · 24 fps`;
     }
     function updateCanvas() {
         syncResolutionLabel();
@@ -3350,13 +3351,13 @@ export function openStudio(node, {extendFrom = null} = {}) {
     seconds.addEventListener('change', () => {
         const n = Number(seconds.value), most = longest(), least = 2;
         if (seconds.value === '' || !Number.isFinite(n) || seconds.disabled) return;
-        if (most > 0 && n > most) { seconds.value = String(most); durationNote.say(t(`At most ${most} s`, `最长 ${most} 秒`)); }
-        else if (n < least) { seconds.value = String(least); durationNote.say(t(`At least ${least} s`, `最短 ${least} 秒`)); }
+        if (most > 0 && n > most) { seconds.value = String(most); durationNote.say(t('At most {most} s', '最长 {most} 秒', { most })); }
+        else if (n < least) { seconds.value = String(least); durationNote.say(t('At least {least} s', '最短 {least} 秒', { least })); }
     }, true);
     const stepValue = stepper.element.querySelector('.fvs-step-value');
     const paintDuration = () => {
         const plan = lengthControl?.plan, parts = plan?.count > 1 ? plan.count : 0;
-        stepValue.dataset.fvTipUse = parts ? t(`Made in ${parts} parts and joined`, `分 ${parts} 段生成并拼接`) : t('Click to type an exact length', '点一下输入精确时长');
+        stepValue.dataset.fvTipUse = parts ? t('Made in {parts} parts and joined', '分 {parts} 段生成并拼接', { parts }) : t('Click to type an exact length', '点一下输入精确时长');
         stepper.sync();
     };
     seconds.addEventListener('input', paintDuration); seconds.addEventListener('change', paintDuration);
@@ -3540,7 +3541,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         const level = item.level && SAMPLING_LEVELS().find(tier => tier.name === item.level);
         const shape = item.aspect && studioShapes(t).find(([id]) => id === item.aspect)?.[1];
         const size = item.w && item.h ? `${item.w} × ${item.h}` : item.pixels ? `${Number(item.pixels).toFixed(2)} MP` : '';
-        return [shape, size, Number(item.seconds) > 0 ? t(`${item.seconds} s`, `${item.seconds} 秒`) : '', level ? effortName(t, level) : '',
+        return [shape, size, Number(item.seconds) > 0 ? t('{seconds} s', '{seconds} 秒', { seconds: item.seconds }) : '', level ? effortName(t, level) : '',
             typeof item.prompt === 'string' ? t('with prompt', '含描述') : ''].filter(Boolean).join(' · ');
     };
     const SAMPLING_LEVELS = () => effort.levels();
@@ -3590,7 +3591,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
                 try { const reply = await api.fetchApi('/models/loras', {cache: 'no-store'}); names = reply.ok ? await reply.json() : []; } catch {}
                 const rows = settings.loras.filter(row => names.includes(row.name)), missing = settings.loras.filter(row => !names.includes(row.name)).map(row => row.name);
                 if (set(loraNode, 'adapters', JSON.stringify(rows))) window.dispatchEvent(new CustomEvent('freevideo-loras', {detail: loraNode.id}));
-                if (missing.length) problems.push(t(`LoRA not found: ${missing.join(', ')}`, `找不到 LoRA：${missing.join('、')}`));
+                if (missing.length) problems.push(t('LoRA not found: {names}', '找不到 LoRA：{names}', { names: missing.join(t(', ', '、')) }));
             }
             const toggle = enhanceSwitch();
             if (typeof settings.enhance === 'boolean' && toggle && !toggle.disabled && toggle.checked !== settings.enhance) toggle.click();

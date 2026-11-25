@@ -20,12 +20,12 @@ export const describedTrack = track => track.kind === 'video' && track.clips.som
 const agentWrote = record => record.tracks.some(track => track.clips.some(clip => clip.text_by === 'agent'));
 // Status words appear only in the hover tip and the panels (Iris 10-11).
 export function blockStatus(clip, t, fraction = 0, interrupted = false) {
-    if (clip.pending === 'running') return t(`Generating ${Math.round(fraction * 100)}%`, `生成中 ${Math.round(fraction * 100)}%`);
+    if (clip.pending === 'running') return t('Generating {percent}%', '生成中 {percent}%', { percent: Math.round(fraction * 100) });
     if (clip.pending === 'stopped') return interrupted ? t('Interrupted', '上次中断') : t('Stopped', '已停止');
     if (clip.pending === 'failed') return t('Unfinished', '未完成');
     if (clip.pending) return t('Not generated', '未生成');
     const current = model.takes(clip).find(take => take.index === -1);
-    return model.takes(clip).length > 1 ? t(`Version ${current.number}`, `第 ${current.number} 版`) : '';
+    return model.takes(clip).length > 1 ? t('Version {number}', '第 {number} 版', { number: current.number }) : '';
 }
 let serial = 0;
 export function createBlockNotes({state, t, actions}) {
@@ -79,7 +79,7 @@ export function createBlockNotes({state, t, actions}) {
             versions.replaceChildren(versionsLabel, picker);
         }
         [...picker.children].forEach((control, index) => {
-            control.setAttribute('aria-label', t(`Version ${list[index].number}`, `第 ${list[index].number} 版`));
+            control.setAttribute('aria-label', t('Version {number}', '第 {number} 版', { number: list[index].number }));
             control.disabled = off || !list[index].usable;
         });
         picker.value = -1;

@@ -9,10 +9,11 @@
 import {TIPS} from '../tooltip_copy.js';
 import {randomSeed} from '../studio_queue.js';
 import './tray_pop.js';
+import { translator } from '../i18n.js';
 
 const make = (tag, cls, text) => { const element = document.createElement(tag); if (cls) element.className = cls; if (text != null) element.textContent = text; return element; };
-const say = (tray, en, zh) => tray.fvAtChinese ? zh : en;
-const pick = (tray, pair) => (tray.fvAtChinese ? pair?.[1] : pair?.[0]) || '';
+const say = (tray, en, zh, values) => translator(tray.fvAtChinese)(en, zh, values);
+const pick = (tray, pair) => (pair && say(tray, ...pair)) || '';
 const tipOn = (element, name, use = '', why = '') => {
     element.dataset.fvTipName = name;
     if (use) element.dataset.fvTipUse = use; else delete element.dataset.fvTipUse;
@@ -204,7 +205,7 @@ function paintLength(tray, dialog) {
         const time = Number.isInteger(seconds) ? String(seconds) : seconds.toFixed(1);
         // More than eight parts is refused by the planner, which says so itself (below, as the problem line).
         const text = !one && block && !block.disabled && count > 1 && count <= 8
-            ? say(tray, `${time} s this time · made in ${count} parts and joined`, `这次 ${time} 秒 · 分 ${count} 段生成后接起来`) : '';
+            ? say(tray, '{seconds} s this time · made in {count} parts and joined', '这次 {seconds} 秒 · 分 {count} 段生成后接起来', { seconds: time, count }) : '';
         if (plan.textContent !== text) plan.textContent = text;
         toggle(plan, 'fv-at-gone', !text);
     }

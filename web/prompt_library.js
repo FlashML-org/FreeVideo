@@ -177,7 +177,7 @@ export function createPromptLibrary({t, host, fill, snapshot, apply, describe = 
             const rows = presets(storage);
             for (const item of rows) list.append(row(item.name, describe(item.settings), () => {
                 hide();
-                Promise.resolve(apply(item.settings)).then(problem => problem ? notify(problem, null, 'warn') : notify(t(`Preset applied: ${item.name}`, `已套用预设：${item.name}`)),
+                Promise.resolve(apply(item.settings)).then(problem => problem ? notify(problem, null, 'warn') : notify(t('Preset applied: {name}', '已套用预设：{name}', { name: item.name })),
                     () => notify(t('Could not apply the preset.', '预设没能套用。'), null, 'fail'));
             }, () => { removePreset(item.id, storage); render(); }, t('Delete preset', '删除预设'), {named: true}));
             if (!rows.length) empty(t('Save the current settings to use them again in one step.', '把当前设置存成预设，下次一步套用。'));

@@ -2,6 +2,7 @@
 // a word is written only when it is chosen, and the typed language decides which form is inserted.
 import {caretRect} from './caret_rect.js';
 import {listenDialogKey} from './dialog_keys.js';
+import { translatorFor } from './i18n.js';
 export const TERMS = [
     ['dolly in', '推镜头'], ['dolly out', '拉镜头'], ['pan left', '左摇镜头'], ['pan right', '右摇镜头'],
     ['tilt up', '上摇镜头'], ['tilt down', '下摇镜头'], ['tracking shot', '跟拍镜头'], ['orbit shot', '环绕镜头'],
@@ -42,7 +43,7 @@ export function termMatches(text, caret = text.length, terms = TERMS) {
 }
 
 let serial = 0;
-export function attachTermSuggest(input, {t = en => en, host, suppressed = () => false} = {}) {
+export function attachTermSuggest(input, {t = translatorFor(null, false), host, suppressed = () => false} = {}) {
     if (!document.querySelector('link[data-freevideo-references]')) {
         const css = document.createElement('link'); css.rel = 'stylesheet';
         css.dataset.freevideoReferences = ''; css.href = new URL('./prompt_references.css', import.meta.url).href;

@@ -186,7 +186,8 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
         strip.setAttribute('aria-label', t('Delete this clip', '删除这个素材'));
         const users = asking.users, hint = el('small', asking.failed && !asking.busy ? 'fv-ed-source-confirm-problem' : null,
             asking.busy ? t('Deleting…', '正在删除…') : asking.failed ? t('Could not delete', '删除失败，请重试')
-            : users ? t(`Used in ${users} ${users === 1 ? 'edit' : 'edits'}`, `已用于 ${users} 个剪辑`) : t('Original file kept', '原文件保留'));
+            : !users ? t('Original file kept', '原文件保留')
+            : users === 1 ? t('Used in 1 edit', '已用于 1 个剪辑') : t('Used in {count} edits', '已用于 {count} 个剪辑', { count: users }));
         const buttons = el('div', 'fv-ed-source-confirm-actions');
         const no = el('button', 'fv-ed-source-confirm-no', t('Cancel', '取消')), yes = el('button', 'fv-ed-source-confirm-yes', t('Delete', '删除'));
         for (const control of [no, yes]) { control.type = 'button'; control.disabled = asking.busy; }
@@ -276,7 +277,8 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
             if (where) message.append(issueButton(t, () => ({where, message: text})));
         }
         const unread = tab === 'import' ? importUnread : 0;
-        unreadable.textContent = unread ? t(`${unread} imported ${unread === 1 ? 'file' : 'files'} could not be read`, `另有 ${unread} 个导入的文件无法读取`) : '';
+        unreadable.textContent = !unread ? '' : unread === 1 ? t('1 imported file could not be read', '另有 1 个导入的文件无法读取')
+            : t('{count} imported files could not be read', '另有 {count} 个导入的文件无法读取', { count: unread });
         if (!focusAfter && keep) focusAfter = keep.button ? {again: keep} : keep.control ? {control: keep} : keep.card ? {card: keep.card} : {next: null};
         if (focusAfter) {
             const target = focusAfter; focusAfter = null;

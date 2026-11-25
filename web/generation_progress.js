@@ -67,12 +67,12 @@ function subactivity(message, activity, t) {
     // Only a download name needs the fallback frame; every other activity already reads as a sentence.
     const named = activity && activity.key !== 'prepare' ? activity.text : '';
     return {key: `other:${activity?.key || 'prepare'}`, sampling,
-        text: !named ? t(...ACTIVITY.prepare) : activity.key === 'download' ? t(`Still working: ${named}`, `仍在进行：${named}`) : named};
+        text: !named ? t(...ACTIVITY.prepare) : activity.key === 'download' ? t('Still working: {named}', '仍在进行：{named}', { named }) : named};
 }
 const waitDuration = (seconds, t) => {
     const n = Math.floor(Math.max(0, seconds)), minutes = Math.floor(n / 60), rest = n % 60;
     return minutes ? t(`${minutes} min${rest ? ` ${rest} s` : ''}`, rest ? `${minutes} 分 ${rest} 秒` : `${minutes} 分钟`)
-        : t(`${rest} s`, `${rest} 秒`);
+        : t('{rest} s', '{rest} 秒', { rest });
 };
 // Only our status sentences, scoped to a request; no prompt or engine log.
 // A reopened Studio/tab must not announce the replayed explanation again.
@@ -168,8 +168,7 @@ function activityLabel(message, t, plan = {}, secondPass = false, references = f
         const unit = message.total >= 2**30 ? 'GiB' : 'MiB';
         detail = `${size(done, unit)} / ${size(message.total, unit)} ${unit}`;
     } else if (COUNT_UNITS[message.unit]) {
-        const [en, zh] = COUNT_UNITS[message.unit];
-        detail = t(`${done} / ${message.total} ${en}`, `${done} / ${message.total} ${zh}`);
+        detail = `${done} / ${message.total} ${t(...COUNT_UNITS[message.unit])}`;
     } else return result;
     return {...result, text: `${result.text} · ${detail}`, parts: [...result.parts || [result.text], detail]};
 }
@@ -190,31 +189,32 @@ function baseActivityLabel(message, t, plan = {}, secondPass = false, references
             }
         }
         // The sentence, then its size and speed: the parts the stage line keeps whole (see renderLabel).
-        const parts = [t(download[0], download[1]), ...detail];
+        const parts = [t(...download), ...detail];
         return {key: 'download', text: parts.join(' · '), parts};
     }
     const steps = (key, name, step, total) => {
-        const [en, zh, enSteps, zhSteps] = SAMPLING_NAME[name];
+        const words = SAMPLING_NAME[name], stepWords = t(...words.slice(2, 4));
         const pass = SAMPLING_PASS[name];
         return {key, text: Number.isInteger(step) && Number.isInteger(total) && total > 0
-            ? t(`${enSteps} ${step} of ${total}${pass ? ` (${pass[0]})` : ''}`, `${zhSteps}${step} / ${total} 步${pass ? `（${pass[1]}）` : ''}`)
-            : t(en, zh)};
+            ? (pass ? t('{steps} {step} of {total} ({pass})', '{steps}{step} / {total} 步（{pass}）', { steps: stepWords, step, total, pass: t(...pass) })
+                : t('{steps} {step} of {total}', '{steps}{step} / {total} 步', { steps: stepWords, step, total }))
+            : t(...words.slice(0, 2))};
     };
     const base = Number.isInteger(plan.base_steps) && plan.base_steps > 0 ? plan.base_steps : null;
     const second = plan.second || plan.upscale_target;
     if (message.prediction || message.sampling_plan) {
         if (!ranOnePass(plan)) return named('prepare');
         const n = plan.base_steps;
-        return {key: 'prepare', text: t(`Two-pass acceleration needs 8 first-pass steps. This video uses a single ${n}-step pass.`,
-            `只有一采为 8 步时才会使用二采加速，这次按 ${n} 步只采样一遍。`)};
+        return {key: 'prepare', text: t('Two-pass acceleration needs 8 first-pass steps. This video uses a single {n}-step pass.',
+            '只有一采为 8 步时才会使用二采加速，这次按 {n} 步只采样一遍。', { n })};
     }
     if (phase === 'recovery') return message.retry?.reuse_sampling === true ? named('decode')
         : message.retry?.reuse_first_pass === true ? steps('pass2', 'pass2') : named('prepare');
     if (phase === 'sample_finalize') return named('decode');
     if (message.stage === 'latent_upscale' || phase === 'latent_upscale')
         return {key: 'upscale', text: Number.isInteger(second?.width) && Number.isInteger(second?.height)
-            ? t(`Second pass · upscaling to ${second.width} × ${second.height}`,
-                `二采 · 放大到 ${second.width} × ${second.height}`)
+            ? t('Second pass · upscaling to {width} × {height}',
+                '二采 · 放大到 {width} × {height}', { width: second.width, height: second.height })
             : t('Second pass · upscaling', '二采 · 放大')};
     if (phase === 'sampling' || phase === 'refinement' || message.stage === 'preview_mismatch') {
         const done = Number.isInteger(message.done) ? message.done : null;
@@ -256,11 +256,12 @@ function retryText(retry, t) {
     const reason = {gpu_oom: ['Out of GPU memory', '显存不足'], ram_pressure: ['Out of RAM', '内存不足'],
         unified_memory: ['Out of RAM', '内存不足']}[retry.kind]
         || ['Previous attempt did not finish', '上一次尝试没有完成'];
-    if (retry.reuse_sampling === true) return t(`${reason[0]}; the generated result is kept, and a retry is in progress.`,
-        `${reason[1]}，已保留生成结果，正在重试。`);
+    const values = { reason: t(...reason) };
+    if (retry.reuse_sampling === true) return t('{reason}; the generated result is kept, and a retry is in progress.', '{reason}，已保留生成结果，正在重试。', values);
     const fallback = !['gpu_oom', 'ram_pressure', 'unified_memory'].includes(retry.kind);
-    return fallback ? t(`${reason[0]}; retrying in another mode.`, `${reason[1]}，正在换一种运行方式重试。`)
-        : t(`${reason[0]}; retrying in a mode that uses less memory.`, `${reason[1]}，正在换一种更省${retry.kind === 'gpu_oom' ? '显存' : '内存'}的运行方式重试。`);
+    return fallback ? t('{reason}; retrying in another mode.', '{reason}，正在换一种运行方式重试。', values)
+        : retry.kind === 'gpu_oom' ? t('{reason}; retrying in a mode that uses less memory.', '{reason}，正在换一种更省显存的运行方式重试。', values)
+        : t('{reason}; retrying in a mode that uses less memory.', '{reason}，正在换一种更省内存的运行方式重试。', values);
 }
 
 function trimStatus(rows, t) {
@@ -268,11 +269,17 @@ function trimStatus(rows, t) {
     const kinds = new Set(rows.map(row => row.kind));
     const video = kinds.size === 1 && kinds.has('video'), audio = kinds.size === 1 && kinds.has('audio');
     const many = rows.length > 1;
-    const noun = video ? (many ? 'reference videos' : 'reference video') : audio ? 'reference audio' : 'reference media';
-    const zh = video ? '参考视频' : audio ? '参考音频' : '参考素材';
-    const used = Number(rows[0].used_seconds).toFixed(1);
-    return t(`The ${noun} ${video && !many || audio ? 'is' : 'are'} longer than the output, so only ${many ? `the first ${used}\u00a0s of each is used` : `its first ${used}\u00a0s is used`}.`,
-        `${zh}比生成的视频长，只使用了${many ? '每段的' : ''}前 ${used}\u00a0秒。`);
+    const values = { seconds: Number(rows[0].used_seconds).toFixed(1) };
+    // Each case whole: which material, one or several.
+    if (video) return many
+        ? t('The reference videos are longer than the output, so only the first {seconds}\u00a0s of each is used.', '参考视频比生成的视频长，只使用了每段的前 {seconds}\u00a0秒。', values)
+        : t('The reference video is longer than the output, so only its first {seconds}\u00a0s is used.', '参考视频比生成的视频长，只使用了前 {seconds}\u00a0秒。', values);
+    if (audio) return many
+        ? t('The reference audio is longer than the output, so only the first {seconds}\u00a0s of each is used.', '参考音频比生成的视频长，只使用了每段的前 {seconds}\u00a0秒。', values)
+        : t('The reference audio is longer than the output, so only its first {seconds}\u00a0s is used.', '参考音频比生成的视频长，只使用了前 {seconds}\u00a0秒。', values);
+    return many
+        ? t('The reference media are longer than the output, so only the first {seconds}\u00a0s of each is used.', '参考素材比生成的视频长，只使用了每段的前 {seconds}\u00a0秒。', values)
+        : t('The reference media are longer than the output, so only its first {seconds}\u00a0s is used.', '参考素材比生成的视频长，只使用了前 {seconds}\u00a0秒。', values);
 }
 
 // A reference clip longer than the video being generated is cut to the same
@@ -281,9 +288,12 @@ function trimStatus(rows, t) {
 export function thermalText(thermal, t) {
     const share = thermal.sm_clock_max_mhz ? Math.round(100 * thermal.sm_clock_mean_mhz / thermal.sm_clock_max_mhz) : null;
     const heat = Number.isFinite(thermal.temperature_mean_c) ? Math.round(thermal.temperature_mean_c) : null;
-    const detail = [heat !== null ? `${heat}\u00a0°C` : '', share !== null ? t(`${share}% of its peak clock`, `频率只有峰值的 ${share}%`) : ''].filter(Boolean).join(t(', ', '，'));
-    return t(`The GPU spent most of this video in thermal slowdown${detail ? ` (${detail})` : ''}, so it took much longer than usual. Improve cooling; on a laptop, plug in and choose a high-performance power mode.`,
-        `生成这段视频时，显卡大部分时间因过热降频${detail ? `（${detail}）` : ''}，所以比平时慢很多。请改善散热；笔记本请接通电源并选择高性能模式。`);
+    const detail = [heat !== null ? `${heat}\u00a0°C` : '', share !== null ? t('{share}% of its peak clock', '频率只有峰值的 {share}%', { share }) : ''].filter(Boolean).join(t(', ', '，'));
+    return detail
+        ? t('The GPU spent most of this video in thermal slowdown ({detail}), so it took much longer than usual. Improve cooling; on a laptop, plug in and choose a high-performance power mode.',
+            '生成这段视频时，显卡大部分时间因过热降频（{detail}），所以比平时慢很多。请改善散热；笔记本请接通电源并选择高性能模式。', { detail })
+        : t('The GPU spent most of this video in thermal slowdown, so it took much longer than usual. Improve cooling; on a laptop, plug in and choose a high-performance power mode.',
+            '生成这段视频时，显卡大部分时间因过热降频，所以比平时慢很多。请改善散热；笔记本请接通电源并选择高性能模式。');
 }
 
 // Other programs held a substantial share of the GPU during this run (summary.shared_gpu).
@@ -292,8 +302,8 @@ export function sharedGpuText(shared, t) {
     const mean = shared?.other_mean_percent;
     if (typeof mean !== 'number' || !Number.isFinite(mean)) return '';
     const percent = Math.min(95, Math.round(mean / 5) * 5);
-    return t(`Other programs were using about ${percent}% of the GPU.`,
-        `其他程序占用了约 ${percent}% 的显卡。`);
+    return t('Other programs were using about {percent}% of the GPU.',
+        '其他程序占用了约 {percent}% 的显卡。', { percent });
 }
 
 // Replace person: the source video's sound was asked for and could not be put into the video.
@@ -311,8 +321,8 @@ export function encoderFileText(file, t) {
     if (file.offline_installation === true) {
         const target = encoderFilePath(file) ? t('the file below', '下面这个文件') : t('this file', '这个文件');
         message += t(
-            ` This offline-package installation cannot switch back in one step yet. Close FreeVideo, move or rename ${target}, then import the Prompt model package (FreeVideo-文本编码器.zip) again on the Installation page of the launcher.`,
-            `离线包安装暂时不能一键换回。请先关闭 FreeVideo，把${target}移走或改名，再在启动器的“安装”页重新导入“提示词模型（FreeVideo-文本编码器.zip）”包。`);
+            ' This offline-package installation cannot switch back in one step yet. Close FreeVideo, move or rename {target}, then import the Prompt model package (FreeVideo-文本编码器.zip) again on the Installation page of the launcher.',
+            '离线包安装暂时不能一键换回。请先关闭 FreeVideo，把{target}移走或改名，再在启动器的“安装”页重新导入“提示词模型（FreeVideo-文本编码器.zip）”包。', { target });
     } else if (file.launcher === true) message += t(
         ' Select "Repair" in the launcher under Settings > Environment to restore the tested file; the current file is kept.',
         '可在启动器“设置 → 环境”中点“修复”恢复已验证的文件，原文件会保留。');
@@ -328,10 +338,10 @@ export function referenceTrimText(row, t) {
     const used = Number(row?.used_seconds).toFixed(1);
     const rule = t('(references are cut to the generated length, up to 15 s)', '（参考素材只取与生成视频等长的部分，最长 15 秒）');
     return valid(row?.seconds)
-        ? t(`${name} is ${Number(row.seconds).toFixed(1)} s: only its first ${used} s were used ${rule}`,
-            `${name} 时长 ${Number(row.seconds).toFixed(1)} 秒，已截取前 ${used} 秒${rule}`)
-        : t(`${name} is longer than this video: only its first ${used} s were used ${rule}`,
-            `${name} 比生成的视频长，已截取前 ${used} 秒${rule}`);
+        ? t('{name} is {seconds} s: only its first {used} s were used {rule}',
+            '{name} 时长 {seconds} 秒，已截取前 {used} 秒{rule}', { name, seconds: Number(row.seconds).toFixed(1), used, rule })
+        : t('{name} is longer than this video: only its first {used} s were used {rule}',
+            '{name} 比生成的视频长，已截取前 {used} 秒{rule}', { name, used, rule });
 }
 
 // The time left on show `dt` seconds on, given the engine's newest estimate (null when it sent none). Once measured, an
@@ -934,9 +944,9 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
             const elapsed = waitDuration((now() - segmentStartedAt) / 1000, t);
             const typical = segmentTypical(), usual = valid(typical) && typical > 0 ? waitDuration(typical, t) : '';
             const similar = overall.typical_source === 'similar';
-            pauseText = t(`${elapsed} so far`, `已进行 ${elapsed}`);
-            if (usual) pauseText += similar ? t(` (about ${usual} on similar hardware)`, `（相近配置约 ${usual}）`)
-                : t(` (usually about ${usual})`, `（通常约 ${usual}）`);
+            pauseText = t('{elapsed} so far', '已进行 {elapsed}', { elapsed });
+            if (usual) pauseText += similar ? t(' (about {usual} on similar hardware)', '（相近配置约 {usual}）', { usual })
+                : t(' (usually about {usual})', '（通常约 {usual}）', { usual });
         }
         // Only an available engine estimate can supply this long-decode fallback.
         const remainingEstimate = rawRemaining();
@@ -946,7 +956,7 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
                 decodeMinutes = minutes; decodeMinutesAt = now();
             }
         } else { decodeMinutes = null; decodeMinutesAt = -Infinity; }
-        const decodeEta = decodeMinutes === null ? '' : t(`About ${decodeMinutes} min left`, `还需约 ${decodeMinutes} 分钟`);
+        const decodeEta = decodeMinutes === null ? '' : t('About {decodeMinutes} min left', '还需约 {decodeMinutes} 分钟', { decodeMinutes });
         const progressText = [paused ? pauseText : '', decodeEta].filter(Boolean).join(t(' · ', '，'));
         const level = ended ? '' : recovery ? 'retry' : paused ? 'pause'
             : lowMemory ? 'memory' : memoryTight ? 'unified-memory' : automatic ? 'automatic'
@@ -1067,7 +1077,7 @@ export function createGenerationProgress(t, now = () => Date.now(), {compact = f
         late.hidden = !(remainingSeconds === null && remainingRetired && !ended);
         late.textContent = late.hidden ? '' : t('Taking longer than expected', '比预计久，仍在生成');
         const etaText = remainingSeconds === null ? '' : remainingSeconds >= 60
-            ? t(`About ${Math.ceil(remainingSeconds / 60)}\u00a0min left`, `预计还需约 ${Math.ceil(remainingSeconds / 60)}\u00a0分钟`)
+            ? t('About {minutes}\u00a0min left', '预计还需约 {minutes}\u00a0分钟', { minutes: Math.ceil(remainingSeconds / 60) })
             : t('Less than a minute left', '预计还需不到 1\u00a0分钟');
         const initial = remainingSeconds !== null && estimateSource === 'similar';
         // While it follows the bridge, the shown minutes change at most every 5 s.

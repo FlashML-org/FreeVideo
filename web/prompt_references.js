@@ -2,6 +2,7 @@
 import {caretRect} from './caret_rect.js';
 import {listenDialogKey} from './dialog_keys.js';
 import {effectiveRows} from './replace_state.js';
+import { translatorFor } from './i18n.js';
 const titles = {image: 'Picture', video: 'Video', audio: 'Audio'};
 const widget = (node, name) => node?.widgets?.find(w => w.name === name);
 const linkFor = (node, name) => node?.graph?.links?.[node.inputs?.find(i => i.name === name)?.link];
@@ -121,7 +122,7 @@ export function remapReferences(text, previous, current, removed = '[Removed ref
 }
 
 const bindings = new WeakMap();
-export function syncReferencePrompt(node, t = en => en, reset = false) {
+export function syncReferencePrompt(node, t = translatorFor(null, false), reset = false) {
     const text = widget(node, 'text');
     if (!text || linkFor(node, 'text') || linkFor(node, 'conditioning')) { bindings.delete(node); return; }
     let items; try { items = referenceItems(node); } catch { return; }
@@ -157,7 +158,7 @@ export const handleNames = people => people.map(person => person.handle || perso
 let serial = 0;
 // `characters()` lists library characters for the same popup: [{id, name, thumb, blocked}], `blocked` being the reason
 // one cannot be used now; `onCharacter(character)` puts its pictures in the media list and may return false to refuse.
-export function attachReferencePicker(input, {items, t = en => en, view, host, addMedia, characters = () => [], onCharacter = () => true} = {}) {
+export function attachReferencePicker(input, {items, t = translatorFor(null, false), view, host, addMedia, characters = () => [], onCharacter = () => true} = {}) {
     if (!document.querySelector('link[data-freevideo-references]')) {
         const css = document.createElement('link'); css.rel = 'stylesheet';
         css.dataset.freevideoReferences = ''; css.href = new URL('./prompt_references.css', import.meta.url).href;

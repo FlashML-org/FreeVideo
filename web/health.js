@@ -12,6 +12,8 @@ const query = new URLSearchParams(location.search);
 const language = query.get('freevideo_lang');
 const cn = /^zh([-_]|$)/i.test(language || '') || (!language && String(navigator.language || '').toLowerCase().startsWith('zh'));
 const t = (en, zh) => cn ? zh : en;
+// t for the other modules' texts, which hold {name} placeholders.
+const filled = (en, zh, values) => (cn ? zh : en).replace(/\{(\w+)\}/g, (whole, name) => values && Object.hasOwn(values, name) ? String(values[name]) : whole);
 // launcher.js removes this flag during setup; read it before that.
 const launchVisit = query.get('freevideo') === 'launch';
 // Every script this folder ships; a test keeps the list in step with web/*.js.
@@ -21,7 +23,7 @@ export const MODULES = ['fv_player.js', 'audio_original.js', 'chat_data.js', 'ph
     'progress_connection.js', 'prompt_draft.js', 'prompt_enhance.js', 'prompt_references.js', 'prompt_sections.js', 'prompt_terms.js', 'request_assets.js', 'repair_hint.js', 'report_issue.js', 'issue_button.js', 'studio_recent.js', 'media_queue.js', 'work_media.js', 'task_groups.js',
     'result_actions.js', 'result_reuse.js', 'sampling_effort.js', 'pass_mode.js','setup.js', 'share.js', 'share_layout.js', 'studio.js', 'studio_chain.js', 'studio_extend.js', 'studio_length.js', 'first_frame_row.js', 'replace_person.js', 'replace_state.js', 'optional_inputs.js', 'other_usage.js', 'studio_queue.js', 'studio_size.js',
     'toolbar_position.js', 'updates.js', 'video_model.js', 'view_navigation.js', 'whatsnew.js', 'whatsnew_pages.js', 'whatsnew_peaks.js', 'wordmark.js', 'workspace_restore.js', 'cast_library.js', 'media_upload.js', 'whitebox_encode.js', 'whitebox_mp4.js', 'whitebox_recording.js', 'whitebox_render.js', 'whitebox_scenes.js', 'whitebox_worker.js',
-    'empty_prompt_notice.js', 'feature_tour.js', 'feature_tour_content.js', 'howto.js', 'swap_lora.js', 'sound_bubble.js', 'tour_goto.js', 'tour_try.js', 'tutorial_book.js', 'tutorial_book_content.js',
+    'empty_prompt_notice.js', 'feature_tour.js', 'feature_tour_content.js', 'i18n_tables.js', 'howto.js', 'swap_lora.js', 'sound_bubble.js', 'tour_goto.js', 'tour_try.js', 'tutorial_book.js', 'tutorial_book_content.js',
     'shell.js', 'tooltip.js', 'tooltip_copy.js',
     'library_meta.js', 'cast_room.js',
     'editor_tracks_tips.js', 'tip_words.js', 'cut_tip.js', 'field_note.js', 'image_view_layout.js',
@@ -497,7 +499,7 @@ function extensionProblem(problem) {
     // Preserve the same known engine causes as the execution/queue cards.
     // A missing error-panel module must not disable this page check itself.
     if (problem.advice !== 'blocked' && errorUI) {
-        const cause = errorUI.failureAdvice(errorUI.errorText(problem.error || problem.text), t,
+        const cause = errorUI.failureAdvice(errorUI.errorText(problem.error || problem.text), filled,
             problem.error?.known_error ?? errorUI.createErrorReport(problem.error || problem.text).known_error);
         if (cause.kind !== 'unknown') return null;
     }
@@ -633,7 +635,7 @@ function show(problems, asked = false) {
         font: '13px/1.55 "Segoe UI","FreeVideo Quotes","Microsoft YaHei UI","Noto Sans CJK SC","Noto Sans SC",system-ui,sans-serif'});
     const title = document.createElement('div');
     const extension = problems.map(extensionProblem).find(Boolean);
-    const extensionAdvice = extension && extensionUI.browserExtensionAdvice(extension, t,
+    const extensionAdvice = extension && extensionUI.browserExtensionAdvice(extension, filled,
         {blocked: problems.some(p => p.advice === 'blocked')});
     // Only what the user just asked for failed (opening from the menu): the page itself loaded.
     title.textContent = extensionAdvice?.title || (problems.every(p => p.asked) ? t('FreeVideo ran into a problem', 'FreeVideo 出错了')

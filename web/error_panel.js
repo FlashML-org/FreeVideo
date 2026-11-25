@@ -455,13 +455,9 @@ export function failureAdvice(value, t, known = knownError(value)) {
         const available = known.available.filter(i => SAMPLING_EFFORTS[i]?.steps !== known.base_steps || SAMPLING_EFFORTS[i].twoPass !== known.two_pass);
         // Iris: a level name and its 档 never break apart. The summary is set as text,
         // so word joiners (U+2060) keep each group on one line instead of markup.
-        const keep = value => [...value].join('\u2060');
-        const join = language => {
-            const names = available.map(i => language ? `“${levels[i][1]}”` : levels[i][0]);
-            if (language) names[names.length - 1] += '档';
-            const kept = language ? names.map(keep) : names;
-            return kept.length < 2 ? kept[0] || '' : kept.slice(0, -1).join(language ? '、' : ', ') + (language ? '或' : ' or ') + kept.at(-1);
-        };
+        const keep = value => /[\u4e00-\u9fff]/.test(value) ? [...value].join('\u2060') : value;
+        const also = available.map((i, at) => keep(at === available.length - 1 ? t('{level}', '“{level}”档', { level: t(...levels[i]) }) : t('{level}', '“{level}”', { level: t(...levels[i]) })));
+        const list = also.length < 2 ? also[0] || '' : also.slice(0, -1).join(t(', ', '、')) + t(' or ', '或') + also.at(-1);
         const bytes = known.missing_bytes;
         // As launcher_copy.size_text: one decimal for GiB, whole MiB; decimal units on macOS.
         let size = bytes >= 2**30 ? (bytes / 2**30).toFixed(1) + ' GiB' : Math.floor(bytes / 2**20) + ' MiB';
@@ -471,12 +467,12 @@ export function failureAdvice(value, t, known = knownError(value)) {
         }
         // A custom step count is not a quality level: no "档" / "quality level" for it.
         const title = custom
-            ? [`Custom (${known.base_steps} steps) is not downloaded yet`, `“自定义（${known.base_steps} 步）”还没下载`]
-            : [`The ${levels[index][0]} quality level is not downloaded yet`, `${keep(`“${levels[index][1]}”档`)}还没下载`];
-        const what = custom ? ['This step count', '这个步数'] : ['This level', '这一档'];
-        return {...row('sampling-table', title,
-            [`${what[0]} needs a download (about ${size}) that did not finish this time. Generate again when online and it downloads automatically.${available.length ? ` You can also use ${join(0)} for now.` : ''}`,
-             `${what[1]}要先下载（约 ${size}），这次没能下载。联网后再生成一次，会自动下载。${available.length ? `也可以先用${join(1)}。` : ''}`], ['', '']), plain: true};
+            ? ['Custom ({steps} steps) is not downloaded yet', '“自定义（{steps} 步）”还没下载', { steps: known.base_steps }]
+            : ['The {level} quality level is not downloaded yet', '“\u2060{level}\u2060”\u2060档还没下载', { level: keep(t(...levels[index])) }];
+        const summary = custom
+            ? t('This step count needs a download (about {size}) that did not finish this time. Generate again when online and it downloads automatically.', '这个步数要先下载（约 {size}），这次没能下载。联网后再生成一次，会自动下载。', { size })
+            : t('This level needs a download (about {size}) that did not finish this time. Generate again when online and it downloads automatically.', '这一档要先下载（约 {size}），这次没能下载。联网后再生成一次，会自动下载。', { size });
+        return {...row('sampling-table', title, ['', ''], ['', '']), summary: summary + (available.length ? t(' You can also use {levels} for now.', '也可以先用{levels}。', { levels: list }) : ''), plain: true};
     }
     // ComfyUI and worker tracebacks carry English exceptions. Translate these
     // actionable failures through the existing signature/advice path.
@@ -501,12 +497,14 @@ export function failureAdvice(value, t, known = knownError(value)) {
         const fits = [...(/Fits now: ([^\n]+?)\.?(?:\n|$)/.exec(text)?.[1] || '').matchAll(/(\d+)x(\d+) (up to|at) ([\d.]+) s/g)]
             .map(([, width, height, kind, seconds]) => ({width, height, longest: kind === 'up to', seconds: Number(seconds)}));
         if (fits.length) {
-            const en = fits.map(f => f.longest ? `${f.width}\u00a0×\u00a0${f.height} up to ${f.seconds.toFixed(1)}\u00a0s` : `${f.width}\u00a0×\u00a0${f.height} at ${f.seconds.toFixed(1)}\u00a0s`).join(', or ');
-            const zh = fits.map(f => f.longest ? `${f.width}\u00a0×\u00a0${f.height} 最长 ${f.seconds.toFixed(1)}\u00a0秒` : `${f.width}\u00a0×\u00a0${f.height} 生成 ${f.seconds.toFixed(1)}\u00a0秒`).join('，或 ');
+            const sizes = fits.map(f => {
+                const values = { size: `${f.width}\u00a0×\u00a0${f.height}`, seconds: f.seconds.toFixed(1) };
+                return f.longest ? t('{size} up to {seconds}\u00a0s', '{size} 最长 {seconds}\u00a0秒', values) : t('{size} at {seconds}\u00a0s', '{size} 生成 {seconds}\u00a0秒', values);
+            }).join(t(', or ', '，或 '));
             return row('resources', ['Not enough GPU memory', '显存不足'],
                 ['Generation needs more GPU memory than is currently available.', '生成所需显存超过当前可用量。'],
-                [`This computer can make ${en} right now. Change the duration or resolution and generate again; closing other programs that use the GPU also frees memory.`,
-                 `现在可以生成：${zh}。请调整时长或清晰度后重新生成；关闭其他占用显卡的程序也可以腾出显存。`]);
+                ['This computer can make {sizes} right now. Change the duration or resolution and generate again; closing other programs that use the GPU also frees memory.',
+                 '现在可以生成：{sizes}。请调整时长或清晰度后重新生成；关闭其他占用显卡的程序也可以腾出显存。', { sizes }]);
         }
         return row('resources', ['The request exceeds available memory', '当前任务的可用内存不足'],
             ['Generation did not start because there is not enough available RAM or GPU memory.', '可用内存或显存不足，本次生成未开始。'],
@@ -527,8 +525,8 @@ export function failureAdvice(value, t, known = knownError(value)) {
         // The engine states what it saw ("2.2 GiB of 8.0 GiB is available and 4.0 GiB is required"); an older report has no numbers.
         const seen = /(\d+(?:\.\d)?) GiB of (\d+(?:\.\d)?) GiB is available and (\d+(?:\.\d)?) GiB is required/.exec(text);
         return row('unified-memory', ['Not enough unified memory', '统一内存不足'],
-            seen ? [`This Mac has ${seen[1]}\u00a0GiB of ${seen[2]}\u00a0GiB memory available. A generation needs at least ${seen[3]}\u00a0GiB to start.`,
-                    `这台 Mac 共 ${seen[2]}\u00a0GiB 内存，当前可用 ${seen[1]}\u00a0GiB，开始生成至少需要 ${seen[3]}\u00a0GiB。`]
+            seen ? ['This Mac has {free}\u00a0GiB of {total}\u00a0GiB memory available. A generation needs at least {needed}\u00a0GiB to start.',
+                    '这台 Mac 共 {total}\u00a0GiB 内存，当前可用 {free}\u00a0GiB，开始生成至少需要 {needed}\u00a0GiB。', { free: seen[1], total: seen[2], needed: seen[3] }]
                 : ['This Mac does not have enough free memory right now to start this generation.', '这台 Mac 当前可用的内存不足以开始这次生成。'],
             ['Close other memory-heavy applications and retry. Export the report if it still fails.', '请关闭其他占用内存较多的程序后重试。仍然失败时，请导出报告。']);
     }
@@ -605,7 +603,7 @@ export function failureAdvice(value, t, known = knownError(value)) {
     if (/Not enough disk space to save the 4K video/.test(text)) {
         const megabytes = /about (\d+) MB is needed/.exec(text)?.[1];
         return row('upscale-disk', ['Not enough disk space for the upscaled video', '磁盘空间不足，放大后的视频没能保存'],
-            megabytes ? [`The upscaled video needs about ${megabytes} MB on the drive of the output folder.`, `放大后的视频需要输出文件夹所在磁盘约 ${megabytes} MB 空间。`]
+            megabytes ? ['The upscaled video needs about {megabytes} MB on the drive of the output folder.', '放大后的视频需要输出文件夹所在磁盘约 {megabytes} MB 空间。', { megabytes }]
                 : ['The upscaled video needs more space on the drive of the output folder.', '放大后的视频需要输出文件夹所在磁盘更多空间。'],
             ['Free some space on that drive, then try again.', '请在该磁盘上腾出空间后重试。']);
     }
@@ -727,14 +725,14 @@ export function adviceFor(report, t, value) {
     }
     // The name comes from the error as it arrived; a card shown again from its report says it without one.
     const media = advice.kind === 'media-missing' ? missingMedia(value) : null;
-    if (media) advice.summary = t(`"${media}" could not be found. Upload or select it again, then generate.`, `素材“${media}”已不存在，请重新上传或选择后再生成。`);
+    if (media) advice.summary = t('"{media}" could not be found. Upload or select it again, then generate.', '素材“{media}”已不存在，请重新上传或选择后再生成。', { media });
     // Every failure except a rejected input (which the user fixes in place) has one layout: written title,
     // Export report / Submit to GitHub, the raw error only inside the technical details.
     const generated = !['validation', 'media-missing'].includes(advice.kind);
     // A generation that stopped without a known cause is named by the stage it stopped in.
     if (generated && advice.kind === 'unknown' && report.stage === 'execution') {
         const stage = failureStage(report);
-        advice.title = stage ? t(`Generation did not finish: ${stage[0]}`, `生成未完成：${stage[1]}`) : t('Generation did not finish', '生成未完成');
+        advice.title = stage ? t('Generation did not finish: {stage}', '生成未完成：{stage}', { stage: t(...stage.slice(0, 2)) }) : t('Generation did not finish', '生成未完成');
     }
     return {advice, generated};
 }

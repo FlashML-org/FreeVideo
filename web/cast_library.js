@@ -83,7 +83,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         avatars.replaceChildren(); 
         // The count covers every kind (a file that cannot be read does not say what it was), so only the first row shows it.
         const shown = kind === 'character' ? unreadable : 0;
-        skipped.textContent = shown > 0 ? text(`${shown} ${shown === 1 ? 'item' : 'items'} could not be read`, `另有 ${shown} 项无法读取`) : '';
+        skipped.textContent = !(shown > 0) ? '' : shown === 1 ? text('1 item could not be read', '另有 1 项无法读取') : text('{count} items could not be read', '另有 {count} 项无法读取', { count: shown });
         skipped.hidden = !shown;
         for (const row of rows) {
             const avatar = button('fv-cast-avatar', '', () => openDialog(row.id));
@@ -282,7 +282,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         for (let index = 0; index < SLOTS; index++) {
             const slot = el('div', 'fv-cast-slot' + (index || scene ? '' : ' fv-cast-front'));
             const input = el('input'); input.type = 'file'; input.accept = 'image/*'; input.hidden = true;
-            const label = prop ? text('Image', '图片') : scene ? text(`Image ${index + 1}`, `图片 ${index + 1}`) : index ? text(`View ${index}`, `视角 ${index}`) : text('Front image', '正面图片');
+            const label = prop ? text('Image', '图片') : scene ? text('Image {number}', '图片 {number}', { number: index + 1 }) : index ? text('View {number}', '视角 {number}', { number: index }) : text('Front image', '正面图片');
             const choose = button('fv-cast-choose', '', () => input.click()); choose.setAttribute('aria-label', label);
             const remove = button('fv-cast-remove', '×', () => { firstChanged(index); release(index); paint(index); });
             remove.setAttribute('aria-label', text('Remove image', '移除图片'));

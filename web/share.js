@@ -92,8 +92,8 @@ export function exportingText(progress,seconds,t){
     if(!Number.isInteger(frame)||frame<1)return t('Exporting the share video…','正在导出分享视频…');
     const time=`${Math.floor(seconds/60)}:${String(Math.floor(seconds%60)).padStart(2,'0')}`;
     return Number.isInteger(total)&&total>=frame
-        ?t(`Exporting the share video · Frame\u00a0${frame}\u00a0of\u00a0${total} · ${time}\u00a0elapsed`,`正在导出分享视频 · 第\u00a0${frame}\u00a0帧，共\u00a0${total}\u00a0帧 · 已用\u00a0${time}`)
-        :t(`Exporting the share video · Frame\u00a0${frame} · ${time}\u00a0elapsed`,`正在导出分享视频 · 第\u00a0${frame}\u00a0帧 · 已用\u00a0${time}`);
+        ?t('Exporting the share video · Frame\u00a0{frame}\u00a0of\u00a0{total} · {time}\u00a0elapsed','正在导出分享视频 · 第\u00a0{frame}\u00a0帧，共\u00a0{total}\u00a0帧 · 已用\u00a0{time}', { frame, total, time })
+        :t('Exporting the share video · Frame\u00a0{frame} · {time}\u00a0elapsed','正在导出分享视频 · 第\u00a0{frame}\u00a0帧 · 已用\u00a0{time}', { frame, time });
 }
 export function shareButton(record,t){
     const b=button(t('Share','分享'),()=>openShare(record,t),'fv-quiet fv-share-trigger');

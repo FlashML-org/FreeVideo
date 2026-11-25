@@ -3,7 +3,7 @@
 import { isChinese, translator } from './i18n.js';
 export const cn = isChinese();
 export const t = translator(cn);
-export const INSTALLED_HINT = {en: 'Already installed. To reinstall, click Check installation first.', zh: '已装好。要重装，请先点“检查安装”。'};
+export const INSTALLED_HINT = ['Already installed. To reinstall, click Check installation first.', '已装好。要重装，请先点“检查安装”。'];
 export const gib = n => Number.isFinite(n) ? (n / 2 ** 30).toFixed(1) + " GiB" : "—";
 // Plan sizes pick their unit, so a few-MB repair does not read as "0.0 GiB".
 // The cut-offs sit where rounding would print 1024.0 MiB or 1024 KiB, so those carry to the next unit.
@@ -11,16 +11,16 @@ export const bytesText = n => !(n > 0 && n < 1023.95 * 2 ** 20) ? gib(n)
     : n >= 1023.5 * 2 ** 10 ? (n / 2 ** 20).toFixed(1) + " MiB" : Math.max(1, Math.round(n / 2 ** 10)) + " KiB";
 const SPEED_TEST_FAILED = 'The speed test did not finish. Click "Test source speeds".';
 const BUSY_LOCK = /using this installation\/GPU lock/;
-const BUSY_TEXT = {en: 'FreeVideo is busy with another task. Try again when it finishes. If nothing else is running, close duplicate FreeVideo instances, then try again.',
-    zh: 'FreeVideo 正在处理另一个任务。请在它完成后重试。若没有其他任务在进行，请关闭重复运行的 FreeVideo 后重试。'};
+const BUSY_TEXT = ['FreeVideo is busy with another task. Try again when it finishes. If nothing else is running, close duplicate FreeVideo instances, then try again.',
+    'FreeVideo 正在处理另一个任务。请在它完成后重试。若没有其他任务在进行，请关闭重复运行的 FreeVideo 后重试。'];
 // The speed-test row passes text that failureText already turned into the busy message.
-export const isBusy = value => BUSY_LOCK.test(value) || value.startsWith(BUSY_TEXT.en) || value.startsWith(BUSY_TEXT.zh);
+export const isBusy = value => BUSY_LOCK.test(value) || value.startsWith(BUSY_TEXT[0]) || value.startsWith(BUSY_TEXT[1]);
 // Setup refusals whose cause and next step are known. Repair goes where the server's sentence pointed: the launcher when it watches.
 const repairStep = text => text.includes('In the FreeVideo launcher, open Settings and click Repair.')
     ? t('In the FreeVideo launcher, open Settings and click Repair.', '请在 FreeVideo 启动器的设置里点“修复”。')
     : t('Click Check installation, then Install.', '请先点“检查安装”，再点“安装”。');
 // The reserve's lower limit, said the same way whether the panel or the service stopped the value.
-export const atLeast = least => t(`Enter at least ${least} GiB, or turn on Automatic optimization.`, `请输入不小于 ${least} GiB 的数值，或打开“自动优化”。`);
+export const atLeast = least => t('Enter at least {least} GiB, or turn on Automatic optimization.', '请输入不小于 {least} GiB 的数值，或打开“自动优化”。', { least });
 export const WAIT_REFUSAL = /^Wait for (the installation check|the installation|a placement test|a setup task) to finish; its progress is in this panel\.$/;
 // A runtime stop, not a setup refusal: the sentence replaces the traceback on screen, but the report button stays and
 // sends the original text, because the guard's numbers are what the cause is read from.
@@ -28,7 +28,7 @@ const MEMORY_STOP = /MemoryError: RAM guard/;
 export const reportText = (shown, original) => MEMORY_STOP.test(String(original || '')) ? String(original) : shown;
 const SETUP_ERRORS = [
     // Another task holds the installation lock; any "Lock file open:" lines name the holders.
-    [BUSY_LOCK, text => [t(BUSY_TEXT.en, BUSY_TEXT.zh), ...text.split(/\r?\n/).filter(line => line.startsWith('Lock file open:')).slice(0, 6)].join('\n')],
+    [BUSY_LOCK, text => [t(...BUSY_TEXT), ...text.split(/\r?\n/).filter(line => line.startsWith('Lock file open:')).slice(0, 6)].join('\n')],
     [/^Choose an engine installation folder$/, () => t('Choose a FreeVideo installation folder first.', '请先选择 FreeVideo 安装位置。')],
     [/^Use a dedicated FreeVideo folder, not the ComfyUI root or its parent$/,
         () => t('Choose a separate folder for FreeVideo, not the program folder or the folder that contains it.',
@@ -43,8 +43,8 @@ const SETUP_ERRORS = [
     [WAIT_REFUSAL,
         text => {
             const names = {'the installation check': ['the installation check', '安装检查'], 'the installation': ['the installation', '安装'], 'a placement test': ['the performance measurement', '性能测量']};
-            const [en, zh] = names[text.match(/^Wait for (.+) to finish/)[1]] ?? ['the setup task', '安装任务'];
-            return t(`Wait for ${en} to finish; its progress is under Models.`, `请等待${zh}完成，进度见“模型”。`);
+            const task = names[text.match(/^Wait for (.+) to finish/)[1]] ?? ['the setup task', '安装任务'];
+            return t('Wait for {task} to finish; its progress is under Models.', '请等待{task}完成，进度见“模型”。', { task: t(...task) });
         }],
     // The placement test's text encoder was stopped by the memory guard: the computer, not FreeVideo's own use, ran short.
     // The paging-file step is said only when Windows reports its commit headroom as exhausted.
@@ -85,8 +85,8 @@ export const failureText = value => {
     if (text === SPEED_TEST_FAILED) return t('The speed test did not finish. Click "Test again".', '测速没有完成，请点“重新测速”。');
     if (!matches.length) return text;
     const file = matches.at(-1)[1];
-    return t(`${file} differs from the tested version and was left unchanged. Click Check installation, then Install. After you confirm, the original is renamed and kept, and the tested version is downloaded.`,
-        `${file} 和测试过的版本不同，这次没有改动。请先点“检查安装”，再点“安装”，确认后原文件改名保留，再下载测试过的版本。`);
+    return t('{file} differs from the tested version and was left unchanged. Click Check installation, then Install. After you confirm, the original is renamed and kept, and the tested version is downloaded.',
+        '{file} 和测试过的版本不同，这次没有改动。请先点“检查安装”，再点“安装”，确认后原文件改名保留，再下载测试过的版本。', { file });
 };
 
 // The pages, in their groups. `icon` names settings_kit's icons.

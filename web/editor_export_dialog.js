@@ -3,6 +3,7 @@ import {clipPictureSize, differentPictureShape} from './editor_frame.js';
 import {transportTime} from './editor_player.js';
 import {selectedRange} from './editor_transport_model.js';
 import {isolateDialogKeys, listenDialogKey, routeDialogKey} from './dialog_keys.js';
+import {translatorFor} from './i18n.js';
 
 export const EXPORT_SETTINGS_KEY = 'freevideo.editor.export-settings';
 const defaults = {short: null, quality: 'high', range: 'whole', only: null, sound_format: 'm4a', fps: 24, audio: null};
@@ -86,7 +87,7 @@ function croppedParts(record, sources, range) {
         && differentPictureShape(clipPictureSize(clip, sources), record));
 }
 
-export async function openExportDialog({parent, state, sources, t = en => en, onError = () => {}, fps = false}) {
+export async function openExportDialog({parent, state, sources, t = translatorFor(null, false), onError = () => {}, fps = false}) {
     // Only the first trigger owns confirmation, even while the stylesheet loads.
     if (active.has(parent)) return null;
     let resolve;
@@ -167,7 +168,7 @@ export async function openExportDialog({parent, state, sources, t = en => en, on
         const range = chosenRange(), parts = affected(), n = parts.length;
         const seconds = sound ? 0 : generatingSeconds(state.record, range);
         pending.hidden = !seconds;
-        pending.textContent = t(`${seconds} s still generating; that part exports as black.`, `有 ${seconds} 秒还在生成，导出后这部分是黑屏`);
+        pending.textContent = t('{seconds} s still generating; that part exports as black.', '有 {seconds} 秒还在生成，导出后这部分是黑屏', { seconds });
         links.hidden = sound || !n; notices.hidden = links.hidden && pending.hidden;
         if (dialog.open) fitSegments();
         fit.disabled = parts.some(clip => ['queued', 'running'].includes(clip.pending));

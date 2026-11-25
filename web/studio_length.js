@@ -120,10 +120,10 @@ export function createStudioLength({api, node, seconds, advanced, fields, t, fie
         put(single, 'disabled', Boolean(absent || seconds.disabled || cannot || forced)); put(single, 'checked', !absent && effectiveSingle());
         if (absent) seconds.max = '60';
         const reason = cannot ? positive(forcedMaximum)
-            ? t(`Up to ${Math.floor(forcedMaximum)}\u00a0s in one run at this size.`, `当前画面大小单次最长 ${Math.floor(forcedMaximum)}\u00a0秒。`)
+            ? t('Up to {seconds}\u00a0s in one run at this size.', '当前画面大小单次最长 {seconds}\u00a0秒。', { seconds: Math.floor(forcedMaximum) })
             : t('The maximum length is unknown for these settings.', '当前设置下无法确定最长时长。')
             : seconds.disabled ? '' : clamped
-                ? t(`Up to ${Math.floor(maximum)}\u00a0s in one run at this size.`, `当前画面大小单次最长 ${Math.floor(maximum)}\u00a0秒。`) : '';
+                ? t('Up to {seconds}\u00a0s in one run at this size.', '当前画面大小单次最长 {seconds}\u00a0秒。', { seconds: Math.floor(maximum) }) : '';
         put(unavailable, 'hidden', Boolean(absent || !reason)); put(unavailable, 'textContent', reason);
         put(single, 'title', single.disabled ? reason : ''); put(toggle, 'title', single.title);
         if (single.disabled && reason) { if (toggle.dataset.fvTipWhy !== reason) toggle.dataset.fvTipWhy = reason; } else if ('fvTipWhy' in toggle.dataset) delete toggle.dataset.fvTipWhy;

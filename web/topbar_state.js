@@ -68,7 +68,7 @@ export function capsuleWords(t, state) {
 export function machineLine(state, t = t0) {
     if (!state) return '';
     const gb = bytes => (bytes / 2 ** 30).toFixed(1), parts = [];
-    if (state.memory_total) parts.push(t(`Video memory ${gb(state.memory_used)} / ${gb(state.memory_total)} GB`, `显存 ${gb(state.memory_used)} / ${gb(state.memory_total)} GB`));
+    if (state.memory_total) parts.push(t('Video memory {used} / {total} GB', '显存 {used} / {total} GB', { used: gb(state.memory_used), total: gb(state.memory_total) }));
     if (state.temperature != null) parts.push(`${state.temperature} °C`);
     return parts.join(' · ');
 }

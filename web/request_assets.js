@@ -1,5 +1,5 @@
 // One muted line above Generate: what this request will download first.
-export const about = (seconds, t) => seconds >= 60 ? t(`About ${Math.ceil(seconds / 60)} min`, `约 ${Math.ceil(seconds / 60)} 分钟`) : t('Under 1 min', '不到 1 分钟');
+export const about = (seconds, t) => seconds >= 60 ? t('About {minutes} min', '约 {minutes} 分钟', { minutes: Math.ceil(seconds / 60) }) : t('Under 1 min', '不到 1 分钟');
 // ", about 5 min" after a size, only when a real download speed is known.
 export function timeAfter(bytes, rate, t) {
     if (!(bytes > 0) || !(rate > 0)) return '';
@@ -54,15 +54,15 @@ export function createRequestAssets({t, api, request, onError = () => {}}) {
         const parts = [['upscaler', names.upscaler], ['sampling', names.sampling], ['other', t('other model files', '其他模型文件')]]
             .filter(([kind]) => bytes[kind]).map(([kind, name]) => `${name} ${size(bytes[kind])}`);
         const wait = timeAfter(Object.values(bytes).reduce((sum, n) => sum + n, 0), rate, t);
-        if (parts.length) rows.push(t(`Downloads before generating: ${parts.join(', ')}${wait}`, `生成前会先下载：${parts.join('、')}${wait}`));
+        if (parts.length) rows.push(t('Downloads before generating: {items}{wait}', '生成前会先下载：{items}{wait}', { items: parts.join(t(', ', '、')), wait }));
         for (const item of items) {
             if (item.action === 'unavailable') continue;
             if (item.kind === 'prompt-vlm') {
                 const wait = timeAfter(item.bytes, rate, t);
-                rows.push(t(`First prompt rewrite downloads ${size(item.bytes)}${wait}`, `首次改写提示词会先下载 ${size(item.bytes)}${wait}`));
+                rows.push(t('First prompt rewrite downloads {size}{wait}', '首次改写提示词会先下载 {size}{wait}', { size: size(item.bytes), wait }));
             } else if (item.kind === 'lora') {
                 const names = (item.names || []).map(short);
-                rows.push(t(`LoRA not found: ${names.join(', ')}`, `找不到 LoRA：${names.join('、')}`));
+                rows.push(t('LoRA not found: {names}', '找不到 LoRA：{names}', { names: names.join(t(', ', '、')) }));
             }
         }
         return rows;

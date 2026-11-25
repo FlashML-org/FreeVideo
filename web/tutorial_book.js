@@ -7,14 +7,16 @@ import {FEATURE_TOUR, readyCards} from './feature_tour_content.js';
 import {SHOWCASE_TEXT, SHOWCASE_ASSET} from './entry_showcase.js';
 import {isolateDialogKeys, listenDialogKey, routeDialogKey} from './dialog_keys.js';
 import {reducedMotion} from './context_menu.js';
-import { isChinese } from './i18n.js';
+import { isChinese, translator, translatorFor, fill } from './i18n.js';
+import { localized, pageLang, promptText } from './i18n_tables.js';
 
+// i18n-table
 const COPY = {
     zh: {book: '教程', chapters: '章节', examples: '示例', contents: '目录', close: '关闭', search: '搜索教程', steps: '步骤', limits: '注意',
         follow: '跟着做', tryIt: '试一试', walk: '演示', goto: '带我去', prev: '上一篇', next: '下一篇', read: '已看过', none: '没有找到',
         noneHint: '换个词，或看“出错了怎么办”。', start: '新手指引', startLine: '三步认识界面', again: '再看一遍', featured: '精选', getStarted: '开始使用',
         back: '示例', feature: '功能示例', fills: '描述、素材和参数会一起填好', prompt: '描述', newBadge: '新', play: '播放示例', playSound: '播放声音',
-        stepOf: (a, b) => `第 ${a} / ${b} 步`, done: '全部完成', doneNext: '做完了。下一篇：', stepDone: '这步做好了', stepBack: '上一步', expand: '展开教程',
+        stepOf: '第 {step} / {total} 步', done: '全部完成', doneNext: '做完了。下一篇：', stepDone: '这步做好了', stepBack: '上一步', expand: '展开教程',
         noView: '无法打开剪辑视图，请点顶部的“剪辑视图”。', noTarget: '当前界面中找不到这一项，请按上面的步骤操作。', noHidden: '时间线上还没有带声音的片段，请先导入或生成一段。',
         showcaseLine: '用白模定动作和镜头，生成写实视频。',
         tips: {close: '收起教程，回到刚才的界面', chapters: '按步骤学每个功能', examples: '看成品，一键填入示例', toc: '看全部章节', chapter: '打开这一章',
@@ -27,7 +29,7 @@ const COPY = {
         noneHint: 'Try another word, or see "When something goes wrong".', start: 'Getting started', startLine: 'Three steps around the screen', again: 'Show again',
         featured: 'Featured', getStarted: 'Get started', back: 'Examples', feature: 'Feature example', fills: 'Fills the prompt, media and settings together', prompt: 'Prompt',
         newBadge: 'New', play: 'Play example', playSound: 'Play with sound',
-        stepOf: (a, b) => `Step ${a} of ${b}`, done: 'All done', doneNext: 'Done. Next: ', stepDone: 'Done this step', stepBack: 'Back', expand: 'Open the tutorial',
+        stepOf: 'Step {step} of {total}', done: 'All done', doneNext: 'Done. Next: ', stepDone: 'Done this step', stepBack: 'Back', expand: 'Open the tutorial',
         noView: 'Could not open the Edit view. Choose "Edit" at the top.', noTarget: 'This item is not available here. Follow the steps above.', noHidden: 'The timeline has no clip with sound yet. Import or generate one first.',
         showcaseLine: 'A whitebox sets the motion and camera; the video comes out real.',
         tips: {close: 'Close and go back to where you were', chapters: 'Learn each feature step by step', examples: 'See results; fill one in', toc: 'See every chapter', chapter: 'Open this chapter',
@@ -103,10 +105,10 @@ export function bookGroups(chapters = TUTORIAL_CHAPTERS) {
 }
 export const bookOrder = (chapters = TUTORIAL_CHAPTERS) => bookGroups(chapters).flatMap(([, list]) => list);
 // Search: every word must appear in the title, summary, steps or another name for the chapter (either language's own text).
-export function searchChapters(query, lang, chapters = TUTORIAL_CHAPTERS, aliases = TUTORIAL_ALIASES) {
+export function searchChapters(query, lang, chapters = TUTORIAL_CHAPTERS, aliases = TUTORIAL_ALIASES, t = translatorFor(null, lang === 'zh')) {
     const words = String(query || '').toLowerCase().split(/\s+/).filter(Boolean);
     if (!words.length) return null;
-    return chapters.filter(c => { const hay = [c.title[lang], c.summary[lang], ...(c.steps[lang] || []), ...(aliases[c.id]?.[lang] || [])].join(' ').toLowerCase(); return words.every(word => hay.includes(word)); }).map(c => c.id);
+    return chapters.filter(c => { const hay = [localized(c.title, t), localized(c.summary, t), ...(localized(c.steps, t) || []), ...(aliases[c.id]?.[lang] || [])].join(' ').toLowerCase(); return words.every(word => hay.includes(word)); }).map(c => c.id);
 }
 
 function styles() {
@@ -119,7 +121,7 @@ function styles() {
 }
 
 // A figure: the poster first; a play button swaps in the example's video (with sound when it has a waveform).
-function figure(spec, lang, text) {
+function figure(spec, t, text) {
     if (!spec) return null;
     const fig = el('figure', 'fv-book-fig');
     const still = reducedMotion();
@@ -133,14 +135,14 @@ function figure(spec, lang, text) {
         }
         if (wave) { const strip = el('div', 'fv-book-wave'), w = el('img'); w.alt = ''; w.src = poster(wave); strip.append(w); box.append(strip); }
         if (playable && VIDEOS.has(name)) {
-            const play = button('fv-book-play', wave ? text.playSound : text.play, [wave ? text.playSound : text.play, text.tips.play, lang === 'zh' ? '空格' : 'Space'], icon('play'));
+            const play = button('fv-book-play', wave ? text.playSound : text.play, [wave ? text.playSound : text.play, text.tips.play, t('Space', '空格')], icon('play'));
             let video = null;
             play.onclick = () => {
                 if (video && !video.paused && !video.muted) { video.muted = true; play.replaceChildren(icon('play'), document.createTextNode(wave ? text.playSound : text.play)); return; }
                 video ||= box.querySelector('video');
                 if (!video) { video = el('video'); video.src = asset(`${name}.mp4`); video.loop = true; video.playsInline = true; video.setAttribute('aria-label', name); box.insertBefore(video, img.nextSibling); }
                 video.muted = !wave; if (wave) video.currentTime = 0;
-                video.play().catch(() => {}); play.replaceChildren(icon('pause'), document.createTextNode(lang === 'zh' ? '暂停' : 'Pause'));
+                video.play().catch(() => {}); play.replaceChildren(icon('pause'), document.createTextNode(t('Pause', '暂停')));
             };
             box.append(play);
         }
@@ -150,18 +152,19 @@ function figure(spec, lang, text) {
     else if (spec.k === 'pair') { const pair = el('div', 'fv-book-pair'); const to = el('span', 'fv-book-to'); to.append(icon('arrow')); pair.append(media(spec.a, null, false), to, media(spec.b)); fig.append(pair); }
     else if (spec.k === 'quad') {
         const quad = el('div', 'fv-book-quad'), card = FEATURE_TOUR.find(c => c.id === 'quality-tiers');
-        for (const q of card.quality) { const cell = el('figure'); const img = el('img'); img.alt = ''; img.src = asset(q.poster); cell.append(img, el('figcaption', null, q.label[lang])); quad.append(cell); }
+        for (const q of card.quality) { const cell = el('figure'); const img = el('img'); img.alt = ''; img.src = asset(q.poster); cell.append(img, el('figcaption', null, localized(q.label, t))); quad.append(cell); }
         fig.append(quad);
     } else if (spec.k === 'tiles') { const tiles = el('div', 'fv-book-tiles'); for (const p of spec.ps) { const cell = el('figure'); const img = el('img'); img.alt = ''; img.src = poster(p); cell.append(img); tiles.append(cell); } fig.append(tiles); }
     return fig;
 }
 
 // A step's words with each control it names in quotes (“生成视频”, "Generate video") drawn as a small sample of that
-// control, in the product's own control style, so the reader recognises it on screen.
+// control, in the product's own control style, so the reader recognises it on screen. Other languages' quotes count too
+// («Создать», 「建立」, „Erstellen“).
 export function stepParts(step) {
-    const parts = [], re = /[“"]([^”"]{1,24})[”"]/g;
+    const parts = [], re = /[“"]([^”"]{1,24})[”"]|«\s?([^»]{1,48}?)\s?»|„([^“”]{1,48})[“”]|[「『]([^」』]{1,48})[」』]/g;
     let at = 0, m;
-    while ((m = re.exec(step))) { if (m.index > at) parts.push({text: step.slice(at, m.index)}); parts.push({control: m[1]}); at = m.index + m[0].length; }
+    while ((m = re.exec(step))) { if (m.index > at) parts.push({text: step.slice(at, m.index)}); parts.push({control: m[1] ?? m[2] ?? m[3] ?? m[4]}); at = m.index + m[0].length; }
     if (at < step.length) parts.push({text: step.slice(at)});
     return parts;
 }
@@ -178,10 +181,10 @@ export function openTutorialBook({chapter = TUTORIAL_CHAPTERS[0].id, tab = 'chap
     if (chapter === 'separate-tracks') import('./sound_bubble.js').then(({markSoundBubbleSeen}) => markSoundBubbleSeen(), () => {});
     if (current?.dialog.isConnected) { current.go({tab, chapter, example}); return current.dialog; }
     styles();
-    const lang = language(), text = COPY[lang], L = pair => Array.isArray(pair) ? pair[lang === 'zh' ? 1 : 0] : pair?.[lang] ?? '';
+    const lang = language(), t = translator(lang === 'zh'), text = localized(COPY, t), L = value => Array.isArray(value) ? t(...value) : localized(value, t);
     const restore = document.activeElement;
     const state = {tab, chapter: chapterOf(chapter) ? chapter : TUTORIAL_CHAPTERS[0].id, example, query: '', tocOnly: false, note};
-    const dialog = el('dialog', 'fv-book'); dialog.lang = lang === 'zh' ? 'zh-CN' : 'en';
+    const dialog = el('dialog', 'fv-book'); dialog.lang = pageLang();
     dialog.setAttribute('aria-labelledby', 'fv-book-title'); dialog.dataset.fvTipScope = '';
     // Head: name, the two pages (Chapters, Examples), contents (phones) and close.
     const head = el('header', 'fv-book-h'), name = el('h2'); name.id = 'fv-book-title'; name.append(icon('book'), el('span', 'fv-book-name', text.book));
@@ -207,7 +210,7 @@ export function openTutorialBook({chapter = TUTORIAL_CHAPTERS[0].id, tab = 'chap
     const page = el('div', 'fv-book-page'); page.tabIndex = -1;
     body.append(nav, page); dialog.append(head, body);
     function drawToc() {
-        const hits = searchChapters(state.query, lang), read = readSet();
+        const hits = searchChapters(state.query, lang, undefined, undefined, t), read = readSet();
         count.textContent = hits ? String(hits.length) : '';
         toc.replaceChildren();
         if (hits && !hits.length) { const none = el('div', 'fv-book-none'); none.append(el('b', null, text.none), document.createTextNode(text.noneHint)); toc.append(none); return; }
@@ -217,12 +220,12 @@ export function openTutorialBook({chapter = TUTORIAL_CHAPTERS[0].id, tab = 'chap
             const group = el('div', 'fv-book-g'); group.append(el('span', null, L(title)), el('span', 'fv-book-n', `${list.filter(id => read.has(id)).length} / ${list.length}`));
             toc.append(group);
             for (const id of list) {
-                const c = chapterOf(id), item = button('fv-book-ti', null, [c.title[lang], c.summary[lang] || text.tips.chapter]);
+                const c = chapterOf(id), item = button('fv-book-ti', null, [L(c.title), L(c.summary) || text.tips.chapter]);
                 item.dataset.chapter = id;
                 const t = el('span', 'fv-book-t');
                 const words = String(state.query || '').trim();
-                if (words) { const at = c.title[lang].toLowerCase().indexOf(words.toLowerCase()); if (at >= 0) { t.append(c.title[lang].slice(0, at), el('mark', null, c.title[lang].slice(at, at + words.length)), c.title[lang].slice(at + words.length)); } else t.textContent = c.title[lang]; }
-                else t.textContent = c.title[lang];
+                if (words) { const name = L(c.title), at = name.toLowerCase().indexOf(words.toLowerCase()); if (at >= 0) { t.append(name.slice(0, at), el('mark', null, name.slice(at, at + words.length)), name.slice(at + words.length)); } else t.textContent = name; }
+                else t.textContent = L(c.title);
                 item.append(t, read.has(id) ? icon('check', 'fv-book-ok') : el('span'));
                 if (state.tab === 'chapters' && id === state.chapter) item.setAttribute('aria-current', 'page');
                 item.onclick = () => go({tab: 'chapters', chapter: id, tocOnly: false, example: null});
@@ -236,9 +239,9 @@ export function openTutorialBook({chapter = TUTORIAL_CHAPTERS[0].id, tab = 'chap
         const inner = el('article', 'fv-book-in');
         const eyebrow = el('div', 'fv-book-eyebrow'); eyebrow.append(el('span', null, group ? L(group[0]) : ''), el('span', null, '·'), el('span', 'fv-book-num', `${at + 1} / ${order.length}`));
         if (read.has(id)) { const ok = el('span', 'fv-book-read'); ok.append(icon('check'), document.createTextNode(text.read)); eyebrow.append(ok); }
-        const h1 = el('h1', null, c.title[lang]);
-        inner.append(eyebrow, h1, el('p', 'fv-book-sum', c.summary[lang]));
-        const fig = figure(FIG[id], lang, text); if (fig) inner.append(fig);
+        const h1 = el('h1', null, L(c.title));
+        inner.append(eyebrow, h1, el('p', 'fv-book-sum', L(c.summary)));
+        const fig = figure(FIG[id], t, text); if (fig) inner.append(fig);
         const acts = el('div', 'fv-book-acts');
         const followButton = button('fv-book-btn', text.follow, [text.follow, text.tips.follow], icon('steps')); followButton.dataset.kind = 'primary';
         followButton.onclick = () => { dialog.close(); openFollow(id); };
@@ -260,7 +263,7 @@ export function openTutorialBook({chapter = TUTORIAL_CHAPTERS[0].id, tab = 'chap
         const steps = el('section', 'fv-book-sec'); steps.id = 'fv-book-steps'; steps.append(el('h2', null, text.steps));
         const ol = el('ol', 'fv-book-steps');
         const marks = STEP_GO[id] || (c.goto?.length ? {0: c.goto[0]} : {});
-        (c.steps[lang] || []).forEach((step, i) => {
+        (L(c.steps) || []).forEach((step, i) => {
             const li = el('li'); li.append(stepLine(step));
             if (marks[i]) {
                 const go = button('fv-book-go', text.goto, [text.goto, text.tips.goto], icon('target'));
@@ -270,17 +273,17 @@ export function openTutorialBook({chapter = TUTORIAL_CHAPTERS[0].id, tab = 'chap
             ol.append(li);
         });
         steps.append(ol); inner.append(steps);
-        if (c.limits?.[lang]?.length) {
+        if (c.limits?.en?.length) {
             const lims = el('section', 'fv-book-sec'); lims.append(el('h2', null, text.limits));
-            const ul = el('ul', 'fv-book-lims'); for (const line of c.limits[lang]) ul.append(el('li', null, line));
+            const ul = el('ul', 'fv-book-lims'); for (const line of L(c.limits)) ul.append(el('li', null, line));
             lims.append(ul); inner.append(lims);
         }
-        const pn = el('nav', 'fv-book-pn'); pn.setAttribute('aria-label', lang === 'zh' ? '翻页' : 'Pages');
+        const pn = el('nav', 'fv-book-pn'); pn.setAttribute('aria-label', t('Pages', '翻页'));
         const prevId = order[at - 1], nextId = order[at + 1];
         const side = (target, label, cls, arrowFirst) => {
-            const node = button(`fv-book-pnb ${cls}${target ? '' : ' is-none'}`, null, [label, target ? chapterOf(target).title[lang] : '']);
+            const node = button(`fv-book-pnb ${cls}${target ? '' : ' is-none'}`, null, [label, target ? L(chapterOf(target).title) : '']);
             const small = el('small'); if (arrowFirst) small.append(icon('left'), document.createTextNode(label)); else small.append(document.createTextNode(label), icon('right'));
-            node.append(small, el('b', null, target ? chapterOf(target).title[lang] : ''));
+            node.append(small, el('b', null, target ? L(chapterOf(target).title) : ''));
             if (target) node.onclick = () => go({chapter: target}); else node.tabIndex = -1;
             return node;
         };
@@ -326,7 +329,7 @@ export function openTutorialBook({chapter = TUTORIAL_CHAPTERS[0].id, tab = 'chap
             dialog.close();
             await globalThis.FreeVideoShell?.go?.('autopilot');
             const box = document.querySelector('dialog.fv-autopilot[open] textarea');
-            if (box && !box.value.trim()) { box.value = L(SHOWCASE_TEXT.example); box.dispatchEvent(new Event('input', {bubbles: true})); focusWhenOn(box); }
+            if (box && !box.value.trim()) { box.value = promptText(SHOWCASE_TEXT.example, lang === 'zh'); box.dispatchEvent(new Event('input', {bubbles: true})); focusWhenOn(box); }
         };
         words.append(begin); hero.append(art, words); box.append(hero);
         const grid = el('div', 'fv-book-grid'), ready = new Set(readyCards().map(c => c.id));
@@ -335,10 +338,10 @@ export function openTutorialBook({chapter = TUTORIAL_CHAPTERS[0].id, tab = 'chap
             if (!list.length) continue;
             grid.append(el('h4', null, L(title)));
             for (const card of list) {
-                const tile = button('fv-book-tile', null, [card.title[lang], card.line[lang]]);
+                const tile = button('fv-book-tile', null, [L(card.title), L(card.line)]);
                 const pic = el('span', 'fv-book-pic'), image = el('img'); image.alt = ''; image.src = asset(card.clip.poster); image.loading = 'lazy';
                 const play = el('span', 'fv-book-tplay'); play.append(icon('play')); pic.append(image, play);
-                tile.append(pic, el('span', 'fv-book-tt', card.title[lang]), el('span', 'fv-book-ts', card.line[lang]));
+                tile.append(pic, el('span', 'fv-book-tt', L(card.title)), el('span', 'fv-book-ts', L(card.line)));
                 tile.onclick = () => go({example: card.id});
                 grid.append(tile);
             }
@@ -352,16 +355,16 @@ export function openTutorialBook({chapter = TUTORIAL_CHAPTERS[0].id, tab = 'chap
         const box = el('div', 'fv-book-card');
         const back = button('fv-book-back', text.back, [text.back, text.tips.back], icon('left')); back.onclick = () => go({example: null});
         const eyebrow = el('div', 'fv-book-eyebrow'); eyebrow.append(el('span', null, text.feature));
-        const h1 = el('h1', null, card.title[lang]);
+        const h1 = el('h1', null, L(card.title));
         const pairBig = el('div', 'fv-book-pairbig'), inputs = el('div', 'fv-book-inputs');
         for (const item of card.input) {
-            if (item.text) { const quote = el('div', 'fv-book-in-card'); quote.append(el('small', null, text.prompt), document.createTextNode(item.text[lang])); inputs.append(quote); }
+            if (item.text) { const quote = el('div', 'fv-book-in-card'); quote.append(el('small', null, text.prompt), document.createTextNode(promptText(item.text, lang === 'zh'))); inputs.append(quote); }
             else if (item.src) { const m = el('div', 'fv-book-media'), img = el('img'); img.alt = ''; img.src = asset(item.src); m.append(img); inputs.append(m); }
             else if (item.mp4) { const m = el('div', 'fv-book-media'), img = el('img'); img.alt = ''; img.src = asset(item.poster); m.append(img); inputs.append(m); }
         }
         const to = el('span', 'fv-book-to'); to.append(icon('arrow'));
         const out = el('div', 'fv-book-media'), video = el('video'); video.src = asset(card.clip.mp4); video.poster = asset(card.clip.poster); video.muted = true; video.loop = true; video.playsInline = true;
-        video.setAttribute('aria-label', card.title[lang]);
+        video.setAttribute('aria-label', L(card.title));
         if (!reducedMotion()) video.autoplay = true;
         out.append(video);
         pairBig.append(inputs, to, out);
@@ -374,9 +377,9 @@ export function openTutorialBook({chapter = TUTORIAL_CHAPTERS[0].id, tab = 'chap
             acts.append(g);
         }
         const chapter = CARD_CHAPTER[card.id];
-        if (chapter && chapterOf(chapter)) { const r = button('fv-book-btn', lang === 'zh' ? '看教程' : 'Read the tutorial', [lang === 'zh' ? '看教程' : 'Read the tutorial', text.tips.read]); r.onclick = () => go({tab: 'chapters', chapter, example: null}); acts.append(r); }
+        if (chapter && chapterOf(chapter)) { const r = button('fv-book-btn', t('Read the tutorial', '看教程'), [t('Read the tutorial', '看教程'), text.tips.read]); r.onclick = () => go({tab: 'chapters', chapter, example: null}); acts.append(r); }
         strip.append(acts, el('span', 'fv-book-hint', text.fills));
-        box.append(back, eyebrow, h1, el('p', 'fv-book-sum', card.line[lang]), pairBig, strip);
+        box.append(back, eyebrow, h1, el('p', 'fv-book-sum', L(card.line)), pairBig, strip);
         page.replaceChildren(box);
     }
     function go(next = {}) {
@@ -423,11 +426,11 @@ export function openTutorialBook({chapter = TUTORIAL_CHAPTERS[0].id, tab = 'chap
 export function openFollow(id, at = 0) {
     follow?.close();
     styles();
-    const lang = language(), text = COPY[lang], c = chapterOf(id);
+    const lang = language(), say = translator(lang === 'zh'), text = localized(COPY, say), c = chapterOf(id), title = localized(c?.title, say);
     if (!c) return null;
-    const steps = c.steps[lang] || [], marks = STEP_GO[id] || (c.goto?.length ? {0: c.goto[0]} : {});
-    const card = el('aside', 'fv-follow fv-glass fv-g2 sgf-avoid'); card.setAttribute('role', 'region'); card.setAttribute('aria-label', `${text.follow} · ${c.title[lang]}`);
-    card.dataset.fvTipScope = ''; card.lang = lang === 'zh' ? 'zh-CN' : 'en';
+    const steps = localized(c.steps, say) || [], marks = STEP_GO[id] || (c.goto?.length ? {0: c.goto[0]} : {});
+    const card = el('aside', 'fv-follow fv-glass fv-g2 sgf-avoid'); card.setAttribute('role', 'region'); card.setAttribute('aria-label', `${text.follow} · ${title}`);
+    card.dataset.fvTipScope = ''; card.lang = pageLang();
     if ('popover' in HTMLElement.prototype) card.popover = 'manual';
     let step = at, corner = 'tr', closed = false;
     let wasPhone = null;
@@ -451,7 +454,7 @@ export function openFollow(id, at = 0) {
         const done = step >= steps.length, p = Math.min(1, step / Math.max(1, steps.length)), R = 9, C = 2 * Math.PI * R;
         const ring = document.createElementNS(SVG_NS, 'svg'); ring.setAttribute('viewBox', '0 0 24 24'); ring.setAttribute('class', 'fv-follow-ring'); ring.setAttribute('aria-hidden', 'true');
         ring.innerHTML = `<circle cx="12" cy="12" r="${R}" class="bg"/><circle cx="12" cy="12" r="${R}" class="fg" stroke-dasharray="${C.toFixed(2)}" stroke-dashoffset="${(C * (1 - p)).toFixed(2)}"/>`;
-        const t = el('span', 'fv-follow-t'); t.append(el('b', null, c.title[lang]), el('small', null, done ? text.done : text.stepOf(step + 1, steps.length)));
+        const t = el('span', 'fv-follow-t'); t.append(el('b', null, title), el('small', null, done ? text.done : fill(text.stepOf, { step: step + 1, total: steps.length })));
         card.append(ring, t);
         if (!done && marks[step]) { const g = button('fv-follow-icon', null, [text.goto, text.tips.goto], icon('target')); g.setAttribute('aria-label', text.goto); g.onclick = async () => { const {goToScene} = await import('./tour_goto.js'); await goToScene({view: c.view, ids: [marks[step]], select: c.select}); }; card.append(g); }
         if (!done) { const ok = button('fv-follow-icon', null, [text.stepDone, text.tips.stepDone], icon('check')); ok.setAttribute('aria-label', text.stepDone); ok.onclick = () => { step++; draw(); }; card.append(ok); }
@@ -463,9 +466,9 @@ export function openFollow(id, at = 0) {
         const done = step >= steps.length; card.classList.toggle('is-done', done);
         card.replaceChildren();
         if (innerWidth < 720) { drawCapsule(); return; }
-        const head = el('div', 'fv-follow-h'); tip(head, lang === 'zh' ? '拖动' : 'Drag', text.tips.drag);
+        const head = el('div', 'fv-follow-h'); tip(head, say('Drag', '拖动'), text.tips.drag);
         const ic = el('span', 'fv-follow-ic'); ic.append(icon(done ? 'check' : 'steps'));
-        const t = el('span', 'fv-follow-t'); t.append(el('b', null, c.title[lang]), el('small', null, done ? text.done : text.stepOf(step + 1, steps.length)));
+        const t = el('span', 'fv-follow-t'); t.append(el('b', null, title), el('small', null, done ? text.done : fill(text.stepOf, { step: step + 1, total: steps.length })));
         const expand = button('fv-follow-icon', null, [text.expand, text.tips.expand], icon('expand')); expand.setAttribute('aria-label', text.expand);
         expand.onclick = () => { close(); openTutorialBook({chapter: id}); };
         const x = button('fv-follow-icon', null, [text.close, text.tips.followClose, 'Esc'], icon('x')); x.setAttribute('aria-label', text.close); x.onclick = close;
@@ -484,7 +487,7 @@ export function openFollow(id, at = 0) {
         const foot = el('div', 'fv-follow-f');
         if (done) {
             const order = bookOrder(), nextId = order[order.indexOf(id) + 1];
-            foot.append(el('span', 'fv-follow-next', nextId ? text.doneNext + chapterOf(nextId).title[lang] : text.done), el('span', 'fv-follow-grow'));
+            foot.append(el('span', 'fv-follow-next', nextId ? text.doneNext + localized(chapterOf(nextId).title, say) : text.done), el('span', 'fv-follow-grow'));
             if (nextId) { const n = button('fv-book-btn', text.next, [text.next, text.tips.next]); n.dataset.kind = 'primary'; n.onclick = () => { close(); openTutorialBook({chapter: nextId}); }; foot.append(n); }
         } else {
             const back = button('fv-book-btn', text.stepBack, [text.stepBack, text.tips.stepBack]); back.disabled = step === 0; back.onclick = () => { step = Math.max(0, step - 1); draw(); };
@@ -532,9 +535,9 @@ export function openFollow(id, at = 0) {
  * Callers that own another modal may close it in beforeOpen.
  */
 export function mountBookEntry({container, chapter, beforeOpen} = {}) {
-    const lang = language();
-    const entry = el('button', 'fv-book-entry', COPY[lang].book); entry.type = 'button';
-    tip(entry, COPY[lang].book, COPY[lang].tips.read);
+    const text = localized(COPY, translator(language() === 'zh'));
+    const entry = el('button', 'fv-book-entry', text.book); entry.type = 'button';
+    tip(entry, text.book, text.tips.read);
     entry.onclick = () => { beforeOpen?.(); openTutorialBook({chapter}); };
     container?.append(entry);
     return entry;

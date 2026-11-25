@@ -102,7 +102,7 @@ export function createAdjustPanel(host, {state, t, actions}) {
         host.hidden = !available.length || (narrow && !overlay); toggleButton.hidden = !available.length || !narrow;
         toggleButton.setAttribute('aria-expanded', String(narrow && overlay)); closeButton.hidden = !narrow;
         if (shell) { shell.dataset.adjustOpen = String(narrow && overlay); shell.dataset.adjustAvailable = String(!!available.length); }
-        status.textContent = context.multiple ? t(`${context.count} parts selected`, `已选 ${context.count} 段`) : '';
+        status.textContent = context.multiple ? t('{count} parts selected', '已选 {count} 段', { count: context.count }) : '';
         status.hidden = !context.multiple;
         let shownReason = '';
         // Nothing chosen: one quiet line instead of a column of greyed controls; every control is back once a part is chosen.

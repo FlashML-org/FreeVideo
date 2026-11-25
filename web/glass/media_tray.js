@@ -11,6 +11,7 @@
 import './tray_pop.js';
 import { mediaQueue } from '../work_media.js';
 import {setHidden} from '../dom_quiet.js';
+import { translator } from '../i18n.js';
 
 const CARD_KEYS = {'↑': 'fv-mt-up', '↓': 'fv-mt-down'};
 // How many saved works the works page lists (newest first, pictures and videos together).
@@ -81,7 +82,7 @@ function mediaOf(panel) {
     const shown = [...panel.querySelectorAll('.fv-mt-cards > .fv-card .fv-file')].map(label => label.title).join('\n');
     return (nodes.find(node => { try { return node.freevideoMedia.rows().map(row => row.file).join('\n') === shown; } catch { return false; } }) || nodes[0]).freevideoMedia;
 }
-const say = (panel, en, zh) => panel.fvMtChinese ? zh : en;
+const say = (panel, en, zh, values) => translator(panel.fvMtChinese)(en, zh, values);
 const make = (tag, cls, text) => { const element = document.createElement(tag); if (cls) element.className = cls; if (text != null) element.textContent = text; return element; };
 const FRAME = role => role === 'first' || role === 'last' || role === 'middle';
 const rowsOf = media => { try { return media ? media.rows() : []; } catch { return []; } };
@@ -101,8 +102,8 @@ function emptySlot(panel, role) {
     const computer = make('button', 'fv-mt-slot-key fv-mt-computer', say(panel, 'Computer', '电脑')), saved = make('button', 'fv-mt-slot-key fv-mt-saved', say(panel, 'Works', '作品库'));
     computer.setAttribute('aria-label', `${name}: ${say(panel, 'from this computer', '从电脑选择')}`); saved.setAttribute('aria-label', `${name}: ${say(panel, 'from the works', '从作品库选择')}`);
     computer.type = saved.type = 'button';
-    computer.dataset.fvTipName = say(panel, 'From this computer', '从电脑选择'); computer.dataset.fvTipUse = say(panel, `A picture as the ${name.toLowerCase()}`, `选一张图片作${name}`);
-    saved.dataset.fvTipName = say(panel, 'From the works', '从作品库选择'); saved.dataset.fvTipUse = say(panel, `A saved picture as the ${name.toLowerCase()}`, `选一张作品作${name}`);
+    computer.dataset.fvTipName = say(panel, 'From this computer', '从电脑选择'); computer.dataset.fvTipUse = role === 'first' ? say(panel, 'A picture as the first frame', '选一张图片作首帧') : say(panel, 'A picture as the last frame', '选一张图片作尾帧');
+    saved.dataset.fvTipName = say(panel, 'From the works', '从作品库选择'); saved.dataset.fvTipUse = role === 'first' ? say(panel, 'A saved picture as the first frame', '选一张作品作首帧') : say(panel, 'A saved picture as the last frame', '选一张作品作尾帧');
     const picker = make('input'); picker.type = 'file'; picker.accept = 'image/*'; picker.hidden = true;
     picker.onchange = () => { if (picker.files?.length) media?.upload([picker.files[0]], {role}); picker.value = ''; };
     computer.onclick = () => picker.click();

@@ -42,7 +42,7 @@ export function icon(name) {
 export function previewBadge(record, t) {
     const badge = document.createElement('span'); badge.className = 'fv-preview-badge';
     const g = record.preview_geometry;
-    badge.textContent = g?.width ? t(`First-pass preview · ${g.width} × ${g.height}`, `一采预览 · ${g.width} × ${g.height}`)
+    badge.textContent = g?.width ? t('First-pass preview · {width} × {height}', '一采预览 · {width} × {height}', { width: g.width, height: g.height })
         : t('First-pass preview', '一采预览');
     return badge;
 }

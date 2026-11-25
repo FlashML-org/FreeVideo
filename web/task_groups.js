@@ -25,7 +25,7 @@ export function applyTasks({cards, rows, order, open = null, selecting = false, 
         card.hidden = !!folded && !head && !shown;
         if (head && !selecting) {
             card.setAttribute('aria-expanded', String(shown));
-            card.setAttribute('aria-label', t(`${group.length} results`, `${group.length} 个结果`));
+            card.setAttribute('aria-label', t('{count} results', '{count} 个结果', { count: group.length }));
             // A folded cover stands for every video under it.
             if (!shown) card.setAttribute('aria-pressed', String(group.includes(selected)));
         } else {

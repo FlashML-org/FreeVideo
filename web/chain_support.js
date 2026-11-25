@@ -8,18 +8,18 @@ export const chainRoute = (id, action) => '/freevideo/chain' + (id ? '/' + encod
 export function waitingText(waiting, t) {
     const ahead = waiting?.ahead, left = waiting?.remaining_seconds;
     if (!Number.isInteger(ahead) || ahead < 1) return t('Queued', '排队中');
-    if (ahead > 1) return t(`Queued · ${ahead} ahead`, `排队中 · 前面还有 ${ahead} 个`);
+    if (ahead > 1) return t('Queued · {ahead} ahead', '排队中 · 前面还有 {ahead} 个', { ahead });
     if (!Number.isFinite(left) || left < 0) return t('Queued · waiting for the previous one', '排队中 · 等前一个完成');
-    const time = left < 60 ? t(`about ${Math.max(1, Math.ceil(left))} s`, `约 ${Math.max(1, Math.ceil(left))} 秒`)
-        : t(`about ${Math.ceil(left / 60)} min`, `约 ${Math.ceil(left / 60)} 分钟`);
-    return t(`Queued · starts in ${time}`, `排队中 · ${time}后开始`);
+    const time = left < 60 ? t('about {seconds} s', '约 {seconds} 秒', { seconds: Math.max(1, Math.ceil(left)) })
+        : t('about {minutes} min', '约 {minutes} 分钟', { minutes: Math.ceil(left / 60) });
+    return t('Queued · starts in {time}', '排队中 · {time}后开始', { time });
 }
 
 // The line while a long video's parts are joined: which part is being written once that is known.
 export function joiningText(join, t) {
     const part = join?.part, count = join?.count;
     if (!Number.isInteger(part) || !Number.isInteger(count) || count < 2 || part < 1 || part > count) return t('Joining the parts', '正在接合各段');
-    return t(`Joining · Part ${part} of ${count}`, `正在接合 · 第 ${part} 段，共 ${count} 段`);
+    return t('Joining · Part {part} of {count}', '正在接合 · 第 {part} 段，共 {count} 段', { part, count });
 }
 
 // No overlapping polls and no delivery after disposal, including a slow response.

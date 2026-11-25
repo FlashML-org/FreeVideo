@@ -2,6 +2,8 @@
 // Nothing is recorded; the picture is a placeholder, the tracks, clips, progress and waveforms are the real styles.
 import {PAGES, LINES, SEEN_PREFIX, seenRecord, unseenPages, hasWhatsNew} from './whatsnew_pages.js';
 import {PEAKS} from './whatsnew_peaks.js';
+import {translator} from './i18n.js';
+import {promptText} from './i18n_tables.js';
 import './glass/library.js';
 
 const el = (tag, text, cls) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; };
@@ -33,7 +35,7 @@ const frame = fn => requestAnimationFrame(() => requestAnimationFrame(fn));
 
 // One page's scene: the editor's track view under its generation bar, changed only by the ops of its steps.
 export function createStage(cn, page) {
-    const t = pair => pair[cn ? 1 : 0];
+    const say = translator(cn), t = pair => say(...pair);
     const root = el('div', null, 'fv-whatsnew-stage'); root.setAttribute('aria-hidden', 'true'); root.dataset.lang = cn ? 'zh' : 'en';
     let ticker = 0, dragTicker = 0, instantLayout = false, need = 0;
     // The generation bar, the lines and the recording bar are the editor's own, under the editor's styles; they share one box above the tracks.
@@ -258,7 +260,7 @@ const remember = pages => { try { for (const page of pages) localStorage.setItem
 const unseen = version => unseenPages(version, read);
 
 export function showWhatsNew(cn, {openedBy = 'user', pages = PAGES} = {}) {
-    const t = (en, zh) => cn ? zh : en;
+    const t = translator(cn);
     const css = document.getElementById('fv-whatsnew-css') || Object.assign(document.createElement('link'), {id: 'fv-whatsnew-css', rel: 'stylesheet', href: new URL('./whatsnew.css', import.meta.url).href});
     if (!css.isConnected) document.head.append(css);
     for (const sheet of ['editor.css', 'editor_expand.css', 'editor_adjust.css', 'editor_tracks.css', 'editor_menu.css', 'editor_voice.css', 'editor_record.css']) {
@@ -292,9 +294,9 @@ export function showWhatsNew(cn, {openedBy = 'user', pages = PAGES} = {}) {
     function show(at) {
         stop(); stop = () => {}; listNode?.remove();
         index = at; const page = pages[at];
-        title.textContent = page.title[cn ? 1 : 0]; next.hidden = at === pages.length - 1; open.hidden = page.open !== 'image';
+        title.textContent = t(...page.title); next.hidden = at === pages.length - 1; open.hidden = page.open !== 'image';
         [...dots.children].forEach((dot, i) => dot.classList.toggle('on', i === at));
-        dots.setAttribute('aria-label', t(`Page ${at + 1} of ${pages.length}`, `第 ${at + 1} 页，共 ${pages.length} 页`));
+        dots.setAttribute('aria-label', t('Page {page} of {count}', '第 {page} 页，共 {count} 页', { page: at + 1, count: pages.length }));
         if (page.kind === 'still' && page.poster) {
             // One finished picture (one per language when the source is a pair), blurred behind itself to fill the frame,
             // with its prompt, when it has one, typed over the foot.
@@ -302,12 +304,12 @@ export function showWhatsNew(cn, {openedBy = 'user', pages = PAGES} = {}) {
             const words = el('span'), caret = el('i'); typed.append(words, caret);
             const source = Array.isArray(page.poster.src) ? page.poster.src[cn ? 1 : 0] : page.poster.src;
             back.alt = ''; fit.alt = ''; back.draggable = fit.draggable = false; back.src = fit.src = new URL('./' + source, import.meta.url).href;
-            const text = page.poster.prompt?.[cn ? 1 : 0] || '', timers = [];
+            const text = page.poster.prompt ? promptText(page.poster.prompt, cn) : '', timers = [];
             shot.append(back, fit, ...text ? [typed] : []); stageHost.replaceChildren(shot); stageHost.style.visibility = '';
             stop = () => timers.forEach(clearTimeout);
             if (reduce) words.textContent = text;
             else if (text) { const step = Math.min(60, 1800 / text.length); for (let i = 1; i <= text.length; i++) timers.push(setTimeout(() => { words.textContent = text.slice(0, i); }, 300 + i * step)); }
-            listNode = el('ul', null, 'fv-whatsnew-list'); listNode.dataset.plain = ''; for (const item of page.list) listNode.append(el('li', item[cn ? 1 : 0]));
+            listNode = el('ul', null, 'fv-whatsnew-list'); listNode.dataset.plain = ''; for (const item of page.list) listNode.append(el('li', t(...item)));
             dialog.insertBefore(listNode, foot); return;
         }
         if (page.kind === 'still') {
@@ -318,7 +320,7 @@ export function showWhatsNew(cn, {openedBy = 'user', pages = PAGES} = {}) {
             stop = () => timers.forEach(clearTimeout);
             // The pictures play in order, round and round: the prompt is typed, a bar fills, the picture arrives and stays a while.
             const play = at => {
-                const one = page.pictures[at % page.pictures.length], text = one.prompt[cn ? 1 : 0] || one.prompt[0];
+                const one = page.pictures[at % page.pictures.length], text = promptText(one.prompt, cn);
                 image.src = new URL('./' + one.src, import.meta.url).href; image.style.aspectRatio = one.ratio;
                 const next = () => play(at + 1);
                 if (reduce) { prompt.textContent = text; image.style.opacity = '1'; barHost.hidden = true; if (page.pictures.length > 1) later(4000, next); return; }
@@ -331,7 +333,7 @@ export function showWhatsNew(cn, {openedBy = 'user', pages = PAGES} = {}) {
                 if (page.pictures.length > 1) { later(7200, () => { image.style.opacity = '0'; }); later(7700, next); }
             };
             play(0);
-            listNode = el('ul', null, 'fv-whatsnew-list'); listNode.dataset.plain = ''; for (const item of page.list) listNode.append(el('li', item[cn ? 1 : 0]));
+            listNode = el('ul', null, 'fv-whatsnew-list'); listNode.dataset.plain = ''; for (const item of page.list) listNode.append(el('li', t(...item)));
             dialog.insertBefore(listNode, foot); return;
         }
         const stage = createStage(cn, page);

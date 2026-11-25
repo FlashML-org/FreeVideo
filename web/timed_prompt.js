@@ -142,14 +142,14 @@ export function problem(text, seconds, t, offset = null, cutWords = KEYWORDS.cut
     const length = shortClock(seconds);
     if (code === 'out_of_range' && offset !== null) {
         const range = `${shortClock(offset)}\u2060–\u2060${shortClock(offset + seconds)}`;
-        return t(`Line ${line} is at ${time}, outside this part (${range}). Change it to a time within this part.`,
-            `第 ${line} 行的时间 ${time} 超出这一段（${range}），请改为这段内的时间。`);
+        return t('Line {line} is at {time}, outside this part ({range}). Change it to a time within this part.',
+            '第 {line} 行的时间 {time} 超出这一段（{range}），请改为这段内的时间。', { line, time, range });
     }
-    if (code === 'out_of_range') return t(`Line ${line} is at ${time}, beyond the video length (${length}). Change it to a time within ${length}.`,
-        `第 ${line} 行的时间 ${time} 超出视频时长（${length}），请改为 ${length} 以内的时间。`);
-    if (code === 'empty_cut') return t(`Line ${line} has nothing after the cut. Describe the new shot.`, `第 ${line} 行的“切：”后面没有内容，请写出新镜头的画面。`);
-    return t(`The time "${time}" on line ${line} is not valid. Write it as minutes:seconds, for example 0:05.`,
-        `第 ${line} 行的时间“${time}”无法识别，请按“分:秒”书写，例如 0:05。`);
+    if (code === 'out_of_range') return t('Line {line} is at {time}, beyond the video length ({length}). Change it to a time within {length}.',
+        '第 {line} 行的时间 {time} 超出视频时长（{length}），请改为 {length} 以内的时间。', { line, time, length });
+    if (code === 'empty_cut') return t('Line {line} has nothing after the cut. Describe the new shot.', '第 {line} 行的“切：”后面没有内容，请写出新镜头的画面。', { line });
+    return t('The time "{time}" on line {line} is not valid. Write it as minutes:seconds, for example 0:05.',
+        '第 {line} 行的时间“{time}”无法识别，请按“分:秒”书写，例如 0:05。', { time, line });
 }
 
 // What the model and the generator read: the converted text, or the typed text while a line is unusable.

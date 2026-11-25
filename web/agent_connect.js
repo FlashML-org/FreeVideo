@@ -15,7 +15,7 @@ export function connectionLabel(agent, t) {
 
 export function connectionSentence(address, t) {
     const url = address + '/freevideo/agent';
-    return t(`Connect to FreeVideo: open ${url} and follow the instructions.`, `请连接 FreeVideo：打开 ${url} 并按说明操作。`);
+    return t('Connect to FreeVideo: open {url} and follow the instructions.', '请连接 FreeVideo：打开 {url} 并按说明操作。', { url });
 }
 
 // Whether this FreeVideo has the Agent interface on: 'on', 'off' or 'unknown'. Only an explicit `enabled: false`
@@ -56,7 +56,7 @@ export function localhostAddress(location = globalThis.location) {
 export function refusalHint(code, t, kind = addressKind(globalThis.location?.hostname), address = localhostAddress()) {
     if (code === 'origin_forbidden') return t('Open FreeVideo on this computer with a localhost address, then retry.', '请在本机使用 localhost 地址打开 FreeVideo，然后重试。');
     if (code === 'local_only') return kind && kind !== 'localhost' && address
-        ? t(`On the computer that runs FreeVideo, open ${address}, then retry.`, `请在运行 FreeVideo 的电脑上打开 ${address}，然后重试。`)
+        ? t('On the computer that runs FreeVideo, open {address}, then retry.', '请在运行 FreeVideo 的电脑上打开 {address}，然后重试。', { address })
         : t('An assistant can only be connected on the computer that runs FreeVideo.', '只能在运行 FreeVideo 的电脑上连接助手。');
     if (code === 'not_ready') return t('The assistant connection service is not ready. Restart FreeVideo, then retry.', '助手连接服务尚未就绪，请重启 FreeVideo 后重试。');
     return '';
@@ -87,9 +87,9 @@ export function linkReason(agent, t) {
         next: t('Choose Reconnect and paste the steps to it again. If it is still refused, restart the assistant.', '请点“重新连接”，把连接说明再粘贴给它一次；仍被拒绝时，请重启助手。')};
     if (agent?.reason === 'quiet') {
         const minutes = Math.max(10, Math.round((Number(agent.quiet_s) || 0) / 60)), hours = Math.round(minutes / 60);
-        const span = minutes >= 120 ? t(`${hours} hours`, `${hours} 小时`) : t(`${minutes} minutes`, `${minutes} 分钟`);
+        const span = minutes >= 120 ? t('{hours} hours', '{hours} 小时', { hours }) : t('{minutes} minutes', '{minutes} 分钟', { minutes });
         return {reason: 'quiet', report: false,
-            text: t(`The assistant has not contacted FreeVideo for ${span}; it may have finished or been closed.`, `助手已有 ${span}没有联系 FreeVideo，可能已经结束或被关闭。`),
+            text: t('The assistant has not contacted FreeVideo for {span}; it may have finished or been closed.', '助手已有 {span}没有联系 FreeVideo，可能已经结束或被关闭。', { span }),
             next: reconnect};
     }
     if (agent?.reason === 'never') return {reason: 'never', report: false,
@@ -149,7 +149,7 @@ export function agentLinkMenu(t, host, anchor, {disconnect: send, steps = () => 
             const value = await response.json().catch(() => null);
             if (!response.ok) {
                 const code = String(value?.error?.code || '').slice(0, 40) || null;
-                failure = {code, text: refusalHint(code, t) || t(`Could not disconnect (HTTP ${response.status}). Retry, or report it.`, `断开失败（HTTP ${response.status}）。请重试，或提交问题。`)};
+                failure = {code, text: refusalHint(code, t) || t('Could not disconnect (HTTP {status}). Retry, or report it.', '断开失败（HTTP {status}）。请重试，或提交问题。', { status: response.status })};
                 return;
             }
             close(); changed(value?.agent || null);

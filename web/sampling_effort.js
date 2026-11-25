@@ -121,9 +121,9 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}, levels 
         b.style.setProperty('--fv-stop', i / 3);
         b.dataset.fvTipName = effortName(t, tier);
         b.dataset.fvTipUse = tier.twoPass
-            ? (tier.upscale < 2 ? t(`${tier.steps} + 3 steps from a larger first pass: more detail`, `两遍 ${tier.steps} + 3 步，一采更大、细节更多`)
-                : t(`${tier.steps} + 3 steps in two passes: fastest`, `两遍 ${tier.steps} + 3 步，最快`))
-            : t(`${tier.steps} steps in one pass: finer, slower`, `一遍 ${tier.steps} 步，更细也更慢`);
+            ? (tier.upscale < 2 ? t('{steps} + 3 steps from a larger first pass: more detail', '两遍 {steps} + 3 步，一采更大、细节更多', { steps: tier.steps })
+                : t('{steps} + 3 steps in two passes: fastest', '两遍 {steps} + 3 步，最快', { steps: tier.steps }))
+            : t('{steps} steps in one pass: finer, slower', '一遍 {steps} 步，更细也更慢', { steps: tier.steps });
         b.onclick = () => { if (!disabled && pointer === null) commit(i); };
         names.append(b); return b;
     });

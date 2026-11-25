@@ -11,8 +11,9 @@ export async function openEditorView(node, options) {
         if (options?.isCurrent?.() === false) return null;
         console.warn('FreeVideo edit view:', error);
         // The page's language as the top bar has it (loaded on demand, so a failure here still reads it).
-        const cn = await import('./topbar_state.js').then(module => module.CN, () => String(navigator.language || '').toLowerCase().startsWith('zh'));
-        const detail = cn ? '没有完成，请重试' : 'Could not complete. Try again.';
+        const t = await Promise.all([import('./topbar_state.js'), import('./i18n.js')]).then(([state, i18n]) => i18n.translator(state.CN),
+            () => (en, zh) => String(navigator.language || '').toLowerCase().startsWith('zh') ? zh : en);
+        const detail = t('Could not complete. Try again.', '没有完成，请重试');
         // The native modal is above the host's toast layer. Also use the
         // workspace's existing failure status so the message stays visible.
         const status = options?.studio?.querySelector('.fv-status');

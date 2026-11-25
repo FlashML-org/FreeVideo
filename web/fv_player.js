@@ -1,3 +1,4 @@
+import { translatorFor } from './i18n.js';
 // Our own play bar for a video or audio element in place of the browser's: a play/pause key, a progress bar that can be
 // dragged, and the time. Video also plays and pauses on a click. Every part is at least 44 px to hit.
 // Loaded at once so the first bar is never drawn bare; a page without a document (the module checks, the page check) skips it.
@@ -13,7 +14,7 @@ const LOUD = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5v5h3.5l
 const MUTE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5v5h3.5l4.5 3.5v-12l-4.5 3.5zM15.5 9.5l5 5M20.5 9.5l-5 5"/></svg>';
 const PAUSE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13M16 5.5v13"/></svg>';
 
-export function createPlayBar(media, t = (en) => en) {
+export function createPlayBar(media, t = translatorFor(null, false)) {
     const bar = document.createElement('div'); bar.className = 'fv-player-bar';
     const key = document.createElement('button'); key.type = 'button'; key.className = 'fv-player-key';
     const track = document.createElement('div'); track.className = 'fv-player-track'; track.tabIndex = 0; track.setAttribute('role', 'slider');

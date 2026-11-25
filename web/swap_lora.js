@@ -35,7 +35,7 @@ export function swapLoraDownload({t, api, onReady = () => {}}) {
         meter.dataset.indeterminate = String(!total);
         fill.style.width = total ? `${Math.min(100, 100 * (install.done || 0) / total).toFixed(1)}%` : '';
         text.textContent = running()
-            ? (total ? t(`Downloading the Replace person model · ${mb(install.done)} / ${mb(total)}`, `正在下载替换人物模型 · ${mb(install.done)} / ${mb(total)}`)
+            ? (total ? t('Downloading the Replace person model · {done} / {total}', '正在下载替换人物模型 · {done} / {total}', { done: mb(install.done), total: mb(total) })
                 : t('Downloading the Replace person model…', '正在下载替换人物模型…'))
             : failed ? swapLoraFailureText(install.reason, t)
             : t('The Replace person model is ready.', '替换人物模型已就绪。');

@@ -8,13 +8,17 @@
 // Nothing here runs at import under Node, so the unit tests load it as it is.
 
 import { isolateDialogKeys, listenDialogKey } from './dialog_keys.js';
-import { isChinese, translator } from './i18n.js';
+import { isChinese, translator, translatorFor } from './i18n.js';
 
 const browser = typeof document !== 'undefined';
 export const CN = isChinese();
 export const t = translator(CN);
-// [en, zh] pairs, plain strings and functions returning either all read the same way.
-export const words = (value, cn = CN) => typeof value === 'function' ? words(value(), cn) : Array.isArray(value) ? String(value[cn ? 1 : 0] ?? value[0] ?? '') : String(value ?? '');
+// [en, zh] pairs (or [en, zh, values] for {name} placeholders), plain strings and functions returning either all read
+// the same way. A pair in the page's language goes through t, so a language file reaches it; asked for the other of
+// English and Chinese (a search that matches both), it is that text as written.
+export const words = (value, cn = CN) => typeof value === 'function' ? words(value(), cn)
+    : Array.isArray(value) ? String((cn === CN ? t : translatorFor(null, cn))(value[0] ?? '', value[1] ?? value[0] ?? '', value[2]) ?? '')
+    : String(value ?? '');
 export const MAC = /Mac|iPhone|iPad/.test(globalThis.navigator?.platform || globalThis.navigator?.userAgent || '');
 // The compatibility view (Settings → 兼容界面, stored as freevideo.glass = solid): solid panels, fewer animations,
 // and nothing plays until asked. It counts as reduced motion everywhere.
@@ -41,7 +45,7 @@ const GESTURES = {click: ['Click', '点击'], drag: ['Drag', '拖动'], wheel: [
 export function keyParts(combo, mac = MAC, cn = CN) {
     return String(combo || '').split('+').map(part => part.trim()).filter(Boolean).map(part => {
         const low = part.toLowerCase();
-        if (GESTURES[low]) return GESTURES[low][cn ? 1 : 0];
+        if (GESTURES[low]) return words(GESTURES[low], cn);
         return (mac ? MAC_KEYS : PC_KEYS)[low] ?? COMMON[low] ?? (part.length === 1 ? part.toUpperCase() : part);
     });
 }

@@ -101,7 +101,7 @@ export function createLayout({host, layer = document.body, onChange = () => {}, 
     function say(event) {
         // Once, beside the pointer, gone by itself: never a dialog, never left on the page.
         hint?.remove();
-        hint = el('div', 'fv-iv-lhint', t(`Up to ${limit} boxes`, `最多 ${limit} 个框`)); hint.setAttribute('role', 'status');
+        hint = el('div', 'fv-iv-lhint', t('Up to {limit} boxes', '最多 {limit} 个框', { limit })); hint.setAttribute('role', 'status');
         hint.style.left = `${event.clientX + 12}px`; hint.style.top = `${event.clientY + 12}px`;
         layer.append(hint);
         const mine = hint; setTimeout(() => { mine.remove(); if (hint === mine) hint = null; }, 1600);

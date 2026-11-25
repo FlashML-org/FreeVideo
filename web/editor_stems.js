@@ -38,7 +38,7 @@ export function createStemsIntegration({state, api, queue, store, t, error, noti
         const detail = (() => { try { return JSON.parse(progress?.detail || 'null'); } catch { return null; } })();
         switch (progress?.phase) {
             case 'downloading': return Number.isFinite(detail?.fraction)
-                ? t(`Downloading the separation model ${Math.round(detail.fraction * 100)}%`, `正在下载分离模型 ${Math.round(detail.fraction * 100)}%`)
+                ? t('Downloading the separation model {percent}%', '正在下载分离模型 {percent}%', { percent: Math.round(detail.fraction * 100) })
                 : t('Downloading the separation model', '正在下载分离模型');
             case 'separating': return t('Separating the sound', '正在分离声音');
             case 'waiting': return t('Waiting for the video to finish', '等待视频生成完成');
@@ -170,7 +170,7 @@ export function createStemsIntegration({state, api, queue, store, t, error, noti
             const response = await retryAgentPost(api, `${ROOT}/projects/${encodeURIComponent(state.record.id)}/stems/export`, body);
             const answer = await response?.json().catch(() => null);
             if (!response?.ok) { say(answer, 'stems_failed'); return false; }
-            notify(t(`Saved the tracks to ${answer.folder}`, `分轨已保存到 ${answer.folder}`));
+            notify(t('Saved the tracks to {folder}', '分轨已保存到 {folder}', { folder: answer.folder }));
             return true;
         } catch (value) { say(value, 'stems_failed'); return false; }
     }

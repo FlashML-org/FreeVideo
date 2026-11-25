@@ -20,14 +20,14 @@ export function percent(row) {
 
 // Lane-5x 11-22: no version or date is promised.
 export const laterText = t => t('Dubbing is not available on this computer.', '这台电脑上无法使用配音。');
-export const offerText = (bytes, t) => t(`Voice change needs the dubbing model (about ${sizeText(bytes)}).`, `换人声需要配音模型，约 ${sizeText(bytes)}。`);
+export const offerText = (bytes, t) => t('Voice change needs the dubbing model (about {size}).', '换人声需要配音模型，约 {size}。', { size: sizeText(bytes) });
 export const progressText = (value, t) => value == null ? t('Downloading the dubbing model', '正在下载配音模型')
-    : t(`Downloading the dubbing model ${value}%`, `正在下载配音模型 ${value}%`);
+    : t('Downloading the dubbing model {value}%', '正在下载配音模型 {value}%', { value });
 
 // What a failed download says; the code never reaches the words. `report` is whether the problem can be reported.
 export function failureText(code, bytes, t) {
     switch (code) {
-        case 'disk_space': return {report: true, text: t(`There is not enough disk space. The dubbing model needs about ${sizeText(bytes)}.`, `磁盘空间不足，配音模型需要约 ${sizeText(bytes)}。`)};
+        case 'disk_space': return {report: true, text: t('There is not enough disk space. The dubbing model needs about {size}.', '磁盘空间不足，配音模型需要约 {size}。', { size: sizeText(bytes) })};
         case 'download_failed': case 'network': return {report: true, text: t('The dubbing model could not be downloaded. Check the connection and try again.', '配音模型下载失败，请检查网络后重试。')};
         default: return {report: true, text: t('The dubbing model could not be installed. Try again; if it keeps failing, report the problem.', '配音模型未能安装。请重试；仍然失败时，请提交问题。')};
     }

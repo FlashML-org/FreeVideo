@@ -42,26 +42,26 @@ export const clockText = seconds => { const whole = Math.max(0, Math.floor(secon
 // The button names what it does; the time is not shown: the figure the service has is the new sentence's length, not the wait.
 export function redubLabel(count, t) {
     if (!count) return t('Redub', '重新配音');
-    return t(`Redub ${count} ${count === 1 ? 'line' : 'lines'}`, `重新配音 ${count} 句`);
+    return count === 1 ? t('Redub 1 line', '重新配音 1 句') : t('Redub {count} lines', '重新配音 {count} 句', { count });
 }
 
 // One line needs no number; the time only once the service has given one.
 export const dubbingText = (index, count, seconds, t) => {
-    const time = Number.isFinite(seconds) ? ` · ${t(`about ${Math.max(1, Math.ceil(seconds))}${NBSP}s`, `约 ${Math.max(1, Math.ceil(seconds))}${NBSP}秒`)}` : '';
-    return count > 1 ? t(`Dubbing · line ${index} of ${count}${time}`, `正在配音 · 第 ${index}/${count} 句${time}`)
-        : t(`Dubbing${time}`, `正在配音${time}`);
+    const time = Number.isFinite(seconds) ? ` · ${t('about {seconds}\u00a0s', '约 {seconds}\u00a0秒', { seconds: Math.max(1, Math.ceil(seconds)) })}` : '';
+    return count > 1 ? t('Dubbing · line {index} of {count}{time}', '正在配音 · 第 {index}/{count} 句{time}', { index, count, time })
+        : t('Dubbing{time}', '正在配音{time}', { time });
 };
 
 // "2.6 s too long. Original voice kept.": one decimal, never "0.0". Without a way to shorten it, the row says what to do.
 export const overrunText = (seconds, t, canShorten = true) => {
     const value = Math.max(0.1, Math.round(seconds * 10) / 10).toFixed(1);
-    return canShorten ? t(`${value}${NBSP}s too long. Original voice kept.`, `超出 ${value}${NBSP}秒，已保留原声`)
-        : t(`${value}${NBSP}s too long. Original voice kept. Shorten this line.`, `超出 ${value}${NBSP}秒，已保留原声。请缩短这句。`);
+    return canShorten ? t('{value}{NBSP}s too long. Original voice kept.', '超出 {value}{NBSP}秒，已保留原声', { value, NBSP })
+        : t('{value}{NBSP}s too long. Original voice kept. Shorten this line.', '超出 {value}{NBSP}秒，已保留原声。请缩短这句。', { value, NBSP });
 };
 
 export const failedText = (count, t) => count === 1
     ? t('1 line could not be dubbed. Redub it.', '有 1 句无法配音，请重新配音。')
-    : t(`${count} lines could not be dubbed. Redub them.`, `有 ${count} 句无法配音，请重新配音。`);
+    : t('{count} lines could not be dubbed. Redub them.', '有 {count} 句无法配音，请重新配音。', { count });
 
 // What a result says about each line it dubbed: kept the original voice because it did not fit, failed, or placed.
 export function lineResults(result) {

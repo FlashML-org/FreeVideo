@@ -168,10 +168,10 @@ const VIEW_NAMES = {image: ['Images', '图像视图'], studio: ['Create', '创�
 const kindText = row => viewFor(row) === 'editor' ? t('Edit', '剪辑生成') : t(...(KIND[row.kind] || KIND.video));
 const clock = seconds => { const s = Math.max(0, Math.floor(seconds)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 // Short enough for the card's one line next to the count and Stop.
-const etaText = seconds => !Number.isFinite(seconds) ? '' : seconds >= 60 ? t(`About ${Math.ceil(seconds / 60)} min left`, `还需约 ${Math.ceil(seconds / 60)} 分钟`) : t('Under 1 min left', '不到 1 分钟');
+const etaText = seconds => !Number.isFinite(seconds) ? '' : seconds >= 60 ? t('About {minutes} min left', '还需约 {minutes} 分钟', { minutes: Math.ceil(seconds / 60) }) : t('Under 1 min left', '不到 1 分钟');
 const elapsedText = row => `${t('Elapsed', '已用时')} ${clock((Date.now() - (row.started_at || row.created_at || Date.now())) / 1000)}`;
 const percentOf = row => Math.floor(100 * (Number.isFinite(row.percent) ? row.percent : 0));
-const part = row => row.meta?.parts > 1 && row.meta?.part ? t(` · part ${row.meta.part}/${row.meta.parts}`, ` · 第 ${row.meta.part}/${row.meta.parts} 段`) : '';
+const part = row => row.meta?.parts > 1 && row.meta?.part ? t(' · part {part}/{parts}', ' · 第 {part}/{parts} 段', { part: row.meta.part, parts: row.meta.parts }) : '';
 function stateWord(row) {
     if (row.status === 'running') return null;
     return {submitting: t('Starting', '正在开始'), queued: t('Queued', '排队中'), cancelling: t('Stopping', '正在停止'), done: t('Done', '已完成'),
@@ -573,7 +573,7 @@ export function installTaskFloat() {
         $('.sgf-l2').textContent = stopError && row.id === ask ? stopError : line2(row) + (row.status === 'running' ? part(row) : '');
         more.hidden = list.length < 2;
         more.innerHTML = `<span>${list.length}</span>${open ? ICON.down : ICON.up}`; more.setAttribute('aria-expanded', String(open));
-        more.setAttribute('aria-label', t(`${list.length} jobs`, `${list.length} 项任务`));
+        more.setAttribute('aria-label', t('{count} jobs', '{count} 项任务', { count: list.length }));
         // While the list is open it speaks for itself (names and states): the count button gives no tip over it.
         if (open) for (const key of ['fvTipName', 'fvTipUse', 'fvTipKey']) delete more.dataset[key];
         else tip(more, t('Jobs', '任务列表'), t('Show every job in progress', '展开全部进行中的任务'));
@@ -592,7 +592,7 @@ export function installTaskFloat() {
         // The hover tip says the whole state, whatever the card had to shorten, then what a click does.
         const whole = row.meta?.reconnecting && ACTIVE.has(row.status) ? t(...WAITING_TEXT.status) : state === 'fail' && row.kind === 'image' && lostEngineText(row.failure?.code, row.failure?.cause, t)?.[0];
         const full = `${[label.textContent, l1.querySelector('.sgf-p')?.textContent].filter(Boolean).join(' ')} · ${whole || $('.sgf-l2').textContent}`;
-        tip(card, full, `${action[0]}：${action[1]}`.replace('：', cn ? '：' : ': '), 'Enter');
+        tip(card, full, t('{name}: {use}', '{name}：{use}', { name: action[0], use: action[1] }), 'Enter');
         card.setAttribute('aria-label', `${full}. ${action[0]}`);
         drawSheet(list);
         if (!shown) show();
@@ -647,7 +647,7 @@ export function installTaskFloat() {
             tip(dismiss, dismiss.textContent, t('Hide this message', '收起这条提示'), 'Esc');
             acts.append(back, dismiss); box.append(title, text, acts); sheet.append(box);
         } else if (open && list.length > 1) {
-            const head = el('header'); const count = el('b'); count.textContent = t(`${list.length} jobs`, `${list.length} 项任务`); head.append(count); sheet.append(head);
+            const head = el('header'); const count = el('b'); count.textContent = t('{count} jobs', '{count} 项任务', { count: list.length }); head.append(count); sheet.append(head);
             for (const row of list) {
                 const line = el('button', 'sgf-row'); line.type = 'button'; line.dataset.k = 'go'; line.dataset.id = row.id;
                 line.dataset.st = row.status === 'running' ? 'run' : ACTIVE.has(row.status) ? 'queue' : row.status === 'done' ? 'done' : 'fail';

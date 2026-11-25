@@ -40,6 +40,7 @@ import { nearestAllowed } from './field_note.js';
 import { cn, t, INSTALLED_HINT, gib, bytesText, atLeast, WAIT_REFUSAL, reportable, reportText, failureText, setupError, SECTIONS, sectionOf } from './settings_words.js';
 import { languageUrl } from './i18n.js';
 import { languagePicker, addressLanguage } from './language_picker.js';
+import { localized } from './i18n_tables.js';
 export { failureText, sectionOf, SECTIONS, bytesText };
 
 let current;
@@ -343,7 +344,7 @@ export async function openSetup(options) {
     for (const [id, name] of SOURCES) { const option = el('option', '', name); option.value = id; source.append(option); }
     let measuredRates = {}, autoBest = '';
     const sourceList = radioList(source, {label: t('Download source', '下载源'), describe: value => {
-        const sub = value === 'auto' && autoBest ? t(`Recommended · now the ${autoBest}`, `推荐 · 当前用${autoBest}`) : SOURCES.find(s => s[0] === value)?.[2] || '';
+        const sub = value === 'auto' && autoBest ? t('Recommended · now the {autoBest}', '推荐 · 当前用{autoBest}', { autoBest }) : SOURCES.find(s => s[0] === value)?.[2] || '';
         const rate = measuredRates[value];
         if (rate == null) return {sub};
         const speedText = rate < 0 ? t('Unavailable', '未连通') : rate < .005 ? '<0.01 MiB/s' : `${rate.toFixed(rate < 1 ? 2 : 1)} MiB/s`;
@@ -425,10 +426,10 @@ export async function openSetup(options) {
         const list = (Array.isArray(names) ? names : []).filter(n => typeof n === 'string');
         const usable = list.filter(n => n.toLowerCase().endsWith('.safetensors')), other = list.length - usable.length;
         loraVerdicts.clear(); loraCard.replaceChildren();
-        loraHead.querySelector('.r').textContent = usable.length ? t(`${usable.length} files`, `${usable.length} 个文件`) : '';
+        loraHead.querySelector('.r').textContent = usable.length ? t('{count} files', '{count} 个文件', { count: usable.length }) : '';
         if (!usable.length) {
             loraCard.append(row({iconName: 'layers', title: t('No LoRA files yet', '还没有 LoRA 文件'), sub: t('Put .safetensors files in models/loras, then check again', '把 .safetensors 文件放进 models/loras 文件夹，再点“重新检查”')}).element);
-            loraStatus.textContent = other ? t(`${other} files of other formats are not read.`, `另有 ${other} 个其他格式的文件不会被读取。`) : '';
+            loraStatus.textContent = other ? t('{other} files of other formats are not read.', '另有 {other} 个其他格式的文件不会被读取。', { other }) : '';
             loraRescan.disabled = false; return;
         }
         const rows = usable.slice(0, 200).map(name => { const made = loraRow(name); loraCard.append(made.r.element, made.more); return [name, made.r]; });
@@ -438,9 +439,9 @@ export async function openSetup(options) {
         await Promise.all([worker(), worker(), worker()]);
         if (run !== loraRun) return;
         loraRescan.disabled = false;
-        loraStatus.textContent = [bad ? t(`${bad} cannot be used; open a row for the reason.`, `${bad} 个不能使用，点开该行查看原因。`) : t('Every file was checked.', '已检查全部文件。'),
+        loraStatus.textContent = [bad ? t('{bad} cannot be used; open a row for the reason.', '{bad} 个不能使用，点开该行查看原因。', { bad }) : t('Every file was checked.', '已检查全部文件。'),
             usable.length > 200 ? t('The first 200 files are listed.', '只列出前 200 个文件。') : '',
-            other ? t(`${other} files of other formats are not read.`, `另有 ${other} 个其他格式的文件不会被读取。`) : ''].filter(Boolean).join(' ');
+            other ? t('{other} files of other formats are not read.', '另有 {other} 个其他格式的文件不会被读取。', { other }) : ''].filter(Boolean).join(' ');
         navItems.get('lora').querySelector('.end').replaceChildren(...(bad ? [el('i', 'st-dot')] : []));
     }
     loraRescan.onclick = () => loadLoras();
@@ -644,11 +645,11 @@ export async function openSetup(options) {
         healthRun.disabled = false;
         if (!failed.length) {
             healthRow.sub.className = 'is-ok';
-            healthRow.sub.textContent = t(`All ${MODULES.length} files load`, `全部 ${MODULES.length} 个文件都能载入`);
+            healthRow.sub.textContent = t('All {count} files load', '全部 {count} 个文件都能载入', { count: MODULES.length });
             healthList.hidden = true; return;
         }
         healthRow.sub.className = 'is-warn';
-        healthRow.sub.textContent = t(`${failed.length} files could not be loaded. Reload the page; if it stays, report it.`, `${failed.length} 个文件无法载入。请刷新页面；仍然出现时请提交问题。`);
+        healthRow.sub.textContent = t('{count} files could not be loaded. Reload the page; if it stays, report it.', '{count} 个文件无法载入。请刷新页面；仍然出现时请提交问题。', { count: failed.length });
         const list = el('pre', 'st-pre fv-copyable', failed.join('\n'));
         const report = reportTip(issueButton(t, () => ({where: ['Page check', '页面检查'], message: failed.join('\n')})));
         healthList.replaceChildren(list, report); healthList.hidden = false;
@@ -700,7 +701,7 @@ export async function openSetup(options) {
     const calibrateRepeats = el('select');
     for (const n of [1, 2, 3, 4]) { const o = el('option', '', String(n)); o.value = String(n); calibrateRepeats.append(o); }
     calibrateRepeats.value = '1';
-    const repeatsSeg = segmented(calibrateRepeats, {label: t('Passes', '轮数'), tips: Object.fromEntries([1, 2, 3, 4].map(n => [String(n), t(`About ${n * 30} minutes`, `约 ${n * 30} 分钟`)]))});
+    const repeatsSeg = segmented(calibrateRepeats, {label: t('Passes', '轮数'), tips: Object.fromEntries([1, 2, 3, 4].map(n => [String(n), t('About {minutes} minutes', '约 {minutes} 分钟', { minutes: n * 30 })]))});
     const repeatsRow = row({iconName: 'clock', title: t('Passes', '轮数'), sub: t('About 30 minutes each; nothing can be generated meanwhile', '每轮约 30 分钟，期间不能生成'), end: [repeatsSeg]});
     const calibrateButton = button(t('Start measuring', '开始测量'), {iconName: 'gauge', kind: 'fill'});
     const calibrateStatus = slot();
@@ -1012,7 +1013,7 @@ export async function openSetup(options) {
             const {freed_bytes: freed, left} = result;
             if (left > 0) storageSay(cn ? (freed > 0 ? `已释放 ${storageAmount(freed)}，` : '') + `${left} 项未能删除`
                 : (freed > 0 ? `Freed ${storageAmount(freed)}. ` : '') + `${left} ${left === 1 ? 'item' : 'items'} could not be deleted.`, true);
-            else if (freed > 0) storageSay(t(`Freed ${storageAmount(freed)}`, `已释放 ${storageAmount(freed)}`), false);
+            else if (freed > 0) storageSay(t('Freed {size}', '已释放 {size}', { size: storageAmount(freed) }), false);
             else storageSay(t('Nothing to clear up', '没有可清理的文件'), false);
             if (!(left > 0)) usageValue.textContent = storageAmount(0);
         } catch { storageSay(t('The output folder cannot be accessed.', '无法访问输出文件夹'), true); }
@@ -1030,10 +1031,10 @@ export async function openSetup(options) {
             chip.hidden = act.hidden = meter.hidden = true; r.sub.className = '';
             r.sub.textContent = IMAGE_WORDS[id] || '';
             r.element.querySelector('.st-ic').classList.toggle('is-ok', s.state === 'ready');
-            size.textContent = s.total && s.state !== 'ready' ? t(`About ${gb(s.total)} GiB`, `约 ${gb(s.total)} GiB`) : '';
+            size.textContent = s.total && s.state !== 'ready' ? t('About {total} GiB', '约 {total} GiB', { total: gb(s.total) }) : '';
             // Installed is the normal case and says nothing on the row; its size is on hover.
             const kept = s.row?.bytes_total || s.total || 0;
-            if (s.state === 'ready' && kept) tip(r.title, item.model.short, t(`Installed · ${gb(kept)} GiB`, `已安装 · ${gb(kept)} GiB`));
+            if (s.state === 'ready' && kept) tip(r.title, item.model.short, t('Installed · {size} GiB', '已安装 · {size} GiB', { size: gb(kept) }));
             else { delete r.title.dataset.fvTipName; delete r.title.dataset.fvTipUse; }
             if (s.state === 'ready') {
                 installedBytes += s.row?.bytes_total || s.total || 0;
@@ -1054,12 +1055,15 @@ export async function openSetup(options) {
                     tip(act, t('Stop', '停止'), t('Stop the download; the part downloaded is kept', '停止下载，已下载的部分会保留'));
                 }
             } else if (s.state === 'failed') {
-                r.sub.className = 'is-warn'; r.sub.textContent = t(`${item.model.short} download failed${s.reason ? ': ' + s.reason.replace(/[.。]$/, '') : ''}. Retry to continue; if it keeps failing, report the problem.`, `${item.model.short} 下载失败${s.reason ? '：' + s.reason.replace(/[.。]$/, '') : ''}。请重试以继续下载；仍然失败时，请提交问题。`);
+                r.sub.className = 'is-warn'; r.sub.textContent = s.reason
+                    ? t('{model} download failed: {reason}. Retry to continue; if it keeps failing, report the problem.', '{model} 下载失败：{reason}。请重试以继续下载；仍然失败时，请提交问题。',
+                        { model: item.model.short, reason: s.reason.replace(/[.。]$/, '') })
+                    : t('{model} download failed. Retry to continue; if it keeps failing, report the problem.', '{model} 下载失败。请重试以继续下载；仍然失败时，请提交问题。', { model: item.model.short });
                 act.hidden = false; act.className = 'st-btn is-fill'; act.replaceChildren(icon('retry', 'fv-i s'), el('span', 'st-btn-t', t('Retry', '重试')));
                 act.onclick = () => imageAction(id, 'install');
                 tip(act, t('Retry', '重试'), t('Download again; the part downloaded is kept', '重新下载，已下载的部分会保留'));
             } else if (s.state === 'missing') {
-                if (s.resume) { r.sub.className = 'is-caution'; r.sub.textContent = t(`Stopped · ${gb(s.done)} of ${gb(s.total)} GiB kept`, `已停止 · 已下载 ${gb(s.done)} / ${gb(s.total)} GiB`); }
+                if (s.resume) { r.sub.className = 'is-caution'; r.sub.textContent = t('Stopped · {done} of {total} GiB kept', '已停止 · 已下载 {done} / {total} GiB', { done: gb(s.done), total: gb(s.total) }); }
                 act.hidden = false; act.className = 'st-btn is-fill'; act.replaceChildren(icon('down', 'fv-i s'), el('span', 'st-btn-t', s.resume ? t('Resume', '继续') : t('Install', '安装')));
                 act.onclick = () => imageAction(id, 'install');
                 tip(act, s.resume ? t('Resume', '继续') : t('Install', '安装'), t('Download this picture model', '下载这个图像模型'));
@@ -1128,7 +1132,7 @@ export async function openSetup(options) {
     let token, planId, busy = false, probeBusy = false, pollTimer, lastPlanId, planErrors = false, planStale = false, ready = false, waitSince;
     let lastTask = {}, loaded = false, readFailed = false, wantSheet = false, busyLabel = '';
     // A click names what is happening at once, before the server has answered.
-    const doing = (en, zh) => { waitSince ??= Date.now(); state.className = 'st-state'; state.textContent = t(en, zh); paintHero(); };
+    const doing = (...pair) => { waitSince ??= Date.now(); state.className = 'st-state'; state.textContent = t(...pair); paintHero(); };
     const fail = error => { waitSince = undefined; fault(state, error.message, error); state.className = "st-state is-fail"; if (shown !== 'models' && !busy) { /* The dot on Models says where to look. */ } paintHero(); };
     const request = async (action, value) => {
         const response = await api.fetchApi("/freevideo/setup" + (action ? "/" + action : root.value ? '?root='+encodeURIComponent(root.value) : ""), action ? {
@@ -1171,7 +1175,7 @@ export async function openSetup(options) {
         const extraCount = extra.value.split('\n').map(s => s.trim()).filter(Boolean).length;
         state.hidden = kind === 'busy' || (kind === 'ready' && !state.textContent);
         if (kind === 'none' && !state.textContent) state.textContent = t('Check first: models already on this computer are used as they are.', '先检查一遍，电脑上已有的模型会直接使用。');
-        folders.sub.textContent = [root.value, extraCount ? t(`${extraCount} more folders`, `另 ${extraCount} 个模型文件夹`) : ''].filter(Boolean).join(' · ');
+        folders.sub.textContent = [root.value, extraCount ? t('{extraCount} more folders', '另 {extraCount} 个模型文件夹', { extraCount }) : ''].filter(Boolean).join(' · ');
         folders.sub.hidden = !folders.sub.textContent;
         navItems.get('models').querySelector('.end').replaceChildren(...(kind === 'failed' || kind === 'problem' || kind === 'readerr' ? [el('i', 'st-dot is-warn')] : busy ? [el('i', 'st-dot is-run')] : []));
     }
@@ -1228,8 +1232,8 @@ export async function openSetup(options) {
             if (moved) reserve.value = String(moved.value);
             reserveFailure.className = 'st-slot is-warn'; reserveStep.classList.add('is-bad');
             reserveFailure.textContent = !moved ? t('Enter a number in range', '请输入范围内的数')
-                : moved.kind === 'max' ? t(`At most ${moved.value}`, `最多 ${moved.value}`)
-                : moved.kind === 'min' ? t(`At least ${moved.value}`, `最少 ${moved.value}`) : t(`Changed to ${moved.value}`, `已改为 ${moved.value}`);
+                : moved.kind === 'max' ? t('At most {value}', '最多 {value}', { value: moved.value })
+                : moved.kind === 'min' ? t('At least {value}', '最少 {value}', { value: moved.value }) : t('Changed to {value}', '已改为 {value}', { value: moved.value });
             reserve.focus();
             return;
         }
@@ -1323,7 +1327,7 @@ export async function openSetup(options) {
         cancel.hidden = !busy; install.disabled = busy || !planId || !accept.checked; accept.disabled = busy;
         const why = busy ? "" : planStale ? t("Settings changed. Click Check installation again.", "设置已更改，请重新点“检查安装”。")
             : planErrors ? t("Fix the problems listed above, then check again.", "请先处理上面列出的问题，再重新检查。")
-            : ready && !planId ? t(INSTALLED_HINT.en, INSTALLED_HINT.zh)
+            : ready && !planId ? t(...INSTALLED_HINT)
             : !planId ? ""
             : !accept.checked ? t("Tick the agreement to enable Install.", "勾选同意后，可点击“安装”。") : "";
         blocked.textContent = why;
@@ -1358,7 +1362,7 @@ export async function openSetup(options) {
         const facts = [
             [t("To download", "需要下载"), bytesText(value.model_download_bytes)],
             [t("Already here", "已有模型"), bytesText(value.existing_model_bytes_size_matched || 0)],
-            [t("Reused from this computer", "复用本地模型"), bytesText(local.reused_bytes || 0), t(`Linked ${bytesText(local.linked_bytes || 0)} · copied ${bytesText(local.copy_bytes || 0)}`, `链接 ${bytesText(local.linked_bytes || 0)} · 复制 ${bytesText(local.copy_bytes || 0)}`)],
+            [t("Reused from this computer", "复用本地模型"), bytesText(local.reused_bytes || 0), t('Linked {linked} · copied {copied}', '链接 {linked} · 复制 {copied}', { linked: bytesText(local.linked_bytes || 0), copied: bytesText(local.copy_bytes || 0) })],
             [t("Extra disk space", "额外占用磁盘"), bytesText(disksNeeded)],
             [t("Graphics card", "显卡"), gpu.name || "—"],
         ];
@@ -1372,7 +1376,7 @@ export async function openSetup(options) {
         }
         plan.append(list);
         // The package name stays in Details and logs (and the report), not on the plan sheet.
-        for (const line of value.replace_models_text?.[cn ? 'zh' : 'en'] || []) {
+        for (const line of localized(value.replace_models_text, t) || []) {
             const replacement = el('div', 'st-notice'); replacement.append(icon('info', 'fv-i'));
             const words = el('div'); words.append(el('p', '', line.text), el('p', 'st-path fv-copyable', line.path));
             replacement.append(words); plan.append(replacement);
@@ -1381,7 +1385,7 @@ export async function openSetup(options) {
             const note = el('div', 'st-notice is-info'); note.append(icon('key', 'fv-i'), el('p', '', t("This model needs an account with access. Add an access token under Downloads.", "这个模型需要有访问权限的账号，请在“下载”里填写访问令牌。")));
             plan.append(note);
         }
-        const licenses = el('details', 'st-tfold'); const ls = el('summary'); ls.append(icon('chev', 'fv-i'), el('span', '', t(`Model and toolkit licenses · ${value.licenses?.length || 0}`, `模型与工具包许可证 · ${value.licenses?.length || 0}`)));
+        const licenses = el('details', 'st-tfold'); const ls = el('summary'); ls.append(icon('chev', 'fv-i'), el('span', '', t('Model and toolkit licenses · {count}', '模型与工具包许可证 · {count}', { count: value.licenses?.length || 0 })));
         licenses.append(ls, el("pre", 'st-pre fv-copyable', value.licenses?.join("\n") || "")); plan.append(licenses);
         if (value.errors?.length) {
             const e = el('div', 'st-notice is-warn is-fail'); e.append(icon('warn', 'fv-i'));
@@ -1394,7 +1398,7 @@ export async function openSetup(options) {
         sheetIcon.replaceChildren(icon(problem ? 'warn' : 'down', 'fv-i'));
         sheetLine.textContent = problem ? t('Installation cannot start until these are fixed.', '处理完这些问题后才能开始安装。')
             : t('These files are downloaded or reused. Closing Settings does not stop the installation.', '将下载或复用以下文件。关闭设置不会中断安装。');
-        setText(install, value.model_download_bytes > 0 ? t(`Install · ${bytesText(value.model_download_bytes)}`, `安装 · ${bytesText(value.model_download_bytes)}`) : t('Install', '安装'));
+        setText(install, value.model_download_bytes > 0 ? t('Install · {size}', '安装 · {size}', { size: bytesText(value.model_download_bytes) }) : t('Install', '安装'));
     }
     function render(task) {
         lastTask = task || {}; loaded = true; readFailed = false;
@@ -1451,7 +1455,7 @@ export async function openSetup(options) {
         savedMissing = missing.length > 0;
         savedFolders = !missing.length ? t('Saved.', '已保存。')
             : missing.length === 1 ? t('Saved. This folder was not found:', '已保存。找不到这个文件夹：')
-            : t(`Saved. ${missing.length} folders were not found:`, `已保存。有 ${missing.length} 个文件夹找不到：`);
+            : t('Saved. {count} folders were not found:', '已保存。有 {count} 个文件夹找不到：', { count: missing.length });
         folderStatus.className = savedMissing ? 'st-slot is-caution' : 'st-slot is-ok';
         folderStatus.replaceChildren(savedFolders);
         if (savedMissing) {
@@ -1505,12 +1509,12 @@ export async function openSetup(options) {
         showDownloads(info.discovery.downloads);
         showResources(info.discovery.resources);
         if (info.discovery.resources_damaged) reserveDamaged.hidden = false;
-        samplingSize.textContent = info.discovery.sampling_cache_bytes ? t(`About ${gib(info.discovery.sampling_cache_bytes)}`, `约 ${gib(info.discovery.sampling_cache_bytes)}`) : '';
+        samplingSize.textContent = info.discovery.sampling_cache_bytes ? t('About {size}', '约 {size}', { size: gib(info.discovery.sampling_cache_bytes) }) : '';
         // New installations prepare every quality level; a ready one adds them only when chosen.
         samplingCaches.checked = !info.discovery.ready;
         const libs = info.discovery.libraries || [];
         paths.textContent = libs.join("\n") || t("No model folders found; add one above.", "没有发现模型文件夹，可在上方添加。");
-        libSummary.lastChild.textContent = t(`Folders found automatically · ${libs.length}`, `自动发现的文件夹 · ${libs.length}`);
+        libSummary.lastChild.textContent = t('Folders found automatically · {count}', '自动发现的文件夹 · {count}', { count: libs.length });
         paths.dataset.count = String(libs.length);
         ready = Boolean(info.discovery.ready);
         render(info.task || {});

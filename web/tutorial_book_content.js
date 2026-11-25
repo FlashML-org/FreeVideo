@@ -1,5 +1,7 @@
 // Bundled tutorial copy, a short form of docs/zh-CN/使用说明.md; keep them consistent.
 // Only finished chapters are listed. Add a chapter here when it is written, with its picture row in scripts/tutorial_pictures.json.
+// Shown: title, summary, steps, limits (the media captions and the example's prompt are not).
+// i18n-table title summary steps limits
 export const TUTORIAL_CHAPTERS = [
     {
         id: 'quick-start',

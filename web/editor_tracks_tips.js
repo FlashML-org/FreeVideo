@@ -4,6 +4,7 @@
 export const modKey = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/i.test(navigator.userAgentData?.platform || navigator.platform || '') ? '⌘' : 'Ctrl+';
 
 import {setTip} from './tip_words.js';
+import {translatorFor} from './i18n.js';
 export {setTip};
 // Each entry: [English name, Chinese name, English purpose (≤ 10 words), Chinese purpose (≤ 20 characters), key].
 // Keys use modKey at run time where a modifier is involved.
@@ -62,7 +63,7 @@ const COPY = {
 export const TIP_KEYS = Object.freeze(Object.keys(COPY));
 
 // The words of one entry in the page language; `t(en, zh)` is the editor's translator.
-export function tipCopy(id, t = en => en) {
+export function tipCopy(id, t = translatorFor(null, false)) {
     const row = COPY[id];
     if (!row) throw new Error(`Unknown tip ${id}`);
     const [en, zh, useEn, useZh, key] = row;

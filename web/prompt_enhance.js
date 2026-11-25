@@ -218,11 +218,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     const checkFacts = check => ({check: check.name, check_category: check.category, check_retried: check.retried});
     const gib = value => String(Math.round(value / 2 ** 30));
     // Mentions are counted as the character descriptions they expand to, so the count can exceed what the box shows.
-    const lengthOf = (error, english) => {
-        const number = error.characters.toLocaleString('en-US');
-        return english ? `The prompt${error.expanded ? ' and character descriptions' : ''} ha${error.expanded ? 've' : 's'} ${number} characters`
-            : `提示词${error.expanded ? '连同角色描述' : ''}共 ${number} 字符`;
-    };
+    const tooLong = error => ({ number: error.characters.toLocaleString('en-US') });
     // Unknown codes keep the server's own reason, without paths, so the user can quote it.
     // Other programs holding graphics memory, as the server measured them; no-break spaces keep name, size and unit on one line.
     const holderNames = holders => (Array.isArray(holders) ? holders : []).slice(0, 3)
@@ -240,31 +236,33 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         model_missing: t('Download the optional model to enable enhancement.', '下载可选模型后可启用。'),
         download_failed: t('Download paused. Retry to resume.', '下载已暂停，重试可继续。'),
         disk_space: t('Not enough disk space for the optional model.', '可选模型的磁盘空间不足，请清理后重试。'),
-        ram_space: t(`This model needs about ${gib(error?.ramBytes || ramBytes)} GiB of available RAM to load. You can keep using the original.`, `此模型加载需约 ${gib(error?.ramBytes || ramBytes)} GiB 可用内存，可先使用原文生成。`),
+        ram_space: t('This model needs about {size} GiB of available RAM to load. You can keep using the original.', '此模型加载需约 {size} GiB 可用内存，可先使用原文生成。', { size: gib(error?.ramBytes || ramBytes) }),
         unsupported_media: t('Enhancement can read only images and videos added in Media. You can keep using the original.', '增强只能读取素材中添加的图片和视频，可先使用原文生成。'),
         connected_media: t('Enhancement cannot read connected nodes. Add images or videos in Media, or use the original.', '增强读不到连接节点的素材，请在素材中添加图片或视频，或使用原文。'),
         audio_media: t('Enhancement cannot read audio. Add images or videos in Media, or use the original.', '增强读不到音频，请在素材中添加图片或视频，或使用原文。'),
         unreadable_video: t('Could not read a frame from this video. Replace it with another video or an image, or use the original.', '读不出这个视频的画面，请换一个视频或图片，或使用原文。'),
         too_many_images: t('Use up to 8 reference images for enhancement.', '增强暂支持最多 8 张参考图。'),
-        invalid_prompt: error?.characters
-            ? t(`${lengthOf(error, true)}; enhancement supports up to 12,000. Shorten it or use the original.`, `${lengthOf(error, false)}，增强最多支持 12,000 字符，请精简或使用原文。`)
+        invalid_prompt: error?.characters ? (error.expanded
+            ? t('The prompt and character descriptions have {number} characters; enhancement supports up to 12,000. Shorten it or use the original.', '提示词连同角色描述共 {number} 字符，增强最多支持 12,000 字符，请精简或使用原文。', tooLong(error))
+            : t('The prompt has {number} characters; enhancement supports up to 12,000. Shorten it or use the original.', '提示词共 {number} 字符，增强最多支持 12,000 字符，请精简或使用原文。', tooLong(error)))
             : t('Enter a prompt of up to 12,000 characters.', '请输入不超过 12,000 字符的提示词。'),
         invalid_output: error?.check
-            ? t(`The rewrite was incomplete: ${CHECK_LABELS[error.check.category][0]}. Retry or use the original.`,
-                `改写结果不完整：${CHECK_LABELS[error.check.category][1]}。请重试或使用原文。`)
+            ? t('The rewrite was incomplete: {reason}. Retry or use the original.', '改写结果不完整：{reason}。请重试或使用原文。',
+                { reason: t(...CHECK_LABELS[error.check.category]) })
             : t('The rewrite was incomplete. Retry or use the original.', '改写结果不完整，请重试或使用原文。'),
         invalid_request: t('Rewriting does not support this model or aspect ratio. Change it or use the original.', '当前模型或画幅不支持改写，请更换或使用原文。'),
         context_length: t('The scene is too long for this model. Shorten it or use the original.', '内容超出改写模型容量，请精简或使用原文。'),
         out_of_memory: holderNames(error?.holders)
-            ? t(`Not enough graphics memory to rewrite. In use: ${holderNames(error.holders)}. Close the listed programs and rewrite again, or use the original.`,
-                `显存不足，无法改写。正在占用：${holderNames(error.holders)}。关闭上述程序后可重新改写，或使用原文。`)
+            ? t('Not enough graphics memory to rewrite. In use: {programs}. Close the listed programs and rewrite again, or use the original.',
+                '显存不足，无法改写。正在占用：{programs}。关闭上述程序后可重新改写，或使用原文。', { programs: holderNames(error.holders) })
             : t('Not enough memory to rewrite. Close other GPU apps or use the original.', '改写时内存不足，请关闭其他显卡程序或使用原文。'),
         timeout: t('Rewriting took too long. Retry or use the original.', '改写超时，请重试或使用原文。'),
         stale: t('The prompt or references changed. Rewrite again to use the current scene.', '原文或素材已更改，可按当前内容重新改写。'),
         cancelled: t('Cancelled. Your original prompt is retained.', '已取消，原文已保留。'),
         worker_cleanup_failed: t('The rewrite process could not close. Restart FreeVideo before generating.', '改写进程未能退出，请重启 FreeVideo 后再生成。'),
-    }[error?.message] || t(`Could not enhance the prompt${reasonOf(error) ? `: ${reasonOf(error)}` : ''}. Retry or switch enhancement off to use the original.`,
-        `暂时无法改写${reasonOf(error) ? `。原因：${reasonOf(error)}。` : '，'}请重试，或关闭增强使用原文。`));
+    }[error?.message] || (reasonOf(error)
+        ? t('Could not enhance the prompt: {reason}. Retry or switch enhancement off to use the original.', '暂时无法改写。原因：{reason}。请重试，或关闭增强使用原文。', { reason: reasonOf(error) })
+        : t('Could not enhance the prompt. Retry or switch enhancement off to use the original.', '暂时无法改写，请重试，或关闭增强使用原文。')));
     // After falling back the original is already in use, so only the reason and the next useful step are shown.
     const fallbackText = error => isNetworkTypeError(error) ? networkText(error) : ({
         busy: t('The prompt cannot be rewritten while the queue is running.', '队列未完成时不能改写。'),
@@ -272,25 +270,25 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         model_missing: t('Rewriting needs the optional model. Download it to enable rewriting.', '改写需要可选模型，下载后可用。'),
         download_failed: t('The optional model download paused. Retry to resume.', '可选模型下载已暂停，重试可继续下载。'),
         disk_space: t('Not enough disk space for the optional model.', '磁盘空间不足，无法安装可选模型。'),
-        ram_space: t(`The rewrite model needs about ${gib(error?.ramBytes || ramBytes)} GiB of available RAM to load.`, `改写模型加载需约 ${gib(error?.ramBytes || ramBytes)} GiB 可用内存。`),
-        invalid_prompt: error?.characters
-            ? t(`${lengthOf(error, true)}; rewriting supports up to 12,000. Shorten it before rewriting again.`, `${lengthOf(error, false)}，改写最多支持 12,000 字符，精简后可再改写。`)
+        ram_space: t('The rewrite model needs about {size} GiB of available RAM to load.', '改写模型加载需约 {size} GiB 可用内存。', { size: gib(error?.ramBytes || ramBytes) }),
+        invalid_prompt: error?.characters ? (error.expanded
+            ? t('The prompt and character descriptions have {number} characters; rewriting supports up to 12,000. Shorten it before rewriting again.', '提示词连同角色描述共 {number} 字符，改写最多支持 12,000 字符，精简后可再改写。', tooLong(error))
+            : t('The prompt has {number} characters; rewriting supports up to 12,000. Shorten it before rewriting again.', '提示词共 {number} 字符，改写最多支持 12,000 字符，精简后可再改写。', tooLong(error)))
             : t('Rewriting supports prompts of up to 12,000 characters.', '改写只支持不超过 12,000 字符的提示词。'),
         invalid_output: error?.check
-            ? t(`The rewrite was incomplete: ${CHECK_LABELS[error.check.category][0]}.`,
-                `改写结果不完整：${CHECK_LABELS[error.check.category][1]}。`)
+            ? t('The rewrite was incomplete: {reason}.', '改写结果不完整：{reason}。', { reason: t(...CHECK_LABELS[error.check.category]) })
             : t('The rewrite was incomplete.', '改写结果不完整。'),
         invalid_request: t('Rewriting does not support this model or aspect ratio.', '当前模型或画幅不支持改写。'),
         context_length: t('The scene is too long for the rewrite model.', '内容超出改写模型容量。'),
         out_of_memory: holderNames(error?.holders)
-            ? t(`Not enough graphics memory to rewrite. In use: ${holderNames(error.holders)}. Close the listed programs before rewriting again.`,
-                `显存不足，无法改写。正在占用：${holderNames(error.holders)}。关闭上述程序后可重新改写。`)
+            ? t('Not enough graphics memory to rewrite. In use: {programs}. Close the listed programs before rewriting again.',
+                '显存不足，无法改写。正在占用：{programs}。关闭上述程序后可重新改写。', { programs: holderNames(error.holders) })
             : t('Not enough memory to rewrite. Close other GPU apps before rewriting again.', '改写时内存不足，关闭其他显卡程序后可再改写。'),
         timeout: t('Rewriting took too long.', '改写超时。'),
         unsupported_media: errorText(error), too_many_images: errorText(error), stale: errorText(error),
         connected_media: errorText(error), audio_media: errorText(error), unreadable_video: errorText(error),
         worker_cleanup_failed: errorText(error),
-    }[error?.message] || (reasonOf(error) ? t(`The rewrite failed: ${reasonOf(error)}.`, `改写失败，原因：${reasonOf(error)}。`) : t('The rewrite failed.', '改写失败。')));
+    }[error?.message] || (reasonOf(error) ? t('The rewrite failed: {reason}.', '改写失败，原因：{reason}。', { reason: reasonOf(error) }) : t('The rewrite failed.', '改写失败。')));
     function save(changed = true) {
         node.properties ||= {};
         node.properties.freevideo_prompt_versions = {...versions.value};
@@ -404,8 +402,8 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
                     clock?.pause();
                     // The rewrite starts by itself once enough graphics memory is free.
                     const short = Math.max(0.1, (row.gpu_short_bytes || 0) / 2 ** 30).toFixed(1), names = holderNames(row.gpu_holders);
-                    show(names ? t(`Waiting for ${short}\u00a0GiB more graphics memory to rewrite. In use: ${names}.`, `显存不足，再空出 ${short}\u00a0GiB 后自动改写。正在占用：${names}。`)
-                        : t(`Waiting for ${short}\u00a0GiB more graphics memory to rewrite.`, `显存不足，再空出 ${short}\u00a0GiB 后自动改写。`), 'progress');
+                    show(names ? t('Waiting for {short}\u00a0GiB more graphics memory to rewrite. In use: {names}.', '显存不足，再空出 {short}\u00a0GiB 后自动改写。正在占用：{names}。', { short, names })
+                        : t('Waiting for {short}\u00a0GiB more graphics memory to rewrite.', '显存不足，再空出 {short}\u00a0GiB 后自动改写。', { short }), 'progress');
                 } else if (action !== 'install') {
                     clock?.set(row.phase === 'rewriting' ? 'rewriting' : 'preparing', row.phase);
                 }
@@ -419,14 +417,14 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     }
     function showDownload(done, total) {
         const size = value => (value / 2 ** 30).toFixed(1);
-        const text = t(`Downloading the model · ${size(done)} / ${size(total)} GiB`, `正在下载模型 · ${size(done)} / ${size(total)} GiB`);
+        const text = t('Downloading the model · {done} / {total} GiB', '正在下载模型 · {done} / {total} GiB', { done: size(done), total: size(total) });
         publishModel({text}); show(text, 'progress', done / (total || 1));
     }
     async function installModel(info) {
         if (info.ready) return true;
         const model = String(info.model || 'Qwen/Qwen3-VL-4B-Instruct').split('/').pop().replace(/-Instruct$/, '');
-        detail.textContent = t(`Local model ${model} · ${(info.bytes / 2 ** 30).toFixed(1)} GiB download · needs ${gib(ramBytes)} GiB free RAM. Your prompt and images stay on this computer.`,
-            `本地模型 ${model} · 下载 ${(info.bytes / 2 ** 30).toFixed(1)} GiB · 需 ${gib(ramBytes)} GiB 可用内存。提示词和图片只在本机处理。`);
+        detail.textContent = t('Local model {model} · {size} GiB download · needs {ram} GiB free RAM. Your prompt and images stay on this computer.',
+            '本地模型 {model} · 下载 {size} GiB · 需 {ram} GiB 可用内存。提示词和图片只在本机处理。', { model, size: (info.bytes / 2 ** 30).toFixed(1), ram: gib(ramBytes) });
         agree.textContent = downloadOnly ? t('Download', '下载') : t('Download and enable', '下载并启用');
         // The open panels of the toolbars close for the question (glass/frame_picker.js ASKING), so none covers it; one
         // that held the keyboard (its Download prompt model) hands it to the question.
@@ -527,9 +525,9 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         unsupported_media: t('Only pictures and videos can be turned into a prompt.', '只能用图片或视频生成提示词。'),
         invalid_media: t('Could not read this picture. Choose another file.', '无法读取这张图片，请换一个文件。'),
         out_of_memory: holderNames(error?.holders)
-            ? t(`Not enough graphics memory. In use: ${holderNames(error.holders)}. Close them and try again.`, `显存不足，无法生成提示词。正在占用：${holderNames(error.holders)}。关闭后再试。`)
+            ? t('Not enough graphics memory. In use: {programs}. Close them and try again.', '显存不足，无法生成提示词。正在占用：{programs}。关闭后再试。', { programs: holderNames(error.holders) })
             : t('Not enough graphics memory. Close other GPU apps and try again.', '显存不足，请关闭其他显卡程序后再试。'),
-        ram_space: t(`Loading needs about ${gib(error?.ramBytes || ramBytes)} GiB of free RAM. Close other programs and try again.`, `加载需约 ${gib(error?.ramBytes || ramBytes)} GiB 可用内存，请关闭其他程序后再试。`),
+        ram_space: t('Loading needs about {size} GiB of free RAM. Close other programs and try again.', '加载需约 {size} GiB 可用内存，请关闭其他程序后再试。', { size: gib(error?.ramBytes || ramBytes) }),
         timeout: t('Took too long. Try again.', '生成提示词超时，请重试。'),
         invalid_output: t('The result was incomplete. Try again.', '结果不完整，请重试。'),
         context_length: t('The result was incomplete. Try again.', '结果不完整，请重试。'),
@@ -538,7 +536,9 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         worker_cleanup_failed: t('The process could not close. Restart FreeVideo before generating.', '生成提示词的进程未能退出，请重启 FreeVideo 后再生成。'),
         cancelled: t('Stopped. Your prompt is unchanged.', '已停止，原文已保留。'),
         not_enabled: t('Not enabled. Your prompt is unchanged.', '未启用，原文已保留。'),
-    }[error?.message] || t(`Could not write the prompt${reasonOf(error) ? `: ${reasonOf(error)}` : ''}. Try again.`, `暂时无法生成提示词${reasonOf(error) ? `。原因：${reasonOf(error)}。` : ''}请重试。`));
+    }[error?.message] || (reasonOf(error)
+        ? t('Could not write the prompt: {reason}. Try again.', '暂时无法生成提示词。原因：{reason}。请重试。', { reason: reasonOf(error) })
+        : t('Could not write the prompt. Try again.', '暂时无法生成提示词请重试。')));
     const reverseListeners = new Set();
     let reverseState = {state: 'idle', fraction: 0, text: ''};
     const publishReverse = change => {
@@ -661,7 +661,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         const stale = error?.message === 'stale';
         if (!stale) console.warn('FreeVideo prompt rewrite failed; using the original prompt.', error?.message);
         versions.value.selected = 'original'; apply();
-        show(t(`Generated with the original prompt. ${stale ? errorText(error) : fallbackText(error)}`, `已用原文生成。${stale ? errorText(error) : fallbackText(error)}`), 'note');
+        show(t('Generated with the original prompt. {reason}', '已用原文生成。{reason}', { reason: stale ? errorText(error) : fallbackText(error) }), 'note');
     }
     return {element, chip, bar, reverse, stop: () => cancelJob().catch(() => {}), get reversing() { return reverseState.state === 'running'; },
         onReverse(listener) { reverseListeners.add(listener); listener(reverseState); return () => reverseListeners.delete(listener); }, model: {read: readModel, download: downloadModel, subscribe(listener) {

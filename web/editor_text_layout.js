@@ -66,4 +66,4 @@ export function drawText(ctx,entry,width,height) {
     ctx.restore(); return layout;
 }
 export const overTwoHint=t=>t('Over two lines','超过两行');
-export const missingHint=(chars,t)=>chars.length ? t(`This font is missing ${chars.join(' ')}. Choose another font.`,`这款字体缺少：${chars.join(' ')}，请换一种字体。`) : '';
+export const missingHint=(chars,t)=>chars.length ? t('This font is missing {chars}. Choose another font.','这款字体缺少：{chars}，请换一种字体。', { chars: chars.join(' ') }) : '';

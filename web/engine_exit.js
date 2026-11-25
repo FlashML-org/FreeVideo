@@ -1,6 +1,7 @@
 // Why the ComfyUI before this one stopped, as far as the launcher saw it end. The page keeps the record it
 // found when it loaded, so only an exit that happened afterwards is announced; a feedback message carries
 // the newest record it knows. Only numbers and fixed words arrive from the engine, never log text.
+import { translatorFor } from './i18n.js';
 let baselineAt, latest = null, watching = null;
 
 const clock = at => {
@@ -44,9 +45,9 @@ export function knownEngineExit() {
 }
 
 /** One sentence for the status line after the engine started again. The exit status stays in the report. */
-export function engineExitText(record, t = en => en) {
-    return t(`The engine stopped unexpectedly at ${clock(record.at)} and has been restarted.`,
-        `引擎于 ${clock(record.at)} 意外停止，已重新启动。`);
+export function engineExitText(record, t = translatorFor(null, false)) {
+    return t('The engine stopped unexpectedly at {time} and has been restarted.',
+        '引擎于 {time} 意外停止，已重新启动。', { time: clock(record.at) });
 }
 
 // When the engine's loop was held up: times, lengths and the loop thread's innermost calls, as written by the engine

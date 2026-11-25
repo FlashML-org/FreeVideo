@@ -131,9 +131,9 @@ export function createReplacePerson({t, api, media, mount, view, onChange = () =
         peopleBox.dataset.count = String(shown);
         peopleBox.replaceChildren(...Array.from({length: shown}, (_, index) => {
             const part = personSlot(index);
-            part.title.textContent = shown > 1 ? t(`Person image ${index + 1}`, `人物图 ${index + 1}`) : t('Person image', '人物图');
+            part.title.textContent = shown > 1 ? t('Person image {number}', '人物图 {number}', { number: index + 1 }) : t('Person image', '人物图');
             part.remove.hidden = !people[index]; part.remove.disabled = Boolean(busy);
-            part.remove.setAttribute('aria-label', t(`Remove person image ${index + 1}`, `移除人物图 ${index + 1}`));
+            part.remove.setAttribute('aria-label', t('Remove person image {number}', '移除人物图 {number}', { number: index + 1 }));
             fill(part, people[index], t('Add image', '添加图片'));
             return part.box;
         }));

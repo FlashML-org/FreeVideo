@@ -47,7 +47,7 @@ import { issueButton } from './issue_button.js';
 import { createPlayBar } from './fv_player.js';
 import { userMessage } from './user_message.js';
 import { AUDIO_USE, usesOriginal, checkOriginal, checkedLength, failureText, multipleText, createUseSwitch, originalBlocked, stuckText, liftBlock } from './audio_original.js';
-import { isChinese, translator } from './i18n.js';
+import { isChinese, translator, LANGUAGE } from './i18n.js';
 
 const cn = isChinese();
 const text = translator(cn);
@@ -83,36 +83,57 @@ style.textContent = `
 `;
 document.head.append(style);
 
-// The node view in Chinese: socket names, and the values of lists, in Chinese words; switches show no words (their
+// The node view in the page's language: socket names, and the values of lists, in words; switches show no words (their
 // knob says on or off). Display only: the saved values stay what the engine reads. Set again after a workflow loads,
-// since a saved workflow carries the names of the language it was saved in.
-const SLOT_ZH = {first: '首帧', 'First frame': '首帧', last: '尾帧', 'Last frame': '尾帧', references: '参考图', loras: 'LoRA', LoRAs: 'LoRA',
-    conditioning: '条件输入', media: '素材', text: '描述', reference_audio: '参考音频', 'Reference audio': '参考音频', video: '视频', report: '报告', 'Report JSON': '报告'};
-const VALUE_ZH = {
-    control_after_generate: {fixed: '保持固定', increment: '递增', decrement: '递减', randomize: '每次随机'},
-    step_cache: {none: '关', 'easycache-av': '音画缓存', fbcache: '首块缓存'},
-    audio_use: {reference: '参考', original: '原样使用'},
+// since a saved workflow carries the names of the language it was saved in. In English it keeps ComfyUI's own names.
+const SLOT_WORDS = {first: ['First frame', '首帧'], 'First frame': ['First frame', '首帧'], last: ['Last frame', '尾帧'], 'Last frame': ['Last frame', '尾帧'],
+    references: ['Reference images', '参考图'], loras: ['LoRA', 'LoRA'], LoRAs: ['LoRA', 'LoRA'], conditioning: ['Conditioning', '条件输入'], media: ['Media', '素材'],
+    text: ['Prompt', '描述'], reference_audio: ['Reference audio', '参考音频'], 'Reference audio': ['Reference audio', '参考音频'], video: ['Video', '视频'],
+    report: ['Report', '报告'], 'Report JSON': ['Report', '报告']};
+const VALUE_WORDS = {
+    control_after_generate: {fixed: ['Keep fixed', '保持固定'], increment: ['Increment', '递增'], decrement: ['Decrement', '递减'], randomize: ['New each run', '每次随机']},
+    step_cache: {none: ['Off', '关'], 'easycache-av': ['Audio and video cache', '音画缓存'], fbcache: ['First-block cache', '首块缓存']},
+    audio_use: {reference: ['Reference', '参考'], original: ['Use as is', '原样使用']},
 };
-const LABEL_ZH = {audio_use: '音频用途'};
-// Node titles in Chinese, shown on the canvas and in search only: the saved title stays as it is, and a title the user
-// typed is shown as typed.
-const TITLE_ZH = {'FreeVideo · Generate & Preview': 'FreeVideo · 生成与预览', 'FreeVideo · Video + Audio': 'FreeVideo · 视频 + 音频',
-    'FreeVideo · Media': 'FreeVideo · 素材', 'FreeVideo · LoRA': 'FreeVideo · LoRA', 'FreeVideo · LoRAs': 'FreeVideo · LoRA',
-    'FreeVideo · First / Last Frame': 'FreeVideo · 首尾帧', 'FreeVideo · Reference (experimental)': 'FreeVideo · 参考（实验）'};
+const LABEL_WORDS = {audio_use: ['Audio use', '音频用途']};
+// Node titles in the page's language, shown on the canvas and in search only: the saved title stays as it is, and a
+// title the user typed is shown as typed.
+const TITLE_WORDS = {'FreeVideo · Generate & Preview': ['FreeVideo · Generate & Preview', 'FreeVideo · 生成与预览'], 'FreeVideo · Video + Audio': ['FreeVideo · Video + Audio', 'FreeVideo · 视频 + 音频'],
+    'FreeVideo · Media': ['FreeVideo · Media', 'FreeVideo · 素材'], 'FreeVideo · LoRA': ['FreeVideo · LoRA', 'FreeVideo · LoRA'], 'FreeVideo · LoRAs': ['FreeVideo · LoRA', 'FreeVideo · LoRA'],
+    'FreeVideo · First / Last Frame': ['FreeVideo · First / Last Frame', 'FreeVideo · 首尾帧'], 'FreeVideo · Reference (experimental)': ['FreeVideo · Reference (experimental)', 'FreeVideo · 参考（实验）']};
+// The generate node's inputs: the English is the name and tip the node itself has (freevideo_engine/comfy_nodes.py).
+const INPUT_WORDS = [
+    ['width', ['Width', '宽度']],
+    ['height', ['Height', '高度']],
+    ['seconds', ['Duration (s)', '时长（秒）']],
+    ['seed', ['Seed', '种子']],
+    ['force_regenerate', ['Force regeneration', '重新生成'], ['Generate again even when an identical completed video is saved locally.', '跳过已保存结果的缓存。']],
+    ['preview', ['Two-pass: preview first pass', '先出预览'], ['Part of two-pass acceleration: pause after the half-resolution first pass and save it as a preview. Run the second pass from the result when it looks right; it continues from the same latents.', '先出低分辨率预览，满意后在结果里点“继续二采”，成片与直接生成一致。']],
+    ['refine_from', ['Second pass of preview', '继续二采'], ["Set by the Run second pass button: the preview video to continue. The second pass uses the preview's own prompt, seed, size and inputs.", '从这个预览继续生成全分辨率视频。']],
+    ['continue_from', ['Continue from video', '接着生成']],
+    ['frames', ['Total frames', '帧数']],
+    ['first_frame_reference', ['First-frame reference', '首帧参考'], ['Reduces drift.', '减小漂移']],
+    ['voice_reference', ['Voice reference', '声音参考'], ['Keeps the opening voice consistent in continued dialogue.', '接着生成对白时，沿用原视频开头的声音，让前后声音一致。']],
+    ['hide_tail', ['Hide dialogue tail', '隐藏对白尾段'], ['Generates and discards 17 extra frames to keep dialogue moving between parts.', '多生成 17 帧后丢弃，让对白在前后两段之间连贯。']],
+    ['step_cache', ['Step cache', '步间缓存'], ['Reuses work between similar sampling steps to finish sooner, with a small change to the result.', '复用相近采样步之间的计算，更快完成，结果会有细微变化。']],
+    ['upscale_factor', ['Upscale factor', '放大倍数'], ['Two-pass only: a smaller factor starts from a larger first pass, for more detail and a longer run.', '二采时成片相对一采的放大倍数。']],
+    ['allow_empty_prompt', ['Allow empty prompt', '允许空描述'], ['Generates from an empty prompt instead of asking for one.', '描述为空时直接生成，不再提示。']],
+];
+const ENGLISH = LANGUAGE === 'en' && !cn;
 function localizeNode(node) {
-    if (!cn) return;
+    if (ENGLISH) return;
     for (const slot of [...(node.inputs || []), ...(node.outputs || [])]) {
         // A widget's socket (shown while a link is dragged) reads like its widget.
-        const name = SLOT_ZH[slot.name] || (slot.widget?.name && node.widgets?.find(widget => widget.name === slot.widget.name)?.label);
+        const name = (SLOT_WORDS[slot.name] && text(...SLOT_WORDS[slot.name])) || (slot.widget?.name && node.widgets?.find(widget => widget.name === slot.widget.name)?.label);
         if (name) slot.localized_name = name;
     }
     for (const widget of node.widgets || []) {
-        const names = VALUE_ZH[widget.name];
-        if (names) { widget.options ||= {}; widget.options.getOptionLabel = value => names[value] ?? value; }
+        const names = VALUE_WORDS[widget.name];
+        if (names) { widget.options ||= {}; widget.options.getOptionLabel = value => names[value] ? text(...names[value]) : value; }
         if (widget.type === 'toggle') { widget.options ||= {}; widget.options.on = widget.options.off = ' '; }
-        if (LABEL_ZH[widget.name]) widget.label = LABEL_ZH[widget.name];
+        if (LABEL_WORDS[widget.name]) widget.label = text(...LABEL_WORDS[widget.name]);
         // The empty prompt box says what goes in it (ComfyUI puts the input's name there).
-        if (widget.name === 'text' && widget.inputEl) widget.inputEl.placeholder = '描述画面';
+        if (widget.name === 'text' && widget.inputEl) widget.inputEl.placeholder = text('Describe the scene', '描述画面');
     }
     node.setDirtyCanvas?.(true, true);
 }
@@ -151,12 +172,14 @@ function mediaKind(name) {
 function skippedNote(names) {
     const found = [...new Set(names.map(extensionOf).filter(Boolean).map(ext => "." + ext))], kinds = found.slice(0, 3);
     const more = found.length > 3, n = names.length;
-    return text(`Skipped ${n} unsupported file${n === 1 ? "" : "s"}${kinds.length ? ` (${kinds.join(", ")}${more ? " and more" : ""})` : ""}`,
-        `已跳过 ${n} 个不支持的文件${kinds.length ? `（${kinds.join("、")}${more ? " 等" : ""}）` : ""}`);
+    const list = kinds.join(text(', ', '、')), types = more ? text('{types} and more', '{types} 等', { types: list }) : list;
+    if (!kinds.length) return n === 1 ? text('Skipped 1 unsupported file', '已跳过 1 个不支持的文件') : text('Skipped {count} unsupported files', '已跳过 {count} 个不支持的文件', { count: n });
+    return n === 1 ? text('Skipped 1 unsupported file ({types})', '已跳过 1 个不支持的文件（{types}）', { types })
+        : text('Skipped {count} unsupported files ({types})', '已跳过 {count} 个不支持的文件（{types}）', { count: n, types });
 }
 
 const referenceHelp = () => text('Each reference image counts as one media item.', '每张参考图片各占一个素材名额。');
-const referenceLabel = index => text(`Reference image ${index + 1}`, `参考图片 ${index + 1}`);
+const referenceLabel = index => text('Reference image {number}', '参考图片 {number}', { number: index + 1 });
 // Socket names follow the interface language, like the panel's chips (localizeNode).
 const referenceSocket = referenceLabel;
 
@@ -532,8 +555,8 @@ function mediaPanel(node, mount = null) {
                 showLength = () => {
                     const long = preview.duration > 15.05 && Number.isFinite(preview.duration);
                     length.hidden = !long || row.sound === false || rows[index]?.sound === false || usesOriginal(row);
-                    if (long) length.textContent = text(`Audio length: ${preview.duration.toFixed(1)} s; uses up to the first 15 s within the video length.`,
-                        `音频长 ${preview.duration.toFixed(1)} 秒，最多取前 15 秒且不超过视频时长。`);
+                    if (long) length.textContent = text('Audio length: {seconds} s; uses up to the first 15 s within the video length.',
+                        '音频长 {seconds} 秒，最多取前 15 秒且不超过视频时长。', { seconds: preview.duration.toFixed(1) });
                 };
                 preview.onloadedmetadata = () => showLength();
             }
@@ -969,15 +992,15 @@ app.registerExtension({
         void notifyCompatibility({inFront});
     },
     async beforeRegisterNodeDef(nodeType, nodeData) {
-        if (cn && String(nodeData.name).startsWith('FreeVideo')) {
+        if (!ENGLISH && String(nodeData.name).startsWith('FreeVideo')) {
             const title = nodeType.prototype.getTitle;
             nodeType.prototype.getTitle = function (...args) {
                 const shown = title ? title.apply(this, args) : this.title || this.constructor.title;
-                return TITLE_ZH[shown] || shown;
+                return TITLE_WORDS[shown] ? text(...TITLE_WORDS[shown]) : shown;
             };
         }
         if (nodeData.name === 'FreeVideoMedia') {
-            nodeData.description = text(nodeData.description,
+            nodeData.description = text('Connect IMAGE or AUDIO outputs from generation, editing or loading nodes, or upload files. Several reference images can be connected; uploaded references come first, then connected images from top to bottom. Choose first/last frames or experimental references. Empty media means text to video.',
                 '连接图片、音频或上传文件。可以连接多张参考图片，上传的素材排在前面，连接的图片按从上到下的顺序排在后面。选择首尾帧或实验性参考生成，留空则为文生视频。');
             for (const name of referenceInputs) {
                 const input = nodeData.input?.optional?.[name];
@@ -1039,39 +1062,19 @@ app.registerExtension({
                     quality.tooltip = text('Usually faster: generates at a lower resolution, then upscales and refines.', '通常更快：先用低分辨率生成，再放大细化。');
                 }
                 // The same names as the creation panel's Advanced tray.
-                for (const [name, en, zh] of [['base_steps', 'First-pass steps', '一采步数'], ['refine_steps', 'Second-pass steps', '二采步数']]) {
+                for (const [name, ...words] of [['base_steps', 'First-pass steps', '一采步数'], ['refine_steps', 'Second-pass steps', '二采步数']]) {
                     const steps = this.widgets?.find(w => w.name === name);
                     if (steps) {
-                        steps.label = text(en, zh);
+                        steps.label = text(...words);
                         steps.tooltip = text('Changing steps may lower quality. Default: 8 first-pass and 3 second-pass steps. With other first-pass steps the video is made in one pass. Second-pass steps other than 3 must be fewer than first-pass steps.',
                             '改步数可能降低质量。默认一采 8 步、二采 3 步；一采不是 8 步时只生成一遍；二采步数不是 3 时需少于一采步数。');
                     }
                 }
-                if (cn) {
-                    // Reuse product wording; leave untranslated names with no established Chinese copy.
-                    for (const [name, label, tooltip] of [
-                        ['width', '宽度'],
-                        ['height', '高度'],
-                        ['seconds', '时长（秒）'],
-                        ['seed', '种子'],
-                        ['force_regenerate', '重新生成', '跳过已保存结果的缓存。'],
-                        ['preview', '先出预览', '先出低分辨率预览，满意后在结果里点“继续二采”，成片与直接生成一致。'],
-                        ['refine_from', '继续二采', '从这个预览继续生成全分辨率视频。'],
-                        ['continue_from', '接着生成'],
-                        ['frames', '帧数'],
-                        ['first_frame_reference', '首帧参考', '减小漂移'],
-                        ['voice_reference', '声音参考', '接着生成对白时，沿用原视频开头的声音，让前后声音一致。'],
-                        ['hide_tail', '隐藏对白尾段', '多生成 17 帧后丢弃，让对白在前后两段之间连贯。'],
-                        ['step_cache', '步间缓存', '复用相近采样步之间的计算，更快完成，结果会有细微变化。'],
-                        ['upscale_factor', '放大倍数', '二采时成片相对一采的放大倍数。'],
-                        ['allow_empty_prompt', '允许空描述', '描述为空时直接生成，不再提示。'],
-                    ]) {
-                        const widget = this.widgets?.find(w => w.name === name);
-                        if (widget) {
-                            widget.label = label;
-                            if (tooltip) widget.tooltip = tooltip;
-                        }
-                    }
+                if (!ENGLISH) for (const [name, label, tooltip] of INPUT_WORDS) {
+                    const widget = this.widgets?.find(w => w.name === name);
+                    if (!widget) continue;
+                    widget.label = text(...label);
+                    if (tooltip) widget.tooltip = text(...tooltip);
                 }
                 for (const widget of this.widgets || []) {
                     // Node and creation-panel edits use the same named draft.

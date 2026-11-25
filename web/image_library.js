@@ -23,7 +23,7 @@ export async function saveGeneratedImage(api, {url, file, prompt = ''}) {
         media = (await uploadMedia(api, new File([blob], 'picture.' + ((blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg')), {type: blob.type || 'image/png'}))).file;
     }
     const typed = Array.from(String(prompt).replace(/\s+/g, ' ').trim()).slice(0, 16).join('').trim();
-    const name = typed || t(`Image ${(await imageCards(api)).length + 1}`, `图片 ${(await imageCards(api)).length + 1}`);
+    const name = typed || t('Image {number}', '图片 {number}', { number: (await imageCards(api)).length + 1 });
     const answer = await agentPost(api, '/freevideo/agent/cast', {kind: 'image', name, description: file, images: [{media, label: 'other'}]});
     if (!answer.ok) throw new Error('save_failed');
     return answer.json();
@@ -177,7 +177,7 @@ export function openWorksPicker({anchor, t: tr = t, host = anchor.closest('dialo
         const action = (label, run, cls = '') => { const b = el('button', 'fv-works-btn' + (cls ? ' ' + cls : ''), label); b.type = 'button'; b.onclick = run; return b; };
         if (selecting) {
             const all = chosen.size === rows.length && rows.length > 0;
-            const del = action(tr(`Delete ${chosen.size}`, `删除 ${chosen.size} 张`), () => { if (chosen.size) void remove([...chosen]); }, 'fv-works-danger');
+            const del = action(tr('Delete {count}', '删除 {count} 张', { count: chosen.size }), () => { if (chosen.size) void remove([...chosen]); }, 'fv-works-danger');
             del.disabled = !chosen.size; tip(del, del.textContent, tr('Can be undone for 10 seconds', '10 秒内可以撤销'));
             foot.append(action(all ? tr('Deselect all', '全不选') : tr('Select all', '全选'), () => { if (all) chosen.clear(); else for (const row of rows) chosen.add(row.file); draw(); }),
                 el('span', 'fv-works-grow'), action(tr('Cancel', '取消'), () => { selecting = false; chosen.clear(); draw(); }), del);

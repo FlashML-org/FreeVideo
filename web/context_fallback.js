@@ -80,7 +80,7 @@ function textItems(field) {
         none: pair('Select some text first', '先选中文字'),
         secret: pair('A password is not copied', '密码不能复制'),
         empty: pair('The box is empty', '框里没有文字'),
-        paste: pair(`Press ${keyName('Mod+V')} to paste here`, `请按 ${keyName('Mod+V')} 粘贴`),
+        paste: [...pair('Press {key} to paste here', '请按 {key} 粘贴'), { key: keyName('Mod+V') }],
     };
     return [
         {id: 'text-cut', label: pair('Cut', '剪切'), icon: 'scissors', key: 'Mod+X', use: pair('Move the selected text to the clipboard', '把选中的文字移到剪贴板'),

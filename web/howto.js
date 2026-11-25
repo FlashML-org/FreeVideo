@@ -1,4 +1,5 @@
 import {showHowTo} from './first_run_guide.js';
+import {translator} from './i18n.js';
 
 // Short walk-throughs played over the live interface (the shared anchored layer, as the first-run guide uses).
 // A step names its control; when that control is not on screen (nothing generated yet, say) `image` stands in for it.
@@ -73,7 +74,7 @@ const HOWTOS = [
             {id: 'voice-generate', anchor: '[data-fv-guide="editor-generate"]', en: 'Choose "Redub" to speak the changed lines again.', zh: '点“重新配音”，只重配改过的句子。'}]}
 ];
 
-export const howToList = cn => HOWTOS.map(({id, title}) => ({id, title: title[cn ? 1 : 0]}));
+export const howToList = cn => HOWTOS.map(({id, title}) => ({id, title: translator(cn)(...title)}));
 
 // Devices that cannot make longer videos in parts have no Extend button, so that how-to is not offered.
 // An unreadable answer keeps it, as the length field's own line does.
@@ -90,7 +91,7 @@ export async function howToAvailable(id) {
 }
 export async function availableHowToList(cn) {
     const parts = await canMakeParts();
-    return HOWTOS.filter(item => parts || !item.needsParts).map(({id, title}) => ({id, title: title[cn ? 1 : 0]}));
+    return HOWTOS.filter(item => parts || !item.needsParts).map(({id, title}) => ({id, title: translator(cn)(...title)}));
 }
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));

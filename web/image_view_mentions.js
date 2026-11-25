@@ -13,7 +13,7 @@ const SEPARATORS = {latin: '\\s', cjk: '\\s?'};
 export const PICTURE_WORDS = new RegExp(keywordSource('image', undefined, SEPARATORS) + '(\\d+)', 'g');
 export const SUBJECT_WORDS = new RegExp(keywordSource('subject', undefined, SEPARATORS) + '(\\d+)', 'g');
 const TOKEN = new RegExp('@' + keywordSource('image') + ' ?(\\d+|\\?)', 'g');
-export const mentionText = n => t(`@Image${n}`, `@图${n}`);
+export const mentionText = n => t('@Image{n}', '@图{n}', { n });
 
 // The text with each mention renumbered from `before` (the pictures as they were) to `after` (as they are now).
 // `caret` is moved by the change in length of the mentions in front of it.
