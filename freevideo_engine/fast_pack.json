@@ -1,0 +1,43 @@
+{
+  "format": 2,
+  "repo": "BowenXue/FreeVideo-models",
+  "revision": "d11be6165138ad64cc0d018fd682817f07b7d26e",
+  "modelscope": "https://www.modelscope.cn/models/BowenXue/FreeVideo-models/resolve/master",
+  "license": "MiniMax H3 Community License",
+  "folder": "pi-h3",
+  "source": "Lakonik/pi-H3@4a864589",
+  "files": [
+    {
+      "file": "pi-h3/NOTICE",
+      "bytes": 121,
+      "sha256": "154fe7fbdf198395d53c57d6786b2fbf7e63a083ff70843c5ef78c0c7303d91a"
+    },
+    {
+      "file": "pi-h3/MODIFICATIONS.md",
+      "bytes": 997,
+      "sha256": "2cde40967ffec60e6786b45e7f3b005e482796c09b4da3ebe1c88b21c65bf8eb"
+    },
+    {
+      "file": "pi-h3/README.md",
+      "bytes": 6852,
+      "sha256": "3ee60659913e5e1c64e221d92af613f74516fc8ee92fddba78a74592696de2e9"
+    },
+    {
+      "file": "pi-h3/LICENSE.md",
+      "bytes": 18106,
+      "sha256": "1cc3d85fd45a893abae2c54cd5ce2eb792142a65132a035ea3ebb0c289ac2f89"
+    },
+    {
+      "file": "pi-h3/pi_h3_adaln_constants.safetensors",
+      "bytes": 19435680,
+      "sha256": "7949a370323b2a15e13f2e9160cfb1325207cde21b2629643f390be3e32f690b",
+      "engine": true
+    },
+    {
+      "file": "pi-h3/pi_h3_2step_dwd_adapter_int8_convrot.safetensors",
+      "bytes": 2192176240,
+      "sha256": "ef98527409eee4eaec8183265f4ee22d265680524237fae7149dbc203e11e739",
+      "engine": true
+    }
+  ]
+}
