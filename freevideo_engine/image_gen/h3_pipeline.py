@@ -384,8 +384,22 @@ def _encode(prompt, *, encoder, comfy_root, comfy_python, model_paths, vram_gib,
     if resident_endpoint:
         os.environ[ENV] = resident_endpoint
     try:
-        return _encode_once(prompt, encoder, comfy_root, comfy_python, model_paths, vram_gib, ram_gib, vision_images,
-                            release_gpu=release_gpu)
+        try:
+            return _encode_once(prompt, encoder, comfy_root, comfy_python, model_paths, vram_gib, ram_gib, vision_images,
+                                release_gpu=release_gpu)
+        except MemoryError as error:
+            import json
+            from ..encoder_commit import ENCODER_GPU_FLOOR, commit_exhausted
+            if not commit_exhausted(error):
+                raise
+            # Windows commit ran out while the weights were placed (physical RAM may be free). Once more with the
+            # card's share of the weights cut to the floor: the layers beyond it stream from the checkpoint, which
+            # commit does not charge, and the arithmetic is the same.
+            retry_gib = ENCODER_GPU_FLOOR / 2**30
+            print(json.dumps({'event': 'encoder_commit_retry', 'vram_gib': retry_gib}), flush=True)
+            return _encode_once(prompt, encoder, comfy_root, comfy_python, model_paths,
+                                min(vram_gib, retry_gib) if vram_gib else retry_gib, ram_gib, vision_images,
+                                release_gpu=release_gpu)
     except BaseException as error:
         # The caller's classifier keeps only a code; the text of the failure goes to the worker's log.
         print('H3 encode failed: %s: %s' % (type(error).__name__, str(error)[-2000:]), file=sys.stderr, flush=True)

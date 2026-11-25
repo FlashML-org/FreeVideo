@@ -253,6 +253,12 @@ def _reserve(resident):
 def encode(args, request, resident=None, diagnostics=None):
     from .encoder_diagnostics import EncoderTrace
     trace = diagnostics or EncoderTrace(request, resident=resident is not None)
+    if resident is not None and hasattr(resident, 'commit_cap'):
+        # The retained models are counted against the commit headroom too: what does not fit beside it goes
+        # (make_room) before the encoder is placed, instead of the encoder running the headroom out.
+        import torch
+        from .encoder_commit import live_cap
+        resident.commit_cap = lambda: live_cap(torch, resident.gpu_budget or 0) if resident.gpu_budget else None
     try:
         metrics = _encode(args, request, resident, trace)
     except BaseException:
@@ -261,6 +267,9 @@ def encode(args, request, resident=None, diagnostics=None):
         stop_model_read_ahead(trace)
         trace.finish(False)
         raise
+    finally:
+        if resident is not None and hasattr(resident, 'commit_cap'):
+            resident.commit_cap = None
     stop_read_ahead(trace)
     stop_model_read_ahead(trace)
     result = trace.finish(True, metrics)
@@ -338,6 +347,13 @@ def _encode(args, request, resident, trace):
         # a fixed 128 GB ceiling refused the request before encoding started.
         # Clamp to the capacity the reserve is computed against.
         budget = min(budget, total / 1e9)
+        # Windows commit backs the card's allocations: the encoder is placed within the headroom, and the layers
+        # beyond it stream from the checkpoint (not charged to commit) instead of taking the headroom to the guard.
+        from .encoder_commit import live_cap
+        commit_cap = live_cap(torch, budget * 1e9)
+        if commit_cap is not None:
+            loading['encoder_commit_gpu_cap_bytes'] = commit_cap
+            budget = commit_cap / 1e9
         # Let the native model manager leave space for CUDA and live activations.
         # This is placement guidance, not an enforced capacity result.
         reserve_gib = max(0.5, (available - budget * 1e9 + 1e9) / 2**30)

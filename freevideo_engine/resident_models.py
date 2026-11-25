@@ -292,6 +292,9 @@ class ModelBank:
         # does not.
         self.device_free = None
         self.device_reserve = 0
+        # While the text encoder is placed on Windows: a callable giving the GPU bytes the commit headroom backs
+        # (what this process holds included), or None. Other stages plan with their own budgets.
+        self.commit_cap = None
 
     def configure(self, gpu_budget, ram_budget=None, *, gpu_reserve=0, ram_budget_is_estimate=None):
         self.gpu_budget = int(gpu_budget)
@@ -414,8 +417,11 @@ class ModelBank:
     def available(self):
         free, _ = torch.cuda.mem_get_info()
         allocated = torch.cuda.memory_allocated()
-        return max(0, min(free + torch.cuda.memory_reserved() - allocated - self.gpu_reserve,
-                          self.gpu_budget - allocated))
+        room = min(free + torch.cuda.memory_reserved() - allocated - self.gpu_reserve, self.gpu_budget - allocated)
+        cap = self.commit_cap() if self.commit_cap is not None else None
+        if cap is not None:
+            room = min(room, cap - allocated)
+        return max(0, room)
 
     def ram_fits(self, need=2*GiB, *, bounded=False):
         """Whether live RAM takes `need` more bytes beside what this process holds.
