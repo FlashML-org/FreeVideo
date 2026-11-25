@@ -63,7 +63,7 @@ class Engine:
                  fp8_gemm='auto', window_varlen=False, varlen_smooth_k=True,
                  task='t2va', stream_weights=False, canvas=None, head_parallelism=1,
                  residual_offload=False, device_backend=None, gpu_allocation_bytes=None,
-                 fetch_tables=True, adaln_task=None, step_cache=None):
+                 fetch_tables=True, adaln_task=None, step_cache=None, fast_tier=None):
         from .step_cache import requested
         requested(step_cache)  # Validate the effective selection before loading weights.
         self.device_backend = device_backend if device_backend is not None else get_backend()
@@ -152,6 +152,16 @@ class Engine:
             # In the slim format these constants are model parameters, not a
             # disposable optimization cache. The effective mode is reported.
             adaln_cache = True
+        fast = None
+        self.raw_grid = None
+        if fast_tier is not None:
+            # The adapter's own modulation replaces the tables; no 8-step table is read.
+            from .fast_tier import RAW_GRID
+            from .fast_tier_runtime import Runtime
+            from .fast_tier import STEPS
+            if manifest.get('precision') != 'int8' or steps != STEPS:
+                raise ValueError('The fastest mode runs two steps on the int8 model')
+            fast, self.raw_grid = Runtime(self.device_backend.device), RAW_GRID
         for group in manifest['groups']:
             if (self.cache / group['file']).stat().st_size != group['bytes']:
                 raise ValueError('Incomplete prepared weights')
@@ -269,6 +279,10 @@ class Engine:
         if result.unexpected_keys or any(not key.startswith('transformer_blocks.') for key in result.missing_keys):
             raise ValueError('Unexpected root weight keys')
         del root_weights
+        if fast is not None:
+            fast.install_root(model)
+            fast.install_features(model, steps)
+        self.fast = fast
         if online_lora:
             from .lora_online import attach_block
             attach_block(model, 'root', self.cache, manifest, _load_safetensors,
@@ -284,13 +298,14 @@ class Engine:
         self.cursor = None
         self.schedule_hook = None
         embeddings = None
-        if adaln_cache:
+        if adaln_cache and fast is None:
             self.cursor = ScheduleCursor(schedule_timesteps(steps, task=self.adaln_task))
         table_cache = (TableCache(self.cache, manifest['source_id'], steps, task=self.adaln_task, manifest=manifest,
                                  timesteps=self.cursor.timesteps, channels=model.config.hidden_size, device='cpu',
                                  fetch=fetch_tables)
-                       if adaln_cache and (adaln_disk_cache or portable_adaln) else None)
+                       if adaln_cache and fast is None and (adaln_disk_cache or portable_adaln) else None)
         table_cache_hits = 0
+        fast_replaced = 0
         adaln_prepare_seconds = 0.
         self.resident_weight_bytes = 0
         block_bind_seconds = 0.
@@ -312,7 +327,9 @@ class Engine:
             adaln_started = time.perf_counter()
             table = table_cache.load(index, steps) if table_cache is not None else None
             cache_hit = table is not None
-            if cache_hit:
+            if fast is not None:
+                block.adaln_proj = fast.modulation(index)
+            elif cache_hit:
                 block.adaln_proj = CachedModulation(table, self.cursor).to(self.device_backend.device, non_blocking=True)
                 table_cache_hits += 1
                 del table
@@ -321,7 +338,7 @@ class Engine:
                     restore_projections(self.cache, manifest)
                 adaln = {name.removeprefix(prefix): value for name, value in
                          _load_safetensors(self.cache / f'adaln/{index:02d}.safetensors').items()}
-            if adaln_cache and not cache_hit:
+            if adaln_cache and fast is None and not cache_hit:
                 if embeddings is None:
                     _, embeddings = schedule_embeddings(model, steps, task=self.adaln_task)
                 block.load_state_dict({name: value.to(self.device_backend.device) for name, value in adaln.items()}, strict=False, assign=True)
@@ -346,6 +363,9 @@ class Engine:
             if online_lora:
                 from .lora_online import attach_block
                 attach_block(block, index, self.cache, manifest, _load_safetensors)
+            if fast is not None:
+                # Outside the block's own tensors: the offloader and the prepared files never see them.
+                fast_replaced += fast.replace_matrices(index, block, index < resident_blocks)
             if not adaln_cache:
                 # ``weights.update(adaln)`` leaves the source dictionary alive
                 # until the next iteration. Drop it before replacing this
@@ -372,6 +392,7 @@ class Engine:
                 phase='Load cached blocks and upload resident weights', seconds=time.perf_counter() - started)
         if adaln_cache:
             del embeddings
+        if self.cursor is not None:
             self.schedule_hook = model.register_forward_pre_hook(self.cursor.before, with_kwargs=True)
         if any(p.is_meta for p in list(model.parameters()) + list(model.buffers())):
             raise RuntimeError('Some transformer parameters are still on meta')
@@ -541,6 +562,8 @@ class Engine:
                        'steps': steps, 'source_id': manifest['source_id']}
         if step_cache is not None:
             self.config['step_cache'] = step_cache
+        if fast_tier is not None:
+            self.config.update(fast_tier=fast_tier, adaln_mode='fast-tier-adapter', fast_replaced_matrices=fast_replaced)
         if self.adaln_task != self.task:
             self.config['adaln_task'] = self.adaln_task
 
@@ -555,7 +578,15 @@ class Engine:
     def sample(self, *args, compute_options=None, **kwargs):
         from .pass_configuration import configuration
         from .refine_schedule import modulation
-        with configuration(self, compute_options), modulation(self, kwargs.get('refine_schedule')) as prepared:
+        from .step_grid import using
+        if vars(self).get('fast') is not None:
+            from .geometry import geometry
+            canvas = geometry(kwargs.get('width', args[3] if len(args) > 3 else 1344),
+                              kwargs.get('height', args[4] if len(args) > 4 else 768),
+                              frames=kwargs.get('frames', args[2] if len(args) > 2 else 243))
+            # The token grid of the video rows the pixel head reads: latent frames, height and width / 32.
+            self.fast.features.begin((canvas['latent_frames'], canvas['height'] // 32, canvas['width'] // 32))
+        with using(self.raw_grid), configuration(self, compute_options), modulation(self, kwargs.get('refine_schedule')) as prepared:
             result = self._sample(*args, **kwargs)
             if prepared is not None:
                 result[2]['refinement_schedule_preparation'] = prepared

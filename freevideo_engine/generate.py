@@ -273,6 +273,10 @@ def automatic_profile(args, canvas, *, stage, evidence, descriptor=None, environ
             planning_canvas = dict(canvas)
             if getattr(args, 'task', None):
                 planning_canvas['task'] = args.task
+            if getattr(args, 'fast_mode', None) is not None:
+                # The planner puts the pixel head where the VAE decode was and counts two steps.
+                from .fast_tier import STEPS
+                planning_canvas.update(fast_mode=args.fast_mode, steps=STEPS)
             if getattr(args, 'step_cache', None):
                 # The planner keeps the first-block cache only where it fits.
                 planning_canvas['step_cache'] = args.step_cache
@@ -608,6 +612,10 @@ def _run(args):
         hide_tail = dict(requested=True, used=False, reason='original_audio')
     hide_tail_frames = hide_tail['frames'] if hide_tail and hide_tail['used'] else 0
     continuation = None
+    from . import fast_tier
+    fast_spec = fast_tier.request(args)
+    if fast_spec is not None and original_audio is not None:
+        raise ValueError('The fastest mode cannot be used with the original sound of a video')
     from .two_pass import validate_steps
     requested_steps = getattr(args, 'base_steps', None)
     refine_steps = getattr(args, 'refine_steps', 3)
@@ -726,6 +734,9 @@ def _run(args):
                 voice_reference['reason'] = dialogue_reason(
                     args.prompt_file.read_text(encoding='utf-8') if args.prompt_file else None)
     active_loras = [row for row in media.get('loras', []) if row['strength'] != 0]
+    if fast_spec is not None:
+        # First, so its branch order does not depend on which user LoRAs are on.
+        active_loras = [fast_tier.adapter_row(fast_spec), *active_loras]
     if media:
         inferred_task = task_for(media)
         structural = any(media.get(k) for k in ('first', 'last', 'references', 'conditioning_info'))
@@ -795,6 +806,8 @@ def _run(args):
             raise ValueError(planned['reason'] + ' A continuation needs two-pass generation.')
         continuation_first = planned['first']
         continuation = usable_continuation(continuation, canvas, None if active_loras else manifest, planned)
+    if fast_spec is not None and manifest.get('precision') != 'int8':
+        raise ValueError('The fastest mode needs the int8 model')
     if manifest.get('precision') not in ('fp8', 'int8', 'bf16'):  # BF16: the unquantized reference
         raise ValueError('Select the prepared official FP8 or int8 cache')
     destination = args.out.resolve()
@@ -821,6 +834,9 @@ def _run(args):
                   allocator_limit_bytes=allocator_limit_bytes),
               'reclaimable_resident_models': resident_credit,
               'encoder_mode': 'native H3 encoder library child' if args.prompt_file else 'preencoded shared conditioning'}
+    if fast_spec is not None:
+        # From here on, so that a failure while preparing the adapter is reported as this mode's.
+        report['fast_tier'] = dict(mode=fast_spec['mode'], adapter_sha256=fast_spec['adapter_sha256'])
     if continuation is not None:
         report['continuation'] = continuation_summary(continuation, hide_tail_frames=hide_tail_frames)
         if 'tail' in continuation:
@@ -860,7 +876,8 @@ def _run(args):
                 lora_env = dict(os.environ, PYTHONPATH=str(repo), CUDA_VISIBLE_DEVICES='', PYTHONUNBUFFERED='1')
                 lora_env[LOCK_ENV] = str(descriptor)
                 print(json.dumps({'event': 'lora_prepare_start'}), flush=True)
-                report['lora_resources'] = child([sys.executable, '-m', 'freevideo_engine.lora_cache', '--request', str(lora_request)],
+                report['lora_resources'] = child([sys.executable, '-m', 'freevideo_engine.fast_tier' if fast_spec is not None
+                                                  else 'freevideo_engine.lora_cache', '--request', str(lora_request)],
                     lora_env, descriptor, destination.with_suffix('.lora.log'),
                     ram_budget_bytes=profile['inference_ram_budget_gb'] * 1e9)
                 prepared = json.loads(lora_result.read_text(encoding='utf-8'))
@@ -1273,6 +1290,8 @@ def _run(args):
                     selected['engine'] = dict(selected['engine'],
                         adaln_task=(selected['engine']['task'] if original_audio is not None
                                     else ANCHOR_ADALN_TASK if anchored else ADALN_TASK))
+                if fast_spec is not None:
+                    selected['engine'] = dict(selected['engine'], fast_tier=fast_spec['mode'])
                 request.update(engine_options=selected['engine'], decoder_options=selected['decoder'],
                                ram_budget_bytes=round(selected['inference_ram_budget_gb'] * 1e9),
                                ram_budget_is_estimate=ram_budget_is_estimate(args),

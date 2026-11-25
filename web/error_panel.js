@@ -640,10 +640,16 @@ export function failureAdvice(value, t, known = knownError(value)) {
     // The generation process ended without a Python error: it crashed or was ended from outside. The code
     // names which (freevideo_engine/failure_details.py generation_failure prints "(exit N)"); the number stays in the details.
     // A "Cause:" line means the process did report an error (a named one that no row above knows): it is not an unexplained exit.
+    // A process ended from outside keeps its own card below: another level would not help.
     const exit = /^Cause: /m.test(text) ? null : /FreeVideo generation failed \(exit (-?\d+)\)/.exec(text);
+    const killed = !!exit && [137, -9, 3221225786].includes(Number(exit[1]));
+    // Only here, after every more specific card: memory, disk or an output folder are not solved by another level.
+    if (!killed && /^FreeVideo generation failed(?: \(exit -?\d+\))?$/m.test(text)
+        && /^FAST_MODE_FAILED: The fastest mode could not run\.$/m.test(text))
+        return row('fast-mode-failed', ['The Fast level did not finish', '极\u2060速\u2060档未能完成生成'],
+            ['Switch to the Light level and generate again.', '请改用轻\u2060量\u2060档后重新生成。'],
+            ['If it happens again, choose "Report a problem" to send us the report.', '再次出现时，请点击“提交问题”，把报告发给我们。']);
     if (exit) {
-        const code = Number(exit[1]);
-        const killed = code === 137 || code === -9 || code === 3221225786;
         return row('process-exit', ['Generation stopped unexpectedly', '生成意外中断'],
             killed ? ['The generation was ended by another program.', '生成已被其他程序结束。']
                    : ['FreeVideo closed unexpectedly while generating.', '生成过程中 FreeVideo 意外关闭。'],

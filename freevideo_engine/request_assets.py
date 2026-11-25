@@ -26,6 +26,11 @@ def _sampling(root, machine, request):
         # Same rule as generation: a reference video with an audio track selects the audio tables.
         task = sampling_assets.engine_task({'references': request['references']}, request.get('media_base'))
     canvas = sampling_canvas(geometry(request['width'], request['height'], seconds=request['seconds']))[0]
+    if request.get('fast_mode') not in (None, 'none'):
+        # Its modulation comes from the adapter, so no sampling table is needed.
+        from . import fast_tier
+        two_pass, base, refine = fast_tier.bridge_steps(request['fast_mode'])
+        return plan(canvas, two_pass, task, base_steps=base, refine_steps=refine), []
     two_pass = bool(request.get('two_pass', True))
     sampled = plan(canvas, two_pass, task, base_steps=request.get('base_steps', 8),
                    refine_steps=request.get('refine_steps', 3), scale=request.get('upscale_factor', 2))

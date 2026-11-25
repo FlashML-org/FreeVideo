@@ -89,6 +89,13 @@ def current_settings(value):
     return value
 
 
+def fast_tier_request(row):
+    """A fastest mode request. Its adapter and extra memory are its own: only a device error speaks for other levels."""
+    details = row.get('details')
+    evidence = details.get('decision_evidence') if isinstance(details, dict) else None
+    return isinstance(evidence, dict) and bool(evidence.get('fast_tier'))
+
+
 def failure_evidence(details):
     # Bookkeeping must never turn a settled failure into another error.
     try:
@@ -247,6 +254,9 @@ class Store:
                 config=row['config'], geometry=row['geometry'], diagnosis='unknown', time=time.time(),
                 policy_revision=revision, applicable=revision == policy_revision(),
                 counted=False, level_changed=False)
+            fast = fast_tier_request(row)
+            if fast:
+                incident['fast_tier'] = True
             evidence = failure_evidence(evidence)
             if evidence:
                 incident['evidence'] = evidence
@@ -260,7 +270,7 @@ class Store:
                 # once, and so does one that was already running at the last counted interruption.
                 # A request is registered after recovery in the same call, often within one tick
                 # of a coarse system clock, so an equal time counts.
-                elif (reason in UNEXPLAINED_INTERRUPTIONS
+                elif (reason in UNEXPLAINED_INTERRUPTIONS and not fast
                         and row['started'] >= value.get('last_counted_interruption', 0)
                         and (batch is None or batch != value.get('last_counted_batch'))):
                     incident['counted'] = True
@@ -299,6 +309,8 @@ class Store:
         """Account for one settled generation; the caller validates its outcome."""
         if row.get('purpose') != 'generation' or not row.get('worker'):
             return
+        if fast_tier_request(row):
+            return  # Two steps on another adapter are no evidence for restoring the other levels.
         key = device_key(row.get('identity'))
         if key is None or not self.path.exists():
             # No state was ever stored here: no streak to clear, no level to restore.

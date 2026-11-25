@@ -82,6 +82,12 @@ def step_cache_option(value):
     return {'step_cache': value} if value in STEP_CACHE_OPTIONS and value != 'none' else {}
 
 
+FAST_MODE_OPTIONS = ('none', 'fast2')
+def fast_mode_option(value):
+    """Bridge keyword for the Fastest mode widget; a workflow without it or with 'none' adds nothing."""
+    return {'fast_mode': value} if value in FAST_MODE_OPTIONS and value != 'none' else {}
+
+
 UPSCALE_OPTIONS = ('2', '1.5', '1.2')  # two_pass.SCALES as the widget shows them
 
 
@@ -169,6 +175,9 @@ class FreeVideoGenerate(io.ComfyNode):
                 io.String.Input('upscale_to', display_name='Upscale size', default='', optional=True, advanced=True,
                     socketless=True, tooltip='Set by Upscale in Creations: empty for one 1.5x step, 4k for the 4K size '
                                              'made frame by frame by a small upscale model.'),
+                io.Combo.Input('fast_mode', display_name='Fastest mode', options=list(FAST_MODE_OPTIONS), default='none',
+                    optional=True, advanced=True,
+                    tooltip='Uses an additional two-step model and skips the video decoder.'),
             ],
             outputs=[io.Video.Output('video'), io.String.Output('report', display_name='Report JSON')],
             hidden=[io.Hidden.unique_id, io.Hidden.prompt, io.Hidden.extra_pnginfo],
@@ -178,7 +187,7 @@ class FreeVideoGenerate(io.ComfyNode):
     @classmethod
     def validate_inputs(cls, text, width, height, seconds, seed, continue_from='', frames=0, two_pass=True,
                         preview=False, refine_from='', base_steps=8, refine_steps=3, step_cache='none',
-                        upscale_factor='2', allow_empty_prompt=False, upscale_from='', upscale_to=''):
+                        upscale_factor='2', allow_empty_prompt=False, upscale_from='', upscale_to='', fast_mode='none'):
         # ComfyUI marks every input named here when a check fails, so only the checked widgets are
         # listed. Linked pictures, media and conditioning have no value before the run anyway.
         # step_cache and upscale_factor are named so ComfyUI skips their option lists: an older saved
@@ -189,6 +198,13 @@ class FreeVideoGenerate(io.ComfyNode):
             return True if optional_text(upscale_to) in (None, '', '4k') else 'Upscale size must be empty or 4k'
         try:
             options = request_options(continue_from, node_frames(frames))
+            if fast_mode_option(fast_mode):
+                from .fast_tier import bridge_steps
+                two_pass, base_steps, refine_steps = bridge_steps(fast_mode, preview=preview is True,
+                    refine_from=refine_from, continue_from=options.get('continue_from'),
+                    step_cache=step_cache_option(step_cache).get('step_cache'),
+                    upscale_factor=upscale_option(upscale_factor).get('upscale_factor', 2))
+                preview = False
             if options.get('continue_from'):
                 # A continued part turns on two passes and takes keyframes as pictures; only NVIDIA keeps its preview (execute).
                 from .continuation import previews_supported
@@ -225,7 +241,8 @@ class FreeVideoGenerate(io.ComfyNode):
                 references=None, loras=None, conditioning=None, media=None, two_pass=True,
                 force_regenerate=False, base_steps=8, refine_steps=3, preview=False, refine_from='',
                 continue_from='', frames=0, first_frame_reference=False, voice_reference=False, hide_tail=False,
-                step_cache='none', upscale_factor='2', allow_empty_prompt=False, upscale_from='', upscale_to=''):
+                step_cache='none', upscale_factor='2', allow_empty_prompt=False, upscale_from='', upscale_to='',
+                fast_mode='none'):
         from .comfy_environment import control_process
         from .gpu_pool import pool_enabled
         if control_process() and pool_enabled():
@@ -246,6 +263,14 @@ class FreeVideoGenerate(io.ComfyNode):
         chain = block_context(PromptServer.instance, node_id)
         options = request_options(continue_from, node_frames(frames))
         notes = []
+        if fast_mode_option(fast_mode):
+            # Refused here, before any model is stopped or loaded.
+            from .fast_tier import bridge_steps
+            two_pass, base_steps, refine_steps = bridge_steps(fast_mode, preview=preview is True, refine_from=refine_from,
+                continue_from=options.get('continue_from'), upscale_from=upscale_from,
+                step_cache=step_cache_option(step_cache).get('step_cache'),
+                upscale_factor=upscale_option(upscale_factor).get('upscale_factor', 2),
+                parts=chain.get('count', 1) if chain is not None else 1)
         if options.get('continue_from') or chain is not None and chain.get('count', 1) > 1:
             base_steps, refine_steps, step_cache, note = part_steps(base_steps, refine_steps, step_cache)
             if note:
@@ -422,6 +447,7 @@ class FreeVideoGenerate(io.ComfyNode):
                 **({'upscale_to': '4k'} if frames_upscale else {}),
                 **step_cache_option(step_cache),
                 **upscale_option(upscale_factor),
+                **fast_mode_option(fast_mode),
                 **({'report_extra': {'chain': report_fields(chain)}} if chain is not None else {}))
             relative = output.relative_to(output_root)
             report = output.with_suffix('.request.json').read_text(encoding='utf-8')

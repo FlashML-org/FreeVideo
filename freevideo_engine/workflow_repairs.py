@@ -23,6 +23,7 @@ TOLERATED = {
     'hide_tail': ('bool', False, None),
     'step_cache': ('choice', 'none', ('none', 'easycache-av', 'fbcache')),
     'upscale_factor': ('choice', '2', ('2', '1.5', '1.2')),
+    'fast_mode': ('choice', 'none', ('none', 'fast2')),
 }
 KEPT = 50
 

@@ -14,6 +14,8 @@ from .two_pass import SCALES
 
 STEP_OUTPUT = '\n\nFull step output:\n'
 QUALITY_LEVELS = (('Light', '轻量'), ('Medium', '标准'), ('High', '精细'), ('Max', '极致'))  # tiers.TIERS order
+# Marks a fastest mode failure. web/error_panel.js shows its card when no more specific one applies.
+FAST_MODE_FAILED = 'FAST_MODE_FAILED: The fastest mode could not run.'
 ENGINE_BUSY_TITLE = ('FreeVideo is busy with another task', 'FreeVideo 正在处理另一个任务')
 ENGINE_BUSY_DETAIL = (
     'Try again when it finishes. If nothing else is running, close duplicate FreeVideo instances, then try again.',
@@ -1518,8 +1520,9 @@ def generation_failure(run, exit_code=None, *, repair=None):
     # Managed failures contain only the exact busy sentence and optional holder
     # diagnostics. Other output must never acquire a busy classification.
     busy_lines = [line for line in _read(run / 'generate.log', 8192).splitlines() if line.strip()]
-    if exit_code == 1 and busy_lines[:1] == [ENGINE_BUSY] \
-            and all(line.startswith('Lock file open:') for line in busy_lines[1:]):
+    busy = exit_code == 1 and busy_lines[:1] == [ENGINE_BUSY] \
+        and all(line.startswith('Lock file open:') for line in busy_lines[1:])
+    if busy:
         lines.extend(busy_lines)
     # What the worker found when cuDNN refused its own files, ahead of the trace.
     explained = _runtime_explanation(report, REPAIR_MARK)
@@ -1600,6 +1603,8 @@ def generation_failure(run, exit_code=None, *, repair=None):
     summary = _mac_run(report, run, redactor)
     if summary:
         lines.insert(1 + bool(promoted) + bool(encoder_missing), summary)
+    if isinstance(report.get('fast_tier'), dict) and not busy:
+        lines.append(FAST_MODE_FAILED)
     lines.append('\nRetained outputs: ' + str(run))
     # The table failure can be in a retained child log rather than the report.
     # Keep its numeric metadata ahead of technical output for all interactive callers.
