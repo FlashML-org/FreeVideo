@@ -4,7 +4,7 @@ import {pageRepair, repairAction, repairButton} from './repair_hint.js';
 import {detectBrowserExtension, browserExtensionAdvice, extensionSteps, isNetworkTypeError, connectionLostText, engineNotRunning, engineNotRunningText, engineNotResponding, engineNotRespondingText, isRequestTimeout, requestTimeoutText, requestTimeoutAction} from './browser_extension.js';
 import {SAMPLING_EFFORTS, STEP_CACHES, UPSCALE_FACTORS, tableLevel} from './sampling_effort.js';
 import {failureIssue, failureStage} from './failure_issue.js';
-import {knownEngineExit} from './engine_exit.js';
+import {knownEngineExit, knownLoopStalls} from './engine_exit.js';
 import {focusReportTip, hideReportTip, reportIssue, showReportTip} from './report_issue.js';
 import { skin } from './glass/library.js';
 const reports = new WeakSet();
@@ -799,7 +799,7 @@ export function createErrorPanel(t, route = null) {
     const openFeedback = async () => {
         if (!issueModules) await loadIssueModules();
         if (!issueModules) return;
-        const draft = failureIssue(currentReport, element.freevideoKind, {lora: githubLora, t, engineExit: knownEngineExit()});
+        const draft = failureIssue(currentReport, element.freevideoKind, {lora: githubLora, t, engineExit: knownEngineExit(), loopStalls: knownLoopStalls()});
         const url = issueModules.feedback.feedbackIssueURL(draft.text, issueModules.updates.productVersion(), draft.summary, draft.title);
         globalThis.open?.(url, '_blank', 'noopener');
     };

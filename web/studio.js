@@ -27,7 +27,7 @@ import { createUpscaleOffer, upscaleChoices, UPSCALE_USE, UPSCALE_QUEUED, UPSCAL
 import { createRecentVideos } from './studio_recent.js';
 import { createStudioQueue, randomSeed, turnNodeOn } from './studio_queue.js';
 import { isNetworkTypeError, connectionLostText, wrappedFetchOnly } from './browser_extension.js';
-import { newEngineExit, engineExitText, watchEngineExit } from './engine_exit.js';
+import { newEngineExit, engineExitText, watchEngineExit, refreshLoopStalls } from './engine_exit.js';
 import { attachReferencePicker, referenceItems, enhancementMedia, syncReferencePrompt, referenceInputs, mentionAt, handleNames, mediaRows } from './prompt_references.js';
 import { attachTermSuggest } from './prompt_terms.js';
 import { problem as timedProblem, timedText, parse as timedParse } from './timed_prompt.js';
@@ -2437,6 +2437,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     }[error?.message] || (error?.said ? t(error.said[0], error.said[1]) : null) || userMessage(error, t));
     let lastQueueError = null, connectionNotice = false;
     watchEngineExit(api).catch(() => {});
+    refreshLoopStalls(api);
     function showQueueError(error) {
         if (disposed) return;
         status.dataset.error = 'true';
@@ -2469,6 +2470,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         newEngineExit(api).then(record => {
             if (record && !disposed && !status.textContent) status.textContent = engineExitText(record, t);
         }).catch(() => {});
+        refreshLoopStalls(api);
     }
     // A part that did not start says so on its own line; what the server said goes in the card, with a report.
     function showChainActionError(error) {

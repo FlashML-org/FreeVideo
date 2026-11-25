@@ -48,3 +48,25 @@ export function engineExitText(record, t = en => en) {
     return t(`The engine stopped unexpectedly at ${clock(record.at)} and has been restarted.`,
         `引擎于 ${clock(record.at)} 意外停止，已重新启动。`);
 }
+
+// When the engine's loop was held up: times, lengths and the loop thread's innermost calls, as written by the engine
+// (file names and functions only). A feedback message carries what the page has read; the page reads it once at load
+// and again when a lost connection comes back, since a silent engine cannot be asked.
+let stalls = [];
+
+async function loadStalls(api) {
+    try {
+        const response = await api.fetchApi('/freevideo/launcher/loop-stalls', {cache: 'no-store'});
+        if (!response.ok) return;
+        const rows = (await response.json())?.stalls;
+        stalls = Array.isArray(rows) ? rows.filter(row => row && Number.isFinite(row.at) && Number.isFinite(row.seconds))
+            .slice(0, 2).map(row => ({at: row.at, seconds: row.seconds, recovered: row.recovered === true,
+                loop: (Array.isArray(row.loop) ? row.loop : []).filter(call => typeof call === 'string').slice(-5).map(call => call.slice(0, 120))})) : [];
+    } catch { /* The report only loses these facts. */ }
+}
+
+/** Read the engine's record of held-up moments; never throws. */
+export function refreshLoopStalls(api) { return loadStalls(api); }
+
+/** The newest records this page has read, for a feedback message; empty when there are none. */
+export function knownLoopStalls() { return stalls; }
