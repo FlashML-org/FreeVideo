@@ -20,6 +20,8 @@ import {about} from './request_assets.js';
 import {showEmptyPrompt} from './empty_prompt_notice.js';
 import {createSideRail, ICON, localTime, markText, matches, promptOf, statusKey, statusText} from './autopilot_panels.js';
 import {tip, WHY} from './autopilot_tips.js';
+import {enlarge, enlarged} from './video_enlarge.js';
+import {keptRate, keptVolume} from './glass/player_bar.js';
 import {createHistoryMenu, forgetStoredSaid, saidIn} from './autopilot_history.js';
 
 // The conversation's own sheet, then the glass layout over it (rails, the floating box to type in, the cards).
@@ -1372,9 +1374,11 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                     }
                     finally { playing = false; delete box.dataset.loading; }
                 };
-                const toggle = press('fv-chat-play', null, () => {
+                // The video is made on the first press of Play or Full screen, with the sound and speed kept from the last one.
+                const made = () => {
                     if (!video) {
                         video = el('video'); video.playsInline = true; video.src = api.apiURL(job.play);
+                        const level = keptVolume(), rate = keptRate(); if (level !== null) video.volume = level; if (rate !== null) video.playbackRate = video.defaultPlaybackRate = rate;
                         const seek = el('input', 'fv-chat-seek'); seek.type = 'range'; seek.min = '0'; seek.max = '1000'; seek.value = '0'; tip(seek, 'seek', t);
                         seek.setAttribute('aria-label', t('Position', '播放位置'));
                         video.onloadedmetadata = () => shape(video.videoWidth, video.videoHeight);
@@ -1387,12 +1391,24 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                         };
                         seek.oninput = () => { if (video.duration) video.currentTime = seek.value / 1000 * video.duration; };
                         box.prepend(video); box.append(seek); box.dataset.video = 'true';
+                        video.addEventListener('fv-enlarge-change', () => { box.dataset.enlarged = String(enlarged(video)); });
                     }
+                    return video;
+                };
+                const toggle = press('fv-chat-play', null, event => {
+                    // The second click of a double click is the double click's (full screen), not another Play or Pause.
+                    if (event?.detail >= 2) return;
+                    made();
                     if (video.paused || video.ended) { loadRetried = false; void play(); } else video.pause();
                 });
                 tip(toggle, 'play', t);
+                // Full screen: the corner key or a double click; with a mouse the key shows on hover
+                // or focus, on a touch screen it stays (autopilot_chat.css). The video plays on, and comes back here.
+                const full = press('fv-chat-full', null, () => { made(); enlarge(video, {t, opener: full}); if (video.paused) video.play().catch(() => {}); });
+                full.append(glyph(ICON.full, 2)); tip(full, 'fullScreen', t);
+                toggle.addEventListener('dblclick', event => { event.preventDefault(); full.click(); });
                 const label = () => toggle.setAttribute('aria-label', (box.dataset.playing === 'true' ? t('Pause ', '暂停 ') : t('Play ', '播放 ')) + jobName(job, t));
-                label(); box.append(toggle);
+                label(); box.append(toggle, full);
             }
             if (length.textContent) box.append(length);
             children.unshift(box);

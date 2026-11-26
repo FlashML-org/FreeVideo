@@ -230,3 +230,12 @@
 .fv-studio .fv-chat-log .fv-chat-edit-send{border-color:transparent;background:var(--fv-accent);color:var(--fv-bg)}
 .fv-studio .fv-chat-log .fv-chat-edit-send:hover:not(:disabled){background:var(--fv-accent-hover)}
 @media(max-width:480px){.fv-studio .fv-chat-log .fv-chat-edit-box{font-size:16px}}
+/* Full screen on a finished video (video_enlarge.js): a 32 px circle 6 px from the frame's top and
+   right edges, in a 44 px key that reaches into the corner (never toward the middle of the picture). With a mouse it
+   shows while the frame is hovered or the key has focus; on a touch screen it stays. */
+.fv-studio .fv-chat-full{position:absolute;top:0;right:0;z-index:2;display:grid;place-items:center;width:44px;height:44px;min-width:44px;min-height:44px;padding:0;border:0;border-radius:0;background:transparent;color:#f3f5f8}
+.fv-studio .fv-chat-full::before{content:'';position:absolute;top:6px;right:6px;width:32px;height:32px;border-radius:var(--fv-r-pill);background:rgb(12 16 24 / .58);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.fv-studio .fv-chat-full>svg{position:relative;width:16px;height:16px}
+.fv-studio .fv-chat-full:hover{background:transparent}.fv-studio .fv-chat-full:hover::before{background:rgb(12 16 24 / .78)}
+.fv-studio .fv-chat-full:focus-visible{outline:0}.fv-studio .fv-chat-full:focus-visible::before{outline:2px solid var(--fv-accent-line,#6db8fa);outline-offset:2px}
+@media (hover:hover) and (pointer:fine){.fv-studio .fv-chat-preview:not(:hover) .fv-chat-full:not(:focus-visible){opacity:0}}

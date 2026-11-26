@@ -17,6 +17,8 @@ export const ICON = Object.freeze({
     panelLeft: 'M4 5h16v14H4zM9 5v14', panelRight: 'M4 5h16v14H4zM15 5v14',
     search: 'M11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14zM20 20l-4-4',
     locate: 'M12 3v3M12 18v3M3 12h3M18 12h3M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
+    // The library viewer's Full screen arrows (library.js expand), on this 24 grid.
+    full: 'M14.25 3.75h6v6M20.25 3.75 13.5 10.5M9.75 20.25h-6v-6M3.75 20.25 10.5 13.5',
     stop: 'M7 7h10v10H7z', warn: 'M12 4l9 16H3zM12 10v4M12 17h.01', check: 'M5 12l5 5 9-10',
     film: 'M4 6h16v12H4zM8 6v12M16 6v12M4 10h4M4 14h4M16 10h4M16 14h4', picture: 'M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M15 9h.01',
     tasks: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',

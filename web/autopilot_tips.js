@@ -25,6 +25,7 @@ export const TIPS = Object.freeze({
     stop: {name: ['Stop', '停止'], use: ['Stop making this; nothing is kept', '停止生成这一条，不保留结果']},
     open: {name: ['Open', '打开'], use: ['Open it in your creations', '在作品库里打开']},
     openPicture: {name: ['Open', '打开'], use: ['View the image full size', '查看大图']},
+    fullScreen: {name: ['Full screen', '全屏'], use: ['Fill the window; press Esc to leave', '铺满窗口播放；按 Esc 退出']},
     edit: {name: ['Edit', '剪辑'], use: ['Open it in Edit to cut and add sound', '在剪辑视图里继续剪辑和配音']},
     download: {name: ['Download', '下载'], use: ['Save the image to this computer', '把图片保存到本机']},
     why: {name: ['See why', '查看原因'], use: ['What went wrong and what to do', '出了什么问题、可以怎么做']},
