@@ -191,9 +191,11 @@ def failure(error, mode='rewrite'):
     result = dict(error=code, exception=type(error).__name__, error_details=frames)
     if source:
         result['oom_source'] = source
-    from .rules import InvalidOutput
+    from .rules import ContextLength, InvalidOutput
     if isinstance(error, InvalidOutput):
         result['output_rejection'] = error.details
+    if isinstance(error, ContextLength):
+        result['context'] = error.details
     return result
 
 
@@ -518,8 +520,8 @@ def run(folder, value, *, stats=None):
 
 def image(folder, value, stats):
     """One rewritten picture prompt, with the reference pictures in view; text leaves only via stdout."""
-    from .rules import (IMAGE_INPUT_TOKENS, IMAGE_OUTPUT_TOKENS, image_caption, image_instruction, image_picture_text,
-                        image_style, image_tokens, image_user_text)
+    from .rules import (IMAGE_INPUT_TOKENS, IMAGE_OUTPUT_TOKENS, ContextLength, InvalidOutput, image_caption,
+                        image_instruction, image_picture_text, image_style, image_tokens, image_user_text)
     limit = IMAGE_OUTPUT_TOKENS
     stats.update(stage='imports', pid=os.getpid(), image_count=len(value['media']), mode='image', answer_tokens=limit,
                  image_style=image_style(value), dtype='bfloat16', attention='sdpa', kv_cache='dynamic',
@@ -538,7 +540,7 @@ def image(folder, value, stats):
     messages = [{'role': 'system', 'content': image_instruction(value)}, {'role': 'user', 'content': content}]
     inputs = tokenize(processor, messages, image_tokens(len(value['media'])) * 32 * 32)
     if inputs.input_ids.shape[-1] > IMAGE_INPUT_TOKENS:
-        raise ValueError('context_length')
+        raise ContextLength(inputs.input_ids.shape[-1], IMAGE_INPUT_TOKENS, len(value['media']))
     stats.update(input_tokens=int(inputs.input_ids.shape[-1]), preprocess_seconds=time.monotonic() - preparing)
     model, device = load_model(folder, torch, stats, checkpoint)
     loaded = time.monotonic()
@@ -555,10 +557,14 @@ def image(folder, value, stats):
     ids, _ = generate(torch, model, inputs.to(device), limit, loaded, on_token)
     stats.update(rewrite_seconds=time.monotonic() - loaded, output_tokens=len(ids))
     checkpoint('validate', 'rewriting')
+    text = processor.decode(ids, skip_special_tokens=True)
     if len(ids) >= limit:
-        raise ValueError('context_length')
+        # The reply filled the output allowance: an output check, not a prompt that is too long.
+        error = InvalidOutput('output_token_limit', text, value)
+        stats.setdefault('output_rejections', []).append(error.details)
+        raise error
     try:
-        caption = image_caption(processor.decode(ids, skip_special_tokens=True), value)
+        caption = image_caption(text, value)
     except ValueError as error:
         if hasattr(error, 'details'):
             stats.setdefault('output_rejections', []).append(error.details)
@@ -672,7 +678,7 @@ def rewrite(folder, value, stats):
                  persistent_model=False)
     torch, checkpoint = begin(stats)
     from transformers import AutoProcessor
-    from .rules import DIALOGUE_RETRY, TIMESTAMP_RETRY, TIMING_RETRY, InvalidOutput, fit_time_points, instruction, label, language, lost_marks, missing_lines, user_text
+    from .rules import DIALOGUE_RETRY, TIMESTAMP_RETRY, TIMING_RETRY, ContextLength, InvalidOutput, fit_time_points, instruction, label, language, lost_marks, missing_lines, user_text
     checkpoint('preprocess')
     preparing = time.monotonic()
     processor = AutoProcessor.from_pretrained(folder, local_files_only=True, trust_remote_code=False)
@@ -684,8 +690,17 @@ def rewrite(folder, value, stats):
     content.append({'type': 'text', 'text': user_text(value)})
     messages.append({'role': 'user', 'content': content})
     inputs = tokenize(processor, messages)
+    # Each picture takes up to 512 tokens; a request past the limit gives each fewer before it is refused.
+    shrunk = {}
+    for per_image in (256, 128, 64):
+        if inputs.input_ids.shape[-1] <= 6500 or not value['media']:
+            break
+        shrunk = dict(max_pixels=per_image * 32 * 32)
+        inputs = tokenize(processor, messages, **shrunk)
+    if value['media']:
+        stats['image_tokens_per_image'] = shrunk.get('max_pixels', 512 * 32 * 32) // (32 * 32)
     if inputs.input_ids.shape[-1] > 6500:
-        raise ValueError('context_length')
+        raise ContextLength(inputs.input_ids.shape[-1], 6500, len(value['media']))
     stats.update(input_tokens=int(inputs.input_ids.shape[-1]), preprocess_seconds=time.monotonic() - preparing)
     model, device = load_model(folder, torch, stats, checkpoint)
     inputs = inputs.to(device)
@@ -703,9 +718,12 @@ def rewrite(folder, value, stats):
     ids, _ = generate(torch, model, inputs, 1800, loaded, on_token)
     stats.update(rewrite_seconds=time.monotonic() - loaded, output_tokens=len(ids))
     checkpoint('validate', 'rewriting')
-    if len(ids) >= 1800:
-        raise ValueError('context_length')
     text = processor.decode(ids, skip_special_tokens=True)
+    if len(ids) >= 1800:
+        # The draft filled the output allowance: an output check, not a prompt that is too long.
+        error = InvalidOutput('output_token_limit', text, value)
+        stats.setdefault('output_rejections', []).append(error.details)
+        raise error
     missing, marks = missing_lines(text, value['text']), lost_marks(text, value['text'])
     rewritten, rejected = None, None
     references, late, last = [], False, text
@@ -734,7 +752,7 @@ def rewrite(folder, value, stats):
         if marks:
             correction += TIMING_RETRY + ', '.join(marks) + '\n'
         retry = messages + [{'role': 'assistant', 'content': text}, {'role': 'user', 'content': correction}]
-        retry_inputs = tokenize(processor, retry)
+        retry_inputs = tokenize(processor, retry, **shrunk)
         if retry_allowed(retry_inputs.input_ids.shape[-1], stats):
             again, _ = generate(torch, model, retry_inputs.to(device), 1800, time.monotonic(), lambda timing: None)
             second = processor.decode(again, skip_special_tokens=True)

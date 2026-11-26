@@ -182,6 +182,13 @@ class InvalidOutput(ValueError):
                             retried=False)
 
 
+class ContextLength(ValueError):
+    """A request past the model's input limit. The details are whole numbers only, never text of the prompt."""
+    def __init__(self, input_tokens, input_limit, image_count):
+        super().__init__('context_length')
+        self.details = dict(input_tokens=int(input_tokens), input_limit=int(input_limit), image_count=int(image_count))
+
+
 def clean_counts(counts):
     """The counts as read from the file, rebuilt so that a damaged or hand-edited file still counts on:
     only the known actions and checks, only whole numbers (anything else restarts at zero)."""
