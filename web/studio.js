@@ -3505,10 +3505,12 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // Quality: a button with a small panel beside it, like Frame & size. In the panel, the levels' slider (the thick
     // track with the knob inside, as before), one line under it on what the level gives (no times), and the two-pass
     // choice.
-    const qualityChip = createPopChip({host: dialog, kind: 'quality', onOpen: () => paintQuality(), name: t('Quality', '质量'), icon: 'M8 2l1.6 3.6L13.5 6l-2.9 2.7.8 3.9L8 10.7 4.6 12.6l.8-3.9L2.5 6l3.9-.4Z'});
+    const qualityChip = createPopChip({host: dialog, kind: 'quality', onOpen: () => { paintQuality(); effort.fitNames(); }, name: t('Quality', '质量'), icon: 'M8 2l1.6 3.6L13.5 6l-2.9 2.7.8 3.9L8 10.7 4.6 12.6l.8-3.9L2.5 6l3.9-.4Z'});
     const LEVEL_WORDS = {Fast: FAST_OPTION_TEXT, Light: ['Fastest, for trying ideas', '最快，适合试效果'], Medium: ['For everyday use', '日常使用'], High: ['More detail, slower', '细节更多，较慢'], Max: ['The most detail, slowest', '细节最多，最慢']};
     const levelUse = el('p', '', 'fvp-level-use'); levelUse.setAttribute('aria-live', 'polite');
     effort.element.after(levelUse, fastPack.element); qualityChip.body.append(samplingSettings);
+    // The panel widens for the level names when they need more room than its own width (sampling_effort.js fitNames).
+    effort.growInto(qualityChip.pop, () => qualityChip.place());
     const qualityLevel = () => fastOn() ? effort.levels().find(tier => tier.fast) || FAST_EFFORT : effortFor(Number(baseSteps.value), twoPass.checked, Number(refineSteps.value), stepCacheNow(), effort.levels(), upscaleNow());
     const sayLevel = tier => { const said = tier?.fast && fastParts() ? '' : tier?.fast && fastPack.needs() ? fastPack.needs() : tier?.name === 'Light' && effort.levels().some(level => level.fast) ? t('Quick, for trying ideas', '速度较快，适合试效果') : tier ? t(...(LEVEL_WORDS[tier.name] || ['', ''])) : t('Custom steps', '自定义步数'); if (levelUse.textContent !== said) levelUse.textContent = said; };
     effortPointed = tier => sayLevel(tier || qualityLevel());

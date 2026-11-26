@@ -117,7 +117,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
             else if (quality) effortControl.setEstimate(stepsText(quality.baseSteps, quality.twoPass, quality.refineSteps));
         },
         levels: actions.effortLevels?.() || undefined}) : null;
-    if (effortControl) loadEffortSheet();
+    if (effortControl) { loadEffortSheet(); effortControl.growInto(effortControl.element); }   // wider than its 280 px for long level names
     let stopPass = null, stopEffort = null;
     if (passMenu) {
         const toggle = el('summary'); toggle.setAttribute('aria-label', t('Sampling', '采样')); toggle.append(el('span', 'fv-chevron'));

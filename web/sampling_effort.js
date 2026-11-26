@@ -17,6 +17,9 @@ export const SAMPLING_EFFORTS = frozen([
 // The Fast level, listed before Light where the planner admits it (grid.fast_mode). The engine takes its steps from the
 // `fast_mode` input, so it is never matched from step counts. Its one line of description is here.
 export const FAST_EFFORT = Object.freeze({name: 'Fast', zh: '极速', fast: true, steps: 2, twoPass: false, stepCache: null, upscale: 2, color: '#35d0e6'});
+// Its name again as an [English, Chinese] pair, like the line below, so that the language files carry it (i18n_extract
+// collects pairs, not this object); scripts/test_effort_names_catalog.mjs holds the two the same.
+export const FAST_NAME = Object.freeze(['Fast', '极速']);
 export const FAST_OPTION_TEXT = Object.freeze(['Faster; fine detail may flicker', '更快，画面细节可能闪烁']);
 // What a capability grid offers of it (capabilities.fast_mode, listed by the planner, a Mac included).
 export const fastOfferOf = grid => grid?.fast_mode?.listed === true ? grid.fast_mode : null;
@@ -160,7 +163,76 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}, levels 
         });
         rail.setAttribute('aria-valuemax', String(last()));
         markKeys();
+        fitNames();
     }
+    // Every level's name whole, on one line, at its own letter spacing, in any language: measured, never set per language.
+    // Under the track (names placed at their stops) the names keep 8 px between neighbours, the box the owner names
+    // (growInto) widening for them, and a name at either end moves in only as far as keeps it 4 px inside the frame it is
+    // drawn in; where the box cannot widen enough, every other name goes one line lower. Names in a strip of cells (the
+    // Studio's three columns) are left to that layout.
+    const NAME_GAP = 8, FRAME_EDGE = 4;
+    let growBox = null, onFitted = () => {}, fitting = false;
+    const shown = () => nameButtons.length > 0 && names.isConnected && names.getClientRects?.().length > 0 && names.clientWidth > 0;
+    function frameOf(node) {
+        for (let e = node.parentElement; e && e !== document.body; e = e.parentElement) {
+            const st = getComputedStyle(e);
+            if (parseFloat(st.borderLeftWidth) > 0 || parseFloat(st.borderRightWidth) > 0 || st.overflowX !== 'visible'
+                || !/rgba\(0, 0, 0, 0\)|transparent/.test(st.backgroundColor) || st.backgroundImage !== 'none') return e;
+        }
+        return document.documentElement;
+    }
+    // Each fit starts from nothing fitted: the same control can move between a strip and a track (the Edit view borrows
+    // the Studio's), and a wider window gives the room back.
+    function unfit() {
+        delete names.dataset.fvStagger; names.style.removeProperty('height');
+        for (const b of nameButtons) for (const property of ['top', '--fv-name-shift']) b.style.removeProperty(property);
+        growBox?.style.removeProperty('width');
+    }
+    function fitTrack() {
+        // In layout pixels (offsets and resolved positions), which a panel's opening transition (a slight scale) leaves alone.
+        const frame = frameOf(names);
+        const rowLeft = () => { let x = 0; for (let e = names; e && e !== frame; e = e.offsetParent) x += e.offsetLeft + (e === names ? 0 : e.clientLeft); return x; };
+        const edges = () => {
+            const x = rowLeft(), inner = frame.clientWidth;
+            return nameButtons.map(b => { const centre = x + parseFloat(getComputedStyle(b).left), half = b.offsetWidth / 2;
+                return {centre, half, shift: centre - half < FRAME_EDGE ? FRAME_EDGE - (centre - half) : centre + half > inner - FRAME_EDGE ? inner - FRAME_EDGE - (centre + half) : 0}; });
+        };
+        const box = growBox?.contains(names) ? growBox : null;   // only the box the names are shown in widens
+        if (nameButtons.length > 1) {
+            const at = edges(), pitch = at[1].centre - at[0].centre;
+            let need = pitch;
+            for (let i = 0; i + 1 < at.length; i++) need = Math.max(need, at[i].half + at[i + 1].half + NAME_GAP - (at[i + 1].shift - at[i].shift));
+            const lack = (need - pitch) * (nameButtons.length - 1);
+            if (box && lack > .05) box.style.width = `${Math.ceil(box.offsetWidth + lack)}px`;
+        }
+        const at = edges();
+        at.forEach(({shift}, i) => { if (Math.abs(shift) > .05) nameButtons[i].style.setProperty('--fv-name-shift', `${shift.toFixed(1)}px`); });
+        // A box that cannot widen enough (a panel as wide as the window): the second and fourth names go one line lower, each
+        // still at its stop, so that the names on each line keep their 8 px. The row is one line taller.
+        const gap = i => (at[i + 1].centre + at[i + 1].shift - at[i + 1].half) - (at[i].centre + at[i].shift + at[i].half);
+        if (at.some((_, i) => i + 1 < at.length && gap(i) < NAME_GAP - .5)) {
+            const line = names.clientHeight;
+            names.dataset.fvStagger = ''; names.style.height = `${line * 2}px`;
+            nameButtons.forEach((b, i) => { if (i % 2) b.style.top = `${line}px`; });
+        }
+    }
+    function fitNames() {
+        if (fitting || !shown()) return;
+        fitting = true;
+        // Measured as the chosen name is drawn (bolder, so wider) for every name, so that choosing another level never takes
+        // the room the fit left: set and given back in this one step, so nothing is drawn in between.
+        const chosen = nameButtons.map(b => b.hasAttribute('data-active'));
+        try {
+            unfit(); for (const b of nameButtons) b.setAttribute('data-active', '');
+            if (getComputedStyle(nameButtons[0]).position === 'absolute') fitTrack();
+        } finally { nameButtons.forEach((b, i) => b.toggleAttribute('data-active', chosen[i])); fitting = false; }
+        onFitted();
+    }
+    // Measured again when the names' row changes size (its stylesheet arriving, a narrower window), after this frame so
+    // that a box it widens is not measured mid-change, and once the interface's font has loaded.
+    let pending = 0;
+    const namesObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { cancelAnimationFrame(pending); pending = requestAnimationFrame(() => { pending = 0; fitNames(); }); }) : null;
+    namesObserver?.observe(names); document.fonts?.ready?.then(fitNames);
     element.append(header, warning, ways, rail, names);
     let selected = 0, disabled = false, pointer = null, draft = 0, previewed = -1, currentSteps = 8, currentRefine = 3, twoPass = true, stepCache = null, upscale = 2, reason = '', fastNow = false, namesAsKeys = false, marked = false;
     buildScale();
@@ -294,9 +366,12 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}, levels 
     }
     // What the Fast level's option says: its download while the files are missing.
     function setFastUse(text) { fastUse = text || ''; efforts.forEach((tier, i) => { if (tier.fast) nameButtons[i].dataset.fvTipUse = nameUse(tier); }); }
-    return {element, update, setLevels, setFastUse, levels: () => efforts, useNames(on) { namesAsKeys = Boolean(on); markKeys(); }, setWarning(text) { warning.textContent = text; warning.hidden = !text; },
+    // The box that widens for the names (the panel they are shown in), and what to do once they are fitted (place it again).
+    function growInto(box, then = () => {}) { growBox = box || null; onFitted = then; fitNames(); }
+    function dispose() { cancel(); namesObserver?.disconnect(); if (pending) cancelAnimationFrame(pending); }
+    return {element, update, setLevels, setFastUse, growInto, fitNames, levels: () => efforts, useNames(on) { namesAsKeys = Boolean(on); markKeys(); }, setWarning(text) { warning.textContent = text; warning.hidden = !text; },
         setWays(list = []) {
             ways.replaceChildren(...list.map(way => { const b = el('button', 'fv-effort-way', way.label); b.type = 'button'; b.dataset.way = way.id; b.onclick = way.run; return b; }));
             ways.hidden = !list.length;
-        }, setEstimate(text, title = '', parts = 0) { estimate.textContent = text; if (parts > 1) estimate.dataset.parts = String(parts); else delete estimate.dataset.parts; if (title) estimate.title = title; else estimate.removeAttribute('title'); }, dispose: cancel};
+        }, setEstimate(text, title = '', parts = 0) { estimate.textContent = text; if (parts > 1) estimate.dataset.parts = String(parts); else delete estimate.dataset.parts; if (title) estimate.title = title; else estimate.removeAttribute('title'); }, dispose};
 }
