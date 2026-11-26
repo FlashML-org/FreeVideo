@@ -25,6 +25,7 @@ import time
 from urllib.parse import quote, unquote, urlencode, urljoin, urlsplit
 from . import proxy
 from .long_paths import io_path, is_windows, path_chars, plain, plain_errors, ABSOLUTE_PATH, AUTHORIZATION, EMAIL, path_match
+from . import report_addresses
 from .system import curl_executable, curl_ca_arguments, missing_curl_message, windows
 
 
@@ -644,6 +645,9 @@ def _redact(value):
     if isinstance(value, bytes):
         value = value.decode('utf-8', errors='replace')
     value = _ANSI_ESCAPE.sub('', str(value)).replace('\x00', '')
+    # An address keeps the path report_addresses keeps (on a repository host only FreeVideo's own
+    # repositories), with no query or fragment; its user and password go below.
+    value = report_addresses.URL.sub(report_addresses.record, value)
     # User information in any URL (https, socks5, a token alone before @), up to
     # the last @ before the host, so a password holding an @ goes as a whole.
     value = re.sub(r'(?i)\b([a-z][a-z0-9+.-]*://)[^\s/\x27\x22]+@', r'\1<REDACTED>@', value)

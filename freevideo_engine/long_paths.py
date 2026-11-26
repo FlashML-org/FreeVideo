@@ -251,18 +251,39 @@ ABSOLUTE_PATH = re.compile(
     # A file URL comes first, with its own guard (a word or a URL's slash before "file" stops it, so
     # "uri:file:///..." counts and "https://host/file:x" stays a URL): its slashes are a path, which the
     # guard below would otherwise leave as a URL's.
+    # An absolute path may follow a colon with no space ("Error:C:\Users\...", "error:/home/..."): a URL's
+    # "://" never starts one, as a slash before a slash or right after one is no path, and after a colon
+    # a single slash starts one only before a letter or "_" ("fe80::/10" stays).
     r'''(?<![A-Za-z0-9_/])''' + FILE_URL + r'''|'''
-    r'''(?<![A-Za-z0-9_:/])(?:(?P<command>\./setup\.sh(?![\w/\\-]|\.\w))|\.{1,2}/[^"'<>;\r\n,\)\]}]*|'''
-    r'''(?:(?:[A-Za-z]:[\\/])|(?:\\\\[^\\/\s"'<>]+[\\/])|/(?![/\s]))[^"'<>;\r\n,\)\]}]*)''')
+    r'''(?<![A-Za-z0-9_:/])(?:(?P<command>\./setup\.sh(?![\w/\\-]|\.\w))|\.{1,2}/[^"'<>;\r\n,\)\]}]*)|'''
+    r'''(?<![A-Za-z0-9_/])(?:(?:[A-Za-z]:[\\/])|(?:\\\\[^\\/\s"'<>]+[\\/])|(?<!:)/(?![/\s])|(?<=:)/(?=[^\W\d]))'''
+    r'''[^"'<>;\r\n,\)\]}]*''')
 
-# A path that ends at a user's own folder: its last component is the user name, so none is kept.
-HOME_FOLDER = re.compile(r'(?i)^(?:[A-Za-z]:)?[\\/]+(?:users|home|documents and settings)[\\/]+[^\\/]+$')
+# Folders whose folders are users' own, at any depth (C:\Users, /home, /var/home, /mnt/c/Users,
+# /System/Volumes/Data/Users, roaming profile and home shares).
+USER_FOLDER_PARENTS = frozenset(('users', 'home', 'homes', 'documents and settings', 'profiles', 'profiles$',
+                                 'users$', 'home$', 'homes$'))
+# \\server\share\name: the folder right under a share is often a user's own (a roaming profile, a
+# redirected or home folder), and so is a share itself (\\nas\bob, \\server\bob$). The \\?\ and
+# \\?\UNC\ prefixes count as their plain spelling.
+_SHARE_FOLDER = re.compile(r'^[\\/]{2}[^\\/]+[\\/]+[^\\/]+(?:[\\/]+[^\\/]+)?$')
+_EXTENDED = re.compile(r'(?i)^[\\/]{2}[?.][\\/](?:unc[\\/])?')
+
+
+def ends_at_user_folder(value):
+    """Whether a path's last part is (or may be) a user's own folder, whose name is the user's."""
+    text = str(value).rstrip('\\/')
+    unc = re.match(r'(?i)^[\\/]{2}[?.][\\/]unc[\\/]', text)
+    # A function, not a replacement string: there "\\\\" would come out as one backslash.
+    text = _EXTENDED.sub(lambda found: '\\\\' if unc else '', text)
+    parts = re.split(r'[\\/]+', text)
+    return (len(parts) >= 2 and parts[-2].lower() in USER_FOLDER_PARENTS) or bool(_SHARE_FOLDER.match(text))
 
 
 def path_placeholder(value):
     """``<PATH>/`` and the last component: no usernames, drives, shares or parent directories."""
     normalized = str(value).rstrip('\\/')
-    if HOME_FOLDER.match(normalized):
+    if ends_at_user_folder(normalized):
         return '<PATH>'
     name = re.split(r'[\\/]', normalized)[-1]
     return '<PATH>/' + name if name else '<PATH>'

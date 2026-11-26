@@ -564,12 +564,18 @@ function details(problems) {
 // fail to load, so it builds the address itself (no shared module) and removes places and addresses.
 const ISSUE_FORM = 'https://github.com/FlashML-org/FreeVideo/issues/new';
 const forgetPlaces = text => String(text)
+    // Any authorization value (the engine's long_paths.AUTHORIZATION, with no scheme kept) and an email
+    // address on its own, a user name in any script, come first.
+    .replace(/(\b(?:proxy-)?authori[sz]ation(?:\\?['"][ \t]*[:=,]|[ \t]*[:=])[ \t]*)(?:(\\?['"])(?:(?!\2)[^\r\n])+|[^\r\n'"][^\r\n]*)/gi, '$1$2<secret>')
+    .replace(/(?<![\p{L}\p{N}_.+%-])(?!git@)[\p{L}\p{N}_.+%-]+@(?!\d+x\.)[\p{L}\p{N}_-]+(?:\.[\p{L}\p{N}_-]+)*\.\p{L}{2,}(?!\p{L})/gu, '<email>')
     // A local file written as a URL (file:///C:/Users/..., file://localhost/..., %-escaped) is a place too.
     .replace(/(^|[^A-Za-z0-9_\/])file:(?:\/\/[^\/\s'"<>]*)?(?:\/+|(?=[A-Za-z]:[\\/]))[^'"<>|\r\n]*/gi, '$1<path>')
     .replace(/https?:\/\/[^\s'"<>)]+/g, '<url>')
     .replace(/\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b/g, '<address>')
-    .replace(/(?:[A-Za-z]:[\\/]|\\\\|~[\\/])[^'"<>|\r\n]+/g, '<path>')
-    .replace(/(^|[\s('"])\/[\w.-]+(?:\/[^\s'"<>)]*)+/g, '$1<path>');
+    // A path right after a colon counts ("Error:C:\\Users\\...", "error:/home/..."), a URL's "://" does not.
+    .replace(/(?<![A-Za-z0-9])(?:[A-Za-z]:[\\/]|\\\\|~[\\/])[^'"<>|\r\n]+/g, '<path>')
+    // A path may hold spaces ("/Users/John Smith/..."): to the end of its line, a quote or ")".
+    .replace(/(^|[\s('"]|:(?=\/[A-Za-z_]))\/[\w.-]+(?:\/[^'"<>|)\r\n]*)+/g, '$1<path>');
 function issueAddress(problems) {
     const summary = forgetPlaces(details(problems)).split('\n').filter(line => !line.startsWith('Page:')).join('\n');
     const feedback = ['FreeVideo showed an error.', 'Where: Page check',
