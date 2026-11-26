@@ -19,6 +19,8 @@ const G = {
     history: ['History', '历史'], compare: ['Compare', '对比'], picture: ['Image editing', '图像编辑'],
     playback: ['Playback', '播放'], timeline: ['Timeline', '时间线'], clips: ['Clips', '片段'], edit: ['Editing', '编辑'],
     chat: ['Conversation', '对话'], tasks: ['Running tasks', '进行中的任务'], library: ['Creations', '作品库'],
+    // The keys of a focused position bar, under Playback (written as the sheet writes "Everywhere · General").
+    position: ['Playback · Position bar', '播放 · 位置条'],
 };
 
 // Shortcuts the views have in the 0.5.4 code and in this branch (each one checked in the source it names).
@@ -43,6 +45,14 @@ export const BUILTIN_SHORTCUTS = Object.freeze({
         {keys: 'Up / Down', title: ['Choose a suggestion', '选择候选项'], group: G.prompt},
         {keys: 'Enter / Tab', title: ['Insert the chosen item', '插入选中的项'], group: G.prompt},
         {keys: 'Esc', title: ['Close a panel, then Create', '先关浮层，再关创作面板'], group: G.general},
+        // The result's play bar (glass/player_bar.js; studio.js keys): its sound key shows no tip, so M is said here.
+        {keys: 'Space', title: ['Play / pause', '播放 / 暂停'], group: G.playback},
+        {keys: 'M', title: ['Mute / unmute', '静音 / 取消静音'], group: G.playback},
+        // One row a key, the number and its unit kept together (a no-break space).
+        {keys: 'Left', title: ['Back 1 s', '后退 1 秒'], group: G.position},
+        {keys: 'Right', title: ['Forward 1 s', '前进 1 秒'], group: G.position},
+        {keys: 'Shift+Left', title: ['Back 5 s', '后退 5 秒'], group: G.position},
+        {keys: 'Shift+Right', title: ['Forward 5 s', '前进 5 秒'], group: G.position},
     ],
     image: [
         {keys: 'Mod+Enter', title: ['Generate image', '生成图片'], group: G.generate},
@@ -96,6 +106,17 @@ export const BUILTIN_SHORTCUTS = Object.freeze({
     ],
     library: [
         {keys: 'Esc', title: ['Close the viewer, then the library', '先关大图，再关作品库'], group: G.library},
+        {keys: 'Left', title: ['Previous creation', '上一个作品'], group: G.library},
+        {keys: 'Right', title: ['Next creation', '下一个作品'], group: G.library},
+        // The viewer's video (library.js keys and glass/player_bar.js).
+        {keys: 'Space', title: ['Play / pause', '播放 / 暂停'], group: G.playback},
+        {keys: 'M', title: ['Mute / unmute', '静音 / 取消静音'], group: G.playback},
+        {keys: 'F', title: ['Full screen', '全屏'], group: G.playback},
+        // One row a key, the number and its unit kept together (a no-break space).
+        {keys: 'Left', title: ['Back 1 s', '后退 1 秒'], group: G.position},
+        {keys: 'Right', title: ['Forward 1 s', '前进 1 秒'], group: G.position},
+        {keys: 'Shift+Left', title: ['Back 5 s', '后退 5 秒'], group: G.position},
+        {keys: 'Shift+Right', title: ['Forward 5 s', '前进 5 秒'], group: G.position},
     ],
 });
 

@@ -21,7 +21,7 @@ import {showEmptyPrompt} from './empty_prompt_notice.js';
 import {createSideRail, ICON, localTime, markText, matches, promptOf, statusKey, statusText} from './autopilot_panels.js';
 import {tip, WHY} from './autopilot_tips.js';
 import {enlarge, enlarged} from './video_enlarge.js';
-import {keptRate, keptVolume} from './glass/player_bar.js';
+import {attach as attachPlayer, keptRate, keptVolume} from './glass/player_bar.js';
 import {createHistoryMenu, forgetStoredSaid, saidIn} from './autopilot_history.js';
 
 // The conversation's own sheet, then the glass layout over it (rails, the floating box to type in, the cards).
@@ -1379,18 +1379,16 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                     if (!video) {
                         video = el('video'); video.playsInline = true; video.src = api.apiURL(job.play);
                         const level = keptVolume(), rate = keptRate(); if (level !== null) video.volume = level; if (rate !== null) video.playbackRate = video.defaultPlaybackRate = rate;
-                        const seek = el('input', 'fv-chat-seek'); seek.type = 'range'; seek.min = '0'; seek.max = '1000'; seek.value = '0'; tip(seek, 'seek', t);
-                        seek.setAttribute('aria-label', t('Position', '播放位置'));
                         video.onloadedmetadata = () => shape(video.videoWidth, video.videoHeight);
-                        video.ontimeupdate = () => { if (video.duration) seek.value = String(Math.round(video.currentTime / video.duration * 1000)); };
                         video.onplay = video.onpause = video.onended = () => { box.dataset.playing = String(!video.paused && !video.ended); label(); };
                         video.onerror = () => {
                             if (playing) return;
                             if (loadRetried) { playbackFailure(); return; }
                             loadRetried = true; video.load(); void play();
                         };
-                        seek.oninput = () => { if (video.duration) video.currentTime = seek.value / 1000 * video.duration; };
-                        box.prepend(video); box.append(seek); box.dataset.video = 'true';
+                        // The position under the picture is the shared play bar's slider, the Play key the card's own.
+                        box.prepend(video); box.dataset.video = 'true';
+                        attachPlayer(video, box, {t, positionOnly: true}).element.classList.add('fv-chat-position', 'fv-player-on-dark');
                         video.addEventListener('fv-enlarge-change', () => { box.dataset.enlarged = String(enlarged(video)); });
                     }
                     return video;

@@ -47,6 +47,7 @@ import { TIPS } from './tooltip_copy.js';
 import { createFrameChip, createFrameIcon, createPopChip } from './glass/frame_picker.js';
 import { createWarm } from './studio_warm.js';
 import { attach as attachPlayer } from './glass/player_bar.js';
+import { enlarged, toggleEnlarge } from './video_enlarge.js';
 import { framesOf, savedPrompt, savedSettings } from './result_reuse.js';
 import { addVideoLabel, addVideoModel, missingVideoText, videoModelState } from './video_model.js';
 import { createPromptEnhancer } from './prompt_enhance.js';
@@ -2291,7 +2292,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
         video.dataset.pending = 'true'; stageMedia.prepend(video); lastShown.set(node, r); rememberShown(r);
         // The video on the stage goes before anything the page loads ahead in the background (work_media.js).
         mediaQueue().open(video.getAttribute('src'), video);
-        playerBar = attachPlayer(video, playerRow, {t});
+        // The one play bar for watching, with volume, speed and full screen.
+        playerBar = attachPlayer(video, playerRow, {t, volume: true, speed: true,
+            full: {shown: () => enlarged(video), toggle: key => toggleEnlarge(video, {t, opener: key})}});
         // A click on the picture plays or pauses it, as the play bar's key does.
         video.addEventListener('click', event => {
             if (event.button !== 0 || video.dataset.leaving || !video.isConnected) return;

@@ -11,6 +11,8 @@ import { attach } from './glass/player_bar.js';
 
 let current = null;
 export const enlarged = video => current?.video === video;
+// For a play bar's Full screen key: enlarge the video, or put it back when it is enlarged (focus returns to `opener`).
+export const toggleEnlarge = (video, {t, opener = null} = {}) => enlarged(video) ? current.leave() : enlarge(video, {t, opener});
 
 function styleOnce() {
     if (typeof document === 'undefined' || document.querySelector('link[data-fv-video-enlarge]')) return;
@@ -35,7 +37,8 @@ export function enlarge(video, {t, opener = null} = {}) {
     if (playing && video.paused) video.play().catch(() => {});
     let left = false;
     const handle = {video, dialog, leave};
-    const bar = attach(video, controls, {t, volume: true, speed: true, full: {shown: () => !left, toggle: () => leave()}});
+    // Alongside the video's own bar, which stays where it was and is there again on the way back.
+    const bar = attach(video, controls, {t, volume: true, speed: true, alongside: true, full: {shown: () => !left, toggle: () => leave()}});
     bar.element.classList.add('fv-player-on-dark');
     const onCancel = event => { event.preventDefault(); leave(); };
     const onFull = () => { if (!document.fullscreenElement && !left && dialog.dataset.full === 'true') leave(); };

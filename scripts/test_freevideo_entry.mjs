@@ -132,7 +132,10 @@ test('main browser entry registers both views and preserves node hooks', async t
         source = source.replace("from './issue_button.js'", `from '${new URL('../web/issue_button.js', import.meta.url).href}'`);
         source = source.replace("from './user_message.js'", `from '${new URL('../web/user_message.js', import.meta.url).href}'`);
         source = source.replace("from './prompt_sections.js'", `from '${new URL('../web/prompt_sections.js', import.meta.url).href}'`);
-        source = source.replace("from './fv_player.js'", `from '${new URL('../web/fv_player.js', import.meta.url).href}'`);
+        // The play bar draws into a real document (and its menu module adds a sheet on import); what is checked here is
+        // registration and node hooks, so a bar that draws nothing stands in.
+        source = source.replace("import { attach as attachPlayer } from './glass/player_bar.js';", 'const attachPlayer = () => ({element: {classList: {add() {}}}, detach() {}});');
+        source = source.replace("import { enlarged, toggleEnlarge } from './video_enlarge.js';", 'const enlarged = () => false, toggleEnlarge = () => {};');
         source = source.replace("from './fv_select.js'", `from '${new URL('../web/fv_select.js', import.meta.url).href}'`);
         source = source.replace("from './tip_words.js'", `from '${new URL('../web/tip_words.js', import.meta.url).href}'`);
         // i18n.js decides the page's language once, when it loads (as a page does on each load). Each round below sets

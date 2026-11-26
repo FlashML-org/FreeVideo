@@ -2359,6 +2359,9 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         // The drop-down lists of the lent creation bar (the Advanced window's) are theirs the same way: their rows' keys, and the
         // arrow keys, Enter and Space that open one from its button; Escape shuts the list and nothing else.
         if (inside && (event.target.closest?.('.fv-select-menu') || (event.target.closest?.('.fv-select') && ['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(event.key)))) { routeDialogKey(event, element); return; }
+        // The shared play bar (a source preview's) listens through dialog_keys too: its position bar's arrows, Home and End
+        // move the preview, not the timeline. Keys it leaves go on to the editor's shortcuts.
+        if (inside && event.target.closest?.('.fv-player-bar')) { routeDialogKey(event, element); if (event.defaultPrevented) return; }
         if (guide?.handleKey(event)) return;
         if (event.type === 'keyup') {
             // The Space that played from a media card does not also press the card.

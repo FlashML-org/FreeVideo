@@ -143,6 +143,8 @@ function holderOf(element) {
 export function tipContent(element) {
     if (!element) return null;
     const holder = holderOf(element);
+    // A place that is showing something of its own over the control (the play bar's volume slider) asks for no tip.
+    if (element.closest?.('[data-fv-tip-none]')) return null;
     const data = holder?.dataset || {};
     let name = data.fvTipName || '', use = data.fvTipUse || '', key = data.fvTipKey || '', off = data.fvTipWhy || data.fvTipOff || '';
     let entry = data.fvTip ? TIPS[data.fvTip] : null;
@@ -333,7 +335,9 @@ const listOpen = () => !!document.querySelector('.fv-select-menu:not([hidden])')
 
 function show(element) {
     const content = tipContent(element);
-    if (!content || !element.isConnected || listOpen()) return;
+    // A control with nothing to say (or a place that asks for no tip) takes the last control's tip away with it.
+    if (!content || !element.isConnected) { if (shown && shown !== element) hideTip({now: true}); return; }
+    if (listOpen()) return;
     clearTimeout(hideTimer);
     if (shown && shown !== element) release(shown);
     shown = element;

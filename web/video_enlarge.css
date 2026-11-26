@@ -6,7 +6,3 @@
 .fv-video-full-stage>video{position:absolute;inset:0;display:block;width:100%;height:100%;max-width:none;max-height:none;object-fit:contain;background:#000}
 .fv-video-full-bar{position:absolute;left:0;right:0;bottom:0;padding:24px max(16px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));background:linear-gradient(transparent,rgb(0 0 0 / .62))}
 .fv-video-full-bar .fv-player-bar.fv-player-on-dark{--fv-player-fg:#f3f5f8;--fv-player-rail:rgb(255 255 255 / .25);color:#f3f5f8}
-/* fv_player.css (the other play bar, until the two are one) styles .fv-player-bar as a card: not here, over the gradient. */
-.fv-video-full-bar .fv-player-bar{min-height:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;container-type:normal}
-.fv-video-full-bar .fv-player-track{height:28px;border-radius:0}.fv-video-full-bar .fv-player-track::after{content:none}
-.fv-video-full-bar .fv-player-rail{height:2px;background:var(--fv-player-rail)}
