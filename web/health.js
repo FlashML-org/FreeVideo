@@ -626,6 +626,14 @@ window.addEventListener('keydown', event => {
     if (event.key !== 'Escape' || !card?.isConnected) return;
     event.preventDefault(); event.stopImmediatePropagation(); dismiss();
 }, true);
+// The scripts' own words (error, extension URL and line), once each, for the technical details of either card.
+function rawDetails(problems) {
+    const raw = problems.map(p => p.detail).filter(Boolean);
+    if (!raw.length) return null;
+    const pre = document.createElement('pre'); pre.textContent = [...new Set(raw)].join('\n');
+    Object.assign(pre.style, {margin: '6px 0 0', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', font: '12px/1.5 ui-monospace,Consolas,monospace', color: '#a5b3c6', userSelect: 'text', webkitUserSelect: 'text'});
+    return pre;
+}
 function show(problems, asked = false) {
     opening?.finish(); opening = null;
     lastProblems = problems;
@@ -693,15 +701,15 @@ function show(problems, asked = false) {
         const choose = document.createElement('p'); choose.textContent = extensionAdvice.action;
         const technical = document.createElement('details'), label = document.createElement('summary');
         label.textContent = t('Technical details', '技术详情'); technical.append(label, list);
+        const pre = rawDetails(problems); if (pre) technical.append(pre);
         technical.style.margin = '12px 0';
         // Full URLs/IDs and the blocked filename remain in technical details.
         card.append(title, first, choose, extensionUI.extensionSteps(extensionAdvice), technical, advice, actions);
     } else {
-        const raw = problems.map(p => p.detail).filter(Boolean);
-        if (raw.length) {
-            const technical = document.createElement('details'), label = document.createElement('summary'), pre = document.createElement('pre');
-            label.textContent = t('Technical details', '技术详情'); pre.textContent = [...new Set(raw)].join('\n');
-            Object.assign(pre.style, {margin: '6px 0 0', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', font: '12px/1.5 ui-monospace,Consolas,monospace', color: '#a5b3c6', userSelect: 'text', webkitUserSelect: 'text'});
+        const pre = rawDetails(problems);
+        if (pre) {
+            const technical = document.createElement('details'), label = document.createElement('summary');
+            label.textContent = t('Technical details', '技术详情');
             technical.append(label, pre); technical.style.margin = '0 0 12px'; label.style.cursor = 'pointer'; label.style.color = '#a5b3c6';
             card.append(title, list, technical, advice, actions);
         } else card.append(title, list, advice, actions);
