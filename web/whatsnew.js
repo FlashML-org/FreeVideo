@@ -371,12 +371,15 @@ export function maybeShowWhatsNew({cn, version, busy}) {
     return true;
 }
 
-// A page that holds settings from an earlier version is an upgrade; a first launch has none.
+// An upgrade is a browser that has run FreeVideo before: since 0.5.0 every start leaves seen records (a first launch
+// writes them all below, an upgrade when its pages close); before 0.5.0 there were none, and the editor's last edit,
+// written only when the user opens or saves one, stands for that use. Other FreeVideo settings say nothing: the page
+// writes them itself as it starts, on a first launch too, and one written before this runs would make it an upgrade.
 const usedBefore = () => {
     try {
         for (let index = 0; index < localStorage.length; index++) {
             const key = localStorage.key(index) || '';
-            if (!key.startsWith(SEEN_PREFIX) && key !== 'freevideo.page-retry' && (key.startsWith('freevideo.') || key.startsWith('fv-'))) return true;
+            if (key.startsWith(SEEN_PREFIX) || key === 'fv-editor-last') return true;
         }
     } catch { /* Unreadable storage: treat as an upgrade rather than hide the news. */ return true; }
     return false;

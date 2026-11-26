@@ -71,7 +71,7 @@ export const atLeast = (version, since) => {
     for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] > b[i];
     return true;
 };
-// Every record starts with this, so a page that holds only these has not been used before.
+// Every record starts with this, so a browser that holds one has run FreeVideo 0.5.0 or later.
 export const SEEN_PREFIX = 'freevideo.whatsnew-seen';
 export const seenRecord = page => page.seen || [`${SEEN_PREFIX}-${page.id}`, '1'];
 // The pages a version has, in their order; an unknown version has none.
