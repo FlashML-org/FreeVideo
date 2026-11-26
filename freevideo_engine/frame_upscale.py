@@ -211,7 +211,7 @@ def ensure_weights(root, emit, check):
         if path.is_file() and path.stat().st_size == row['bytes'] and _digest(path, check) == row['sha256']:
             return path
         if path.exists():
-            network.retain_partial(path, 'rejected')
+            network.retain_partial(path, 'set-aside')
         plan = _download_plan(Path(root))
         sources = plan['sources'] = dict(plan.get('sources', {}))
         if not sources.get('image-models'):

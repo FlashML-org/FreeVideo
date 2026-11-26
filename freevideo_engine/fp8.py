@@ -21,6 +21,20 @@ from .preparation import cache_location, expected_groups, reusable_group, source
 from .tensor_io import open_tensors
 
 
+def retain_corrupt_group(destination, progress):
+    """A prepared group that failed its check is kept (the newest only) while it is rebuilt."""
+    from .network import retain_partial
+    retain_partial(destination, 'hash-rejected')
+    retain_partial(progress, 'hash-rejected')
+
+
+def forget_corrupt_group(destination, progress):
+    """The group is in place and verified: the corrupt ones kept for it go."""
+    from .network import forget_failed
+    forget_failed(destination)
+    forget_failed(progress)
+
+
 def input_dtype(module):
     """Input dtype of an ordinary Linear or a cached official FP8 Linear."""
     return module.input_dtype if hasattr(module, 'input_dtype') else module.weight.dtype
@@ -119,6 +133,7 @@ def prepare_streamed(base, checkpoint, cache_root):
                           'index': index, 'total': len(group_names)}), flush=True)
         saved = reusable_group(output, group)
         if saved is not None:
+            forget_corrupt_group(destination, progress)
             reused_groups += 1
             records.append(saved)
             linears.update(saved['linears'])
@@ -126,9 +141,7 @@ def prepare_streamed(base, checkpoint, cache_root):
                               'index': index, 'total': len(group_names), 'reused': True}), flush=True)
             continue
         if destination.is_file() and progress.is_file():
-            rejected = '.hash-rejected-' + str(time.time_ns())
-            destination.rename(destination.with_name(destination.name + rejected))
-            progress.rename(progress.with_name(progress.name + rejected))
+            retain_corrupt_group(destination, progress)
             print(json.dumps({'event': 'rebuild_fp8_group', 'group': group,
                               'reason': 'Corrupt group retained before rebuilding'}), flush=True)
         print(json.dumps({'event': 'prepare_fp8_phase', 'phase': 'read_source_weights', 'group': group,
@@ -328,15 +341,14 @@ def prepare(source, cache_root, *, base, checkpoint):
         progress = destination.with_suffix('.json')
         saved = reusable_group(output, group['group'])
         if saved is not None:
+            forget_corrupt_group(destination, progress)
             groups.append(saved)
             linears.update(saved['linears'])
             print(json.dumps({'event': 'prepared_fp8_group', 'group': group['group'], 'index': index,
                               'total': len(manifest['groups']), 'reused': True}), flush=True)
             continue
         if destination.is_file() and progress.is_file():
-            rejected = '.hash-rejected-' + str(time.time_ns())
-            destination.rename(destination.with_name(destination.name + rejected))
-            progress.rename(progress.with_name(progress.name + rejected))
+            retain_corrupt_group(destination, progress)
         path = source / group['file']
         if path.stat().st_size != group['bytes'] or sha256(path) != group['sha256']:
             raise ValueError('Source cache failed integrity check: ' + str(path))

@@ -321,9 +321,9 @@ def prepare(root, machine, sampling, task, *, progress, interrupted=None, enviro
                 continue
             if path.exists():
                 # A damaged or superseded copy must not block every request.
-                network.retain_partial(path, 'rejected')
+                network.retain_partial(path, 'set-aside')
                 if path.with_suffix('.json').exists():
-                    network.retain_partial(path.with_suffix('.json'), 'rejected')
+                    network.retain_partial(path.with_suffix('.json'), 'set-aside')
             missing.append((table, row, path))
     if len(stamps) != recorded:
         save(ledger, stamps, durable=True)

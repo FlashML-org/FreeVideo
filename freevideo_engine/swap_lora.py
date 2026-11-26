@@ -87,7 +87,7 @@ def install(folder, names=(), progress=None, check=None, *, engine_root=None, sp
                     continue
                 if path.exists() or path.is_symlink():
                     # Not the pinned file: kept under another name, never overwritten.
-                    network.retain_partial(path, 'rejected')
+                    network.retain_partial(path, 'set-aside')
                 todo.append(row)
             total = sum(row['bytes'] for row in todo)
             retained = sum(min(_partial(folder / r['target']).stat().st_size, r['bytes'])

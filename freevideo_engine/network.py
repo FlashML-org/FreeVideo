@@ -1021,10 +1021,31 @@ def hash_file(path, algorithm='sha256', git_blob=False, *, discard_cache=False, 
     return value.hexdigest()
 
 
-def retain_partial(path, reason):
+def retain_partial(path, reason, *, observed=None, algorithm='sha256', network=None, category=None, source=None):
+    """Keep a file or prefix that failed its check, as <name>.<reason>-<time>.
+
+    The older kept copies of the same file go (the newest stays for diagnosis; failed_copies explains the
+    rule). With `network`, a ``failed-copy`` event names the copy, its size and time and the digest it actually
+    had, never a folder."""
     retained = path.with_name(path.name + '.' + reason + '-' + str(time.time_ns()))
     path.rename(retained)
+    from . import failed_copies
+    removed = failed_copies.prune(path, keep=1)
+    if network is not None:
+        event(network, category=category, source=source, file=failed_copies.base_name(path), action='failed-copy',
+              reason=reason, removed_older=len(removed), removed_older_bytes=sum(row['bytes'] for row in removed),
+              **failed_copies.describe(retained, observed, algorithm))
     return retained
+
+
+def forget_failed(path, network=None, **details):
+    """The right file has passed its sha256: every copy of it that did not pass goes."""
+    from . import failed_copies
+    removed = failed_copies.prune(path, keep=0)
+    if removed and network is not None:
+        event(network, file=failed_copies.base_name(path), action='failed-copies-removed', removed=len(removed),
+              removed_bytes=sum(row['bytes'] for row in removed), **details)
+    return removed
 
 
 RETRY_DELAYS = (2, 5)
@@ -1295,11 +1316,15 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
         if progress:
             progress(high_water, size or 0, last_rate)
 
+    observed = {}
+
     def reject(candidate, reason):
         if updating:
             candidate.unlink(missing_ok=True)
         else:
-            retain_partial(candidate, reason)
+            retain_partial(candidate, reason, observed=observed.pop('digest', None) if reason == 'hash-rejected' else None,
+                           algorithm=algorithm + ('-git-blob' if git_blob else ''), network=network, category=category,
+                           source=observed.get('source'))
 
     def publish(candidate):
         check = network.get('resource_check')
@@ -1314,7 +1339,9 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
             if not path.is_file() or not matches(path):
                 raise
             candidate.unlink(missing_ok=True)
+            forget_failed(path, network, category=category)
             return
+        forget_failed(path, network, category=category)
         if updating and progress:
             progress(path.stat().st_size, size or 0, last_rate)
 
@@ -1322,6 +1349,7 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
     stall_seconds = stall_seconds if stall_seconds is not None else 120 if model else 20
 
     def matches(candidate, source='local'):
+        observed.pop('digest', None)
         if size is not None and candidate.stat().st_size != size:
             return False
         event(network, category=category, source=source, file=path.name, action='verifying', algorithm=algorithm)
@@ -1334,13 +1362,16 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
                 check()
             if model:
                 report(done, total)
-        matched = hash_file(candidate, algorithm, git_blob, discard_cache=category in ('models', 'vdn-models', 'encoder-models', 'image-models'),
-                            progress=verification if model or check else None) == expected
+        observed['digest'], observed['source'] = hash_file(
+            candidate, algorithm, git_blob, discard_cache=category in ('models', 'vdn-models', 'encoder-models', 'image-models'),
+            progress=verification if model or check else None), source
+        matched = observed['digest'] == expected
         if matched and verify is not None:
             matched = verify(candidate)
         return matched
     if path.is_file():
         if matches(path):
+            forget_failed(path, network, category=category)
             return
         raise ValueError('Existing file failed integrity check; retained without overwrite: ' + str(path))
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -1650,7 +1681,7 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
             if cycle + 1 < cycles:
                 event(network, category=category, source=name, file=path.name, action='restart-approved',
                       retained_bytes=partial.stat().st_size, reason='resume-unavailable')
-                retain_partial(partial, 'restart-approved')
+                retain_partial(partial, 'restart-approved', network=network, category=category, source=name)
     message = 'Every download source failed for %s. Check your network or choose another connection mode in Downloads. Partial files retained' % path.name
     error = DownloadError(message + sources_text(failures.values()))
     error.attempts = [dict(source=source, route=route, reason=reason) for (source, route), reason in attempts.items()]
