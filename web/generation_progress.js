@@ -299,6 +299,18 @@ export function thermalText(thermal, t) {
             '生成这段视频时，显卡大部分时间因过热降频，所以比平时慢很多。请改善散热；笔记本请接通电源并选择高性能模式。');
 }
 
+// The driver held the clock down at the GPU's power limit for much of the run (summary.power_limit):
+// a laptop on battery or in a power-saving mode, or a small system keeping its case cool.
+// {share} here is the mean clock as a share of the peak, not limit.share (the part of the busy time held at the limit).
+export function powerLimitText(limit, t) {
+    const share = limit.sm_clock_max_mhz ? Math.round(100 * limit.sm_clock_mean_mhz / limit.sm_clock_max_mhz) : null;
+    return Number.isFinite(share)
+        ? t('The GPU was held back by its power limit during this video ({share}% of its peak clock), so it took much longer than usual. On a laptop, plug in and choose a high-performance power mode; if a lower power limit was set for the GPU, restore its default.',
+            '生成这段视频时，显卡因功耗限制降频（频率只有峰值的 {share}%），所以比平时慢很多。笔记本请接通电源并选择高性能模式；如曾为显卡设置较低的功耗上限，请恢复默认值。', { share })
+        : t('The GPU was held back by its power limit during this video, so it took much longer than usual. On a laptop, plug in and choose a high-performance power mode; if a lower power limit was set for the GPU, restore its default.',
+            '生成这段视频时，显卡因功耗限制降频，所以比平时慢很多。笔记本请接通电源并选择高性能模式；如曾为显卡设置较低的功耗上限，请恢复默认值。');
+}
+
 // Other programs, or FreeVideo's own other work, held a substantial share of the GPU during this run
 // (summary.shared_gpu: other_mean_percent, helpers_mean_percent, either or both). Each is said apart, so the
 // note never asks a user to close FreeVideo's own work. A share is rounded to 5% and written as at most 95%;

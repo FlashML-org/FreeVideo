@@ -10,7 +10,7 @@ import sys
 import time
 
 from . import __version__
-from .monitoring import OtherPrograms, shared_gpu, thermal_slowdown, worker_gpu
+from .monitoring import OtherPrograms, power_limited, shared_gpu, thermal_slowdown, worker_gpu
 from .diagnostics import Redactor, is_link, read_bounded
 from .diagnostic_resources import kernel_receipt
 from .monitoring import save
@@ -187,6 +187,14 @@ def summarize(report, engine, encoding):
             message_zh='显卡在 %d%% 的计算时间里处于温控降频，平均 %d／%d MHz%s。这次用时受散热限制，不是规划问题。' % (
             round(100 * thermal['share']), thermal['sm_clock_mean_mhz'], thermal['sm_clock_max_mhz'],
             '，%.0f °C' % thermal['temperature_mean_c'] if thermal['temperature_mean_c'] else '')))
+    limit = power_limited(gpu)
+    if limit:
+        hints.append(dict(kind='measured', message='The GPU was held back by its power limit for %d%% of its busy time: %d of %d MHz '
+            'on average%s. The power limit slowed this request, not the plan.' % (round(100 * limit['share']),
+            limit['sm_clock_mean_mhz'], limit['sm_clock_max_mhz'], ' at %.0f W' % limit['power_mean_w'] if limit['power_mean_w'] else ''),
+            message_zh='显卡在 %d%% 的计算时间里因功耗限制降频，平均 %d／%d MHz%s。这次用时受功耗限制，不是规划问题。' % (
+            round(100 * limit['share']), limit['sm_clock_mean_mhz'], limit['sm_clock_max_mhz'],
+            '，%.0f W' % limit['power_mean_w'] if limit['power_mean_w'] else '')))
     shared = shared_gpu(gpu)
     if shared:
         hints.append(dict(kind='measured', message='Other programs used about %d%% of the GPU while this request was computing, '

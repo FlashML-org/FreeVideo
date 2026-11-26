@@ -173,6 +173,40 @@ def process_command(pid):
         return None
 
 
+def power_limited(measured, *, share=.25, clock_ratio=.7, minimum_samples=200):
+    """The worker's busy time held back by the driver's power limit, or None.
+
+    A desktop card often sits at its power limit near its full clock; that is
+    normal and not reported. Counted only when the power-limit reasons cover
+    at least `share` of the busy samples and the mean SM clock stays below
+    `clock_ratio` of the highest one observed (a laptop or small system whose
+    power limit is lowered on battery, in a power-saving mode or to keep its
+    case cool). A run thermal_slowdown already names gives None: one note.
+    `share` in the result is the part of the busy time held at the limit; the
+    page's note gives the mean clock as a share of the peak instead.
+    """
+    if thermal_slowdown(measured) is not None:
+        return None
+    busy = measured.get('busy_activity') if isinstance(measured, dict) else None
+    if not isinstance(busy, dict):
+        return None
+    samples = _count(busy.get('clock_reason_samples'))
+    counts = busy.get('clock_reason_counts')
+    counts = counts if isinstance(counts, dict) else {}
+    clock = busy.get('sm_clock_mhz')
+    clock = clock if isinstance(clock, dict) else {}
+    mean, peak = _count(clock.get('mean')), _count(clock.get('maximum'))
+    if samples < minimum_samples or not mean or not peak:
+        return None
+    limited = min(samples, max(_count(counts.get('sw_power_cap')), _count(counts.get('hw_power_brake'))))
+    if limited < share * samples or mean > clock_ratio * peak:
+        return None
+    power = busy.get('power_mw')
+    power = power.get('mean') if isinstance(power, dict) else None
+    return dict(share=round(limited / samples, 3), sm_clock_mean_mhz=round(mean), sm_clock_max_mhz=round(peak),
+                power_mean_w=round(power / 1000, 1) if type(power) in (int, float) and 0 <= power <= 1e7 else None)
+
+
 class OtherPrograms:
     """Other programs' share of the GPU's cores while a worker computes.
 
@@ -382,7 +416,7 @@ def _count(value):
 def combined(rows):
     """Several attempts' busy-time clock reasons and other programs' checks as one observation.
 
-    Only what thermal_slowdown and shared_gpu read: counts add up, means are
+    Only what thermal_slowdown, power_limited and shared_gpu read: counts add up, means are
     weighted by their samples and peaks are the highest.
     """
     result = {}
@@ -392,7 +426,7 @@ def combined(rows):
                       clock_reason_counts={key: sum(_count(item['clock_reason_counts'].get(key)) for item in busy
                                                     if isinstance(item.get('clock_reason_counts'), dict))
                                            for key in Activity.clock_reasons})
-        for field in ('sm_clock_mhz', 'temperature_c'):
+        for field in ('sm_clock_mhz', 'temperature_c', 'power_mw'):
             parts = [(item[field], _count(item[field].get('samples')) or _count(item.get('clock_reason_samples')))
                      for item in busy if isinstance(item.get(field), dict) and _count(item[field].get('mean'))]
             weight = sum(samples for _, samples in parts)

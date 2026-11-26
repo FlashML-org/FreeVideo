@@ -550,6 +550,16 @@
       "G": 0.409282700421941,
       "training_requests": 0,
       "training_groups": 0
+    },
+    "RTX Spark N1X (6144-core Blackwell RTX GPU)": {
+      "G_spec": 0.9417,
+      "laptop": false,
+      "laptop_utilization_prior": 1.0,
+      "provenance": "measured on one complete request on this card: warm refinement steps of 55.1 s at 832x640, 362 frames, FP8, torch-flash attention, with no other program on the GPU and the clock unlimited; no public dense tensor rate is used",
+      "rate_uncertainty": "approximately +/-25%; one card, one request; a lowered power limit is much slower",
+      "G": 0.9417,
+      "training_requests": 1,
+      "training_groups": 1
     }
   },
   "step": {

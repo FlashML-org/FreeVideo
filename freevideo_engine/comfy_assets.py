@@ -5,7 +5,7 @@ import os
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from . import launcher_bridge
 from .comfy_continuation import optional_text
-from .monitoring import thermal_slowdown, shared_gpu_note, worker_gpu
+from .monitoring import power_limited, thermal_slowdown, shared_gpu_note, worker_gpu
 from .paths import data_root
 from .support_report import encoder_sizes
 
@@ -311,6 +311,7 @@ def output_summary(report, relative_video):
                 sampling_plan=sampling_plan(report),
                 low_memory=bool(report.get('low_memory_mode')),
                 thermal=thermal_slowdown(worker_gpu(report)),
+                power_limit=power_limited(worker_gpu(report)),
                 shared_gpu=shared_gpu_note(worker_gpu(report)),
                 reference_trims=report.get('encoding', {}).get('reference_trims') or [],
                 preview=bool(report.get('preview')), upscaled_preview=bool(report.get('upscaled_preview')),

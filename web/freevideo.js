@@ -10,7 +10,7 @@ import { openEditorView } from './editor_loader.js';
 import { beginWorkspaceRestore, finishWorkspaceRestore, waitForLauncherRestore } from './workspace_restore.js';
 import { skinSelect } from './fv_select.js';
 import { openStudio, loraPanel, loraWarning } from "./studio.js";
-import { createGenerationProgress, referenceTrimText, thermalText, sharedGpuText, keepSoundText, encoderFileText, encoderFilePath } from './generation_progress.js';
+import { createGenerationProgress, referenceTrimText, thermalText, powerLimitText, sharedGpuText, keepSoundText, encoderFileText, encoderFilePath } from './generation_progress.js';
 import { createProgressConnection } from './progress_connection.js';
 import { notifyCompatibility } from './compatibility.js';
 import { clearWorkflowDrafts, workflowPersist } from './workflow_drafts.js';
@@ -844,6 +844,7 @@ function resultPanel(node) {
         for (const row of value.reference_trims || []) panel.append(el("div", referenceTrimText(row, text), "fv-note fv-trim-note"));
         if (value.low_memory && !value.result_cache_hit) resultNotes.push(el("div", text('Generation was slow; try a lower resolution or shorter video.', '生成较慢，可降低分辨率或缩短时长后再试。'), "fv-note"));
         if (value.thermal && !value.result_cache_hit) resultNotes.push(el("div", thermalText(value.thermal, text), "fv-note"));
+        if (value.power_limit && !value.result_cache_hit) resultNotes.push(el("div", powerLimitText(value.power_limit, text), "fv-note"));
         const shared = value.shared_gpu && !value.result_cache_hit ? sharedGpuText(value.shared_gpu, text) : '';
         if (shared) resultNotes.push(el("div", shared, "fv-note"));
         if (value.keep_source_audio_failed) resultNotes.push(el("div", keepSoundText(text), "fv-note"));

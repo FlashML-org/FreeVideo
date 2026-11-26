@@ -10,7 +10,7 @@ import { api } from '../../scripts/api.js';
 import { openSetup } from './setup.js';
 import { feedbackButton, guideButton, feedbackIssueURL } from './feedback.js';
 import { wordmark } from './wordmark.js';
-import { createGenerationProgress, recordReportId, referenceTrimText, thermalText, sharedGpuText, keepSoundText, encoderFileText, encoderFilePath } from './generation_progress.js';
+import { createGenerationProgress, recordReportId, referenceTrimText, thermalText, powerLimitText, sharedGpuText, keepSoundText, encoderFileText, encoderFilePath } from './generation_progress.js';
 import { viewSwitch, viewChanged, agentTabReady, openAutopilot, openImage } from './view_navigation.js';
 import { fitStudioHeader } from './studio_header_fit.js';
 import { agentInterfaceState } from './agent_connect.js';
@@ -2111,14 +2111,15 @@ export function openStudio(node, {extendFrom = null} = {}) {
     };
     const memoryNote = el('div', t('This run used the low-memory mode, so it was slower. A lower resolution or a shorter video is faster.', '这次用了省显存方式，所以较慢。降低分辨率或缩短时长会更快。'), 'fv-note'); memoryNote.hidden = true;
     const thermalNote = el('div', '', 'fv-note'); thermalNote.hidden = true;
+    const powerNote = el('div', '', 'fv-note'); powerNote.hidden = true;
     const sharedGpuNote = el('div', '', 'fv-note'); sharedGpuNote.hidden = true;
     const encoderNote = el('div', '', 'fv-note'); encoderNote.hidden = true;
     const keepSoundNote = el('div', keepSoundText(t), 'fv-note'); keepSoundNote.hidden = true;
     output.append(status, reuseRow, progress.stall, progress.report, prewarm);
     // The actions join the bar under the picture; the numbers and notes go into its Details (one place to look).
     stageBar.end.append(links);
-    stageBar.element.querySelector('.fvs-info-panel').prepend(stats, budget, trimNote, memoryNote, thermalNote, sharedGpuNote, keepSoundNote, encoderNote);
-    stageBar.details = [stats, budget, trimNote, memoryNote, thermalNote, sharedGpuNote, keepSoundNote, encoderNote];
+    stageBar.element.querySelector('.fvs-info-panel').prepend(stats, budget, trimNote, memoryNote, thermalNote, powerNote, sharedGpuNote, keepSoundNote, encoderNote);
+    stageBar.details = [stats, budget, trimNote, memoryNote, thermalNote, powerNote, sharedGpuNote, keepSoundNote, encoderNote];
     const failure = createErrorPanel(t, reportRoute);
     // The failure card opens on the picture it replaces (no new video was made), so it is seen without scrolling;
     // its close button puts the earlier picture back, and the next run clears it anyway.
@@ -2316,6 +2317,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         trimNote.textContent = trims.map(row => referenceTrimText(row, t)).join('\n'); trimNote.hidden = !trims.length;
         memoryNote.hidden = !r.low_memory || !!r.result_cache_hit;
         thermalNote.textContent = r.thermal ? thermalText(r.thermal, t) : ''; thermalNote.hidden = !r.thermal || !!r.result_cache_hit;
+        powerNote.textContent = r.power_limit ? powerLimitText(r.power_limit, t) : ''; powerNote.hidden = !r.power_limit || !!r.result_cache_hit;
         sharedGpuNote.textContent = r.shared_gpu ? sharedGpuText(r.shared_gpu, t) : ''; sharedGpuNote.hidden = !sharedGpuNote.textContent || !!r.result_cache_hit;
         keepSoundNote.hidden = !r.keep_source_audio_failed;
         encoderNote.textContent = r.encoder_file ? encoderFileText(r.encoder_file, t) : ''; encoderNote.hidden = !r.encoder_file;
