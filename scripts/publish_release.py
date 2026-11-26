@@ -5,7 +5,11 @@ the platform tags (windows-preview, macos-preview) that launchers from before co
 Linux has no such launchers.
 Writes go through the gh CLI with retries. Update metadata is uploaded last and bound to the
 immutable asset IDs, so a reader never pairs new metadata with an old executable.
-Usage: publish_release.py --track stable|nightly --windows DIR --macos DIR --linux DIR --sha COMMIT
+Usage: publish_release.py --track stable|nightly --windows DIR --macos DIR --linux DIR --sha COMMIT [--expected-sha256 FILE]
+
+With --expected-sha256 (lines "<sha256>  <file name>", the files the release gates tested), every launcher about to be
+published must be one of those files, byte for byte, and every listed file must be published; otherwise nothing is
+written and the run stops.
 """
 import argparse
 import hashlib
@@ -259,6 +263,27 @@ def bind_metadata(releases, tag, builds, channels, folder, names):
     gh('Upload update metadata to %s' % tag, 'release', 'upload', tag, *map(str, files), '--clobber')
 
 
+def check_tested(builds, path):
+    """Stop before any write unless the launchers are exactly the files the release gates tested."""
+    expected = {}
+    for number, line in enumerate(Path(path).read_text(encoding='utf-8').splitlines(), 1):
+        if not line.strip():
+            continue
+        match = re.fullmatch(r'([0-9a-f]{64}) [ *]?(\S.*)', line.strip())
+        if not match or match.group(2) in expected:
+            raise SystemExit('::error::%s line %d is not "<sha256>  <file name>" or repeats a file' % (path, number))
+        expected[match.group(2)] = match.group(1)
+    published = {builds[c]['path'].name: builds[c]['sha256'] for c in platforms(builds)}
+    problems = ['%s was not tested' % name for name in sorted(set(published) - set(expected))]
+    problems += ['%s was tested but is not in this run' % name for name in sorted(set(expected) - set(published))]
+    problems += ['%s is %s, the tested file is %s' % (name, published[name], expected[name])
+                 for name in sorted(set(published) & set(expected)) if published[name] != expected[name]]
+    if problems:
+        raise SystemExit('::error::Not the tested files, nothing was published: ' + '; '.join(problems))
+    for name in sorted(published):
+        print('%s  %s  (tested)' % (published[name], name))
+
+
 def publish_stable(releases, builds, sha, folder):
     version = builds[CHANNEL]['identity']['product_version']
     tag = 'v' + version
@@ -345,10 +370,13 @@ def main():
     parser.add_argument('--windows-arm64', type=Path, help='the ARM64 build folder; leave out when that build failed')
     parser.add_argument('--sha', required=True)
     parser.add_argument('--repository', default=os.environ.get('GH_REPO', 'FlashML-org/FreeVideo'))
+    parser.add_argument('--expected-sha256', type=Path, help='publish only if the launchers are exactly these tested files')
     args = parser.parse_args()
     builds = load_builds(args.windows, args.macos, args.linux, args.windows_arm64)
     if build_track(builds[CHANNEL]['identity']) != args.track:
         raise SystemExit('The builds are %s builds, not %s' % (build_track(builds[CHANNEL]['identity']), args.track))
+    if args.expected_sha256:
+        check_tested(builds, args.expected_sha256)
     releases = Releases(args.repository)
     with tempfile.TemporaryDirectory(prefix='freevideo-publish-') as folder:
         (publish_stable if args.track == 'stable' else publish_nightly)(releases, builds, args.sha, folder)
