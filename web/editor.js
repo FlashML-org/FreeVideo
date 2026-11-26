@@ -228,9 +228,85 @@ export function suspendCanvasPointer(canvas) {
     };
 }
 
-// `components` replaces the optional progress module (see loadEditorComponents); tests also pass their generation stand-in here.
 // The sampling settings an edit's project keeps (editor_model.js SAMPLING_KEYS).
 const EDIT_SAMPLING = ['two_pass', 'base_steps', 'refine_steps', 'step_cache', 'upscale_factor'];
+
+// The creation panel's bar lent to the editor has two layouts. Wide: the chips under the description, Generate beside them.
+// Narrow: Generate beside the description, the chips across the whole bar (one row taller). Wide is kept while the chips
+// fit beside Generate with all their words; once the row would have to fold them (web/studio_console.js fitRow), the bar
+// goes narrow; it is wide only while the words fit in the wide row with 8 px to spare (the last chip at least 24 px
+// from Generate), from the first look on. Judged from the measured widths in every language, not from a width set per
+// language.
+// Where the side panels are rails (1279 px and less) the bar is narrow in every language: the description keeps the
+// bar's width; 760 px and less is the panel's phone layout.
+// Generate is sized by its idle words in this language (sizeKey below: 140 to 200 px, two lines past that), so they never
+// run under its arrow or out of the key. Returns what undoes it.
+const KEY_W = 140, KEY_MAX = 200, SPARE = 8;
+function fitLentBar(host, t) {
+    const con = host.querySelector('.fvs-console'), row = con?.querySelector(':scope>.fvs-chips');
+    if (!con || !row) return () => {};
+    const rails = globalThis.matchMedia?.('(max-width:1279px)'); // the editor's rails (and, under 761 px, the phone layout)
+    const phone = globalThis.matchMedia?.('(max-width:760px)'); // the panel's phone layout: its key sizes itself
+    // Generate's width: the creation panel's own idle words (what it says before it is
+    // pressed, in each run mode), the longest on one line, from 140 px up to 200 px, longer ones on two lines. The verbs
+    // the editor lends it (Generate preview, Regenerate, Regenerate preview, Replace music) take two lines where they do not
+    // fit on one. Lines break between words only, never cut; the key is wider only where a third line would be needed.
+    // What it says while a part is under way is covered by the editor's Cancel and does not count.
+    const sizeKey = () => {
+        const key = [...con.querySelectorAll('.fv-runrow>.fv-primary')].find(node => node.offsetParent !== null);
+        if (!key) return;
+        const style = getComputedStyle(key), room = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) + 2;
+        // Measured in the key's own label (its font, its letter spacing, its line height), out of sight and out of its layout.
+        const label = key.querySelector('.fvs-key-label') || key;
+        const probe = document.createElement('span');
+        probe.setAttribute('aria-hidden', 'true');
+        probe.style.cssText = 'position:absolute;left:0;top:0;visibility:hidden;pointer-events:none';
+        label.append(probe);
+        const lineHeight = parseFloat(getComputedStyle(label).lineHeight) || 24;
+        const oneLine = text => { probe.style.cssText += ';white-space:nowrap;display:inline;width:auto'; probe.textContent = text; return probe.getBoundingClientRect().width; };
+        const lines = (text, width) => { probe.style.cssText += `;white-space:normal;display:inline-block;width:${width}px`; probe.textContent = text; return Math.round(probe.getBoundingClientRect().height / lineHeight); };
+        // The narrowest text width that holds it in two lines.
+        const twoLines = text => { let low = 1, high = Math.ceil(oneLine(text)); while (low < high) { const mid = (low + high) >> 1; if (lines(text, mid) <= 2) high = mid; else low = mid + 1; } return high; };
+        let width = KEY_W;
+        for (const text of [t('Generate video', '生成视频'), t('Add to queue', '加入队列'), t('Start loop', '开始循环'),
+            t('Add {count} videos', '添加 {count} 个视频', {count: 99}), t('Add videos', '添加视频'), t('Add 1 video', '添加 1 个视频'), t('Add {n} videos', '添加 {n} 个视频', {n: 99})]) {
+            const one = Math.ceil(oneLine(text) + room);
+            width = Math.max(width, one <= KEY_MAX ? one : Math.max(KEY_MAX, Math.ceil(twoLines(text) + room)));
+        }
+        for (const text of [t('Generate preview', '生成预览'), t('Regenerate', '重新生成'), t('Regenerate preview', '重新生成预览'), t('Replace music', '替换配乐')])
+            if (lines(text, width - room) > 2) width = Math.ceil(twoLines(text) + room);
+        probe.remove();
+        if (width > KEY_W) host.style.setProperty('--fv-ed-key-w', `${width}px`); else host.style.removeProperty('--fv-ed-key-w');
+    };
+    // What the chips need on one row with their words: their widths and a gap between each two of the row's items
+    // (the spacer that sets LoRA and Advanced apart is one of them, at no width).
+    const chipsWidth = () => {
+        const items = [...row.children].filter(node => node.offsetParent !== null);
+        const gap = parseFloat(getComputedStyle(row).columnGap) || 0;
+        return items.reduce((sum, node) => sum + (node.classList.contains('fvs-chip-spacer') ? 0 : node.getBoundingClientRect().width), 0) + gap * Math.max(0, items.length - 1);
+    };
+    // The first column's width is the same in both layouts: the chips' row in the wide one.
+    const wideRow = () => parseFloat(getComputedStyle(con).gridTemplateColumns) || 0;
+    // Wide only while the chips fit beside Generate with SPARE px to spare (the last chip at least 24 px from it), in
+    // both directions and from the first look: the measure is the same in either layout (the chips' widths and the first
+    // column do not change with it), so one threshold cannot switch back and forth. A row that folded (fitRow) is not
+    // measured with its words: it is narrow.
+    const decide = () => {
+        if (!con.isConnected) return;
+        if (!phone?.matches) sizeKey(); else host.style.removeProperty('--fv-ed-key-w');
+        const next = rails?.matches || row.dataset.fold || chipsWidth() + SPARE > wideRow() ? 'narrow' : 'wide';
+        if (host.dataset.lentRow !== next) host.dataset.lentRow = next;
+    };
+    const watch = typeof ResizeObserver === 'function' ? new ResizeObserver(decide) : null;
+    watch?.observe(con); watch?.observe(row);
+    const changes = new MutationObserver(decide);
+    changes.observe(row, {attributes: true, attributeFilter: ['data-fold'], childList: true, subtree: true, characterData: true});
+    rails?.addEventListener?.('change', decide); phone?.addEventListener?.('change', decide);
+    decide();
+    return () => { watch?.disconnect(); changes.disconnect(); rails?.removeEventListener?.('change', decide); phone?.removeEventListener?.('change', decide); delete host.dataset.lentRow; host.style.removeProperty('--fv-ed-key-w'); };
+}
+
+// `components` replaces the optional progress module (see loadEditorComponents); tests also pass their generation stand-in here.
 export function openEditor({api, app, from = null, panel = {}, components: given = undefined, onView = view => viewChanged(view)}) {
     // A kept view (hidden when the user went to another view) comes back as it was: no rebuild, no reload. Opening a
     // work, another node's panel or a new creation panel builds a fresh one instead.
@@ -1852,7 +1928,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     // controls here; what the editor adds (music, narration, dubbing, downloads) stays in its own bar. Without a panel to
     // borrow from, the editor's bar is shown as before.
     if (panel.borrowBar) {
-        let observer = null, arranged = false, unlisten = null, echo = false, lent = false, home = '', arrangeNow = null; // the subscription below outlives one borrow, so what it reads is kept out here
+        let observer = null, arranged = false, unlisten = null, echo = false, lent = false, home = '', arrangeNow = null, unfit = null; // the subscription below outlives one borrow, so what it reads is kept out here
         // The description here shows two or three lines: away from it, it reads from the start, not from wherever the caret left it.
         const fromStart = event => { if (event.target instanceof HTMLTextAreaElement && event.target.closest('.fv-prompt-editor')) event.target.scrollTop = 0; };
         attachBar = () => {
@@ -1867,6 +1943,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             // where the creation panel keeps it) follows the editor's rule and saves to the edit.
             genbar.firstFrame?.mirror(next => bar?.firstFrame?.(next));
             element.dataset.barBorrowed = 'true';
+            unfit = fitLentBar(genHost, t);
             // The guide's editor steps ring the borrowed bar's prompt, media and Generate, not the editor's hidden ones.
             guideBack = [['editor-describe', '[data-fv-guide="describe"]'], ['editor-refs', '.fvs-chip[data-chip="media"]'], ['editor-generate', '[data-fv-guide="generate"]']].flatMap(([mine, selector]) => {
                 const own = genHost.querySelector(`[data-fv-guide="${mine}"]`), lent = bar.shell.querySelector(selector);
@@ -1908,7 +1985,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         }
         };
         // Hidden, the editor gives the panel its bar back; shown again, it takes it once more.
-        detachBar = () => { genbar.firstFrame?.mirror(null); observer?.disconnect(); observer = null; unlisten?.(); unlisten = null; for (const back of guideBack.splice(0)) back(); bar?.release(); bar = null; panel.barActive = false; genHost.classList.remove('fv-ed-genbar-borrowed'); genHost.removeEventListener('focusout', fromStart); delete element.dataset.barBorrowed; };
+        detachBar = () => { genbar.firstFrame?.mirror(null); observer?.disconnect(); observer = null; unfit?.(); unfit = null; unlisten?.(); unlisten = null; for (const back of guideBack.splice(0)) back(); bar?.release(); bar = null; panel.barActive = false; genHost.classList.remove('fv-ed-genbar-borrowed'); genHost.removeEventListener('focusout', fromStart); delete element.dataset.barBorrowed; };
         cleanupBar = detachBar;
         attachBar();
     }
@@ -1926,6 +2003,19 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         adjustRail.append(railGlyph('M3 1v14M8 1v14M13 1v14M1 5h4M6 11h4M11 5h4'), el('span', 'fv-ed-rail-label', t('Adjust', '调整')));
         tip(adjustRail, {name: t('Adjust', '调整'), use: t('Volume, speed, picture and text of the selection', '调整选中片段的声音、速度、画面和文字')});
         rightRail.append(adjustRail);
+        // The two rails take the width of their longest word (“Настроить”, “Phương tiện”), both the same so the picture stays
+        // centred: a word never runs past the rail or the window. Measured when the rails show (681–1279 px).
+        if (typeof ResizeObserver === 'function') {
+            const sizeRails = () => {
+                const widths = [...element.querySelectorAll('.fv-ed-rail-label')].map(label => { const range = document.createRange(); range.selectNodeContents(label); return range.getBoundingClientRect().width; });
+                const widest = Math.max(0, ...widths);
+                if (!widest) return;
+                const width = Math.max(56, Math.ceil(widest + 12));
+                if (width > 56) element.style.setProperty('--fv-ed-rail-w', `${width}px`); else element.style.removeProperty('--fv-ed-rail-w');
+            };
+            const watchRails = new ResizeObserver(sizeRails); watchRails.observe(leftRail); watchRails.observe(rightRail);
+            listeners.push(() => watchRails.disconnect());
+        }
         const sync = () => adjustRail.setAttribute('aria-expanded', adjust.toggleButton.getAttribute('aria-expanded') || 'false');
         new MutationObserver(sync).observe(adjust.toggleButton, {attributes: true, attributeFilter: ['aria-expanded']}); sync();
     }

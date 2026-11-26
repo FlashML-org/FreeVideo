@@ -417,14 +417,15 @@
 .fv-ed-tracks-skeleton>i{position:absolute;left:0;right:0;border-bottom:1px solid var(--fv-border);opacity:.6}
 .fv-ed-tracks-skeleton>b{position:absolute;left:0;width:132px;border-right:1px solid var(--fv-border)}
 
-/* ── 681–1279 px: two equal rails keep the picture centred; the library and the inspector open over the picture ── */
+/* ── 681–1279 px: two equal rails keep the picture centred; the library and the inspector open over the picture.
+   Both are 56 px, or as wide as the longest rail word in this language needs (editor.js sizes --fv-ed-rail-w). ── */
 .fv-ed-rail{display:none}
 @media(min-width:681px) and (max-width:1279px){
- .fv-studio.fv-editor{grid-template-columns:56px minmax(0,1fr) 56px}
+ .fv-studio.fv-editor{grid-template-columns:var(--fv-ed-rail-w,56px) minmax(0,1fr) var(--fv-ed-rail-w,56px)}
  .fv-ed-rail{display:flex;flex-direction:column;align-items:center;gap:8px;padding-top:8px;grid-row:2/5;min-width:0}
  .fv-ed-rail-left{grid-column:1;border-right:1px solid var(--fv-line,var(--fv-border))}
  .fv-ed-rail-right{grid-column:3;border-left:1px solid var(--fv-line,var(--fv-border))}
- .fv-editor .fv-ed-rail-button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;width:44px;height:52px;min-height:44px;padding:0;border:0;border-radius:var(--fv-r-md);background:transparent;color:var(--fv-muted);font-size:12px}
+ .fv-editor .fv-ed-rail-button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;width:max(44px,calc(var(--fv-ed-rail-w,56px) - 12px));height:52px;min-height:44px;padding:0;border:0;border-radius:var(--fv-r-md);background:transparent;color:var(--fv-muted);font-size:12px}
  .fv-editor .fv-ed-rail-button:hover,.fv-editor .fv-ed-rail-button[aria-expanded=true]{background:var(--fv-hover);color:var(--fv-ink)}
  .fv-ed-rail-glyph{width:18px;height:18px}
  .fv-ed-rail-label{line-height:1.3;white-space:nowrap}
@@ -602,43 +603,31 @@
 .fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console .fv-prompt-editor textarea{min-height:48px;max-height:72px;padding-block:0;box-sizing:border-box}
 /* One row of keys under it where the window allows: slightly closer keys and a narrower Generate. A short window keeps
    the description at two lines. */
-.fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create{--fvs-key-w:140px}
+.fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create{--fvs-key-w:var(--fv-ed-key-w,140px)}
+/* Generate's words longer than its widest (200 px, editor.js fitLentBar) take a second line, broken between words only and
+   never cut; two lines and the time under them fit the key's height. */
+@media(min-width:761px){.fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console .fv-runrow>.fv-primary .fvs-key-label{white-space:normal;overflow-wrap:normal;word-break:normal;text-align:center}}
 .fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-chips{gap:6px}
 @media(max-width:1439px){.fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-chips{gap:4px}}
 .fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-chips>.fvs-chip-spacer{min-width:0}
 /* In the creation panel the description's tools stand in the key's column, above Generate. Here the description is two
    lines high, so there is no room above the key and they would lie on it, out of the mouse's reach: where the key
-   stands beside the chips (a wide window; the narrow one below puts the tools under the text), they stand at the
+   stands beside the chips (the wide layout; the narrow one below puts the tools under the text), they stand at the
    description's right instead, beside its text, and the key's column is the key's alone. */
-@media(min-width:761px){.fv-editor:not(:lang(en),:lang(zh)) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console .fv-prompt-tools{position:static}}
-@media(min-width:1366px){.fv-editor:lang(zh) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console .fv-prompt-tools{position:static}}
-@media(min-width:1440px){.fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console .fv-prompt-tools{position:static}}
-/* Where the chips would wrap beside the Generate block (a narrow window; English words are longer), the key stands
-   beside the description instead and the chips take the full width on one line. The description's tools move from
-   the key's column to the strip under the text, next to the key, and the text shows two lines while it is not being
-   typed in, so the console is no taller than before. */
-@media(max-width:1365px){
-  .fv-editor:lang(zh) .fv-ed-genbar-borrowed{--fv-ed-cancel-top:25px;--fv-ed-cancel-bottom:auto}
-  .fv-editor:lang(zh) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console .fvs-chips{grid-column:1/-1}
-  .fv-editor:lang(zh) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console>.fv-runbar{grid-row:1/span 2}
-  .fv-editor:lang(zh) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console-prompt{display:flex;flex-direction:column}
-  .fv-editor:lang(zh) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console-prompt>.fv-section{flex:1 1 auto;display:flex;flex-direction:column}
-  .fv-editor:lang(zh) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console-prompt>.fv-section>.fv-enhance{flex:1 1 auto}
-  .fv-editor:lang(zh) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console-prompt .fv-enhance>.fv-prompt-editor{flex:1 1 auto;padding-bottom:32px;box-sizing:border-box}
-  .fv-editor:lang(zh) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console .fv-prompt-tools{top:auto;bottom:0;right:0}
-  .fv-editor:lang(zh) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console .fv-prompt-editor textarea:not(:focus){max-height:48px}
-}
-@media(max-width:1439px){
-  .fv-editor:lang(en) .fv-ed-genbar-borrowed{--fv-ed-cancel-top:25px;--fv-ed-cancel-bottom:auto}
-  .fv-editor:lang(en) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console .fvs-chips{grid-column:1/-1}
-  .fv-editor:lang(en) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console>.fv-runbar{grid-row:1/span 2}
-  .fv-editor:lang(en) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console-prompt{display:flex;flex-direction:column}
-  .fv-editor:lang(en) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console-prompt>.fv-section{flex:1 1 auto;display:flex;flex-direction:column}
-  .fv-editor:lang(en) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console-prompt>.fv-section>.fv-enhance{flex:1 1 auto}
-  .fv-editor:lang(en) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console-prompt .fv-enhance>.fv-prompt-editor{flex:1 1 auto;padding-bottom:32px;box-sizing:border-box}
-  .fv-editor:lang(en) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console .fv-prompt-tools{top:auto;bottom:0;right:0}
-  .fv-editor:lang(en) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console .fv-prompt-editor textarea:not(:focus){max-height:48px}
-}
+@media(min-width:761px){.fv-editor .fv-ed-genbar-borrowed:not([data-lent-row=narrow]) .fv-studio.fv-create .fvs-console .fv-prompt-tools{position:static}}
+/* Where the chips would not fit beside the Generate block with all their words (judged in every language from the
+   measured widths, editor.js fitLentBar), the key stands beside the description instead and the chips take the full
+   width on one line. The description's tools move from the key's column to the strip under the text, next to the key,
+   and the text shows two lines while it is not being typed in, so the console is no taller than before. */
+.fv-editor .fv-ed-genbar-borrowed[data-lent-row=narrow]{--fv-ed-cancel-top:25px;--fv-ed-cancel-bottom:auto}
+.fv-editor .fv-ed-genbar-borrowed[data-lent-row=narrow] .fv-studio.fv-create .fvs-console .fvs-chips{grid-column:1/-1}
+.fv-editor .fv-ed-genbar-borrowed[data-lent-row=narrow] .fv-studio.fv-create .fvs-console>.fv-runbar{grid-row:1/span 2}
+.fv-editor .fv-ed-genbar-borrowed[data-lent-row=narrow] .fv-studio.fv-create .fvs-console-prompt{display:flex;flex-direction:column}
+.fv-editor .fv-ed-genbar-borrowed[data-lent-row=narrow] .fv-studio.fv-create .fvs-console-prompt>.fv-section{flex:1 1 auto;display:flex;flex-direction:column}
+.fv-editor .fv-ed-genbar-borrowed[data-lent-row=narrow] .fv-studio.fv-create .fvs-console-prompt>.fv-section>.fv-enhance{flex:1 1 auto}
+.fv-editor .fv-ed-genbar-borrowed[data-lent-row=narrow] .fv-studio.fv-create .fvs-console-prompt .fv-enhance>.fv-prompt-editor{flex:1 1 auto;padding-bottom:32px;box-sizing:border-box}
+.fv-editor .fv-ed-genbar-borrowed[data-lent-row=narrow] .fv-studio.fv-create .fvs-console .fv-prompt-tools{top:auto;bottom:0;right:0}
+.fv-editor .fv-ed-genbar-borrowed[data-lent-row=narrow] .fv-studio.fv-create .fvs-console .fv-prompt-editor textarea:not(:focus){max-height:48px}
 .fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-step-value{min-width:40px}
 .fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-chip:not(.fv-reference-trigger,[data-chip=advanced],.fvs-stepper){padding:0 10px}
 @media(max-height:820px){.fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console .fv-prompt-editor textarea{max-height:48px}}
@@ -648,6 +637,6 @@
 .fv-editor[data-bar-borrowed=true] .fv-ed-genbar-borrowed>.fv-borrowed .fv-controls{position:static;justify-self:stretch;width:auto;max-width:none}
 /* The lent bar draws no blur of its own: a backdrop-filter makes the box the containing block of every position:fixed window inside it (the Media, LoRA and Advanced windows), which are placed in window coordinates and would land outside it, clipped by the dialog. The bar lies on the editor's flat ground, so there is nothing for the blur to show. */
 .fv-editor[data-bar-borrowed=true] .fv-ed-genbar-borrowed>.fv-borrowed .fv-controls.fv-glass{-webkit-backdrop-filter:none;backdrop-filter:none}
-/* While a part is generating, the editor's Cancel (never its Continue, named by its tip) stands on the lent bar's greyed Generate key. On a row of its own under the bar it lay beneath the timeline toolbar, out of the mouse's reach. */
-@media(min-width:681px){.fv-ed-genbar-borrowed[data-mode=running][data-voice=false]>button:is([data-fv-tip-name="取消"],[data-fv-tip-name=Cancel]):not([hidden]){position:absolute;z-index:2;right:17px;top:var(--fv-ed-cancel-top,auto);bottom:var(--fv-ed-cancel-bottom,39px);width:140px;height:80px;background:var(--fv-ctl-solid,var(--fv-card));border:1px solid var(--fv-line2,var(--fv-border))}}
+/* While a part is generating, the editor's Cancel (never its Continue; found by its class, in every language) stands on the lent bar's greyed Generate key, as wide as the key. On a row of its own under the bar it lay beneath the timeline toolbar, out of the mouse's reach. */
+@media(min-width:681px){.fv-ed-genbar-borrowed[data-mode=running][data-voice=false]>button.fv-ed-cancel:not([hidden]){position:absolute;z-index:2;right:17px;top:var(--fv-ed-cancel-top,auto);bottom:var(--fv-ed-cancel-bottom,39px);width:var(--fv-ed-key-w,140px);height:80px;background:var(--fv-ctl-solid,var(--fv-card));border:1px solid var(--fv-line2,var(--fv-border))}}
 [data-fv-locked]{opacity:.5}

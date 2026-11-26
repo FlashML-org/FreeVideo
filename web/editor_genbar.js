@@ -72,7 +72,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
     note.setAttribute('role', 'status'); note.hidden = true;
     const input = el('textarea', 'fv-ed-description'); input.rows = 1; input.value = text;
     const description = el('div', 'fv-ed-description-box'); description.append(input);
-    const generate = el('button', 'fv-ed-generate'), cancel = el('button', null, t('Cancel', '取消')), resume = el('button', null, t('Continue', '继续'));
+    const generate = el('button', 'fv-ed-generate'), cancel = el('button', 'fv-ed-cancel', t('Cancel', '取消')), resume = el('button', null, t('Continue', '继续'));
     input.dataset.fvGuide = 'editor-describe'; input.dataset.tourId = 'segment-prompt'; generate.dataset.fvGuide = 'editor-generate';
     for (const button of [generate, cancel, resume]) button.type = 'button';
     // The press keeps one width while its estimate arrives: the verb on top, the time under it (the separator is
