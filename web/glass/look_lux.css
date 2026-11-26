@@ -222,7 +222,8 @@ html[data-fv-lux]:root dialog.fv-studio.fv-autopilot :is(.fv-chat-rail,.fv-chat-
 @media(max-width:1279px){html[data-fv-lux]:root dialog.fv-studio.fv-editor .fv-ed-adjust-host{
   background:var(--lx-s1)!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}}
 /* Under 1280 px, and on a tall window, the creation panel's columns and the image view's panels open as drawers over the picture
-   (a phone has them in the page), and so does the editor's library under 1280 px: opaque, as the adjust panel is there. */
+   (a phone has them in the page), and so do the editor's library and the assistant view's two panels under 1280 px: opaque, as the
+   adjust panel is there. */
 @media(min-width:720px){
 html[data-fv-lux]:root dialog.fv-studio.fv-create .fv-body[data-cols="3"][data-drawer=left]>.fv-controls,
 html[data-fv-lux]:root dialog.fv-studio.fv-create .fv-body[data-cols="3"][data-drawer=right]>.fv-work-column{
@@ -230,7 +231,9 @@ html[data-fv-lux]:root dialog.fv-studio.fv-create .fv-body[data-cols="3"][data-d
 html[data-fv-lux]:root dialog.fv-studio.fv-image .fv-iv[data-drawer=left] .fv-iv-left,
 html[data-fv-lux]:root dialog.fv-studio.fv-image .fv-iv[data-drawer=right] .fv-iv-right{
   background:var(--lx-s1)!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}}
-@media(max-width:1279px){html[data-fv-lux]:root dialog.fv-studio.fv-editor .fv-ed-library.fv-ed-library{
+@media(max-width:1279px){html[data-fv-lux]:root dialog.fv-studio.fv-autopilot .fv-chat[data-chats-open=true] .fv-chat-rail,
+html[data-fv-lux]:root dialog.fv-studio.fv-autopilot .fv-chat[data-tasks-open=true] .fv-chat-side,
+html[data-fv-lux]:root dialog.fv-studio.fv-editor .fv-ed-library.fv-ed-library{
   background:var(--lx-s1)!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}}
 /* Fields and blocks in the image view: the chip face. */
 html[data-fv-lux]:root dialog.fv-studio.fv-image :is(.fv-iv-mpick,.fv-iv-search,.fv-iv-seg,.fv-iv-prompt,.fv-iv-field){background:var(--lx-chip);box-shadow:inset 0 0 0 1px var(--lx-chip-edge)!important}
@@ -272,7 +275,8 @@ html[data-fv-lux][data-theme=light]:root dialog.fv-studio{--lx-s0:#e4e8ee}
   html[data-fv-lux]:root dialog.fv-studio.fv-editor .fv-ed-library.fv-ed-library,
   html[data-fv-lux]:root dialog.fv-studio.fv-create .fv-body[data-cols="3"]>:is(.fv-controls,.fv-work-column),
   html[data-fv-lux]:root dialog.fv-studio.fv-image .fv-iv-panel,
-  html[data-fv-lux]:root dialog.fv-studio.fv-editor .fv-ed-adjust-host{-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:var(--lx-s1)!important}
+  html[data-fv-lux]:root dialog.fv-studio.fv-editor .fv-ed-adjust-host,
+  html[data-fv-lux]:root dialog.fv-studio.fv-autopilot :is(.fv-chat-rail,.fv-chat-side){-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:var(--lx-s1)!important}
   html[data-fv-lux]:root :is(dialog.fv-studio .fvs-tray[open],dialog.fv-studio .fvs-info-panel,.fvp.fvp-pop){-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:var(--lx-s2)!important}
   html[data-fv-lux]:root body dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot) .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch,html[data-fv-lux]:root body dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot) .fv-topbar .fv-tb-cap{-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:var(--lx-s0)!important}
 }
