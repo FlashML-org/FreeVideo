@@ -9,7 +9,7 @@
   padding:var(--fv-sp-16)!important;border:1px solid var(--fv-edge)!important;border-radius:var(--fv-r-md)!important;background:rgb(var(--fv-solid3))!important;
   box-shadow:0 16px 40px -16px rgb(0 0 0 / .5)!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important;color:var(--fv-fg);
   overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;transform-origin:left bottom;animation:fv-pop-in .16s ease-out}
-.fv-studio.fv-create .fvs-tray[data-fv-pop=advanced][open]{width:min(560px,calc(100vw - 32px))!important}
+.fv-studio.fv-create .fvs-tray[data-fv-pop=advanced][open]{width:min(720px,calc(100vw - 32px))!important}
 @media (max-width:520px){.fv-studio.fv-create .fvs-tray[data-fv-pop][open]{width:calc(100vw - 24px)!important}}
 .fv-studio.fv-create .fvs-tray[data-fv-pop][open][data-align=end]{transform-origin:right bottom}
 .fv-studio.fv-create .fvs-tray[data-fv-pop][open][data-side=below]{transform-origin:left top;animation-name:fv-pop-in-below}

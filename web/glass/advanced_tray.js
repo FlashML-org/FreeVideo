@@ -246,6 +246,14 @@ function paintReset(tray, dialog) {
     const steps = tray.querySelector('.fv-at-group[data-at=steps]');
     if (steps && steps.classList.contains('fv-at-custom') !== now.steps) steps.classList.toggle('fv-at-custom', now.steps);
 }
+// Two columns while every name fits its half; one column when a name would be cut (a longer language, a narrower window).
+function fitColumns(tray) {
+    const body = tray.querySelector(':scope > .fv-at-body');
+    if (!body || !tray.open || !tray.clientWidth) return;
+    body.removeAttribute('data-at-cols');
+    const cut = [...body.querySelectorAll('.fv-at-row > span:first-child, .fv-at-title')].some(node => node.clientWidth && node.scrollWidth > node.clientWidth + 1);
+    if (cut) body.dataset.atCols = '1';
+}
 function resetAll(tray, dialog) {
     const now = state(tray, dialog), byKeys = tray.fvAtReset.matches(':focus-visible');
     if (now.mode) tray.querySelector('.fv-at-group[data-at=mode] button[data-mode=single]')?.click();
@@ -295,8 +303,12 @@ function mark(tray) {
         // The duration lives in the Frame & size tray; the parts line follows it.
         const duration = dialog.querySelector('.fvs-duration input[type=number]');
         for (const type of ['input', 'change']) duration?.addEventListener(type, repaint);
+        tray.fvAtFit = () => fitColumns(tray);
+        new ResizeObserver(() => { if (tray.fvAtWidth !== tray.clientWidth) { tray.fvAtWidth = tray.clientWidth; fitColumns(tray); } }).observe(tray);
+        document.fonts?.ready.then(() => fitColumns(tray));
         tray.addEventListener('toggle', () => {
             if (!tray.open) return;
+            fitColumns(tray);
             for (const input of tray.querySelectorAll('.fv-at-num input')) input.fvAtPaint?.();
             repaint();
         });

@@ -19,6 +19,9 @@
   .fv-studio.fv-create .fvs-tray.fv-at>.fv-at-body{grid-template-columns:minmax(0,1fr);row-gap:var(--fv-sp-12);padding-top:0}
   .fv-studio.fv-create .fvs-tray.fv-at .fv-at-group>.fv-at-title{margin-bottom:calc(-1 * var(--fv-sp-4))}
 }
+/* One column as soon as a name would be cut in two (advanced_tray.js measures it: a longer language, a narrower window). */
+.fv-studio.fv-create .fvs-tray.fv-at>.fv-at-body[data-at-cols="1"]{grid-template-columns:minmax(0,1fr);row-gap:var(--fv-sp-12);padding-top:0}
+.fv-studio.fv-create .fvs-tray.fv-at>.fv-at-body[data-at-cols="1"] .fv-at-group>.fv-at-title{margin-bottom:calc(-1 * var(--fv-sp-4))}
 @container (max-width:380px){.fv-studio.fv-create .fvs-tray.fv-at>.fv-at-body{--fv-at-w:160px}}
 /* The window's own padding: the sections start at its top line, under the title. */
 .fv-studio.fv-create .fvs-tray.fv-at[data-fv-pop]>.fv-at-body{padding-top:0}
