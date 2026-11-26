@@ -4,7 +4,7 @@ import subprocess
 from pathlib import Path
 
 from .long_paths import io_path, resolved, plain, plain_errors
-from . import network
+from . import network, windows_names
 from .monitoring import save
 
 RECEIPT = '.freevideo-comfy-source.json'
@@ -36,6 +36,7 @@ def validate_target(target):
 def new_layout(directory):
     if not isinstance(directory, str) or not directory.strip():
         raise ValueError('Choose a folder for the new ComfyUI installation')
+    windows_names.check(directory)
     parent = resolved(Path(directory).expanduser())
     if parent.exists() and not parent.is_dir():
         raise ValueError('The installation folder is a file: ' + plain(parent))

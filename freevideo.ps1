@@ -95,19 +95,23 @@ try {
             $env:UV_PYTHON_INSTALL_DIR = Join-Path $bootstrapRoot 'python'
             $env:UV_NO_CONFIG = '1'
             $installed = $false
-            $pythonRoutes = @($routes | ForEach-Object { "$_/astral-sh/python-build-standalone/releases/download" })
-            if (-not $officialOnly) {
-                # The GitHub mirror refuses the Python runtime files: the public npmmirror copy
-                # (same SHA-256 that uv pins) is tried before it. Keep in sync with network.py.
-                $pythonRoutes = @($pythonRoutes[0]) + @('https://registry.npmmirror.com/-/binary/python-build-standalone') + @($pythonRoutes | Select-Object -Skip 1)
-            }
+            # Python sources: begin (scripts/test_windows_python_sources.ps1 runs this block with a stand-in for uv)
+            # The GitHub mirror (ghfast) refuses the Python runtime files (403), so it is not a Python source:
+            # GitHub, then the public npmmirror copy (same SHA-256 that uv pins). Keep in sync with
+            # bootstrap.python_sources.
+            $pythonRoutes = @('https://github.com/astral-sh/python-build-standalone/releases/download')
+            if (-not $officialOnly) { $pythonRoutes += 'https://registry.npmmirror.com/-/binary/python-build-standalone' }
             if (-not $officialOnly -and $freevideoSavedEnvironment['UV_PYTHON_INSTALL_MIRROR']) {
                 $pythonRoutes = @($freevideoSavedEnvironment['UV_PYTHON_INSTALL_MIRROR']) + $pythonRoutes
             }
+            # Security software or a policy that stops a Python file from being written: the same table as the launcher.
+            $blockedTable = Get-FreeVideoBlockedTable (Join-Path $PSScriptRoot 'freevideo_engine\windows_blocked.json')
             $attempt = 0
             $otherFailures = $false
             $slowRoutes = @{}
             $deniedRoutes = @{}
+            $blockedRoutes = @{}
+            $sourceResults = @()
             # Keep these defaults and the notice in sync with network.py (CPU tests).
             $pythonRetryProfiles = @(
                 @{Mode='fast'; UV_HTTP_TIMEOUT='20'; UV_HTTP_RETRIES='1'},
@@ -115,9 +119,11 @@ try {
             )
             foreach ($profile in $pythonRetryProfiles) {
               if ($installed) { break }
+              # A source that refused access (HTTP 401/403) or whose file Windows blocked says nothing
+              # about a source that timed out: neither cancels its slow retry.
               if ($profile.Mode -eq 'patient') {
                 if ($otherFailures) { break }
-                $retryRoutes = @($slowRoutes.Keys | Where-Object { -not $deniedRoutes.ContainsKey($_) })
+                $retryRoutes = @($slowRoutes.Keys | Where-Object { -not $deniedRoutes.ContainsKey($_) -and -not $blockedRoutes.ContainsKey($_) })
                 if ($retryRoutes.Count -eq 0) { break }
                 Write-Host 'The network is slow. Downloading again; this may take a while.'
                 $patientDownloadNotice = $true
@@ -131,7 +137,7 @@ try {
                 [Environment]::SetEnvironmentVariable($name, $value, 'Process')
               }
               foreach ($route in $pythonRoutes) {
-                if ($profile.Mode -eq 'patient' -and $deniedRoutes.ContainsKey($route)) { continue }
+                if ($profile.Mode -eq 'patient' -and ($deniedRoutes.ContainsKey($route) -or $blockedRoutes.ContainsKey($route))) { continue }
                 foreach ($proxyRoute in $proxyRoutes) {
                   if ($installed) { break }
                   $attempt++
@@ -160,19 +166,64 @@ try {
                           $pythonOutput = $originalOutput
                       }
                   }
+                  # The download arrived but Windows did not let uv write a file of it (security software
+                  # still examining it, or another program holding it): the same source again after each wait.
+                  $blocked = $null
+                  if ($pythonExit -ne 0) { $blocked = Get-FreeVideoUnpackBlocked $pythonOutput $blockedTable }
+                  foreach ($wait in $blockedTable.Waits) {
+                      if (-not $blocked -or $blockedTable.Retry -notcontains $blocked.Code) { break }
+                      Write-Host "Windows did not let setup write $($blocked.File) (Windows error $($blocked.Code)). Trying the same source again in $wait s."
+                      Start-Sleep -Seconds $wait
+                      $pythonOutput = ''
+                      $pythonExit = Invoke-FreeVideoBootstrapCommand -Executable $uv `
+                          -Arguments @('python', 'install', '--no-bin', '--no-registry', '--no-progress', '--color', 'never', $versions.python) `
+                          -LogPath $bootstrapLog -Label ($pythonLabel + ", again after $wait s") `
+                          -Direct:($proxyRoute -eq 'direct') -OutputTail ([ref]$pythonOutput)
+                      $blocked = $null
+                      if ($pythonExit -ne 0) { $blocked = Get-FreeVideoUnpackBlocked $pythonOutput $blockedTable }
+                  }
                   if ($pythonExit -eq 0) { $installed = $true; break }
-                  if (Test-FreeVideoAccessDenied $pythonOutput) { $deniedRoutes[$route] = $true }
-                  elseif (Test-FreeVideoSlowDownloadFailure $pythonOutput) { $slowRoutes[$route] = $true }
-                  else { $otherFailures = $true }
+                  if ($blocked) { $blockedRoutes[$route] = $true; $kind = 'blocked' }
+                  elseif (Test-FreeVideoAccessDenied $pythonOutput) { $deniedRoutes[$route] = $true; $kind = 'refused' }
+                  elseif (Test-FreeVideoSlowDownloadFailure $pythonOutput) { $slowRoutes[$route] = $true; $kind = 'slow' }
+                  else { $otherFailures = $true; $kind = 'other' }
                   Write-Host "Python install source $attempt returned exit code $pythonExit. Details retained in $bootstrapLog"
                   $pythonReason = Get-FreeVideoFailureReason $pythonOutput
                   if ($pythonReason) { Write-Host "uv reported: $pythonReason" }
+                  $sourceHost = ''
+                  try { $sourceHost = ([Uri]$route).Host } catch { $sourceHost = 'custom' }
+                  $sourceResults += ,@{Attempt = $attempt; Host = $sourceHost; Kind = $kind; Exit = $pythonExit; Reason = $pythonReason; Blocked = $blocked}
                 }
               }
             }
-            $pythonDetail = ''
-            if ($pythonReason) { $pythonDetail = " uv reported: $pythonReason." }
-            if (-not $installed) { throw "Python installation failed (uv exit $pythonExit).$pythonDetail Check your network or connection mode in Downloads. See $bootstrapLog and retry." }
+            if (-not $installed) {
+                # Every source's result reaches the console (and so the launcher's report) and the log; the
+                # message leads with the failure that matters most: a file Windows blocked on this computer,
+                # then any other error, then a slow network, then a source that refused access.
+                $resultsLine = 'Python install sources: ' + (($sourceResults | ForEach-Object { "$($_.Attempt) $($_.Host) $($_.Kind)" }) -join '; ')
+                Write-Host $resultsLine
+                [IO.File]::AppendAllText($bootstrapLog, ('[' + [DateTime]::UtcNow.ToString('o') + '] ' + $resultsLine + [Environment]::NewLine), (New-Object System.Text.UTF8Encoding($false)))
+                $lead = $null
+                foreach ($kind in @('blocked', 'other', 'slow', 'refused')) {
+                    $lead = $sourceResults | Where-Object { $_.Kind -eq $kind } | Select-Object -First 1
+                    if ($lead) { break }
+                }
+                if (-not $lead) { throw "Python installation failed (uv exit $pythonExit). Check your network or connection mode in Downloads. See $bootstrapLog and retry." }
+                if ($lead.Kind -eq 'blocked') {
+                    # failure_details reads the marker and the reason in brackets (windows_blocked.python_file_message).
+                    throw ("Python installation failed: Windows did not let setup write a Python file [PYTHON_FILE_BLOCKED $($lead.Blocked.Reason)] (Windows error $($lead.Blocked.Code)): $($lead.Blocked.File). " +
+                           "Allow the FreeVideo folder in the security software, then retry. See $bootstrapLog.")
+                }
+                $leadDetail = ''
+                if ($lead.Reason) { $leadDetail = " uv reported for source $($lead.Attempt) ($($lead.Host)): $($lead.Reason)." }
+                if ($lead.Kind -eq 'slow' -or $lead.Kind -eq 'refused') {
+                    # Every source failed on the network (nothing blocked, no other error): the launcher's download card,
+                    # with its source switch, reads this sentence (failure_details, as for setup in Python).
+                    throw "Python download failed on every route (uv exit $($lead.Exit)).$leadDetail Check your network or connection mode in Downloads. See $bootstrapLog and retry."
+                }
+                throw "Python installation failed (uv exit $($lead.Exit)).$leadDetail Check your network or connection mode in Downloads. See $bootstrapLog and retry."
+            }
+            # Python sources: end
             $freevideoPython = (& $uv python find --managed-python $versions.python | Select-Object -Last 1).Trim()
             if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $freevideoPython)) { throw "Python was installed but could not be found (uv exit $LASTEXITCODE). See $bootstrapLog, then run the same command again." }
         } finally {

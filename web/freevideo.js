@@ -10,7 +10,7 @@ import { openEditorView } from './editor_loader.js';
 import { beginWorkspaceRestore, finishWorkspaceRestore, waitForLauncherRestore } from './workspace_restore.js';
 import { skinSelect } from './fv_select.js';
 import { openStudio, loraPanel, loraWarning } from "./studio.js";
-import { createGenerationProgress, referenceTrimText, thermalText, sharedGpuText, keepSoundText, encoderFileText, encoderFilePath } from './generation_progress.js';
+import { createGenerationProgress, referenceTrimText, thermalText, powerLimitText, sharedGpuText, keepSoundText, encoderFileText, encoderFilePath } from './generation_progress.js';
 import { createProgressConnection } from './progress_connection.js';
 import { notifyCompatibility } from './compatibility.js';
 import { clearWorkflowDrafts, workflowPersist } from './workflow_drafts.js';
@@ -44,7 +44,8 @@ import { MAX_MIDDLE, secondsOf, defaultTime, timeProblems, timeRange, problemTex
 import { swapState, requestRows, swapMissing, withPrefix, peopleOf } from './replace_state.js';
 import { swapMissingText } from './replace_person.js';
 import { issueButton } from './issue_button.js';
-import { createPlayBar } from './fv_player.js';
+import { attach as attachPlayer } from './glass/player_bar.js';
+import { enlarged, toggleEnlarge } from './video_enlarge.js';
 import { userMessage } from './user_message.js';
 import { AUDIO_USE, usesOriginal, checkOriginal, checkedLength, failureText, multipleText, createUseSwitch, originalBlocked, stuckText, liftBlock } from './audio_original.js';
 import { isChinese, translator, LANGUAGE, pageLanguage } from './i18n.js';
@@ -526,7 +527,9 @@ function mediaPanel(node, mount = null) {
                 }
             } else {
                 preview.preload = "metadata"; if (kind === "video") { preview.muted = true; preview.playsInline = true; }
-                card.append(preview, createPlayBar(preview, text).bar);
+                card.append(preview);
+                attachPlayer(preview, card, {t: text, click: true, volume: true, speed: true,
+                    full: kind === "video" ? {shown: () => enlarged(preview), toggle: key => toggleEnlarge(preview, {t: text, opener: key})} : null});
             }
             let showLength = () => {};
             if (kind === "video" && row.role === "reference") {
@@ -844,6 +847,7 @@ function resultPanel(node) {
         for (const row of value.reference_trims || []) panel.append(el("div", referenceTrimText(row, text), "fv-note fv-trim-note"));
         if (value.low_memory && !value.result_cache_hit) resultNotes.push(el("div", text('Generation was slow; try a lower resolution or shorter video.', '生成较慢，可降低分辨率或缩短时长后再试。'), "fv-note"));
         if (value.thermal && !value.result_cache_hit) resultNotes.push(el("div", thermalText(value.thermal, text), "fv-note"));
+        if (value.power_limit && !value.result_cache_hit) resultNotes.push(el("div", powerLimitText(value.power_limit, text), "fv-note"));
         const shared = value.shared_gpu && !value.result_cache_hit ? sharedGpuText(value.shared_gpu, text) : '';
         if (shared) resultNotes.push(el("div", shared, "fv-note"));
         if (value.keep_source_audio_failed) resultNotes.push(el("div", keepSoundText(text), "fv-note"));
@@ -1139,7 +1143,7 @@ app.registerExtension({
                 else {
                     const studio = showStudio(node), status = studio?.querySelector?.('.fv-status');
                     if (status) {
-                        const message = text('Could not complete. Try again.', '没有完成，请重试');
+                        const message = text('Could not complete. Try again.', '未完成，请重试');
                         status.dataset.error = 'true'; status.textContent = message;
                         status.append(issueButton(text, () => ({where: ['Open editor', '打开剪辑'], message})));
                     }

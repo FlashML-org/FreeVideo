@@ -162,11 +162,11 @@ IMAGE_REASONS = {
                            '显卡暂时用不了，稍后再试。'),
     'gpu_kernels_failed': ("The graphics card's computation check did not pass. Update the graphics card driver, then restart FreeVideo. If the check still does not pass, download the report and report the problem.",
                            '显卡的计算检查未通过。请更新显卡驱动后重新启动 FreeVideo；如仍未通过，请下载报告并提交问题。'),
-    'worker_exit': ('Image generation stopped unexpectedly. Try again.', '图像生成意外停止了，请再试一次。'),
-    'timeout': ('This image took too long and was stopped. Try again.', '这一张用时太长，已停止。请再试一次。'),
+    'worker_exit': ('Image generation stopped unexpectedly. Try again.', '图像生成意外停止，请重试。'),
+    'timeout': ('This image took too long and was stopped. Try again.', '这张图片用时过长，已停止。请重试。'),
     'disk_full': ('Saving the image failed: the disk is full. Free some space, then generate again.',
                   '保存图片时出错：磁盘空间不够，空出空间后再生成。'),
-    'generation_failed': ('Image generation ran into an error. Try again.', '图像生成出错了，请再试一次。'),
+    'generation_failed': ('Image generation ran into an error. Try again.', '图像生成时出错，请重试。'),
     'invalid_media': ('This image cannot be read or is larger than 4096×4096 pixels. Choose another image.',
                       '这张图片读不出来，或超过 4096×4096 像素。请换一张图片。'),
     'invalid_request': ('The image settings are invalid. Adjust them and try again.', '图片设置有误，请调整后重试。'),
@@ -366,7 +366,7 @@ FAILURE_REASONS = {
     'context_length': ('The prompt and reference images are too long',
                        '提示词和参考图太长'),
     'dependency_failed': ('A task this one depends on did not finish',
-                          '前面依赖的任务没有完成'),
+                          '前面依赖的任务未完成'),
     'lost': ('The generation service no longer has the result of this task',
              '生成服务没有保留这次任务的结果'),
     'unknown_job': ('The image generation service cannot find this task',
@@ -537,10 +537,10 @@ FAILURE_REASONS_ZH = {code: pair[1] for code, pair in FAILURE_REASONS.items()}
 # What a person can do next, for the reasons above whose remedy is not just running the task again. Shown after the
 # reason only while the reason itself is the code's sentence (a more specific message keeps its own meaning).
 FAILURE_NEXT = {
-    'generation_failed': ('If it happens again, use "Report a problem"',
-                          '再次出现时，请点击“提交问题”'),
-    'internal_error': ('If it happens again, use "Report a problem"',
-                       '再次出现时，请点击“提交问题”'),
+    'generation_failed': ('If it happens again, choose "Report a problem".',
+                          '再次出现时，请点击“提交问题”。'),
+    'internal_error': ('If it happens again, choose "Report a problem".',
+                       '再次出现时，请点击“提交问题”。'),
     'unreachable': ('Make sure FreeVideo is running, then try again',
                     '确认 FreeVideo 已经启动后再试'),
     'session_full': ('Click "New chat" to continue',
@@ -779,7 +779,7 @@ def failure_reason(error):
         return FAILURE_MESSAGES_ZH[line]
     if line.startswith(('CUDA out of memory', 'MPS backend out of memory')):
         return FAILURE_REASONS_ZH['out_of_memory']
-    return FAILURE_REASONS_ZH.get(error.get('code'), '没有完成')
+    return FAILURE_REASONS_ZH.get(error.get('code'), '未完成')
 
 
 # The same lookup in English for the page: the specific sentences are already written for people.

@@ -2,7 +2,7 @@
 // palette). Views list their own with registerShortcuts(viewId, rows); the shortcuts themselves stay with the views,
 // this module only shows them. The built-in rows below are the shortcuts the views have today.
 // A row is {keys: 'Mod+Z / Mod+Shift+Z', title: [en, zh], group?: [en, zh]}; Mod is Ctrl, or ⌘ on a Mac.
-import { t, words, CN, glyph, keyChips, formatKeys, createLayer, addSheet } from './context_menu.js';
+import { t, words, CN, glyph, keyChips, formatKeys, createLayer, addSheet, fadeEnds } from './context_menu.js';
 
 const browser = typeof document !== 'undefined';
 addSheet('shortcuts.css', import.meta.url);
@@ -19,6 +19,8 @@ const G = {
     history: ['History', '历史'], compare: ['Compare', '对比'], picture: ['Image editing', '图像编辑'],
     playback: ['Playback', '播放'], timeline: ['Timeline', '时间线'], clips: ['Clips', '片段'], edit: ['Editing', '编辑'],
     chat: ['Conversation', '对话'], tasks: ['Running tasks', '进行中的任务'], library: ['Creations', '作品库'],
+    // The keys of a focused position bar, under Playback (written as the sheet writes "Everywhere · General").
+    position: ['Playback · Position bar', '播放 · 位置条'],
 };
 
 // Shortcuts the views have in the 0.5.4 code and in this branch (each one checked in the source it names).
@@ -43,6 +45,14 @@ export const BUILTIN_SHORTCUTS = Object.freeze({
         {keys: 'Up / Down', title: ['Choose a suggestion', '选择候选项'], group: G.prompt},
         {keys: 'Enter / Tab', title: ['Insert the chosen item', '插入选中的项'], group: G.prompt},
         {keys: 'Esc', title: ['Close a panel, then Create', '先关浮层，再关创作面板'], group: G.general},
+        // The result's play bar (glass/player_bar.js; studio.js keys): its sound key shows no tip, so M is said here.
+        {keys: 'Space', title: ['Play / pause', '播放 / 暂停'], group: G.playback},
+        {keys: 'M', title: ['Mute / unmute', '静音 / 取消静音'], group: G.playback},
+        // One row a key, the number and its unit kept together (a no-break space).
+        {keys: 'Left', title: ['Back 1 s', '后退 1 秒'], group: G.position},
+        {keys: 'Right', title: ['Forward 1 s', '前进 1 秒'], group: G.position},
+        {keys: 'Shift+Left', title: ['Back 5 s', '后退 5 秒'], group: G.position},
+        {keys: 'Shift+Right', title: ['Forward 5 s', '前进 5 秒'], group: G.position},
     ],
     image: [
         {keys: 'Mod+Enter', title: ['Generate image', '生成图片'], group: G.generate},
@@ -96,6 +106,17 @@ export const BUILTIN_SHORTCUTS = Object.freeze({
     ],
     library: [
         {keys: 'Esc', title: ['Close the viewer, then the library', '先关大图，再关作品库'], group: G.library},
+        {keys: 'Left', title: ['Previous creation', '上一个作品'], group: G.library},
+        {keys: 'Right', title: ['Next creation', '下一个作品'], group: G.library},
+        // The viewer's video (library.js keys and glass/player_bar.js).
+        {keys: 'Space', title: ['Play / pause', '播放 / 暂停'], group: G.playback},
+        {keys: 'M', title: ['Mute / unmute', '静音 / 取消静音'], group: G.playback},
+        {keys: 'F', title: ['Full screen', '全屏'], group: G.playback},
+        // One row a key, the number and its unit kept together (a no-break space).
+        {keys: 'Left', title: ['Back 1 s', '后退 1 秒'], group: G.position},
+        {keys: 'Right', title: ['Forward 1 s', '前进 1 秒'], group: G.position},
+        {keys: 'Shift+Left', title: ['Back 5 s', '后退 5 秒'], group: G.position},
+        {keys: 'Shift+Right', title: ['Forward 5 s', '前进 5 秒'], group: G.position},
     ],
 });
 
@@ -199,6 +220,7 @@ function build() {
       <div class="fv-ks-body" role="tabpanel" tabindex="-1"></div>`;
     d.setAttribute('aria-labelledby', 'fv-ks-title');
     parts = {title: d.querySelector('.fv-ks-title'), input: d.querySelector('input'), close: d.querySelector('.fv-ks-close'), tabs: d.querySelector('.fv-ks-tabs'), body: d.querySelector('.fv-ks-body')};
+    parts.fade = fadeEnds(parts.tabs);
     parts.title.textContent = t('Keyboard shortcuts', '快捷键');
     parts.input.placeholder = t('Find a shortcut', '查找快捷键');
     parts.input.setAttribute('aria-label', t('Find a shortcut', '查找快捷键'));
@@ -230,6 +252,7 @@ function draw() {
         tab.dataset.fvTipUse = view === 'all' ? t('Shortcuts of every view', '所有视图的快捷键') : view === 'global' ? t('Keys that work in every view', '在任何视图都能用的按键') : t('This view and the keys of every view', '这个视图加全局按键');
         return tab;
     }));
+    parts.fade();
     const list = sections({filter: state.filter, query: state.query});
     if (!list.length) {
         const empty = document.createElement('p'); empty.className = 'fv-ks-empty';

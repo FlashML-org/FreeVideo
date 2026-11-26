@@ -217,11 +217,11 @@ export const EXTENSION_COPY = Object.freeze({
     title: ['A browser extension is interfering with FreeVideo', '浏览器扩展干扰了 FreeVideo'],
     // English uses straight quotes: curly ones widen in the CJK font stack.
     both: ['The script "{script}" in the browser extension "{extension}" interfered with this page, so this action did not finish.',
-        '浏览器扩展“{extension}”里的脚本“{script}”干扰了页面，这次操作没有完成。'],
+        '浏览器扩展“{extension}”里的脚本“{script}”干扰了页面，这次操作未完成。'],
     extension: ['The browser extension "{extension}" interfered with this page, so this action did not finish.',
-        '浏览器扩展“{extension}”干扰了页面，这次操作没有完成。'],
+        '浏览器扩展“{extension}”干扰了页面，这次操作未完成。'],
     unknown: ['A browser extension interfered with this page, so this action did not finish.',
-        '浏览器里的某个扩展干扰了页面，这次操作没有完成。'],
+        '浏览器里的某个扩展干扰了页面，这次操作未完成。'],
     // The browser says a client blocked the file: an ad-blocking extension, though not which one.
     blocked: ['An ad-blocking extension in this browser, such as uBlock Origin, AdGuard or Adblock Plus, blocked one of FreeVideo\'s page files, so the page cannot work properly.',
         '浏览器里的广告拦截类扩展（例如 uBlock Origin、AdGuard、Adblock Plus）拦下了 FreeVideo 的页面文件，页面无法正常运行。'],

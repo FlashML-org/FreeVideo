@@ -6,6 +6,13 @@
    Only Linux faces are named, so other systems keep their own quotes. */
 @font-face{font-family:"FreeVideo Quotes";font-weight:100 500;unicode-range:U+2018-2019;src:local("Noto Sans Regular"),local("NotoSans-Regular"),local("DejaVu Sans"),local("Liberation Sans")}
 @font-face{font-family:"FreeVideo Quotes";font-weight:600 900;unicode-range:U+2018-2019;src:local("Noto Sans Bold"),local("NotoSans-Bold"),local("DejaVu Sans Bold"),local("Liberation Sans Bold")}
+/* The Linux Latin face for a language in Latin or Cyrillic letters, without its medium: with every weight (Noto Sans)
+   500 and 600 look nearly alike, so a chosen name in 600 among names in 500 would not stand out. 500 is drawn in the
+   regular face, as the CJK faces drew it; 600 in the semibold, whose width the labels are laid out for (the bold is
+   wider). One weight a face, not a range: a range would set a variable face's weight to the one asked for. */
+@font-face{font-family:"FreeVideo Latin";font-weight:400;src:local("Noto Sans Regular"),local("NotoSans-Regular")}
+@font-face{font-family:"FreeVideo Latin";font-weight:600;src:local("Noto Sans SemiBold"),local("NotoSans-SemiBold")}
+@font-face{font-family:"FreeVideo Latin";font-weight:700;src:local("Noto Sans Bold"),local("NotoSans-Bold")}
 :where(.fv-phone,.fv-lan,.fv-studio,.fv-setup,.fv-panel,.fv-generation-progress,.fv-view-navigation,.fv-prompt-guide,.fv-failure-dialog,.fv-reference-picker,.fv-release-notes,.fv-whatsnew,.fv-image-editor,.fv-cast-dialog,.fv-tutorial-book,.fv-feature-tour){
   /* Surfaces, from the backdrop up to a hovered control; mirrors branding.py. */
   --fv-bg:#111720;--fv-canvas:#161e29;--fv-card:#1a222e;--fv-raised:#212a37;--fv-hover:#2a3341;
@@ -32,6 +39,18 @@
   --fv-font:"Segoe UI","FreeVideo Quotes","Microsoft YaHei UI","Noto Sans CJK SC","Noto Sans SC",system-ui,sans-serif;
   font-family:var(--fv-font);
   color-scheme:dark;
+}
+/* A language written in Latin or Cyrillic letters (web/i18n.js marks the page) is drawn by a Latin face before the CJK
+   ones. Without Segoe UI (Linux) Noto Sans CJK drew it: it has no İ, so the dot fell on the next letter. The usual Linux
+   faces come before system-ui, which on a Chinese desktop may itself be a CJK face. Windows keeps its order up to its CJK
+   face, and a Mac its system face, so neither changes. */
+:root[data-fv-language]:not([data-fv-language="zh-Hant"],[data-fv-language="ja"],[data-fv-language="ko"]){
+  --fv-font:-apple-system,BlinkMacSystemFont,"Segoe UI Variable Text","Segoe UI","FreeVideo Quotes","PingFang SC","Hiragino Sans GB",
+            "Microsoft YaHei UI","FreeVideo Latin","Noto Sans","DejaVu Sans","Liberation Sans",system-ui,"Noto Sans CJK SC","Noto Sans SC",sans-serif;
+}
+:root[data-fv-language]:not([data-fv-language="zh-Hant"],[data-fv-language="ja"],[data-fv-language="ko"]) :where(.fv-phone,.fv-lan,.fv-studio,.fv-setup,.fv-panel,.fv-generation-progress,.fv-view-navigation,.fv-prompt-guide,.fv-failure-dialog,.fv-reference-picker,.fv-release-notes,.fv-whatsnew,.fv-image-editor,.fv-cast-dialog,.fv-tutorial-book,.fv-feature-tour){
+  --fv-font:"Segoe UI","FreeVideo Quotes",-apple-system,BlinkMacSystemFont,
+            "Microsoft YaHei UI","FreeVideo Latin","Noto Sans","DejaVu Sans","Liberation Sans",system-ui,"Noto Sans CJK SC","Noto Sans SC",sans-serif;
 }
 /* Traditional Chinese (web/i18n.js marks the page) reads in Taiwan fonts and Taiwan glyph forms. */
 :root[data-fv-language="zh-Hant"],
@@ -73,7 +92,7 @@
 .fv-select-menu-host>.fv-select-trigger:hover:not(:disabled){background:var(--fv-hover)}.fv-select-menu-host>.fv-select-trigger:disabled{opacity:.5;cursor:default}
 .fv-select-menu-host>.fv-select-trigger{justify-content:flex-start;text-align:left}
 .fv-select-face{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.fv-select-menu{position:fixed;z-index:60;box-sizing:border-box;max-width:calc(100vw - 16px);overflow:auto;padding:6px;background:var(--fv-card);color:var(--fv-ink);border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);font:13px var(--fv-font)}
+.fv-select-menu{position:fixed;z-index:var(--fv-z-pop,60);box-sizing:border-box;max-width:calc(100vw - 16px);overflow:auto;padding:6px;background:var(--fv-card);color:var(--fv-ink);border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);font:13px var(--fv-font)}
 .fv-select-menu[hidden]{display:none}
 .fv-select-menu [role=separator]{height:1px;margin:5px 4px;background:var(--fv-border)}
 .fv-select-group{padding:6px 10px 2px;color:var(--fv-muted);font-size:12px}

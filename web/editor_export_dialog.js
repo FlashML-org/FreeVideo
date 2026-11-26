@@ -196,7 +196,7 @@ export async function openExportDialog({parent, state, sources, t = translatorFo
             focusable[(current + (event.shiftKey ? -1 : 1) + focusable.length) % focusable.length]?.focus();
         }
     }));
-    dialog.oncancel = event => { event.preventDefault(); event.stopPropagation(); close(null); };
+    dialog.oncancel = event => { if (event.target !== dialog) return; event.preventDefault(); event.stopPropagation(); close(null); };
     dialog.onclose = () => close(null);
     // Parent and host capture shortcuts must route to this modal before the editor.
     cleanups.push(isolateDialogKeys(dialog, event => routeDialogKey(event, dialog)));

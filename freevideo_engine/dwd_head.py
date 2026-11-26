@@ -182,13 +182,37 @@ class Head:
             yield torch.cat(parts).float()
 
 
+def synchronize(device):
+    """Wait for the device's queued work (CUDA, MPS); nothing to wait for on the CPU."""
+    device = torch.device(device)
+    if device.type == 'cuda':
+        torch.cuda.synchronize(device)
+    elif device.type == 'mps':
+        torch.mps.synchronize()
+
+
+def empty_cache(device):
+    """Return the device allocator's cached, unused blocks (CUDA, MPS)."""
+    device = torch.device(device)
+    if device.type == 'cuda':
+        torch.cuda.empty_cache()
+    elif device.type == 'mps':
+        torch.mps.empty_cache()
+
+
 def render(features, grid, adapter, device):
-    """uint8 frames (count, height, width, 3) on the CPU and the head's timings and peak."""
+    """uint8 frames (count, height, width, 3) on the CPU and the head's timings and peak.
+
+    The peak is the CUDA allocator's (reserved and allocated) or, on a Mac, what the Metal driver held at the end
+    (unified memory has no separate reserved peak); the CPU reports none.
+    """
     import time
     from .fast_tier_runtime import adapter_tensors
+    device = torch.device(device)
     started = time.perf_counter()
     weights = adapter_tensors(adapter, lambda name: name.startswith(PREFIX))
-    torch.cuda.reset_peak_memory_stats(device)
+    if device.type == 'cuda':
+        torch.cuda.reset_peak_memory_stats(device)
     head = Head(weights, device)
     loaded = time.perf_counter()
     mean = torch.tensor(PIXEL_MEAN, device=device).view(3, 1, 1)
@@ -196,10 +220,14 @@ def render(features, grid, adapter, device):
     frames = []
     for pixels in head(features.to(device), grid):
         frames.append((((pixels * std + mean).clamp(-1, 1) * .5 + .5) * 255).round().byte().permute(0, 2, 3, 1).cpu())
-    torch.cuda.synchronize(device)
+    synchronize(device)
     result = torch.cat(frames)
     report = dict(head_load_seconds=round(loaded - started, 3), head_seconds=round(time.perf_counter() - loaded, 3),
-                  head_peak_reserved_bytes=torch.cuda.max_memory_reserved(device),
-                  head_peak_allocated_bytes=torch.cuda.max_memory_allocated(device), frames=len(result))
+                  frames=len(result))
+    if device.type == 'cuda':
+        report.update(head_peak_reserved_bytes=torch.cuda.max_memory_reserved(device),
+                      head_peak_allocated_bytes=torch.cuda.max_memory_allocated(device))
+    elif device.type == 'mps':
+        report.update(head_driver_bytes=torch.mps.driver_allocated_memory())
     del head, weights
     return result, report

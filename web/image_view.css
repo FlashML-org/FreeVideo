@@ -339,7 +339,7 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
 .fv-iv .fv-iv-samples button:hover img,.fv-iv .fv-iv-samples button:focus-visible img{transform:scale(1.03);filter:none}
 /* failure card: in the picture's frame, which is empty anyway */
 .fv-iv .fv-iv-frame[data-state=failed] .fv-iv-pic::after{content:"";position:absolute;inset:0;background:color-mix(in srgb,var(--fv-shell-bg) 50%,transparent)}
-.fv-studio .fv-iv .fv-iv-fail{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:3;width:min(400px,calc(100cqw - 32px));max-height:calc(100cqh - 80px);overflow:auto;
+.fv-studio .fv-iv .fv-iv-fail{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:3;width:min(480px,calc(100cqw - 32px));max-height:calc(100cqh - 80px);overflow:auto;
   padding:20px 20px 16px;border-radius:var(--fv-rad-pop,16px);display:grid;gap:12px;justify-items:stretch;text-align:left;color:var(--fv-fg)}
 .fv-iv .fv-iv-fail-head{display:flex;align-items:center;gap:12px}
 .fv-iv .fv-iv-fail-head h3{margin:0;font-size:var(--fv-fs-3,16px);font-weight:600}

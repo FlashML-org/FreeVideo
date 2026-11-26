@@ -41,7 +41,7 @@ LIST_NEXT = 'GET /freevideo/agent/v1/cast to find an existing card ID.'
 # Reference pictures made by the server (POST /cast/{id}/generate). Remy's consistency tests set the
 # defaults; the clip prompts live in reference_prompt and the labels follow its half turn.
 COUNT = 4
-PROMPT_VERSION = 1
+PROMPT_VERSION = 2  # 2: the face close-up fills the picture with the head
 TURN = dict(aspect='9:16', seconds=6)
 CLOSE_UP = dict(aspect='1:1', seconds=4)
 SCENE = dict(aspect='16:9', seconds=6)
@@ -60,6 +60,52 @@ SHEET_SIZE = (SHEET_COLUMNS * SHEET_CELL[0] + (SHEET_COLUMNS + 1) * SHEET_GAP, 2
 _SHEETS_SEEN = set()
 
 
+# A close-up of the head keeps who the person is (name, age, sex, origin, build, face, hair) and leaves out what they wear
+# and carry. Each clause is cut where its clothes or things carried begin (a whole clause dropped would take
+# "A young woman wearing a yellow raincoat" down to nothing); a clause that is only clothes goes; whatever names part of
+# the head in the part cut away (glasses, hair) stays.
+_GARMENT = (r'(?:coats?|raincoats?|jackets?|blazers?|trench|parkas?|hoodies?|sweaters?|jumpers?|cardigans?|shirts?|'
+            r't-shirts?|tees?|blouses?|vests?|dress(?:es)?|skirts?|gowns?|sarees?|saris?|suits?|uniforms?|scrubs|gear|'
+            r'overalls|trousers|pants|jeans|shorts|leggings|shoes|sneakers|trainers|boots|heels|sandals|socks|belts?|'
+            r'bags?|backpacks?|handbags?|purses?|satchels?|briefcases?|umbrellas?|gloves|caps?|hats?|bears?)')
+_GARMENT_ZH = r'(?:风衣|外套|大衣|夹克|西装|衬衫|衫|T恤|毛衣|卫衣|马甲|旗袍|校服|工装|裙|裤|牛仔|鞋|靴|袜|腰带|背包|书包|挎包|手提包|公文包|伞|手套|拐杖)'
+_WORN = re.compile(
+    r'\b(?:wearing|wears|wore|dressed|clad|carrying|carries|holding|holds)\b'
+    # "in a yellow raincoat", "and a red hoodie": up to three words before the garment, none of them another of these
+    # words ("in her 40s wearing blue scrubs" is cut at "wearing", not at "in").
+    r'|\b(?:in|and|with)\s+(?:a|an|the|his|her|their)?\s*'
+    r'(?:(?!(?:wearing|wears|wore|dressed|clad|carrying|carries|holding|holds|in|and|with)\b)[\w-]+\s+){0,3}' + _GARMENT + r'\b'
+    r'|身穿|穿着|穿|背着|拿着|提着|拎着|挎着|拄着|手拿', re.IGNORECASE)
+# 穿着红色旗袍的上海女人, 背着书包的男孩: the clothes or the thing carried as a modifier before the noun go, the noun stays.
+_WORN_BEFORE = re.compile(r'(?:身穿|穿着|穿|拿着|手拿|背着|提着|拎着|挎着|拄着)[^，。；、的]{1,16}的')
+_DRESS = re.compile(r'\b' + _GARMENT + r'\b|' + _GARMENT_ZH, re.IGNORECASE)
+_HEAD = re.compile(
+    r'\b(?:hair|haired|face|faced|eyes?|eyebrows?|brows?|beard|bearded|moustache|mustache|stubble|freckles?|skin|lips?|'
+    r'nose|ears?|earrings?|glasses|eyeglasses|sunglasses|scar|mole|bangs|fringe|ponytail|bun|braids?|braided|curls?|curly|bald)\b'
+    r'|头发|白发|黑发|发型|短发|长发|卷发|马尾|刘海|辫|脸|眼|眉|胡|雀斑|皮肤|肤色|嘴唇|鼻|耳|眼镜|疤|痣|光头',
+    re.IGNORECASE)
+# A full stop ends a sentence only at the end or before a capital, and not after a title or an initial ("Dr. Okafor").
+_SENTENCE = re.compile(r'[;；。！？!?]|(?<!\bDr)(?<!\bMr)(?<!\bMrs)(?<!\bMs)(?<!\bSt)(?<!\bJr)(?<!\bSr)(?<!\bProf)(?<!\b[A-Z])'
+                       r'\.(?=\s+[A-Z]|\s*$)')
+
+
+def face_words(description):
+    """The description as a close-up of the head needs it: who the person is, without clothes or things carried."""
+    kept = []
+    for sentence in _SENTENCE.split(description or ''):
+        for clause in re.split(r'[,，、]', sentence):
+            clause = _WORN_BEFORE.sub('', clause).strip()
+            cut = _WORN.search(clause)
+            if cut:
+                head = [piece.strip() for piece in re.split(r'\s+(?:and|with)\s+|和|与', clause[cut.start():])
+                        if _HEAD.search(piece) and not _DRESS.search(piece)]
+                before = re.sub(r'(?:\s+(?:and|with|who|while))+\s*$|[和与]$', '', clause[:cut.start()].strip(' -'), flags=re.IGNORECASE)
+                clause = ' '.join([before, *head]).strip()
+            if clause and (_HEAD.search(clause) or not _DRESS.search(clause)):
+                kept.append(clause)
+    return ('，' if re.search(r'[\u3400-\u9fff]', description or '') else ', ').join(kept)
+
+
 def reference_prompt(card, *, face=False):
     """The one place the reference clip prompts are written."""
     who = (card.get('description') or card['name']).strip().rstrip('.')
@@ -69,9 +115,11 @@ def reference_prompt(card, *, face=False):
         return ('%s. The object alone in the centre of the frame, slowly turning in place, in front of a plain '
                 'light grey backdrop, even soft light, a static camera, sharp focus, no people, no text.' % who)
     if face:
-        return ('%s. A close-up of the face and shoulders, looking straight at the camera with a neutral '
-                'expression, in front of a plain light grey studio backdrop. The person stays still. '
-                'Even soft studio light, a static camera, sharp focus, no text.' % who)
+        # Only the head is in a close-up: the description's clothes and what the person carries would widen the picture.
+        return ('%s. A tight close-up of the face: the face fills most of the frame, from the top of the head to just '
+                'below the chin, looking straight at the camera with a neutral expression, in front of a plain light '
+                'grey studio backdrop. The person stays still. Even soft studio light, a static camera, sharp focus, '
+                'no text.' % (face_words(card.get('description') or '') or card['name'].strip().rstrip('.')))
     return ('%s. The person stands alone in the centre of the frame, the whole body from head to feet, in front '
             'of a plain light grey studio backdrop, in a neutral pose with the arms relaxed. The person turns '
             'slowly in place from facing the camera to facing away from it. Even soft studio light, a static '

@@ -261,9 +261,10 @@ def connect(root, value, machine, progress=lambda **kw: None, cancelled=None, *,
     if not machine['gpu_uuid'].startswith(('GPU-', 'MIG-')):
         raise ValueError('The CUDA device did not provide a valid GPU identity; rerun the GPU check.')
     # CUDA UUIDs survive a Windows display-adapter order change. The host and
-    # its engine children must see the same device that passed initialization.
-    os.environ['CUDA_VISIBLE_DEVICES'] = machine['gpu_uuid']
-    os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
+    # its engine children must see the same device that passed initialization, in bus order. The user's own
+    # choice of devices and device order, if any, stays known to the multi-GPU pool.
+    from .gpu_pool import pin_visible_device
+    pin_visible_device(os.environ, machine['gpu_uuid'])
     if cancelled is not None:
         controller.cancelled = cancelled
         if cancelled.is_set():

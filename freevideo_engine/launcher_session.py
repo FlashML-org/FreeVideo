@@ -14,7 +14,7 @@ import uuid
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from . import __version__
-from . import disk_space
+from . import disk_space, windows_names
 from .comfy_launcher_runtime import (ENGINE_UPDATE_WAITS, SETUP_WAITS_FOR_JOB, Controller, layout, local_url, loopback_url,
                                      managed_frontend, new_layout, queue_busy, queue_state)
 from .desktop_runtime import launcher_root, materialize_source
@@ -148,6 +148,8 @@ class Session:
     update_intent = None
     update_source = 'launcher'
     update_waiting = update_restarting = False
+    # Windows refused to start the downloaded launcher: how many times so far, when to try again, and the file.
+    update_start_failures, update_start_retry_at, update_blocked_path = 0, 0., ''
     engine_updating = engine_autoinstall = reload_expected = resume_pages = False
     browser_wait = queue_state = queue_thread = bridge = None
     # Setup that stopped for a running job and continues by itself once the queue is empty.
@@ -314,6 +316,30 @@ class Session:
         from .i18n import tr
         return tr(en, zh, self.ui_language(), values)
 
+    def folder_name_problem(self, found):
+        """The line under a folder field for a name Windows refuses; the texts match windows_names.message, which
+        a test compares, and are written out here so the language files collect them."""
+        kind, number, character = found
+        if kind == 'reserved':
+            return self.t('Folder name {number} in the path is a name Windows reserves for devices (such as CON, NUL or COM1). '
+                          'Rename it or choose another folder.',
+                          '路径中的第 {number} 个文件夹名是 Windows 为设备保留的名称（例如 CON、NUL、COM1）。请修改该名称，或另选一个文件夹。',
+                          {'number': number})
+        if kind == 'ending':
+            return self.t('Folder name {number} in the path ends with a space or a dot, which Windows does not allow. '
+                          'Rename it or choose another folder.',
+                          '路径中的第 {number} 个文件夹名以空格或句点结尾，Windows 不允许这样的名称。请修改该名称，或另选一个文件夹。',
+                          {'number': number})
+        if character:
+            return self.t('Folder name {number} in the path contains "{character}", which Windows does not allow. '
+                          'Rename it or choose another folder.',
+                          '路径中的第 {number} 个文件夹名含有 Windows 不允许出现在文件夹名中的“{character}”。请修改该名称，或另选一个文件夹。',
+                          {'number': number, 'character': character})
+        return self.t('Folder name {number} in the path contains a control character, which Windows does not allow. '
+                      'Rename it or choose another folder.',
+                      '路径中的第 {number} 个文件夹名含有 Windows 不允许出现在文件夹名中的控制字符。请修改该名称，或另选一个文件夹。',
+                      {'number': number})
+
     def chinese(self):
         """Whether text written as an (English, Chinese) pair shows its Chinese: the interface is Simplified Chinese. Other
         languages read their file through t(); functions that only take zh= give them English for now."""
@@ -425,6 +451,10 @@ class Session:
         if self.controller.busy or self.importer.busy or self.cleaner.busy or self.archives_busy:
             self.explain_busy()
             return
+        if key in ('destination', 'engine') and isinstance(value, str) and value.strip():
+            found = windows_names.refused(value)
+            if found:
+                raise ValueError(self.folder_name_problem(found))
         if key in ('separate', 'repair', 'new_comfy', 'sampling_caches', 'lan_access', 'image_model', 'prompt_model', 'prompt_hint_dismissed'):
             value = bool(value)
         if key == 'url':
@@ -912,6 +942,9 @@ class Session:
             if self.form['new_comfy'] and self.form['environment_method'] == 'manual' and not self.form['offline_runtime']:
                 raise ValueError(self.t('Import the Environment ZIP, or choose Automatic installation.',
                                        '请导入运行环境包，或选择「自动安装」。'))
+            # A rejected entry never reaches the form, so the text still shown must not continue into the old location.
+            if self.form['new_comfy'] and self.field_error.get('key') == 'destination':
+                raise ValueError(self.field_error.get('message') or self.t('Choose a valid installation folder first.', '请先选择有效的安装位置。'))
             new_layout(self.form['destination']) if self.form['new_comfy'] else layout(self.form['comfy'])
             self.persist(); self.page = 'models'; return
         self.browser_attempted = False
@@ -1100,7 +1133,7 @@ class Session:
 
     def image_pack_view(self, model='image'):
         from .image_gen import image_pack
-        from .failure_details import image_pack_failure
+        from .failure_details import image_pack_failure, image_pack_write_known
         group = self.h3_group() if model == 'h3-image' else 'image'
         title = ('MiniMax H3 Image', 'MiniMax H3 Image') if model == 'h3-image' else NAMES['image']
         try:
@@ -1111,7 +1144,7 @@ class Session:
             return dict(installable=False, ready=False, state='missing', visible=False, busy=False,
                         downloaded_bytes=0, verified_bytes=0, total_bytes=total, bytes=total,
                         title=self.t(*title), detail=self.t('Not installed', '未安装'),
-                        install={}, can_act=False, removable_bytes=0, repairable=False, failure={}, report_id=None, report_line='',
+                        install={}, can_act=False, removable_bytes=0, repairable=False, failure={}, report_id=None, report_line='', report_offered=True,
                         engine_state='unknown', engine_note='', engine_clicked=False)
         root, engine = self._image_location()
         try:
@@ -1160,7 +1193,7 @@ class Session:
         elif active.get('state') == 'cancelled':
             detail = self.t('Paused', '已暂停')
         elif active.get('state') == 'failed':
-            failure = self.both(lambda zh: image_pack_failure(active.get('reason'), zh=zh))
+            failure = self.both(lambda zh: image_pack_failure(active.get('reason'), zh=zh, write=active.get('write')))
             detail = failure['detail']
             repairable = repairable or active.get('reason') in ('needs_repair', 'integrity_failed')
         blocked = (self.controller.busy or self.importer.busy or self.cleaner.busy or self.archives_busy
@@ -1174,6 +1207,8 @@ class Session:
                     detail=detail, busy=busy, install=active, can_act=not (blocked or busy or value.get('checking')),
                     removable_bytes=removable,
                     repairable=repairable, failure=failure, report_id=active.get('report_id'),
+                    # A write that failed for a known reason has its own next step: the export stays, "Report a problem" goes.
+                    report_offered=not (active.get('reason') == 'write_failed' and image_pack_write_known(active.get('write'))),
                     report_line=self._image_pack_report_line(),
                     engine_state=engine_state,
                     engine_note=self.both(lambda zh: image_pack_failure('busy_engine', zh=zh))['detail'] if running else '',
@@ -1186,6 +1221,11 @@ class Session:
             return ''
         error = report.get('error') or {}
         parts = [str(report.get('stage_at_failure') or ''), str(error.get('code') or ''), str(error.get('class') or '')]
+        # A write that failed: its step and the codes the system gave (no file: the card above names it).
+        write = (error.get('details') or {}).get('write') or {}
+        parts += [str(write.get('step') or '')] + [('curl %d' % write['curl']) if type(write.get('curl')) is int else '',
+                                                   str(write.get('errno') or ''),
+                                                   ('WinError %d' % write['winerror']) if type(write.get('winerror')) is int else '']
         return 'Image pack: ' + ', '.join(part for part in parts if part)
 
     def image_pack_report(self):
@@ -1278,7 +1318,7 @@ class Session:
                        'verify_failed': self.t('The download stopped: a downloaded file did not pass the check. Resume to download it again.',
                                                '下载中断：下载的文件没有通过校验。请点击“继续”重新下载。'),
                        'busy': self.t('Another download of this model is running.', '这个模型正在被另一处下载。')}.get(
-                active.get('reason'), self.t('The download stopped. Resume to continue; if it stops again, export the report and use "Report a problem".',
+                active.get('reason'), self.t('The download stopped. Choose "Resume" to continue; if it stops again, export the report and choose "Report a problem".',
                                              '下载中断。请点击“继续”；如再次中断，请导出报告，再点击“提交问题”并附上报告。'))
         return dict(ready=ready, checking=checking, total_bytes=total, enough_disk=enough, busy=busy, install=active, failure=failure,
                     downloaded_bytes=active.get('done', 0), title=self.t(*NAMES['text']),
@@ -1862,7 +1902,10 @@ class Session:
         self.update_waiting = bool(busy)
         if busy is not False:
             return
-        from .launcher_update import DownloadedLauncherUnavailable, handoff, launch_download
+        from .launcher_update import (DownloadedLauncherUnavailable, LauncherStartBlocked, START_RETRY_WAITS, handoff,
+                                      launch_download)
+        if time.monotonic() < self.update_start_retry_at:
+            return  # Security software may still be examining the new file: tick tries again after the wait.
         self.persist()
         try:
             handoff(row['candidate'], self.updater.root, self.update_source,
@@ -1872,9 +1915,20 @@ class Session:
             self.error = ''
             self.updater.run('download', row['candidate'])
             return
+        except LauncherStartBlocked as error:
+            if error.retryable and self.update_start_failures < len(START_RETRY_WAITS):
+                self.update_start_retry_at = time.monotonic() + START_RETRY_WAITS[self.update_start_failures]
+                self.update_start_failures += 1
+                self.update_intent = 'launcher'  # tick comes back here once the wait is over
+                return
+            self.update_start_failures, self.update_start_retry_at = 0, 0.
+            self.update_blocked_path = str(error.path)
+            self.update_intent = None
+            raise
         except Exception:
             self.update_intent = None
             raise
+        self.update_start_failures, self.update_start_retry_at, self.update_blocked_path = 0, 0., ''
         self.update_restarting = True
         self._write_bridge_status(force=True)
         self.closing = True
@@ -2939,6 +2993,9 @@ class Session:
                 if line.startswith(MISMATCH_PATH + ': ') and line[len(MISMATCH_PATH) + 2:]:
                     failure['path'] = line[len(MISMATCH_PATH) + 2:]
                     break
+        if failure.get('kind') == 'update-start-blocked' and self.update_blocked_path:
+            # The card names the folder the user can start the new launcher from; copied details stay redacted.
+            failure['path'] = str(Path(self.update_blocked_path).parent)
         if failure.get('kind') in ('permission', 'engine-folder-denied') and row.get('error') and row.get('denied'):
             from .denied_access import card_text
             # The card shows the detail instead of the action, so the action goes under the location.
@@ -2969,7 +3026,8 @@ class Session:
             cleanup['error'] = self.both(lambda zh: display_launcher_error(cleanup['error'], zh=zh))
         elif cleanup.get('status') == 'error':
             cleanup['message'] = self.t(*CLEANUP_FAILURES.get(cleanup.get('reason'), CLEANUP_FAILURES['failed']))
-        model_upgrade = dict(self.upgrade.state, busy=self.upgrade.busy)
+        # A video running now (the last queue reading of our ComfyUI): the switch waits for it, and the page says so only then.
+        model_upgrade = dict(self.upgrade.state, busy=self.upgrade.busy, video_running=self.queue_state is True)
         if alias_failure(model_upgrade.get('error', '')):
             model_upgrade['error'] = self.both(lambda zh: display_launcher_error(model_upgrade['error'], zh=zh))
         archive_offer = (self.archives_deleting_offer if self.archives_busy else

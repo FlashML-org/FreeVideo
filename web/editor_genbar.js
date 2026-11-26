@@ -72,7 +72,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
     note.setAttribute('role', 'status'); note.hidden = true;
     const input = el('textarea', 'fv-ed-description'); input.rows = 1; input.value = text;
     const description = el('div', 'fv-ed-description-box'); description.append(input);
-    const generate = el('button', 'fv-ed-generate'), cancel = el('button', null, t('Cancel', '取消')), resume = el('button', null, t('Continue', '继续'));
+    const generate = el('button', 'fv-ed-generate'), cancel = el('button', 'fv-ed-cancel', t('Cancel', '取消')), resume = el('button', null, t('Continue', '继续'));
     input.dataset.fvGuide = 'editor-describe'; input.dataset.tourId = 'segment-prompt'; generate.dataset.fvGuide = 'editor-generate';
     for (const button of [generate, cancel, resume]) button.type = 'button';
     // The press keeps one width while its estimate arrives: the verb on top, the time under it (the separator is
@@ -117,7 +117,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
             else if (quality) effortControl.setEstimate(stepsText(quality.baseSteps, quality.twoPass, quality.refineSteps));
         },
         levels: actions.effortLevels?.() || undefined}) : null;
-    if (effortControl) loadEffortSheet();
+    if (effortControl) { loadEffortSheet(); effortControl.growInto(effortControl.element); }   // wider than its 280 px for long level names
     let stopPass = null, stopEffort = null;
     if (passMenu) {
         const toggle = el('summary'); toggle.setAttribute('aria-label', t('Sampling', '采样')); toggle.append(el('span', 'fv-chevron'));
@@ -222,7 +222,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         if (disposed) return;
         say(text || '', false, where);
     };
-    const references = actions.references ? createEditorReferences({t, source: actions.references.source, size: actions.references.size, seconds: actions.references.seconds, error: value => actions.error(value, null, sayAtRefs), notify: sayAtRefs}) : null;
+    const references = actions.references ? createEditorReferences({t, source: actions.references.source, size: actions.references.size, seconds: actions.references.seconds, error: (value, step = 'upload') => actions.error(value, null, sayAtRefs, 'references-' + step), notify: sayAtRefs}) : null;
     if (references) { description.before(references.element); tray.append(refNotice); }
     // A field that comes or goes beside the description (the reference pictures before it, the duration after it) grows
     // or shrinks over 150 ms, together with its gap, so the description box narrows or widens smoothly instead of
@@ -638,7 +638,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
             if (!previewSelection && actions.selectionHeld?.()) { await actions.unhold(); render(); return; }
             if (actions.confirmStop && !await actions.confirmStop(cancel)) return;
             await actions.cancel();
-        } catch (value) { actions.error(value); }
+        } catch (value) { actions.error(value, null, undefined, 'cancel'); }
     };
     resume.onclick = () => actions.resume().catch(value => actions.error(value, 'generate'));
     // Words written for the picture are not words for the music, and the other way round: moving between the two

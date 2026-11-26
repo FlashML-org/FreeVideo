@@ -519,10 +519,12 @@ class Service:
         try:
             return call(*args, **kwargs), None
         except image_pack.PackError as error:
-            from ..failure_details import image_pack_error_code, image_pack_failure
+            from ..failure_details import image_pack_error_code, image_pack_failure, image_pack_write_details
             code = image_pack_error_code(error)
+            write = image_pack_write_details(error)
             return None, dict(state='failed', done=0, total=0, bytes_per_second=0, reason=code,
-                              message_en=image_pack_failure(code)['detail'], message_zh=image_pack_failure(code, zh=True)['detail'])
+                              message_en=image_pack_failure(code, write=write)['detail'],
+                              message_zh=image_pack_failure(code, zh=True, write=write)['detail'])
 
     def info(self):
         engine_root, machine = self.installation()
@@ -706,8 +708,8 @@ class Service:
             # What it waits for, in the page's own words: a video, a picture, or another task on the card.
             row['reason'] = value.get('reason') or 'busy_engine'
         if value['state'] == 'failed':
-            row.update(reason=value.get('reason'), message_en=image_pack_failure(value.get('reason'))['detail'],
-                       message_zh=image_pack_failure(value.get('reason'), zh=True)['detail'])
+            row.update(reason=value.get('reason'), message_en=image_pack_failure(value.get('reason'), write=value.get('write'))['detail'],
+                       message_zh=image_pack_failure(value.get('reason'), zh=True, write=value.get('write'))['detail'])
             if value.get('report_id'):
                 row['report_id'] = value['report_id']
         return row
@@ -3111,10 +3113,11 @@ def register():
             return web.json_response(dict(error='setup_required'), status=400)
         except image_pack.PackError as error:
             # Never an empty 500: the reason and the next step, in both languages.
-            from ..failure_details import image_pack_error_code, image_pack_failure
+            from ..failure_details import image_pack_error_code, image_pack_failure, image_pack_write_details
             code = image_pack_error_code(error)
-            return web.json_response(dict(error=code, message_en=image_pack_failure(code)['detail'],
-                                          message_zh=image_pack_failure(code, zh=True)['detail']), status=409)
+            write = image_pack_write_details(error)
+            return web.json_response(dict(error=code, message_en=image_pack_failure(code, write=write)['detail'],
+                                          message_zh=image_pack_failure(code, zh=True, write=write)['detail']), status=409)
         except Exception:
             # A damaged model folder or pack record must not turn into a plain-text 500 that blocks every later action.
             logging.getLogger(__name__).exception('image info failed')

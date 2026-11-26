@@ -304,10 +304,9 @@ fv_install_python() (
     if [[ "$fv_network" != official ]]; then
         if [[ -n "${UV_PYTHON_INSTALL_MIRROR:-}" ]]; then sources=("$UV_PYTHON_INSTALL_MIRROR" "${sources[@]}"); fi
         if [[ -n "${FREEVIDEO_GITHUB_MIRROR:-}" ]]; then sources+=("${FREEVIDEO_GITHUB_MIRROR%/}/astral-sh/python-build-standalone/releases/download"); fi
-        # The public npmmirror copy of the release files (the same SHA-256 uv pins);
-        # the GitHub mirror below refuses these files, so it is tried last.
+        # The public npmmirror copy of the release files (the same SHA-256 uv pins). The
+        # GitHub mirror (ghfast) refuses these files (403), so it is not a Python source.
         sources+=(https://registry.npmmirror.com/-/binary/python-build-standalone)
-        sources+=(https://ghfast.top/https://github.com/astral-sh/python-build-standalone/releases/download)
     fi
     export UV_PYTHON_INSTALL_DIR="$FREEVIDEO_BOOTSTRAP_ROOT/python" UV_CACHE_DIR="$FREEVIDEO_BOOTSTRAP_ROOT/cache"
     # Keep these defaults and the notice in sync with network.py (CPU tests).

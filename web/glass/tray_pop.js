@@ -22,6 +22,14 @@ function place(tray) {
     const chip = (tray.closest('dialog') || document).querySelector(`.fvs-chip[aria-controls="${tray.id}"]`);
     if (!chip?.getClientRects().length) return;
     tray.fvPopBefore?.();
+    // Where the tray is drawn in the column's flow (the three-column studio), it is not a window: it takes the height of
+    // what it holds and the column scrolls; a window's height limit would let its lower part spill over the next section.
+    if (getComputedStyle(tray).position === 'static') {
+        for (const name of ['maxHeight', 'left', 'top']) tray.style[name] = '';
+        delete tray.dataset.side;
+        tray.fvPopAfter?.();
+        return;
+    }
     placePop(chip, tray);
     tray.fvPopAfter?.();
     // The window grows out of its button: from the button's side of it.

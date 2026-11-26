@@ -288,9 +288,10 @@ class FreeVideoGenerate(io.ComfyNode):
         if not refine_from and not upscale_from:
             validate_steps(base_steps, refine_steps, two_pass)
         from .background_compile import COMPILE
-        # Returns once the idle compile released the GPU and the engine lease.
-        COMPILE.stop(final=True)
         from . import video_warm
+        # Returns once the idle compile released the GPU and the engine lease; a lease the warm-up holds is not waited
+        # for, as the warm-up is stopped just below.
+        COMPILE.stop(final=True, lease_held=video_warm.lease_held)
         # A warm-up for this video gives the lease back; the worker and the encoder it placed stay for the video.
         video_warm.stop()
         from .comfy_media import continued, export

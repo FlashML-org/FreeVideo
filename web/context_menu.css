@@ -55,7 +55,8 @@
 @media (prefers-reduced-motion: reduce) { :root .fv-cm .fv-cm-item { transition: none; } }
 @media (forced-colors: active) { :root .fv-cm .fv-cm-item.is-active { outline: 2px solid Highlight; } }
 
-/* A layer of the command layer (createLayer): a modal dialog above every view, glass g3, a light dim behind.
+/* A layer of the command layer (createLayer): a modal dialog above every view, g3's edge and shadow on an opaque ground
+   (below), a light dim behind.
    The browser's own dialog box (border, padding, centring, colours) is taken back first. */
 dialog.fv-layer {
   position: fixed; inset: auto; left: 50%; top: max(var(--fv-sp-64, 64px), 12vh); translate: -50% 0; margin: 0; padding: 0; box-sizing: border-box;
@@ -68,6 +69,9 @@ dialog.fv-layer {
 dialog.fv-layer:not([open]) { display: none; }
 dialog.fv-layer::backdrop { background: rgb(6 8 12 / .36); }
 :root[data-theme=light] dialog.fv-layer::backdrop { background: rgb(40 48 64 / .18); }
+/* A layer is long copy over whatever is playing: its glass let a bright video show through as a coloured glow. Opaque in
+   every look, the ground it already had with glass off; edge and shadow stay. */
+dialog.fv-layer.fv-glass.fv-glass { background: rgb(var(--fv-solid3)); -webkit-backdrop-filter: none; backdrop-filter: none; }
 dialog.fv-layer :is(input, textarea) { -webkit-user-select: text; user-select: text; }
 dialog.fv-layer :focus-visible { outline: 2px solid var(--fv-accent-ink, #66b6ff); outline-offset: 2px; }
 dialog.fv-layer input:focus-visible { outline: none; }
@@ -82,3 +86,19 @@ dialog.fv-layer input:focus-visible { outline: none; }
 }
 .fv-layer-icon:hover { background: var(--fv-ctl-hover, rgb(255 255 255 / .11)); color: var(--fv-fg, #f3f5f8); }
 .fv-layer-icon:active { background: var(--fv-accent-soft, rgb(27 148 252 / .16)); transition-duration: 0s; }
+/* A tab row with more past an end (fadeEnds in context_menu.js): that end fades out over 32 px; the row's 1 px rule
+   along the bottom stays whole. 32 px: a row cut between two tabs ends in the last tab's own 12 px of padding and the
+   4 px gap, so a 16 px fade fell on empty space and could not be seen; 32 px reaches into that tab's words. */
+[data-fv-fade] { --fv-fade-rule: linear-gradient(#000 0 0) bottom / 100% 1px no-repeat; }
+[data-fv-fade=end] {
+  -webkit-mask: linear-gradient(to right, #000 calc(100% - 32px), transparent), var(--fv-fade-rule);
+  mask: linear-gradient(to right, #000 calc(100% - 32px), transparent), var(--fv-fade-rule);
+}
+[data-fv-fade=start] {
+  -webkit-mask: linear-gradient(to right, transparent, #000 32px), var(--fv-fade-rule);
+  mask: linear-gradient(to right, transparent, #000 32px), var(--fv-fade-rule);
+}
+[data-fv-fade=both] {
+  -webkit-mask: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent), var(--fv-fade-rule);
+  mask: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent), var(--fv-fade-rule);
+}

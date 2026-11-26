@@ -684,13 +684,16 @@ def plan(args, *, local_progress=None, stage=None):
         # An unreadable version is left to the later checks instead of blocking setup.
         major = re.match(r'\d+', driver)
         cuda_api = snapshot.get('cuda_driver_api_version')
-        if cuda_api < 13000 if cuda_api is not None else (major and int(major.group()) < 580):
+        compatibility = hardware.cuda_compatibility()
+        # A card below the hardware floor is the reason, and a driver update cannot help it: only that is said (its own line
+        # names the driver too). An unknown capability keeps the driver line, as an old driver can be why it is unknown.
+        below_floor = compatibility['status'] == 'CUDA_ARCH_UNSUPPORTED'
+        if not below_floor and (cuda_api < 13000 if cuda_api is not None else (major and int(major.group()) < 580)):
             # The card names the graphics card too; brackets would end its pattern early.
             model = re.sub(r'[()\r\n]', '', str(snapshot['selected_gpu'].get('name') or '')).strip()
             # The CUDA fallback reads no driver version; leave it out instead of printing a gap.
             errors.append('NVIDIA driver%s%s is older than 580, the minimum for the CUDA 13 encoder; update the driver first.'
                           % (' ' + driver if driver else '', ' (%s)' % model if model else ''))
-        compatibility = hardware.cuda_compatibility()
         if compatibility['error']:
             errors.append(compatibility['error'])
         snapshot['cuda_compatibility'] = compatibility
@@ -1935,6 +1938,7 @@ class Installer:
              (encoder_after, 'encoder-source'), ('environment:unified' if self.layout == 'unified' else 'environment:encoder',))
         if self.system == 'Windows':
             task('windows-check', lambda: self.command('windows-runtime-check', [python, '-c',
+                'from freevideo_engine.vc_runtime import require_in_child; require_in_child(); '
                 'import torch,triton,safetensors,comfy_kitchen,comfy_aimdo; '
                 'assert torch.cuda.is_available(), "CUDA unavailable; check NVIDIA driver and Windows DLL errors above"; '
                 'print("Windows runtime imports passed; GPU kernel probes follow")']), ('runtime',), ('environment:' + name,))
@@ -2068,27 +2072,47 @@ class Installer:
 
     def packages(self, label, args, family='pypi', *, wait_busy=True):
         from .failure_details import file_in_use
-        for wait in (*ENVIRONMENT_BUSY_WAITS, None):
+        from . import windows_blocked
+        tries = 0
+        while True:
             try:
                 with self.download_notice('download-patient-' + label) as notice:
                     return network.package_command(self.network, family,
                         lambda env, source: self.command(label if source == 'official' else label + '-' + source, args, env=env),
                         self.env, notice=notice)
             except RuntimeError as error:
-                # Security software or an indexer can hold a file uv has just
-                # written or is about to run (the build environment's Python).
-                # No other download source helps; the file is free again shortly.
-                if wait is None or not wait_busy or not file_in_use(error) or self.cancel.is_set():
+                if not wait_busy:
                     raise
-                self.ui.write('A file is in use by another program; trying again in %d s.\n' % wait)
+                # Security software or an indexer can hold a file uv has just
+                # written or is about to run (the build environment's Python),
+                # or still be examining a file it refused uv.
+                # No other download source helps; the file is free again shortly.
+                blocked = windows_blocked.package_blocked(str(error)) if self.system == 'Windows' else None
+                waits = (ENVIRONMENT_BUSY_WAITS if file_in_use(error) else
+                         windows_blocked.RETRY_WAITS if blocked and blocked[0] in windows_blocked.RETRYABLE else ())
+                if tries >= len(waits) or self.cancel.is_set():
+                    if blocked:
+                        # The launcher shows the blocked-file card, not "choose a folder you can write to":
+                        # the folder is FreeVideo's own, and uv has just written to it.
+                        raise windows_blocked.blocked_failure(blocked, error) from error
+                    raise
+                wait = waits[tries]
+                tries += 1
+                if file_in_use(error):
+                    self.ui.write('A file is in use by another program; trying again in %d s.\n' % wait)
+                else:
+                    self.ui.write('Windows did not let setup write a file of %s (Windows error %d). Trying again in %d s.\n'
+                                  % (blocked[1] or 'a package', blocked[0], wait))
                 if self.cancel.wait(wait):
                     raise
 
     def python_sources(self, names):
-        """The GitHub mirror refuses the Python runtime files, so it is tried after a mirror that serves them."""
+        """The GitHub mirror (ghfast) refuses the Python runtime files (403), so it is not a Python source: GitHub,
+        then the public mirror that serves them (freevideo.ps1 keeps the same order)."""
+        names = [n for n in names if n != 'ghfast']
         if self.network.get('mode') == 'official':
             return names
-        return [*[n for n in names if n != 'ghfast'], *network.PYTHON_MIRRORS, *[n for n in names if n == 'ghfast']]
+        return [*names, *network.PYTHON_MIRRORS]
 
     def python_request(self):
         """What uv is asked for: the version, or on Windows on Arm the aarch64 build of it."""
@@ -2132,16 +2156,35 @@ class Installer:
                                                network.source_url('github', source, self.env) + '/astral-sh/python-build-standalone/releases/download')
             return self.command('python-' + source + '-' + route,
                                 [uv, 'python', 'install', *isolation, self.python_request()], env=env)
-        try:
-            with self.download_notice('download-patient-python') as notice:
-                return network.download_command(self.network, 'github', attempt, self.env, category='python',
-                                                extra_sources=['user-python'] if custom else [], notice=notice,
-                                                reorder=self.python_sources)
-        except network.PackageSourcesError as error:
-            failure = RuntimeError('Python download failed on every route; see retained logs'
-                                   + network.sources_text(error.attempts))
-            failure.package_attempts = error.attempts
-            raise failure from error
+        from . import windows_blocked
+        for wait in (*windows_blocked.RETRY_WAITS, None):
+            try:
+                with self.download_notice('download-patient-python') as notice:
+                    return network.download_command(self.network, 'github', attempt, self.env, category='python',
+                                                    extra_sources=['user-python'] if custom else [], notice=notice,
+                                                    reorder=self.python_sources)
+            except network.PackageSourcesError as error:
+                # A file Windows blocked leads, whichever source it came from.
+                blocked = next(filter(None, (windows_blocked.unpack_blocked(str(row.get('detail', '')))
+                                             for row in error.attempts)), None)
+                failure = RuntimeError((windows_blocked.python_file_message(*blocked) + '\n' if blocked else '')
+                                       + 'Python download failed on every route; see retained logs'
+                                       + network.sources_text(error.attempts))
+                failure.package_attempts = error.attempts
+                raise failure from error
+            except RuntimeError as error:
+                # The download arrived but Windows did not let uv write one of its files: security software
+                # still examining it, or another program holding it, may let go shortly. Another source brings
+                # the same file to the same folder, so the same download is tried again (as freevideo.ps1 does).
+                blocked = windows_blocked.unpack_blocked(str(error))
+                if not blocked:
+                    raise
+                if wait is None or blocked[0] not in windows_blocked.RETRYABLE or self.cancel.is_set():
+                    raise RuntimeError(windows_blocked.python_file_message(*blocked) + '\n' + str(error)) from error
+                self.ui.write('Windows did not let setup write %s (Windows error %d). Trying again in %d s.\n'
+                              % (blocked[1], blocked[0], wait))
+                if self.cancel.wait(wait):
+                    raise
 
     def install_sage_optional(self, uv, python):
         """Sage2 is an optional speed-up: where FreeVideo's own compiler builds it, a failure leaves it out."""
@@ -2675,7 +2718,7 @@ class Prefetcher:
 
     def run(self):
         out = self.run_dir / 'prefetch.json'
-        self.ui.phase('Download the faster model', 1, 2)
+        self.ui.phase('Download the new model', 1, 2)
         self.command('models', [self.pythons['engine'], '-m', 'freevideo_engine.provision',
                                 '--plan', self.run_dir / 'plan.json', '--prefetch', '--out', out])
         result = json.loads(out.read_text(encoding='utf-8'))

@@ -884,6 +884,22 @@ def installation_root(source=None, environ=None):
     return Path(plain(resolved(root)))
 
 
+def engine_model_root(source=None, environ=None):
+    """The model folder the engine process reads (paths.installed_model_root under FREEVIDEO_HOME=installation_root).
+
+    ComfyUI started without the launcher has no FREEVIDEO_HOME, so the installation is the one comfyui.json names;
+    code in the ComfyUI process that reads or writes the engine's models resolves the folder here, not with paths.
+    """
+    environ = os.environ if environ is None else environ
+    if environ.get('FREEVIDEO_MODEL_ROOT'):
+        return Path(environ['FREEVIDEO_MODEL_ROOT']).expanduser()
+    root = installation_root(source, environ)
+    try:
+        return Path(json.loads((io_path(root) / 'machine.json').read_text(encoding='utf-8'))['model_root']).expanduser()
+    except (OSError, ValueError, KeyError, TypeError):
+        return root / 'models'
+
+
 @plain_errors
 def installation(source=None, environ=None):
     from .comfy_launcher_api import repair_hint
@@ -1281,6 +1297,16 @@ def argument(arguments, flag, default=None):
     return arguments[arguments.index(flag) + 1] if flag in arguments else default
 
 
+def work_upscale_media(run, video):
+    """The media of a finished video's 1.5x upscale (its own sound, work_upscale.media) and the generate arguments
+    that carry it: media.json holds the rows as a request gives them, which the engine reads back and checks
+    against the row it computes itself, as on the command line."""
+    from .work_upscale import media, request, source
+    value = media(None, source(video))
+    save(Path(run) / 'media.json', request(value))
+    return value, ['--media', str(Path(run) / 'media.json'), '--upscale-from', str(video)]
+
+
 def upscale_frames(upscale_from, output_directory, *, source=None, environ=None, progress=None, interrupted=None,
                    release_models=None, comfy_metadata=None):
     """A finished 24 fps video made a new work at the 4K size by frame_upscale: its own description, seed and length,
@@ -1464,14 +1490,14 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
         # its frames as the first pass and its own sound used as is (work_upscale).
         if upscale or preview or continue_from is not None:
             raise ValueError('An upscale of a finished video is a request of its own')
-        from .work_upscale import FACTOR, size as upscaled_size, work_request
+        from .work_upscale import PLAN, size as upscaled_size, work_request
         work = work_request(output_directory, upscale_from)
         saved = work[0].parent / 'prompt.txt'
         prompt = saved.read_text(encoding='utf-8') if saved.is_file() else ''
         allow_empty_prompt = allow_empty_prompt or not prompt.strip()
         width, height = upscaled_size(work[1]['geometry']['width'], work[1]['geometry']['height'])
         seconds, seed = work[1]['geometry']['seconds'], work[1]['seed']
-        two_pass, upscale_factor, base_steps, refine_steps, step_cache = True, FACTOR, 8, 3, None
+        two_pass, upscale_factor, base_steps, refine_steps, step_cache = (PLAN[k] for k in ('two_pass', 'upscale_factor', 'base_steps', 'refine_steps', 'step_cache'))
         frames, first_frame_reference, voice_reference, hide_tail = None, False, False, False
     staged = bool(preview or upscale or work)
     from .refine_schedule import UPSCALE
@@ -1488,8 +1514,6 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                               allow_empty_prompt=allow_empty_prompt)
     source = Path(source or source_root()).resolve()
     root, machine = installation(source, environ)
-    if fast_mode is not None and machine.get('device_backend') == 'mps':
-        raise ValueError('The fastest mode is not available on Mac')
     continuation = None
 
     def check_ending():
@@ -1536,6 +1560,8 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
     environment = engine_environment(root, source, environ)
     environment.update(FREEVIDEO_HOME=str(root), PYTHONPATH=str(source), PYTHONUNBUFFERED='1',
                        PYTHONUTF8='1', PYTHONIOENCODING='utf-8', NO_COLOR='1', FREEVIDEO_UI_EVENTS='1')
+    # The GPU monitor counts this process's other children (prompt model, pictures, music) as FreeVideo's own work.
+    environment['FREEVIDEO_HOST_PID'] = str(os.getpid())
     for key in ('FREEVIDEO_RUNTIME_LOCK_FD', 'FREEVIDEO_RUNTIME_LOCK_HANDLE'):
         environment.pop(key, None)
     # No attention, placement or capacity override: managed CLI uses the
@@ -1561,8 +1587,9 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
     if step_cache is not None:
         command += ['--step-cache', step_cache]
     if fast_mode is not None:
-        # The folder the engine process resolves (paths.installed_model_root). Before queueing, so a missing file is named at once.
-        fast_tier.files(environment.get('FREEVIDEO_MODEL_ROOT') or machine['model_root'])
+        # The folder the engine process resolves, as the page's download does (fast_pack.model_folder). Before queueing, so a
+        # missing file is named at once.
+        fast_tier.files(engine_model_root(source, environment))
         command += ['--fast-mode', fast_mode]
     if two_pass and upscale_factor != 2:
         command += ['--upscale-factor', '%g' % upscale_factor]
@@ -1675,10 +1702,8 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                 extra['conditioning'] = argument(arguments, '--conditioning')
         elif work:
             # The video's own sound, used as is: it sets the length and is copied into the result.
-            from .work_upscale import media as work_media, source as work_source
-            extra['media'] = work_media(None, work_source(work[0]))
-            save(run / 'media.json', extra['media'])
-            command += ['--media', str(run / 'media.json'), '--upscale-from', str(work[0])]
+            extra['media'], arguments = work_upscale_media(run, work[0])
+            command += arguments
             state['command'] = command
         elif export_inputs:
             send_progress({'label': 'Retaining and checking input media', 'timing_phase': 'encoding'})

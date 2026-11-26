@@ -167,7 +167,7 @@ export function historyPanel({pictureURL, thumbURL = pictureURL, queue = null, o
     const title = el('h2', 'fv-iv-panel-title', t('Creations', '作品')), count = el('span', 'fv-iv-count');
     const sortBtn = button('fv-iv-icon-btn', {iconName: 'sort'});
     const selectBtn = button('fv-iv-icon-btn', {iconName: 'select', name: t('Select', '选择'), use: t('Pick several to compare or delete', '选几张来对比或删除')});
-    const collapse = button('fv-iv-icon-btn fv-iv-collapse', {iconName: 'panelR', name: t('Hide creations', '收起作品栏'), use: t('More room for the image', '给画面腾出空间')});
+    const collapse = button('fv-iv-icon-btn fv-iv-collapse', {iconName: 'panelR', name: t('Hide creations', '收起作品栏'), use: t('More room for the picture', '给画面腾出空间')});
     head.append(title, count, el('span', 'fv-iv-grow'), collapse);
     const searchRow = el('label', 'fv-iv-search'); const query = el('input'); query.type = 'search'; query.placeholder = t('Search prompts', '搜索提示词');
     tip(query, t('Search', '搜索'), t('Find images by their prompt', '按提示词查找图片'), `${mod}+F`); searchRow.append(icon('search'), query);

@@ -9,7 +9,7 @@ import {createAudioPreview, isOriginalSound} from './editor_audio.js';
 import {previewSpeed, speedAudioFrame, separateSpeedAudio} from './editor_speed.js';
 import {sourceFrame, percent} from './editor_speed_model.js';
 import {applyTip} from './editor_tracks_tips.js';
-import {createPlayBar} from './fv_player.js';
+import {attach as attachPlayer} from './glass/player_bar.js';
 import {setAttr, setData, setDisabled, setHidden, setText} from './dom_quiet.js';
 const el = (tag, cls) => { const e = document.createElement(tag); if (cls) e.className = cls; return e; };
 export function audioSeconds(clip, sourceFrame) {
@@ -430,7 +430,7 @@ export function createEditorPlayer(host, transport, {state, sources, api, t, err
     }
     const pictureLayout = record => JSON.stringify([record.width, record.height, record.tracks, record.replacements]);
     let previewBar = null;
-    function clearPreview() { if (preview) { previewBar?.destroy(); previewBar = null; preview.onended = null; preview.pause(); preview.removeAttribute('src'); preview.load(); preview.remove(); preview = null; } previewSize = previewProject = null; setHidden(closePreview, true); }
+    function clearPreview() { if (preview) { previewBar?.detach(); previewBar = null; preview.onended = null; preview.pause(); preview.removeAttribute('src'); preview.load(); preview.remove(); preview = null; } previewSize = previewProject = null; setHidden(closePreview, true); }
     closePreview.onclick = () => { clearPreview(); render(); };
     function play() {
         if (disposed || playing || playButton.disabled) return;
@@ -528,7 +528,7 @@ export function createEditorPlayer(host, transport, {state, sources, api, t, err
             else if (!metadata.video) previewSize = previousSize;
             previewProject = pictureLayout(state.record);
             preview.onended = () => { clearPreview(); render(); };
-            preview.src = mediaURL(api, metadata.video || metadata.audio); frame.append(preview); previewBar = createPlayBar(preview, t); previewBar.bar.classList.add('fv-player-over'); frame.append(previewBar.bar); closePreview.hidden = false; render(); preview.play().catch(() => {});
+            preview.src = mediaURL(api, metadata.video || metadata.audio); frame.append(preview); previewBar = attachPlayer(preview, frame, {t, click: true}); previewBar.element.classList.add('fv-player-over', 'fv-player-on-dark'); closePreview.hidden = false; render(); preview.play().catch(() => {});
         },
         dispose() { disposed = true; playing = false; centring?.disconnect(); opening?.disconnect(); if (typeof window !== 'undefined') window.removeEventListener?.('resize', centre); chainRequest?.abort(); removeChains(); cancelAnimationFrame(raf); unsubscribe(); stopPictureEdit(); clearPreview(); audioPreview.dispose();
             allMedia().forEach(media => { media.pause(); media.onloadedmetadata = media.onerror = null; media.removeAttribute('src'); delete media.dataset.source; media.load(); media.remove(); }); playButton.onclick = closePreview.onclick = null; picturePreview.dispose(); pictureGuide.dispose(); audioContext?.close().catch(() => {}); },

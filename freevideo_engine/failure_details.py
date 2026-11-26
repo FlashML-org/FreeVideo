@@ -133,12 +133,177 @@ def shared_mismatch_text(*, zh=False, portable=None):
     return (SHARED_MISMATCH_PORTABLE if portable else SHARED_MISMATCH_ELSEWHERE)[bool(zh)]
 
 
-def image_pack_failure(code, *, zh=False, file=None):
+# A write that failed (write_failed), by the step it failed in (image_pack._step).
+IMAGE_PACK_WRITE_STEPS = {
+    'folder': ('FreeVideo could not write to the image model folder', 'FreeVideo 未能写入图像模型文件夹'),
+    'check': ('FreeVideo could not read or record an image model file while checking it', 'FreeVideo 检查图像模型文件时未能读取或记录该文件'),
+    'download': ('The image model download could not be saved', '图像模型的下载内容未能保存'),
+    'replace': ('The old model file could not be renamed, so the new file could not be put in place', '旧模型文件未能改名，新文件因此未能放入'),
+    'record': ('FreeVideo could not save a record file', 'FreeVideo 未能保存记录文件'),
+    'remove': ('An image model file could not be deleted', '一个图像模型文件未能删除'),
+    None: ('An image model file could not be written', '一个图像模型文件未能写入'),
+}
+# What the system answered, in words of our own: the system's text is in its own language.
+IMAGE_PACK_WRITE_ANSWERS = {
+    'denied': ('access denied', '拒绝访问'),
+    'permission': ('permission denied', '权限不足'),
+    'read-only': ('the disk is read-only', '磁盘为只读'),
+    'in-use': ('the file is in use by another program', '文件被其他程序占用'),
+    'threat': ('security software reported the file as a threat', '安全软件将文件报为威胁'),
+    'policy': ('a policy on this computer does not allow it', '这台电脑上的策略不允许'),
+    'smart-app-control': ('Smart App Control in Windows stopped it', 'Windows 的“智能应用控制”阻止了写入'),
+}
+IMAGE_PACK_WRITE_ERRNOS = {'EACCES': 'permission', 'EPERM': 'permission', 'EROFS': 'read-only', 'EBUSY': 'in-use', 'ETXTBSY': 'in-use'}
+# The next step by what the system answered; the Windows reasons are windows_blocked's ('permission' is the errno of
+# Linux and macOS, where no security software is the usual cause).
+IMAGE_PACK_WRITE_NEXT = {
+    'denied': ('Check that this account can write to the model folder, or allow the FreeVideo folder in the security software '
+               '(for Windows Security: Virus & threat protection → Manage ransomware protection → Controlled folder access), then try again.',
+               '请确认当前账户可以写入模型文件夹，或在安全软件中允许 FreeVideo 所在的文件夹（Windows 安全中心：病毒和威胁防护 → '
+               '管理勒索软件防护 → 受控文件夹访问），然后重试。'),
+    'permission': ('Check that this account can write to the model folder (its owner and permissions), then try again.',
+                   '请确认当前账户可以写入模型文件夹（检查文件夹的所有者和权限）后重试。'),
+    'read-only': ('Make the disk or folder writable, or connect it again if it is a removable or network drive, then try again.',
+                  '请把磁盘或文件夹改为可写入；如果是移动硬盘或网络盘，请重新连接后重试。'),
+    'in-use': ('Close the programs that may be using it (for example an antivirus scan), or restart the computer, then try again.',
+               '请关闭可能正在使用它的程序（例如杀毒软件扫描），或重新启动电脑，然后重试。'),
+    'threat': ('Allow the file in the security software (for Windows Security: Virus & threat protection → Protection history, '
+               'select the entry and allow it) and add the FreeVideo folder to the exclusions, then try again.',
+               '请在安全软件中允许这个文件（Windows 安全中心：病毒和威胁防护 → 保护历史记录，选中这条记录后允许），'
+               '并把 FreeVideo 所在的文件夹加入排除项，然后重试。'),
+    'policy': ('Ask the administrator of this computer to allow the FreeVideo folder, then try again.',
+               '请联系这台电脑的管理员允许 FreeVideo 所在的文件夹，然后重试。'),
+    'smart-app-control': ('Search Windows for "Smart App Control", or open Windows Security → App & browser control → Smart App '
+                          'Control settings, then try again.',
+                          '在 Windows 中搜索“智能应用控制”，或打开“Windows 安全中心 → 应用和浏览器控制 → 智能应用控制设置”，然后重试。'),
+    None: ('Close programs that may be using the model files (for example an antivirus scan), check that the model folder can be '
+           'written to, then try again.',
+           '请关闭可能正在使用模型文件的程序（例如杀毒软件扫描），确认模型文件夹可以写入，然后重试。'),
+}
+# FreeVideo's own check after curl 23 made a file it could not delete again (image_pack._write_answer).
+IMAGE_PACK_WRITE_CHECK_LEFT = ('While checking, FreeVideo left an empty file, {file}; you can delete it.',
+                               'FreeVideo 检查时留下了一个空文件 {file}，可以删除。')
+# What is kept, where a retry continues from it.
+IMAGE_PACK_WRITE_KEPT = {
+    'download': ('The downloaded part is kept, and the download resumes from it when you try again.',
+                 '已下载的部分会保留，重试时从中断处继续下载。'),
+    'kept_new': ('The original file is unchanged and the new file is kept beside it, so trying again only renames it; '
+                 'nothing is downloaded again.',
+                 '原文件没有改动，新文件保留在旁边；重试时只需完成改名，无需重新下载。'),
+}
+
+
+def _write_chain(error):
+    seen = set()
+    while error is not None and id(error) not in seen:
+        seen.add(id(error))
+        yield error
+        error = error.__cause__ or (None if error.__suppress_context__ else error.__context__)
+
+
+def image_pack_write_details(error, folders=()):
+    """What a write_failed carries for the card and the report line: the step (image_pack._step or the PackError's
+    own), the file and what the system answered (errno name, Windows error, curl's exit). The file is named from the
+    first of folders it lies in (fixed names only: image_gen/..., text_encoders/...), else with its folders removed as
+    every report removes them. Nothing else of the error is kept."""
+    step = path = curl = kept_new = check_left = None
+    answer = None
+    for item in _write_chain(error):
+        details = getattr(item, 'details', None) or {}
+        step = step or details.get('step') or getattr(item, 'pack_step', None)
+        path = path or details.get('path')
+        curl = curl or details.get('curl')
+        kept_new = kept_new or details.get('kept_new')
+        check_left = check_left or details.get('check_left')
+        if answer is None and isinstance(item, OSError) and (item.errno is not None or getattr(item, 'winerror', None)):
+            answer = item
+    if answer is not None:
+        path = path or answer.filename
+    value = {}
+    if step in IMAGE_PACK_WRITE_STEPS:
+        value['step'] = step
+    if path:
+        value['file'] = _pack_file_name(str(path), folders)
+    winerror = getattr(answer, 'winerror', None)
+    if type(winerror) is int:
+        value['winerror'] = winerror    # Windows' own code; the errno Python maps it to says less (5 and 32 are both EACCES)
+    elif answer is not None and answer.errno in errno.errorcode:
+        value['errno'] = errno.errorcode[answer.errno]
+    if type(curl) is int:
+        value['curl'] = curl
+    if kept_new:
+        value['kept_new'] = True
+    if check_left:
+        value['check_left'] = _pack_file_name(str(check_left), folders)
+    return value
+
+
+def _pack_file_name(path, folders):
+    from .long_paths import plain
+    # monitoring.save writes <name>.<8 random characters>.tmp and renames it: the file it was saving is the one named.
+    path = re.sub(r'\.[a-z0-9_]{8}\.tmp$', '', path)
+    for folder in folders:
+        try:
+            inside = Path(plain(path)).relative_to(Path(plain(str(folder))))
+        except (ValueError, TypeError, OSError):
+            continue
+        if inside.parts and '..' not in inside.parts:
+            return inside.as_posix()
+    return redacted_launcher_error(path)
+
+
+def _write_answer_kind(write):
+    from . import windows_blocked
+    if write.get('winerror') in windows_blocked.REASONS:
+        return windows_blocked.REASONS[write['winerror']]
+    return IMAGE_PACK_WRITE_ERRNOS.get(write.get('errno'))
+
+
+def image_pack_write_known(write):
+    """The system's answer names a cause with a next step of its own (access, a read-only disk, a file in use, the
+    Windows reasons): the card then offers the report export only, not "Report a problem"."""
+    return bool(write) and _write_answer_kind(write) is not None
+
+
+def image_pack_write_text(write, *, zh=False):
+    """The card for a write_failed that knows its step, file or answer; None leaves the general sentence."""
+    if not write:
+        return None
+    language = 1 if zh else 0
+    kind = _write_answer_kind(write)
+    said = []
+    if write.get('file'):
+        said.append(('文件：' if zh else 'file: ') + write['file'])
+    answer = []
+    if kind:
+        answer.append(IMAGE_PACK_WRITE_ANSWERS[kind][language])
+    if write.get('errno'):
+        answer.append(write['errno'])
+    if write.get('winerror') is not None:
+        answer.append(('Windows 错误 %d' if zh else 'Windows error %d') % write['winerror'])
+    if not answer and write.get('curl'):
+        answer.append(('curl 错误 %d' if zh else 'curl error %d') % write['curl'])
+    if answer:
+        said.append(('原因：' if zh else 'reason: ') + (('，' if zh else ', ').join(answer)))
+    text = IMAGE_PACK_WRITE_STEPS[write.get('step')][language]
+    if said:
+        text += ('（%s）' % '；'.join(said)) if zh else ' (%s)' % '; '.join(said)
+    text += '。' if zh else '.'
+    kept = IMAGE_PACK_WRITE_KEPT['kept_new' if write.get('kept_new') else write.get('step')] \
+        if write.get('kept_new') or write.get('step') in IMAGE_PACK_WRITE_KEPT else None
+    parts = [text, IMAGE_PACK_WRITE_NEXT[kind][language]] + ([kept[language]] if kept else [])
+    if write.get('check_left'):
+        parts.append(IMAGE_PACK_WRITE_CHECK_LEFT[language].replace('{file}', write['check_left']))
+    return ('' if zh else ' ').join(parts)
+
+
+def image_pack_failure(code, *, zh=False, file=None, write=None):
     if code == 'shared_mismatch':
         return dict(kind='image-pack', title=('图像模型操作未完成' if zh else 'Image model operation stopped'),
                     detail=shared_mismatch_text(zh=zh), action='')
+    detail = image_pack_write_text(write, zh=zh) if code == 'write_failed' else None
     return dict(kind='image-pack', title=('图像模型操作未完成' if zh else 'Image model operation stopped'),
-                detail=IMAGE_PACK_FAILURES.get(code, IMAGE_PACK_FAILURES['failed'])[bool(zh)], action='')
+                detail=detail or IMAGE_PACK_FAILURES.get(code, IMAGE_PACK_FAILURES['failed'])[bool(zh)], action='')
 
 
 def sampling_table_details(value):
@@ -155,10 +320,11 @@ def sampling_table_details(value):
                     and type(details['missing_bytes']) is int and details['missing_bytes'] > 0
                     and type(details['decimal_sizes']) is bool and isinstance(details['available'], list)
                     and all(type(i) is int and 0 <= i <= 3 for i in details['available'])
-                    and details.get('step_cache') in STEP_CACHES and details.get('scale', 2) in SCALES):
+                    and details.get('step_cache') in STEP_CACHES and details.get('scale', 2) in SCALES
+                    and details.get('upscale', True) is True):
                 return {key: details[key] for key in
                         ('base_steps', 'two_pass', 'refine_steps', 'missing_bytes', 'available', 'decimal_sizes', 'step_cache',
-                         'scale')
+                         'scale', 'upscale')
                         if key in details}
         except (ValueError, KeyError, TypeError):
             pass
@@ -171,6 +337,15 @@ def sampling_table_failure(value, *, zh=False):
         return None
     from .launcher_copy import size_text
     language = 1 if zh else 0
+    if details.get('upscale'):
+        # An upscale of a finished video: not a quality level, and no other level would do instead.
+        size = size_text(details['missing_bytes'], details['decimal_sizes'])
+        if zh:
+            return dict(kind='sampling-table', title='放大所需的采样缓存尚未下载',
+                        detail='第一次放大需要先下载采样缓存（约 %s），这次未能完成。请检查网络后再放大一次。' % size, action='')
+        return dict(kind='sampling-table', title='Sampling caches for upscaling are not downloaded yet',
+                    detail='The first upscale needs to download sampling caches (about %s), and the download did not finish this '
+                           'time. Check the network connection, then upscale again.' % size, action='')
     # Tables follow the step count: 16 steps is high, 20 steps is max.
     level = table_level(details['base_steps'], details['two_pass'], details['refine_steps'],
                         details.get('step_cache'), on_mac(), details.get('scale', 2))
@@ -300,7 +475,7 @@ def setup_command_failure(label, log, exit_code, report=None):
             probes = report.get('kernel_probes', [])
             probes = [row for row in probes if isinstance(row, dict)] if isinstance(probes, list) else []
             linear_ok = any(row.get('backend') == 'linear' and row.get('status') == 'complete' for row in probes)
-            attention_ok = any(row.get('backend') not in (None, 'linear') and row.get('status') == 'complete' for row in probes)
+            attention_ok = any(row.get('backend') not in (None, 'linear', 'linear-int8') and row.get('status') == 'complete' for row in probes)
             if probes and not linear_ok:
                 lines.append('Required linear kernel did not pass.')
             if probes and not attention_ok:
@@ -407,6 +582,12 @@ PLACE_RULES = (
      ('This location cannot be used', '无法使用这个位置'),
      ('Windows does not let this account create folders in this location. Choose a folder in the user folder or on another drive.',
       'Windows 不允许当前账户在这个位置创建文件夹。请改选用户文件夹或其他硬盘上的文件夹。')),
+    (r'Windows does not accept a folder name in the installation folder path', 'folder-name-invalid',
+     ('A folder name in the install location is not valid', '安装位置中有无效的文件夹名'),
+     ('A folder name in the install location contains a character Windows does not allow, is a name Windows '
+      'reserves for devices, or ends with a space or a dot. Rename it or choose another folder.',
+      '安装位置中有一个文件夹名含有 Windows 不允许的字符、是 Windows 为设备保留的名称，或以空格或句点结尾。'
+      '请修改该名称，或另选一个文件夹。')),
     (r'Missing or incomplete bundled file: ', 'missing-file',
      ('The installation files are incomplete', '安装文件不完整'),
      ('Extract the whole package again, and check that security software has not removed any files.',
@@ -503,6 +684,39 @@ ENVIRONMENT_FILES = 'Files are missing or changed in these ComfyUI environment p
 
 # Windows refused to load a file (Smart App Control or another application control policy).
 APPLICATION_CONTROL = r'WinError 4551|Application Control policy has blocked'
+
+# vc_runtime.require() before the first import of torch, or torch's own error when c10.dll (which needs only the
+# Visual C++ runtime beside Windows' own libraries) could not be loaded or did not initialize (Windows error 126 or 1114).
+# The codes are matched, not the text, which Windows writes in the system language.
+VC_RUNTIME = (r'\[VC_RUNTIME_UNAVAILABLE (?:x64|ARM64)\]'
+              r'|\[WinError (?:126|1114)\][^"]{0,400}?Error loading "[^"\r\n]*[\\/]c10\.dll"')
+VC_RUNTIME_TITLE = ('The Microsoft Visual C++ runtime is missing or not working', 'Microsoft Visual C++ 运行库缺失或无法使用')
+# The card's "Download runtime" key opens Microsoft's page (Main.qml, vcRuntimeLink); the person installs it there.
+VC_RUNTIME_NEXT = ('Choose "Download runtime", download and install the {arch} version from the Microsoft page, then choose "Retry installation".',
+                   '请点击“下载运行库”，在微软页面下载并安装 {arch} 版本，然后点击“重试安装”。')
+VC_RUNTIME_FILES = ('Not loaded: %s', '未能加载：%s')
+VC_RUNTIME_FILE = ('%s (Windows error %s)', '%s（Windows 错误 %s）')
+VC_RUNTIME_JOIN = ('; ', '；')
+# The one package that fits every FreeVideo computer. Microsoft's page: "The X64
+# Redistributable package contains both ARM64 and X64 binaries. This package makes it easy to install required Visual C++
+# ARM64 binaries when the X64 Redistributable is installed on an ARM64 device." So on Windows on Arm it serves a native ARM64
+# Python and an x64 one alike, and the card never has to guess which one failed; the ARM64 package has no x64 files.
+VC_RUNTIME_PACKAGE = 'x64'
+
+
+def vc_runtime_failure(text, zh=False):
+    """The card for a Visual C++ runtime that did not load, or None. Its detail names the files and Windows' codes."""
+    marked = re.search(r'\[VC_RUNTIME_UNAVAILABLE (x64|ARM64)\]: ([^\r\n]+)', text)
+    if marked:
+        rows = re.findall(r'([\w.-]+\.dll) \(Windows error (\w+)\)', marked.group(2))
+    else:
+        found = re.search(r'\[WinError (126|1114)\][^"]{0,400}?Error loading "[^"\r\n]*[\\/](c10\.dll)"', text)
+        if not found:
+            return None
+        rows = [(found.group(2), found.group(1))]
+    files = VC_RUNTIME_JOIN[zh].join(VC_RUNTIME_FILE[zh] % row for row in rows)
+    return dict(title=VC_RUNTIME_TITLE[zh], detail=VC_RUNTIME_FILES[zh] % files + '\n' + VC_RUNTIME_NEXT[zh].format(arch=VC_RUNTIME_PACKAGE),
+                action='', kind='vc-runtime')
 
 
 # Error lines ComfyUI may end on, as a sentence for the card; any other line stays in the technical details.
@@ -767,6 +981,24 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
                    'Open FreeVideo from its desktop shortcut, or download the latest launcher.')
         return dict(title='启动器比已安装的 FreeVideo 旧' if zh else 'This launcher is older than the installed FreeVideo',
                     detail=detail, action='', kind='older-launcher', manual=True)
+    blocked = re.search(r'\[UPDATE_START_BLOCKED ([\w-]+)\]', summary)
+    if blocked:
+        # launcher_update.LauncherStartBlocked: the update is downloaded and this launcher keeps working; a folder
+        # someone can write to has nothing to do with it. The session adds the folder of the downloaded launcher.
+        cause = UPDATE_START_BLOCKED.get(blocked[1], UPDATE_START_BLOCKED['denied'])
+        # reason: the card leads with the releases page when waiting or starting the same file again will not help.
+        then = UPDATE_START_BLOCKED_NEXT_RELEASE_FIRST if blocked[1] in UPDATE_START_REFUSED else UPDATE_START_BLOCKED_NEXT
+        return dict(title=UPDATE_START_BLOCKED_TITLE[zh], detail=cause[zh] + '\n' + then[zh],
+                    action='', kind='update-start-blocked', manual=True,
+                    reason=blocked[1] if blocked[1] in UPDATE_START_BLOCKED else 'denied')
+    python_blocked = re.search(r'\[PYTHON_FILE_BLOCKED ([\w-]+)\]', text)
+    if python_blocked:
+        # windows_blocked.python_file_message (setup) and freevideo.ps1: Windows did not let setup write a Python file,
+        # already tried again after short waits. Leads before the step's other lines (a timed-out source, a 403).
+        reason = python_blocked[1] if python_blocked[1] in PYTHON_FILE_BLOCKED else 'denied'
+        title = PYTHON_FILE_BLOCKED_TITLE.get(reason, PYTHON_FILE_BLOCKED_TITLE['default'])
+        return dict(title=title[zh], detail=PYTHON_FILE_BLOCKED[reason][zh] + '\n' + PYTHON_FILE_BLOCKED_NEXT[reason][zh],
+                    action='', kind='python-file-blocked', reason=reason)
     from .model_repair import MISMATCH, MISMATCH_PATH, FAILURE_TITLE, FAILURE, CHANGED_TITLE, CHANGED_REPAIR
     mismatches = re.findall(MISMATCH + r': ([^\r\n]+)', text)
     bundled_models = re.findall(r'Bundled (?:file failed verification|model file has incorrect size): (models/[^\r\n]+)', summary)
@@ -847,7 +1079,7 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
                     detail=_startup_cause(summary, zh) + '\n' + action, action='', kind='comfy-startup')
     # A file Windows refused to load is no GPU result: the app-control guidance below applies, and the
     # code the engine adds to the message makes it recognisable in any system language.
-    if ('Failed step: kernels (' in summary and not re.search(APPLICATION_CONTROL, summary)
+    if ('Failed step: kernels (' in summary and not re.search(APPLICATION_CONTROL, summary) and not re.search(VC_RUNTIME, text)
             and not re.search(ORPHANED_PYTHON, summary)):
         detail = summary[summary.index('Failed step: kernels ('):]
         detail = detail.partition('\nRetained step log:')[0]
@@ -936,7 +1168,7 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
           '安装已停止，以免打断正在生成的视频。视频生成完成后，请点击“重试安装”，并再次确认安装。已完成的步骤会保留。')),
         # Moving the engine's editable install to the new source failed and was undone (engine_binding).
         (r'Editable install failed for|Editable verification failed for|The engine.s uv is missing', 'update-unfinished',
-         ('The update did not finish', '这次更新没有完成'),
+         ('The update did not finish', '这次更新未完成'),
          ('FreeVideo is back on the previous version and works as before. Click Repair to reinstall the engine environment and update again; the details give the reason.',
           'FreeVideo 已退回原来的版本，可以照常使用。点“修复”可以再次更新，原因在详情里。')),
         (r'Git \d+\.\d+ is too old to download the pinned sources', 'git-version',
@@ -958,7 +1190,7 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
           '请只导入模型包并继续安装，FreeVideo 会自动下载 Mac 的运行环境。')),
         # Both carry ComfyUI's log, whose unrelated lines must not pick the card.
         (r'ComfyUI is still starting or could not load FreeVideo', 'comfy-nodes',
-         ('ComfyUI did not load FreeVideo', 'ComfyUI 没有加载 FreeVideo'),
+         ('ComfyUI did not load FreeVideo', 'ComfyUI 未加载 FreeVideo'),
          ('Click Retry. If it stops here again, the ComfyUI log in the details shows why the FreeVideo nodes did not load; export the report to send it.',
           '请点“重试”。仍然停在这里时，可以导出报告。')),
         (r'ComfyUI is already running\. Restart it once', 'comfy-restart',
@@ -1051,7 +1283,7 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
          ('Switching the download source or connection mode gives the same result. Choose "Export report", then "Report a problem", and attach the report.',
           '更换下载源或连接方式后结果相同。请先点击“导出报告”，再点击“提交问题”并附上报告。')),
         (r'Model download paused|unexpected-transfer-size|ConnectionError|ConnectTimeout|ReadTimeout|HTTP probe failed|Could not resolve host|SSL certificate|Every download source failed|All Git sources failed|All package sources failed|Python download failed on every route', 'download',
-         ('Download interrupted', '下载中断了'),
+         ('Download interrupted', '下载已中断'),
          ('Check your network or change the source or connection mode in Settings → Downloads, then retry.', '检查网络，或在“设置 → 下载”中切换下载源、连接模式后重试。')),
         (r'FreeVideo cannot read its program files', 'unreadable-files',
          ('FreeVideo cannot read its own files', 'FreeVideo 读不到自己的程序文件'),
@@ -1134,6 +1366,9 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
             or re.search(r'\[CUDA_CAPABILITY_UNKNOWN\] Could not determine the CUDA architecture of (.+?) \(SM', text)
         if named and named.group(1) and BELOW_COMPUTE_FLOOR.search(named.group(1)):
             text += '\n[CUDA_ARCH_UNSUPPORTED] %s (SMunknown; compute capability unknown; driver unknown)' % named.group(1)
+    vc_runtime = vc_runtime_failure(text, zh)
+    if vc_runtime:
+        return vc_runtime
     for pattern, kind, title, action in rules:
         if re.search(pattern, text, re.I):
             if kind in WITHOUT_REPAIR and not can_repair:
@@ -1208,7 +1443,7 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
         # The internal step id never reaches the card; the exit code stays in the technical details.
         name = _step_name(step.group(1), zh)
         if name:
-            title = ('“%s”这一步没有完成' if zh else 'The step "%s" did not finish') % name
+            title = ('“%s”这一步未完成' if zh else 'The step "%s" did not finish') % name
         # The step's own line is internal. The last other error line is raw text, so it shows only
         # when it has a known sentence in this language; otherwise it stays in the technical details.
         other = [line for line in causes if not line.startswith(('Failed step:', 'Setup failed:'))]
@@ -1240,7 +1475,71 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
 
 # comfy_setup.inspection_failed: the first line of a failed check.
 INSPECTION_SUMMARY = r'Setup inspection failed(?: \([^()\r\n]*(?:\([^()\r\n]*\)[^()\r\n]*)*\))?'
-CHECK_UNFINISHED = ('The check did not finish.', '这次检查没有完成。')
+CHECK_UNFINISHED = ('The check did not finish.', '这次检查未完成。')
+# Windows did not let the downloaded launcher start (launcher_update.START_BLOCKED), by its reason.
+UPDATE_START_BLOCKED_TITLE = ('The new version could not start', '新版本未能启动')
+UPDATE_START_BLOCKED = {
+    'denied': ('Windows or security software stopped the downloaded launcher from starting. This version of FreeVideo keeps working.',
+               'Windows 或安全软件阻止了下载的启动器启动。当前版本的 FreeVideo 照常可用。'),
+    'in-use': ('Another program kept the downloaded launcher open, so it could not start. This version of FreeVideo keeps working.',
+               '下载的启动器被其他程序占用，未能启动。当前版本的 FreeVideo 照常可用。'),
+    'threat': ('Security software reported the downloaded launcher as a threat and stopped it. This version of FreeVideo keeps working.',
+               '安全软件把下载的启动器报为威胁并阻止了它。当前版本的 FreeVideo 照常可用。'),
+    'policy': ('A policy on this computer does not allow the downloaded launcher to start. This version of FreeVideo keeps working.',
+               '这台电脑上的策略不允许下载的启动器启动。当前版本的 FreeVideo 照常可用。'),
+    'smart-app-control': ('Smart App Control in Windows stopped the downloaded launcher. This version of FreeVideo keeps working.',
+                          'Windows 的“智能应用控制”阻止了下载的启动器。当前版本的 FreeVideo 照常可用。'),
+}
+UPDATE_START_BLOCKED_NEXT = ('Open the download location and start the new launcher by hand, or download the latest version from the releases page.',
+                             '请打开下载位置手动启动新启动器，或到发布页下载最新版本。')
+# A threat report, a policy or Smart App Control stops the same file again from that folder: the releases page comes first,
+# in the order of the card's buttons (Main.qml updateStartRefused).
+UPDATE_START_REFUSED = ('threat', 'policy', 'smart-app-control')
+UPDATE_START_BLOCKED_NEXT_RELEASE_FIRST = (
+    'Download the latest version from the releases page, or open the download location and start the new launcher by hand.',
+    '请到发布页下载最新版本，或打开下载位置手动启动新启动器。')
+# Windows did not let setup write a Python file (windows_blocked.PYTHON_FILE_MARKER), by its reason. Each reason has its
+# own next step: allowing the folder does not help a file in use, a policy or Smart App Control.
+# One card for a Python file and a package file such as a PyTorch DLL: it says "file", which is what the
+# security software's records name.
+PYTHON_FILE_BLOCKED_TITLE = {
+    'default': ('A file was blocked during setup', '安装中的文件被拦截'),
+    'in-use': ('A file was in use during setup', '安装中的文件被其他程序占用'),
+}
+PYTHON_FILE_BLOCKED = {
+    'denied': ('Security software or a Windows protection feature did not let setup write a file into the FreeVideo folder.',
+               '安全软件或 Windows 的保护功能不允许安装程序把文件写入 FreeVideo 所在的文件夹。'),
+    'in-use': ('Another program kept a file in the FreeVideo folder open, so setup could not write it.',
+               '其他程序占用了 FreeVideo 文件夹中的文件，安装程序无法写入。'),
+    'threat': ('Security software reported a file as a threat and stopped setup from writing it.',
+               '安全软件把一个文件报为威胁，阻止了安装程序写入。'),
+    'policy': ('A policy on this computer does not allow setup to write files into the FreeVideo folder.',
+               '这台电脑上的策略不允许安装程序把文件写入 FreeVideo 所在的文件夹。'),
+    'smart-app-control': ('Smart App Control in Windows stopped setup from writing a file.',
+                          'Windows 的“智能应用控制”阻止了安装程序写入文件。'),
+}
+# Windows Security's menu names as Microsoft's support pages give them (zh-CN: 病毒和威胁防护, 保护历史记录).
+PYTHON_FILE_BLOCKED_NEXT = {
+    'denied': ('Allow the FreeVideo folder in the security software (for Windows Security: Virus & threat protection → Manage '
+               'ransomware protection → Controlled folder access, and the exclusions list), then choose "Retry installation". '
+               'You can also install FreeVideo in another folder.',
+               '请在安全软件中允许 FreeVideo 所在的文件夹（Windows 安全中心：病毒和威胁防护 → 管理勒索软件防护 → 受控文件夹访问，'
+               '以及排除项），然后点击“重试安装”。也可以把 FreeVideo 安装到其他文件夹。'),
+    'threat': ('Allow the file in the security software (for Windows Security: Virus & threat protection → Protection history, '
+               'select the entry and allow it) and add the FreeVideo folder to the exclusions, then choose "Retry installation".',
+               '请在安全软件中允许这个文件（Windows 安全中心：病毒和威胁防护 → 保护历史记录，选中这条记录后允许），'
+               '并把 FreeVideo 所在的文件夹加入排除项，然后点击“重试安装”。'),
+    'in-use': ('Close the programs that may be using files in the FreeVideo folder, or restart the computer, then choose '
+               '"Retry installation".',
+               '请关闭可能正在使用 FreeVideo 文件夹中文件的程序，或重新启动电脑，然后点击“重试安装”。'),
+    'policy': ('Ask the administrator of this computer to allow the FreeVideo folder, or install FreeVideo in another folder, '
+               'then choose "Retry installation".',
+               '请联系这台电脑的管理员允许 FreeVideo 所在的文件夹，或把 FreeVideo 安装到其他文件夹，然后点击“重试安装”。'),
+    'smart-app-control': ('Search Windows for "Smart App Control", or open Windows Security → App & browser control → Smart '
+                          'App Control settings, then choose "Retry installation".',
+                          '在 Windows 中搜索“智能应用控制”，或打开“Windows 安全中心 → 应用和浏览器控制 → 智能应用控制设置”，'
+                          '然后点击“重试安装”。'),
+}
 # The way to send a failure to us, by the launcher's own button names (Main.qml: "Export report", "Report a problem").
 REPORT_STEP = ('If it fails again, select "Export report", then select "Report a problem" and attach the report.',
                '仍然失败时，请先点击“导出报告”，再点击“提交问题”并附上报告。')

@@ -29,7 +29,7 @@ export function createWorkColumn({works, info, queue, storeKey, onCollapse, onOp
     const infoPane = el('div', 'fv-iv-col-pane fv-iv-info-pane'); infoPane.append(info);
     queue.element.classList.add('fv-iv-col-pane');
     const rail = el('div', 'fv-iv-rail fv-iv-rail-right');
-    const railOpen = button('fv-iv-icon-btn', {iconName: 'panelR', name: t('Show creations', '展开作品栏'), use: t('Your images, newest first', '你的图片，最新在前')});
+    const railOpen = button('fv-iv-icon-btn', {iconName: 'panelR', name: t('Show creations', '展开作品栏'), use: t('Your images, newest first', '您的图片，最新在前')});
     const railThumbs = el('div', 'fv-iv-rail-thumbs');
     rail.append(railOpen, el('i', 'fv-iv-rail-sep'), railThumbs);
     let host = null, tab = readStore(storeKey, 'works');

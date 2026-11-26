@@ -103,9 +103,59 @@ def source_root():
     return None
 
 
+# Set by the ComfyUI custom-node entry (__init__.py) in the ComfyUI process only.
+_COMFY_NODE = False
+
+
+def comfy_node_process():
+    """Mark this process as ComfyUI with FreeVideo loaded as a node; see install_root."""
+    global _COMFY_NODE
+    _COMFY_NODE = True
+
+
+def _node_folder():
+    return Path(__file__).resolve().parents[1]
+
+
+# (node folder, comfyui.json identity) -> installation; the file is read again only once it changes.
+_SELECTED = [None, None]
+
+
+def _comfyui_installation():
+    """The installation comfyui.json beside this package selects, as comfy_bridge.installation_root reads it; None
+    without that file, with a damaged one, or when the folder it names is not there (the default applies then)."""
+    import stat
+    node = _node_folder()
+    try:
+        info = (node / 'comfyui.json').stat()
+    except OSError:
+        return None
+    if not stat.S_ISREG(info.st_mode):
+        return None
+    key = (node, info.st_mtime_ns, info.st_size, info.st_ino)
+    if _SELECTED[0] == key:
+        selected = _SELECTED[1]
+    else:
+        from .comfy_bridge import installation_root
+        try:
+            selected = installation_root(node, environ={})
+        except (OSError, ValueError, AttributeError, TypeError):
+            selected = None
+        _SELECTED[:] = [key, selected]
+    # Checked on every call, outside the cache: a folder removed or not yet made does not stay selected.
+    return selected if selected is not None and selected.is_dir() else None
+
+
 def install_root():
     if os.environ.get('FREEVIDEO_HOME'):
         return Path(os.environ['FREEVIDEO_HOME']).expanduser()
+    # ComfyUI started without the FreeVideo launcher has no FREEVIDEO_HOME. Its routes then read and write the installation
+    # the engine uses (the one comfyui.json names, read on each call so a folder bound in the setup panel applies at once),
+    # not the default folder below. Engine processes always receive FREEVIDEO_HOME.
+    if _COMFY_NODE:
+        selected = _comfyui_installation()
+        if selected is not None:
+            return selected
     source = source_root()
     if source is not None:
         return source
@@ -166,6 +216,26 @@ def residual_host_headroom(canvas=None):
         from .two_pass import placement_tokens
         rows = placement_tokens(canvas)
     return int(2**30 * max(1., rows / 72576))
+
+
+# Host memory of the placement that keeps attention outputs and the residual in host memory (attention_cpu_outputs with
+# residual_offload). Its locked buffers are one softmax output plane and one linear output plane (rows x 56 heads x 128, BF16
+# each) and the packed residual (rows x 5376, BF16), 39,424 bytes per row, and the working set around them grows a little with
+# the request too. The process's peak (PSS, as the RAM guard counts it) measured with this placement on one machine:
+#   72,576 rows  5.51 GiB   107,856 rows  7.14 GiB   143,136 rows  8.55 GiB   218,280 rows  11.48 GiB
+# (the last also 11.25 GiB on a Windows RTX 3060 12 GiB), a line of 2.66 GiB + 43,663 bytes per row within 0.1 GiB.
+# The flat estimates (2 GiB for the outputs, a residual allowance, a 4 GiB minimum) were calibrated on the 72,576-row request,
+# which completes with the planner's own minimum, and do not grow with the request: 218,280 rows were admitted with room for
+# about 5 GiB of the 11.5 GiB they hold and stopped after 66 minutes when the machine ran out of physical memory. So the
+# minimum grows from that request on at the measured rate.
+HOST_STAGING_CALIBRATED_ROWS = 72576
+HOST_STAGING_GROWTH_BYTES_PER_ROW = 43663
+
+
+def host_staging_growth(canvas):
+    """Host memory the offloaded-output placement needs beyond the minimum that holds for the calibration request."""
+    rows = sum(canvas.get(key, 0) for key in ('video_tokens', 'reference_video_tokens', 'reference_audio_tokens'))
+    return max(0, rows - HOST_STAGING_CALIBRATED_ROWS) * HOST_STAGING_GROWTH_BYTES_PER_ROW
 
 
 def weight_cache_headroom(*, system=None, streamed=False, cpu_outputs=True, canvas=None):

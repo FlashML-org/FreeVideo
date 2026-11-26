@@ -31,8 +31,9 @@
 @keyframes fv-effort-pop{50%{transform:scale(1.1)}}
 .fv-studio .fv-effort .fv-effort-rail:focus-visible,.fv-effort .fv-effort-rail:focus-visible{outline:none}
 .fv-effort-rail[data-keyboard]:focus-visible .fv-effort-track{outline:1.5px solid color-mix(in srgb,var(--fv-tone) 70%,transparent);outline-offset:3px}
+/* --fv-name-shift: how far a name at either end moves in to stay inside its frame (sampling_effort.js fitNames). */
 .fv-effort-names{position:relative;height:20px;margin-top:8px}
-.fv-studio .fv-effort .fv-effort-name,.fv-effort .fv-effort-name{position:absolute;top:0;left:calc(18px + (100% - 36px) * var(--fv-stop));transform:translateX(-50%);min-height:0;margin:0;padding:0 5px;border:0;border-radius:var(--fv-r-xs);background:none;box-shadow:none;color:var(--fv-muted,#969a9f);font:500 12px/1.6 var(--fv-font,system-ui);white-space:nowrap;cursor:pointer;transition:color .2s}
+.fv-studio .fv-effort .fv-effort-name,.fv-effort .fv-effort-name{position:absolute;top:0;left:calc(18px + (100% - 36px) * var(--fv-stop) + var(--fv-name-shift, 0px));transform:translateX(-50%);min-height:0;margin:0;padding:0 5px;border:0;border-radius:var(--fv-r-xs);background:none;box-shadow:none;color:var(--fv-muted,#969a9f);font:500 12px/1.6 var(--fv-font,system-ui);white-space:nowrap;cursor:pointer;transition:color .2s}
 .fv-studio .fv-effort .fv-effort-name:hover,.fv-effort .fv-effort-name:hover{color:var(--fv-ink,#eee);background:none}
 .fv-studio .fv-effort .fv-effort-name[data-active],.fv-effort .fv-effort-name[data-active]{color:var(--fv-tone);font-weight:600}
 .fv-effort[data-custom=true] .fv-effort-knob{background:var(--fv-card,#1e2024);box-shadow:inset 0 0 0 2px var(--fv-tone),0 1px 4px #0006}
@@ -40,6 +41,10 @@
 .fv-effort-custom[hidden]{display:none}
 .fv-effort[data-disabled=true]{opacity:.5}
 .fv-effort[data-disabled=true] .fv-effort-rail,.fv-effort[data-disabled=true] .fv-effort-name{cursor:default}
+/* A level this installation cannot use (its model is missing): greyed, never active; its tooltip says why. */
+.fv-studio .fv-effort .fv-effort-name[data-unavailable],.fv-effort .fv-effort-name[data-unavailable]{opacity:.45;cursor:not-allowed}
+.fv-studio .fv-effort .fv-effort-name[data-unavailable]:hover,.fv-effort .fv-effort-name[data-unavailable]:hover{color:var(--fv-muted,#969a9f)}
+.fv-effort-stop[data-unavailable]{opacity:.4}
 @media(prefers-reduced-motion:reduce){.fv-effort *{transition:none!important;animation:none!important}}
 
 .fv-two-pass-status{margin-left:auto;color:var(--fv-muted);font-size:11px;transition:opacity .2s}

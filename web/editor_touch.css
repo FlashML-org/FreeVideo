@@ -4,7 +4,6 @@
 @media (pointer:coarse) and (min-width:481px){
  /* Rows: play row 48, tool row 52. */
  .fv-studio.fv-editor,.fv-studio.fv-editor[data-hx-voice]{grid-template-rows:auto var(--fv-ed-project-h) minmax(96px,1fr) 48px var(--fv-ed-generation-row) 52px var(--fv-ed-timeline-h)}
- .fv-ed-notice-stack{bottom:calc(var(--fv-ed-timeline-h) + 52px + var(--fv-ed-generation-row) + 56px)}
  .fv-ed-gen-tray{bottom:calc(100% + 56px)}
 
  /* Tool row: undo, redo, split, delete, snapping and zoom stay; editor_toolbar_more.js moves the rest behind ⋯. */
@@ -40,6 +39,9 @@
 @media (pointer:coarse) and (min-width:681px){
  .fv-studio.fv-editor .fv-ed-transport{grid-template-columns:minmax(max-content,1fr) auto minmax(max-content,1fr);padding:0 8px}
  .fv-studio.fv-editor .fv-ed-transport-center{translate:none}
+ /* The notice stack floats above the taller rows only here: up to 680 px it sits in the grid under the picture
+    (editor.css), where this lift would push it off the page. */
+ .fv-ed-notice-stack{bottom:calc(var(--fv-ed-timeline-h) + 52px + var(--fv-ed-generation-row) + 56px)}
 }
 @media (pointer:coarse) and (min-width:481px){
 
@@ -94,4 +96,16 @@
  .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-head[data-open=true]>[class$=-track-controls]{display:flex;position:absolute;left:calc(100% + 4px);top:50%;transform:translateY(-50%);gap:0;padding:2px;background:var(--fv-card);border:1px solid var(--fv-border);border-radius:var(--fv-r-sm)}
  .fv-studio.fv-editor .fv-ed-track-view .fv-ed-track-heads[data-hx-open]{z-index:9}
  .fv-studio.fv-editor .fv-ed-track-view :is(.fv-ed-audio-track-switch,.fv-ed-text-track-controls button){width:44px;min-width:44px;height:44px;min-height:44px}
+}
+
+/* The close key (×) of the editor's notices and of the Windows on Arm dubbing sentence: drawn 24 px, taken by a finger
+   within 44 × 44 around it (an area nothing draws, so the notice keeps its size and look). Undo and "Report a problem"
+   beside it keep their own taps. Every touch screen, phones too: nothing moves. */
+@media (pointer:coarse){
+ .fv-editor .fv-ed-notice-close{position:relative}
+ .fv-editor .fv-ed-notice-close::before{content:'';position:absolute;inset:-10px}
+ /* On a phone the dubbing sentence floats just above the play row: its area reaches further up than down, clear of
+    Full screen and Save frame below it. */
+ .fv-editor .fv-ed-voice-install .fv-ed-notice-close::before{inset:-13px -10px -7px}
+ .fv-editor :is(.fv-ed-notice-action,.fv-ed-notice .fv-issue-button){position:relative;z-index:1}
 }

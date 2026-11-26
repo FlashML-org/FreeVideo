@@ -19,8 +19,7 @@ import { createMetaStore, promptOfRow } from './image_view_history.js';
 import { attach as attachPlayerBar } from './glass/player_bar.js';
 import { hasPictureThumbnail, mediaQueue, pictureThumbnailURL, watchCards } from './work_media.js';
 import { zoomable } from './picture_zoom.js';
-import { createUpscaleOffer, upscaleChoices, UPSCALE_USE, UPSCALE_QUEUED, UPSCALE_FAILED } from './upscale_offer.js';
-import { capabilityPoints } from './chain_support.js';
+import { createUpscaleOffer, upscaleChoices, admittedFrames as admittedUpscaleFrames, UPSCALE_USE, UPSCALE_QUEUED, UPSCALE_FAILED } from './upscale_offer.js';
 import { LANGUAGE } from './i18n.js';
 
 const style = document.createElement('link');
@@ -349,42 +348,17 @@ async function workflowBackfill(collection, t, before = null) {
     actions.append(run, later);
 }
 
-// The room's own player: one play button, a scrubber, the time and the sound, in the same glass as the room.
+// The details' player: the big Play in the middle while it is stopped, and the shared play bar (glass/player_bar.js) over
+// the bottom of the picture, with volume and speed.
 function playerControls(video, t) {
-    video.controls = false;
-    const time = seconds => Number.isFinite(seconds) ? `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}` : '0:00';
-    const big = button('', () => toggle(), 'fv-library-player-big'); big.append(line('play'));
-    const bar = el('div', null, 'fv-library-player');
-    const play = button('', () => toggle(), 'fv-library-player-button');
-    const seek = el('input'); seek.type = 'range'; seek.min = '0'; seek.max = '1000'; seek.step = '1'; seek.value = '0'; seek.className = 'fv-library-player-seek';
-    seek.setAttribute('aria-label', t('Position', '播放位置'));
-    tip(seek, t('Position', '播放位置'), t('Drag to move through the video', '拖动跳到视频的任意位置'), '← →');
-    const clock = el('span', '0:00 / 0:00', 'fv-library-player-time');
-    const sound = button('', () => { video.muted = !video.muted; }, 'fv-library-player-button');
-    bar.append(play, seek, clock, sound);
-    const toggle = () => { if (video.paused || video.ended) video.play().catch(() => {}); else video.pause(); };
-    const sync = () => {
-        const paused = video.paused || video.ended;
-        play.replaceChildren(line(paused ? 'play' : 'pause'));
-        const name = paused ? t('Play', '播放') : t('Pause', '暂停');
-        play.setAttribute('aria-label', name); tip(play, name, paused ? t('Play the video', '播放视频') : t('Pause the video', '暂停视频'), 'Space');
-        big.hidden = !paused; big.setAttribute('aria-label', t('Play', '播放')); tip(big, t('Play', '播放'), t('Play the video', '播放视频'), 'Space');
-        sound.replaceChildren(line(video.muted ? 'muted' : 'sound'));
-        const soundName = video.muted ? t('Sound off', '已静音') : t('Sound on', '有声音');
-        sound.setAttribute('aria-label', soundName); tip(sound, soundName, video.muted ? t('Turn the sound on', '打开声音') : t('Mute the sound', '关闭声音'), 'M');
-        bar.dataset.paused = String(paused);
-    };
-    const progress = () => {
-        const duration = video.duration;
-        clock.textContent = `${time(video.currentTime)} / ${time(duration)}`;
-        if (document.activeElement !== seek) seek.value = String(Number.isFinite(duration) && duration > 0 ? Math.round(video.currentTime / duration * 1000) : 0);
-    };
-    seek.oninput = () => { if (Number.isFinite(video.duration)) video.currentTime = video.duration * Number(seek.value) / 1000; progress(); };
-    for (const type of ['play', 'pause', 'ended', 'volumechange']) video.addEventListener(type, sync);
-    for (const type of ['timeupdate', 'loadedmetadata', 'durationchange', 'seeked']) video.addEventListener(type, progress);
-    video.addEventListener('click', toggle);
-    sync(); progress();
-    return [big, bar];
+    const big = button('', () => { video.play().catch(() => {}); }, 'fv-library-player-big'); big.append(line('play'));
+    big.setAttribute('aria-label', t('Play', '播放')); tip(big, t('Play', '播放'), t('Play the video', '播放视频'), 'Space');
+    const handle = attachPlayerBar(video, document.createDocumentFragment(), {t, click: true, volume: true, speed: true});
+    handle.element.classList.add('fv-library-player', 'fv-player-on-dark');
+    const sync = () => { big.hidden = !(video.paused || video.ended); };
+    for (const type of ['play', 'pause', 'ended']) video.addEventListener(type, sync);
+    sync();
+    return [big, handle.element];
 }
 
 // The view the room opens in: the open view dialog with the shared top bar, else none.
@@ -401,17 +375,10 @@ export function setDefaultUpscale(run) { defaultUpscale = typeof run === 'functi
 // ``upscaleWork`` makes a larger copy of a finished video; registered by the studio like the second pass.
 let defaultUpscaleWork = null;
 export function setDefaultUpscaleWork(run) { defaultUpscaleWork = typeof run === 'function' ? run : null; }
-// The longest single request at a size, as the planner admits it now; null when it cannot be told. The studio asks the
-// same for the result's "⋯".
-export async function admittedFrames(width, height) {
-    for (let tries = 0; tries < 5; tries++) {
-        const response = await api.fetchApi('/freevideo/capabilities?' + new URLSearchParams({width, height}));
-        if (!response.ok) return null;
-        const reply = await response.json();
-        if (reply?.status === 'computing') { await new Promise(done => setTimeout(done, 1000)); continue; }
-        return reply && (!reply.status || reply.status === 'ready') ? capabilityPoints(reply, {width, height}).maxRequestFrames : null;
-    }
-    return null;
+// The longest single upscale request at a size, as the planner admits it now (upscale_offer.admittedFrames); null when
+// it cannot be told. The studio asks the same for the result's "⋯".
+export function admittedFrames(width, height) {
+    return admittedUpscaleFrames(path => api.fetchApi(path), width, height);
 }
 // ``reuse`` is the creation panel's {now, apply}: given, Reuse settings fills that panel from a creation.
 export function openLibrary(t, options = {}) {
@@ -2212,7 +2179,7 @@ export function openLibrary(t, options = {}) {
     // The play bar under a stage video: the shared thin bar (glass/player_bar.js), as in the creation panel.
     function playBar(video) {
         const host = document.createDocumentFragment();
-        const handle = attachPlayerBar(video, host, {t});
+        const handle = attachPlayerBar(video, host, {t, volume: true, speed: true});   // full screen is the viewer's own key (F)
         handle.element.classList.add('fv-library-viewer-play', 'fv-player-on-dark');
         return handle.element;
     }
@@ -2532,7 +2499,7 @@ export function openLibrary(t, options = {}) {
         render();
     };
     window.addEventListener('freevideo-pictures-deleted', picturesGone);
-    dialog.addEventListener('cancel', event => { event.preventDefault(); cancelStep(); });
+    dialog.addEventListener('cancel', event => { if (event.target !== dialog) return; event.preventDefault(); cancelStep(); });
     function cancelStep() {
         if (tab === 'cast' && castRoom?.cancel()) { /* handled inside the cast shelf */ }
         else if (viewing === 'compare' || isFull() || (viewing != null && layout !== 'stage')) closeViewer();

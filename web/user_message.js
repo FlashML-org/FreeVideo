@@ -23,7 +23,7 @@ const statusOf = error => {
     return said ? Number(said[1]) : null;
 };
 
-export function userMessage(error, t, fallback = t('Did not finish. Try again.', '没有完成，请重试。')) {
+export function userMessage(error, t, fallback = t('Did not finish. Try again.', '未完成，请重试。')) {
     if (error == null || error === '') return fallback;
     const network = isNetworkTypeError(error) || error?.notEngineReply === true;
     // A recent console line from an extension is weighed only when this error is itself a failed request;

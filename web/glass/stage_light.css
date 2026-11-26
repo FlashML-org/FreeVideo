@@ -45,12 +45,10 @@ html:root[data-fv-light=on]:not([data-fv-polish=off]):not([data-fv-look=calm]):n
 @media (prefers-reduced-motion:reduce){:root{transition:none}html:root dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot)>.fv-look-light{transition:none}}
 
 /* ── 2. Glass on the windows that float over the work (look layer off) ───────────────────────────────────────── */
-/* One frosted ground for every small window and sheet: the raised fill at 86 % (92 % light), blurred and a little
-   saturated, so nothing behind it can be read; their own hairline edge and shadow. */
+/* One frosted ground for the panels that are still glass: the raised fill at 86 % (92 % light), blurred and a little
+   saturated, so nothing behind it can be read; their own hairline edge and shadow. The small windows and the trays keep
+   their own opaque ground (frame_picker.css, tray_pop.css, studio.css). */
 html:root:not([data-fv-polish=off]):not([data-fv-look=calm]):not([data-fv-lux]):not([data-glass=solid]):not(.lite) :is(
-    .fvp.fvp-pop,
-    dialog.fv-studio.fv-create .fvs-tray[open],
-    dialog.fv-studio.fv-create .fvs-tray[data-tray=media][open],
     dialog.fv-studio.fv-create .fvs-info-panel,
     .fv-tb-pop.fv-tb-act,
     .fv-notes){
@@ -58,9 +56,6 @@ html:root:not([data-fv-polish=off]):not([data-fv-look=calm]):not([data-fv-lux]):
   background:rgb(var(--fv-tint) / var(--fv-a3))!important;
   -webkit-backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%)!important;backdrop-filter:blur(var(--fv-glass-blur3,40px)) saturate(175%)!important}
 html:root[data-theme=light]:not([data-fv-polish=off]):not([data-fv-look=calm]):not([data-fv-lux]):not([data-glass=solid]):not(.lite) :is(
-    .fvp.fvp-pop,
-    dialog.fv-studio.fv-create .fvs-tray[open],
-    dialog.fv-studio.fv-create .fvs-tray[data-tray=media][open],
     dialog.fv-studio.fv-create .fvs-info-panel,
     .fv-tb-pop.fv-tb-act,
     .fv-notes){--fv-a3:.92}

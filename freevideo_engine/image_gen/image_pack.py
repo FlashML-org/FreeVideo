@@ -20,6 +20,7 @@ from pathlib import Path, PurePosixPath
 import re
 import signal
 import sys
+import tempfile
 import threading
 import time
 import traceback
@@ -29,7 +30,8 @@ from urllib.parse import urlsplit
 from .. import disk_space, model_repair, network, provision
 from ..locking import runtime_lock
 from ..monitoring import save
-from ..failure_details import Redactor, image_pack_busy_lock, image_pack_error_code, redacted_launcher_error
+from ..failure_details import (Redactor, image_pack_busy_lock, image_pack_error_code, image_pack_write_details,
+                               redacted_launcher_error)
 
 H3_TIERS = ('int8',)
 MOSS_GROUP = 'moss-image'
@@ -63,6 +65,18 @@ class PackError(Exception):
         super().__init__(reason)
         self.reason = reason
         self.details = details
+
+
+@contextmanager
+def _step(name):
+    """Names the step a write failed in: an OSError raised inside keeps the innermost step (failure_details
+    image_pack_write_details reads it for the card and the report line)."""
+    try:
+        yield
+    except OSError as error:
+        if getattr(error, 'pack_step', None) is None:
+            error.pack_step = name
+        raise
 
 
 class _GenerationPause(Exception):
@@ -675,7 +689,8 @@ def _lease(root, engine_root=None, destructive=False):
                 if destructive:
                     stack.enter_context(runtime_lock(engine / 'engine.lock', inherit=False))
                     stack.enter_context(runtime_lock(engine / 'launcher/host-setup.lock', inherit=False))
-            stack.enter_context(runtime_lock(folder / 'pack.lock', inherit=False))
+            with _step('folder'):
+                stack.enter_context(runtime_lock(folder / 'pack.lock', inherit=False))
             break
         except BlockingIOError as error:
             stack.close()
@@ -749,11 +764,13 @@ def _verify(folder, root, progress, check, full=False, *, group='image'):
             ledger.pop(str(path), None)
             if path.exists():
                 # A file shared with the video install is recorded too: repair may replace it only after this record.
-                model_repair.record(folder, path, row, before)
+                with _step('record'):
+                    model_repair.record(folder, path, row, before)
             todo.append(row)
         done += row['bytes']
     if json.dumps(ledger, sort_keys=True) != snapshot or not _path(folder, LEDGER).is_file():
-        save(_path(folder, LEDGER), ledger)
+        with _step('record'):
+            save(_path(folder, LEDGER), ledger)
     return ledger, todo
 
 
@@ -838,7 +855,62 @@ def _transfer(plan, row, path, progress, check, background=None, diagnostic=None
             reason = ('integrity_failed' if failures and failures[-1][0] in ('integrity-mismatch', 'response-size-exceeded')
                       else 'write_failed' if failures and failures[-1][0] == 'curl-23'
                       else 'offline' if offline else 'source_failed')
+            if reason == 'write_failed':
+                raise _download_write_failure(path, row['bytes'], error)
             raise PackError(reason) from error
+
+
+WRITE_CHECK_PREFIX = '.freevideo-write-check-'
+
+
+def _write_answer(partial):
+    """(answer, left): what the system answers when FreeVideo itself opens the download's partial file for writing
+    (or, without one, makes a new file beside it), None when it can; and the check's own file when it could be made
+    but not deleted again. That is no answer about the write: the write's reason stays, and the card names the file."""
+    from ..long_paths import io_path
+    left = None
+    try:
+        if os.path.lexists(partial):
+            with open(io_path(partial), 'ab'):
+                pass
+        else:
+            io_path(partial.parent).mkdir(parents=True, exist_ok=True)
+            for old in io_path(partial.parent).glob(WRITE_CHECK_PREFIX + '*'):
+                try:
+                    old.unlink()            # an earlier check's file that could not be deleted then
+                except OSError:
+                    pass
+            handle, name = tempfile.mkstemp(prefix=WRITE_CHECK_PREFIX, dir=io_path(partial.parent))
+            os.close(handle)
+            try:
+                os.unlink(name)
+            except OSError:
+                left = name
+    except OSError as answer:
+        return answer, None
+    return None, left
+
+
+def _download_write_failure(path, size, error):
+    """curl stopped because it could not write the download (exit 23), which names no cause. A full disk is said as
+    one; otherwise FreeVideo writes the same place itself, and what the system answers is the reason on the card. The
+    chain keeps curl's failure under that answer for the report."""
+    partial = path.with_suffix(path.suffix + '.partial')
+    try:
+        have = partial.stat().st_size if partial.is_file() else 0
+        free = disk_space.free_bytes(partial.parent)
+    except OSError:
+        have, free = 0, None
+    if free is not None and free < size - have:
+        failure = PackError('disk_space', needed_bytes=size - have, free_bytes=free)
+        failure.__cause__ = error
+        return failure
+    answer, left = _write_answer(partial)
+    failure = PackError('write_failed', step='download', path=str(partial), curl=23, **(dict(check_left=left) if left else {}))
+    if answer is not None:
+        answer.__cause__ = error
+    failure.__cause__ = answer or error
+    return failure
 
 
 def _swap_record(folder, path, approved=None):
@@ -884,7 +956,7 @@ def _swap_in(folder, path, staged, approved, prior):
     try:
         _swap_record(folder, path, approved)
     except PermissionError as error:
-        raise PackError('write_failed') from error
+        raise PackError('write_failed', step='record', path=error.filename or str(_path(folder, SWAPS)), kept_new=True) from error
     try:
         kept = model_repair.retain(folder, path, approved)
     except BaseException as error:
@@ -903,21 +975,53 @@ def _swap_in(folder, path, staged, approved, prior):
             except OSError:
                 pass
         if isinstance(error, PermissionError):
-            raise PackError('write_failed') from error
+            raise PackError('write_failed', step='replace', path=error.filename or str(path), kept_new=True) from error
         raise
     try:
         model_repair.rename_noreplace(staged, path)
-    except BaseException:
+    except BaseException as error:
         try:
             model_repair.restore(folder, path, kept, approved, prior)
             _swap_record(folder, path)
         except (OSError, ValueError):
             pass
+        if isinstance(error, PermissionError):
+            # Windows: another program or security software holds the new file. The original went back above.
+            raise PackError('write_failed', step='replace', path=error.filename or str(staged), kept_new=True) from error
         raise
     try:
         _swap_record(folder, path)
     except OSError:
         pass
+
+
+def _finish_swap(staged, path):
+    """The rename an earlier, interrupted swap left: the verified new file takes the empty place."""
+    try:
+        model_repair.rename_noreplace(staged, path)
+    except PermissionError as error:
+        raise PackError('write_failed', step='replace', path=error.filename or str(staged)) from error
+
+
+def _windows_retry(call, check):
+    """A swap Windows refused with a code the shared table tries again (windows_blocked: security software still
+    examining the file, another program holding it) is tried again after each of the table's waits. _swap_in leaves
+    the original in place and the verified new file beside it every time, so each try starts from the same state."""
+    from .. import windows_blocked
+    for wait in (*windows_blocked.RETRY_WAITS, None):
+        try:
+            return call()
+        except PackError as error:
+            code = getattr(error.__cause__, 'winerror', None)
+            if wait is None or error.reason != 'write_failed' or code not in windows_blocked.RETRYABLE:
+                raise
+        deadline = time.monotonic() + wait
+        while True:
+            check()
+            left = deadline - time.monotonic()
+            if left <= 0:
+                break
+            time.sleep(min(left, .25))
 
 
 def install(root=None, progress=None, check=None, *, engine_root=None, repair=False, _background=None, group='image', confirm=None):
@@ -946,7 +1050,8 @@ def install(root=None, progress=None, check=None, *, engine_root=None, repair=Fa
                         # is not left without its file. Only a swap that left its record is undone, and only in a
                         # repair (which holds the engine lease); a plain install never renames the user's files.
                         _put_back(folder, target(row, root))
-            ledger, todo = _verify(folder, root, progress, check, full=repair, group=group)
+            with _step('check'):
+                ledger, todo = _verify(folder, root, progress, check, full=repair, group=group)
             total = sum(r['bytes'] for r in todo)
             reserve = BACKGROUND_RESERVE if _background is not None else RESERVE
             # Each disk a file lands on must hold what lands there: the shared encoder goes to the video encoder
@@ -998,7 +1103,8 @@ def install(root=None, progress=None, check=None, *, engine_root=None, repair=Fa
             plan = _download_plan(engine_root)
             plan.update(quiet=True, resource_check=check)
             owned = _read(folder, OWNERSHIP)
-            _write_notice(folder, owned, group=group)
+            with _step('record'):
+                _write_notice(folder, owned, group=group)
             done = 0
             pending_prefixes = 0
             if _background is not None:
@@ -1034,9 +1140,11 @@ def install(root=None, progress=None, check=None, *, engine_root=None, repair=Fa
                         swap = (approved, model_repair.read(folder).get(str(path)))
                         download_to = staged
                     else:
-                        model_repair.retain(folder, path, approved)
+                        with _step('replace'):
+                            model_repair.retain(folder, path, approved)
                         owned.pop(row['file'], None)
-                        save(_path(folder, OWNERSHIP), owned)
+                        with _step('record'):
+                            save(_path(folder, OWNERSHIP), owned)
                 partial = _side(folder, row, root, '.partial')
                 if _background is not None and partial.is_file():
                     pending_prefixes -= min(row['bytes'], partial.stat().st_size)
@@ -1048,38 +1156,47 @@ def install(root=None, progress=None, check=None, *, engine_root=None, repair=Fa
                     transfer_check()
                 try:
                     try:
-                        _transfer(plan, row, download_to, moved, transfer_check, _background, progress)
+                        with _step('download'):
+                            _transfer(plan, row, download_to, moved, transfer_check, _background, progress)
                     except ValueError as error:
                         # download() refuses to overwrite a finished file that fails its check. A leftover <name>.replacing
                         # that does not hold the tested bytes is our own staging file: removed, then fetched again, once.
                         if download_to is not staged or not str(error).startswith('Existing file failed integrity check'):
                             raise
-                        staged.unlink()
-                        download_to = staged
-                        _transfer(plan, row, download_to, moved, transfer_check, _background, progress)
+                        with _step('download'):
+                            staged.unlink()
+                            download_to = staged
+                            _transfer(plan, row, download_to, moved, transfer_check, _background, progress)
                     if swap is not None:
-                        _swap_in(folder, path, staged, *swap)
+                        _windows_retry(lambda: _swap_in(folder, path, staged, *swap), check)
                     elif download_to is staged:
-                        model_repair.rename_noreplace(staged, path)
-                        _swap_record(folder, path)      # the swap an earlier run began is finished
-                except BaseException:
+                        with _step('replace'):
+                            _windows_retry(lambda: _finish_swap(staged, path), check)
+                        with _step('record'):
+                            _swap_record(folder, path)      # the swap an earlier run began is finished
+                except BaseException as error:
                     if replacing and staged is not None and not os.path.lexists(path):
                         _put_back(folder, path)         # this run could not bring the new file: the original stays the video's
+                    if isinstance(error, PackError) and error.details.get('kept_new') and not (
+                            os.path.lexists(path) and staged is not None and staged.is_file()):
+                        error.details['kept_new'] = False   # the original did not come back: the card must not say it is there
                     raise
                 finally:
                     # Completed files and cancellable prefixes have separate identities.
-                    for artifact in (partial, affinity):
-                        if not row.get('shared') and may_own[artifact] and _path(folder, artifact.relative_to(folder).as_posix(), kind='beside').is_file():
-                            _own(folder, owned, artifact)
+                    with _step('record'):
+                        for artifact in (partial, affinity):
+                            if not row.get('shared') and may_own[artifact] and _path(folder, artifact.relative_to(folder).as_posix(), kind='beside').is_file():
+                                _own(folder, owned, artifact)
                 if staged is not None:
                     try:
                         _swap_record(folder, path)      # a record an interrupted swap left is moot once the path has its file
                     except OSError:
                         pass
                 ledger[str(path)] = provision.file_identity(path, row)
-                save(_path(folder, LEDGER), ledger)
-                if not row.get('shared'):
-                    _own(folder, owned, path, row)   # the video's text encoder is never ours to remove
+                with _step('record'):
+                    save(_path(folder, LEDGER), ledger)
+                    if not row.get('shared'):
+                        _own(folder, owned, path, row)   # the video's text encoder is never ours to remove
                 done += row['bytes']
                 progress(dict(phase='download', done=done + pending_prefixes, total=total))
             check()
@@ -1150,13 +1267,15 @@ def remove(root=None, check=None, *, engine_root=None, group='image'):
                 if _linked(path) or not _owned_intact(path, stamp):
                     plan['skipped'].append(entry['file'])
                     continue
-                path.unlink()
+                with _step('remove'):
+                    path.unlink()
                 removed.append(entry['file'])
                 released += entry['bytes']
                 owned.pop(entry['file'], None)
                 ledger.pop(str(path), None)
-                save(_path(folder, OWNERSHIP), owned)
-                save(_path(folder, LEDGER), ledger)
+                with _step('record'):
+                    save(_path(folder, OWNERSHIP), owned)
+                    save(_path(folder, LEDGER), ledger)
             return dict(released_bytes=released, removed=removed, skipped=plan['skipped'])
     except BlockingIOError as error:
         raise PackError('busy') from error
@@ -1343,6 +1462,13 @@ class Installer:
                              for row in entries for s in row['sources']], events=events)
         details = {k: v for k, v in getattr(error, 'details', {}).items()
                    if k in ('needed_bytes', 'free_bytes') and type(v) is int}
+        if code == 'write_failed':
+            # The step, the file (from the model folder or the encoder folder) and what the system answered.
+            try:
+                folders = (base(self.root).parent, shared_root(self.root))
+            except Exception:
+                folders = ()
+            details['write'] = image_pack_write_details(error, folders)
         busy_lock = image_pack_busy_lock(error)
         busy_lock = dict(busy_lock=busy_lock) if busy_lock else {}
         redactor = Redactor()

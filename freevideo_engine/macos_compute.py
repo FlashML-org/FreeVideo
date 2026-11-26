@@ -107,6 +107,15 @@ def sequence_tokens(canvas, prompt_rows):
     return dict(rows, total=sum(rows.values()))
 
 
+def fast_budget(budget_bytes, fast_mode):
+    """The bytes a sampling stage may plan with: in the fastest mode the adapter's whole BF16 matrices of blocks
+    46-49 (policy.FAST2_PINNED_BYTES) stay in unified memory beside the stage, so they are not the plan's to use."""
+    if fast_mode != 'fast2':
+        return budget_bytes
+    from .policy import FAST2_PINNED_BYTES
+    return max(1, int(budget_bytes) - FAST2_PINNED_BYTES)
+
+
 def plan(budget_bytes, tokens, *, frames=72, reserve_bytes=GiB, layers=50,
          allow_retention=True, allow_bounded=False, force_bounded=False):
     """Head group, row chunks and retained-layer bytes for one sampling stage."""
@@ -155,7 +164,7 @@ def generated_audio_tokens(frames):
 
 
 def request_admission(resource, sampling, *, preview=False, working_set_bytes=None, reference_tokens=0,
-                      text_tokens=None, continuation=None):
+                      text_tokens=None, continuation=None, fast_mode=None):
     """Before any model loads: does this request's largest sampling pass fit?
 
     Each sampling stage plans against the request's allocator capacity, live
@@ -193,6 +202,19 @@ def request_admission(resource, sampling, *, preview=False, working_set_bytes=No
     tokens, frames = (shape['video_tokens'] + conditioning_tokens + reference_tokens + continuation_tokens,
                       shape['latent_frames'])
     needed = bounded_working_bytes(tokens, frames=frames) + GiB + LAYER_BYTES + PREFETCH_BYTES
+    decode = None
+    if fast_mode == 'fast2':
+        # The fastest mode keeps the adapter's whole BF16 matrices of blocks 46-49 in unified memory while it samples,
+        # and its decode stage (a process of its own) holds the last step's features beside the pixel head, whose
+        # peak is the one measured on CUDA (reserved bytes, weights and margin included).
+        from .policy import FAST2_FEATURE_BYTES_PER_TOKEN, FAST2_PINNED_BYTES, pixel_head_bytes
+        needed += FAST2_PINNED_BYTES
+        # Unified memory also holds the head's uint8 frames as it returns them and once more joined (torch.cat),
+        # which a CUDA reserved peak does not count: twice frames x height x width x 3.
+        decode = (pixel_head_bytes(canvas) + shape['video_tokens'] * FAST2_FEATURE_BYTES_PER_TOKEN
+                  + 2 * canvas['frames'] * canvas['width'] * canvas['height'] * 3)
+        if decode > needed:
+            phase, needed = 'decode', decode
     capacity, allowance = resource['allocator_capacity_bytes'], resource['allocator_bytes']
     if working_set_bytes is not None:
         capacity, allowance = min(capacity, working_set_bytes), min(allowance, working_set_bytes)
@@ -201,6 +223,7 @@ def request_admission(resource, sampling, *, preview=False, working_set_bytes=No
                 capacity_bytes=int(capacity), tokens=tokens, width=canvas['width'], height=canvas['height'],
                 frames=canvas['frames'], working_set_bytes=working_set_bytes, reference_tokens=reference_tokens,
                 text_tokens=text_tokens, continuation_tokens=continuation_tokens,
+                **(dict(fast_mode=fast_mode, decode_bytes=int(decode)) if decode is not None else {}),
                 scope='Smallest grouped-projection plan of the largest sampling pass, before model load.')
 
 

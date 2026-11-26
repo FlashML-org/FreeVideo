@@ -121,7 +121,7 @@ export function createEditorReferences({t, source, size = () => null, seconds = 
     async function generate() {
         if (working) return;
         working = true; update();
-        try { await source.newImage({target: size(), t}); } catch (value) { error(value); }
+        try { await source.newImage({target: size(), t}); } catch (value) { error(value, 'new'); }
         finally { working = false; update(); }
     }
     function addMenu() {

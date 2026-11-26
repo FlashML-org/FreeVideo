@@ -11,6 +11,9 @@ from fractions import Fraction
 from pathlib import Path
 
 FACTOR = 1.5
+# What one step runs, whatever the request's own settings say (comfy_bridge applies it). The page reads the frames
+# this computer admits for an upscale from the quality level with these steps (web/upscale_offer.js UPSCALE_PLAN).
+PLAN = dict(two_pass=True, base_steps=8, refine_steps=3, step_cache=None, upscale_factor=FACTOR)
 from .frame_upscale import NotUpscalable
 
 
@@ -110,6 +113,13 @@ def media(requested, source_info):
     if (requested or {}).get('loras') or any(value != row for value in rows):
         raise ValueError('An upscale of a finished video takes no other inputs')
     return {'version': 1, 'references': [row], 'loras': []}
+
+
+def request(value):
+    """The --media file for media(): its rows as a request gives them. media_request.read adds each file's sha256
+    and size itself and refuses them in a request; read back, the rows are media()'s again, which media() checks."""
+    return dict(value, references=[{k: v for k, v in row.items() if k not in ('sha256', 'bytes')}
+                                   for row in value['references']])
 
 
 def check(source_info, canvas, sampling_plan):

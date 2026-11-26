@@ -125,10 +125,11 @@ function knownError(text) {
                 && Number.isSafeInteger(d.missing_bytes) && d.missing_bytes > 0 && typeof d.decimal_sizes === 'boolean'
                 && Array.isArray(d.available) && d.available.every(i => Number.isInteger(i) && i >= 0 && i <= 3)
                 && (d.step_cache === undefined || STEP_CACHES.includes(d.step_cache))
-                && (d.scale === undefined || UPSCALE_FACTORS.includes(d.scale)))
+                && (d.scale === undefined || UPSCALE_FACTORS.includes(d.scale)) && (d.upscale === undefined || d.upscale === true))
                 return {kind: 'sampling-table', base_steps: d.base_steps, two_pass: d.two_pass, refine_steps: d.refine_steps,
                     missing_bytes: d.missing_bytes, decimal_sizes: d.decimal_sizes, available: [...new Set(d.available)].sort(),
-                    ...(d.step_cache ? {step_cache: d.step_cache} : {}), ...(d.scale && d.scale !== 2 ? {scale: d.scale} : {})};
+                    ...(d.step_cache ? {step_cache: d.step_cache} : {}), ...(d.scale && d.scale !== 2 ? {scale: d.scale} : {}),
+                    ...(d.upscale ? {upscale: true} : {})};
         } catch { /* Malformed metadata stays in technical details. */ }
     }
     return PLAIN_ERRORS.find(error => line === error.message || error.aliases?.includes(line)
@@ -204,6 +205,16 @@ export function errorText(detail) {
 // compares the two.
 const NO_WORD_BOUNDARY = /[\u0e00-\u0eff\u1000-\u109f\u1100-\u11ff\u1780-\u17ff\u19e0-\u19ff\u2e80-\u2fdf\u3005-\u3007\u3021-\u3029\u3038-\u303b\u3040-\u30ff\u3130-\u318f\u31f0-\u31ff\u3400-\u4dbf\u4e00-\u9fff\ua960-\ua97f\ua9e0-\ua9ff\uaa60-\uaa7f\uac00-\ud7ff\uf900-\ufaff\uff66-\uff9f\uffa0-\uffdc\u{1b000}-\u{1b16f}\u{20000}-\u{3134f}]/u;
 const WORD_CHARACTER = /^[\p{L}\p{N}_]$/u;
+// The report rules shared with the engine (long_paths.EMAIL, long_paths.AUTHORIZATION): an email address
+// on its own, a user name in any script ("icon@2x.png" and "git@host:org/repo" are not addresses), and an
+// authorization value of any kind, quoted (also with escaped quotes) to its quote.
+const EMAIL = /(?<![\p{L}\p{N}_.+%-])(?!git@)[\p{L}\p{N}_.+%-]+@(?!\d+x\.)[\p{L}\p{N}_-]+(?:\.[\p{L}\p{N}_-]+)*\.\p{L}{2,}(?!\p{L})/gu;
+const AUTH_PARAM = String.raw`[\w-]+=(?:"[^"\r\n]*"|[^\s,"]*)`;
+const AUTHORIZATION = new RegExp(String.raw`(\b(?:proxy-)?authori[sz]ation(?:\\?['"][ \t]*[:=,]|[ \t]*[:=])[ \t]*)`
+    + String.raw`(?:(\\?['"])(?:(?!\2)[^\r\n])+`
+    + String.raw`|((?:bearer|basic|digest|token|negotiate|ntlm|oauth|hawk|aws4-hmac-sha256|apikey|kerberos|mutual|scram-sha-\d+)[ \t]+)`
+    + String.raw`(?:` + AUTH_PARAM + String.raw`(?:[ \t]*,[ \t]*` + AUTH_PARAM + String.raw`)*|[^\s,;'"]+)`
+    + String.raw`|[^\r\n'"][^\r\n]*)`, 'gi');
 
 // A short input (under 4 characters, such as "2" or "a") is removed as a whole word:
 // not next to a letter, digit or underscore. A side that is itself a symbol ("@xy",
@@ -284,19 +295,23 @@ function reportRedactor(detail, context) {
         // the path like any path, spaces included, so no part of a user name is left after it.
         text = text.replace(/(^|[^A-Za-z0-9_\/])file:(?:\/\/[^\/\s<>"']*)?(?:\/+|(?=[A-Za-z]:[\\/]))[^\r\n"'<>;,\)\]]*/gi, '$1<PATH REMOVED>')
             .replace(/\b(?:https?|wss?|ftp|file):\/\/[^\s<>"']+/gi, '<URL REMOVED>')
+            // Any authorization value, as long_paths.AUTHORIZATION reads it: after a known scheme only its
+            // credentials (the reason after them stays), any other value to the end of its line or quote.
+            .replace(AUTHORIZATION, '$1$2$3<CREDENTIAL REMOVED>')
             .replace(/\b(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, '<CREDENTIAL REMOVED>')
             .replace(/\b(?:hf_|sk-|gh[pousr]_|github_pat_)[A-Za-z0-9_-]{8,}\b/g, '<CREDENTIAL REMOVED>')
             .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, '<CREDENTIAL REMOVED>')
-            .replace(/(["']?(?:[\w-]*(?:token|password|secret|credential|api[_-]?key)|authorization|cookie|username|hostname|computer_name)["']?\s*[:=]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;}]+)/gi, '$1<REDACTED>')
+            .replace(/(["']?(?:[\w-]*(?:token|password|secret|credential|api[_-]?key)|cookie|username|hostname|computer_name)["']?\s*[:=]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;}]+)/gi, '$1<REDACTED>')
             .replace(/(["']?(?:prompt|negative_prompt|prompt_text|text)["']?\s*[:=]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')/gi, '$1<INPUT REMOVED>')
-            .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '<EMAIL REMOVED>')
+            .replace(EMAIL, '<EMAIL REMOVED>')
             .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, '<ADDRESS REMOVED>');
         // Keep traceback source basenames and line numbers, never drive names,
         // home directories or private media filenames. Spaces in paths count.
         // The engine may have redacted the text already: what follows its own
         // <PATH> marker stays when it is one name, and goes when it is the rest
         // of a path (a user name with a space, a share).
-        text = text.replace(/(^|[^A-Za-z0-9_:/<])(\.\/setup\.sh(?![\w\/\\-]|\.\w)|\.{1,2}\/[^\r\n"'<>;,\)\]]*|(?:[A-Za-z]:[\\/]|\\\\[^\\/\s]+[\\/]|\/(?![\/\s]))[^\r\n"'<>;,\)\]]+)/gm, (_, prefix, path, offset, whole) => {
+        // A path right after a colon ("Error:C:\\Users\\...", "error:/home/...") counts, not a URL's "://".
+        text = text.replace(/(^|[^A-Za-z0-9_:/<]|:(?=[A-Za-z]:[\\/]|\\\\|\/[A-Za-z_]))(\.\/setup\.sh(?![\w\/\\-]|\.\w)|\.{1,2}\/[^\r\n"'<>;,\)\]]*|(?:[A-Za-z]:[\\/]|\\\\[^\\/\s]+[\\/]|\/(?![\/\s]))[^\r\n"'<>;,\)\]]+)/gm, (_, prefix, path, offset, whole) => {
             if (path === './setup.sh') return prefix + path;
             if (prefix === '>' && whole.slice(0, offset + 1).endsWith('<PATH>') && !/[\\/]/.test(path.slice(1))) return prefix + path;
             const source = path.replace(/\\/g, '/').match(/\/([A-Za-z0-9_.-]+\.(?:py|js|ts|mjs))(?=[:\s]|$)/);
@@ -465,6 +480,9 @@ export function failureAdvice(value, t, known = knownError(value)) {
             const unit = [[1e12, 'TB', 2], [1e9, 'GB', 2], [1e6, 'MB', 1]].find(([scale]) => bytes >= scale);
             size = unit ? Number((bytes / unit[0]).toFixed(unit[2])) + ' ' + unit[1] : Math.round(bytes / 1e3) + ' KB';
         }
+        // An upscale of a finished video is no quality level, and no other level would do instead.
+        if (known.upscale) return {...row('sampling-table', ['Sampling caches for upscaling are not downloaded yet', '放大所需的采样缓存尚未下载'], ['', ''], ['', '']),
+            summary: t('The first upscale needs to download sampling caches (about {size}), and the download did not finish this time. Check the network connection, then upscale again.', '第一次放大需要先下载采样缓存（约 {size}），这次未能完成。请检查网络后再放大一次。', { size }), plain: true};
         // A custom step count is not a quality level: no "档" / "quality level" for it.
         const title = custom
             ? ['Custom ({steps} steps) is not downloaded yet', '“自定义（{steps} 步）”还没下载', { steps: known.base_steps }]

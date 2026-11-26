@@ -88,13 +88,24 @@
 /* quality: the four names as one segmented row, in place of the slider */
 .fv-body[data-cols="3"] .fv-effort-heading>span:first-child{display:none}
 .fv-body[data-cols="3"] .fv-effort-heading{justify-content:flex-end;margin:0 0 6px}
-/* the slider rail stays the keyboard target (arrows, Home, End), seen as a ring round the four names while it has focus */
+/* The heading holds only the time estimate here; with none to show (the Fast level, a length not yet planned) it keeps its own
+   line (an empty character at the estimate's size), so the levels do not jump up and down as a level is chosen. */
+.fv-body[data-cols="3"] .fv-effort-estimate:empty::before{content:"\200b"}
+/* the slider rail is not seen here (sampling_effort.js also takes it out of the tab order and the reader's tree): the four names are the control, a radio group the arrows move through */
 .fv-body[data-cols="3"] .fv-effort{position:relative}
 .fv-body[data-cols="3"] .fv-effort-rail{position:absolute;left:0;top:0;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none}
-.fv-body[data-cols="3"] .fv-effort[data-hx-rail] .fv-effort-names{outline:2px solid var(--fv-accent,#1a8cff);outline-offset:2px}
 .fv-body[data-cols="3"] .fv-effort-names{height:auto;margin:0;display:grid;grid-template-columns:repeat(4,1fr);gap:2px;padding:2px;border-radius:var(--fv-r-md,10px);background:var(--fv-ctl-bg,rgb(var(--fv-tint) / .06))}
 /* With the Fast level listed (sampling_effort.js data-fast) the strip has five levels, one row of five. */
 .fv-body[data-cols="3"] .fv-effort-names[data-fast]{grid-template-columns:repeat(5,1fr)}
+/* The level's line under the strip, in the Quality section of the three-column create panel: a quiet note at
+   the level of the download note beneath it, the same size and colour (the same variables), never brighter than the
+   section's title. With no words (the Fast level in a video made in parts, the one state that has none) it keeps its line,
+   so the download note and the next section do not move. The Quality window keeps its own rule
+   (glass/frame_picker.css). */
+.fv-studio.fv-create .fv-body[data-cols="3"] .fv-sc-section .fvp-level-use{margin:8px 0 0;font-size:var(--fv-micro);line-height:16px;font-weight:400;color:var(--fv-muted);text-align:left}
+.fv-studio.fv-create .fv-body[data-cols="3"] .fv-sc-section .fvp-level-use:empty::before{content:"\200b"}
+/* A video made in parts at the Fast level: the line says each part uses Light, in the warning's colour (studio.js sayLevel). */
+.fv-studio.fv-create .fv-body[data-cols="3"] .fv-sc-section .fvp-level-use[data-tone=warning]{color:var(--fv-warning)}
 .fv-studio .fv-body[data-cols="3"] .fv-effort .fv-effort-name{position:static;transform:none;height:28px;min-width:0;padding:0 2px;border-radius:var(--fv-r-sm,8px);font-size:var(--fv-fs-1,12px);line-height:28px;text-align:center;overflow:hidden;text-overflow:ellipsis}
 .fv-studio .fv-body[data-cols="3"] .fv-effort .fv-effort-name[data-active]{background:var(--fv-ctl-hover,rgb(var(--fv-tint) / .14));color:var(--fv-fg,inherit)}
 /* second pass: three equal segments */
@@ -112,6 +123,9 @@
 .fv-body[data-cols="3"] .fv-sc-foot .fv-runbar{position:static;padding:0;background:none}
 .fv-body[data-cols="3"] .fv-sc-foot .fv-runrow{display:flex;gap:2px;align-items:stretch;position:relative}
 .fv-body[data-cols="3"] .fv-sc-foot .fv-runrow>.fv-primary{flex:1;min-width:0;height:var(--fv-h-lg,44px);min-height:var(--fv-h-lg,44px);padding:0 12px;border:0;border-radius:var(--fv-rad-ctl,12px) 6px 6px var(--fv-rad-ctl,12px);background:var(--fv-accent-fill);color:#fff;font-size:var(--fv-fs-3,16px);font-weight:600;background-image:none;box-shadow:inset 0 1px 0 rgb(255 255 255 / .25),inset 0 -1px 0 rgb(0 0 0 / .12),0 10px 24px -10px rgb(15 116 214 / .75);white-space:nowrap;overflow:hidden}
+/* The time goes beside the label when both fit, else under it (two lines fit the key's height): it is never cut short. */
+.fv-body[data-cols="3"] .fv-sc-foot .fv-runrow>.fv-primary{flex-wrap:wrap;align-content:center;row-gap:0}
+.fv-body[data-cols="3"] .fv-sc-foot .fv-runrow>.fv-primary>:is(.fvs-key-label,.fvs-key-eta){flex:none;max-width:100%}
 .fv-body[data-cols="3"] .fv-sc-foot .fv-runrow>.fv-primary::before,.fv-body[data-cols="3"] .fv-sc-foot .fv-runrow>.fv-primary::after{background:none!important;width:0!important}
 .fv-body[data-cols="3"] .fv-sc-foot .fv-runrow>.fv-primary:disabled{opacity:.5}
 .fv-body[data-cols="3"] .fv-sc-foot .fv-runrow>:is(.fv-key-more,.fv-run-options){flex:none;width:40px;height:var(--fv-h-lg,44px)}

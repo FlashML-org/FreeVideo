@@ -19,7 +19,7 @@ import { openAutopilot, viewChanged, viewSwitch } from './view_navigation.js';
 import { wordmark } from './wordmark.js';
 import { keepViewSwitchPlace } from './view_switch_place.js';
 import { openReferenceMenu, removeSavedImages } from './image_library.js';
-import { BLANK_CANVAS_AREAS, createImageGenClient, fittedNote, imageGenError, imageRemainingText, imageReportBar, originStep, renderImageFailure, WAITING_TEXT } from './image_generation.js';
+import { BLANK_CANVAS_AREAS, createImageGenClient, fittedNote, imageGenError, imageRemainingText, imageReportBar, originStep, errorType, renderImageFailure, WAITING_TEXT } from './image_generation.js';
 import { duration } from './generation_progress.js';
 import { randomSeed } from './studio_queue.js';
 import { createLayout } from './image_view_layout.js';
@@ -89,7 +89,7 @@ export function createFakeImageClient({delay = 600, ready = {'minimax-h3-image':
     for (const id of Object.keys(install)) { if (install[id] !== 'ready') state[id] = false; if (install[id] === 'downloading') loading.set(id, Date.now() - bytes / rate * .4); }
     const models = () => IMAGE_MODELS.map(m => ({id: m.id, label: m.name, ready: !!state[m.id], downloading: loading.has(m.id), max_images: references[m.id] ?? 0,
         bytes_total: bytes, bytes_done: loading.has(m.id) ? Math.min(bytes, (Date.now() - loading.get(m.id)) * rate) : failed.has(m.id) ? bytes * .31 : 0,
-        install: failed.has(m.id) ? {state: 'failed', done: bytes * .31, total: bytes, reason: 'network', message_en: 'The connection dropped.', message_zh: '网络连接中断了。'}
+        install: failed.has(m.id) ? {state: 'failed', done: bytes * .31, total: bytes, reason: 'network', message_en: 'The connection dropped.', message_zh: '网络连接已中断。'}
             : paused.has(m.id) ? {state: 'paused_for_generation', done: bytes * .2, total: bytes, bytes_per_second: 0, reason: paused.get(m.id)}
             : loading.has(m.id) ? {state: 'running', done: Math.min(bytes, (Date.now() - loading.get(m.id)) * rate), total: bytes} : null}));
     return {
@@ -1348,12 +1348,12 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         try { info = await client.packInstall(mine); } catch (error) {
             // A failed download says so in its own words; the generation sentences do not describe it.
             say(error?.code === 'connection_lost'
-                ? t('The download did not start: FreeVideo could not be reached. Start FreeVideo again, then try again.', '下载没有开始：连不上 FreeVideo。请重新启动 FreeVideo 后再试。')
+                ? t('The download did not start: FreeVideo could not be reached. Start FreeVideo again, then try again.', '下载未能开始：连不上 FreeVideo。请重新启动 FreeVideo 后再试。')
                 : error?.code === 'disk_full'
-                    ? t('The download did not start: the disk is full. Free some space, then download again.', '下载没有开始：磁盘空间不够。空出空间后再下载。')
+                    ? t('The download did not start: the disk is full. Free some space, then download again.', '下载未能开始：磁盘空间不够。空出空间后再下载。')
                 : ['no_memory', 'pack_missing', 'model_unreadable'].includes(error?.code)
-                    ? t('The download did not start: ', '下载没有开始：') + imageGenError(error.code, info, t)
-                    : t('The download did not start. Try again; if it keeps failing, report the problem.', '下载没有开始。请重试；仍然失败请提交问题。')); return;
+                    ? t('The download did not start: ', '下载未能开始：') + imageGenError(error.code, info, t)
+                    : t('The download did not start. Try again; if it keeps failing, report the problem.', '下载未能开始。请重试；仍然失败请提交问题。')); return;
         }
         render();
         while (alive && modelState(info, mine).state === 'downloading') {
@@ -1441,7 +1441,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             running = null; level.hidden = true; clearStep();
             // The worker is full: a state of the worker, shown in place, not a failed picture.
             if (IMAGE_BUSY.has(error.code)) { note.dataset.kind = 'busy'; say(imageGenError(error.code, info, t)); render(); drawWorks(); return; }
-            failure = {error: error.code || 'generation_failed', report_id: error.report_id, stage: error.stage, step: originStep(error, reached), fitted: error.fitted, memory: error.memory, other_usage: error.other_usage, retryStandard: tierNow === 'high' && error.code === 'no_memory'};
+            failure = {error: error.code || 'generation_failed', report_id: error.report_id, stage: error.stage, step: originStep(error, reached), error_type: errorType(error), fitted: error.fitted, memory: error.memory, other_usage: error.other_usage, retryStandard: tierNow === 'high' && error.code === 'no_memory'};
             renderFailure(); render(); drawWorks();
         } finally {
             // Pictures sent for a request that never became a job; a job's own go when it ends.
@@ -1510,7 +1510,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             onClick: () => { if (failure.noList) { failure = null; render(); go.onclick(); return; } if (failure.retryStandard) { area = RANGES[model.id].presets.standard; keepSize(); } void generate(); }}});
         const head = el('div', 'fv-iv-fail-head'), mark = el('i', 'fv-iv-fail-icon'); mark.append(icon('warn'));
         // One title for every failure; why FreeVideo went away is in the sentence below it (Lane, engine-closed-reason).
-        head.append(mark, el('h3', '', t('The image was not made', '这张没有生成出来')));
+        head.append(mark, el('h3', '', t('The image was not made', '这张图片未能生成')));
         failHost.prepend(head);
         const stage_ = STAGE_WORDS[failure.stage];
         // No request was made when the list could not be fetched: there is no model or size to name.
@@ -1680,7 +1680,9 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     const strayKeys = event => { if (event.target === document.body && dialog.open && topDialog() === dialog) onKeys(event); };
     document.addEventListener('keydown', strayKeys);
     // Escape steps back one layer at a time; the view itself closes last.
+    // Only the dialog's own cancel is Escape: a file picker dismissed inside it fires a cancel at its input that bubbles here.
     dialog.addEventListener('cancel', event => {
+        if (event.target !== dialog) return;
         event.preventDefault();
         if (layout.tookEscape() || layout.escape()) return;
         if (!more.hidden) more.hidden = true;

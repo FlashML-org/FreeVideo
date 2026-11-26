@@ -7,7 +7,10 @@ of immutable projection weights. FL2VA has a separate keyframe timestep schedule
 import contextlib
 import hashlib
 import json
+import os
 from pathlib import Path
+import time
+import uuid
 
 from safetensors.torch import load_file, save_file
 import torch
@@ -166,6 +169,7 @@ class TableCache:
             # nothing; a table that is not there is not fetched (see load).
             return
         self.root.mkdir(parents=True, exist_ok=True)
+        self.drop_stale_staging()
         marker = self.root / 'identity.json'
         if marker.exists():
             if json.loads(marker.read_text(encoding='utf-8')) != self.identity:
@@ -174,6 +178,12 @@ class TableCache:
             save(marker, self.identity)
         if manifest is not None:
             self.optional_asset = assets.optional_table(self.identity, manifest)
+            # An installation with the original projections computed the upscale clock's table from them, offline, before
+            # that table was published; it keeps doing so rather than now needing the network for it.
+            from .sampling_assets import UPSCALE_PREFIX
+            if (self.optional_asset is not None and self.optional_asset['download']['prefix'].startswith(UPSCALE_PREFIX)
+                    and assets.sources_present(root, manifest)):
+                self.optional_asset = None
 
     def load(self, index, steps):
         from . import adaln_assets as assets
@@ -181,6 +191,7 @@ class TableCache:
             raise ValueError('AdaLN cache schedule length mismatch')
         path = self.root / f'{index:02d}.safetensors'
         marker = path.with_suffix('.json')
+        checked = False
         if self.asset is None and not (path.is_file() and marker.is_file()) and self.shared is not None:
             path = self.shared / path.name
             marker = path.with_suffix('.json')
@@ -198,8 +209,24 @@ class TableCache:
             self.optional_downloaded.add(index)
             self.optional_download_bytes += row['bytes']
         else:
-            row = json.loads(marker.read_text(encoding='utf-8'))
-        assets.check_table(path, row, self.identity)
+            # Only a table this cache computed itself; published tables setup installed beside it keep failing loudly.
+            local = path.parent == self.root
+            try:
+                row = json.loads(marker.read_text(encoding='utf-8'))
+                assets.check_table(path, row, self.identity)
+            except (OSError, ValueError):
+                if not local:
+                    raise
+                # Another process can be between renaming this table into place and writing its record. Read the
+                # record once more; a table that still does not match is computed again rather than failing.
+                try:
+                    row = json.loads(marker.read_text(encoding='utf-8'))
+                    assets.check_table(path, row, self.identity)
+                except (OSError, ValueError):
+                    return self.placeholder(index) if not self.fetch else None
+            checked = True
+        if not checked:
+            assets.check_table(path, row, self.identity)
         if self.optional_asset is not None:
             published = next(r for r in self.optional_asset['files'] if r['index'] == index)
             if row['sha256'] == published['sha256']:
@@ -227,21 +254,68 @@ class TableCache:
         return [torch.zeros(len(times) * self.identity['modality_rows'], width, dtype=torch.bfloat16,
                             device=self.device).chunk(6, dim=-1) for times in self.identity['timesteps']]
 
+    def drop_stale_staging(self, age_seconds=3600):
+        """Remove staging files a killed writer left here. A table takes seconds to write, so a staging file older
+        than an hour belongs to no running writer; this is decided by age, not by process number, since a process
+        number can be reused (and probing one on Windows signals it)."""
+        cutoff = time.time() - age_seconds
+        for staging in self.root.glob('*.partial'):
+            try:
+                if staging.stat().st_mtime < cutoff:
+                    staging.unlink()
+            except OSError:
+                pass
+
     def save(self, index, module, *, producer_device=None):
         from . import adaln_assets as assets
         from .monitoring import save
         if self.asset is not None:
             raise ValueError('Published AdaLN model assets are immutable')
         path = self.root / f'{index:02d}.safetensors'
-        temporary = path.with_suffix('.partial')
+        # Two processes can compute the same table at the same moment (two engines or installations sharing one model
+        # folder). Each writes its own staging file and renames it into place whole; a shared staging name let one
+        # overwrite the other's half-written file.
+        temporary = path.with_name(f'{path.name}.{os.getpid()}.{uuid.uuid4().hex}.partial')
         state = {name: tensor.cpu() for name, tensor in module.state_dict().items()}
         if any(not all_finite(tensor) for tensor in state.values()):
             raise ValueError('Cannot save nonfinite AdaLN constants')
-        save_file(state, temporary)
-        row = {'bytes': temporary.stat().st_size, 'sha256': assets.file_hash(temporary)}
-        assets.check_table(temporary, row, self.identity, verify_hash=False)
-        temporary.replace(path)
-        save(path.with_suffix('.json'), row)
+        try:
+            save_file(state, temporary)
+            row = {'bytes': temporary.stat().st_size, 'sha256': assets.file_hash(temporary)}
+            assets.check_table(temporary, row, self.identity, verify_hash=False)
+            # Windows refuses the rename while another process has the table open (hashing or loading it); wait a
+            # little as monitoring.save does. A table this request computed is already in use in memory, so a cache
+            # that cannot take it now never fails the request: the table in place (or none) stays as it is.
+            for attempt in range(8):
+                try:
+                    temporary.replace(path)
+                    break
+                except PermissionError:
+                    from .system import windows
+                    if attempt == 7 or not windows():
+                        return  # elsewhere a refusal is the folder's permissions, which waiting does not change
+                    time.sleep(.1 * (attempt + 1))
+        finally:
+            temporary.unlink(missing_ok=True)
+        # The table and its record are two files: another writer's table can land between this rename and this record.
+        # The record always describes the table that is there, so a later load never finds a mismatched pair.
+        marker = path.with_suffix('.json')
+        try:
+            for _ in range(8):
+                save(marker, row)
+                there = {'bytes': path.stat().st_size, 'sha256': assets.file_hash(path)}
+                if there == row:
+                    break
+                assets.check_table(path, there, self.identity, verify_hash=False)
+                row = there
+            else:
+                # Still changing under other writers: leave no record rather than one that may not match, so the next
+                # load treats the table as missing and computes it again.
+                marker.unlink(missing_ok=True)
+        except PermissionError:
+            # Held open on Windows past monitoring.save's own retries: a load that finds the pair mismatched reads the
+            # record again and otherwise computes the table again.
+            return
         provenance = self.root / 'producer.json'
         if not provenance.exists():
             from diffusers.models.transformers import transformer_minimax_h3

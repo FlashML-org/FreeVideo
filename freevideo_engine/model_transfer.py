@@ -142,8 +142,9 @@ class Progress:
 def verify(path, row, progress=None):
     if path.stat().st_size != row['bytes']:
         raise ValueError('Downloaded size differs from the pinned manifest')
-    return network.hash_file(path, 'sha256' if row.get('sha256') else 'sha1', not row.get('sha256'),
-                             discard_cache=True, progress=progress) == (row.get('sha256') or row['git_blob'])
+    verify.observed = network.hash_file(path, 'sha256' if row.get('sha256') else 'sha1', not row.get('sha256'),
+                                        discard_cache=True, progress=progress)
+    return verify.observed == (row.get('sha256') or row['git_blob'])
 
 
 def checked_range_response(response, requested, total, progress):
@@ -200,8 +201,12 @@ def sdk_worker(request):
             emit(phase='verify', done_bytes=0, total_bytes=row['bytes'])
             if verify(target, row, progress=verifying):
                 emit(phase='ready', backend='verified-stage', seconds=time.monotonic()-started, fingerprint=fingerprint(target))
+                network.forget_failed(target, {}, category='models')
                 return 0
-            network.retain_partial(target, 'hash-rejected')
+            # Worker output: the parent passes these network events on to the run's log.
+            network.retain_partial(target, 'hash-rejected', observed=getattr(verify, 'observed', None),
+                                   algorithm='sha256' if row.get('sha256') else 'sha1-git-blob',
+                                   network={}, category='models', source=source)
         emit(phase='connect')
         if source == 'modelscope' or request.get('manual_ranges'):
             from modelscope_hub import HubApi
@@ -343,11 +348,12 @@ def sdk_worker(request):
              download_seconds=downloaded-started, verification_seconds=time.monotonic()-downloaded,
              done_bytes=row['bytes'], total_bytes=row['bytes'], transfer_bytes=progress.transferred,
              fingerprint=fingerprint(target))
+        network.forget_failed(target, {}, category='models')
         return 0
     except Exception as error:
         # Signed CDN URLs and authentication details can appear in SDK errors.
         if target.is_file():
-            network.retain_partial(target, 'rejected')
+            network.retain_partial(target, 'rejected', network={}, category='models', source=source)
         import traceback
         traceback.print_exc()
         emit(phase='failed', error_type=type(error).__name__, message=safe_log(str(error)))
@@ -631,6 +637,9 @@ def run_sdk(source, row, path, plan, progress_callback, networking, transfer_com
         raise
     receipt['promoted'] = True
     save(report / 'result.json', receipt)
+    # The right file is in place: what did not pass for it, in the stage and beside it, goes.
+    network.forget_failed(staged, networking, category=network.model_family(row))
+    network.forget_failed(stage, networking, category=network.model_family(row))
     return final
 
 
@@ -804,7 +813,7 @@ def _download(row, path, plan, progress_callback, headers_for, *, transfer_compl
                         else:
                             network.event(networking, category=family, source=name, file=path.name,
                                       action='restart-approved', retained_bytes=retained, reason=reason)
-                            network.retain_partial(stage, 'restart-approved')
+                            network.retain_partial(stage, 'restart-approved', network=networking, category=family, source=name)
                     if not resource_failure:
                         network.source_health(networking, family, name, False)
                     network.event(networking, category=family, source=name, file=path.name, action='fallback',

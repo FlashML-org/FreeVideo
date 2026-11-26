@@ -8,19 +8,43 @@ import { cutTip } from './cut_tip.js';
 import { setTip } from './tip_words.js';
 import { t, words, CN, glyph, floatingHost, reducedMotion, EASE, addSheet, openContextMenu } from './context_menu.js';
 import { jobs, ACTIVE, FINAL } from './task_store.js';
+import { titleLine, fullTip } from './prompt_sections.js';
 
 const browser = typeof document !== 'undefined';
 addSheet('notifications.css', import.meta.url);
 
 export const NOTES_KEY = 'freevideo.notifications';
 export const DISMISSED_KEY = 'freevideo.notifications.dismissed';
+// Set once the notices kept by older versions have lost their words (0.6.14); the clean-up then never runs again.
+export const NOTES_CLEANED_KEY = 'freevideo.notifications.cleaned';
 const DISMISSED_LIMIT = 300;
 const LIMIT = 50, AGE_MS = 7 * 24 * 3600e3, LATE_MS = 30 * 60e3;
 const clean = text => String(text ?? '').replace(/\s+/g, ' ').trim();
 
 // ── The list, apart from the page (the tests drive it) ──
+// What the user wrote or was told stays in this page's memory only (task_store.js; the engine forgets an assistant task's
+// label the same way): the browser's storage keeps each note without it - a job's prompt, an assistant task's name and
+// its cause - and after a reload the note reads in general words ("Video finished", "Assistant task · See why").
+const withoutWords = row => {
+    if (!row || typeof row !== 'object') return row;
+    const out = {...row};
+    if (out.prompt) out.prompt = '';
+    if (out.type === 'agent') { out.title = ''; out.reason = ''; }
+    return out;
+};
 export function createNotes({storage = null, now = () => Date.now(), limit = LIMIT} = {}) {
     let rows = (() => { try { const value = JSON.parse(storage?.getItem(NOTES_KEY) || '[]'); return Array.isArray(value) ? value.filter(row => row?.id && row.at) : []; } catch { return []; } })();
+    // Older versions kept those words in storage: once, they are taken out there too, and a marker says so. Only notes
+    // already stored are cleaned and marked; a new installation has none, so nothing is written for it (other parts of
+    // the page read any stored key as a sign of earlier use). A storage that cannot be read or written leaves the page
+    // as it is, and the next load tries again.
+    try {
+        if (storage && !storage.getItem(NOTES_CLEANED_KEY) && storage.getItem(NOTES_KEY) != null) {
+            rows = rows.map(withoutWords);
+            storage.setItem(NOTES_KEY, JSON.stringify(rows));
+            storage.setItem(NOTES_CLEANED_KEY, '1');
+        }
+    } catch { /* This page only. */ }
     const listeners = new Set();
     let hidden = [];
     // Notices the user closed or cleared stay closed: a reload or a job's later updates do not bring them back.
@@ -33,7 +57,8 @@ export function createNotes({storage = null, now = () => Date.now(), limit = LIM
         try { storage?.setItem(DISMISSED_KEY, JSON.stringify(dismissed)); } catch { /* This page only. */ }
     };
     const keep = () => { const cutoff = now() - AGE_MS; rows = rows.filter(row => row.at >= cutoff).sort((a, b) => b.at - a.at).slice(0, limit); };
-    const save = () => { keep(); try { storage?.setItem(NOTES_KEY, JSON.stringify(rows)); } catch { /* This page only. */ } for (const fn of [...listeners]) try { fn(rows); } catch { /* One listener never stops the others. */ } };
+    const stored = () => rows.map(withoutWords);
+    const save = () => { keep(); try { storage?.setItem(NOTES_KEY, JSON.stringify(stored())); } catch { /* This page only. */ } for (const fn of [...listeners]) try { fn(rows); } catch { /* One listener never stops the others. */ } };
     keep();
     return {
         list: () => rows,
@@ -87,7 +112,7 @@ export function noteFromJob(row, previous, now = Date.now()) {
     if (previous && previous.status === row.status) return null;
     if (!previous && (!row.finished_at || now - row.finished_at > LATE_MS)) return null;
     return {id: `job:${row.id}:${row.status}`, type: 'job', job: row.id, kind: row.kind || 'video', status: row.status, view: row.view || null,
-        prompt: clean(row.meta?.text ?? row.prompt ?? '').slice(0, 140), file: row.result?.file || null, work: row.result?.id || row.result?.work || null, video: row.result?.video || null,
+        prompt: clean(row.meta?.text ?? row.prompt ?? '').slice(0, 400), file: row.result?.file || null, work: row.result?.id || row.result?.work || null, video: row.result?.video || null,
         reason: reasonOf(row.failure), at: row.finished_at || now};
 }
 // The image models' install, between two reads of the image worker's info: a note when one finishes or fails.
@@ -141,7 +166,7 @@ const ago = (at, cn = CN) => {
 };
 export function noteWords(note, cn = CN) {
     const w = pair => words(pair, cn);
-    if (note.type === 'toast') return {title: note.title || w(['Notice', '提醒']), sub: note.reason || (note.status === 'notice' ? '' : w(['Did not finish', '没有完成']))};
+    if (note.type === 'toast') return {title: note.title || w(['Notice', '提醒']), sub: note.reason || (note.status === 'notice' ? '' : w(['Did not finish', '未完成']))};
     if (note.type === 'agent') return {title: note.title || w(['Assistant task', '助手任务']), sub: note.reason || w(['See why', '查看原因'])};
     if (note.type === 'install') {
         return note.status === 'done' ? {title: w(['{name} is installed', '{name} 已安装', { name: note.label }]), sub: w(['Ready to use', '可以使用了'])}
@@ -150,7 +175,7 @@ export function noteWords(note, cn = CN) {
     const kind = w(KIND[note.view === 'editor' ? 'video' : note.kind] || KIND.video);
     const head = note.status === 'done' ? w(['{kind} finished', '{kind}生成完成', { kind }]) : note.status === 'failed' ? w(['{kind} failed', '{kind}生成失败', { kind }])
         : w(['{kind} stopped', '{kind}生成中断', { kind }]);
-    return {title: note.prompt || head, sub: note.prompt ? head : note.status === 'done' ? w(['In Creations', '已放进作品库']) : note.reason || w(['See why', '查看原因'])};
+    return {title: titleLine(note.prompt) || head, sub: note.prompt ? head : note.status === 'done' ? w(['In Creations', '已放进作品库']) : note.reason || w(['See why', '查看原因'])};
 }
 const ICON = {done: 'check', failed: 'alert', interrupted: 'alert', notice: 'alert'};
 
@@ -222,7 +247,8 @@ async function openNote(note) {
 }
 
 function liveItems() {
-    const items = jobs.active().map(row => ({type: 'job', row, title: clean(row.meta?.text ?? row.prompt ?? '') || words(KIND[row.kind] || KIND.video),
+    const items = jobs.active().map(row => ({type: 'job', row, title: titleLine(clean(row.meta?.text ?? row.prompt ?? '')) || words(KIND[row.kind] || KIND.video),
+        full: fullTip(row.meta?.text ?? row.prompt),
         fraction: Number.isFinite(row.percent) ? row.percent : null, state: row.status === 'queued' ? t('Waiting', '排队中') : row.status === 'cancelling' ? t('Stopping', '正在停止') : t('Generating', '生成中')}));
     for (const [id, item] of Object.entries(installs)) {
         if (item.state !== 'running') continue;
@@ -256,7 +282,7 @@ function renderNotes(list, {live: withLive = true, limit = Infinity} = {}) {
             const bar = row.querySelector('.fv-note-bar i');
             if (item.fraction === null) row.querySelector('.fv-note-bar').classList.add('is-unknown'); else bar.style.transform = `scaleX(${item.fraction})`;
             row.querySelector('.fv-note-pct').textContent = item.fraction === null ? '' : `${Math.floor(item.fraction * 100)}%`;
-            Object.assign(row.dataset, {fvTipName: item.title, fvTipUse: item.type === 'install' ? t('Open Images to see the download', '打开图像视图查看下载') : t('Back to this generation', '回到这次生成的画面')});
+            Object.assign(row.dataset, {fvTipName: item.full || item.title, fvTipUse: item.type === 'install' ? t('Open Images to see the download', '打开图像视图查看下载') : t('Back to this generation', '回到这次生成的画面')});
             row.onclick = async () => {
                 closeNotifications({focus: false});
                 if (item.type === 'install') { await globalThis.FreeVideoShell?.go?.('image').catch(() => {}); return; }
@@ -278,7 +304,7 @@ function renderNotes(list, {live: withLive = true, limit = Infinity} = {}) {
             row.querySelector('.fv-note-title').textContent = said.title;
             row.querySelector('.fv-note-sub').textContent = said.sub;
             row.querySelector('.fv-note-when').textContent = ago(note.at);
-            Object.assign(row.dataset, {fvTipName: said.title.slice(0, 40), fvTipUse: note.status === 'done' ? t('Open the result', '打开生成结果') : note.type === 'install' ? t('Open Images', '打开图像视图') : t('See why it failed and what to do', '查看失败原因和可以做的事'), fvTipKey: 'Enter'});
+            Object.assign(row.dataset, {fvTipName: (note.type === 'job' && fullTip(note.prompt)) || said.title.slice(0, 40), fvTipUse: note.status === 'done' ? t('Open the result', '打开生成结果') : note.type === 'install' ? t('Open Images', '打开图像视图') : t('See why it failed and what to do', '查看失败原因和可以做的事'), fvTipKey: 'Enter'});
             row.onclick = () => openNote(note);
             row.addEventListener('keydown', event => { if ((event.key === 'Delete' || event.key === 'Backspace') && !list.closest('.fv-notes')) { event.preventDefault(); store().remove(note.id); } });
             row.oncontextmenu = event => {

@@ -792,9 +792,10 @@ def _public(value):
         # Keep prose slashes, URLs and bare roots. Once a path starts, use
         # the shared matcher, which includes spaces through the full filename.
         # A file URL (file:///home/..., file://localhost/C:/...) starts one too; the shared matcher reads it whole.
+        # A path right after a colon ("error:/home/...") starts one as well, not a URL's "://".
         starts = re.compile(r'''(?<![\w/])(?i:file):(?://[^/\s"'<>]*)?(?:/+|(?=[A-Za-z]:[\\/]))'''
                             r'''|(?<!\w)(?:[A-Za-z]:[\\/](?=[^\s"'<>|])|\\\\[^\\/\s"'<>]+[\\/])'''
-                            r'''|(?<![^\W_])(?<![:/])/(?![/\s])[^/"'<>;|\r\n]+/(?![/\s])''')
+                            r'''|(?<![^\W_])(?<!/)(?:(?<!:)|(?=/[^\W\d]))/(?![/\s])[^/"'<>;|\r\n]+/(?![/\s])''')
         parts, cursor = [], 0
         for start in starts.finditer(value):
             if start.start() < cursor:
@@ -805,6 +806,8 @@ def _public(value):
             span = found.group().split(' | ', 1)[0].rstrip()
             parts.extend((value[cursor:start.start()], '[local path]'))
             cursor = start.start() + len(span)
+        # Only local paths: this is the user's own assistant and screenplay, not a report that leaves the
+        # machine, so an email address or an "Authorization:" line in a character's words stays as written.
         return ''.join(parts) + value[cursor:]
     return value
 

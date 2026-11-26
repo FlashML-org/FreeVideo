@@ -11,3 +11,35 @@
 .fv-player-bar .fv-player-fill{position:absolute;inset:0;background:var(--fv-player-fg);transform:scaleX(0);transform-origin:0 50%}
 .fv-player-bar .fv-player-time{flex:none;padding:0 var(--fv-sp-4,4px);font-size:var(--fv-fs-1,12px);color:var(--fv-fg3,rgb(243 245 248 / .56));font-variant-numeric:tabular-nums;white-space:nowrap}
 .fv-player-bar .fv-player-time[hidden]{display:none}
+/* Viewing options. The volume slider floats above the sound key while
+   the key is hovered or focused (or opened by a tap), so it never takes room from the position; the speed menu opens
+   above its key. Every key keeps the bar's 32 px. */
+.fv-player-bar .fv-player-sound-group,.fv-player-bar .fv-player-rate-group{position:relative;flex:none;display:flex}
+.fv-player-bar .fv-player-level{position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);display:none;align-items:center;width:96px;height:32px;padding:0 12px;box-sizing:border-box;border-radius:var(--fv-r-md,10px);background:var(--fv-surface-raised,rgb(24 28 36 / .96));box-shadow:0 8px 24px rgb(0 0 0 / .35);cursor:pointer;touch-action:none;z-index:2}
+/* The level: the part filled light on a dimmer rail, with a round knob at the level. */
+.fv-player-bar .fv-player-level .fv-player-rail{height:4px;background:rgb(255 255 255 / .28);overflow:visible}
+.fv-player-bar .fv-player-level .fv-player-fill{background:#f3f5f8;border-radius:inherit}
+.fv-player-bar .fv-player-level .fv-player-knob{position:absolute;top:50%;left:0;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:#f3f5f8;box-shadow:0 1px 3px rgb(0 0 0 / .4);pointer-events:none}
+.fv-player-bar .fv-player-sound-group:hover .fv-player-level,.fv-player-bar .fv-player-sound-group:focus-within .fv-player-level,.fv-player-bar .fv-player-sound-group[data-open=true] .fv-player-level{display:flex}
+.fv-player-bar .fv-player-level:focus-visible{outline:2px solid var(--fv-accent-line,#6db8fa);outline-offset:2px}
+.fv-player-bar .fv-player-rate{width:auto;min-width:32px;padding:0 6px;font:600 var(--fv-fs-1,12px)/1 inherit;font-variant-numeric:tabular-nums}
+.fv-player-bar .fv-player-menu{position:absolute;bottom:calc(100% + 6px);right:0;display:flex;flex-direction:column;min-width:72px;width:max-content;padding:4px;border-radius:var(--fv-r-md,10px);background:var(--fv-surface-raised,rgb(24 28 36 / .96));box-shadow:0 8px 24px rgb(0 0 0 / .35);z-index:2}
+.fv-player-bar .fv-player-menu[hidden]{display:none}
+.fv-player-bar .fv-player-menu-item{white-space:nowrap;width:auto;min-width:0;height:32px;padding:0 12px;border:0;border-radius:var(--fv-r-sm,6px);background:transparent;color:#f3f5f8;text-align:left;font:var(--fv-fs-2,13px)/1 inherit;font-variant-numeric:tabular-nums;cursor:pointer}
+.fv-player-bar .fv-player-menu-item:hover{background:rgb(255 255 255 / .1)}
+.fv-player-bar .fv-player-menu-item[aria-checked=true]{background:rgb(109 184 250 / .22)}
+.fv-player-bar .fv-player-menu-item:focus-visible{outline:2px solid var(--fv-accent-line,#6db8fa);outline-offset:-2px}
+/* Over the picture (the share preview, the editor's media preview): at the bottom of the frame, light on a dark fade. */
+.fv-player-bar.fv-player-over{position:absolute;left:0;right:0;bottom:0;z-index:3;width:auto;height:40px;padding:0 6px;background:linear-gradient(transparent,rgb(0 0 0 / .7));color:#fff;--fv-player-fg:#fff;--fv-player-rail:rgb(255 255 255 / .3)}
+.fv-player-bar[hidden]{display:none}
+/* A sound shows only its bar; a video that plays on a click says so. */
+audio.fv-player-audio{display:none}
+video.fv-player-click{cursor:pointer}
+/* The position alone (the chat card's frame). */
+.fv-player-bar[data-position-only=true]{height:20px;gap:0}
+.fv-player-bar[data-position-only=true] .fv-player-track{height:20px}
+/* A narrow bar (player_bar.js fit): 1 leaves out the position bar, 2 also the speed key, 3 also the sound key. */
+.fv-player-bar[data-narrow] .fv-player-track{display:none}
+.fv-player-bar[data-narrow] .fv-player-time{margin-left:auto}
+.fv-player-bar[data-narrow="2"] .fv-player-rate-group,.fv-player-bar[data-narrow="3"] .fv-player-rate-group{display:none}
+.fv-player-bar[data-narrow="3"] > .fv-player-sound,.fv-player-bar[data-narrow="3"] .fv-player-sound-group{display:none}

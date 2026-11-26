@@ -117,7 +117,8 @@ export function menuSelect(select, {groups = {}, search = null, overlay = false,
         menu.hidden = false; trigger.setAttribute('aria-expanded', 'true');
         place();
         // A list that is drawn again while its menu is open (the row is replaced) would leave a menu that chooses nothing.
-        watch = setInterval(() => { if (!select.isConnected || select.disabled) close(); }, 200);
+        // (Or whose window has been put away: the list goes with the control it opened from, not on its own over the page.)
+        watch = setInterval(() => { if (!select.isConnected || select.disabled || (select.checkVisibility && !select.checkVisibility())) close(); }, 200);
         document.addEventListener('pointerdown', outside, true);
         window.addEventListener('resize', closeNow); window.addEventListener('blur', closeNow);
         const chosen = items.find(item => item.getAttribute('aria-selected') === 'true') || items[0];

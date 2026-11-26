@@ -1,6 +1,7 @@
 // One hover tip for every FreeVideo control: a name, one line on what it does and what you get, and its shortcut.
 // - About 500 ms on a control, then at once on its neighbours while one has just shown; gone ~100 ms after leaving.
-// - Keyboard focus shows it too; a long press shows it on touch (and that press does not also tap the control).
+// - Keyboard focus shows it too (a control marked data-fv-tip-focus="off" shows it for the pointer only: a group the arrow keys
+//   move through would show a card at every press); a long press shows it on touch (and that press does not also tap the control).
 // - It never covers the control, the menu the control sits in, another open layer, or the picture when there is room
 //   elsewhere: below, above, then beside, measured at its real size and always kept inside the window.
 // - It floats in the top layer, so it never changes the layout; it fades only, and not at all under reduced motion.
@@ -142,6 +143,8 @@ function holderOf(element) {
 export function tipContent(element) {
     if (!element) return null;
     const holder = holderOf(element);
+    // A place that is showing something of its own over the control (the play bar's volume slider) asks for no tip.
+    if (element.closest?.('[data-fv-tip-none]')) return null;
     const data = holder?.dataset || {};
     let name = data.fvTipName || '', use = data.fvTipUse || '', key = data.fvTipKey || '', off = data.fvTipWhy || data.fvTipOff || '';
     let entry = data.fvTip ? TIPS[data.fvTip] : null;
@@ -216,6 +219,7 @@ function placeAt(target, size, view, {prefer, avoid, edge}) {
 
 // ── The tip itself ─────────────────────────────────────────────────────────────────────────────
 let tip = null, shown = null, pending = null, showTimer = 0, hideTimer = 0, warmUntil = 0, pressTimer = 0, pressPoint = null, swallowClick = false, watch = 0, watcher = null;
+let placedSize = '';
 const reduced = () => globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
 
 function ensureTip() {
@@ -223,6 +227,15 @@ function ensureTip() {
     tip = document.createElement('div'); tip.className = 'fv-tip'; tip.id = 'fv-tip'; tip.setAttribute('role', 'tooltip');
     if (tip.showPopover) tip.popover = 'manual';
     document.body.append(tip);
+    // A tip placed while a page rule kept it hidden (a window still closing as focus comes back to its key) was measured
+    // as nothing and put beside the control's middle; once it can be drawn, it is placed again at its real size.
+    if (globalThis.ResizeObserver) new ResizeObserver(() => {
+        if (!shown || !tip?.isConnected || !tip.dataset.open) return;
+        const size = tip.getBoundingClientRect();
+        // Still hidden: nothing to place yet. Placing it now would only change the layout inside this callback.
+        if (!size.width && !size.height) return;
+        if (`${size.width}x${size.height}` !== placedSize) position(shown);
+    }).observe(tip);
     return tip;
 }
 
@@ -309,15 +322,22 @@ function position(element) {
     box.style.maxWidth = `${Math.min(MAX_WIDTH, innerWidth - 2 * MARGIN)}px`;
     box.dataset.open = 'true';
     const size = box.getBoundingClientRect();
+    placedSize = `${size.width}x${size.height}`;
     const place = placeTip(rect, {width: size.width, height: size.height}, {width: innerWidth, height: innerHeight}, surroundings(element));
     box.style.left = `${place.left}px`; box.style.top = `${place.top}px`; box.dataset.side = place.side;
     box.style.visibility = '';
     return true;
 }
 
+// A drop-down list that is open is what is being worked with: nothing else says anything over it (its own rows would otherwise
+// show the words of the control that opened it). The tip is the control's again once the list is shut.
+const listOpen = () => !!document.querySelector('.fv-select-menu:not([hidden])');
+
 function show(element) {
     const content = tipContent(element);
-    if (!content || !element.isConnected) return;
+    // A control with nothing to say (or a place that asks for no tip) takes the last control's tip away with it.
+    if (!content || !element.isConnected) { if (shown && shown !== element) hideTip({now: true}); return; }
+    if (listOpen()) return;
     clearTimeout(hideTimer);
     if (shown && shown !== element) release(shown);
     shown = element;
@@ -434,7 +454,7 @@ function onPointerOver(event) {
 }
 function onFocusIn(event) {
     const control = controlAt(event.target);
-    if (control && control.matches(':focus-visible')) schedule(control, timing.show, {keyboard: true});
+    if (control && control.dataset.fvTipFocus !== 'off' && control.matches(':focus-visible')) schedule(control, timing.show, {keyboard: true});
 }
 function onPointerDown(event) {
     buttonsDown = event.buttons || 1;

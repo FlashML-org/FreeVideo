@@ -15,6 +15,7 @@ from . import disk_space
 from .long_paths import io_path, plain_errors
 
 COMMUNITY_PREFIX = 'community-sigma3-'
+UPSCALE_PREFIX = 'upscale-sigma3-'
 WORKERS = 6
 UNAVAILABLE = 'SAMPLING_TABLE_UNAVAILABLE: '
 
@@ -77,7 +78,8 @@ def available_levels(cache, shared, manifest, kind, catalog):
 
     def base_ready(steps):
         return any(len(t['identity']['timesteps']) == steps and ready(t, True) for t in bundled) or any(
-            not refinement(t) and len(t['identity']['timesteps']) == steps and ready(t) for t in task_tables)
+            not refinement(t) and not upscale(t) and len(t['identity']['timesteps']) == steps and ready(t)
+            for t in task_tables)
 
     refine_ready = any(refinement(t) and ready(t) for t in task_tables)
     from .tiers import table
@@ -109,6 +111,12 @@ def tables():
 def refinement(table):
     """Tables of the independent three-step refinement clock."""
     return table['download']['prefix'].startswith(COMMUNITY_PREFIX)
+
+
+def upscale(table):
+    """Tables of the clock that upscales a finished video (refine_schedule.UPSCALE). They are neither a first-pass
+    level nor the refinement of a quality level; only an upscale request fetches them."""
+    return table['download']['prefix'].startswith(UPSCALE_PREFIX)
 
 
 def required(table):
@@ -226,17 +234,21 @@ def retire_superseded(machine):
     return result
 
 
-def select(manifest, sampling, task, catalog=None):
+def select(manifest, sampling, task, catalog=None, cache=None):
     """The published tables one request samples with; the single selection rule.
 
-    prepare() fetches exactly these and pending() reports them without touching disk.
+    prepare() fetches exactly these and pending() reports them without touching disk. A cache that holds the original
+    projections computes the upscale clock's table from them, as before it was published (TableCache does the same).
     """
     from . import adaln_assets as assets
-    from .refine_schedule import COMMUNITY
+    from .refine_schedule import COMMUNITY, UPSCALE
     weights = assets.weight_identity(manifest)
     kind = 'i2va' if task in ('i2va', 'l2va', 'fl2va', 'ref2va') else task
     def needed(table):
         count = len(table['identity']['timesteps'])
+        if upscale(table):
+            return (count == 3 and sampling.get('refine_schedule') == UPSCALE
+                    and not (cache is not None and assets.sources_present(cache, manifest)))
         return (count == 3 and sampling.get('refine_schedule') == COMMUNITY if refinement(table)
                 else count == sampling['base_steps'])
     return kind, [t for t in (tables() if catalog is None else catalog) if t.get('task') == kind
@@ -253,7 +265,7 @@ def pending(root, machine, sampling, task):
         manifest = json.loads(io_path(cache / 'manifest.json').read_text(encoding='utf-8'))
     except (OSError, ValueError):
         return []
-    _, selected = select(manifest, sampling, task)
+    _, selected = select(manifest, sampling, task, cache=cache)
     shared = cache_root(machine['model_root'])
     missing = []
     for table in selected:
@@ -277,12 +289,13 @@ def prepare(root, machine, sampling, task, *, progress, interrupted=None, enviro
     import threading
     from . import adaln_assets as assets, network, provision
     from .monitoring import save, load_ledger
+    from .refine_schedule import UPSCALE
     cache = Path(machine['cache'])
     if not (cache / 'manifest.json').is_file():
         return dict(seconds=0., downloaded_bytes=0)  # Generation reports an invalid installation.
     manifest = json.loads((cache / 'manifest.json').read_text(encoding='utf-8'))
     catalog = tables()
-    kind, selected = select(manifest, sampling, task, catalog)
+    kind, selected = select(manifest, sampling, task, catalog, cache=cache)
     root = Path(root)
     shared = cache_root(machine['model_root'])
     ledger = root / 'verified-models.json'
@@ -308,9 +321,9 @@ def prepare(root, machine, sampling, task, *, progress, interrupted=None, enviro
                 continue
             if path.exists():
                 # A damaged or superseded copy must not block every request.
-                network.retain_partial(path, 'rejected')
+                network.retain_partial(path, 'set-aside')
                 if path.with_suffix('.json').exists():
-                    network.retain_partial(path.with_suffix('.json'), 'rejected')
+                    network.retain_partial(path.with_suffix('.json'), 'set-aside')
             missing.append((table, row, path))
     if len(stamps) != recorded:
         save(ledger, stamps, durable=True)
@@ -387,7 +400,9 @@ def prepare(root, machine, sampling, task, *, progress, interrupted=None, enviro
                        available=available_levels(cache, shared, manifest, kind, catalog),
                        decimal_sizes=sys.platform == 'darwin',
                        **({'step_cache': sampling['step_cache']} if sampling.get('step_cache') else {}),
-                       **({'scale': sampling['scale']} if sampling.get('scale', 2) != 2 else {}))
+                       **({'scale': sampling['scale']} if sampling.get('scale', 2) != 2 else {}),
+                       # An upscale of a finished video is no quality level: its card says what it was for.
+                       **({'upscale': True} if sampling.get('refine_schedule') == UPSCALE else {}))
         raise SamplingTableUnavailable(details, failure.cause) from failure.cause
     if failure is not None:
         raise failure

@@ -223,7 +223,10 @@ export function createFramePicker({t = translatorFor(null, false), shapes = [], 
 export function placePop(element, pop, placement = 'auto') {
     const a = element.getBoundingClientRect(), edge = innerWidth <= 520 ? 12 : 16, gap = 8;
     const scope = element.closest('dialog') || document;
-    const bar = scope.querySelector('.fv-topbar')?.getBoundingClientRect().bottom || 0, roof = Math.max(edge, bar + gap);
+    const bar = scope.querySelector('.fv-topbar')?.getBoundingClientRect().bottom || 0;
+    // In the editor's borrowed bar the window also stays under the project row (the title and Export, above the picture), as under the top bar.
+    const project = element.closest('.fv-ed-genbar-borrowed')?.closest('dialog')?.querySelector('.fv-ed-project-row'), under = project?.getClientRects().length ? project.getBoundingClientRect().bottom : 0;
+    const roof = Math.max(edge, bar + gap, under ? under + gap : 0);
     pop.style.maxHeight = '';
     const w = pop.offsetWidth, h = pop.offsetHeight;
     // The keys after the row's spacer (LoRA and Advanced, at the right of the console's row) line up their right edges.

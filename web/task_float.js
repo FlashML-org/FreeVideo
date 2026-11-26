@@ -11,6 +11,7 @@ import { createImageGenClient, imageGenError, imageReportBar, lostEngineText, WA
 import { exitCause, newEngineExit, watchEngineExit } from './engine_exit.js';
 import { saveGeneratedImage } from './image_library.js';
 import { isChinese, translator } from './i18n.js';
+import { shownRewrite } from './prompt_sections.js';
 
 const cn = isChinese();
 const t = translator(cn);
@@ -33,19 +34,25 @@ export function startJobSources() {
     imageSource(jobs, {client: createImageGenClient(), storage, connection: api, lastExit: async () => exitCause(await newEngineExit(api))});
     // The request the engine runs on each node now, from its own events: a plain (one graphics card) run's progress
     // names no request, so this keeps every queued video a row of its own (task_store.js progressSource).
+    // ComfyUI's page gives `executing` only the node (display_node || node, or null at the end), so the request comes from
+    // execution_start, which carries it; an `executing` with an object (older pages, other clients) names it itself.
     const runningOn = new Map();
+    let current = null;
+    const ended = prompt => { for (const [node, id] of [...runningOn]) if (id === prompt) runningOn.delete(node); if (current === prompt) current = null; };
+    api.addEventListener('execution_start', event => { const prompt = event.detail?.prompt_id; if (prompt) current = String(prompt); });
     api.addEventListener('executing', event => {
-        const detail = event.detail, prompt = detail && typeof detail === 'object' ? detail.prompt_id : null;
+        const detail = event.detail, object = detail !== null && typeof detail === 'object';
+        const prompt = object ? detail.prompt_id : current, node = object ? detail.node : detail;
         if (!prompt) return;
-        if (detail.node != null) runningOn.set(String(detail.node), prompt);
-        else for (const [node, id] of [...runningOn]) if (id === prompt) runningOn.delete(node);
+        if (node != null) runningOn.set(String(node), prompt); else ended(prompt);
     });
+    for (const type of ['execution_success', 'execution_interrupted', 'execution_error']) api.addEventListener(type, event => { const prompt = event.detail?.prompt_id; if (prompt) ended(String(prompt)); });
     let queue = null;
     const video = progressSource(jobs, {target: window, promptOf: node => runningOn.get(String(node)) || queue?.runningOn(node) || null,
         cancel: row => api.fetchApi('/freevideo/cancel', post({prompt_id: row.prompt_id, node_id: String(row.node)})).then(sent)});
     // Videos waiting in the engine's queue (this page's own requests): listed with their place; read again whenever the
     // engine says its queue changed, and every 3 s while one waits or runs.
-    queue = queueSource(jobs, {clientId: () => api.clientId || api.initialClientId || null,
+    queue = queueSource(jobs, {clientId: () => api.clientId || api.initialClientId || null, display: text => shownRewrite(text, cn ? 'zh' : 'en'),
         fetchJson: async path => { const response = await api.fetchApi(path, {cache: 'no-store'}); if (!response.ok) throw new Error('queue'); return response.json(); }});
     for (const type of ['status', 'promptQueued', 'execution_start', 'execution_success', 'execution_interrupted', 'execution_error']) api.addEventListener(type, () => { void queue.refresh(); });
     // The page's own progress connection may have read the snapshot before this module loaded; read it once more here,
@@ -189,8 +196,8 @@ function reasonLong(row) {
     // A picture: why FreeVideo went away, as far as the launcher saw it end, and what next (#1121).
     if (row.kind === 'image' && (code === 'engine_closed' || code === 'engine_restarted')) return lostEngineText(code, row.failure?.cause, t).join(t(' ', ''));
     if (code === 'engine_closed') return lostEngineText(code, row.failure?.cause, t).join(t(' ', ''));
-    if (code === 'engine_restarted' || row.status === 'interrupted') return t('FreeVideo restarted while this was being made, so it did not finish. Finished parts are in your creations.', 'FreeVideo 在生成过程中重新启动，这次没有完成。已经完成的部分在作品里。');
-    if (row.kind === 'image') return imageGenError(code, row.failure, t) || t('The image did not finish.', '这张图没有完成。');
+    if (code === 'engine_restarted' || row.status === 'interrupted') return t('FreeVideo restarted while this was being made, so it did not finish. Finished parts are in your creations.', 'FreeVideo 在生成过程中重新启动，这次未完成。已经完成的部分在作品里。');
+    if (row.kind === 'image') return imageGenError(code, row.failure, t) || t('The image did not finish.', '这张图片未完成。');
     // The engine's own text is raw; it goes through the same advice as the create panel, and an unknown cause says so.
     const told = row.failure?.message ? failureAdvice(String(row.failure.message), t) : null;
     if (told?.summary) return told.summary + t(' ', '') + told.action;
@@ -628,7 +635,7 @@ export function installTaskFloat() {
             const row = rows.find(r => r.id === failCard);
             const box = el('div', 'sgf-fail'); box.setAttribute('role', 'dialog'); box.setAttribute('aria-label', t('What happened', '发生了什么'));
             const title = el('b'), text = el('p', 'fv-selectable'), acts = el('div', 'sgf-acts');
-            title.textContent = row.kind === 'image' ? t("The image didn't finish", '这张图没有完成') : t("The video didn't finish", '这段视频没有完成');
+            title.textContent = row.kind === 'image' ? t("The image didn't finish", '这张图片未完成') : t("The video didn't finish", '这段视频未完成');
             text.textContent = reasonLong(row);
             const report = row.failure?.report_id || row.meta?.report_id;
             if (report && row.kind === 'image') {

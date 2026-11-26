@@ -65,6 +65,8 @@ export function blankCanvasSize(ratio, sizes = null, tier = 'standard') {
 // The step word a caller names for a failure that carries no step. A failure with a reason of its own needs none; the
 // catch-all generation_failed, with no stage and no report either, names where it was caught instead of "unreported".
 export const originStep = (error, word) => error?.step || (!error?.code || (error.code === 'generation_failed' && !error.stage && !error.report_id) ? word : '');
+// The kind of an exception the page itself ran into (TypeError, NotAllowedError…), never its message: that can name a file.
+export const errorType = error => !error?.code && error instanceof Error && /^[A-Za-z]{1,40}$/.test(error.name) ? error.name : '';
 const failure = (code, info = {}) => Object.assign(new Error(code || 'generation_failed'), {
     code: code || 'generation_failed', report_id: info.report_id || null, stage: info.stage || '',
     fitted: info.fitted || null, memory: info.memory || '',
@@ -275,8 +277,8 @@ export function imageGenError(code, info, t) {
         model_unreadable: ['The image generation model files could not be read. Repair them in the launcher and try again.',
             '图像生成模型的文件读不出来。在启动器里修复后再试。'],
         device_unavailable: ['The graphics card is not available right now. Try again later.', '显卡暂时用不了，稍后再试。'],
-        worker_exit: ['Image generation stopped unexpectedly. Try again.', '图像生成意外停止了，请再试一次。'],
-        timeout: ['This image took too long and was stopped. Try again.', '这一张用时太长，已停止。请再试一次。'],
+        worker_exit: ['Image generation stopped unexpectedly. Try again.', '图像生成意外停止，请重试。'],
+        timeout: ['This image took too long and was stopped. Try again.', '这张图片用时过长，已停止。请重试。'],
         disk_full: ['Saving the image failed: the disk is full. Free some space, then generate again.', '保存图片时出错：磁盘空间不够，空出空间后再生成。'],
         cancelled: ['Image generation was cancelled.', '已取消图像生成。'],
         invalid_request: ['The image settings are invalid. Adjust them and try again.', '图片设置有误，请调整后重试。'],
@@ -295,9 +297,9 @@ export function imageGenError(code, info, t) {
             '请在图片内选 1 到 16 个点，其中至少一个是选中点（1 表示选中，0 表示排除）。'],
         segment_not_installed: ['The click-select model is not installed. Download it first.', '点选模型尚未安装，请先下载点选模型。'],
         reload: ['Image generation was interrupted. Try again.', '图片生成中途被打断，请重试。'],
-        engine_error: ['The image engine returned an unreadable answer. Try again; if it keeps failing, report the problem.', '图像引擎返回了无法读取的结果。请重试；仍然失败请提交问题。'],
+        engine_error: ['The image engine returned an unreadable answer. Try again; if it keeps failing, download the report and report the problem.', '图像引擎返回了无法读取的结果。请重试；仍然失败请下载报告并提交问题。'],
         connection_lost: ['Lost the connection to FreeVideo. Try again once it is back.', '与 FreeVideo 的连接已断开，恢复后请重试。'],
-        generation_failed: ['Image generation ran into an error. Try again.', '图像生成出错了，请再试一次。'],
+        generation_failed: ['Image generation ran into an error. Try again.', '图像生成时出错，请重试。'],
         small_memory: ['This Mac has less than 16 GB of memory and cannot generate images.',
             '这台 Mac 的内存不足 16 GB，无法生成图片。'],
     };
@@ -325,7 +327,14 @@ export function imageGenError(code, info, t) {
     // An unnamed error still says which step it stopped at; a page with its own
     // Retry button does not repeat "try again" in the sentence.
     if (known === 'generation_failed' && Object.hasOwn(FAILED_AT, info?.stage)) {
-        return info?.retried ? say(...FAILED_AT[info.stage]) : say('{failure} Try again.', '{failure}请再试一次。', { failure: t(...FAILED_AT[info.stage]) });
+        const [again, retried] = FAILED_AT[info.stage];
+        return say(...(info?.retried ? retried : again));
+    }
+    // Stopped in the page before the engine had a step of its own (originStep's words): said by that step.
+    const step = /^http_\d+$/.test(info?.step || '') ? 'submit' : info?.step;
+    if (known === 'generation_failed' && !info?.stage && Object.hasOwn(FAILED_IN, step || '')) {
+        const [again, retried] = FAILED_IN[step];
+        return say(...(info?.retried ? retried : again));
     }
     return say(...(info?.retried && Object.hasOwn(RETRIED, known) ? RETRIED[known] : reasons[known]));
 }
@@ -333,15 +342,31 @@ const RETRIED = Object.freeze({
     worker_exit: ['Image generation stopped unexpectedly.', '图像生成意外停止。'],
     timeout: ['This image took too long and was stopped.', '本次生成用时过长，已停止。'],
     reload: ['Image generation was interrupted.', '图像生成中途被打断。'],
+    engine_error: ['The image engine returned an unreadable answer. If it keeps failing, download the report and report the problem.', '图像引擎返回了无法读取的结果。仍然失败请下载报告并提交问题。'],
     generation_failed: ['Image generation ran into an error.', '图像生成出错。'],
 });
 const FAILED_AT = Object.freeze({
-    start: ['An error occurred while starting image generation.', '启动图像生成时出错。'],
-    load: ['An error occurred while loading the image model.', '加载图像模型时出错。'],
-    text: ['An error occurred while reading the prompt.', '读取提示词时出错。'],
-    encode: ['An error occurred while reading the reference images.', '读取参考图时出错。'],
-    denoise: ['An error occurred while generating the image.', '生成画面时出错。'],
-    decode: ['An error occurred while producing the image.', '输出图像时出错。'],
+    start: [['An error occurred while starting image generation. Try again.', '启动图像生成时出错。请重试。'], ['An error occurred while starting image generation.', '启动图像生成时出错。']],
+    load: [['An error occurred while loading the image model. Try again.', '加载图像模型时出错。请重试。'], ['An error occurred while loading the image model.', '加载图像模型时出错。']],
+    text: [['An error occurred while reading the prompt. Try again.', '读取提示词时出错。请重试。'], ['An error occurred while reading the prompt.', '读取提示词时出错。']],
+    encode: [['An error occurred while reading the reference images. Try again.', '读取参考图时出错。请重试。'], ['An error occurred while reading the reference images.', '读取参考图时出错。']],
+    denoise: [['An error occurred while generating the image. Try again.', '生成画面时出错。请重试。'], ['An error occurred while generating the image.', '生成画面时出错。']],
+    decode: [['An error occurred while producing the image. Try again.', '输出图像时出错。请重试。'], ['An error occurred while producing the image.', '输出图像时出错。']],
+});
+// The page's own steps: [with "try again", with the page's own Retry]. The rest (task_row, status, cast,
+// agent_job) are the engine's answer without a reason: the general sentence, with the step under the technical details.
+const SENT_PICTURE = [['The image to send could not be prepared. Try again; if it keeps failing, download the report and report the problem.', '未能准备要发送的图片。请重试；仍然失败请下载报告并提交问题。'],
+        ['The image to send could not be prepared. If it keeps failing, download the report and report the problem.', '未能准备要发送的图片。仍然失败请下载报告并提交问题。']];
+const FAILED_IN = Object.freeze({
+    upload: [['The reference images were not uploaded. Try again; if it keeps failing, download the report and report the problem.', '参考图未能上传。请重试；仍然失败请下载报告并提交问题。'],
+        ['The reference images were not uploaded. If it keeps failing, download the report and report the problem.', '参考图未能上传。仍然失败请下载报告并提交问题。']],
+    prepare: [['An error occurred while preparing the request. Try again; if it keeps failing, download the report and report the problem.', '准备生成请求时出错。请重试；仍然失败请下载报告并提交问题。'],
+        ['An error occurred while preparing the request. If it keeps failing, download the report and report the problem.', '准备生成请求时出错。仍然失败请下载报告并提交问题。']],
+    submit: [['An error occurred while sending the request. Try again; if it keeps failing, download the report and report the problem.', '发送生成请求时出错。请重试；仍然失败请下载报告并提交问题。'],
+        ['An error occurred while sending the request. If it keeps failing, download the report and report the problem.', '发送生成请求时出错。仍然失败请下载报告并提交问题。']],
+    encode_reference: SENT_PICTURE, encode_mask: SENT_PICTURE, encode_editor: SENT_PICTURE,
+    result_missing: [['Generation finished, but no image was returned. Try again; if it keeps failing, download the report and report the problem.', '生成已结束，但未返回图片。请重试；仍然失败请下载报告并提交问题。'],
+        ['Generation finished, but no image was returned. If it keeps failing, download the report and report the problem.', '生成已结束，但未返回图片。仍然失败请下载报告并提交问题。']],
 });
 
 // Keep image failure copy here for editorial review. The submit card and its
@@ -363,11 +388,12 @@ export const REPORT_LABELS = Object.freeze({
 });
 
 // The report download and its "send as an issue" card; the request carries only the opaque report ID.
-export function imageReportBar(card, report_id, t, {productVersion = () => null, fetchApi = globalThis.fetch.bind(globalThis), quiet = false} = {}) {
+// `local` (a function giving the report's Blob) stands for a report the page made itself: there is nothing to fetch.
+export function imageReportBar(card, report_id, t, {productVersion = () => null, fetchApi = globalThis.fetch.bind(globalThis), quiet = false, local = null} = {}) {
     // `quiet` is the picture page's own: the video page's weight, not a bordered button. Every surface says "Download report".
     const download = REPORT_LABELS.download;
     const doc = card.ownerDocument || document;
-    const fetchReport = async () => {
+    const fetchReport = local ? async () => local() : async () => {
         const response = await fetchApi(`${IMAGE_GEN_PROTOCOL.root}/report/${encodeURIComponent(report_id)}`, {cache: 'no-store'});
         if (!response.ok) throw reportFetchError(response);
         return response.blob();
@@ -401,8 +427,20 @@ export function imageReportBar(card, report_id, t, {productVersion = () => null,
             if (restoreFocus && card.isConnected && doc.activeElement === doc.body) anchor.focus({preventScroll: true});
         }
     };
-    bar.append(anchor, issue);
+    // A page-made report sits beside the card's own "Report a problem"; a second one would only repeat it.
+    if (local) bar.append(anchor); else bar.append(anchor, issue);
     return {bar, anchor};
+}
+
+// The report of a failure the engine made none for: the failure's code words, whether the page is a secure context and
+// the version. Never the prompt, a file name or an error's message (those can hold what the user typed or chose).
+const codeWord = value => typeof value === 'string' && /^[A-Za-z0-9_.-]{1,64}$/.test(value) ? value : '';
+export function pageImageReport({error, stage, step, memory, error_type} = {}, version = null, now = new Date()) {
+    return {schema: 'freevideo.image-failure-report', schema_version: 1, created_at: now.toISOString(),
+        version: codeWord(version) || null,
+        failure: {code: codeWord(error) || 'generation_failed', stage: codeWord(stage), step: codeWord(step) || (codeWord(stage) ? '' : 'unreported'),
+            memory: codeWord(memory), error_type: codeWord(error_type)},
+        page: {secure_context: globalThis.isSecureContext === true}};
 }
 
 // Shared by the editor and the other image entry points. Only the opaque report
@@ -416,7 +454,7 @@ export const NO_REPORT = new Set([
     'too_many_images', 'too_many_loras'
 ]);
 
-export function renderImageFailure(host, {error, report_id, stage, step, fitted, info, memory, other_usage, cause, misses} = {}, t,
+export function renderImageFailure(host, {error, report_id, stage, step, fitted, info, memory, other_usage, cause, misses, error_type} = {}, t,
     {productVersion = () => null, fetchApi = globalThis.fetch.bind(globalThis), retry = null, retried = Boolean(retry)} = {}) {
     // `retry` ({label: [en, zh], onClick}) puts the page's Retry first in the card's own action row;
     // `retried` alone says the caller shows a Retry of its own elsewhere.
@@ -429,7 +467,7 @@ export function renderImageFailure(host, {error, report_id, stage, step, fitted,
     }
     const card = doc.createElement('div'); card.className = 'fv-result-links';
     const reason = doc.createElement('div'); reason.className = 'fv-image-failure-reason';
-    reason.setAttribute('role', 'status'); reason.textContent = imageGenError(error, {stage, fitted, memory, unified: info?.unified_memory, other_usage, retried, cause}, t);
+    reason.setAttribute('role', 'status'); reason.textContent = imageGenError(error, {stage, step, fitted, memory, unified: info?.unified_memory, other_usage, retried, cause}, t);
     card.append(reason); host.append(card);
     let again = null;
     if (retry) {
@@ -438,24 +476,38 @@ export function renderImageFailure(host, {error, report_id, stage, step, fitted,
         again.onclick = () => retry.onClick();
     }
     // A failure the engine reports has a way to report it: the diagnostic report (with its own technical details) when the
-    // engine made one, else a form that carries the code and stage. The same facts stay under a details fold either way.
+    // engine made one, else (for a failure with no reason of its own) a report made here, a form that carries the code and
+    // step, and the same facts under a details fold.
     let bar;
     if (report_id) ({bar} = imageReportBar(card, report_id, t, {productVersion, fetchApi}));
     else {
         // A picture FreeVideo's going away ended (#1121) names why (fixed words) and the last asks that failed.
         const facts = [[['Error code', '错误码'], error], [['Stage', '阶段'], stage], [['Step', '步骤'], step || (stage || cause ? '' : 'unreported')],
-            [['Cause', '原因'], cause], [['Last attempts', '最后几次请求'], Array.isArray(misses) ? misses.slice(-3).map(miss => typeof miss === 'string' && /^[a-z][a-z0-9_]{0,31}$/.test(miss) ? miss : 'other').join(', ') : ''], [['Memory', '内存'], memory]].filter(([, v]) => v);
-        bar = doc.createElement('div'); bar.className = 'fv-actions';
-        // Drawn as the card's other actions (Retry, Download report): their border, focus ring and press.
+            [['Cause', '原因'], cause], [['Last attempts', '最后几次请求'], Array.isArray(misses) ? misses.slice(-3).map(miss => typeof miss === 'string' && /^[a-z][a-z0-9_]{0,31}$/.test(miss) ? miss : 'other').join(', ') : ''], [['Memory', '内存'], memory],
+            [['Error type', '错误类型'], codeWord(error_type)]].filter(([, v]) => v);
+        // A page that passes no version has the update check's, loaded as the report is made (as the issue button does).
+        let checked = null;
+        const version = () => (typeof productVersion === 'function' ? productVersion() : productVersion) || checked;
+        const local = async () => {
+            if (!version()) try { checked = (await import('./updates.js')).productVersion(); } catch { /* the report has no version */ }
+            return new Blob([JSON.stringify(pageImageReport({error, stage, step, memory, error_type}, version()), null, 2)], {type: 'application/json'});
+        };
+        // Only a failure without a reason of its own (or an answer the page could not read) has one: a reason (settings,
+        // LoRAs, disk) says what to do, and one the person fixes (NO_REPORT) has no report at all.
+        const english = value => value, plain = imageGenError('generation_failed', null, english);
         const reportable = !NO_REPORT.has(error);
+        const unexplained = reportable && (Boolean(codeWord(error_type)) || ['generation_failed', 'engine_error'].includes(error) || imageGenError(error, null, english) === plain);
+        if (unexplained) ({bar} = imageReportBar(card, null, t, {productVersion: version, fetchApi, local}));
+        else { bar = doc.createElement('div'); bar.className = 'fv-actions'; }
+        // Drawn as the card's other actions (Retry, Download report): their border, focus ring and press.
         if (reportable)
-            bar.append(issueButton(t, () => ({where: ['Image generation', '图像生成'], message: facts.map(([[en, zh], v]) => `${t(en, zh)}: ${v}`).join('\n')}), {className: 'fv-action'}));
+            bar.append(issueButton(t, () => ({where: ['Image generation', '图像生成'], message: facts.map(([[en, zh], v]) => t(en, zh) + t(': ', '：') + v).join('\n')}), {className: 'fv-action'}));
         if (again) bar.prepend(again);
         // The row is shown when it holds Retry or the report button (decided from them, not by counting its children).
         if (again || reportable) card.append(bar);
         const details = doc.createElement('details'); details.className = 'fv-image-failure-details';
         const summary = doc.createElement('summary'); summary.textContent = t('Technical details', '技术详情'); details.append(summary);
-        for (const [[en, zh], v] of facts) { const row = doc.createElement('div'); row.textContent = `${t(en, zh)}: ${v}`; details.append(row); }
+        for (const [[en, zh], v] of facts) { const row = doc.createElement('div'); row.textContent = t(en, zh) + t(': ', '：') + v; details.append(row); }
         card.append(details);
         bar = null;
     }
@@ -641,7 +693,7 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
     const emit = patch => { state = {...state, ...patch}; if (!disposed) onChange(state); };
     const failed = error => error.code === 'cancelled' ? {error: '', report_id: null, stage: '', memory: '', step: ''}
         : {error: error.code || 'generation_failed', report_id: error.report_id || null, stage: error.stage || '', step: error.step || '',
-            memory: error.memory || '', other_usage: error.other_usage || null, ...(error.fitted ? {fitted: error.fitted} : {})};
+            memory: error.memory || '', other_usage: error.other_usage || null, error_type: error.error_type || errorType(error), ...(error.fitted ? {fitted: error.fitted} : {})};
     const cancelJob = job => Promise.resolve().then(() => client.cancel(job)).catch(() => {});
     const forget = () => { try { store?.clear(); } catch { /* the job is only not resumed after a reload */ } };
     function scheduleInfo() {
@@ -767,14 +819,18 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
             if (names.length) Promise.resolve().then(() => client.discardUploads?.(names)).catch(() => {});
         };
         const sender = {upload: async file => { const name = await client.upload(file); uploaded.push(name); return name; }};
+        // Where a failure without a reason of its own was caught: an edit sends its pictures first.
+        let reached = request.mode === 'edit' ? 'upload' : 'prepare';
         try {
             const {context, images = [], mask} = await prepare(request, alive, sender);
             sent = [...images, ...(mask ? [mask] : [])];
             if (!alive()) return;
+            reached = 'prepare';
             if (state.stage === 'upload') emit({stage: ''});
             const withImages = images.length > 0;
             await beforeGenerate({kind: 'image', width: context.width, height: context.height, image_references: images.length});
             if (!alive()) return;
+            reached = 'submit';
             const request_ = {prompt: request.prompt, width: context.width, height: context.height, images, mask,
                 ...(request.seed === undefined ? {} : {seed: request.seed}),
                 ...(request.loras === undefined ? {} : {loras: request.loras}),
@@ -829,14 +885,14 @@ export function createImageGenSession({client, prepare, apply, onChange = () => 
                     try { store?.save({job, context, withImages}); } catch { /* the job is only not resumed after a reload */ }
                     track(current, job, context, withImages, false, again);
                 } catch (error) {
-                    if (alive()) emit({running: false, job: null, ...failed(error)});
+                    if (alive()) emit({running: false, job: null, ...failed(error), step: originStep(error, reached)});
                 } finally {
                     if (!taken) discard();
                 }
             };
             await go();
         } catch (error) {
-            if (alive()) emit({running: false, job: null, ...failed(error)});
+            if (alive()) emit({running: false, job: null, ...failed(error), step: originStep(error, reached)});
         } finally {
             // Stopped, turned away or failed before the service took the request: its pictures go now (a job removes
             // its own when it ends).

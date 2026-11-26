@@ -17,13 +17,51 @@ export const SAMPLING_EFFORTS = frozen([
 // The Fast level, listed before Light where the planner admits it (grid.fast_mode). The engine takes its steps from the
 // `fast_mode` input, so it is never matched from step counts. Its one line of description is here.
 export const FAST_EFFORT = Object.freeze({name: 'Fast', zh: '极速', fast: true, steps: 2, twoPass: false, stepCache: null, upscale: 2, color: '#35d0e6'});
+// Its name again as an [English, Chinese] pair, like the line below, so that the language files carry it (i18n_extract
+// collects pairs, not this object); scripts/test_effort_names_catalog.mjs holds the two the same.
+export const FAST_NAME = Object.freeze(['Fast', '极速']);
 export const FAST_OPTION_TEXT = Object.freeze(['Faster; fine detail may flicker', '更快，画面细节可能闪烁']);
-// What a capability grid offers of it (capabilities.fast_mode, listed by the planner); never on a Mac, where the engine
-// refuses it.
-export const fastOfferOf = grid => grid?.machine?.system !== 'Darwin' && grid?.fast_mode?.listed === true ? grid.fast_mode : null;
-export const withFastLevel = (levels, offer) => offer ? frozen([FAST_EFFORT, ...levels]) : levels;
+// What a capability grid offers of it (capabilities.fast_mode, listed by the planner, a Mac included).
+export const fastOfferOf = grid => grid?.fast_mode?.listed === true ? grid.fast_mode : null;
+// The reason the Fast level is not offered here, in the page's words, or '' (it is simply not listed): an installation whose
+// model does not run it is told which model it needs and where to get it.
+// A level's name and the 档 after it never break across lines. The catalog keeps plain words; when the sentence is shown, the
+// level's own name in this language (and a 档 / 檔 right after it) is joined with word joiners, as error_panel.js does.
+export function keepLevelName(text, name) {
+    if (!text || !name || !/[\u3400-\u9fff]/.test(name)) return text;
+    const pattern = new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[档檔]?', 'g');
+    return text.replace(pattern, found => [...found].join('\u2060'));
+}
+export function fastUnavailableText(t, grid) {
+    return keepLevelName(fastUnavailableWords(t, grid), effortName(t, FAST_EFFORT));
+}
+function fastUnavailableWords(t, grid) {
+    const fast = grid?.fast_mode;  // a Mac is never told to switch models: its listing carries no `needs`
+    if (!fast || fast.listed || fast.needs !== 'int8_model') return '';
+    // The launcher's own count and rounding (Main.qml bytes()), so the page and the launcher show the same number.
+    const size = Number.isFinite(fast.download_bytes) && fast.download_bytes > 0 ? `${(fast.download_bytes / 2 ** 30).toFixed(1)}\u00a0GiB` : '';
+    if (fast.int8_slower) return size
+        ? t('Needs the model that supports Fast: choose "Switch model" in the launcher (about {size} to download). On this GPU, the other levels are about 5% slower with it.',
+            '需要支持极速档的模型：请在启动器中点“更换模型”（下载约 {size}）。在这张显卡上，换用后其他档位约慢 5%。', { size })
+        : t('Needs the model that supports Fast: choose "Switch model" in the launcher. On this GPU, the other levels are about 5% slower with it.',
+            '需要支持极速档的模型：请在启动器中点“更换模型”。在这张显卡上，换用后其他档位约慢 5%。');
+    return size ? t('Needs the faster model: choose "Upgrade" in the launcher (about {size} to download).', '需要更快的模型：请在启动器中点“升级”（下载约 {size}）。', { size })
+        : t('Needs the faster model: choose "Upgrade" in the launcher.', '需要更快的模型：请在启动器中点“升级”。');
+}
+// Whether a capabilities answer says anything about the Fast level: a ready grid, or a Mac's fast_only answer (no grid,
+// only the listing; its status stays unavailable for every other reader).
+export const fastAnswered = grid => grid?.version === 1 && (grid.status === 'ready' || grid.fast_only === true);
 // Mac runs the same plans; retain platform identity for its legacy High alias.
 const macLevels = new WeakSet();
+// A Mac's levels with Fast in front keep that identity. unavailable: why the Fast level cannot be chosen on this
+// installation (capabilities.fast_mode.needs, for example its model is not installed); it is then shown greyed, its
+// tooltip says why, and choosing it shows the reason instead.
+export const withFastLevel = (levels, offer, unavailable = '') => {
+    if (!offer && !unavailable) return levels;
+    const listed = frozen([offer ? FAST_EFFORT : Object.freeze({...FAST_EFFORT, unavailable}), ...levels]);
+    if (macLevels.has(levels)) macLevels.add(listed);
+    return listed;
+};
 export const SAMPLING_EFFORTS_MAC = frozen(SAMPLING_EFFORTS);
 macLevels.add(SAMPLING_EFFORTS_MAC);
 // Earlier Max sampled 20 plain steps, on every platform.
@@ -113,7 +151,7 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}, levels 
     const custom = el('span', 'fv-effort-custom', t('Custom', '自定义')); custom.hidden = true;
     const label = el('span', '', t('Quality', '质量'));
     const estimate = el('span', 'fv-effort-estimate');
-    const warning = el('div', 'fv-effort-warning'); warning.hidden = true;
+    const warning = el('div', 'fv-effort-warning'); warning.hidden = true; warning.setAttribute('aria-live', 'polite');
     // Ways out of what the warning says (the Fast level where a length does not fit): buttons under it.
     const ways = el('div', 'fv-effort-ways'); ways.hidden = true;
     // The names under the track show the level; the heading does not repeat it.
@@ -149,13 +187,89 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}, levels 
             b.dataset.level = tier.name;  // the tooltip's words are found by level, whichever position it has
             b.dataset.fvTipName = effortName(t, tier);
             b.dataset.fvTipUse = nameUse(tier);
+            if (tier.unavailable) {
+                b.dataset.unavailable = 'true'; b.setAttribute('aria-disabled', 'true'); b.dataset.fvTipWhy = tier.unavailable;
+                stops[i].dataset.unavailable = 'true';
+            }
             b.onclick = () => { if (!disabled && pointer === null) commit(i); };
+            b.onkeydown = nameKey;
             names.append(b); return b;
         });
         rail.setAttribute('aria-valuemax', String(last()));
+        markKeys();
+        fitNames();
     }
+    // Every level's name whole, on one line, at its own letter spacing, in any language: measured, never set per language.
+    // Under the track (names placed at their stops) the names keep 8 px between neighbours, the box the owner names
+    // (growInto) widening for them, and a name at either end moves in only as far as keeps it 4 px inside the frame it is
+    // drawn in; where the box cannot widen enough, every other name goes one line lower. Names in a strip of cells (the
+    // Studio's three columns) are left to that layout.
+    const NAME_GAP = 8, FRAME_EDGE = 4;
+    let growBox = null, onFitted = () => {}, fitting = false;
+    const shown = () => nameButtons.length > 0 && names.isConnected && names.getClientRects?.().length > 0 && names.clientWidth > 0;
+    function frameOf(node) {
+        for (let e = node.parentElement; e && e !== document.body; e = e.parentElement) {
+            const st = getComputedStyle(e);
+            if (parseFloat(st.borderLeftWidth) > 0 || parseFloat(st.borderRightWidth) > 0 || st.overflowX !== 'visible'
+                || !/rgba\(0, 0, 0, 0\)|transparent/.test(st.backgroundColor) || st.backgroundImage !== 'none') return e;
+        }
+        return document.documentElement;
+    }
+    // Each fit starts from nothing fitted: the same control can move between a strip and a track (the Edit view borrows
+    // the Studio's), and a wider window gives the room back.
+    function unfit() {
+        delete names.dataset.fvStagger; names.style.removeProperty('height');
+        for (const b of nameButtons) for (const property of ['top', '--fv-name-shift']) b.style.removeProperty(property);
+        growBox?.style.removeProperty('width');
+    }
+    function fitTrack() {
+        // In layout pixels (offsets and resolved positions), which a panel's opening transition (a slight scale) leaves alone.
+        const frame = frameOf(names);
+        const rowLeft = () => { let x = 0; for (let e = names; e && e !== frame; e = e.offsetParent) x += e.offsetLeft + (e === names ? 0 : e.clientLeft); return x; };
+        const edges = () => {
+            const x = rowLeft(), inner = frame.clientWidth;
+            return nameButtons.map(b => { const centre = x + parseFloat(getComputedStyle(b).left), half = b.offsetWidth / 2;
+                return {centre, half, shift: centre - half < FRAME_EDGE ? FRAME_EDGE - (centre - half) : centre + half > inner - FRAME_EDGE ? inner - FRAME_EDGE - (centre + half) : 0}; });
+        };
+        const box = growBox?.contains(names) ? growBox : null;   // only the box the names are shown in widens
+        if (nameButtons.length > 1) {
+            const at = edges(), pitch = at[1].centre - at[0].centre;
+            let need = pitch;
+            for (let i = 0; i + 1 < at.length; i++) need = Math.max(need, at[i].half + at[i + 1].half + NAME_GAP - (at[i + 1].shift - at[i].shift));
+            const lack = (need - pitch) * (nameButtons.length - 1);
+            if (box && lack > .05) box.style.width = `${Math.ceil(box.offsetWidth + lack)}px`;
+        }
+        const at = edges();
+        at.forEach(({shift}, i) => { if (Math.abs(shift) > .05) nameButtons[i].style.setProperty('--fv-name-shift', `${shift.toFixed(1)}px`); });
+        // A box that cannot widen enough (a panel as wide as the window): the second and fourth names go one line lower, each
+        // still at its stop, so that the names on each line keep their 8 px. The row is one line taller.
+        const gap = i => (at[i + 1].centre + at[i + 1].shift - at[i + 1].half) - (at[i].centre + at[i].shift + at[i].half);
+        if (at.some((_, i) => i + 1 < at.length && gap(i) < NAME_GAP - .5)) {
+            const line = names.clientHeight;
+            names.dataset.fvStagger = ''; names.style.height = `${line * 2}px`;
+            nameButtons.forEach((b, i) => { if (i % 2) b.style.top = `${line}px`; });
+        }
+    }
+    function fitNames() {
+        if (fitting || !shown()) return;
+        fitting = true;
+        // Measured as the chosen name is drawn (bolder, so wider) for every name, so that choosing another level never takes
+        // the room the fit left: set and given back in this one step, so nothing is drawn in between.
+        const chosen = nameButtons.map(b => b.hasAttribute('data-active'));
+        try {
+            unfit(); for (const b of nameButtons) b.setAttribute('data-active', '');
+            if (getComputedStyle(nameButtons[0]).position === 'absolute') fitTrack();
+        } finally { nameButtons.forEach((b, i) => b.toggleAttribute('data-active', chosen[i])); fitting = false; }
+        onFitted();
+    }
+    // Measured again when the names' row changes size (its stylesheet arriving, a narrower window), after this frame so
+    // that a box it widens is not measured mid-change, and once the interface's font has loaded.
+    let pending = 0;
+    const namesObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { cancelAnimationFrame(pending); pending = requestAnimationFrame(() => { pending = 0; fitNames(); }); }) : null;
+    namesObserver?.observe(names); document.fonts?.ready?.then(fitNames);
     element.append(header, warning, ways, rail, names);
-    let selected = 0, disabled = false, pointer = null, draft = 0, previewed = -1, currentSteps = 8, currentRefine = 3, twoPass = true, stepCache = null, upscale = 2, reason = '', fastNow = false;
+    let selected = 0, disabled = false, pointer = null, draft = 0, previewed = -1, currentSteps = 8, currentRefine = 3, twoPass = true, stepCache = null, upscale = 2, reason = '', fastNow = false, namesAsKeys = false, marked = false;
+    let unavailableShown = '';  // the warning line holds a greyed level's reason (cleared when a level is chosen)
     buildScale();
     function paint(position) {
         element.style.setProperty('--fv-position', position / last());
@@ -164,6 +278,33 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}, levels 
         stops.forEach((stop, i) => stop.toggleAttribute('data-filled', i <= position + .01));
         rail.setAttribute('aria-valuenow', String(index));
         rail.setAttribute('aria-valuetext', tier.fast ? effortName(t, tier) : `${effortName(t, tier)}, ${stepsWords(t, tier.steps, tier.twoPass, 3)}`);
+        markKeys();
+    }
+    // Where the three-column layout shows the four names as the control (useNames), they are the control for the keyboard and
+    // for assistive technology too: a radio group with one tab stop, on the level in use, and the rail (which is not seen
+    // there) stays out of the tab order and the accessibility tree. Anywhere else the rail is the slider and the names are
+    // only its labels, out of the tab order.
+    // A greyed level keeps its own reason in the tooltip's why line (withFastLevel's unavailable); a closed control's
+    // reason, when there is one, stands for every level.
+    const ownWhy = (b, i, why = '') => { const own = why || efforts[i]?.unavailable || ''; if (own) b.dataset.fvTipWhy = own; else delete b.dataset.fvTipWhy; };
+    function markKeys() {
+        rail.tabIndex = disabled || namesAsKeys ? -1 : 0;
+        if (!namesAsKeys) {
+            if (!marked) return;
+            marked = false;
+            rail.removeAttribute('aria-hidden'); names.removeAttribute('role'); names.removeAttribute('aria-label'); names.removeAttribute('aria-description');
+            nameButtons.forEach((b, i) => { b.removeAttribute('role'); b.removeAttribute('aria-checked'); delete b.dataset.fvTipFocus; ownWhy(b, i); b.tabIndex = -1; });
+            return;
+        }
+        marked = true;
+        rail.setAttribute('aria-hidden', 'true'); names.setAttribute('role', 'radiogroup'); names.setAttribute('aria-label', label.textContent);
+        // The slider that says why the control is closed is not there for the pointer or the reader: the levels and the group say it.
+        const why = disabled ? reason || t('Controlled by connected nodes.', '由连接的节点控制。') : '';
+        if (why) names.setAttribute('aria-description', why); else names.removeAttribute('aria-description');
+        nameButtons.forEach((b, i) => ownWhy(b, i, why));
+        const inUse = element.dataset.custom !== 'true';
+        // The arrows move through the group: a card at every press would cover the estimate, so the tip is for the pointer only.
+        nameButtons.forEach((b, i) => { b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', String(inUse && i === selected)); b.dataset.fvTipFocus = 'off'; b.tabIndex = i === selected ? 0 : -1; });
     }
     function position(event) {
         const box = rail.getBoundingClientRect();
@@ -176,6 +317,16 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}, levels 
         if (index !== previewed) { previewed = index; onPreview(efforts[index]); }
     }
     function commit(index) {
+        if (efforts[index]?.unavailable) {
+            // A greyed level is not chosen: the knob stays and the warning line says why (read out by screen readers).
+            onPreview(null);  // a drag that pointed at it put the estimate away; the caller shows the current one again
+            unavailableShown = efforts[index].unavailable;
+            warning.textContent = unavailableShown; warning.hidden = false;
+            paint(selected);
+            return;
+        }
+        if (unavailableShown && warning.textContent === unavailableShown) { warning.textContent = ''; warning.hidden = true; }
+        unavailableShown = '';
         selected = index; custom.hidden = true; delete element.dataset.custom;
         paint(index); onChange(efforts[index]);
         knob.classList.remove('fv-effort-pop'); void knob.offsetWidth; knob.classList.add('fv-effort-pop');
@@ -209,17 +360,34 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}, levels 
         rail.dataset.keyboard = 'true';
         if (event.key === 'Escape' && pointer !== null) { event.preventDefault(); event.stopPropagation(); cancel(); return; }
         if (disabled || pointer !== null) return;
-        const next = {ArrowRight: selected + 1, ArrowUp: selected + 1, ArrowLeft: selected - 1, ArrowDown: selected - 1, Home: 0, End: last()}[event.key];
+        const next = levelKey(event.key);
         if (next === undefined) return;
-        event.preventDefault(); commit(Math.max(0, Math.min(last(), next)));
+        event.preventDefault(); commit(next);
     };
+    // The level a key moves to (undefined for any other key). The slider: Right and Up one level up, Left and Down one down,
+    // stopping at the ends. The radio group of names: Right and Down the next, Left and Up the previous, round the ends (as a
+    // radio group does, and as the second-pass choice beside it). Home and End go to the ends in both.
+    function levelKey(key, radio = false) {
+        if (key === 'Home') return 0;
+        if (key === 'End') return last();
+        const step = (radio ? {ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1} : {ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1})[key];
+        if (step === undefined) return undefined;
+        const next = selected + step;
+        return radio ? (next + efforts.length) % efforts.length : Math.max(0, Math.min(last(), next));
+    }
+    function nameKey(event) {
+        if (!namesAsKeys || disabled || pointer !== null || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+        const next = levelKey(event.key, true);
+        if (next === undefined) return;
+        event.preventDefault(); commit(next); nameButtons[selected]?.focus();
+    }
     function update(state) {
         currentSteps = Number(state.baseSteps); currentRefine = Number(state.refineSteps);
         twoPass = state.twoPass; stepCache = stepCacheOf(state.stepCache); upscale = upscaleOf(state.upscale); disabled = state.disabled; reason = state.reason || ''; fastNow = Boolean(state.fast);
-        rail.tabIndex = disabled ? -1 : 0; rail.setAttribute('aria-disabled', String(disabled));
+        markKeys(); rail.setAttribute('aria-disabled', String(disabled));
         element.dataset.disabled = String(disabled);
         if (pointer !== null) return;
-        const level = (fastNow && efforts.find(tier => tier.fast)) || effortFor(currentSteps, twoPass, currentRefine, stepCache, efforts, upscale);
+        const level = (fastNow && efforts.find(tier => tier.fast && !tier.unavailable)) || effortFor(currentSteps, twoPass, currentRefine, stepCache, efforts, upscale);
         // Custom steps sit at the nearest level, preferring one with the same pass count.
         const distance = v => Math.abs(v.steps - currentSteps) * 2 + (v.twoPass !== twoPass);
         const plain = efforts.filter(tier => !tier.fast);
@@ -236,19 +404,23 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}, levels 
     }
     // The machine's own table (effortsFrom); the names stay, the plans follow the machine.
     function setLevels(next) {
-        const same = (a, b) => a.steps === b.steps && a.twoPass === b.twoPass && a.stepCache === b.stepCache && a.upscale === b.upscale;
+        const same = (a, b) => a.steps === b.steps && a.twoPass === b.twoPass && a.stepCache === b.stepCache && a.upscale === b.upscale
+            && (a.unavailable || '') === (b.unavailable || '');
         if (!next || (next.length === efforts.length && macLevels.has(next) === macLevels.has(efforts)
             && next.every((tier, i) => same(tier, efforts[i])))) return;
-        const rebuilt = next.length !== efforts.length;
+        const rebuilt = next.length !== efforts.length || next.some((tier, i) => (tier.unavailable || '') !== (efforts[i]?.unavailable || ''));
         efforts = next;
         if (rebuilt) buildScale();
         update({baseSteps: currentSteps, refineSteps: currentRefine, twoPass, stepCache, upscale, disabled, reason, fast: fastNow});
     }
     // What the Fast level's option says: its download while the files are missing.
     function setFastUse(text) { fastUse = text || ''; efforts.forEach((tier, i) => { if (tier.fast) nameButtons[i].dataset.fvTipUse = nameUse(tier); }); }
-    return {element, update, setLevels, setFastUse, levels: () => efforts, setWarning(text) { warning.textContent = text; warning.hidden = !text; },
+    // The box that widens for the names (the panel they are shown in), and what to do once they are fitted (place it again).
+    function growInto(box, then = () => {}) { growBox = box || null; onFitted = then; fitNames(); }
+    function dispose() { cancel(); namesObserver?.disconnect(); if (pending) cancelAnimationFrame(pending); }
+    return {element, update, setLevels, setFastUse, growInto, fitNames, levels: () => efforts, useNames(on) { namesAsKeys = Boolean(on); markKeys(); }, setWarning(text) { warning.textContent = text; warning.hidden = !text; },
         setWays(list = []) {
             ways.replaceChildren(...list.map(way => { const b = el('button', 'fv-effort-way', way.label); b.type = 'button'; b.dataset.way = way.id; b.onclick = way.run; return b; }));
             ways.hidden = !list.length;
-        }, setEstimate(text, title = '', parts = 0) { estimate.textContent = text; if (parts > 1) estimate.dataset.parts = String(parts); else delete estimate.dataset.parts; if (title) estimate.title = title; else estimate.removeAttribute('title'); }, dispose: cancel};
+        }, setEstimate(text, title = '', parts = 0) { estimate.textContent = text; if (parts > 1) estimate.dataset.parts = String(parts); else delete estimate.dataset.parts; if (title) estimate.title = title; else estimate.removeAttribute('title'); }, dispose};
 }

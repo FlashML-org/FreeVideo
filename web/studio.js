@@ -10,7 +10,7 @@ import { api } from '../../scripts/api.js';
 import { openSetup } from './setup.js';
 import { feedbackButton, guideButton, feedbackIssueURL } from './feedback.js';
 import { wordmark } from './wordmark.js';
-import { createGenerationProgress, recordReportId, referenceTrimText, thermalText, sharedGpuText, keepSoundText, encoderFileText, encoderFilePath } from './generation_progress.js';
+import { createGenerationProgress, recordReportId, referenceTrimText, thermalText, powerLimitText, sharedGpuText, keepSoundText, encoderFileText, encoderFilePath } from './generation_progress.js';
 import { viewSwitch, viewChanged, agentTabReady, openAutopilot, openImage } from './view_navigation.js';
 import { fitStudioHeader } from './studio_header_fit.js';
 import { agentInterfaceState } from './agent_connect.js';
@@ -33,10 +33,10 @@ import { problem as timedProblem, timedText, parse as timedParse } from './timed
 import { castInRows, expandCast, mentionHandle, mentionState, mentionedIds, restoreCast, withCharacter, MAX_PICTURES_EACH } from './cast_mention.js';
 import { attachMentionOverlay } from './cast_overlay.js';
 import { openCastLibrary } from './cast_source.js';
-import { mediaName, uploadMedia } from './media_upload.js';
+import { uploadMedia } from './media_upload.js';
 import { reconcileLoraTriggers, promptLines } from './lora_triggers.js';
 import { createVerdicts, describeVerdict, feedbackDraft } from './lora_check.js';
-import { FAST_EFFORT, FAST_OPTION_TEXT, continuationUpscale, createSamplingEffort, effortFor, effortsFrom, fastOfferOf, passSwitch, stepCacheOf, upscaleOf, withFastLevel } from './sampling_effort.js';
+import { FAST_EFFORT, FAST_OPTION_TEXT, continuationUpscale, createSamplingEffort, effortFor, effortsFrom, fastAnswered, fastOfferOf, fastUnavailableText, passSwitch, stepCacheOf, upscaleOf, withFastLevel } from './sampling_effort.js';
 import { fastPackControl } from './fast_pack.js';
 import { createPanelShell } from './panel_shell.js';
 import { layoutColumns } from './studio_columns.js';
@@ -47,6 +47,7 @@ import { TIPS } from './tooltip_copy.js';
 import { createFrameChip, createFrameIcon, createPopChip } from './glass/frame_picker.js';
 import { createWarm } from './studio_warm.js';
 import { attach as attachPlayer } from './glass/player_bar.js';
+import { enlarged, toggleEnlarge } from './video_enlarge.js';
 import { framesOf, savedPrompt, savedSettings } from './result_reuse.js';
 import { addVideoLabel, addVideoModel, missingVideoText, videoModelState } from './video_model.js';
 import { createPromptEnhancer } from './prompt_enhance.js';
@@ -316,7 +317,7 @@ function triggerEntry(name) {
 }
 // The server's own wording is technical; the panel always says the same plain sentence.
 const triggerReadError = () => new Error(t('Could not read trigger words.', '无法读取触发词。'));
-const triggerSaveError = () => new Error(t('Could not save. Try again.', '没有保存，请再试一次。'));
+const triggerSaveError = () => new Error(t('Could not save. Try again.', '未能保存，请重试。'));
 async function triggerResponse(response, fail) {
     let result = null;
     try { result = await response.json(); } catch { /* not JSON: same sentence */ }
@@ -850,7 +851,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             unavailable: ['The current model cannot use this example\'s settings.', '当前模型用不了这个示例的设置'],
             asset: missing ? ['An example file is missing from this installation. Select "Repair" under Settings > Environment, then try again.', '示例素材不在本机安装里，在“设置 → 环境”里点“修复”后重试']
                 : ['The example files could not be read from FreeVideo. Check that FreeVideo is still running, then try again.', '没能从 FreeVideo 读取示例素材，确认 FreeVideo 仍在运行后再试'],
-            write: ['The example files could not be added to this panel\'s media list. Try again.', '示例素材没能加入这个面板的素材列表，请再试一次'],
+            write: ['The example files could not be added to this panel\'s media list. Try again.', '示例素材未能加入这个面板的素材列表，请重试。'],
             workspace_changed: ['Another view was opened, so the example was not filled in. Go back to the creation panel and try again.', '已切到别的视图，示例没有填入，回到创作面板再试'],
             no_editor: ['The editor did not open, so the start clip was not placed. Open the editor, then select the example again.', '剪辑视图没有打开，起始片段没有放上去；打开剪辑视图后再点一次示例'],
             'pending-assets': ['This example is not available yet.', '这个示例暂时不能用'],
@@ -1149,7 +1150,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const passControl = createPassMode({t, onChoose: mode => choosePassMode(mode), listen: listenDialogKey});
     const passMode = passControl.element;
     cleanup.push(passControl.dispose);
-    const fastRowWords = () => fastParts() ? t('Each part runs a second pass', '每段使用二采') : t('Fast uses one pass', '极速档一次生成');
+    const fastRowWords = () => fastParts() ? t('Each part runs a second pass', '每段使用二采') : t('Fast uses one pass', '极⁠速⁠档一次生成');
     const previewPassHint = t('Stops at a lower-resolution preview. Choose "Run second pass" in the result when it looks right; the video matches a direct run.',
         '先出低分辨率预览，满意后在结果里点“继续二采”，成片与直接生成一致。');
     twoPassLabel.append(el('span', t('Second pass', '二采')), twoPassStatus, passMode);
@@ -1167,6 +1168,10 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const fastLeft = () => { if (fastOn()) set(node, 'fast_mode', 'none'); };
     // A video made in parts is sampled at Light in two passes, whatever is chosen (the request says so at submission).
     const fastParts = () => fastOn() && lengthControl?.plan?.count > 1;
+    const fastPartsWords = () => t('Each part of a video made in parts uses the Light level.', '分段生成时，每段使用轻量档。');
+    // The Quality section of the three-column panel holds the levels (studio_columns.js), not the Quality window. Declared,
+    // not assigned: the estimate asks while the panel is still being built.
+    function levelsInColumn() { return !!effort?.element?.closest?.('.fv-sc-section'); }
     const chooseEffort = tier => {
         if (tier.fast) { chooseFast(); return; }
         const back = fastOn() ? fastBack : null;
@@ -1212,14 +1217,16 @@ export function openStudio(node, {extendFrom = null} = {}) {
         syncSamplingSteps(); updateRunButton();
     }
     // The planner's answer for this machine (capabilities.fast_mode): no answer lists no Fast level.
-    // Listed only once the files are known to be published; until then the four levels.
-    const fastLevels = () => withFastLevel(effortsFrom(fastGrid), fastOffer && fastPack.published === true ? fastOffer : null);
+    // Listed only once the files are known to be published; until then the four levels. An installation whose model does
+    // not run it sees it greyed, with the model it needs (fastUnavailableText).
+    const fastLevels = () => withFastLevel(effortsFrom(fastGrid), fastOffer && fastPack.published === true ? fastOffer : null,
+                                           !fastOffer && widget(node, 'fast_mode') ? fastUnavailableText(t, fastGrid) : '');
     function applyFastOffer(grid) {
         fastGrid = grid;
-        if (grid?.status === 'ready') fastOffer = widget(node, 'fast_mode') ? fastOfferOf(grid) : null;
+        if (fastAnswered(grid)) fastOffer = widget(node, 'fast_mode') ? fastOfferOf(grid) : null;
         effort.setLevels(fastLevels());
         if (fastOffer) fastPack.refresh();
-        if (grid?.status !== 'ready' || !fastOn()) return;
+        if (!fastAnswered(grid) || !fastOn()) return;
         if (!fastOffer) chooseEffort(effort.levels().find(tier => tier.name === 'Light'));
     }
     // What the quality control shows now; the editor's generation bar shows the same control from this.
@@ -1248,6 +1255,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     }
     // A level chosen on the control.
     function chooseLevel(tier) {
+        if (tier.unavailable) return;  // a greyed level only says why (sampling_effort.js)
         if (!tier.fast) fastPack.forget();
         chooseEffort(tier);
         if (tier.twoPass) returnHeldPreview(); else holdPreview(false);
@@ -1279,7 +1287,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     }
     function passState() {
         if (fastOn()) return {mode: fastParts() ? 'on' : 'off', disabled: {off: true, on: true, preview: true}, hidden: {preview: !widget(node, 'preview')}, hint: '',
-            why: fastParts() ? fastRowWords() : t('Fast makes the full size in one pass. Choose another level to use it.', '极速档一次生成全分辨率。选其他档位后可用。')};
+            why: fastParts() ? fastRowWords() : t('Fast makes the full size in one pass. Choose another level to use it.', '极⁠速⁠档一次生成全分辨率。选其他档位后可用。')};
         const passLinked = linked(node, 'two_pass'), previewLinked = linked(node, 'preview');
         return {mode: !twoPass.checked ? 'off' : previewFirst.checked ? 'preview' : 'on',
             disabled: {off: Boolean(extension.source) || passLinked || !widget(node, 'two_pass'), on: twoPass.disabled,
@@ -1567,8 +1575,10 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // Where the page cannot tell yet: 'checking' (the planner's grid is not in) holds the key; 'linked' (the size comes from
     // another node, so it never can) lets it go, and a refusal then comes back as the failure card (Lane 11-24).
     function fastUnknown() {
-        // Not listed (no answer from the planner either): it is sent at Light, so nothing waits.
-        if (!fastOn() || !fastOffer || lengthControl?.plan?.count > 1 || fastCell()) return null;
+        // Not listed (no answer from the planner either): it is sent at Light, so nothing waits. A Mac's answer is the
+        // listing alone (fast_only, no sizes), as for every level there: nothing waits, and the Mac's own admission
+        // refuses a size that does not fit, with its failure card.
+        if (!fastOn() || !fastOffer || lengthControl?.plan?.count > 1 || fastCell() || fastGrid?.fast_only === true) return null;
         return linked(node, 'width') || linked(node, 'height') ? 'linked' : 'checking';
     }
     function fastUnknownWords(kind) {
@@ -1615,7 +1625,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
             // Its time where the planner has one; a video made in parts is sampled at Light.
             const cell = fastCell();
             effort.setEstimate(cell?.fits ? cell.estimate : '');
-            if (lengthControl.plan?.count > 1) effort.setWarning(t('Each part of a video made in parts uses the Light level.', '分段生成时，每段使用轻量档。'));
+            // In the three-column Quality section this sentence is the level's own line, under the levels (sayLevel), so the
+            // levels do not move; the Quality window keeps it above them.
+            if (lengthControl.plan?.count > 1) { if (!levelsInColumn()) effort.setWarning(fastPartsWords()); }
             else if (cell && !cell.fits) { effort.setWarning(fastShortfallWords(cell)); effort.setWays(fastWays(cell)); }
             else if (!cell && fastUnknown()) effort.setWarning(fastUnknownWords(fastUnknown()));
             if (runButtonReady) updateRunButton();
@@ -2111,14 +2123,15 @@ export function openStudio(node, {extendFrom = null} = {}) {
     };
     const memoryNote = el('div', t('This run used the low-memory mode, so it was slower. A lower resolution or a shorter video is faster.', '这次用了省显存方式，所以较慢。降低分辨率或缩短时长会更快。'), 'fv-note'); memoryNote.hidden = true;
     const thermalNote = el('div', '', 'fv-note'); thermalNote.hidden = true;
+    const powerNote = el('div', '', 'fv-note'); powerNote.hidden = true;
     const sharedGpuNote = el('div', '', 'fv-note'); sharedGpuNote.hidden = true;
     const encoderNote = el('div', '', 'fv-note'); encoderNote.hidden = true;
     const keepSoundNote = el('div', keepSoundText(t), 'fv-note'); keepSoundNote.hidden = true;
     output.append(status, reuseRow, progress.stall, progress.report, prewarm);
     // The actions join the bar under the picture; the numbers and notes go into its Details (one place to look).
     stageBar.end.append(links);
-    stageBar.element.querySelector('.fvs-info-panel').prepend(stats, budget, trimNote, memoryNote, thermalNote, sharedGpuNote, keepSoundNote, encoderNote);
-    stageBar.details = [stats, budget, trimNote, memoryNote, thermalNote, sharedGpuNote, keepSoundNote, encoderNote];
+    stageBar.element.querySelector('.fvs-info-panel').prepend(stats, budget, trimNote, memoryNote, thermalNote, powerNote, sharedGpuNote, keepSoundNote, encoderNote);
+    stageBar.details = [stats, budget, trimNote, memoryNote, thermalNote, powerNote, sharedGpuNote, keepSoundNote, encoderNote];
     const failure = createErrorPanel(t, reportRoute);
     // The failure card opens on the picture it replaces (no new video was made), so it is seen without scrolling;
     // its close button puts the earlier picture back, and the next run clears it anyway.
@@ -2279,7 +2292,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
         video.dataset.pending = 'true'; stageMedia.prepend(video); lastShown.set(node, r); rememberShown(r);
         // The video on the stage goes before anything the page loads ahead in the background (work_media.js).
         mediaQueue().open(video.getAttribute('src'), video);
-        playerBar = attachPlayer(video, playerRow, {t});
+        // The one play bar for watching, with volume, speed and full screen.
+        playerBar = attachPlayer(video, playerRow, {t, volume: true, speed: true,
+            full: {shown: () => enlarged(video), toggle: key => toggleEnlarge(video, {t, opener: key})}});
         // A click on the picture plays or pauses it, as the play bar's key does.
         video.addEventListener('click', event => {
             if (event.button !== 0 || video.dataset.leaving || !video.isConnected) return;
@@ -2316,6 +2331,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         trimNote.textContent = trims.map(row => referenceTrimText(row, t)).join('\n'); trimNote.hidden = !trims.length;
         memoryNote.hidden = !r.low_memory || !!r.result_cache_hit;
         thermalNote.textContent = r.thermal ? thermalText(r.thermal, t) : ''; thermalNote.hidden = !r.thermal || !!r.result_cache_hit;
+        powerNote.textContent = r.power_limit ? powerLimitText(r.power_limit, t) : ''; powerNote.hidden = !r.power_limit || !!r.result_cache_hit;
         sharedGpuNote.textContent = r.shared_gpu ? sharedGpuText(r.shared_gpu, t) : ''; sharedGpuNote.hidden = !sharedGpuNote.textContent || !!r.result_cache_hit;
         keepSoundNote.hidden = !r.keep_source_audio_failed;
         encoderNote.textContent = r.encoder_file ? encoderFileText(r.encoder_file, t) : ''; encoderNote.hidden = !r.encoder_file;
@@ -3285,7 +3301,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
         if (!open) return false;
         open.open = false; open.querySelector(':scope>summary')?.focus({preventScroll: true}); return true;
     };
-    dialog.addEventListener('cancel', e => { e.preventDefault(); if (!closeMenu() && !compare.close() && !promptLibrary?.hide() && !consoleUI?.dismiss() && !closeWorksDrawer()) closeDialog(dialog); });
+    // Only the dialog's own cancel is Escape: a file picker dismissed inside it fires a cancel at its input that bubbles here.
+    dialog.addEventListener('cancel', e => { if (e.target !== dialog) return; e.preventDefault(); if (!closeMenu() && !compare.close() && !promptLibrary?.hide() && !consoleUI?.dismiss() && !closeWorksDrawer()) closeDialog(dialog); });
     const dispose = () => { if (disposed) return; disposed = true; borrowed?.release({disposing: true}); blockOriginal('extend', false); blockOriginal('preview', false); blockOriginal('fast', false); for (const f of cleanup) f(); stage.querySelector('video')?.pause(); dialog.remove(); if (current?.dialog === dialog) { current = null; viewChanged('nodes', node); } };
     const onClose = () => {
         // The browser's own close event of a switch comes with the next frame; if the panel was opened again before it
@@ -3304,6 +3321,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     current.borrow = ({mount, submit, label = null, previews = null, disabled = null, onSeconds = null, onFirstFrame = null, initial = {}, locked = []}) => {
         if (borrowed || disposed) return null;
         columns?.restore(); // the editor shows the console bar, not the column
+        if (columns) effort.useNames(false);
         const outer = mount.closest('dialog') || document.body;
         const home = {parent: controls.parentNode, next: controls.nextSibling};
         // The pop-ups travel inside one display:contents holder, so a switch moves one node instead of every pop-up.
@@ -3337,6 +3355,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
                     if (home.next?.parentNode === home.parent) home.parent.insertBefore(controls, home.next); else home.parent.append(controls);
                     dialog.append(popHolder);
                     columns?.apply();
+                    if (columns) effort.useNames(true);
                 }
                 updateRunButton();
             }};
@@ -3503,12 +3522,19 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // Quality: a button with a small panel beside it, like Frame & size. In the panel, the levels' slider (the thick
     // track with the knob inside, as before), one line under it on what the level gives (no times), and the two-pass
     // choice.
-    const qualityChip = createPopChip({host: dialog, kind: 'quality', onOpen: () => paintQuality(), name: t('Quality', '质量'), icon: 'M8 2l1.6 3.6L13.5 6l-2.9 2.7.8 3.9L8 10.7 4.6 12.6l.8-3.9L2.5 6l3.9-.4Z'});
+    const qualityChip = createPopChip({host: dialog, kind: 'quality', onOpen: () => { paintQuality(); effort.fitNames(); }, name: t('Quality', '质量'), icon: 'M8 2l1.6 3.6L13.5 6l-2.9 2.7.8 3.9L8 10.7 4.6 12.6l.8-3.9L2.5 6l3.9-.4Z'});
     const LEVEL_WORDS = {Fast: FAST_OPTION_TEXT, Light: ['Fastest, for trying ideas', '最快，适合试效果'], Medium: ['For everyday use', '日常使用'], High: ['More detail, slower', '细节更多，较慢'], Max: ['The most detail, slowest', '细节最多，最慢']};
     const levelUse = el('p', '', 'fvp-level-use'); levelUse.setAttribute('aria-live', 'polite');
     effort.element.after(levelUse, fastPack.element); qualityChip.body.append(samplingSettings);
+    // The panel widens for the level names when they need more room than its own width (sampling_effort.js fitNames).
+    effort.growInto(qualityChip.pop, () => qualityChip.place());
     const qualityLevel = () => fastOn() ? effort.levels().find(tier => tier.fast) || FAST_EFFORT : effortFor(Number(baseSteps.value), twoPass.checked, Number(refineSteps.value), stepCacheNow(), effort.levels(), upscaleNow());
-    const sayLevel = tier => { const said = tier?.fast && fastParts() ? '' : tier?.fast && fastPack.needs() ? fastPack.needs() : tier?.name === 'Light' && effort.levels().some(level => level.fast) ? t('Quick, for trying ideas', '速度较快，适合试效果') : tier ? t(...(LEVEL_WORDS[tier.name] || ['', ''])) : t('Custom steps', '自定义步数'); if (levelUse.textContent !== said) levelUse.textContent = said; };
+    const sayLevel = tier => {
+        const parts = !!tier?.fast && fastParts() && levelsInColumn();
+        if (parts) levelUse.dataset.tone = 'warning'; else delete levelUse.dataset.tone;
+        const said = parts ? fastPartsWords() : tier?.fast && fastParts() ? '' : tier?.fast && fastPack.needs() ? fastPack.needs() : tier?.name === 'Light' && effort.levels().some(level => level.fast) ? t('Quick, for trying ideas', '速度较快，适合试效果') : tier ? t(...(LEVEL_WORDS[tier.name] || ['', ''])) : t('Custom steps', '自定义步数');
+        if (levelUse.textContent !== said) levelUse.textContent = said;
+    };
     effortPointed = tier => sayLevel(tier || qualityLevel());
     const paintQuality = () => {
         const level = qualityLevel();
@@ -3566,10 +3592,13 @@ export function openStudio(node, {extendFrom = null} = {}) {
             duration: stepper.element, quality: effort.element, pass: passMode, runbar,
             // The level's line and the Fast level's download row stand under the levels, as in the Quality window (the column has no such window).
             qualityMore: [levelUse, fastPack.element]}});
+        effort.useNames(true);  // the column shows the four levels, not the slider: they are the keyboard's and the reader's control
     }
     // The two panels repaint whenever the console's row does.
     { const sync = consoleUI.sync; consoleUI.sync = () => { sync(); paintDuration(); paintQuality(); }; }
     paintDuration(); paintQuality();
+    // A saved Fast setting in parts was told before the column stood: its sentence moves under the levels now.
+    if (fastParts() && levelsInColumn()) showEffortEstimate();
     // Space plays or pauses the stage video and M turns its sound on or off, unless a field or a control has the key.
     cleanup.push(listenDialogKey(dialog, 'keydown', event => {
         if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing || event.repeat) return;
@@ -3616,30 +3645,11 @@ export function openStudio(node, {extendFrom = null} = {}) {
         fitPreview();
     };
     placeStatus(); phone?.addEventListener?.('change', placeStatus); cleanup.push(() => phone?.removeEventListener?.('change', placeStatus));
-    // A tray or a small window opened over the band (their glass lets 6% through) would show its line as a faint second
-    // copy under the window: while one covers a shown note, the line goes clear (still read out: glass/studio.css).
-    let coverFrame = 0;
-    const coverBand = () => {
-        coverFrame = 0;
-        const notes = [...consoleUI.slot.children].filter(item => !item.hidden && item.textContent.trim()).map(item => item.getBoundingClientRect()).filter(r => r.width && r.height);
-        // Only what floats is a window: in three columns a tray is a part of the column, and one scrolled out of sight still has its place.
-        const windows = [...dialog.querySelectorAll('.fvs-tray[open], .fvp-pop:not([hidden])')].filter(item => /^(fixed|absolute)$/.test(getComputedStyle(item).position))
-            .map(item => item.getBoundingClientRect()).filter(r => r.width && r.height);
-        const covered = notes.some(n => windows.some(w => w.left < n.right && w.right > n.left && w.top < n.bottom && w.bottom > n.top));
-        if (controls.dataset.statusCovered !== String(covered)) controls.dataset.statusCovered = String(covered);
-    };
-    const queueCover = () => { if (!coverFrame) coverFrame = requestAnimationFrame(() => { coverFrame = requestAnimationFrame(coverBand); }); };
-    const coverWatch = new MutationObserver(queueCover);
-    coverWatch.observe(dialog, {subtree: true, attributes: true, attributeFilter: ['open', 'hidden', 'data-open', 'data-closing']});
-    // A tray rises 8 px into place as it opens: look again once it has settled.
-    globalThis.addEventListener('resize', queueCover); dialog.addEventListener('animationend', queueCover);
-    cleanup.push(() => { coverWatch.disconnect(); globalThis.removeEventListener('resize', queueCover); cancelAnimationFrame(coverFrame); });
     // The band above the console is kept only while its line has something to say (glass/studio.css), so an empty band
     // never sits between the picture and the console.
     const syncBand = () => {
         const said = [...consoleUI.slot.children].some(item => !item.hidden && item.textContent.trim() && getComputedStyle(item).display !== 'none');
         if (controls.dataset.status !== String(said)) controls.dataset.status = String(said);
-        queueCover();
     };
     const bandWatch = new MutationObserver(syncBand);
     bandWatch.observe(consoleUI.slot, {childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['hidden', 'data-state']});
@@ -3649,7 +3659,6 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const bandSize = typeof ResizeObserver === 'function' ? new ResizeObserver(() => {
         const height = `${Math.ceil(consoleUI.slot.getBoundingClientRect().height)}px`;
         if (controls.style.getPropertyValue('--fvs-band') !== height) controls.style.setProperty('--fvs-band', height);
-        queueCover();
     }) : null;
     bandSize?.observe(consoleUI.slot); cleanup.push(() => bandSize?.disconnect());
     // Receipts (filled in, preset applied or saved) go to the shared toast in the top bar's right column (a bottom strip
@@ -3750,6 +3759,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     promptTools.prepend(promptLibrary.button);
     // Prompt from a picture or video: the key left of the history key; the file only feeds the description (it is not added to the media).
     // A video is read, then shaped into the model's own format (the Original tab keeps the readable description).
+    // The prompt model reads the stored upload (its `file`), never the name the user's file had.
     reverseKey = el('button', null, 'fvs-library-button fv-prompt-reverse'); reverseKey.type = 'button';
     reversePick = el('input'); reversePick.type = 'file'; reversePick.accept = 'image/*,video/*'; reversePick.hidden = true;
     const reverseIcon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 5.5v-1a2 2 0 0 1 2-2h1M10.5 2.5h1a2 2 0 0 1 2 2v1M13.5 10.5v1a2 2 0 0 1-2 2h-1M5.5 13.5h-1a2 2 0 0 1-2-2v-1"/><path d="M5.5 6.5h5M5.5 9h3.2"/></svg>';
@@ -3757,7 +3767,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const reverseQueueWhy = () => queueState?.running || queueState?.pending?.length ? t('Finish the current queue before writing a prompt from media.', '请等待当前队列完成后再生成提示词。') : '';
     function startReverse(file) {
         const kind = file.type?.startsWith('video/') ? 'video' : file.type?.startsWith('image/') ? 'image' : 'other';
-        enhancer.reverse({kind, upload: async () => { if (kind === 'other') throw new Error('unsupported_media'); return mediaName(await uploadMedia(api, file)); }}, {shapeVideo: true}).catch(() => {});
+        enhancer.reverse({kind, upload: async () => { if (kind === 'other') throw new Error('unsupported_media'); return (await uploadMedia(api, file)).file; }}, {shapeVideo: true}).catch(() => {});
     }
     function paintReverse() {
         if (!reverseKey) return;

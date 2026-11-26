@@ -25,6 +25,7 @@ import time
 from urllib.parse import quote, unquote, urlencode, urljoin, urlsplit
 from . import proxy
 from .long_paths import io_path, is_windows, path_chars, plain, plain_errors, ABSOLUTE_PATH, AUTHORIZATION, EMAIL, path_match
+from . import report_addresses
 from .system import curl_executable, curl_ca_arguments, missing_curl_message, windows
 
 
@@ -644,6 +645,9 @@ def _redact(value):
     if isinstance(value, bytes):
         value = value.decode('utf-8', errors='replace')
     value = _ANSI_ESCAPE.sub('', str(value)).replace('\x00', '')
+    # An address keeps the path report_addresses keeps (on a repository host only FreeVideo's own
+    # repositories), with no query or fragment; its user and password go below.
+    value = report_addresses.URL.sub(report_addresses.record, value)
     # User information in any URL (https, socks5, a token alone before @), up to
     # the last @ before the host, so a password holding an @ goes as a whole.
     value = re.sub(r'(?i)\b([a-z][a-z0-9+.-]*://)[^\s/\x27\x22]+@', r'\1<REDACTED>@', value)
@@ -1017,10 +1021,31 @@ def hash_file(path, algorithm='sha256', git_blob=False, *, discard_cache=False, 
     return value.hexdigest()
 
 
-def retain_partial(path, reason):
+def retain_partial(path, reason, *, observed=None, algorithm='sha256', network=None, category=None, source=None):
+    """Keep a file or prefix that failed its check, as <name>.<reason>-<time>.
+
+    The older kept copies of the same file go (the newest stays for diagnosis; failed_copies explains the
+    rule). With `network`, a ``failed-copy`` event names the copy, its size and time and the digest it actually
+    had, never a folder."""
     retained = path.with_name(path.name + '.' + reason + '-' + str(time.time_ns()))
     path.rename(retained)
+    from . import failed_copies
+    removed = failed_copies.prune(path, keep=1)
+    if network is not None:
+        event(network, category=category, source=source, file=failed_copies.base_name(path), action='failed-copy',
+              reason=reason, removed_older=len(removed), removed_older_bytes=sum(row['bytes'] for row in removed),
+              **failed_copies.describe(retained, observed, algorithm))
     return retained
+
+
+def forget_failed(path, network=None, **details):
+    """The right file has passed its sha256: every copy of it that did not pass goes."""
+    from . import failed_copies
+    removed = failed_copies.prune(path, keep=0)
+    if removed and network is not None:
+        event(network, file=failed_copies.base_name(path), action='failed-copies-removed', removed=len(removed),
+              removed_bytes=sum(row['bytes'] for row in removed), **details)
+    return removed
 
 
 RETRY_DELAYS = (2, 5)
@@ -1125,13 +1150,103 @@ def move_file(source, destination):
         source.unlink()
 
 
+# How long one attempt at another process's download lease waits before checking for cancellation again.
+DOWNLOAD_LEASE_POLL_SECONDS = 1.
+
+
+def download_lease(path, network=None, category='download'):
+    """One process at a time fetches a given file.
+
+    Two processes fetching the same file (two GPUs of one installation sampling the same new schedule, or two
+    installations sharing a folder) wrote the same resumable .partial and its source record: one renamed it away
+    under the other, or published over it. The second now waits for the first and then finds the file there, checked,
+    or resumes what the first left. The lease is an advisory lock on a small file beside the target
+    (.<name>.download-lock), released by the operating system when its holder exits or is killed. The holder removes
+    the file when it is done; one a killed holder left is taken and removed by the next download.
+    A launcher update is left out: one launcher fetches it, and its folder must hold the launcher alone
+    (version_cleanup). Where the lock file cannot be made, the download goes ahead as before.
+    """
+    from contextlib import contextmanager, nullcontext
+
+    @contextmanager
+    def lease():
+        from .locking import runtime_lock
+        folder = io_path(Path(path).parent)
+        held, waited, mismatched = None, False, 0
+        lock = folder / ('.' + Path(path).name + '.download-lock')
+        while held is None:
+            try:
+                folder.mkdir(parents=True, exist_ok=True)
+                attempt = runtime_lock(lock, inherit=False, wait_seconds=DOWNLOAD_LEASE_POLL_SECONDS)
+                descriptor = attempt.__enter__()
+                try:
+                    mine = os.fstat(descriptor)
+                    there = os.stat(lock)
+                except OSError:
+                    mine = there = None
+                if mine is None or there is None or mine.st_nlink == 0:
+                    # The previous holder removed the file this lock was taken on (POSIX removes it while held): a
+                    # normal handover, so take the one at the path now, however often it happens.
+                    attempt.__exit__(None, None, None)
+                elif windows() or os.path.samestat(mine, there):
+                    # Windows never hands out a removed file, and its file numbers need not compare (ReFS, SMB).
+                    held = attempt
+                else:
+                    # Still linked, yet another file at the path: NFS renames a removed open file (.nfsXXXX) while a
+                    # newcomer creates the path again, or the disk's inode numbers are not stable (SMB mounted with
+                    # noserverino, some FUSE). Take the new file again, but no more than three times, so such a
+                    # disk does not wait until someone cancels.
+                    mismatched += 1
+                    if mismatched >= 3:
+                        held = attempt
+                    else:
+                        attempt.__exit__(None, None, None)
+            except BlockingIOError:
+                pass
+            except OSError:
+                break  # no lock file here (read-only or unusual folder): download as before
+            if held is None:
+                if not waited:
+                    waited = True
+                    event(network or {}, category=category, file=Path(path).name, action='waiting-for-same-download')
+                check = (network or {}).get('resource_check')
+                if check:
+                    check()  # a cancellation stops the wait like any other step
+        try:
+            yield
+        finally:
+            if held is not None:
+                # The lock file goes with the lease, so no folder keeps one. While it is held (POSIX) a waiter still on
+                # the old file sees the path changed and takes the new one; Windows cannot remove an open file, so it
+                # goes after the close, and stays for whoever still has it open to remove in turn.
+                if not windows():
+                    try:
+                        lock.unlink(missing_ok=True)
+                    except OSError:
+                        pass
+                held.__exit__(None, None, None)
+                if windows():
+                    try:
+                        lock.unlink(missing_ok=True)
+                    except OSError:
+                        pass
+
+    return nullcontext() if category == 'launcher-update' else lease()
+
+
 def download(candidates, path, expected, *args, **options):
     """Fetch into `path`; where curl cannot name it (Windows, beyond 259 characters), in a short folder.
 
     The file and what resumes it (partial bytes, source record) go to the short
     folder first, and whatever is left there comes back, also after a failure.
+    One process at a time fetches a given path (download_lease).
     """
     path = Path(path)
+    with download_lease(path, options.get('network'), options.get('category', 'download')):
+        return _download(candidates, path, expected, *args, **options)
+
+
+def _download(candidates, path, expected, *args, **options):
     scratch = None
     if is_windows() and path_chars(plain(path)) + DOWNLOAD_SIBLING_CHARS > GIT_PATH_LIMIT:
         scratch = git_scratch_folder()
@@ -1201,18 +1316,32 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
         if progress:
             progress(high_water, size or 0, last_rate)
 
+    observed = {}
+
     def reject(candidate, reason):
         if updating:
             candidate.unlink(missing_ok=True)
         else:
-            retain_partial(candidate, reason)
+            retain_partial(candidate, reason, observed=observed.pop('digest', None) if reason == 'hash-rejected' else None,
+                           algorithm=algorithm + ('-git-blob' if git_blob else ''), network=network, category=category,
+                           source=observed.get('source'))
 
     def publish(candidate):
         check = network.get('resource_check')
         if updating and check:
             check()
         from .file_ops import publish as move
-        move(candidate, path)
+        try:
+            move(candidate, path)
+        except FileExistsError:
+            # Another process published the same file first (a download that predates the lease, or a folder the
+            # lease could not cover). The same bytes there are this download's result; other bytes still fail.
+            if not path.is_file() or not matches(path):
+                raise
+            candidate.unlink(missing_ok=True)
+            forget_failed(path, network, category=category)
+            return
+        forget_failed(path, network, category=category)
         if updating and progress:
             progress(path.stat().st_size, size or 0, last_rate)
 
@@ -1220,6 +1349,7 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
     stall_seconds = stall_seconds if stall_seconds is not None else 120 if model else 20
 
     def matches(candidate, source='local'):
+        observed.pop('digest', None)
         if size is not None and candidate.stat().st_size != size:
             return False
         event(network, category=category, source=source, file=path.name, action='verifying', algorithm=algorithm)
@@ -1232,13 +1362,16 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
                 check()
             if model:
                 report(done, total)
-        matched = hash_file(candidate, algorithm, git_blob, discard_cache=category in ('models', 'vdn-models', 'encoder-models', 'image-models'),
-                            progress=verification if model or check else None) == expected
+        observed['digest'], observed['source'] = hash_file(
+            candidate, algorithm, git_blob, discard_cache=category in ('models', 'vdn-models', 'encoder-models', 'image-models'),
+            progress=verification if model or check else None), source
+        matched = observed['digest'] == expected
         if matched and verify is not None:
             matched = verify(candidate)
         return matched
     if path.is_file():
         if matches(path):
+            forget_failed(path, network, category=category)
             return
         raise ValueError('Existing file failed integrity check; retained without overwrite: ' + str(path))
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -1548,7 +1681,7 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
             if cycle + 1 < cycles:
                 event(network, category=category, source=name, file=path.name, action='restart-approved',
                       retained_bytes=partial.stat().st_size, reason='resume-unavailable')
-                retain_partial(partial, 'restart-approved')
+                retain_partial(partial, 'restart-approved', network=network, category=category, source=name)
     message = 'Every download source failed for %s. Check your network or choose another connection mode in Downloads. Partial files retained' % path.name
     error = DownloadError(message + sources_text(failures.values()))
     error.attempts = [dict(source=source, route=route, reason=reason) for (source, route), reason in attempts.items()]

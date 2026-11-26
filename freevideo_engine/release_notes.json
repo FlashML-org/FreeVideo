@@ -1,41 +1,78 @@
 {
   "schema": 1,
-  "product_version": "0.6.13",
+  "product_version": "0.6.14",
   "en": {
-    "summary": "0.6.13 gives the create panel the same three-column layout as the image view, adds a Traditional Chinese interface and a Fast quality level that generates faster than Light, no longer stops installation on Windows on Arm computers while packages are prepared, and removes more user folder names, email addresses and sign-in details from reports.",
+    "summary": "0.6.14 makes the first upscale download about 300 MB instead of 26 GB, lets the Fast level finish videos on 8 GB Windows graphics cards, lets more video players fill the window with volume and speed controls, keeps Windows setup going when security software briefly blocks a file, removes more personal details from reports, explains more errors, and fixes many layout problems.",
     "changes": [
-      "Three-column create panel: settings on the left, the video in the middle and your creations on the right, laid out like the image view. In narrower windows the side columns fold into icons that open as drawers, and in a phone-width window the video sits above the settings.",
-      "Creations beside the video: search, sort and favorite your videos, or pick two to compare, without leaving the create panel. A Favorite button under the video adds the current video to your favorites.",
-      "Advanced options in one section: LoRA, generation mode, seed, steps and parts are grouped in one section that stays closed until you open it and remembers how you left it.",
-      "Compact layout: turn on Compact layout in Settings > Appearance to keep only the prompt, the video and Generate in the create panel.",
-      "Queue: each task has its own stop or remove button, which asks before it acts, in both the create panel and the image view.",
-      "Traditional Chinese: the web interface and the launcher are available in Traditional Chinese, with Taiwan wording that also serves Hong Kong and Macau.",
-      "Choosing the interface language: the launcher's globe button opens a list of the languages, and Settings > Language in the web interface offers the same list. Until a language is chosen, FreeVideo follows the system language.",
-      "Messages in the chosen language: failure cards for videos, images and the launcher, and the reasons the engine gives, are shown in the interface language.",
-      "Fast level: the new Fast quality level generates faster than Light; in shots with a lot of motion, fine detail may flicker. The first time you choose it, FreeVideo downloads about 2.2 GB, only once.",
-      "Windows on Arm installation: on Windows on Arm computers, installation no longer fails while preparing packages and can continue. When a required package has no version for the computer, the launcher names the package instead of showing an interrupted download. Generating videos and images works as usual; editing projects and images with the Agent is not available yet, because a component it needs has no Arm version.",
-      "Privacy in reports: diagnostic reports and problem reports remove your user folder name from more forms of local file paths. Problem reports and download failure records also remove email addresses and sign-in details sent to download servers, while keeping the reason a file or connection failed.",
-      "Options row in narrow windows: when the editor's options row is short of room, Media and LoRA fold to their icon and count, then Enhance to its icon, and then the duration, size and quality keys take their short form, instead of the row wrapping or cutting keys off."
+      "Upscaling: the first upscale of a finished video downloads about 300 MB of prepared sampling caches instead of 26 GB of original model files, and the \"Upscale to …\" option is offered in the menu again.",
+      "Fast level: The Fast level now finishes videos on 8 GB Windows graphics cards instead of failing at the last step. On Macs with Apple M1–M5 chips and at least 16 GB of unified memory, the Fast level is also available. On FP8 installations, the Fast level is shown as unavailable with the reason and the download size, and the launcher offers the model it needs; on workstation cards it says the other levels are about 5% slower with that model.",
+      "Windows installation: setup checks the Visual C++ runtime before it first loads PyTorch. When Windows or security software briefly blocks a Python file, a package file or the new launcher, the step is tried again before it stops, and the card then names the blocked file. A graphics card that FreeVideo does not support is named as such instead of asking for a driver update, and a folder name in the install location that Windows does not accept is pointed out, with its position and the kind of problem, before installing starts.",
+      "Privacy in reports: diagnostic reports and problem reports remove user folder names from more kinds of paths, such as a path right after a colon or a user folder on a network share, and diagnostic reports also remove email addresses and sign-in details. In reports and download failure records, addresses on model and code hosting sites keep only the site name, except for FreeVideo's own files.",
+      "Prompt enhancement: When a prompt enhancement request is too long, the message now says about how far over the limit it is. A rewrite that runs past its length limit is reported separately. Writing a prompt from an image or video in the create panel works again; it had stopped with \"Could not read this image\".",
+      "Starting, memory and disk: a video started right after FreeVideo starts no longer waits about 15 seconds, and two-pass videos reach the second pass and decoding sooner, as the upscaler file is no longer re-checked in full each time. A request that is too large for the memory free on the computer is now declined at the start, with the amount it needs, instead of stopping after most of its time has been spent. Downloads that fail their check no longer pile up on disk: at most the newest copy of each file is kept, and none once the right file is in place.",
+      "Errors with reasons: an image that fails without a known cause names the step it stopped at and still offers a report, a failed video in Autopilot names a recognized cause such as too little graphics memory, and an image model file that cannot be written is named with the reason. In the editor, a request that could not be completed says which step failed, and a file that is in use or cannot be read is named as the cause. Results and reports also say when the graphics card's power limit held its clock down, and whether other work on the card came from FreeVideo or another program.",
+      "Video players: videos in the create panel, node results and Autopilot can be enlarged to fill the window, and these players and the library's have volume and playback speed controls. On the position bar, the arrow keys move 1 second back or forward (5 seconds with Shift), and Home and End go to the start and the end, in all of these players.",
+      "Create panel: the Media window no longer overlaps the size and duration settings when you have many characters, scenes or props, and the added images are shown in full. The quality levels can be chosen from the keyboard alone (Tab, the arrow keys, Home and End), a screen reader reads them as one group, and when continuing a video or wired nodes make the quality fixed, the greyed-out levels say why on hover. With a workflow that sets its own step counts, moving to Generate with the keyboard no longer shifts the settings column up or leaves an unreachable strip below it.",
+      "Editor: in every interface language the generation bar fits the room it has, drop-down lists open in front and work with the keyboard, and names in its windows, track names and the time on Generate are no longer cut short. Notices are easier to close on touch screens and keep Report a problem whole, and empty edits that were never named are cleared away.",
+      "Panels and interface text: small windows, trays, drawers, the shortcut sheet and the command palette are always opaque, and so are side panels when glass effects are off or transparency is reduced. More Chinese messages use formal written wording. The image text layer and share cards display Traditional Chinese, Korean, Vietnamese, Thai, Arabic, Persian and Hindi correctly; add Arabic, Persian and Hindi text in the text layer, because smart editing cannot draw them correctly yet.",
+      "Other fixes: a first launch no longer shows the what's-new tour as an upgrade; each Generate is one row in the jobs list; cancelling a file picker no longer closes its view; a cast card's face close-up shows the whole head. Launcher messages name their buttons exactly, and button names no longer wrap in narrow windows. With ComfyUI started without the launcher, clearing the cache, pack downloads and the cleanup after deleting a work use the FreeVideo folder, and a downloaded Fast level is no longer reported missing; FreeVideo uses only the graphics cards in CUDA_VISIBLE_DEVICES."
     ]
   },
   "zh": {
-    "summary": "0.6.13 的创作面板改为与图像视图一致的三栏布局，新增繁体中文界面和比轻量档更快的“极速”质量档；Windows on Arm 电脑上的安装不再在准备软件包时失败；报告中会去掉更多用户文件夹名、邮箱地址和登录信息。",
+    "summary": "0.6.14 第一次放大视频只需下载约 300 MB，不再下载 26 GB；极速档在 8 GB 显存的 Windows 显卡上可以完整生成；更多视频播放器可以放大铺满窗口，并可以调节音量和播放速度；安全软件短暂拦住文件时，Windows 安装会自动重试，不再直接中断；报告中会去掉更多个人信息；更多错误会说明原因；并修复了多处排版问题。",
     "changes": [
-      "三栏创作面板：左边是设置，中间是视频，右边是作品，排法与图像视图一致。窗口较窄时两侧栏收成图标，点开后以抽屉展开；窗口为手机宽度时，视频位于设置上方。",
-      "作品就在视频旁边：不离开创作面板，即可搜索、排序、收藏视频，或选两条视频并排对比。视频下方新增“收藏”键，可直接收藏当前视频。",
-      "高级选项收在一节：LoRA、生成方式、种子、步数和分段放在同一节，默认收起，并记住您上次的状态。",
-      "简洁模式：在“设置 > 外观”中打开“简洁模式”后，创作面板只保留提示词、视频和生成。",
-      "队列：每个任务都有自己的停止或移出键，操作前会先确认；创作面板和图像视图都一样。",
-      "繁体中文：网页界面和启动器都提供繁体中文，用词按台湾习惯，香港和澳门也适用。",
-      "选择界面语言：启动器右上角的地球按钮打开语言列表，网页的“设置 > 语言”里是同样的列表。没有选过时，FreeVideo 跟随系统语言。",
-      "提示用所选语言显示：视频、图片和启动器的失败卡片，以及引擎给出的原因，都按界面语言显示。",
-      "极速档：质量档位新增“极速”，生成比轻量档更快；动作较多的镜头里，画面细节可能闪烁。第一次选用时需下载约 2.2 GB，只需下载一次。",
-      "Windows on Arm 安装：在 Windows on Arm 电脑上，安装不再在准备软件包时失败，可以继续进行。所需软件包没有适用于这台电脑的版本时，启动器会写明是哪个软件包，不再显示为下载中断。生成视频和图片照常可用；用 Agent 编辑项目和图片暂不可用，因为所需组件尚无 Arm 版本。",
-      "报告中的隐私：诊断报告和提交的问题会从更多形式的本机文件路径中去掉用户文件夹名；提交的问题和下载失败的记录还会去掉邮箱地址和发给下载服务器的登录信息，同时保留文件或连接失败的原因。",
-      "窄窗口里的选项行：剪辑页的选项行放不下时，先把素材和 LoRA 收成图标加数量，再把增强收成图标，最后时长、尺寸和质量键改用简短写法，不再换行或截断按键。"
+      "放大：第一次放大已完成的视频时，只需下载约 300 MB 的采样缓存，不再下载 26 GB 的原始模型文件；菜单里重新提供“放大到 …”选项。",
+      "极速档：极速档在 8 GB 显存的 Windows 显卡上可以完整生成视频，不再在最后一步失败。搭载 Apple M1–M5 芯片、统一内存 16 GB 及以上的 Mac 也可以使用极速档。FP8 安装上，极速档会显示为不可用，并写明原因和下载量，启动器提供所需的模型；工作站显卡上会说明换用后其他档位约慢 5%。",
+      "Windows 安装：安装会在第一次载入 PyTorch 之前检查 Visual C++ 运行库。Windows 或安全软件短暂拦住 Python 文件、软件包文件或新版启动器时，会先自动重试，仍未成功才停下，并在卡片上写明是哪个文件。FreeVideo 不支持的显卡会直接说明，不再提示更新驱动；安装位置中有 Windows 不接受的文件夹名时，会在开始安装前指出是第几个文件夹名、哪种问题。",
+      "报告中的隐私：诊断报告和提交的问题会从更多写法的路径中去掉用户文件夹名，例如紧跟在冒号后的路径和网络共享上的用户文件夹；诊断报告也会去掉邮箱地址和登录信息。报告和下载失败记录中，模型和代码托管网站上的地址只保留网站名，FreeVideo 自己的文件地址除外。",
+      "提示词增强：提示词增强的请求过长时，提示会写明大约超出上限多少；改写结果超出长度上限时会单独提示。创作面板里由图片或视频生成提示词恢复正常，之前会提示“无法读取这张图片”。",
+      "启动、内存与磁盘：FreeVideo 刚启动时发视频，不再先等约 15 秒才开始；两遍生成的视频进入第二遍和解码更快，因为放大模型文件不再每次都完整重新校验。请求太大、电脑可用内存放不下时，现在会在开始时就停下并说明需要多少内存，不再跑了大半时间才中途停止。校验未通过的下载副本不再在磁盘上越积越多：每个文件最多保留最新的一份，装好正确的文件后全部删除。",
+      "出错时说明原因：图片没有具体原因而失败时，会写明停在哪一步，并可下载报告；AI 全自动里视频失败时，会说明显存不足等能识别的原因；图像模型文件未能写入时，会写明哪个文件和原因。剪辑页里请求未能完成时，会说明是哪一步未完成；文件被占用、无法读取等原因会直接说明。结果和报告还会说明显卡是否因功耗上限降低了频率，以及显卡上的其他任务来自 FreeVideo 还是其他程序。",
+      "视频播放器：创作面板、节点结果和 AI 全自动对话里的视频可以放大铺满窗口，这些播放器和作品库里的视频都可以调节音量和播放速度。在位置条上，方向键后退或前进 1 秒，按住 Shift 为 5 秒，Home、End 跳到开头和结尾，这些播放器都一样。",
+      "创作面板：角色、场景、道具较多时，素材窗口不再与下方的画幅和时长设置重叠，已添加的素材缩略图完整显示。质量档位可以只用键盘选择（Tab、方向键、Home 和 End），读屏器按一组单选朗读；续写视频或节点连线使质量不能修改时，变灰的档位在悬停时说明原因。工作流带自定义步数时，用键盘移到“生成”键不再让设置栏往上跳，也不会在栏底留出一段滚不到的空白。",
+      "剪辑页：任何界面语言下，生成栏都按实际空间排版，下拉列表显示在最前面并可用键盘操作；各窗口里的名称、轨道名称和“生成”键上的时间不再被截断。触屏上提示更容易关闭，“提交问题”键完整显示；未命名的空白剪辑会自动清理。",
+      "面板和界面文字：小窗口、托盘、抽屉、快捷键表和命令面板一律不透明，关闭玻璃效果或减少透明度时侧栏也不透明。更多中文提示改用书面用语。图片文字层和分享卡片可以正常显示繁体中文、韩文、越南语、泰语、阿拉伯语、波斯语和印地语；阿拉伯语、波斯语和印地语请在文字层中添加，智能编辑目前还不能正确绘制这三种文字。",
+      "其他修复：第一次启动不再把新功能介绍当作升级显示；任务列表里每次“生成”只占一行；取消选择文件不再关闭打开它的视图；角色卡的面部特写显示完整的头部。启动器提示中的按钮名称与实际按钮一致，窄窗口里按钮名称不再折行。在自己的 ComfyUI 中使用时，清除缓存、下载各类包和删除作品后的清理都作用于 FreeVideo 的安装目录，下载完成的极速档也不再被报告缺少文件；FreeVideo 只使用 CUDA_VISIBLE_DEVICES 列出的显卡。"
     ]
   },
   "history": [
+    {
+      "product_version": "0.6.13",
+      "en": {
+        "summary": "0.6.13 gives the create panel the same three-column layout as the image view, adds a Traditional Chinese interface and a Fast quality level that generates faster than Light, no longer stops installation on Windows on Arm computers while packages are prepared, and removes more user folder names, email addresses and sign-in details from reports.",
+        "changes": [
+          "Three-column create panel: settings on the left, the video in the middle and your creations on the right, laid out like the image view. In narrower windows the side columns fold into icons that open as drawers, and in a phone-width window the video sits above the settings.",
+          "Creations beside the video: search, sort and favorite your videos, or pick two to compare, without leaving the create panel. A Favorite button under the video adds the current video to your favorites.",
+          "Advanced options in one section: LoRA, generation mode, seed, steps and parts are grouped in one section that stays closed until you open it and remembers how you left it.",
+          "Compact layout: turn on Compact layout in Settings > Appearance to keep only the prompt, the video and Generate in the create panel.",
+          "Queue: each task has its own stop or remove button, which asks before it acts, in both the create panel and the image view.",
+          "Traditional Chinese: the web interface and the launcher are available in Traditional Chinese, with Taiwan wording that also serves Hong Kong and Macau.",
+          "Choosing the interface language: the launcher's globe button opens a list of the languages, and Settings > Language in the web interface offers the same list. Until a language is chosen, FreeVideo follows the system language.",
+          "Messages in the chosen language: failure cards for videos, images and the launcher, and the reasons the engine gives, are shown in the interface language.",
+          "Fast level: the new Fast quality level generates faster than Light; in shots with a lot of motion, fine detail may flicker. The first time you choose it, FreeVideo downloads about 2.2 GB, only once.",
+          "Windows on Arm installation: on Windows on Arm computers, installation no longer fails while preparing packages and can continue. When a required package has no version for the computer, the launcher names the package instead of showing an interrupted download. Generating videos and images works as usual; editing projects and images with the Agent is not available yet, because a component it needs has no Arm version.",
+          "Privacy in reports: diagnostic reports and problem reports remove your user folder name from more forms of local file paths. Problem reports and download failure records also remove email addresses and sign-in details sent to download servers, while keeping the reason a file or connection failed.",
+          "Options row in narrow windows: when the editor's options row is short of room, Media and LoRA fold to their icon and count, then Enhance to its icon, and then the duration, size and quality keys take their short form, instead of the row wrapping or cutting keys off."
+        ]
+      },
+      "zh": {
+        "summary": "0.6.13 的创作面板改为与图像视图一致的三栏布局，新增繁体中文界面和比轻量档更快的“极速”质量档；Windows on Arm 电脑上的安装不再在准备软件包时失败；报告中会去掉更多用户文件夹名、邮箱地址和登录信息。",
+        "changes": [
+          "三栏创作面板：左边是设置，中间是视频，右边是作品，排法与图像视图一致。窗口较窄时两侧栏收成图标，点开后以抽屉展开；窗口为手机宽度时，视频位于设置上方。",
+          "作品就在视频旁边：不离开创作面板，即可搜索、排序、收藏视频，或选两条视频并排对比。视频下方新增“收藏”键，可直接收藏当前视频。",
+          "高级选项收在一节：LoRA、生成方式、种子、步数和分段放在同一节，默认收起，并记住您上次的状态。",
+          "简洁模式：在“设置 > 外观”中打开“简洁模式”后，创作面板只保留提示词、视频和生成。",
+          "队列：每个任务都有自己的停止或移出键，操作前会先确认；创作面板和图像视图都一样。",
+          "繁体中文：网页界面和启动器都提供繁体中文，用词按台湾习惯，香港和澳门也适用。",
+          "选择界面语言：启动器右上角的地球按钮打开语言列表，网页的“设置 > 语言”里是同样的列表。没有选过时，FreeVideo 跟随系统语言。",
+          "提示用所选语言显示：视频、图片和启动器的失败卡片，以及引擎给出的原因，都按界面语言显示。",
+          "极速档：质量档位新增“极速”，生成比轻量档更快；动作较多的镜头里，画面细节可能闪烁。第一次选用时需下载约 2.2 GB，只需下载一次。",
+          "Windows on Arm 安装：在 Windows on Arm 电脑上，安装不再在准备软件包时失败，可以继续进行。所需软件包没有适用于这台电脑的版本时，启动器会写明是哪个软件包，不再显示为下载中断。生成视频和图片照常可用；用 Agent 编辑项目和图片暂不可用，因为所需组件尚无 Arm 版本。",
+          "报告中的隐私：诊断报告和提交的问题会从更多形式的本机文件路径中去掉用户文件夹名；提交的问题和下载失败的记录还会去掉邮箱地址和发给下载服务器的登录信息，同时保留文件或连接失败的原因。",
+          "窄窗口里的选项行：剪辑页的选项行放不下时，先把素材和 LoRA 收成图标加数量，再把增强收成图标，最后时长、尺寸和质量键改用简短写法，不再换行或截断按键。"
+        ]
+      }
+    },
     {
       "product_version": "0.6.12",
       "en": {
@@ -395,43 +432,6 @@
           "失败时说明原因和处理方法：生成进程意外结束、剪辑保存出错、第二遍失败，以及设备无法生成所选时长时，均会说明原因和下一步操作。",
           "问题修复：长视频拼接后，单独显示的第一段一采结果不再丢失；Mac 上图片视图仅使用本机可用的模型，无法获取模型列表或正在校验时会明确提示；更新窗口很窄时启动器不再停止响应。",
           "远程查看时优先加载缩略图：通过链接查看作品时，先显示缩略图，再依次加载视频和图片。"
-        ]
-      }
-    },
-    {
-      "product_version": "0.6.1",
-      "en": {
-        "summary": "Fixes ComfyUI being taken over and image failures without explanation, and makes character creation and image generation better.",
-        "changes": [
-          "ComfyUI is no longer taken over: only the FreeVideo launcher opens FreeVideo, and ComfyUI opened any other way stays as it is.",
-          "Image failures explain themselves: the reason and the next step are shown, with export report and open issue, and a new request now waits for the image in progress instead of failing.",
-          "Image view: the left panel is no longer cut off in Chinese, and the \"Clear\" button under the prompt is gone.",
-          "Calmer background: it no longer flickers while playing or switching and its colour is softer; the update notice can be closed and returns next time.",
-          "Better character creation: outfits from a description or a clothing picture are applied more reliably, including the face close-up; side and back views no longer show a grid; photo, uploaded picture and AI all give a face close-up, front, side and back view, each editable.",
-          "Faster pictures on graphics cards with more video memory.",
-          "Photos the right way up: phone photos used as references keep their orientation, and region edits at another size no longer fail.",
-          "Export report: saving over an existing file now works.",
-          "Compatibility: other CUDA or cuDNN copies on the system no longer load the wrong libraries; the launcher says clearly when no NVIDIA driver is found; Linux installs need less disk space.",
-          "Editing: undo still works after a generation, and unsaved changes are kept when switching views.",
-          "Model installs: verification shows \"Verifying\" with real progress.",
-          "Also: the creative panel's buttons wrap in narrow windows instead of scrolling out of sight, the quality slider follows the pointer more closely, and clothing options and LoRA share one row when creating a character."
-        ]
-      },
-      "zh": {
-        "summary": "修复了打开 ComfyUI 被接管、出图失败没有提示等问题，角色创建和出图更好用。",
-        "changes": [
-          "ComfyUI 不再被接管：只有从 FreeVideo 启动器打开才进入 FreeVideo，其他方式打开的 ComfyUI 保持原样。",
-          "出图失败说清原因：显示原因和下一步，可以导出报告、提交问题；有图片正在生成时，新的请求会排队，不再直接失败。",
-          "图像视图：中文界面下左栏不再被切掉，提示词下去掉了“清空”键。",
-          "背景更舒服：播放和切换时背景不再闪烁，颜色更柔和；更新提示可以关闭，下次打开再提醒。",
-          "角色创建更好用：按描述或服装图换衣更准，脸部特写也换上新衣服；侧面和背面不再有网格纹；照片、上传图片、AI 生成都能得到脸部特写、正面、侧面、背面，每张可单独编辑。",
-          "出图更快：显存较大的显卡上出图更快。",
-          "照片方向正确：手机拍的照片作参考时按正确方向使用；局部编辑换了尺寸也不再失败。",
-          "导出报告：覆盖已有的同名文件时也能正常保存。",
-          "兼容性：系统里装有其他 CUDA 或 cuDNN 时不再加载错误的库；找不到 NVIDIA 驱动时启动器给出明确提示；Linux 安装需要的磁盘空间更少。",
-          "剪辑：生成之后仍可撤销，切换视图时未保存的修改会保留。",
-          "模型安装：安装校验时显示“正在校验”和真实进度。",
-          "其他：窄窗口下创作面板的按钮会换行，不再滑出视野；质量滑块拖动更跟手；新建角色时服装选项和 LoRA 在同一行。"
         ]
       }
     }

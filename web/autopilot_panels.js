@@ -17,6 +17,8 @@ export const ICON = Object.freeze({
     panelLeft: 'M4 5h16v14H4zM9 5v14', panelRight: 'M4 5h16v14H4zM15 5v14',
     search: 'M11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14zM20 20l-4-4',
     locate: 'M12 3v3M12 18v3M3 12h3M18 12h3M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
+    // The library viewer's Full screen arrows (library.js expand), on this 24 grid.
+    full: 'M14.25 3.75h6v6M20.25 3.75 13.5 10.5M9.75 20.25h-6v-6M3.75 20.25 10.5 13.5',
     stop: 'M7 7h10v10H7z', warn: 'M12 4l9 16H3zM12 10v4M12 17h.01', check: 'M5 12l5 5 9-10',
     film: 'M4 6h16v12H4zM8 6v12M16 6v12M4 10h4M4 14h4M16 10h4M16 14h4', picture: 'M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M15 9h.01',
     tasks: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
@@ -40,7 +42,7 @@ export function statusKey(job) {
     return job.status === 'cancelled' ? 'stopped' : 'failed';
 }
 const STATUS = {running: ['Making', '生成中'], queued: ['Queued', '排队中'], stopping: ['Stopping', '正在停止'],
-    done: ['Done', '已完成'], failed: ['Did not finish', '没有完成'], stopped: ['Stopped', '已停止']};
+    done: ['Done', '已完成'], failed: ['Did not finish', '未完成'], stopped: ['Stopped', '已停止']};
 export function statusText(job, t, fraction = null) {
     const key = statusKey(job), word = t(...STATUS[key]);
     return key === 'running' && fraction >= .01 ? `${word} ${Math.floor(fraction * 100)}%` : word;
@@ -138,7 +140,8 @@ export function createSideRail(t, handlers = {}) {
     head.append(title, count, collapse);
     const running = el('div', 'fv-chat-side-running');
     const searchRow = el('label', 'fv-chat-search'), search = el('input');
-    search.type = 'search'; search.placeholder = t('Search prompts', '搜索提示词'); search.setAttribute('aria-label', t('Search tasks', '搜索任务'));
+    // It finds tasks, by their name or prompt (draw: matches(query, row.title, row.prompt)), so it says so.
+    search.type = 'search'; search.placeholder = t('Search tasks', '搜索任务'); search.setAttribute('aria-label', t('Search tasks', '搜索任务'));
     search.autocomplete = 'off'; search.spellcheck = false; tip(search, 'taskSearch', t, {title: false});
     searchRow.append(glyph(ICON.search), search);
     // Filters by state, each with its count: all, under way, done, did not finish.
@@ -253,7 +256,7 @@ export function createSideRail(t, handlers = {}) {
         dPreview.style.setProperty('--p', String((fraction || 0) * 100));
         put(dPrompt, row.prompt || ''); dPrompt.hidden = !row.prompt;
         dPrompt.dataset.source = row.promptSource || 'request';
-        setTip(dPrompt, {name: row.promptSource === 'job' ? t('Prompt', '提示词') : t('What you asked for', '你提出的要求')});
+        setTip(dPrompt, {name: row.promptSource === 'job' ? t('Prompt', '提示词') : t('What you asked for', '您提出的要求')});
         dFacts.replaceChildren(...fact(t('Kind', '类型'), job.kind === 'image' ? t('Image', '图片') : job.kind === 'production' ? t('Film', '成片') : t('Video', '视频')),
             ...fact(t('Size', '尺寸'), job.width > 0 && job.height > 0 ? `${job.width} × ${job.height}` : ''),
             ...fact(t('Length', '时长'), job.seconds > 0 ? t('{seconds} s', '{seconds} 秒', { seconds: job.seconds }) : ''),

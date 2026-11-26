@@ -19,7 +19,8 @@ import platform
 from . import execution_paths
 from . import long_paths
 from . import host_arch
-from .long_paths import io_path, resolved, plain, plain_text
+from .long_paths import io_path, resolved, plain, plain_text, AUTHORIZATION, EMAIL
+from . import report_addresses
 from . import __version__
 from .bootstrap import DEFAULT_ROOT
 from .system import windows, venv_python, system_memory, nvidia_smi, bootstrap_root
@@ -94,7 +95,12 @@ class Redactor:
             value = value.replace(secret, '<REDACTED>')
         for source, target in self.replacements:
             value = value.replace(source, target)
+        # An address keeps the path report_addresses keeps (on a repository host only FreeVideo's own
+        # repositories), with no query or fragment; then no user or password, authorization or email.
+        value = report_addresses.URL.sub(report_addresses.record, value)
         value = re.sub(r'(?i)(https?://)[^\s/@]+:[^\s/@]+@', r'\1<REDACTED>@', value)
+        value = AUTHORIZATION.sub(r'\1\2\3<REDACTED>', value)
+        value = EMAIL.sub('<REDACTED>', value)
         value = re.sub(r'\bhf_[A-Za-z0-9_-]{8,}\b', '<REDACTED>', value)
         value = re.sub(r'(?i)(Bearer\s+)[A-Za-z0-9._~+/-]+', r'\1<REDACTED>', value)
         value = re.sub(r'(?i)(\b[\w-]{0,64}(?:token|password|secret|api[_-]?key)\s*[=:]\s*)[^\s,;&]+',

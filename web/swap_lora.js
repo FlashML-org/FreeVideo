@@ -8,12 +8,12 @@ const POLL_MS = 500, DONE_MS = 4000;
 export function swapLoraFailureText(reason, t) {
     const text = {
         offline: ['The network is unavailable, so the Replace person model could not be downloaded.', '网络不通，无法下载替换人物模型。'],
-        source_failed: ["The Replace person model download didn't finish. Check the network and try again.", '替换人物模型没有下载完成，请检查网络后重试。'],
+        source_failed: ["The Replace person model download didn't finish. Check the network and try again.", '替换人物模型未能下载完成，请检查网络后重试。'],
         integrity_failed: ['The downloaded Replace person model did not pass verification. Try again.', '下载的替换人物模型未通过校验，请重试。'],
         write_failed: ['The Replace person model could not be saved to disk.', '替换人物模型无法保存到磁盘。'],
         disk_space: ['Not enough disk space to download the Replace person model.', '磁盘空间不足，无法下载替换人物模型。'],
         busy: ['The Replace person model is being downloaded elsewhere. Try again shortly.', '替换人物模型正在别处下载，请稍后重试。'],
-    }[reason] || ["The Replace person model download didn't finish. Try again.", '替换人物模型没有下载完成，请重试。'];
+    }[reason] || ["The Replace person model download didn't finish. Try again.", '替换人物模型未能下载完成，请重试。'];
     return t(...text);
 }
 

@@ -2,6 +2,10 @@ name: Installation and launchers
 # Pull requests run the installation checks. The launchers are built and published only when this
 # workflow is run with "release" checked: main becomes the stable release vX.Y.Z and users get an
 # update notice; Windows signing then waits for the release environment. A merge to main builds nothing.
+# A release can also go in two runs, so that what users get is the file that was tested: "stage" builds and
+# signs the launchers and keeps them (and their SHA-256 list) for 7 days without publishing anything; the
+# release checks test those files; then "promote_run" (that run's ID) with "expected_sha256" (the tested
+# files) publishes the same files from that run, rebuilding nothing, and stops if any byte differs.
 on:
   pull_request:
     paths-ignore:
@@ -16,11 +20,23 @@ on:
         description: 'Also diagnose the currently published package before rebuilding'
         type: boolean
         default: false
+      stage:
+        description: 'Build and sign the launchers for the release checks and keep them for 7 days; nothing is published'
+        type: boolean
+        default: false
+      promote_run:
+        description: 'Publish main as the stable release from the launchers of this earlier stage run (its run ID); nothing is rebuilt'
+        type: string
+        default: ''
+      expected_sha256:
+        description: 'With promote_run: the tested files, one "<sha256>  <file name>" line each; any other bytes stop the release'
+        type: string
+        default: ''
 permissions:
   contents: read
 # Stable runs have their own group: a later merge must not replace a pending release.
 concurrency:
-  group: freevideo-public-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.release && 'stable' || 'build' }}
+  group: freevideo-public-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name == 'workflow_dispatch' && (inputs.release || inputs.stage || inputs.promote_run != '') && 'stable' || 'build' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   installation:
@@ -49,9 +65,25 @@ jobs:
         run: |
           python -m pip install build
           python -m build
+      - name: Check that one kind of release run was asked for
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          RELEASE: ${{ inputs.release }}
+          STAGE: ${{ inputs.stage }}
+          PROMOTE: ${{ inputs.promote_run }}
+          EXPECTED: ${{ inputs.expected_sha256 }}
+        run: |
+          kinds=0
+          [ "$RELEASE" = true ] && kinds=$((kinds + 1))
+          [ "$STAGE" = true ] && kinds=$((kinds + 1))
+          [ -n "$PROMOTE" ] && kinds=$((kinds + 1))
+          if [ "$kinds" -gt 1 ]; then echo "::error::Choose one of release, stage and promote_run."; exit 1; fi
+          if [ -n "$PROMOTE" ] && { ! [[ "$PROMOTE" =~ ^[0-9]+$ ]] || [ -z "$EXPECTED" ]; }; then
+            echo "::error::promote_run is a run ID and needs expected_sha256 (the tested files)."; exit 1
+          fi
       # Fail a stable run before anyone is asked to approve signing.
       - name: Check that this version is not released yet
-        if: github.event_name == 'workflow_dispatch' && inputs.release
+        if: github.event_name == 'workflow_dispatch' && (inputs.release || inputs.stage || inputs.promote_run != '')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -63,7 +95,7 @@ jobs:
           echo "Publishing v$version"
   windows:
     # Built only for a release; pull requests run the installation checks only.
-    if: github.event_name == 'workflow_dispatch' && inputs.release
+    if: github.event_name == 'workflow_dispatch' && (inputs.release || inputs.stage)
     needs: [installation]
     runs-on: windows-2025
     timeout-minutes: 60
@@ -71,7 +103,7 @@ jobs:
       contents: read
       id-token: write
     # Only stable releases are signed. They use the release environment, whose reviewers decide who can mint the OIDC token Azure trusts for signing.
-    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.release && github.repository == 'FlashML-org/FreeVideo' && 'release' || '' }}
+    environment: ${{ github.event_name == 'workflow_dispatch' && (inputs.release || inputs.stage) && github.repository == 'FlashML-org/FreeVideo' && 'release' || '' }}
     env:
       PYTHONUTF8: '1'
       PYTHONIOENCODING: utf-8
@@ -101,7 +133,7 @@ jobs:
           # new final bytes must pass the mandatory protection gate below.
           exit 0
       - name: Azure login (OIDC)
-        if: github.event_name == 'workflow_dispatch' && inputs.release && github.repository == 'FlashML-org/FreeVideo'
+        if: github.event_name == 'workflow_dispatch' && (inputs.release || inputs.stage) && github.repository == 'FlashML-org/FreeVideo'
         uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
@@ -109,13 +141,13 @@ jobs:
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       # The GitHub OIDC assertion behind the login expires after 5 minutes (azure-cli#29063). A signing token fetched now is cached by az for the whole job.
       - name: Fetch the signing token
-        if: github.event_name == 'workflow_dispatch' && inputs.release && github.repository == 'FlashML-org/FreeVideo'
+        if: github.event_name == 'workflow_dispatch' && (inputs.release || inputs.stage) && github.repository == 'FlashML-org/FreeVideo'
         run: |
           az account get-access-token --scope https://codesigning.azure.net/.default --output none
           if ($LASTEXITCODE -ne 0) { throw 'Could not get a codesigning.azure.net token' }
       # The launcher runs these scripts from its unpacked tree, where the executable's signature does not cover them. Sign the checkout's copies before the build bundles them.
       - name: Sign bundled PowerShell scripts
-        if: github.event_name == 'workflow_dispatch' && inputs.release && github.repository == 'FlashML-org/FreeVideo'
+        if: github.event_name == 'workflow_dispatch' && (inputs.release || inputs.stage) && github.repository == 'FlashML-org/FreeVideo'
         uses: azure/trusted-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
         with:
           endpoint: https://eus.codesigning.azure.net/
@@ -136,7 +168,7 @@ jobs:
           python scripts/build_windows.py --out build/windows-exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Sign Windows launchers
-        if: github.event_name == 'workflow_dispatch' && inputs.release && github.repository == 'FlashML-org/FreeVideo'
+        if: github.event_name == 'workflow_dispatch' && (inputs.release || inputs.stage) && github.repository == 'FlashML-org/FreeVideo'
         uses: azure/trusted-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
         with:
           endpoint: https://eus.codesigning.azure.net/
@@ -150,7 +182,7 @@ jobs:
           timestamp-digest: SHA256
       # Check the copies that ship: the folder layout exposes every bundled script on disk, and the one-file launcher is built from the same inputs.
       - name: Verify signatures and rebuild the folder ZIP around the signed launcher
-        if: github.event_name == 'workflow_dispatch' && inputs.release && github.repository == 'FlashML-org/FreeVideo'
+        if: github.event_name == 'workflow_dispatch' && (inputs.release || inputs.stage) && github.repository == 'FlashML-org/FreeVideo'
         shell: pwsh
         run: |
           $scripts = @(Get-ChildItem build/windows-folder/dist -Recurse -Filter *.ps1 | ForEach-Object FullName)
@@ -188,9 +220,9 @@ jobs:
             build/windows-exe/dist/FreeVideo.exe
             build/windows-exe/dist/launcher-build.json
           if-no-files-found: error
-          retention-days: 1
+          retention-days: ${{ inputs.stage && 7 || 1 }}
   macos:
-    if: github.event_name == 'workflow_dispatch' && inputs.release
+    if: github.event_name == 'workflow_dispatch' && (inputs.release || inputs.stage)
     needs: [installation]
     runs-on: macos-15
     timeout-minutes: 30
@@ -230,7 +262,7 @@ jobs:
           name: macos-launcher
           path: build/macos-publish/
           if-no-files-found: error
-          retention-days: 1
+          retention-days: ${{ inputs.stage && 7 || 1 }}
       - name: Keep failure diagnostics
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -243,7 +275,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 1
   linux:
-    if: github.event_name == 'workflow_dispatch' && inputs.release
+    if: github.event_name == 'workflow_dispatch' && (inputs.release || inputs.stage)
     needs: [installation]
     runs-on: ubuntu-24.04
     timeout-minutes: 40
@@ -291,7 +323,7 @@ jobs:
           name: linux-launcher
           path: build/linux-publish/
           if-no-files-found: error
-          retention-days: 1
+          retention-days: ${{ inputs.stage && 7 || 1 }}
       - name: Keep failure diagnostics
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -334,3 +366,105 @@ jobs:
         run: >-
           python scripts/publish_release.py --track stable
           --windows build/windows --macos build/macos --linux build/linux --sha ${{ github.sha }}
+  stage-sums:
+    # A stage run ends here. The release checks download these launchers with this list and test them; promote_run
+    # later publishes the same files from this run.
+    if: github.event_name == 'workflow_dispatch' && inputs.stage
+    needs: [windows, macos, linux]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: windows-launcher
+          path: build/windows
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: macos-launcher
+          path: build/macos
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: linux-launcher
+          path: build/linux
+      - name: List the launchers of this stage run
+        run: |
+          cd build
+          sha256sum windows/FreeVideo.exe macos/FreeVideo-Mac-arm64.dmg linux/FreeVideo-Linux-x86_64.AppImage \
+            | sed 's#  [a-z]*/#  #' > stage-SHA256SUMS.txt
+          cat stage-SHA256SUMS.txt
+          { echo '```'; cat stage-SHA256SUMS.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Keep the list with the launchers
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: stage-sums
+          path: build/stage-SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 7
+  promote:
+    # Publishing without rebuilding: the launchers of the stage run in promote_run, only if they are the tested files.
+    if: github.event_name == 'workflow_dispatch' && inputs.promote_run != '' && github.repository == 'FlashML-org/FreeVideo' && github.ref == 'refs/heads/main'
+    needs: [installation]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # Publishing waits for the release environment: that approval is the decision to release. The stage run's own
+    # approval only signed a candidate for the release checks.
+    environment: release
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Check that the stage run built this commit and finished
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN: ${{ inputs.promote_run }}
+        run: |
+          gh api "repos/${{ github.repository }}/actions/runs/$RUN" --jq '[.path, .event, .status, .conclusion, .head_sha] | @tsv' > run.tsv
+          IFS=$'\t' read -r path event status conclusion head < run.tsv
+          if [ "$path" != .github/workflows/install.yml ] || [ "$event" != workflow_dispatch ] || [ "$status" != completed ] \
+             || [ "$conclusion" != success ] || [ "$head" != "${{ github.sha }}" ]; then
+            echo "::error::Run $RUN is not a finished run of this workflow on ${{ github.sha }}: $path $event $status $conclusion $head"
+            exit 1
+          fi
+      # stage-sums exists only in a stage run.
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: stage-sums
+          path: build/stage
+          run-id: ${{ inputs.promote_run }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: windows-launcher
+          path: build/windows
+          run-id: ${{ inputs.promote_run }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: macos-launcher
+          path: build/macos
+          run-id: ${{ inputs.promote_run }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: linux-launcher
+          path: build/linux
+          run-id: ${{ inputs.promote_run }}
+          github-token: ${{ github.token }}
+      - name: Write the list of tested files
+        env:
+          EXPECTED: ${{ inputs.expected_sha256 }}
+        run: printf '%s\n' "$EXPECTED" > build/tested-SHA256SUMS.txt
+      - name: Publish the tested launchers
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: >-
+          python scripts/publish_release.py --track stable
+          --windows build/windows --macos build/macos --linux build/linux --sha ${{ github.sha }}
+          --expected-sha256 build/tested-SHA256SUMS.txt

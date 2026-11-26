@@ -73,7 +73,7 @@ ZH = dict([
     # The parallel phase also downloads the models (internal names stay as they are).
     ('Install components in parallel', '安装组件和模型'),
     ('Install with space saver', '安装组件和模型（极限省空间）'),
-    ('Download the faster model', '下载更快的模型'), ('Model downloaded', '模型已下载'),
+    ('Download the new model', '下载新模型'), ('Model downloaded', '模型已下载'),
     ('Model download incomplete', '模型下载未完成'),
     ('Release installation cache', '释放安装缓存'),
     ('Install acceleration and download models', '安装加速组件和下载模型'),

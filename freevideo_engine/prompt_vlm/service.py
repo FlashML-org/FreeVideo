@@ -545,10 +545,12 @@ class Service:
             except Exception:  # the counts are a nicety: whatever is wrong with them must not stop the report below
                 logging.warning('[FreeVideo] Could not update the prompt check counts', exc_info=True)
             # Allowlisted metadata only, never original/rewritten text or input paths.
-            # Output rejections contain condition IDs, counts, typed media labels and retry flags only.
+            # Output rejections contain condition IDs, counts, typed media labels and retry flags only;
+            # `context` (a request past the input limit) holds whole numbers only.
             report = {key: item for key, item in self.state.items()
                       if key in ('phase', 'error', 'exception', 'error_details', 'oom_source', 'timings', 'diagnostics',
-                                 'resources', 'cleanup', 'worker_returncode', 'output_rejection', 'gpu_wait', 'check_counts')}
+                                 'resources', 'cleanup', 'worker_returncode', 'output_rejection', 'context', 'gpu_wait',
+                                 'check_counts')}
             try:
                 spec = assets.catalog()
             except (OSError, ValueError):

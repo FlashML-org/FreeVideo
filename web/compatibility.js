@@ -6,7 +6,7 @@ import { isChinese, translator } from './i18n.js';
 import { localized } from './i18n_tables.js';
 
 // FreeVideo's own reason keeps the lead-in that says what failed; browser or program wording becomes a plain sentence.
-const saveFailure = (error, tt) => { const text = userMessage(error, tt, tt('Could not save. Try again.', '没能保存，请重试。'));
+const saveFailure = (error, tt) => { const text = userMessage(error, tt, tt('Could not save. Try again.', '未能保存，请重试。'));
     return text === String(error?.message ?? '').trim() ? tt('Save failed: ', '保存失败：') + text : text; };
 const readFailure = (error, tt) => { const text = userMessage(error, tt, tt('Could not read the setting. Try again.', '没能读取设置，请重试。'));
     return text === String(error?.message ?? '').trim() ? tt('The setting could not be read: ', '无法读取设置：') + text : text; };

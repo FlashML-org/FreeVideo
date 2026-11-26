@@ -19,8 +19,11 @@ HEAD_LABEL = 'Drawing the video'
 
 @torch.no_grad()
 def pixels_to_file(features, grid, audio_latents, out_path, *, base, adapter, artifacts_dir=None, phase_callback=None,
-                   model_cache=None, output_size=None, **_decoder_options):
-    """features, grid: Features.take() of the fastest mode's Engine. Decoder placement options do not apply."""
+                   model_cache=None, output_size=None, device='cuda', **_decoder_options):
+    """features, grid: Features.take() of the fastest mode's Engine. Decoder placement options do not apply.
+
+    device: where the pixel head and the audio decoder run ('cuda', or 'mps' on a Mac).
+    """
     from .video_threads import encode_video
     from src.inference.render import FPS
     from . import dwd_head
@@ -32,11 +35,11 @@ def pixels_to_file(features, grid, audio_latents, out_path, *, base, adapter, ar
     started = time.perf_counter()
     phase('video_decode', HEAD_LABEL)
     gc.collect()
-    torch.cuda.empty_cache()  # what sampling left cached is not the head's to count
-    frames, head = dwd_head.render(features, grid, adapter, torch.device('cuda'))
+    dwd_head.empty_cache(device)  # what sampling left cached is not the head's to count
+    frames, head = dwd_head.render(features, grid, adapter, torch.device(device))
     del features
     gc.collect()
-    torch.cuda.empty_cache()
+    dwd_head.empty_cache(device)
     video_decode_seconds = time.perf_counter() - started
     artifact_seconds = 0.
     if artifacts_dir:
@@ -58,14 +61,14 @@ def pixels_to_file(features, grid, audio_latents, out_path, *, base, adapter, ar
     audio_cache_hit = audio_vae is not None
     if audio_vae is None:
         from .vae_weights import load_audio_vae
-        audio_vae, _ = load_audio_vae(base)
+        audio_vae, _ = load_audio_vae(base, device=device)
     if model_cache is not None:
         model_cache.put('audio_vae', audio_key, audio_vae)
     audio_vae.eval().requires_grad_(False)
-    audio_mean = torch.tensor(audio_vae.config.latents_mean, device='cuda').view(1, -1, 1)
-    audio_std = torch.tensor(audio_vae.config.latents_std, device='cuda').view(1, -1, 1)
+    audio_mean = torch.tensor(audio_vae.config.latents_mean, device=device).view(1, -1, 1)
+    audio_std = torch.tensor(audio_vae.config.latents_std, device=device).view(1, -1, 1)
     print(json.dumps({'event': 'decode_phase', 'phase': 'Decoding audio'}), flush=True)
-    audio = audio_vae.decode(audio_latents * audio_std + audio_mean, return_dict=False)[0]
+    audio = audio_vae.decode(audio_latents.to(device) * audio_std + audio_mean, return_dict=False)[0]
     audio = audio.float().permute(1, 0, 2)[0].cpu()
     rate = audio_vae.config.sampling_rate
     audio_level = {'audio_rms': float(audio.square().mean().sqrt()) if audio.numel() else 0.,
@@ -73,7 +76,7 @@ def pixels_to_file(features, grid, audio_latents, out_path, *, base, adapter, ar
                    'audio_samples': int(audio.shape[-1])}
     del audio_vae, audio_mean, audio_std
     gc.collect()
-    torch.cuda.empty_cache()
+    dwd_head.empty_cache(device)
     audio_seconds = time.perf_counter() - audio_start
     if artifacts_dir:
         import numpy as np

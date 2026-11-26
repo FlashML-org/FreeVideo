@@ -15,7 +15,7 @@ const failures = () => ({
     disk_full: text('The upload stopped: the disk is full. Free some space, then try again.', '上传中断：磁盘空间不足，请清理出空间后重试。'),
     not_writable: text('The upload stopped: the input folder cannot be written to. Check its write permission, then try again.', '上传中断：输入文件夹无法写入，请检查它的写入权限后重试。'),
 });
-const generic = () => text('The upload did not finish. Try again.', '上传没有完成，请再试一次。');
+const generic = () => text('The upload did not finish. Try again.', '上传未完成，请重试。');
 // A request that never answers is cut off, so the pickers unlock and the failure line shows: two minutes plus four seconds per MiB, so a slow link is not mistaken for a hang.
 export const uploadTimeoutMs = size => 120000 + Math.ceil(size / 1024 ** 2) * 4000;
 // With a progress callback the body goes through XMLHttpRequest, whose upload events report the bytes sent; fetch has none.

@@ -107,7 +107,8 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
         const button = el('button', 'fv-ed-source'); button.type = 'button'; button.dataset.key = `${kind}:${row.id}`;
         const ready = kind === 'work' || row.state === 'ready';
         // A card is named by what it shows: the prompt's first 24 characters (a creation's prompt comes with its media
-        // details), else the file's name, else its kind and time; the date goes to the line under it.
+        // details), else the file's name, else its kind; the date goes to the line under it. Read aloud, a card named
+        // only by its kind keeps its time too, so two of them do not sound alike.
         const details = kind === 'work' ? store.sources.get(`work:${row.id}`) : null;
         const prompt = String(row.text || details?.text || '').replace(/\s+/g, ' ').trim();
         const created = row.created_at ? new Date(row.created_at) : null;
@@ -115,7 +116,8 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
         const kindWord = kind === 'work' || row.kind === 'video' ? t('Video', '视频') : row.kind === 'audio' ? t('Sound', '声音') : t('Clip', '素材');
         const cut = text => Array.from(text).length > 24 ? Array.from(text).slice(0, 24).join('') + '…' : text;
         // A card kept from the last visit knows only its picture until the list arrives: blank lines of the final height.
-        const label = row.name || (prompt ? cut(prompt) : row.cached ? '' : [kindWord, when].filter(Boolean).join(' · '));
+        const named = row.name || (prompt ? cut(prompt) : ''), heading = named || (row.cached ? '' : kindWord);
+        const label = named || (row.cached ? '' : [kindWord, when].filter(Boolean).join(' · '));
         const g = details || row.geometry || {}, framesShown = metadata(row, kind).frames;
         const size = g.width && g.height ? `${g.width} × ${g.height}` : '';
         const facts = [when, framesShown ? stamp(framesShown) : '', size].filter(Boolean).join(' · '), line = when;
@@ -135,7 +137,7 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
                 : row.started ? t('Processing', '处理中') + percent : t('Queued', '排队中')));
         }
         button.append(picture);
-        const caption = el('span', 'fv-ed-source-caption'), title = el('span', 'fv-ed-source-title', label), sub = el('span', 'fv-ed-source-sub', line);
+        const caption = el('span', 'fv-ed-source-caption'), title = el('span', 'fv-ed-source-title', heading), sub = el('span', 'fv-ed-source-sub', line);
         if (row.cached) { title.textContent ||= '\u00a0'; sub.textContent ||= '\u00a0'; }
         caption.append(title, sub); sub.hidden = !line && !row.cached; button.append(caption);
         const used = el('span', 'fv-ed-source-used'); used.append(editorIcon('check')); used.setAttribute('aria-label', t('Used', '已用')); used.hidden = true; picture.append(used);
@@ -159,7 +161,7 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
         const plus = el('button', 'fv-ed-source-add', '＋'); plus.type = 'button'; plus.disabled = button.disabled; plus.title = button.title;
         plus.setAttribute('aria-label', `${t('Add to the tracks', '加到轨道上')}: ${label}`);
         tip(plus, {name: t('Add to the timeline', '加入时间线'), use: t('A video goes after the last picture, a sound at the playhead', '视频接在最后，声音放在播放头处'), key: 'Enter'});
-        tip(button, {name: label, use: [prompt && prompt !== label ? prompt : '', facts, ready ? t('Click to preview; drag or double-click to place', '单击预览，拖动或双击放入时间线') : t('Preparing; it is placed when ready', '正在准备，好了会自动放入')].filter(Boolean).join(' · '), key: ready ? 'Enter' : ''});
+        tip(button, {name: heading, use: [prompt && prompt !== heading ? prompt : '', facts, ready ? t('Click to preview; drag or double-click to place', '单击预览，拖动或双击放入时间线') : t('Preparing; it is placed when ready', '正在准备，好了会自动放入')].filter(Boolean).join(' · '), key: ready ? 'Enter' : ''});
         const insert = event => { event.preventDefault(); event.stopPropagation(); if (!(event.detail > 1)) requestAdd(row, kind, true); };
         plus.onclick = insert;
         plus.ondblclick = event => { event.preventDefault(); event.stopPropagation(); };
@@ -313,9 +315,9 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
                     next = value.next;
                 }
                 succeeded = true; if (!append) keepList(rows); render();
-                store.getSources(items.filter(row => row.video).map(row => `work:${row.id}`)).then(render).catch(value => { if (!disposed) actions.error(value); });
+                store.getSources(items.filter(row => row.video).map(row => `work:${row.id}`)).then(render).catch(value => { if (!disposed) actions.error(value, null, undefined, 'library-sources'); });
                 return value;
-            } catch (error) { if (!disposed) actions.error(error); return null; }
+            } catch (error) { if (!disposed) actions.error(error, null, undefined, 'library'); return null; }
             finally { loading = false; if (!listed) { listed = true; if (!succeeded && !disposed) render(); } if (succeeded) scheduleMore(); }
         });
         listRead = read; return read;

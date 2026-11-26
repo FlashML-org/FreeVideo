@@ -17,7 +17,7 @@ const filled = (en, zh, values) => (cn ? zh : en).replace(/\{(\w+)\}/g, (whole, 
 // launcher.js removes this flag during setup; read it before that.
 const launchVisit = query.get('freevideo') === 'launch';
 // Every script this folder ships; a test keeps the list in step with web/*.js.
-export const MODULES = ['fv_player.js', 'audio_original.js', 'chat_data.js', 'phone_model.js', 'phone.js', 'lan_access.js', 'monitor_panel.js', 'qrcodegen.js', 'agent_activity.js', 'agent_tasks.js', 'agent_confirm_settings.js', 'private_pin.js', 'private_settings.js', 'agent_connect.js', 'agent_session.js', 'autopilot.js', 'autopilot_chat.js', 'chat_attachments.js', 'autopilot_conversations.js', 'browser_extension.js', 'caret_rect.js', 'chain_support.js', 'chain_rules.js', 'timed_prompt.js', 'capability_view.js', 'cast_generate.js', 'cast_mention.js', 'cast_overlay.js', 'cast_source.js', 'compatibility.js', 'entry_showcase.js', 'engine_exit.js', 'error_panel.js', 'first_run_guide.js', 'fonts.js', 'freevideo.js', 'generation_progress.js',
+export const MODULES = ['video_enlarge.js', 'audio_original.js', 'chat_data.js', 'phone_model.js', 'phone.js', 'lan_access.js', 'monitor_panel.js', 'qrcodegen.js', 'agent_activity.js', 'agent_tasks.js', 'agent_confirm_settings.js', 'private_pin.js', 'private_settings.js', 'agent_connect.js', 'agent_session.js', 'autopilot.js', 'autopilot_chat.js', 'chat_attachments.js', 'autopilot_conversations.js', 'browser_extension.js', 'caret_rect.js', 'chain_support.js', 'chain_rules.js', 'timed_prompt.js', 'capability_view.js', 'cast_generate.js', 'cast_mention.js', 'cast_overlay.js', 'cast_source.js', 'compatibility.js', 'entry_showcase.js', 'engine_exit.js', 'error_panel.js', 'first_run_guide.js', 'fonts.js', 'freevideo.js', 'generation_progress.js',
     'editor.js', 'editor_actions.js', 'editor_lifecycle.js', 'editor_adjust.js', 'editor_adjust_picture.js', 'editor_picture_fields.js', 'editor_picture_session.js', 'editor_preview_picture.js', 'editor_entry.js', 'editor_expand.js', 'editor_export_dialog.js', 'editor_first_frame.js', 'editor_media_references.js', 'editor_references.js', 'middle_frames.js', 'editor_genbar.js', 'editor_duration.js', 'editor_geometry.js', 'editor_library.js', 'editor_menu.js', 'editor_stems.js', 'editor_record.js', 'editor_record_model.js', 'editor_voice.js', 'editor_voice_install.js', 'editor_voice_model.js', 'editor_voice_store.js', 'editor_model.js', 'editor_frame.js', 'editor_player.js', 'editor_room.js', 'editor_select.js', 'editor_state.js', 'editor_store.js', 'editor_tracks.js', 'editor_generation.js', 'editor_transport.js', 'editor_transport_model.js', 'editor_audio.js', 'editor_audio_model.js', 'editor_audio_notes.js', 'editor_audio_replace.js', 'editor_audio_rules.js', 'editor_music.js', 'editor_music_model.js', 'editor_speed.js', 'editor_speed_model.js', 'editor_failure.js', 'editor_header_fit.js', 'studio_header_fit.js',
     'editor_loader.js', 'editor_text_coverage.js', 'editor_text.js', 'editor_toolbar_more.js', 'editor_text_model.js', 'editor_text_layout.js', 'editor_notes.js', 'editor_icons.js', 'dialog_keys.js', 'dom_quiet.js', 'done_notify.js', 'file_failure.js', 'has_mirror.js', 'failure_issue.js', 'feedback.js', 'frame_sizes.js', 'health.js', 'i18n.js', 'image_commands.js', 'random_id.js', 'clipboard_text.js', 'image_editor.js', 'image_editor_engine.js', 'image_generation.js', 'image_lora.js', 'image_view.js', 'launch_visit.js', 'launcher.js', 'length_plan.js', 'lora_triggers.js', 'lora_check.js', 'library.js', 'motion.js', 'native_errors.js', 'translate_guard.js', 'output_download.js', 'port_notice.js', 'preview_scene.js', 'panel_shell.js',
     'progress_connection.js', 'prompt_draft.js', 'prompt_enhance.js', 'prompt_references.js', 'prompt_sections.js', 'prompt_terms.js', 'request_assets.js', 'repair_hint.js', 'report_issue.js', 'issue_button.js', 'studio_recent.js', 'media_queue.js', 'work_media.js', 'task_groups.js',
@@ -564,12 +564,18 @@ function details(problems) {
 // fail to load, so it builds the address itself (no shared module) and removes places and addresses.
 const ISSUE_FORM = 'https://github.com/FlashML-org/FreeVideo/issues/new';
 const forgetPlaces = text => String(text)
+    // Any authorization value (the engine's long_paths.AUTHORIZATION, with no scheme kept) and an email
+    // address on its own, a user name in any script, come first.
+    .replace(/(\b(?:proxy-)?authori[sz]ation(?:\\?['"][ \t]*[:=,]|[ \t]*[:=])[ \t]*)(?:(\\?['"])(?:(?!\2)[^\r\n])+|[^\r\n'"][^\r\n]*)/gi, '$1$2<secret>')
+    .replace(/(?<![\p{L}\p{N}_.+%-])(?!git@)[\p{L}\p{N}_.+%-]+@(?!\d+x\.)[\p{L}\p{N}_-]+(?:\.[\p{L}\p{N}_-]+)*\.\p{L}{2,}(?!\p{L})/gu, '<email>')
     // A local file written as a URL (file:///C:/Users/..., file://localhost/..., %-escaped) is a place too.
     .replace(/(^|[^A-Za-z0-9_\/])file:(?:\/\/[^\/\s'"<>]*)?(?:\/+|(?=[A-Za-z]:[\\/]))[^'"<>|\r\n]*/gi, '$1<path>')
     .replace(/https?:\/\/[^\s'"<>)]+/g, '<url>')
     .replace(/\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b/g, '<address>')
-    .replace(/(?:[A-Za-z]:[\\/]|\\\\|~[\\/])[^'"<>|\r\n]+/g, '<path>')
-    .replace(/(^|[\s('"])\/[\w.-]+(?:\/[^\s'"<>)]*)+/g, '$1<path>');
+    // A path right after a colon counts ("Error:C:\\Users\\...", "error:/home/..."), a URL's "://" does not.
+    .replace(/(?<![A-Za-z0-9])(?:[A-Za-z]:[\\/]|\\\\|~[\\/])[^'"<>|\r\n]+/g, '<path>')
+    // A path may hold spaces ("/Users/John Smith/..."): to the end of its line, a quote or ")".
+    .replace(/(^|[\s('"]|:(?=\/[A-Za-z_]))\/[\w.-]+(?:\/[^'"<>|)\r\n]*)+/g, '$1<path>');
 function issueAddress(problems) {
     const summary = forgetPlaces(details(problems)).split('\n').filter(line => !line.startsWith('Page:')).join('\n');
     const feedback = ['FreeVideo showed an error.', 'Where: Page check',
@@ -620,6 +626,14 @@ window.addEventListener('keydown', event => {
     if (event.key !== 'Escape' || !card?.isConnected) return;
     event.preventDefault(); event.stopImmediatePropagation(); dismiss();
 }, true);
+// The scripts' own words (error, extension URL and line), once each, for the technical details of either card.
+function rawDetails(problems) {
+    const raw = problems.map(p => p.detail).filter(Boolean);
+    if (!raw.length) return null;
+    const pre = document.createElement('pre'); pre.textContent = [...new Set(raw)].join('\n');
+    Object.assign(pre.style, {margin: '6px 0 0', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', font: '12px/1.5 ui-monospace,Consolas,monospace', color: '#a5b3c6', userSelect: 'text', webkitUserSelect: 'text'});
+    return pre;
+}
 function show(problems, asked = false) {
     opening?.finish(); opening = null;
     lastProblems = problems;
@@ -687,15 +701,15 @@ function show(problems, asked = false) {
         const choose = document.createElement('p'); choose.textContent = extensionAdvice.action;
         const technical = document.createElement('details'), label = document.createElement('summary');
         label.textContent = t('Technical details', '技术详情'); technical.append(label, list);
+        const pre = rawDetails(problems); if (pre) technical.append(pre);
         technical.style.margin = '12px 0';
         // Full URLs/IDs and the blocked filename remain in technical details.
         card.append(title, first, choose, extensionUI.extensionSteps(extensionAdvice), technical, advice, actions);
     } else {
-        const raw = problems.map(p => p.detail).filter(Boolean);
-        if (raw.length) {
-            const technical = document.createElement('details'), label = document.createElement('summary'), pre = document.createElement('pre');
-            label.textContent = t('Technical details', '技术详情'); pre.textContent = [...new Set(raw)].join('\n');
-            Object.assign(pre.style, {margin: '6px 0 0', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', font: '12px/1.5 ui-monospace,Consolas,monospace', color: '#a5b3c6', userSelect: 'text', webkitUserSelect: 'text'});
+        const pre = rawDetails(problems);
+        if (pre) {
+            const technical = document.createElement('details'), label = document.createElement('summary');
+            label.textContent = t('Technical details', '技术详情');
             technical.append(label, pre); technical.style.margin = '0 0 12px'; label.style.cursor = 'pointer'; label.style.color = '#a5b3c6';
             card.append(title, list, technical, advice, actions);
         } else card.append(title, list, advice, actions);

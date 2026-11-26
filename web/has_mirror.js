@@ -107,9 +107,6 @@ const scan = (root, found) => {
     }
 };
 const focusState = event => {
-    // The Quality slider's rail answers the keys without being seen: a ring shows round the four names while it has keyboard focus.
-    const effort = event.target.closest?.('.fv-effort');
-    if (effort) effort.toggleAttribute('data-hx-rail', event.type === 'focusin' && event.target.matches('.fv-effort-rail:focus-visible'));
     const console = event.target.closest?.('.fvs-console');
     if (!console) return;
     const on = event.type === 'focusin';

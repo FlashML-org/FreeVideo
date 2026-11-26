@@ -136,13 +136,13 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     const undoKey = el('button', t('Undo', '撤销'), 'fv-enhance-undo'); undoKey.type = 'button'; undoKey.hidden = true;
     meter.append(fill); status.append(statusText, meter, report, undoKey);
     // One place sets what the status line says and how it looks.
-    function show(text, state = '', fraction = null, quote = text) {
+    function show(text, state = '', fraction = null, quote = text, offerReport = true) {
         if (downloadOnly) { publishModel({text: text || ''}); return; }
         statusText.textContent = text || '';
         undoKey.hidden = true; undoState = null;
         quoted = quote || '';
         status.dataset.state = text ? state : '';
-        report.hidden = !text || state !== 'error';
+        report.hidden = !text || state !== 'error' || !offerReport;
         meter.hidden = state !== 'progress';
         meter.dataset.indeterminate = String(fraction === null);
         if (fraction === null) { meter.removeAttribute('aria-valuenow'); fill.style.width = ''; }
@@ -216,6 +216,16 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     };
     // The feedback carries only the check's name, its category and whether the retry had run; the local counts stay on this computer.
     const checkFacts = check => ({check: check.name, check_category: check.category, check_retried: check.retried});
+    // A request past the input limit: its token count, the limit and the number of pictures, whole numbers only.
+    const contextOf = row => {
+        const found = row?.context, whole = value => Number.isInteger(value) && value >= 0;
+        return found && whole(found.input_tokens) && whole(found.input_limit) && found.input_limit > 0 && whole(found.image_count)
+            ? {input_tokens: found.input_tokens, input_limit: found.input_limit, image_count: found.image_count} : null;
+    };
+    // The message says only how far over the limit the request is; the token counts go to the feedback form.
+    const contextNumbers = error => ({ percent: String(Math.max(1, Math.ceil((error.context.input_tokens - error.context.input_limit) / error.context.input_limit * 100))) });
+    // Errors whose cause is known and that the user can fix in the prompt offer no "Report a problem".
+    const ownFix = error => ['invalid_prompt', 'too_many_images'].includes(error?.message) || (error?.message === 'context_length' && Boolean(error?.context));
     const gib = value => String(Math.round(value / 2 ** 30));
     // Mentions are counted as the character descriptions they expand to, so the count can exceed what the box shows.
     const tooLong = error => ({ number: error.characters.toLocaleString('en-US') });
@@ -251,7 +261,12 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
                 { reason: t(...CHECK_LABELS[error.check.category]) })
             : t('The rewrite was incomplete. Retry or use the original.', '改写结果不完整，请重试或使用原文。'),
         invalid_request: t('Rewriting does not support this model or aspect ratio. Change it or use the original.', '当前模型或画幅不支持改写，请更换或使用原文。'),
-        context_length: t('The scene is too long for this model. Shorten it or use the original.', '内容超出改写模型容量，请精简或使用原文。'),
+        context_length: error?.context?.image_count === 0
+            ? t('The prompt is about {percent}% over the rewriting limit. Shorten it or use the original.', '提示词超出改写上限约 {percent}%，请精简提示词或使用原文。', contextNumbers(error))
+            : error?.context
+            ? t('The prompt and references are about {percent}% over the rewriting limit. Shorten the prompt or use fewer references, or use the original.',
+                '提示词和参考图超出改写上限约 {percent}%，请精简提示词或减少参考图，或使用原文。', contextNumbers(error))
+            : t('The scene is too long for this model. Shorten it or use the original.', '内容超出改写模型容量，请精简或使用原文。'),
         out_of_memory: holderNames(error?.holders)
             ? t('Not enough graphics memory to rewrite. In use: {programs}. Close the listed programs and rewrite again, or use the original.',
                 '显存不足，无法改写。正在占用：{programs}。关闭上述程序后可重新改写，或使用原文。', { programs: holderNames(error.holders) })
@@ -279,7 +294,11 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
             ? t('The rewrite was incomplete: {reason}.', '改写结果不完整：{reason}。', { reason: t(...CHECK_LABELS[error.check.category]) })
             : t('The rewrite was incomplete.', '改写结果不完整。'),
         invalid_request: t('Rewriting does not support this model or aspect ratio.', '当前模型或画幅不支持改写。'),
-        context_length: t('The scene is too long for the rewrite model.', '内容超出改写模型容量。'),
+        context_length: error?.context?.image_count === 0
+            ? t('The prompt is about {percent}% over the rewriting limit. Shorten it before rewriting again.', '提示词超出改写上限约 {percent}%，精简后可再改写。', contextNumbers(error))
+            : error?.context
+            ? t('The prompt and references are about {percent}% over the rewriting limit. Shorten them before rewriting again.', '提示词和参考图超出改写上限约 {percent}%，精简后可再改写。', contextNumbers(error))
+            : t('The scene is too long for the rewrite model.', '内容超出改写模型容量。'),
         out_of_memory: holderNames(error?.holders)
             ? t('Not enough graphics memory to rewrite. In use: {programs}. Close the listed programs before rewriting again.',
                 '显存不足，无法改写。正在占用：{programs}。关闭上述程序后可重新改写。', { programs: holderNames(error.holders) })
@@ -390,8 +409,9 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
                 if (row.phase === 'complete') return row;
                 if (row.phase === 'failed') {
                     const check = row.error === 'invalid_output' ? checkOf(row) : null;
-                    memoryFacts = row.error === 'out_of_memory' ? {...factsOf(row.diagnostics), ...failureOf(row)} : check ? checkFacts(check) : null;
-                    throw Object.assign(new Error(row.error || 'rewrite_failed'), {ramBytes: row.diagnostics?.ram_required_bytes, holders: row.gpu_holders, check});
+                    const context = row.error === 'context_length' ? contextOf(row) : null;
+                    memoryFacts = row.error === 'out_of_memory' ? {...factsOf(row.diagnostics), ...failureOf(row)} : check ? checkFacts(check) : context ? {...context} : null;
+                    throw Object.assign(new Error(row.error || 'rewrite_failed'), {ramBytes: row.diagnostics?.ram_required_bytes, holders: row.gpu_holders, check, context});
                 }
                 if (row.phase === 'cancelled') throw new Error(action === 'install' ? 'download_failed' : 'cancelled');
                 if (disposed) throw new Error('cancelled');
@@ -509,7 +529,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         running = Promise.resolve().then(execute).catch(error => {
             // Only a failure the user can act on is said; a cancel or a rewrite outdated by an edit says nothing.
             if (!disposed) show(['cancelled', 'stale'].includes(error?.message) ? '' : errorText(error), 'error', null,
-                errorText({name: error?.name, message: error?.message, ramBytes: error?.ramBytes, characters: error?.characters, expanded: error?.expanded}));
+                errorText({name: error?.name, message: error?.message, ramBytes: error?.ramBytes, characters: error?.characters, expanded: error?.expanded}), !ownFix(error));
             throw error;
         }).finally(() => { running = null; cancelling = false; install.hidden = true; render(); });
         render();

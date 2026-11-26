@@ -1,5 +1,25 @@
 // "Upscale to W × H" on a finished video: one 1.5× step, offered only when this computer can generate
 // that size and length. Menus are built synchronously, so answers are read ahead and kept per size.
+import { capabilityPoints } from './chain_support.js';
+
+// What one step runs, whatever the creation panel is set to (the engine fixes it, work_upscale.PLAN): two passes of
+// 8 + 3 steps with a 1.5× learned upscale between them and no step cache. The capabilities reply groups its numbers
+// by quality level, so the frames this computer admits for an upscale are read from the level with these steps.
+export const UPSCALE_PLAN = Object.freeze({two_pass: true, base_steps: 8, refine_steps: 3, step_cache: null, upscale_factor: 1.5});
+
+// The longest single upscale request at a size, as the planner admits it now; null when it cannot be told.
+// `fetchApi` is ComfyUI's api.fetchApi; a reply still being computed is asked again a second later, five times.
+export async function admittedFrames(fetchApi, width, height, wait = () => new Promise(done => setTimeout(done, 1000))) {
+    for (let tries = 0; tries < 5; tries++) {
+        const response = await fetchApi('/freevideo/capabilities?' + new URLSearchParams({width, height}));
+        if (!response.ok) return null;
+        const reply = await response.json();
+        if (reply?.status === 'computing') { await wait(); continue; }
+        return reply && (!reply.status || reply.status === 'ready')
+            ? capabilityPoints(reply, {width, height, settings: UPSCALE_PLAN}).maxRequestFrames : null;
+    }
+    return null;
+}
 
 // 1.5× keeps the aspect exactly and lands on the engine's 32-pixel grid only for sides that are multiples of 64.
 export function upscaleSize(width, height) {

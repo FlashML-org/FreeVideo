@@ -64,16 +64,17 @@
 @keyframes fv-chat-in{from{opacity:0}}
 .fv-chat-length{position:absolute;right:8px;bottom:8px;font-size:12px;line-height:1.5;color:#fff;background:#0009;border-radius:var(--fv-r-xs);padding:0 4px;font-variant-numeric:tabular-nums;pointer-events:none}
 .fv-chat-preview[data-video] .fv-chat-length{bottom:16px}
+/* The position under the picture: the shared play bar's slider alone (glass/player_bar.js positionOnly), light with a
+   dark shadow so it reads on a bright picture as on a dark one. */
+/* A faint dark fade along the bottom of a playing video, so the line reads on a bright picture too. */
+.fv-chat-preview[data-video]::after{content:'';position:absolute;left:0;right:0;bottom:0;height:24px;background:linear-gradient(to top,rgb(0 0 0 / .35),transparent);pointer-events:none}
+.fv-chat-preview[data-video] .fv-chat-length{z-index:1}
+.fv-chat-preview>.fv-chat-position{position:absolute;left:8px;right:8px;bottom:0;z-index:1;width:auto;--fv-player-fg:#fff;--fv-player-rail:rgb(255 255 255 / .4);color:#fff;filter:drop-shadow(0 0 2px rgb(0 0 0 / .75))}
 .fv-studio .fv-chat-play{position:absolute;inset:0;width:100%;height:100%;min-height:0;padding:0;border:0;border-radius:0;background:transparent}
 .fv-studio .fv-chat-play:hover{background:transparent}
 .fv-chat-play::before{content:"";width:46px;height:46px;border-radius:var(--fv-r-pill);background:#0b1118b8;border:1px solid #ffffff3d;transition:opacity var(--fv-quick)}
 .fv-chat-play::after{content:"";position:absolute;left:50%;top:50%;margin:-8px 0 0 -4px;border-left:13px solid #fff;border-top:8px solid transparent;border-bottom:8px solid transparent;transition:opacity var(--fv-quick)}
 .fv-chat-preview[data-playing=true] .fv-chat-play::before,.fv-chat-preview[data-playing=true] .fv-chat-play::after{opacity:0}
-.fv-chat-seek{position:absolute;left:8px;right:8px;bottom:4px;width:auto;height:10px;min-height:0;margin:0;padding:0;border:0;background:none;appearance:none;-webkit-appearance:none;cursor:pointer}
-.fv-studio .fv-chat-seek{min-height:0;border-radius:var(--fv-r-sm)}
-.fv-chat-seek::-webkit-slider-runnable-track{height:4px;border-radius:var(--fv-r-sm);background:#ffffff40}
-.fv-chat-seek::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;margin-top:-4px;border-radius:var(--fv-r-pill);background:#fff}
-.fv-chat-seek::-moz-range-track{height:4px;border-radius:var(--fv-r-sm);background:#ffffff40}.fv-chat-seek::-moz-range-thumb{width:12px;height:12px;border:0;border-radius:var(--fv-r-pill);background:#fff}
 /* One shrinkable track: a long title ellipsizes instead of widening the column past the card. */
 .fv-chat-info{display:grid;grid-template-columns:minmax(0,1fr);align-content:space-between;gap:12px;min-width:0;padding:4px 4px 4px 0}
 /* Finished cards have only a heading and any available actions; an empty footer takes no room. */
@@ -230,3 +231,12 @@
 .fv-studio .fv-chat-log .fv-chat-edit-send{border-color:transparent;background:var(--fv-accent);color:var(--fv-bg)}
 .fv-studio .fv-chat-log .fv-chat-edit-send:hover:not(:disabled){background:var(--fv-accent-hover)}
 @media(max-width:480px){.fv-studio .fv-chat-log .fv-chat-edit-box{font-size:16px}}
+/* Full screen on a finished video (video_enlarge.js): a 32 px circle 6 px from the frame's top and
+   right edges, in a 44 px key that reaches into the corner (never toward the middle of the picture). With a mouse it
+   shows while the frame is hovered or the key has focus; on a touch screen it stays. */
+.fv-studio .fv-chat-full{position:absolute;top:0;right:0;z-index:2;display:grid;place-items:center;width:44px;height:44px;min-width:44px;min-height:44px;padding:0;border:0;border-radius:0;background:transparent;color:#f3f5f8}
+.fv-studio .fv-chat-full::before{content:'';position:absolute;top:6px;right:6px;width:32px;height:32px;border-radius:var(--fv-r-pill);background:rgb(12 16 24 / .58);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.fv-studio .fv-chat-full>svg{position:relative;width:16px;height:16px}
+.fv-studio .fv-chat-full:hover{background:transparent}.fv-studio .fv-chat-full:hover::before{background:rgb(12 16 24 / .78)}
+.fv-studio .fv-chat-full:focus-visible{outline:0}.fv-studio .fv-chat-full:focus-visible::before{outline:2px solid var(--fv-accent-line,#6db8fa);outline-offset:2px}
+@media (hover:hover) and (pointer:fine){.fv-studio .fv-chat-preview:not(:hover) .fv-chat-full:not(:focus-visible){opacity:0}}

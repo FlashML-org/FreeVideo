@@ -47,9 +47,10 @@ export function createJobStore({now = () => Date.now(), storage = null} = {}) {
     prune();
     const saveLocal = () => { prune(); writeJSON(storage, LOCAL_KEY, local); };
     if (JSON.stringify(local) !== loaded && Object.keys(local).length + loaded.length > 2) saveLocal();
-    // Text of a job (its prompt) lives in memory only, and only until the job ends; listeners of done and failed still
-    // receive it once (the library files the prompt with the work), then the row keeps no text.
-    const withoutText = row => { const {prompt, ...rest} = row; const {text, ...meta} = row.meta || {}; return {...rest, prompt: '', meta}; };
+    // Text of a job lives in this page's memory only, never in the browser's storage: a reload starts without it. A finished
+    // row keeps its title (the prompt as the box reads it) so the list still says which video it was; the
+    // full text the page kept beside it (meta.text) goes once the job ends, as the library files the prompt with the work.
+    const withoutText = row => { const {text, ...meta} = row.meta || {}; return {...row, meta}; };
 
     // Running first, then submitting and queued (oldest first, as they will run), then the latest finished.
     const order = (a, b) => {
@@ -333,6 +334,17 @@ const pick = value => value && typeof value === 'object' ? Object.fromEntries(['
     .filter(key => value[key] !== undefined).map(key => [key, value[key]])) : {};
 
 // ---------- Videos: the progress stream the page already receives (freevideo.js turns it into window events) ----------
+// A video first heard of before its request id was known stands as video:node:<node> (the engine's first progress names
+// only the node). Once the id is known that row is the same video under its own key: it is taken off and what it had
+// (when it started, how far it got) goes to video:<id>, so one Generate is one row.
+function adoptNodeRow(store, id, node) {
+    if (node == null || !id.startsWith('video:') || id.startsWith('video:node:')) return {};
+    const orphan = store.get('video:node:' + node);
+    if (!orphan || !ACTIVE.has(orphan.status)) return {};
+    store.drop(orphan.id);
+    return Object.fromEntries(['started_at', 'percent', 'eta_seconds', 'phase'].filter(key => orphan[key] != null).map(key => [key, orphan[key]]));
+}
+const fillFrom = (patch, kept, existing) => { for (const [key, value] of Object.entries(kept)) if (patch[key] === undefined && existing?.[key] == null) patch[key] = value; return patch; };
 // A part of a long video reports under its chain; the chain itself ends in chainSource.
 export function progressSource(store, {target = globalThis, now = store.now, cancel = null, framePath = id => `/freevideo/frame-preview/${id}`,
     promptOf = () => null} = {}) {
@@ -371,6 +383,7 @@ export function progressSource(store, {target = globalThis, now = store.now, can
         if (terminal === 'failed') patch.failure = {code: message.error_code || message.error || 'generation_failed', message: message.message || message.error || '', report_id: reportId};
         // A new run on the same key, as the progress panel reads it (generation_progress.js).
         const fresh = message.new_request === true || message.overall?.reset === true || (message.reset === true && !message.phase);
+        if (!chain) fillFrom(patch, adoptNodeRow(store, id, message.node), store.get(id));
         store.upsert(patch, {revive: fresh && !terminal});
     }
     const listener = event => receive(event.detail);
@@ -390,12 +403,19 @@ export function progressSource(store, {target = globalThis, now = store.now, can
 // stream (progressSource, keyed by the same request id) then owns its percent and its end. A waiting row that leaves the
 // queue without having run (removed here or elsewhere) is dropped; a running one that leaves without an ending is
 // closed from its history (stopped, or not finished).
-export function queueSource(store, {fetchJson, clientId = () => null, interval = 3000, setTimer = setTimeout, clearTimer = clearTimeout} = {}) {
+// display: the words a row shows for the text the request sends, as the prompt box shows them (task_float.js passes
+// prompt_sections.js shownRewrite: a rewrite in H3's sections reads as "Shot 1 (0:00): ...", not as its section names).
+export function queueSource(store, {fetchJson, clientId = () => null, interval = 3000, setTimer = setTimeout, clearTimer = clearTimeout,
+    display = text => text} = {}) {
     let known = new Map(), reading = null, again = false, timer = 0, disposed = false;
     const generateOf = row => Object.entries(row?.[2] || {}).find(([, node]) => node?.class_type === 'FreeVideoGenerate');
     // A long video's parts are the chain's own (chainSource lists the chain once): they are left out here.
     const ours = row => Boolean(generateOf(row)) && !row?.[3]?.freevideo_chain && (!clientId() || row?.[3]?.client_id === clientId());
-    const text = row => String(generateOf(row)?.[1]?.inputs?.text ?? '').replace(/\s+/g, ' ').trim();
+    const text = row => {
+        const sent = String(generateOf(row)?.[1]?.inputs?.text ?? '');
+        let shown = sent; try { shown = display(sent) ?? sent; } catch { /* the text as sent */ }
+        return String(shown).replace(/\s+/g, ' ').trim();
+    };
     async function close(id, promptId) {
         let entry = null;
         try { entry = (await fetchJson('/history/' + encodeURIComponent(promptId)))?.[promptId] || null; } catch { return; }
@@ -420,10 +440,17 @@ export function queueSource(store, {fetchJson, clientId = () => null, interval =
         const pending = (queue?.queue_pending || []).filter(ours).sort((a, b) => a[0] - b[0]);
         const now = new Map();
         for (const row of running) {
-            const id = 'video:' + row[1], previous = store.get(id); now.set(id, {promptId: row[1], status: 'running', node: String(generateOf(row)[0])});
-            if (previous && !['queued', 'submitting'].includes(previous.status)) continue;
-            store.upsert({id, kind: 'video', source: 'video', status: 'running', prompt_id: row[1], node: generateOf(row)[0], cancellable: true,
-                position: 0, prompt: previous?.prompt || text(row)}, {revive: Boolean(previous)});
+            const id = 'video:' + row[1], node = generateOf(row)[0], kept = adoptNodeRow(store, id, node), previous = store.get(id);
+            now.set(id, {promptId: row[1], status: 'running', node: String(node)});
+            if (previous && !['queued', 'submitting'].includes(previous.status)) {
+                // Already running (its progress came first): it still gets its words, which only this queue knows.
+                const missing = fillFrom({id}, kept, previous);
+                if (!previous.prompt && text(row)) missing.prompt = text(row);
+                if (Object.keys(missing).length > 1) store.upsert(missing);
+                continue;
+            }
+            store.upsert(fillFrom({id, kind: 'video', source: 'video', status: 'running', prompt_id: row[1], node, cancellable: true,
+                position: 0, prompt: previous?.prompt || text(row)}, kept, previous), {revive: Boolean(previous)});
         }
         pending.forEach((row, index) => {
             const id = 'video:' + row[1], previous = store.get(id); now.set(id, {promptId: row[1], status: 'queued'});

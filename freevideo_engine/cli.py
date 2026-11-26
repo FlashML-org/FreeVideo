@@ -191,9 +191,6 @@ def main():
             validate_route(task=args.task or ('ref2va' if args.continue_anchor else 't2va'),
                            anchor=args.continue_anchor is not None, two_pass=args.two_pass, preview=args.preview,
                            refine_from=args.refine_from)
-    if sys.platform == 'darwin' and args.command == 'generate' and args.fast_mode is not None:
-        # The Mac route below has its own engine, which would otherwise run the default steps.
-        raise ValueError('The fastest mode is not available on Mac')
     if sys.platform == 'darwin' and args.command == 'generate' and args.upscale_from is not None:
         raise ValueError('Upscaling a finished video is not available on Mac yet')
     if sys.platform == 'darwin' and args.command in ('plan', 'generate', 'encode', 'doctor'):

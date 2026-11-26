@@ -835,6 +835,19 @@ class ModelBank:
                                             requested_peak_bytes=int(peak))
 
     def decoder_room(self, options, canvas):
+        if options.get('vae') == 'skipped':
+            # The fastest mode draws its pixels with the adapter's head and never reads the video VAE: room for
+            # the head's planned peak only. A resident VAE stays like any other kept model, evicted only when the
+            # head needs its memory, and the VAE's own estimates, peaks and options do not apply.
+            # Host memory of the stage, from the code rather than a measurement: the head's BF16 weights pass through
+            # the host before the GPU (policy.PIXEL_HEAD_WEIGHT_BYTES, 1.1 GiB) and it returns its uint8 frames on the
+            # host (frames x height x width x 3: 0.36 GiB at 1344x768 5 s). Never below the VAE stage's 2 GiB.
+            from .policy import PIXEL_HEAD_WEIGHT_BYTES
+            frames = (canvas.get('frames', 0) * canvas.get('width', 0) * canvas.get('height', 0) * 3
+                      if all(type(canvas.get(name)) is int for name in ('frames', 'width', 'height')) else 0)
+            self.make_room('pixel_head', min(self.gpu_budget, options['pixel_head_bytes']),
+                           ram_need=max(2*GiB, PIXEL_HEAD_WEIGHT_BYTES + frames))
+            return options
         if options.get('offload'):
             # The streamed decoder installs offload hooks on a different model;
             # its workspace cannot credit a cached full-GPU decoder it won't use.

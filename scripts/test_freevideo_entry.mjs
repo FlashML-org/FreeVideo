@@ -93,6 +93,7 @@ test('main browser entry registers both views and preserves node hooks', async t
         },
         referenceTrimText: row => `trimmed ${row.kind} ${row.number}`,
         thermalText: thermal => `thermal ${thermal.sm_clock_mean_mhz}`,
+        powerLimitText: limit => `power ${limit.sm_clock_mean_mhz}`,
         sharedGpuText: shared => `shared GPU ${shared.other_mean_percent}%`,
         encoderFileText: file => `encoder ${file.sizes.join(' / ')} GiB`,
         encoderFilePath: file => file?.offline_installation ? file.path || '' : '',
@@ -131,7 +132,10 @@ test('main browser entry registers both views and preserves node hooks', async t
         source = source.replace("from './issue_button.js'", `from '${new URL('../web/issue_button.js', import.meta.url).href}'`);
         source = source.replace("from './user_message.js'", `from '${new URL('../web/user_message.js', import.meta.url).href}'`);
         source = source.replace("from './prompt_sections.js'", `from '${new URL('../web/prompt_sections.js', import.meta.url).href}'`);
-        source = source.replace("from './fv_player.js'", `from '${new URL('../web/fv_player.js', import.meta.url).href}'`);
+        // The play bar draws into a real document (and its menu module adds a sheet on import); what is checked here is
+        // registration and node hooks, so a bar that draws nothing stands in.
+        source = source.replace("import { attach as attachPlayer } from './glass/player_bar.js';", 'const attachPlayer = () => ({element: {classList: {add() {}}}, detach() {}});');
+        source = source.replace("import { enlarged, toggleEnlarge } from './video_enlarge.js';", 'const enlarged = () => false, toggleEnlarge = () => {};');
         source = source.replace("from './fv_select.js'", `from '${new URL('../web/fv_select.js', import.meta.url).href}'`);
         source = source.replace("from './tip_words.js'", `from '${new URL('../web/tip_words.js', import.meta.url).href}'`);
         // i18n.js decides the page's language once, when it loads (as a page does on each load). Each round below sets
@@ -148,7 +152,7 @@ test('main browser entry registers both views and preserves node hooks', async t
             .replace('import { app } from "../../scripts/app.js";', 'const {app} = globalThis.__freevideoEntryTest;')
             .replace('import { api } from "../../scripts/api.js";', 'const {api} = globalThis.__freevideoEntryTest;')
             .replace("import { openStudio, loraPanel, loraWarning } from \"./studio.js\";", 'const {openStudio,loraPanel,loraWarning} = globalThis.__freevideoEntryTest;')
-            .replace("import { createGenerationProgress, referenceTrimText, thermalText, sharedGpuText, keepSoundText, encoderFileText, encoderFilePath } from './generation_progress.js';", 'const {createGenerationProgress,referenceTrimText,thermalText,sharedGpuText,encoderFileText,encoderFilePath} = globalThis.__freevideoEntryTest; const keepSoundText = () => "";')
+            .replace("import { createGenerationProgress, referenceTrimText, thermalText, powerLimitText, sharedGpuText, keepSoundText, encoderFileText, encoderFilePath } from './generation_progress.js';", 'const {createGenerationProgress,referenceTrimText,thermalText,powerLimitText,sharedGpuText,encoderFileText,encoderFilePath} = globalThis.__freevideoEntryTest; const keepSoundText = () => "";')
             .replace("import { createProgressConnection } from './progress_connection.js';", 'const {createProgressConnection} = globalThis.__freevideoEntryTest;')
             .replace("import { notifyCompatibility } from './compatibility.js';", 'const {notifyCompatibility} = globalThis.__freevideoEntryTest;')
             .replace("import { startWhiteboxWorker } from './whitebox_worker.js';", 'const {startWhiteboxWorker} = globalThis.__freevideoEntryTest;')
@@ -472,13 +476,14 @@ test('main browser entry registers both views and preserves node hooks', async t
         const resultWidth = node.size[0];
         node.setSize([resultWidth, 100]);
         node.freevideoShowResult({freevideo_summary: [{video, result_cache_hit: true, sample_seconds: 99, encoder_file,
-            thermal: {sm_clock_mean_mhz: 900}, shared_gpu: {other_mean_percent: 42}}]});
+            thermal: {sm_clock_mean_mhz: 900}, power_limit: {sm_clock_mean_mhz: 1400}, shared_gpu: {other_mean_percent: 42}}]});
         const reused = node.dom.find(row => row.name === 'freevideo_result').element;
         assert.equal(reused.children[0].hidden, true, 'Do not show the old sampling time as current work');
         assert.ok(reused.children[1].children.some(e => e.textContent === 'Reused previous result'));
         assert.ok(reused.children.some(e => e.className === 'fv-note' && e.textContent === 'encoder 25.3 / 14.6 GiB'),
             'A cached result still came from the same encoder file');
         assert.ok(!reused.children.some(e => e.textContent === 'shared GPU 42%'), 'A cached result did not share the GPU this time');
+        assert.ok(!reused.children.some(e => e.textContent === 'power 1400'), 'Nor was it held back by the power limit this time');
         assert.deepEqual(node.size, [resultWidth, node.computeSize()[1]], 'Grow the node after appending the encoder notice');
         const again = reused.children[1].children.at(-1);
         assert.equal(again.textContent, 'Regenerate');
@@ -500,12 +505,12 @@ test('main browser entry registers both views and preserves node hooks', async t
         assert.ok(node.computeSize()[1] < progressHeight);
         assert.deepEqual(node.size, [resultWidth, progressHeight], 'Shorter results must not shrink the node');
         node.freevideoShowResult({freevideo_summary: [{video, sample_seconds: 5, encoder_file, thermal: {sm_clock_mean_mhz: 900},
-            shared_gpu: {other_mean_percent: 42},
+            power_limit: {sm_clock_mean_mhz: 1400}, shared_gpu: {other_mean_percent: 42},
             reference_trims: [{kind: 'video', number: 1, seconds: 20.3, used_seconds: 5.17}]}]});
         assert.deepEqual(reused.children.filter(e => e.className === 'fv-note fv-trim-note').map(e => e.textContent),
             ['trimmed video 1'], 'Say which reference was shortened, never cut silently');
         assert.deepEqual(reused.children.filter(e => e.className === 'fv-note' && !e.hidden).map(e => e.textContent),
-            ['thermal 900', 'shared GPU 42%', 'encoder 25.3 / 14.6 GiB'], 'Show thermal, shared GPU and encoder notices in order');
+            ['thermal 900', 'power 1400', 'shared GPU 42%', 'encoder 25.3 / 14.6 GiB'], 'Show thermal, power limit, shared GPU and encoder notices in order');
         assert.ok(node.computeSize()[1] > progressHeight);
         assert.deepEqual(node.size, [resultWidth, node.computeSize()[1]], 'Measure the result height after all notices are appended');
 

@@ -8,7 +8,7 @@
 //   icon?, key?: 'Mod+Enter', when?: () => bool (hidden when false), why?: () => '' | [en, zh] (shown greyed with the
 //   reason), confirm?: [en, zh] (asks first), anyView?: true (offered from every view), run: ctx => any}.
 // This module also loads the rest of the command layer: shortcuts, notifications, search and the right-click menu.
-import { t, words, CN, MAC, glyph, keyChips, formatKeys, createLayer, addSheet } from './context_menu.js';
+import { t, words, CN, MAC, glyph, keyChips, formatKeys, createLayer, addSheet, fadeEnds } from './context_menu.js';
 import { openShortcuts, shortcutsOpen, closeShortcuts, VIEW_NAMES } from './shortcuts.js';
 import { searchEverything, searchSettled, warmSearch, fillPrompt } from './global_search.js';
 import { openNotifications, latestFinished, toast, visitJob, openWork } from './notifications.js';
@@ -341,6 +341,7 @@ function build() {
         chip.onclick = () => { setScope(item.id); ui.input.focus({preventScroll: true}); };
         ui.scopes.append(chip);
     }
+    ui.fade = fadeEnds(ui.scopes);
     ui.input.addEventListener('input', () => { active = 0; confirming = null; refresh(); });
     ui.list.addEventListener('pointermove', event => {
         const option = event.target.closest('[role=option]'); if (!option) return;
@@ -394,7 +395,7 @@ function gridStep(direction) {
 function setScope(next) {
     scope = next; active = 0;
     for (const chip of ui.scopes.children) { const on = chip.dataset.scope === scope; chip.setAttribute('aria-selected', String(on)); chip.classList.toggle('is-on', on); }
-    ui.scopes.querySelector('.is-on')?.scrollIntoView?.({inline: 'nearest', block: 'nearest'});
+    ui.fade();
     refresh();
 }
 
@@ -622,7 +623,7 @@ export function commandFailure(command, error, report = openIssue) {
     const server = /\bHTTP\s*\d{3}\b/.test(String(error?.message ?? error ?? '')) || Number.isInteger(error?.status);
     if (reason && !server) return [reason, {tone: 'fail'}];
     // The pill holds one short line beside the button; the server's sentence goes in the detail (the bell keeps both).
-    return [t('Failed: “{name}”', '“{name}”没有完成', { name }), {tone: 'fail', ...(reason ? {detail: reason} : {}), action: {
+    return [t('Failed: “{name}”', '“{name}”未完成', { name }), {tone: 'fail', ...(reason ? {detail: reason} : {}), action: {
         label: t('Report', '提交问题'), use: t('Open the feedback form with this error filled in', '打开反馈表，已填好这条错误'),
         run: () => report(t, {where: ['Command palette', '命令面板'], message: `${name}: ${String(error?.message ?? error ?? '')}`, kind: 'command', facts: {command: command.id}})}}];
 }

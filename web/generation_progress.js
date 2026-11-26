@@ -258,7 +258,7 @@ function baseActivityLabel(message, t, plan = {}, secondPass = false, references
 function retryText(retry, t) {
     const reason = {gpu_oom: ['Out of GPU memory', '显存不足'], ram_pressure: ['Out of RAM', '内存不足'],
         unified_memory: ['Out of RAM', '内存不足']}[retry.kind]
-        || ['Previous attempt did not finish', '上一次尝试没有完成'];
+        || ['Previous attempt did not finish', '上一次尝试未完成'];
     const values = { reason: t(...reason) };
     if (retry.reuse_sampling === true) return t('{reason}; the generated result is kept, and a retry is in progress.', '{reason}，已保留生成结果，正在重试。', values);
     const fallback = !['gpu_oom', 'ram_pressure', 'unified_memory'].includes(retry.kind);
@@ -299,14 +299,29 @@ export function thermalText(thermal, t) {
             '生成这段视频时，显卡大部分时间因过热降频，所以比平时慢很多。请改善散热；笔记本请接通电源并选择高性能模式。');
 }
 
-// Other programs held a substantial share of the GPU during this run (summary.shared_gpu).
-// The share is rounded to 5% and written as at most 95%; without a usable number there is no note.
+// The driver held the clock down at the GPU's power limit for much of the run (summary.power_limit):
+// a laptop on battery or in a power-saving mode, or a small system keeping its case cool.
+// {share} here is the mean clock as a share of the peak, not limit.share (the part of the busy time held at the limit).
+export function powerLimitText(limit, t) {
+    const share = limit.sm_clock_max_mhz ? Math.round(100 * limit.sm_clock_mean_mhz / limit.sm_clock_max_mhz) : null;
+    return Number.isFinite(share)
+        ? t('The GPU was held back by its power limit during this video ({share}% of its peak clock), so it took much longer than usual. On a laptop, plug in and choose a high-performance power mode; if a lower power limit was set for the GPU, restore its default.',
+            '生成这段视频时，显卡因功耗限制降频（频率只有峰值的 {share}%），所以比平时慢很多。笔记本请接通电源并选择高性能模式；如曾为显卡设置较低的功耗上限，请恢复默认值。', { share })
+        : t('The GPU was held back by its power limit during this video, so it took much longer than usual. On a laptop, plug in and choose a high-performance power mode; if a lower power limit was set for the GPU, restore its default.',
+            '生成这段视频时，显卡因功耗限制降频，所以比平时慢很多。笔记本请接通电源并选择高性能模式；如曾为显卡设置较低的功耗上限，请恢复默认值。');
+}
+
+// Other programs, or FreeVideo's own other work, held a substantial share of the GPU during this run
+// (summary.shared_gpu: other_mean_percent, helpers_mean_percent, either or both). Each is said apart, so the
+// note never asks a user to close FreeVideo's own work. A share is rounded to 5% and written as at most 95%;
+// without a usable number there is no sentence for it.
 export function sharedGpuText(shared, t) {
-    const mean = shared?.other_mean_percent;
-    if (typeof mean !== 'number' || !Number.isFinite(mean)) return '';
-    const percent = Math.min(95, Math.round(mean / 5) * 5);
-    return t('Other programs were using about {percent}% of the GPU.',
-        '其他程序占用了约 {percent}% 的显卡。', { percent });
+    const percentOf = mean => typeof mean === 'number' && Number.isFinite(mean) ? Math.min(95, Math.round(mean / 5) * 5) : null;
+    const other = percentOf(shared?.other_mean_percent), helpers = percentOf(shared?.helpers_mean_percent);
+    return [
+        other !== null ? t('Other programs were using about {percent}% of the GPU.', '其他程序占用了约 {percent}% 的显卡。', { percent: other }) : '',
+        helpers !== null ? t('Other FreeVideo tasks were using about {percent}% of the GPU.', 'FreeVideo 的其他任务占用了约 {percent}% 的显卡。', { percent: helpers }) : '',
+    ].filter(Boolean).join(t(' ', ''));
 }
 
 // Replace person: the source video's sound was asked for and could not be put into the video.

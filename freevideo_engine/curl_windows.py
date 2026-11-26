@@ -279,8 +279,10 @@ def ensure(root, env=None, *, progress=None, cancelled=lambda: False):
                             raise CurlError(check['status'], 'The verified download tool could not start.')
                         target = cache / ('curl-' + spec['version'])
                         if target.exists():
-                            target.rename(cache / ('curl-rejected-' + uuid.uuid4().hex))
+                            target.rename(cache / (target.name + '.rejected-' + uuid.uuid4().hex))
                         folder.rename(target)
+                        from . import failed_copies
+                        failed_copies.prune(target, keep=0)  # the new tool passed its probe; the old ones go
                         report.update(selected=str(target / 'bin/curl.exe'), status='ready', repair='complete')
                         attempt['status'] = 'ready'
                         emit('Download tool ready', done=spec['bytes'], total=spec['bytes'])

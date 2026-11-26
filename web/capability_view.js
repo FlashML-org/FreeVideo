@@ -291,7 +291,8 @@ export function createCapabilityView({node, api, t, getState, onPick, onEstimate
         current(); hideHover();
     }
     function applyGrid(animate = false) {
-        if (grid?.version === 1 && grid.status === 'ready') onGrid?.(grid);
+        // A Mac gets no grid, only the fastest mode's listing (fast_only): that goes to the quality levels alone.
+        if (grid?.version === 1 && (grid.status === 'ready' || grid.fast_only === true)) onGrid?.(grid);
         surface = capabilitySurface(grid, getState()); element.hidden = !surface && !estimating;
         entry.disabled = !surface;
         onEstimate?.();

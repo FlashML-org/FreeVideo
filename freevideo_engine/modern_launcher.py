@@ -295,7 +295,7 @@ def create_ui(session, *, show=True, instance=None):
                 try:
                     session.edit(key, value)
                 except ValueError as exc:
-                    if key not in ('token', 'url'):
+                    if key not in ('token', 'url', 'destination', 'engine'):
                         raise
                     session.field_error = dict(key=key, message=str(exc))
             self.invoke(edit_field)
@@ -499,6 +499,17 @@ def create_ui(session, *, show=True, instance=None):
                 if not open_folder(folder.resolve()):
                     session.action_notice = 'folder_open_failed'
                     self.refresh()
+                return
+            self.invoke(QDesktopServices.openUrl, QUrl.fromLocalFile(str(folder.resolve())))
+
+        @Slot()
+        def openUpdateFolder(self):
+            """The folder of a downloaded launcher Windows did not let start, so the user can start it there."""
+            from PySide6.QtGui import QDesktopServices
+            folder = Path(session.update_blocked_path).parent if session.update_blocked_path else None
+            if folder is None or not folder.is_dir():
+                session.action_notice = 'folder_open_failed'
+                self.refresh()
                 return
             self.invoke(QDesktopServices.openUrl, QUrl.fromLocalFile(str(folder.resolve())))
 

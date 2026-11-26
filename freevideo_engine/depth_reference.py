@@ -18,6 +18,13 @@ import uuid
 from . import processes
 from .paths import data_root
 
+
+def _forget_rejected(target):
+    """The new result is in place, validated: the invalid ones kept beside it go."""
+    from . import network
+    network.forget_failed(target)
+
+
 PREPROCESSING_VERSION = 'dav2-small-pyav-torch-bgr-imagenet-lower-bound-14-clay-relief-v1'
 CODE_VERSION = 'freevideo-depth-reference-v1'
 STAGE = 'depth_reference'
@@ -91,7 +98,7 @@ def ensure_weights(root, emit, check):
         if path.is_file() and path.stat().st_size == row['bytes'] and digest(path, check) == row['sha256']:
             return path
         if path.exists():
-            network.retain_partial(path, 'rejected')
+            network.retain_partial(path, 'set-aside')
         plan = _download_plan(Path(root))
         sources = plan['sources'] = dict(plan.get('sources', {}))
         if not sources.get('image-models'):
@@ -540,6 +547,7 @@ def _convert(request, emit, check):
             # Retain invalid old artifacts separately; never accept a partial directory.
             target.rename(cache / (key + '.rejected-' + uuid.uuid4().hex))
         os.replace(stage, target)
+        _forget_rejected(target)
         return dict(path=str(target / 'depth.mp4'), cache_hit=False, key=key)
 
 
@@ -575,6 +583,7 @@ def _convert_lines(request, source, work, emit, check):
         if target.exists():
             target.rename(cache / (key + '.rejected-' + uuid.uuid4().hex))
         os.replace(stage, target)
+        _forget_rejected(target)
         return dict(path=str(target / OUTPUT['lines']), cache_hit=False, key=key)
 
 

@@ -7,7 +7,7 @@ import { agentInterfaceState } from './agent_connect.js';
 import { agentSend } from './agent_session.js';
 import { uploadMedia } from './media_upload.js';
 import { issueButton } from './issue_button.js';
-import { createPlayBar } from './fv_player.js';
+import { attach as attachPlayer } from './glass/player_bar.js';
 import { userMessage } from './user_message.js';
 import { copyText } from './clipboard_text.js';
 
@@ -196,7 +196,7 @@ export function createCastRoom({api, t, viewURL: outputURL}) {
             voiceBox.append(el('div', t('Voice', '声音'), 'fv-cast-voice-label'));
             const audio = el('audio'); audio.preload = 'none';
             audio.src = card.voice.clip.url ? api.apiURL(card.voice.clip.url) : inputURL(card.voice.clip.file);
-            voiceBox.append(audio, createPlayBar(audio, t).bar);
+            voiceBox.append(audio); attachPlayer(audio, voiceBox, {t, volume: true, speed: true});
         }
     }
     async function copyMention() {

@@ -18,6 +18,16 @@ async function saveFailure(response) {
     let body = null; try { body = await response.json(); } catch {}
     return Object.assign(errorFor(response), body && typeof body === 'object' ? {reason: body.reason || (body.error === 'internal' ? body.class : undefined), response: body} : {});
 }
+// A failed read keeps what the server said about it on `server`: its reason code, the exception's type name and the request
+// number, never its words (they may hold a path). The page names a file cause from it, and a report carries it.
+async function requestFailure(response, path = '') {
+    let body = null; try { body = await response.json(); } catch {}
+    const value = body && typeof body === 'object' ? body : {};
+    const kept = (field, pattern) => typeof value[field] === 'string' && pattern.test(value[field]) ? [[field, value[field]]] : [];
+    // The route (no query) names the failed request, so the page shows one notice for one failure.
+    return Object.assign(errorFor(response), {route: String(path).split('?')[0], server: Object.fromEntries([...kept('reason', /^[a-z][a-z0-9_]{1,39}$/),
+        ...kept('class', /^[A-Za-z_][A-Za-z0-9_.]{0,79}$/), ...kept('request_id', /^[A-Za-z0-9_-]{1,64}$/)])});
+}
 const post = value => ({method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(value)});
 export const sourceKey = source => source ? `${source.kind}:${source.id}` : null;
 import {chainRoute, createPoller, interpolate, capabilityPoints} from './chain_support.js';
@@ -216,7 +226,7 @@ export function createEditorStore(api, {t = en => en, notify = () => {}, onGener
     async function json(path, options, fallback = null) {
         const response = await request(path, options);
         if (response.status === 404) return fallback;
-        if (!response.ok) throw errorFor(response);
+        if (!response.ok) throw await requestFailure(response, path);
         return response.json();
     }
     function cache(values) {

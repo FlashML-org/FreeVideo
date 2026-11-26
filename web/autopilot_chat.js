@@ -20,6 +20,8 @@ import {about} from './request_assets.js';
 import {showEmptyPrompt} from './empty_prompt_notice.js';
 import {createSideRail, ICON, localTime, markText, matches, promptOf, statusKey, statusText} from './autopilot_panels.js';
 import {tip, WHY} from './autopilot_tips.js';
+import {enlarge, enlarged} from './video_enlarge.js';
+import {attach as attachPlayer, keptRate, keptVolume} from './glass/player_bar.js';
 import {createHistoryMenu, forgetStoredSaid, saidIn} from './autopilot_history.js';
 
 // The conversation's own sheet, then the glass layout over it (rails, the floating box to type in, the cards).
@@ -73,13 +75,15 @@ const WHITEBOX = {
     play: ['Play', '播放'], pause: ['Pause', '暂停'], seconds: ['s', '秒'],
     failure: ['Could not start: ', '无法开始生成：'],
 };
-const GENERIC_FAILURE_ZH = '没有完成';
+const GENERIC_FAILURE_ZH = '未完成';
+// The generic Chinese an older engine or a saved session may still carry: the same "did not finish", not a reason of its own.
+const GENERIC_FAILURES_ZH = [GENERIC_FAILURE_ZH, '没有完成', '生成没有完成'];
 // The failures whose next step is the problem report (agent/errors.py FAILURE_NEXT_*).
 const UNEXPECTED_FAILURES = ['internal_error', 'generation_failed'];
 // Sends and failure cards use the same public reason, including the engine's Chinese mapping.
 function failureReason(value, t) {
     const error = value.error, reason = error?.error_zh || value.error_zh, reasonEn = error?.error_en || value.error_en;
-    if (error?.code === 'session_full' && (!reason || reason === GENERIC_FAILURE_ZH))
+    if (error?.code === 'session_full' && (!reason || GENERIC_FAILURES_ZH.includes(reason)))
         return t('This chat is full. Click "New chat".', '这个对话已满，请点“新对话”。');
     // The next step belongs to the same object as the reason it follows.
     const own = error?.error_zh ? error : value;
@@ -92,9 +96,19 @@ function failureReason(value, t) {
 
 // A failed job's one reason line. The engine's classified sentence (both languages) is for people; anything else is
 // program text and goes to the technical details, so the card then says only that the generation did not finish.
+// An unexpected failure carries the program's own text: a cause the panel knows from it (memory, a missing file...), said
+// with its next step, or null. Such a cause is the user's to handle, so its card offers no problem report.
+export function knownFailure(value, t) {
+    const error = value?.error;
+    if (!UNEXPECTED_FAILURES.includes(error?.code) || typeof error?.message !== 'string' || !error.message) return null;
+    const known = failureAdvice([error.code, error.message].join('\n'), t);
+    return known && known.kind !== 'unknown' && known.title ? [known.title, known.summary || known.action].filter(Boolean).join(t('. ', '。')) : null;
+}
 export function failureCardReason(value, t) {
     const error = value.error, zh = error?.error_zh || value.error_zh, en = error?.error_en || value.error_en;
-    const said = zh && en && zh !== GENERIC_FAILURE_ZH && en !== 'Did not finish' && zh !== '生成没有完成';
+    const known = knownFailure(value, t);
+    if (known) return known;
+    const said = zh && en && !GENERIC_FAILURES_ZH.includes(zh) && en !== 'Did not finish';
     if (said || error?.code === 'session_full') return failureReason(value, t);
     // Unclassified: the creation panel's reading of the original text (memory, a missing file, a component that
     // did not load...) says the cause and the next step; only what it cannot place stays "did not finish".
@@ -285,7 +299,7 @@ function imageViewer(t, src, name, opener, failed) {
         disposed = true; observer.disconnect(); stopKeys(); pointers.clear(); image.onload = image.onerror = null;
         dialog.remove(); if (opener.isConnected && !opener.disabled) opener.focus({preventScroll: true});
     };
-    dialog.addEventListener('cancel', event => { event.preventDefault(); closeDialog(dialog); });
+    dialog.addEventListener('cancel', event => { if (event.target !== dialog) return; event.preventDefault(); closeDialog(dialog); });
     dialog.addEventListener('close', cleanup, {once: true});
     image.onload = () => { image.style.width = `${image.naturalWidth}px`; image.style.height = `${image.naturalHeight}px`; resize(); };
     image.onerror = () => { failed(); closeDialog(dialog); };
@@ -1360,27 +1374,39 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                     }
                     finally { playing = false; delete box.dataset.loading; }
                 };
-                const toggle = press('fv-chat-play', null, () => {
+                // The video is made on the first press of Play or Full screen, with the sound and speed kept from the last one.
+                const made = () => {
                     if (!video) {
                         video = el('video'); video.playsInline = true; video.src = api.apiURL(job.play);
-                        const seek = el('input', 'fv-chat-seek'); seek.type = 'range'; seek.min = '0'; seek.max = '1000'; seek.value = '0'; tip(seek, 'seek', t);
-                        seek.setAttribute('aria-label', t('Position', '播放位置'));
+                        const level = keptVolume(), rate = keptRate(); if (level !== null) video.volume = level; if (rate !== null) video.playbackRate = video.defaultPlaybackRate = rate;
                         video.onloadedmetadata = () => shape(video.videoWidth, video.videoHeight);
-                        video.ontimeupdate = () => { if (video.duration) seek.value = String(Math.round(video.currentTime / video.duration * 1000)); };
                         video.onplay = video.onpause = video.onended = () => { box.dataset.playing = String(!video.paused && !video.ended); label(); };
                         video.onerror = () => {
                             if (playing) return;
                             if (loadRetried) { playbackFailure(); return; }
                             loadRetried = true; video.load(); void play();
                         };
-                        seek.oninput = () => { if (video.duration) video.currentTime = seek.value / 1000 * video.duration; };
-                        box.prepend(video); box.append(seek); box.dataset.video = 'true';
+                        // The position under the picture is the shared play bar's slider, the Play key the card's own.
+                        box.prepend(video); box.dataset.video = 'true';
+                        attachPlayer(video, box, {t, positionOnly: true}).element.classList.add('fv-chat-position', 'fv-player-on-dark');
+                        video.addEventListener('fv-enlarge-change', () => { box.dataset.enlarged = String(enlarged(video)); });
                     }
+                    return video;
+                };
+                const toggle = press('fv-chat-play', null, event => {
+                    // The second click of a double click is the double click's (full screen), not another Play or Pause.
+                    if (event?.detail >= 2) return;
+                    made();
                     if (video.paused || video.ended) { loadRetried = false; void play(); } else video.pause();
                 });
                 tip(toggle, 'play', t);
+                // Full screen: the corner key or a double click; with a mouse the key shows on hover
+                // or focus, on a touch screen it stays (autopilot_chat.css). The video plays on, and comes back here.
+                const full = press('fv-chat-full', null, () => { made(); enlarge(video, {t, opener: full}); if (video.paused) video.play().catch(() => {}); });
+                full.append(glyph(ICON.full, 2)); tip(full, 'fullScreen', t);
+                toggle.addEventListener('dblclick', event => { event.preventDefault(); full.click(); });
                 const label = () => toggle.setAttribute('aria-label', (box.dataset.playing === 'true' ? t('Pause ', '暂停 ') : t('Play ', '播放 ')) + jobName(job, t));
-                label(); box.append(toggle);
+                label(); box.append(toggle, full);
             }
             if (length.textContent) box.append(length);
             children.unshift(box);
@@ -1470,17 +1496,19 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                     const fold = failureFold(t);
                     if (retry) actions.append(...again());
                     // An unexpected failure says to report it if it happens again: the card carries that button.
-                    const issue = issueButton(t, () => ({where: CHAT_ISSUE, message: [reason.textContent, fold.querySelector('p').textContent].filter(Boolean).join('\n')}));
+                    const issue = issueButton(t, () => ({where: CHAT_ISSUE, message: [reason.textContent, fold.querySelector('p').textContent].filter(Boolean).join('\n'),
+                        kind: current.error?.code || null}));
                     actions.append(diagnostic.report, issue);
                     links.append(actions); item.replaceChildren(failHead, reason, fold, links);
                     tip(diagnostic.report, 'report', t);
                     apply = next => { current = next; put(reason, failureCardReason(next, t));
-                        issue.hidden = !UNEXPECTED_FAILURES.includes(next.error?.code);
+                        issue.hidden = !UNEXPECTED_FAILURES.includes(next.error?.code) || !!knownFailure(next, t);
                         put(failName, jobName(next, t)); put(failChip, statusText(next, t)); failChip.dataset.state = statusKey(next);
                         put(failWhen, localTime(next.finished_at || next.created_at, t)); failWhen.hidden = !failWhen.textContent;
                         const raw = [next.error?.code, next.error?.message, next.error?.request_id].filter(Boolean).join('\n');
                         fold.querySelector('p').textContent = raw; fold.hidden = !raw;
-                        diagnostic.updateReport({report_id: next.report_id}); };
+                        // The job's report is named under its error (jobs.py view); older rows had it at the top.
+                        diagnostic.updateReport({report_id: next.error?.report_id || next.report_id}); };
                 } else { item.replaceChildren(); apply = null; }
             }
             apply?.(job, latest);
@@ -1807,7 +1835,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         chatSummary = !state.session || !tasks.length ? null
             : running ? {text: running.title + ((running.fraction?.() ?? 0) >= .01 ? ` · ${Math.floor(running.fraction() * 100)}%` : ''), state: 'running'}
             : queued ? {text: t('{queued} queued', '{queued} 项排队中', { queued }), state: 'queued'}
-            : failed ? {text: t('{failed} did not finish', '{failed} 项没有完成', { failed }), state: 'failed'}
+            : failed ? {text: t('{failed} did not finish', '{failed} 项未完成', { failed }), state: 'failed'}
             : {text: t('{done} done', '{done} 项已完成', { done }), state: 'done'};
         shotWords = tasks.flatMap(row => [row.title, row.prompt].filter(Boolean));
         const node = listNodes.get(state.session);

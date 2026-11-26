@@ -8,13 +8,13 @@ const POLL_MS = 500, DONE_MS = 4000;
 function failureText(reason, t) {
     return t(...({
         offline: ['The network is unavailable, so the Fast level could not be downloaded. Connect to the network and try again.', '网络未连接，无法下载极\u2060速\u2060档。请连接网络后重试。'],
-        source_failed: ['The Fast level did not finish downloading. Check the network and try again.', '极\u2060速\u2060档没有下载完成，请检查网络后重试。'],
+        source_failed: ['The Fast level did not finish downloading. Check the network and try again.', '极⁠速⁠档未能下载完成，请检查网络后重试。'],
         integrity_failed: ['The downloaded Fast level did not pass verification. Try again.', '下载的极\u2060速\u2060档未通过校验，请重试。'],
         write_failed: ['The Fast level could not be saved to disk. Check the disk and try again.', '极\u2060速\u2060档未能保存到磁盘，请检查磁盘后重试。'],
         disk_space: ['Not enough disk space to download the Fast level. Free up space and try again.', '磁盘空间不足，无法下载极\u2060速\u2060档。请释放空间后重试。'],
         busy: ['The Fast level is already downloading. Try again shortly.', '极\u2060速\u2060档正在下载，请稍后重试。'],
         not_published: ['The Fast level files are not published yet, so they cannot be downloaded. Switched back to Light.', '极\u2060速\u2060档的文件尚未发布，目前无法下载。已改回轻\u2060量\u2060档。'],
-    }[reason] || ['The Fast level did not finish downloading. Try again.', '极\u2060速\u2060档没有下载完成，请重试。']));
+    }[reason] || ['The Fast level did not finish downloading. Try again.', '极⁠速⁠档未能下载完成，请重试。']));
 }
 
 export function fastPackControl({t, api, onChange = () => {}, onResize = () => {}}) {
