@@ -13,6 +13,7 @@ import sys
 import threading
 import uuid
 
+from . import windows_names
 from .long_paths import io_path, resolved, plain, plain_text, plain_errors
 from .comfy_bridge import installation, installation_root, source_root
 from .environments import ENVIRONMENTS
@@ -281,6 +282,7 @@ class Setup:
     def validate_root(self, value):
         if not isinstance(value, str) or not value.strip() or len(value) > 4096:
             raise ValueError('Choose an engine installation folder')
+        windows_names.check(value)
         root = resolved(Path(value).expanduser())
         host = resolved(self.folder_paths.base_path)
         if root == Path(root.anchor) or root == host or (root in host.parents and not owned_comfy(root, host)):

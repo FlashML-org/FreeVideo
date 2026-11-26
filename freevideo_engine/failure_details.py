@@ -582,6 +582,12 @@ PLACE_RULES = (
      ('This location cannot be used', '无法使用这个位置'),
      ('Windows does not let this account create folders in this location. Choose a folder in the user folder or on another drive.',
       'Windows 不允许当前账户在这个位置创建文件夹。请改选用户文件夹或其他硬盘上的文件夹。')),
+    (r'Windows does not accept a folder name in the installation folder path', 'folder-name-invalid',
+     ('A folder name in the install location is not valid', '安装位置中有无效的文件夹名'),
+     ('A folder name in the install location contains a character Windows does not allow, is a name Windows '
+      'reserves for devices, or ends with a space or a dot. Rename it or choose another folder.',
+      '安装位置中有一个文件夹名含有 Windows 不允许的字符、是 Windows 为设备保留的名称，或以空格或句点结尾。'
+      '请修改该名称，或另选一个文件夹。')),
     (r'Missing or incomplete bundled file: ', 'missing-file',
      ('The installation files are incomplete', '安装文件不完整'),
      ('Extract the whole package again, and check that security software has not removed any files.',

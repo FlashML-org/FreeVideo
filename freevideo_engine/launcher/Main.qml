@@ -641,7 +641,7 @@ ApplicationWindow {
                             FButton { objectName: "vcRuntimeLink"; visible: s.failure.kind === "vc-runtime"
                                       text: t("Download runtime ↗", "下载运行库 ↗"); onClicked: backend.link("https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist") }
                             FButton { objectName: "exportError"; visible: !diskFailure && !notAFault; text: t("Export report", "导出报告"); enabled: s.report.status !== "running"; onClicked: backend.exportReport() }
-                            FButton { objectName: "reportProblem"; visible: !diskFailure && !notAFault && s.failure.kind !== "port-taken" && s.failure.kind !== "comfy-restart" && s.failure.kind !== "comfy-folder" && s.failure.kind !== "engine-folder-denied" && s.failure.kind !== "vc-runtime" && s.failure.kind !== "python-file-blocked"; text: reportOpened(s.error, s.failure.title || "") ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(s.error, s.failure.title || ""); onClicked: backend.reportProblem(plainText(s.error), plainText(s.failure.title || "")) }
+                            FButton { objectName: "reportProblem"; visible: !diskFailure && !notAFault && s.failure.kind !== "port-taken" && s.failure.kind !== "comfy-restart" && s.failure.kind !== "comfy-folder" && s.failure.kind !== "engine-folder-denied" && s.failure.kind !== "folder-name-invalid" && s.failure.kind !== "vc-runtime" && s.failure.kind !== "python-file-blocked"; text: reportOpened(s.error, s.failure.title || "") ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(s.error, s.failure.title || ""); onClicked: backend.reportProblem(plainText(s.error), plainText(s.failure.title || "")) }
                         }
                         FButton {
                             objectName: "showError"; visible: !notAFault; text: t("Technical details", "技术详情"); flat: true
@@ -717,6 +717,7 @@ ApplicationWindow {
                                 FToolTip { objectName: "installationPathTooltip"; text: parent.text; delay: 500; visible: parent.hovered && parent.text.length > 0 && !win.dialogShown } }
                             FButton { objectName: "installationBrowse"; text: t("Browse…", "浏览…"); enabled: s.can_manage; implicitHeight: theme.height + 4; onClicked: backend.browse(s.form.new_comfy ? "destination" : "comfy") }
                         }
+                        FText { objectName: "installationPathError"; visible: s.field_error.key === "destination"; text: visible ? s.field_error.message : ""; color: theme.danger; font.pixelSize: theme.micro; Layout.fillWidth: true; wrapMode: Text.WordWrap }
                         FText { visible: !s.form.new_comfy; text: t("Uses your existing Python when available. A separate environment loads only FreeVideo.", "优先使用已有 Python；独立环境仅加载 FreeVideo。"); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
                         RowLayout {
                             objectName: "installDisk"; visible: !!disk; Layout.fillWidth: true; spacing: 8
@@ -1707,6 +1708,7 @@ ApplicationWindow {
                             Layout.fillWidth: true; title: t("Folders · optional", "目录 · 可选"); enabled: !s.portable
                             FText { text: t("Engine folder", "引擎目录"); font.pixelSize: theme.micro; color: theme.muted }
                             RowLayout { Layout.fillWidth: true; spacing: 8; FField { Layout.fillWidth: true; value: s.form.engine; placeholderText: t("Automatic", "自动选择"); onEditingFinished: backend.edit("engine", text) } FButton { objectName: "engineBrowse"; text: t("Browse…", "浏览…"); enabled: s.can_manage; implicitHeight: theme.height + 4; onClicked: backend.browse("engine") } }
+                            FText { objectName: "engineError"; visible: s.field_error.key === "engine"; text: visible ? s.field_error.message : ""; color: theme.danger; font.pixelSize: theme.micro; Layout.fillWidth: true; wrapMode: Text.WordWrap }
                             FText { text: t("Python environment", "Python 环境"); font.pixelSize: theme.micro; color: theme.muted; Layout.topMargin: 4 }
                             FField { Layout.fillWidth: true; value: s.form.python; placeholderText: Qt.platform.os === "windows" ? t("Path to python.exe", "python.exe 的路径") : t("Path to python", "python 的路径"); onEditingFinished: backend.edit("python", text) }
                         }
@@ -1745,7 +1747,7 @@ ApplicationWindow {
                                 Layout.fillWidth: true; spacing: 8
                                 FButton { text: t("Copy details", "复制详情"); implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1; onClicked: backend.copy(s.error) }
                                 FButton { text: t("Export report", "导出报告"); implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1; enabled: s.report.status !== "running"; onClicked: backend.exportReport() }
-                                FButton { objectName: "settingsReportProblem"; visible: s.failure.kind !== "comfy-folder" && s.failure.kind !== "engine-folder-denied" && s.failure.kind !== "vc-runtime" && s.failure.kind !== "python-file-blocked"; text: reportOpened(s.error, s.failure.title || "") ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(s.error, s.failure.title || ""); implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1; onClicked: backend.reportProblem(plainText(s.error), plainText(s.failure.title || "")) }
+                                FButton { objectName: "settingsReportProblem"; visible: s.failure.kind !== "comfy-folder" && s.failure.kind !== "engine-folder-denied" && s.failure.kind !== "folder-name-invalid" && s.failure.kind !== "vc-runtime" && s.failure.kind !== "python-file-blocked"; text: reportOpened(s.error, s.failure.title || "") ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(s.error, s.failure.title || ""); implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1; onClicked: backend.reportProblem(plainText(s.error), plainText(s.failure.title || "")) }
                             }
                             FText {
                                 visible: s.report.status !== "idle"; Layout.fillWidth: true; font.pixelSize: theme.micro; color: theme.muted

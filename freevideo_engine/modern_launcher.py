@@ -295,7 +295,7 @@ def create_ui(session, *, show=True, instance=None):
                 try:
                     session.edit(key, value)
                 except ValueError as exc:
-                    if key not in ('token', 'url'):
+                    if key not in ('token', 'url', 'destination', 'engine'):
                         raise
                     session.field_error = dict(key=key, message=str(exc))
             self.invoke(edit_field)
