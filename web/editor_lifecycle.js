@@ -1,4 +1,14 @@
-const untitled = name => ['Untitled edit', '未命名剪辑'].includes(name);
+// The name a new edit gets ('Untitled edit' through t(), so in the language of the page), in every interface language. An edit
+// with one of these names was never named, whichever language made it: an empty one is still left out and put away after the
+// language changes. scripts/i18n_check.py fails a language file whose 'Untitled edit' is not in this list. (Chinese first and
+// English last: the text collector reads an English text followed by a Chinese one as a pair to translate.)
+export const UNTITLED_EDIT_NAMES = Object.freeze([
+    '未命名剪辑', '未命名剪輯', '無題の編集', '제목 없는 편집',
+    'Edición sin título', 'Edição sem título', 'Montage sans titre', 'Unbenannt', 'Montaggio senza titolo', 'Senza titolo',
+    'Без названия', 'Без назви', 'Adsız kurgu', 'Tanpa judul', 'Bản dựng phim chưa đặt tên', 'Chưa đặt tên',
+    'Untitled edit',
+]);
+const untitled = name => UNTITLED_EDIT_NAMES.includes(name);
 const sorted = value => value && typeof value === 'object'
     ? Array.isArray(value) ? value.map(sorted) : Object.fromEntries(Object.keys(value).sort().map(key => [key, sorted(value[key])])) : value;
 
