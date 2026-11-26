@@ -606,6 +606,13 @@
 .fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-chips{gap:6px}
 @media(max-width:1439px){.fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-chips{gap:4px}}
 .fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-chips>.fvs-chip-spacer{min-width:0}
+/* In the creation panel the description's tools stand in the key's column, above Generate. Here the description is two
+   lines high, so there is no room above the key and they would lie on it, out of the mouse's reach: where the key
+   stands beside the chips (a wide window; the narrow one below puts the tools under the text), they stand at the
+   description's right instead, beside its text, and the key's column is the key's alone. */
+@media(min-width:761px){.fv-editor:not(:lang(en),:lang(zh)) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console .fv-prompt-tools{position:static}}
+@media(min-width:1366px){.fv-editor:lang(zh) .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console .fv-prompt-tools{position:static}}
+@media(min-width:1440px){.fv-editor .fv-ed-genbar-borrowed .fv-studio.fv-create .fvs-console .fv-prompt-tools{position:static}}
 /* Where the chips would wrap beside the Generate block (a narrow window; English words are longer), the key stands
    beside the description instead and the chips take the full width on one line. The description's tools move from
    the key's column to the strip under the text, next to the key, and the text shows two lines while it is not being
