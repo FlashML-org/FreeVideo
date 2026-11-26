@@ -1,6 +1,7 @@
 // Track menus share the selection commands; they never choose an edit's landing position.
 import * as model from './editor_model.js';
 import {clickSelection, createSelectionActions, isTyping, selectedIds, playheadIds} from './editor_select.js';
+import {translatorFor} from './i18n.js';
 
 const registered = new Set();
 // Groups appear in first-registration order; matching groups stay together.
@@ -14,7 +15,7 @@ export function registerMenuItem(item) {
     return () => registered.delete(entry);
 }
 
-export function menuContext({state, commands, t = en => en, actions = {}, clip = null, frame = state.playhead, track = null,
+export function menuContext({state, commands, t = translatorFor(null, false), actions = {}, clip = null, frame = state.playhead, track = null,
     platform = globalThis.navigator?.userAgentData?.platform || globalThis.navigator?.platform || ''}) {
     const ids = selectedIds(state.record, state.selection), seen = new Set();
     let count = 0;
@@ -64,7 +65,7 @@ export function menuItems(context) {
     return [...groups.values()].flat();
 }
 
-export function createTrackMenu(host, {state, t = en => en, actions = {}, hitTest, frameAt, trackAt, clipboard,
+export function createTrackMenu(host, {state, t = translatorFor(null, false), actions = {}, hitTest, frameAt, trackAt, clipboard,
     choose = id => state.select(clickSelection(state.record, state.selection, id))} = {}) {
     const commands = createSelectionActions({state, t, actions, ...(clipboard ? {clipboard} : {})});
     const element = document.createElement('div');
@@ -111,7 +112,7 @@ export function createTrackMenu(host, {state, t = en => en, actions = {}, hitTes
         returnFocus = document.activeElement;
         if (context.where === 'part' && context.count > 1) {
             const heading = document.createElement('div'); heading.className = 'fv-ed-menu-count';
-            heading.textContent = t(`${context.count} parts selected`, `已选 ${context.count} 段`); element.append(heading);
+            heading.textContent = t('{count} parts selected', '已选 {count} 段', { count: context.count }); element.append(heading);
             element.setAttribute('aria-label', heading.textContent);
         } else element.removeAttribute('aria-label');
         let previousGroup;

@@ -24,7 +24,6 @@ import { createPreviewScene } from './preview_scene.js?v=20261115-still';
 import { animateDetails, closeDialog } from './motion.js';
 import { openLibrary, setDefaultUpscale, setDefaultUpscaleWork, videoThumbnailURL, admittedFrames } from './library.js';
 import { createUpscaleOffer, upscaleChoices, UPSCALE_USE, UPSCALE_QUEUED, UPSCALE_FAILED } from './upscale_offer.js';
-import { createRecentVideos } from './studio_recent.js';
 import { createStudioQueue, randomSeed, turnNodeOn } from './studio_queue.js';
 import { isNetworkTypeError, connectionLostText, wrappedFetchOnly } from './browser_extension.js';
 import { newEngineExit, engineExitText, watchEngineExit, refreshLoopStalls } from './engine_exit.js';
@@ -37,20 +36,25 @@ import { openCastLibrary } from './cast_source.js';
 import { mediaName, uploadMedia } from './media_upload.js';
 import { reconcileLoraTriggers, promptLines } from './lora_triggers.js';
 import { createVerdicts, describeVerdict, feedbackDraft } from './lora_check.js';
-import { continuationUpscale, createSamplingEffort, effortFor, effortsFrom, passSwitch, stepCacheOf, upscaleOf } from './sampling_effort.js';
+import { FAST_EFFORT, FAST_OPTION_TEXT, continuationUpscale, createSamplingEffort, effortFor, effortsFrom, fastOfferOf, passSwitch, stepCacheOf, upscaleOf, withFastLevel } from './sampling_effort.js';
+import { fastPackControl } from './fast_pack.js';
+import { createPanelShell } from './panel_shell.js';
+import { layoutColumns } from './studio_columns.js';
+import { mountStudioColumn } from './studio_right_column.js';
+import { button as railButton, icon as railIcon, readStore as readLocal, writeStore as writeLocal } from './image_view_ui.js';
 import { resultActions, previewBadge, icon, actionsUnavailable, liftMenu } from './result_actions.js';
 import { TIPS } from './tooltip_copy.js';
 import { createFrameChip, createFrameIcon, createPopChip } from './glass/frame_picker.js';
 import { createWarm } from './studio_warm.js';
 import { attach as attachPlayer } from './glass/player_bar.js';
-import { framesOf, savedPrompt } from './result_reuse.js';
+import { framesOf, savedPrompt, savedSettings } from './result_reuse.js';
 import { addVideoLabel, addVideoModel, missingVideoText, videoModelState } from './video_model.js';
 import { createPromptEnhancer } from './prompt_enhance.js';
 import { requestText, shownRewrite } from './prompt_sections.js';
 import { createRequestAssets, enabledLoras, referenceFiles } from './request_assets.js';
 import { promptDraftTrouble, rememberPromptDraft, restorePromptDraft, savePromptDraft, trackPromptDraft, watchPromptDraftTrouble } from './prompt_draft.js';
 import { canvasDimensions, imageSizeSelection } from './studio_size.js';
-import { createCapabilityView, capabilityContext } from './capability_view.js';
+import { createCapabilityView, capabilityContext, setupNote } from './capability_view.js';
 import { createOtherUsageNotice } from './other_usage.js';
 import { openEditorView } from './editor_loader.js';
 import { frameShapes, frameSize } from './frame_sizes.js';
@@ -105,7 +109,7 @@ function loraStrengthBox(initial, commit, said = null) {  // said: {text, value,
     // An emptied box goes back to the strength in use, and the line says so.
     let kept = String(initial);
     input.oninput = () => { if (said) said.text = ''; sync(); }; input.onchange = () => {
-        if (input.value === '' && kept !== '') { input.value = kept; sync(); note.say(t(`Back to ${kept}`, `已恢复为 ${kept}`)); mark.hidden = true; return; }
+        if (input.value === '' && kept !== '') { input.value = kept; sync(); note.say(t('Back to {kept}', '已恢复为 {kept}', { kept })); mark.hidden = true; return; }
         const ok = note.settle(); sync();
         if (said) { said.text = note.line && !note.line.hidden ? note.line.textContent : ''; said.value = Number(input.value); }
         if (note.line && !note.line.hidden) mark.hidden = true; // one line under the box: this one replaces the range note until the next input
@@ -122,6 +126,7 @@ const glassCss = document.createElement('link'); glassCss.rel = 'stylesheet'; gl
 // The panel reports ready only once this layer applies, so its first frame is never laid out without it.
 const glassReady = new Promise(resolve => { glassCss.addEventListener('load', resolve, {once: true}); glassCss.addEventListener('error', resolve, {once: true}); setTimeout(resolve, 3000); });
 document.head.append(glassCss);
+const shellCss = document.createElement('link'); shellCss.rel = 'stylesheet'; shellCss.href = new URL('./panel_shell.css', import.meta.url).href; document.head.append(shellCss);
 const el = (tag, label, cls) => { const e = document.createElement(tag); if (label != null) e.textContent = label; if (cls) e.className = cls; return e; };
 // One line per part of a long video, under the preview. A part that has not started opens in
 // place for editing and saves when it loses focus; the server's reply decides what stays.
@@ -148,15 +153,15 @@ function createChainPartList(t, save, {onShow = () => {}, onHide = () => {}, red
         // In the joined video a continuing part plays its seam: two seconds either side.
         const seam = playSeam && part.seam != null;
         row.meta.disabled = !seam; row.meta.dataset.seam = String(seam);
-        if (seam) row.meta.setAttribute('aria-label', t(`Play the seam before part ${part.index + 1}`, `播放第 ${part.index + 1} 段的接缝`));
+        if (seam) row.meta.setAttribute('aria-label', t('Play the seam before part {part}', '播放第 {part} 段的接缝', { part: part.index + 1 }));
         else row.meta.removeAttribute('aria-label');
         // One way on per part: a stopped video continues from its first unfinished part; a finished part makes a new video.
         const action = part.action, number = part.index + 1;
         row.redo.hidden = !action;
         if (action) {
             row.redo.textContent = action === 'resume' ? t('Continue from here', '从这段继续') : t('Redo from here', '从这段重新生成');
-            row.redo.setAttribute('aria-label', action === 'resume' ? t(`Continue from part ${number}`, `从第 ${number} 段继续`)
-                : t(`Redo from part ${number}`, `从第 ${number} 段重新生成`));
+            row.redo.setAttribute('aria-label', action === 'resume' ? t('Continue from part {number}', '从第 {number} 段继续', { number })
+                : t('Redo from part {number}', '从第 {number} 段重新生成', { number }));
         }
         if (timers.has(part.id) || row.tag.dataset.kind === 'error' || row.starting) return;
         const ended = {done: t('Done', '已完成'), failed: t('Failed', '失败'), cancelled: t('Stopped', '已停止'), interrupted: t('Stopped', '已停止')}[part.state];
@@ -176,7 +181,7 @@ function createChainPartList(t, save, {onShow = () => {}, onHide = () => {}, red
             // The line says the server's own sentence when it gave one; the card carries what failed and a report.
             // A redo refused for its changed settings is told on the card; its line stays the short one.
             const said = error.code === 'redo_request_changed' ? null : error.said || error.cause?.said;
-            if (rows.get(row.part.id) === row) flash(row, said ? t(said[0], said[1])
+            if (rows.get(row.part.id) === row) flash(row, said ? t(...said)
                 : t('Could not start. See the details on the picture.', '没能开始，原因见画面上的说明。'), 'error');
             onError(error);
         } finally { row.starting = false; row.redo.disabled = false; }
@@ -210,7 +215,7 @@ function createChainPartList(t, save, {onShow = () => {}, onHide = () => {}, red
         editing = row; clearTimeout(timers.get(row.part.id)); timers.delete(row.part.id); tag(row, '');
         const editor = row.editor = el('textarea', null, 'fv-chain-part-editor');
         editor.maxLength = 20000; editor.value = row.draft = row.part.text;
-        editor.setAttribute('aria-label', t(`Part ${row.part.index + 1} description`, `第 ${row.part.index + 1} 段描述`));
+        editor.setAttribute('aria-label', t('Part {part} prompt', '第 {part} 段提示词', { part: row.part.index + 1 }));
         editor.addEventListener('input', () => { row.draft = editor.value; });
         listenDialogKey(editor, 'keydown', event => {
             // Escape leaves the edit, never the studio.
@@ -259,10 +264,10 @@ function createChainPartList(t, save, {onShow = () => {}, onHide = () => {}, red
                 row.redo.onclick = event => { event.stopPropagation(); remake(row); };
                 row.element.onclick = () => open(row);
                 const joins = part.continues === 'part' ? t('After the previous part', '接上一段') : part.continues === 'video' ? t('After the video', '接原视频') : '';
-                row.meta = el('button', [joins, t(`${part.seconds} s`, `${part.seconds} 秒`)].filter(Boolean).join(' · '), 'fv-chain-part-meta');
+                row.meta = el('button', [joins, t('{seconds} s', '{seconds} 秒', { seconds: part.seconds })].filter(Boolean).join(' · '), 'fv-chain-part-meta');
                 row.meta.type = 'button';
                 row.meta.onclick = event => { event.stopPropagation(); if (row.part.seam != null) playSeam?.(row.part.seam); };
-                row.element.append(el('span', t(`Part ${index + 1}`, `第 ${index + 1} 段`), 'fv-chain-part-name'), row.meta, row.text, row.tag, row.redo);
+                row.element.append(el('span', t('Part {number}', '第 {number} 段', { number: index + 1 }), 'fv-chain-part-name'), row.meta, row.text, row.tag, row.redo);
                 rows.set(part.id, row); element.append(row.element);
             }
             if (editing === row && !part.editable) {
@@ -382,7 +387,8 @@ export function loraPanel(node, panel, {promptNode = null} = {}) {
     let names = [], disposed = false, rendering = false, renderAgain = false;
     const drafts = new Map(), errors = new Map(), saves = new Map();
     let skipped = 0;
-    const idleNote = () => (skipped ? t(skipped === 1 ? ' 1 other LoRA file in the folder is not in .safetensors format and is not listed.' : ` ${skipped} other LoRA files in the folder are not in .safetensors format and are not listed.`, ` 文件夹中另有 ${skipped} 个 LoRA 文件不是 .safetensors 格式，未列出。`) : '');
+    const idleNote = () => (!skipped ? '' : skipped === 1 ? t(' 1 other LoRA file in the folder is not in .safetensors format and is not listed.', ' 文件夹中另有 1 个 LoRA 文件不是 .safetensors 格式，未列出。')
+        : t(' {count} other LoRA files in the folder are not in .safetensors format and are not listed.', ' 文件夹中另有 {count} 个 LoRA 文件不是 .safetensors 格式，未列出。', { count: skipped }));
     const verdicts = createVerdicts((path, options) => api.fetchApi(path, options));
     let rowChecks = [];
     const strengthSaid = new Map(); // row index -> {text}: the "At most 100" line of its strength box
@@ -759,7 +765,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // The console (studio_console.js) is put together once every control exists; until then nothing reads it.
     let consoleUI = null, promptLibrary = null, reverseKey = null, reversePick = null;
     // Set while the editor borrows this panel's bar (current.borrow below).
-    let borrowed = null;
+    let borrowed = null, columns = null, placeReverse = () => {};   // (placeReverse: where the reverse-prompt key stands; set below, run again when the editor lends or takes back the bar)
     // Frame & size picker and the stage's outline of a new frame (set with the size tray).
     let framePicker = null;
     const header = el('header', null, 'fv-header'), brand = el('div', null, 'fv-brand');
@@ -785,6 +791,21 @@ export function openStudio(node, {extendFrom = null} = {}) {
     body.style.visibility = 'hidden';
     glassReady.then(() => { body.style.visibility = ''; });
     dialog.append(header, body); body.append(controls, output);
+    // The three-column layout (settings | stage | works) shares the picture view's shell; the right column stays hidden until the works page mounts in it.
+    {
+        const works = el('aside', null, 'fv-work-column'); works.hidden = true; body.append(works);
+        const settingsRail = el('div', null, 'fv-iv-rail'), worksRail = el('div', null, 'fv-iv-rail');
+        const panels = readLocal('freevideo.studio.panels', {}), panelShell = {};
+        const open = side => railButton('fv-iv-icon-btn', {iconName: side === 'left' ? 'panelL' : 'panelR', name: side === 'left' ? t('Show settings', '展开设置栏') : t('Show creations', '展开作品栏'), onClick: () => panelShell.api.setPanel(side, true)});
+        const fold = side => railButton('fv-iv-icon-btn fv-iv-collapse', {iconName: side === 'left' ? 'panelL' : 'panelR', name: side === 'left' ? t('Hide settings', '收起设置栏') : t('Hide creations', '收起作品栏'), onClick: () => panelShell.api.setPanel(side, false)});
+        settingsRail.append(open('left')); worksRail.append(open('right'));
+        const foldLeft = fold('left'); body.foldLeft = foldLeft; body.settingsRail = settingsRail; works.append(worksRail);
+        body.dataset.cols = '3';
+        controls.classList.add('fv-glass', 'fv-g2'); works.classList.add('fv-glass', 'fv-g2');
+        panelShell.api = createPanelShell({body, left: controls, right: works, stage: output, panels, save: () => writeLocal('freevideo.studio.panels', panels)});
+        panelShell.api.paint();
+        body.studioPanels = panelShell.api;
+    }
     const portNotice = createPortNotice(cn);
     if (portNotice) output.append(portNotice);
     const updateNotice = createUpdateNotice(cn);
@@ -811,7 +832,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // The library's own upload of a picture goes to the same streaming upload the media panel uses.
     const castUpload = file => uploadMedia(api, file);
     const castBlocked = reason => ({people: t('Up to 3 characters', '最多 3 个角色'), props: t('Up to 2 props', '最多 2 个道具'), full: t('Up to 32 references', '参考素材最多 32 个'),
-        continued: t('No room left when continuing', '接续段位置已满')}[reason] || '');
+        continued: t('No room left when extending', '接续段位置已满')}[reason] || '');
     const castPending = new Map();
     // The feature tour's "try it": one example into this panel's media list, prompt and settings.
     const canTryTour = entry => !busy && !queued && !capturing && (!entry.prompt || !linked(node, 'text'))
@@ -836,7 +857,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             unknown_example: ['This example is not available yet.', '这个示例暂时不能用'],
         }[reason];
         const detail = String(error?.message || error || '').split('\n')[0].slice(0, 160);
-        fault(say ? t(...say) : detail ? t(`The example was not filled in: ${detail}`, `示例没有填入：${detail}`) : t('The example was not filled in.', '示例没有填入'));
+        fault(say ? t(...say) : detail ? t('The example was not filled in: {detail}', '示例没有填入：{detail}', { detail }) : t('The example was not filled in.', '示例没有填入'));
     };
     const tourBlock = example => busy || queued || capturing ? 'busy'
         : (example.prompt && linked(node, 'text')) || Object.keys(example.settings || {}).some(name => linked(node, name)) ? 'linked' : 'unavailable';
@@ -915,7 +936,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             target.field.value = JSON.stringify(withCharacter(rows, card, typed));
             target.owner.graph?.change?.();
             window.dispatchEvent(new CustomEvent('freevideo-media', {detail: target.owner.id}));
-        }).catch(() => { if (!disposed) fault(t('Could not add the character\'s pictures', '无法加入角色的图片')); })
+        }).catch(() => { if (!disposed) fault(t('Could not add the character\'s images', '无法加入角色的图片')); })
             .finally(() => castPending.delete(person.id));
         return true;
     }
@@ -944,9 +965,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const showDraftTrouble = ({save, restore}) => {
         if (draftNote.disabled) return;
         draftNote.hidden = !save && !restore;
-        draftNote.textContent = save ? t('Prompt not saved. Click to retry', '描述没能保存，点此重试') : t('Last prompt not loaded. Click to retry', '上次的描述没能读取，点此重试');
+        draftNote.textContent = save ? t('Prompt not saved. Click to retry', '提示词未能保存，点此重试') : t('Last prompt not loaded. Click to retry', '上次的提示词未能读取，点此重试');
         // The note is a small plain dot; its hover card says what happened and what a click does.
-        draftNote.dataset.fvTipName = save ? t('Prompt not saved', '描述没能保存') : t('Last prompt not loaded', '上次的描述没能读取');
+        draftNote.dataset.fvTipName = save ? t('Prompt not saved', '提示词未能保存') : t('Last prompt not loaded', '上次的提示词未能读取');
         draftNote.dataset.fvTipUse = t('Click to retry', '点此重试');
         draftNote.setAttribute('aria-label', draftNote.textContent);
     };
@@ -1011,11 +1032,11 @@ export function openStudio(node, {extendFrom = null} = {}) {
     promptHelp.href = 'https://github.com/MiniMax-AI/MiniMax-H3/blob/main/skills/h3-prompt-writing/SKILL.md';
     promptHelp.target = '_blank'; promptHelp.rel = 'noopener noreferrer';
     promptHelp.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 4.2C6.6 3.2 4.7 2.8 2.5 3v9.6c2.2-.2 4.1.2 5.5 1.2 1.4-1 3.3-1.4 5.5-1.2V3c-2.2-.2-4.1.2-5.5 1.2ZM8 4.2v9.6"/></svg>';
-    promptHelp.setAttribute('aria-label', t('How to write a prompt', '描述写法'));
-    tip(promptHelp, t('How to write a prompt', '描述写法'), t('Open the guide to writing a good prompt', '打开描述写法指南，写得更准'));
+    promptHelp.setAttribute('aria-label', t('How to write a prompt', '提示词写法'));
+    tip(promptHelp, t('How to write a prompt', '提示词写法'), t('Open the guide to writing a good prompt', '打开提示词写法指南，写得更准'));
     // Expand: a large box for long prompts; Generate works from there too.
     const promptExpand = createExpandButton({t, textarea: prompt, canGenerate: () => !generate.disabled, onGenerate: () => { generate.click(); return ''; }});
-    tip(promptExpand.element, t('Expand', '放大'), t('Write a long prompt in a large box', '在大文本框里写长描述'));
+    tip(promptExpand.element, t('Expand', '展开'), t('Write a long prompt in a large box', '在大文本框里写长提示词'));
     cleanup.push(() => promptExpand.dispose?.());
     promptTools.append(promptHelp, promptExpand.element);
     promptSection.append(enhancer.element);
@@ -1091,7 +1112,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         for (const mark of sizeTicks.children) { mark.disabled = mp.disabled; setAttr(mark, 'aria-pressed', String(Math.abs(Number(mark.dataset.pixels) - Number(mp.value)) < .005)); }
         const w = extension.source?.geometry.width ?? value(node, 'width'), h = extension.source?.geometry.height ?? value(node, 'height');
         sizeReadout.textContent = dimensionsLinked && !extension.source ? t('Size from connected nodes', '尺寸来自已连接节点') : `${Number(mp.value).toFixed(2)} MP · ${w} × ${h}`;
-        if (mp.disabled) sizeSlider.dataset.fvTipWhy = extension.source ? t('A continued video keeps its size', '接着生成时沿用原视频尺寸') : t('Set by connected nodes', '由连接的节点决定');
+        if (mp.disabled) sizeSlider.dataset.fvTipWhy = extension.source ? t('An extended video keeps its size', '接着生成时沿用原视频尺寸') : t('Set by connected nodes', '由连接的节点决定');
         else delete sizeSlider.dataset.fvTipWhy;
     };
     resolutionControl.append(sizeSlider, sizeTicks, resolutionSelect);
@@ -1128,9 +1149,10 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const passControl = createPassMode({t, onChoose: mode => choosePassMode(mode), listen: listenDialogKey});
     const passMode = passControl.element;
     cleanup.push(passControl.dispose);
+    const fastRowWords = () => fastParts() ? t('Each part runs a second pass', '每段使用二采') : t('Fast uses one pass', '极速档一次生成');
     const previewPassHint = t('Stops at a lower-resolution preview. Choose "Run second pass" in the result when it looks right; the video matches a direct run.',
         '先出低分辨率预览，满意后在结果里点“继续二采”，成片与直接生成一致。');
-    twoPassLabel.append(el('span', t('Two-pass', '二采')), twoPassStatus, passMode);
+    twoPassLabel.append(el('span', t('Second pass', '二采')), twoPassStatus, passMode);
     let effortEstimate = {}, effortEstimateKey = '', effortEstimateTimer = null, effortEstimateRequest = null, lengthControl = null, chainController = null;
     // A level's step cache; custom steps and workflows without the input sample every step.
     const stepCacheNow = () => stepCacheOf(value(node, 'step_cache'));
@@ -1138,7 +1160,17 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // The two-pass learned upscale factor; a single pass has none (2).
     const upscaleNow = () => upscaleOf(value(node, 'upscale_factor'));
     const setUpscale = factor => { if (widget(node, 'upscale_factor') && value(node, 'upscale_factor') !== String(factor)) set(node, 'upscale_factor', String(factor)); };
+    // The Fast level is the `fast_mode` input; the engine takes its steps from it. The other sampling inputs hold the values
+    // it accepts beside it (8 + 3, one pass, no cache, factor 2). The two-pass choice made before it comes back when it is left.
+    let fastOffer = null, fastBack = null;
+    const fastOn = () => Boolean(widget(node, 'fast_mode')) && value(node, 'fast_mode') === 'fast2';
+    const fastLeft = () => { if (fastOn()) set(node, 'fast_mode', 'none'); };
+    // A video made in parts is sampled at Light in two passes, whatever is chosen (the request says so at submission).
+    const fastParts = () => fastOn() && lengthControl?.plan?.count > 1;
     const chooseEffort = tier => {
+        if (tier.fast) { chooseFast(); return; }
+        const back = fastOn() ? fastBack : null;
+        fastLeft(); fastBack = null;
         baseSteps.value = tier.steps;
         refineSteps.value = 3;
         twoPass.checked = tier.twoPass;
@@ -1148,15 +1180,53 @@ export function openStudio(node, {extendFrom = null} = {}) {
         set(node, 'step_cache', tier.stepCache || 'none');
         set(node, 'upscale_factor', String(tier.upscale));
         syncSamplingSteps();
+        if (back?.preview && tier.twoPass) choosePassMode('preview');
     };
     // (effortPointed: the quality panel's line on what the pointed-at level gives; set with that panel.)
     let effortPointed = () => {};
-    const effort = createSamplingEffort(t, {onChange: chooseLevel, onPreview: tier => { if (tier) showEffortEstimate(tier.steps, tier.twoPass, tier.stepCache, tier.upscale); else showEffortEstimate(); effortPointed(tier); }});
+    const effort = createSamplingEffort(t, {onChange: chooseLevel, onPreview: tier => { if (tier?.fast) { effort.setWarning(''); effort.setEstimate(''); } else if (tier) showEffortEstimate(tier.steps, tier.twoPass, tier.stepCache, tier.upscale); else showEffortEstimate(); effortPointed(tier); }});
+    // The Advanced options find this strip by the mark (the editor's own bar has another one, with its own state).
+    effort.element.dataset.fvStudioEffort = '';
+    let fastGrid = null, fastPublished = null;
+    const fastPack = fastPackControl({t, api, onResize: () => qualityChip.place(), onChange: () => {
+        effort.setFastUse(fastPack.needs());
+        if ((!fastPack.present || fastPack.published === false) && fastOn()) chooseEffort(effort.levels().find(tier => tier.name === 'Light'));
+        // Files not yet on the download sources: the level is not listed (fast_pack.published).
+        if (fastPack.published !== fastPublished) { fastPublished = fastPack.published; effort.setLevels(fastLevels()); }
+        if (qualityChip.element.isConnected) paintQuality();
+    }});
+    cleanup.push(() => fastPack.dispose());
+    // The Edit view sends the level only while this panel lists it with its files here (editor.js).
+    const fastOffered = () => Boolean(fastOffer) && fastPack.published === true && fastPack.present;
+    node.freevideoFastOffered = fastOffered;
+    cleanup.push(() => { if (node.freevideoFastOffered === fastOffered) delete node.freevideoFastOffered; });
+    function chooseFast() {
+        if (!fastPack.present) { fastPack.ask(); syncSamplingSteps(); updateRunButton(); return; }
+        if (originalOn) { syncSamplingSteps(); effort.setWarning(t('With "Use as is", choose another level.', '选择“原样使用”时，请使用其他档位。')); qualityChip.place(); return; }
+        if (!fastOffer) return;
+        if (!fastOn()) fastBack = {preview: previewFirst.checked};
+        baseSteps.value = '8'; refineSteps.value = '3'; twoPass.checked = false; autoSinglePass = false;
+        set(node, 'two_pass', false); set(node, 'refine_steps', 3); set(node, 'step_cache', 'none'); setUpscale(2);
+        if (previewFirst.checked) { previewFirst.checked = false; set(node, 'preview', false); }
+        set(node, 'fast_mode', 'fast2');
+        syncSamplingSteps(); updateRunButton();
+    }
+    // The planner's answer for this machine (capabilities.fast_mode): no answer lists no Fast level.
+    // Listed only once the files are known to be published; until then the four levels.
+    const fastLevels = () => withFastLevel(effortsFrom(fastGrid), fastOffer && fastPack.published === true ? fastOffer : null);
+    function applyFastOffer(grid) {
+        fastGrid = grid;
+        if (grid?.status === 'ready') fastOffer = widget(node, 'fast_mode') ? fastOfferOf(grid) : null;
+        effort.setLevels(fastLevels());
+        if (fastOffer) fastPack.refresh();
+        if (grid?.status !== 'ready' || !fastOn()) return;
+        if (!fastOffer) chooseEffort(effort.levels().find(tier => tier.name === 'Light'));
+    }
     // What the quality control shows now; the editor's generation bar shows the same control from this.
     const effortState = () => ({baseSteps: Number(baseSteps.value), refineSteps: Number(refineSteps.value),
         twoPass: twoPass.checked, stepCache: stepCacheNow(), upscale: upscaleNow(),
         disabled: baseSteps.disabled || linked(node, 'two_pass') || linked(node, 'refine_steps') || linked(node, 'step_cache') || linked(node, 'upscale_factor'),
-        reason: extension.source ? continuationReason() : ''});
+        reason: extension.source ? continuationReason() : '', fast: fastOn()});
     const effortListeners = new Set();
     const sharedEffort = {state: effortState, choose: chooseLevel, levels: () => effort.levels(),
         subscribe(listener) { effortListeners.add(listener); return () => effortListeners.delete(listener); }};
@@ -1178,6 +1248,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     }
     // A level chosen on the control.
     function chooseLevel(tier) {
+        if (!tier.fast) fastPack.forget();
         chooseEffort(tier);
         if (tier.twoPass) returnHeldPreview(); else holdPreview(false);
     }
@@ -1191,6 +1262,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     function choosePassMode(mode) {
         if (extension.source) return;
         const wantsTwoPass = mode !== 'off', wantsPreview = mode === 'preview';
+        if (fastOn()) return;
         // Chosen, so nothing waits; the workflow has to record that even when no other setting changes.
         if (!wantsPreview && node.properties?.freevideo_preview_held) { delete node.properties.freevideo_preview_held; node.graph?.change?.(); }
         if (twoPass.checked !== wantsTwoPass) {
@@ -1206,6 +1278,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
         syncSamplingSteps(); updateRunButton();
     }
     function passState() {
+        if (fastOn()) return {mode: fastParts() ? 'on' : 'off', disabled: {off: true, on: true, preview: true}, hidden: {preview: !widget(node, 'preview')}, hint: '',
+            why: fastParts() ? fastRowWords() : t('Fast makes the full size in one pass. Choose another level to use it.', '极速档一次生成全分辨率。选其他档位后可用。')};
         const passLinked = linked(node, 'two_pass'), previewLinked = linked(node, 'preview');
         return {mode: !twoPass.checked ? 'off' : previewFirst.checked ? 'preview' : 'on',
             disabled: {off: Boolean(extension.source) || passLinked || !widget(node, 'two_pass'), on: twoPass.disabled,
@@ -1432,26 +1506,29 @@ export function openStudio(node, {extendFrom = null} = {}) {
         if (extension.source) {
             const factor = continuationUpscale(baseSteps.value, twoPass.checked, refineSteps.value, stepCacheNow(), value(node, 'upscale_factor'), effort.levels());
             baseSteps.value = '8'; refineSteps.value = '3'; twoPass.checked = true; set(node, 'two_pass', true); clearStepCache(); setUpscale(factor); autoSinglePass = false;
+            fastLeft();
         }
+        samplingFields.hidden = fastOn();  // The Fast level's steps are the engine's.
         const baseLinked = linked(node, 'base_steps');
         // Two-pass is offered at 8 first-pass steps, and from a single-pass level (it then gives Light).
         // A saved workflow that already uses it with other steps is shown as custom and left unchanged.
         const onePassLevel = !twoPass.checked && !baseLinked && Boolean(effortFor(Number(baseSteps.value), false, Number(refineSteps.value), stepCacheNow(), effort.levels()));
         const unavailable = Number(baseSteps.value) !== 8 && !twoPass.checked && !onePassLevel;
-        twoPass.disabled = Boolean(extension.source) || unavailable || linked(node, 'two_pass') || !widget(node, 'two_pass');
-        twoPassStatus.textContent = Number(baseSteps.value) !== 8 && !onePassLevel ? t('Needs 8 first-pass steps', '一采需 8 步') : '';
+        twoPass.disabled = Boolean(extension.source) || unavailable || fastOn() || linked(node, 'two_pass') || !widget(node, 'two_pass');
+        twoPassStatus.textContent = fastOn() ? fastRowWords() : Number(baseSteps.value) !== 8 && !onePassLevel ? t('Needs 8 first-pass steps', '一采需 8 步') : '';
         twoPassLabel.classList.toggle('fv-two-pass-unavailable', unavailable);
         // A preview stops after the first pass, so it needs two-pass sampling.
         // Steps half typed decide nothing; the two-pass rule above is applied to them once they are committed.
         const stepsWrong = !typing && previewStepsWrong();
-        if ((!twoPass.checked || stepsWrong) && previewFirst.checked) {
+        if ((!twoPass.checked || stepsWrong || fastOn()) && previewFirst.checked) {
             // A linked value is another node's to change.
             if (stepsWrong && !linked(node, 'preview')) holdPreview(true);
             previewFirst.checked = false; set(node, 'preview', false);
             if (runButtonReady) updateRunButton();
         }
-        previewFirst.disabled = !twoPass.checked || previewStepsWrong() || linked(node, 'preview') || !widget(node, 'preview');
+        previewFirst.disabled = !twoPass.checked || fastOn() || previewStepsWrong() || linked(node, 'preview') || !widget(node, 'preview');
         blockOriginal('preview', previewFirst.checked && !previewFirst.disabled, {release() { choosePassMode('on'); return ['Preview first was turned off for "Use as is".', '已为“原样使用”关闭“先出预览”。']; }});
+        blockOriginal('fast', fastOn(), {release() { chooseEffort(effort.levels().find(tier => tier.name === 'Light')); return ['Switched to Light for "Use as is".', '已为“原样使用”改用轻量档。']; }});
         syncPassMode();
         baseSteps.disabled = baseLinked || !widget(node, 'base_steps') || Boolean(extension.source);
         refineSteps.disabled = !twoPass.checked || linked(node, 'refine_steps') || !widget(node, 'refine_steps') || Boolean(extension.source);
@@ -1460,7 +1537,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         refineSteps.setCustomValidity(twoPass.checked && !baseLinked && !refineSteps.disabled && Number(refineSteps.value) !== 3 && Number(refineSteps.value) >= Number(baseSteps.value)
             ? t('Use 3 second-pass steps, or fewer than the first-pass steps.', '二采步数须为 3，或少于一采步数。') : '');
         if (twoPass.checked) refineSteps.removeAttribute('title');
-        else refineSteps.title = t('Turn on two-pass acceleration to use this setting.', '开启二采加速后生效。');
+        else refineSteps.title = t('Turn on the faster second pass to use this setting.', '开启二采加速后生效。');
         for (const [input, name] of [[baseSteps, 'base_steps'], [refineSteps, 'refine_steps']]) {
             if (!input.disabled && input.checkValidity() && Number(input.value) !== value(node, name)) {
                 set(node, name, Number(input.value));
@@ -1480,16 +1557,79 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // A continuation keeps a two-pass level (Light or Medium).
     function continuationReason() {
         const level = effortFor(8, true, 3, null, effort.levels(), upscaleNow());
-        return level?.name === 'Medium' ? t('A continuation uses the Medium level.', '接着生成使用标准档。') : t('A continuation uses the Light level.', '接着生成使用轻量档。');
+        return level?.name === 'Medium' ? t('An extended part uses the Medium level.', '接着生成使用标准档。') : t('An extended part uses the Light level.', '接着生成使用轻量档。');
     }
+    // The Fast level where the chosen size and length do not fit (capabilities.fast_mode): why, and the ways out. A video
+    // made in parts is sampled at Light, so this is about one run only.
+    // Declared, not assigned: a saved Fast setting asks for the estimate while the panel is still being built.
+    function fastCell() { return fastOn() && !(lengthControl?.plan?.count > 1) ? capabilityView?.fast?.() ?? null : null; }
+    function fastShortfall() { const cell = fastCell(); return cell && !cell.fits ? cell : null; }
+    // Where the page cannot tell yet: 'checking' (the planner's grid is not in) holds the key; 'linked' (the size comes from
+    // another node, so it never can) lets it go, and a refusal then comes back as the failure card (Lane 11-24).
+    function fastUnknown() {
+        // Not listed (no answer from the planner either): it is sent at Light, so nothing waits.
+        if (!fastOn() || !fastOffer || lengthControl?.plan?.count > 1 || fastCell()) return null;
+        return linked(node, 'width') || linked(node, 'height') ? 'linked' : 'checking';
+    }
+    function fastUnknownWords(kind) {
+        return kind === 'linked'
+            ? t('The size comes from a connected node, so the Fast level is checked when you generate.', '宽高来自连接的节点，生成时再确认极\u2060速\u2060档能否生成。')
+            : t('Checking whether the Fast level can make this video…', '正在检查极\u2060速\u2060档能否生成这个视频…');
+    }
+    function fastWays(cell) {
+        const ways = [];
+        if (cell.actions.includes('use_light') && cell.lightFits)
+            ways.push({id: 'use_light', label: t('Use Light', '改用轻量档'), run: () => { chooseLevel(effort.levels().find(tier => tier.name === 'Light')); refreshFast(); }});
+        if (cell.actions.includes('shorten') && cell.shorten && !seconds.disabled)
+            ways.push({id: 'shorten', label: t('Shorten to {seconds} s', '缩短到 {seconds} 秒', { seconds: cell.shorten }), run: () => {
+                seconds.value = String(cell.shorten);
+                seconds.dispatchEvent(new Event('input', {bubbles: true})); seconds.dispatchEvent(new Event('change', {bubbles: true}));
+                refreshFast();
+            }});
+        // Neither level fits this size at any length: a smaller size is the one way out.
+        if (!ways.length) ways.push({id: 'size', label: t('Change size', '更改尺寸'), run: () => { qualityChip.close?.(); framePicker?.element.click(); }});
+        return ways;
+    }
+    function fastShortfallWords(cell) {
+        const kind = ['gpu_memory', 'decode_gpu_memory'].includes(cell.limit) ? 'vram' : cell.limit === 'memory' ? 'ram' : 'either';
+        // Whole sentences for each shortage, so a language whose words change with the noun can say each its own way.
+        if (fastWays(cell)[0].id === 'size') return {
+            vram: () => t('This computer does not have enough graphics memory for the Fast or Light level at this size. Use a smaller size, then generate again.',
+                '这台电脑的显存不足以用极\u2060速\u2060档或轻\u2060量\u2060档生成这个尺寸的视频。请缩小尺寸后重新生成。'),
+            ram: () => t('This computer does not have enough memory for the Fast or Light level at this size. Use a smaller size, then generate again.',
+                '这台电脑的内存不足以用极\u2060速\u2060档或轻\u2060量\u2060档生成这个尺寸的视频。请缩小尺寸后重新生成。'),
+            either: () => t('This computer does not have enough graphics memory or memory for the Fast or Light level at this size. Use a smaller size, then generate again.',
+                '这台电脑的显存或内存不足以用极\u2060速\u2060档或轻\u2060量\u2060档生成这个尺寸的视频。请缩小尺寸后重新生成。'),
+        }[kind]();
+        const s = Number(seconds.value);
+        return {
+            vram: () => t('This computer does not have enough graphics memory for the Fast level at {seconds} s.', '这台电脑的显存不足以用极\u2060速\u2060档生成 {seconds} 秒视频。', { seconds: s }),
+            ram: () => t('This computer does not have enough memory for the Fast level at {seconds} s.', '这台电脑的内存不足以用极\u2060速\u2060档生成 {seconds} 秒视频。', { seconds: s }),
+            either: () => t('This computer does not have enough graphics memory or memory for the Fast level at {seconds} s.', '这台电脑的显存或内存不足以用极\u2060速\u2060档生成 {seconds} 秒视频。', { seconds: s }),
+        }[kind]();
+    }
+    function refreshFast() { showEffortEstimate(); if (qualityChip.element.isConnected) qualityChip.place(); }
     function showEffortEstimate(steps = Number(baseSteps.value), twoPassPlan = twoPass.checked, cache = stepCacheNow(), factor = upscaleNow()) {
-        effort.setWarning('');
-        const parts = lengthControl.plan?.count > 1 ? t(`${lengthControl.plan.count} parts`, `分 ${lengthControl.plan.count} 段`) : '';
+        effort.setWarning(''); effort.setWays();
+        if (!arguments.length && fastOn()) {
+            // Its time where the planner has one; a video made in parts is sampled at Light.
+            const cell = fastCell();
+            effort.setEstimate(cell?.fits ? cell.estimate : '');
+            if (lengthControl.plan?.count > 1) effort.setWarning(t('Each part of a video made in parts uses the Light level.', '分段生成时，每段使用轻量档。'));
+            else if (cell && !cell.fits) { effort.setWarning(fastShortfallWords(cell)); effort.setWays(fastWays(cell)); }
+            else if (!cell && fastUnknown()) effort.setWarning(fastUnknownWords(fastUnknown()));
+            if (runButtonReady) updateRunButton();
+            // The length decides what the two-pass row and the line under the track say.
+            twoPassStatus.textContent = fastRowWords(); syncPassMode(); effortPointed(null);
+            if (runButtonReady) syncKeyMore();
+            return;
+        }
+        const parts = lengthControl.plan?.count > 1 ? t('{count} parts', '分 {count} 段', { count: lengthControl.plan.count }) : '';
         // A request that fits one run keeps its own estimate while the longest run is unknown.
         if ((lengthControl.capabilityState === 'pending' || lengthControl.capabilityState === 'unavailable')
             && (lengthControl.needsPlan || lengthControl.plan?.count > 1)) {
             const waiting = lengthControl.estimating ? t('Estimating time…', '正在估算用时…') : '';
-            effort.setEstimate([parts, waiting].filter(Boolean).join(' · '));
+            effort.setEstimate([parts, waiting].filter(Boolean).join(' · '), '', lengthControl.plan?.count > 1 ? lengthControl.plan.count : 0);
             return;
         }
         if (lengthControl.plan?.single && Number(seconds.value) > 60) { effort.setEstimate(''); return; }
@@ -1498,8 +1638,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
             const plan = lengthControl.plan;
             const seconds = steps === Number(baseSteps.value) && twoPassPlan === twoPass.checked && cache === stepCacheNow() && factor === upscaleNow()
                 ? sumPartEstimates(plan, lengthControl.estimate) : null;
-            effort.setEstimate(seconds > 0 ? t(`${plan.count} parts · about ${Math.ceil(seconds / 60)} min`, `分 ${plan.count} 段 · 约 ${Math.ceil(seconds / 60)} 分钟`)
-                : t(`${plan.count} parts`, `分 ${plan.count} 段`));
+            effort.setEstimate(seconds > 0 ? t('{count} parts · about {minutes} min', '分 {count} 段 · 约 {minutes} 分钟', { count: plan.count, minutes: Math.ceil(seconds / 60) })
+                : t('{count} parts', '分 {count} 段', { count: plan.count }), '', plan.count);
             return;
         }
         const rangeEstimate = capabilityView?.estimate(steps, twoPassPlan, arguments.length ? 3 : Number(refineSteps.value), cache, factor);
@@ -1547,13 +1687,16 @@ export function openStudio(node, {extendFrom = null} = {}) {
         if (loraNode && !widget(loraNode, 'adapters')) adapters = value(loraNode, 'lora') !== 'None';
         const requestWidth = extension.source?.geometry.width ?? value(node, 'width');
         const requestHeight = extension.source?.geometry.height ?? value(node, 'height');
+        // With the Fast level the length is planned at Light: a video made in parts is sampled at Light, and whether one run
+        // fits the Fast level is its own cell (capabilityView.fast), which says so rather than splitting the video.
         lengthControl?.refresh({width: requestWidth, height: requestHeight, task, adapters,
-            settings: {tier: effortFor(Number(baseSteps.value), twoPass.checked, Number(refineSteps.value), stepCacheNow(), effort.levels(), upscaleNow())?.name.toLowerCase() || 'custom',
+            settings: fastOn() ? {tier: 'light', base_steps: 8, refine_steps: 3, two_pass: true, step_cache: null, upscale_factor: 2}
+                : {tier: effortFor(Number(baseSteps.value), twoPass.checked, Number(refineSteps.value), stepCacheNow(), effort.levels(), upscaleNow())?.name.toLowerCase() || 'custom',
                 base_steps: Number(baseSteps.value), refine_steps: Number(refineSteps.value), two_pass: twoPass.checked,
                 step_cache: stepCacheNow(), upscale_factor: upscaleNow()}}, force);
         requestAssetsQuery = () => {
             const query = new URLSearchParams({width: requestWidth, height: requestHeight, seconds: value(node, 'seconds'), task,
-                base_steps: baseSteps.value, refine_steps: refineSteps.value, two_pass: twoPass.checked ? '1' : '0',
+                base_steps: baseSteps.value, refine_steps: refineSteps.value, two_pass: twoPass.checked || fastOn() ? '1' : '0',
                 enhance: node.properties?.freevideo_prompt_versions?.enabled ? '1' : '0'});
             for (const name of enabledLoras(loraNode, {upstream, widget, value})) query.append('lora', name);
             for (const row of referenceFiles(requestRefs)) query.append('ref', row);
@@ -1597,7 +1740,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     worksButton.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1.2"/><rect x="9" y="2.5" width="4.5" height="4.5" rx="1.2"/><rect x="2.5" y="9" width="4.5" height="4.5" rx="1.2"/><rect x="9" y="9" width="4.5" height="4.5" rx="1.2"/></svg>';
     worksButton.append(el('span', t('Creations', '作品库'), 'fv-works-label'));
     worksButton.setAttribute('aria-label', t('Creations', '作品库'));
-    tip(worksButton, t('Creations', '作品库'), t('Open your works to sort and manage them', '打开作品库，筛选和管理'));
+    tip(worksButton, t('Creations', '作品库'), t('Open your creations to sort and manage them', '打开作品库，筛选和管理'));
     previewHead.append(previewTools); previewHead.hidden = true; output.append(previewHead);
     // The picture's space: its size comes from the column and the shape alone (fitPreview), never from what is below it.
     const previewSpace = el('div', null, 'fv-preview-space sgf-avoid'); previewSpace.dataset.fvMain = ''; output.append(previewSpace);
@@ -1629,7 +1772,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // The floating task window grows out of this picture and returns to it.
     stage.dataset.fvTaskStage = 'studio';
     // Before the first video: one quiet line under the empty frame's icon says where to start.
-    stage.style.setProperty('--fvs-empty-hint', JSON.stringify(t('Describe a scene below to start', '在下方写一句描述，开始生成')));
+    stage.style.setProperty('--fvs-empty-hint', JSON.stringify(t('Describe a scene to start', '写一句描述，开始生成')));
     const stageMedia = el('div', null, 'fv-stage-media');
     // The next generation's empty frame: the stage itself, at the chosen (or pointed-at) shape, with its pixels.
     const nextSize = el('span', null, 'fvs-next-size');
@@ -1659,7 +1802,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // The queued count sits after the part number; a line too narrow for both puts the count on its own line.
     const setChainLine = text => {
         const main = el('span', text), more = chainController?.waiting, queued = el('span', null, 'fv-chain-queued');
-        if (more) queued.append(el('span', ' · ', 'fv-chain-sep'), t(`${more} more queued`, `另有 ${more} 条排队`));
+        if (more) queued.append(el('span', ' · ', 'fv-chain-sep'), t('{more} more queued', '另有 {more} 条排队', { more }));
         chainLine.replaceChildren(main, ...(more ? [queued] : []));
     };
     progress.updateReport({report_id: node.freevideoReportId});
@@ -1726,7 +1869,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         const g = r?.geometry || {}, parts = [];
         const length = g.seconds || (g.frames && g.frames / (g.fps || 24));
         if (g.width && g.height) parts.push({key: 'size', text: `${g.width} × ${g.height}`});
-        if (length) parts.push({key: 'length', text: t(`${Number(length).toFixed(1)} s`, `${Number(length).toFixed(1)} 秒`)});
+        if (length) parts.push({key: 'length', text: t('{seconds} s', '{seconds} 秒', { seconds: Number(length).toFixed(1) })});
         // The work's own size and length; the level is the console's (a first-pass preview is still named).
         if (r?.preview) parts.push({key: 'level', text: t('First-pass preview', '一采预览')});
         return asParts ? parts : parts.map(part => part.text).join(' · ');
@@ -1760,11 +1903,16 @@ export function openStudio(node, {extendFrom = null} = {}) {
     tall?.addEventListener?.('change', tallChange); cleanup.push(() => tall?.removeEventListener?.('change', tallChange));
     function fitTall(gap) {
         const playerShown = getComputedStyle(playerRow).display !== 'none';
-        const room = output.clientHeight - 2 * (TALL_EDGE / 2) - 40 - gap - (playerShown ? playerRoom() + gap : 0);
+        // Three columns: the works have a column (or a row under the stage) of their own, so there is no grid to make room for;
+        // the picture takes the column's width less its own padding, and the picture, bar and actions stand in the middle.
+        const columns = body.dataset.cols === '3', style = getComputedStyle(output);
+        const edges = columns ? parseFloat(style.paddingTop) + parseFloat(style.paddingBottom) : 2 * (TALL_EDGE / 2);
+        const room = output.clientHeight - edges - 40 - gap - (playerShown ? playerRoom() + gap : 0);
         const gridWidth = output.clientWidth - 2 * TALL_EDGE, gridHeight = gridWidth / previewRatio;
-        const grid = recentCount() > 0 && gridHeight <= room && room - gridHeight >= GRID_MIN;
+        const grid = !columns && recentCount() > 0 && gridHeight <= room && room - gridHeight >= GRID_MIN;
         body.dataset.grid = String(grid);
-        return {room, width: grid ? gridWidth : output.clientWidth - TALL_EDGE - TALL_RAIL, grid, barRoom: 40 + gap + (playerShown ? playerRoom() + gap : 0)};
+        const width = columns ? output.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) : grid ? gridWidth : output.clientWidth - TALL_EDGE - TALL_RAIL;
+        return {room, width, grid, barRoom: 40 + gap + (playerShown ? playerRoom() + gap : 0)};
     }
     function fitPreview() {
         const isTall = !phone?.matches && !!tall?.matches;
@@ -2010,11 +2158,11 @@ export function openStudio(node, {extendFrom = null} = {}) {
         source: row => ({src: view(row.video, 'output') + (row.version ? `&fv=${encodeURIComponent(row.version)}` : ''), poster: savedVideo(row.video) && !row.preview ? videoThumbnailURL(row) : ''}),
         // The two sides are A and B only: nothing about the works is written on them.
         describe: () => '',
-        onChange: active => { stage.dataset.comparing = String(active); compareButton.setAttribute('aria-pressed', String(active)); if (!active) recent?.clearPicks({quiet: true}); }});
+        onChange: active => { stage.dataset.comparing = String(active); compareButton.setAttribute('aria-pressed', String(active)); if (!active) worksColumn?.clearPicks({quiet: true}); }});
     cleanup.push(() => compare.dispose());
     const compareButton = button('', () => {
         if (compare.active) { compare.close(); return; }
-        const rows = recent.rows(), index = recent.index();
+        const rows = worksColumn.rows(), index = worksColumn.index();
         const other = rows[index + 1] || rows[index - 1] || rows.find(row => row?.video !== result?.video);
         if (!result?.video || !other) return;
         stageMedia.querySelector('video')?.pause();
@@ -2023,31 +2171,33 @@ export function openStudio(node, {extendFrom = null} = {}) {
     compareButton.innerHTML = `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true">${COMPARE_ICON}</svg>`;
     compareButton.setAttribute('aria-label', t('Compare', '对比'));
     tip(compareButton, t('Compare', '对比'), t('Side by side or with a divider, with another video', '和另一条视频并排或滑动对比'));
-    // No Compare button on the bar: two videos picked together in the rail compare on the stage (F9 still opens it).
-    let shownCount = 0;
-    const recent = createRecentVideos(t, {body, rail: true, named: row => savedPrompt(api, row),
-        onSelect: row => { if (compare.active) compare.close(); showResult(row, {chosen: true}); },
+    // No Compare button on the bar: two videos picked together in the works column compare on the stage (F9 still opens it).
+    let shownCount = 0, worksColumn = null;
+    // The right column of the three-column layout: the library's videos, the shown video's facts, the queue. The owner's
+    // Creations button stands beside its search.
+    worksColumn = mountStudioColumn({slot: body.querySelector('.fv-work-column'), shell: body.studioPanels, entry: worksButton,
+        onShow: row => { if (compare.active) compare.close(); showResult(row, {chosen: true}); }, named: row => savedPrompt(api, row),
         onPick: rows => {
             if (rows.length === 2) { if (compare.active) compare.close(); compare.open(rows[0], rows[1]); }
             else { if (compare.active) compare.close(); if (rows[0]) showResult(rows[0], {chosen: true}); }
         },
-        onChange: () => { syncHistory(); const count = recent.rows().length; if (count !== shownCount) { shownCount = count; fitPreview(); } }});
-    recentCount = () => recent.rows().length;
-    recent.element.classList.add('sgf-avoid');
-    recent.element.prepend(worksButton); body.append(recent.element);
+        onChange: () => { syncHistory(); const count = worksColumn ? worksColumn.rows().length : 0; if (count !== shownCount) { shownCount = count; fitPreview(); } },
+        // The info page's Reuse settings fills the panel as the result bar's does.
+        onReuse: async row => { const saved = await savedSettings(api, row); if (saved) reuse.apply(saved); }});
+    recentCount = () => worksColumn.rows().length;
+    cleanup.push(() => worksColumn.dispose());
     // Phones have no rail; Creations is the top bar's works entry, there at every width.
     function syncHistory() {
         stageBar.element.dataset.empty = String(!result?.video);
-        stageBar.setHistory(recent.index(), recent.rows().length);
-        compareButton.disabled = !result?.video || recent.rows().length < 2;
+        stageBar.setHistory(worksColumn.index(), worksColumn.rows().length);
+        compareButton.disabled = !result?.video || worksColumn.rows().length < 2;
         compareButton.dataset.fvTipWhy = compareButton.disabled ? t('Needs a second video in the history', '历史里还要有另一条视频') : '';
         if (!compareButton.disabled) delete compareButton.dataset.fvTipWhy;
     }
     function stepHistory(delta) {
-        const rows = recent.rows(), index = recent.index(), row = rows[index + delta];
+        const rows = worksColumn.rows(), index = worksColumn.index(), row = rows[index + delta];
         if (row) showResult(row, {chosen: true});
     }
-    cleanup.push(() => recent.dispose());
     // A run this window watched. Its result can arrive before or after the
     // final progress message, and more than once; the tip stays with that video.
     // "Reuse settings" in the result bar: what the panel holds now, filling an earlier video's settings back,
@@ -2100,7 +2250,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // chosen: a video picked from Recent videos. It only changes the picture; a run in progress keeps its progress.
     function showResult(r, {chosen = false} = {}) {
         if (!r?.video || disposed) return; result = r; leaveNext();
-        recent.setSelected(r.video); syncPartList();
+        worksColumn?.setShown(r); syncPartList();
         refreshEffortEstimate(true);
         // The report belongs to the video that run made; a video picked from Recent videos
         // shows its own report, or none when this window never saw its run.
@@ -2190,7 +2340,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
         links.replaceChildren(resultActions(r, t, {diagnostic: reported ? downloadReport : null,
                                                    extend: saved => openExtendEditor(saved, node, {studio: dialog,
                                                        isCurrent: () => dialog.open && dialog.dataset.closing !== 'true' && topDialog() === dialog && result === r}),
-                                                   secondPass: r.preview ? secondPass(r) : null, reuse: r.preview ? null : reuse, layout: 'stage', more: [...upscaleItems(r), guideItem()]}));
+                                                   secondPass: r.preview ? secondPass(r) : null, reuse: r.preview ? null : reuse, layout: 'stage',
+                                                   favorite: worksColumn && r.video ? value => worksColumn.setFavorite(r, value).catch(error => { notify(t('The favorite was not saved. Try again.', '收藏未能保存，请重试。'), null, 'fail'); throw error; }) : null, more: [...upscaleItems(r), guideItem()]}));
         refreshUpscaleItems(r);
         if (runButtonReady) updateExtendButton();
         stageBar.sync(); syncHistory();
@@ -2238,8 +2389,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
             const position = chainPosition(chain, message);
             const joining = readChainResult(chain).joining, waiting = chain.state === 'queued' && message.phase === 'prepare';
             setChainLine(joining ? joiningText(chain.joining_part, t)
-                : waiting ? (chain.waiting ? waitingText(chain.waiting, t) : t(`Waiting in queue · Part ${position.index + 1} of ${position.count}`, `正在排队 · 第 ${position.index + 1} 段，共 ${position.count} 段`))
-                : t(`Part ${position.index + 1} of ${position.count}`, `第 ${position.index + 1} 段，共 ${position.count} 段`));
+                : waiting ? (chain.waiting ? waitingText(chain.waiting, t) : t('Waiting in queue · Part {part} of {count}', '正在排队 · 第 {part} 段，共 {count} 段', { part: position.index + 1, count: position.count }))
+                : t('Part {part} of {count}', '第 {part} 段，共 {count} 段', { part: position.index + 1, count: position.count }));
             progress.element.querySelector('.fv-generation-label').hidden = joining || waiting;
             progress.element.classList.toggle('fv-generation-waiting', waiting);
             progress.updateReport(message); showProgress(message);
@@ -2257,7 +2408,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             busy = active || Boolean(queueState?.running || queueState?.pending.length); queued = chain?.state === 'queued';
             chainLine.hidden = !active;
             setChainLine(outcome?.joining ? joiningText(chain?.joining_part, t)
-                : t(`Part ${position.index + 1} of ${position.count}`, `第 ${position.index + 1} 段，共 ${position.count} 段`));
+                : t('Part {part} of {count}', '第 {part} 段，共 {count} 段', { part: position.index + 1, count: position.count }));
             if (active && node.properties.freevideo_chain?.width) previewSize(node.properties.freevideo_chain.width, node.properties.freevideo_chain.height);
             if (!active) { cancelling = false; hideProgress(); }
             if (!active) { progress.element.querySelector('.fv-generation-label').hidden = false; progress.element.classList.remove('fv-generation-waiting'); }
@@ -2309,7 +2460,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const perLine = el('input'); perLine.type = 'checkbox'; perLine.setAttribute('role', 'switch');
     perLine.checked = node.properties?.freevideo_batch_lines === true;
     const perLineField = el('label', null, 'fv-batch-lines');
-    perLineField.append(el('span', t('One prompt per line', '每行一条描述')), perLine); optionsPanel.append(perLineField);
+    perLineField.append(el('span', t('One prompt per line', '每行一条提示词')), perLine); optionsPanel.append(perLineField);
     const linesUsable = () => !linked(node, 'text') && !linked(node, 'conditioning');
     const byLine = () => runMode === 'batch' && perLine.checked && linesUsable();
     const lineTexts = () => promptLines(shown(value(node, 'text')), (node.properties?.[LORA_TRIGGERS] || []).map(row => row?.words));
@@ -2335,13 +2486,16 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const keyLabel = el('span', null, 'fvs-key-label'), keyEta = el('span', null, 'fvs-key-eta');
     let keyShowsEta = false, keySetup = false;
     // A one-time note (the first build) is not a standing line: it goes to the key's hover card instead.
-    const setupPart = part => /首次准备|first.time setup/i.test(part.replace(/\u2060/g, '').replace(/\u00a0/g, ' '));
+    const plainWords = text => text.replace(/\u2060/g, '').replace(/\u00a0/g, ' ').replace(/^ · /, '').trim(), setupWords = plainWords(setupNote(t));
+    const setupPart = part => plainWords(part) === setupWords;
     const paintEta = () => {
         const parts = (effort?.element?.querySelector('.fv-effort-estimate')?.textContent || '').trim().split(' · ').filter(Boolean);
         keySetup = parts.some(setupPart);
         // A preview has no estimate of its own (the figures are for the whole two-pass run), so the line stays empty rather than show the wrong time.
         const estimate = keyShowsEta && !(previewFirst.checked && !previewFirst.disabled) ? parts.filter(part => !setupPart(part)).join(' · ') : '';
         if (keyEta.textContent !== estimate) keyEta.textContent = estimate;
+        const partCount = estimate ? effort?.element?.querySelector('.fv-effort-estimate')?.dataset.parts : undefined;
+        if (partCount) { if (keyEta.dataset.parts !== partCount) keyEta.dataset.parts = partCount; } else delete keyEta.dataset.parts;
         // Kept in place when empty (not hidden), so the label above it never moves.
         keyEta.dataset.empty = String(!estimate);
     };
@@ -2370,7 +2524,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         keyMore.hidden = runMode !== 'single' || videoMissing || Boolean(state.hidden.preview) || Boolean(extension.source);
         for (const b of keyChoices) setAttr(b, 'aria-pressed', String((b.dataset.choice === 'preview') === (state.mode === 'preview')));
         keyChoices[1].disabled = state.disabled.preview && !(state.mode === 'preview');
-        keyMenuWhy.hidden = !previewStepsWrong(); keyMenuWhy.textContent = keyMenuWhy.hidden ? '' : previewNeedsSteps();
+        keyMenuWhy.hidden = !fastOn() && !previewStepsWrong(); keyMenuWhy.textContent = fastOn() ? fastRowWords() : previewStepsWrong() ? previewNeedsSteps() : '';
         if (keyMore.hidden) keyMore.open = false;
     };
     runrow.append(generate, runOptions, keyMore);
@@ -2423,7 +2577,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     cleanup.push(() => otherUsage.dispose());
     runbar.append(requestAssets.element, runrow, addVideoNote, queueActions); controls.append(runbar);
     // A chain action the server refused with its own sentence says that sentence, not the general "could not continue".
-    const queueError = error => (error?.action && error.said ? t(error.said[0], error.said[1]) : null) || ({
+    const queueError = error => (error?.action && error.said ? t(...error.said) : null) || ({
         queue_unavailable: t('Could not read the queue. The loop has stopped; videos already added stay queued.', '暂时读不到队列，循环已停止；已加入的视频还在队列中。'),
         cancel_failed: t('Could not cancel. Try again.', '没有取消成功，请重试。'),
         move_failed: t('Could not move it. Try again.', '没有移动成功，请重试。'),
@@ -2434,7 +2588,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         missing_node: t('This node is disabled or no longer in the workflow.', '该节点已禁用或已从工作流移除。'),
         chain_cancel_failed: t('Could not cancel. Refresh the page and try again.', '没有取消成功，请刷新页面后再试。'),
         chain_resume_failed: t('Could not continue. Refresh the page and try again.', '没有继续生成，请刷新页面后再试。'),
-    }[error?.message] || (error?.said ? t(error.said[0], error.said[1]) : null) || userMessage(error, t));
+    }[error?.message] || (error?.said ? t(...error.said) : null) || userMessage(error, t));
     let lastQueueError = null, connectionNotice = false;
     watchEngineExit(api).catch(() => {});
     refreshLoopStalls(api);
@@ -2484,9 +2638,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
         if (disposed) return;
         status.dataset.error = 'true';
         // The server's plain sentence (a full disk, unreadable storage) when it has one; what failed stays in the card.
-        status.textContent = error.said ? (error.joining ? '' : t(`Part ${error.index + 1}: `, `第 ${error.index + 1} 段：`)) + t(error.said[0], error.said[1])
+        status.textContent = error.said ? (error.joining ? '' : t('Part {part}: ', '第 {part} 段：', { part: error.index + 1 })) + t(...error.said)
             : error.joining ? t('Could not join the parts. See the details on the picture.', '未能接合各段，原因见画面上的说明。')
-            : t(`Part ${error.index + 1} could not be generated. See the details on the picture.`, `第 ${error.index + 1} 段未能生成，原因见画面上的说明。`);
+            : t('Part {part} could not be generated. See the details on the picture.', '第 {part} 段未能生成，原因见画面上的说明。', { part: error.index + 1 });
         if (lastQueueError === error.message) return;
         lastQueueError = error.message;
         const report = failure.show(error.message, false,
@@ -2495,7 +2649,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     }
     function lineLabel() {
         const n = lineTexts().length;
-        return n ? t(n === 1 ? 'Add 1 video' : `Add ${n} videos`, `添加 ${n} 个视频`) : t('Add videos', '添加视频');
+        return !n ? t('Add videos', '添加视频') : n === 1 ? t('Add 1 video', '添加 1 个视频') : t('Add {n} videos', '添加 {n} 个视频', { n });
     }
     function updateRunButton() {
         const submitting = capturing || queueState?.submitting;
@@ -2512,16 +2666,17 @@ export function openStudio(node, {extendFrom = null} = {}) {
         const chainReason = !chainWait ? '' : readChainResult(chain)?.joining
             ? t('Joining the parts…', '正在接合各段…')
             : chain?.state === 'queued' ? (chain.waiting ? waitingText(chain.waiting, t) : t('Queued…', '排队中…'))
-            : t(`Generating part ${position.index + 1}…`, `正在生成第 ${position.index + 1} 段…`);
-        generate.disabled = submitting || chainWait || (lengthControl.blocked && !lengthControl.retryable) || (runMode === 'loop' && queueState?.looping) || enhancer.reversing;
+            : t('Generating part {part}…', '正在生成第 {part} 段…', { part: position.index + 1 });
+        const fastShort = fastShortfall(), fastWait = fastUnknown();
+        generate.disabled = submitting || chainWait || (lengthControl.blocked && !lengthControl.retryable) || Boolean(fastShort) || fastWait === 'checking' || (runMode === 'loop' && queueState?.looping) || enhancer.reversing;
         paintReverse?.();
         // Planning the parts and adding a batch are different waits; a count is only shown when the queue really has one.
-        const adding = queueState?.batch ? t(`Adding ${Math.min(queueState.batch.done + 1, queueState.batch.total)}/${queueState.batch.total}…`,
-            `正在添加 ${Math.min(queueState.batch.done + 1, queueState.batch.total)}/${queueState.batch.total}…`)
+        const adding = queueState?.batch ? t('Adding {current}/{total}…',
+            '正在添加 {current}/{total}…', { current: Math.min(queueState.batch.done + 1, queueState.batch.total), total: queueState.batch.total })
             : capturing ? t('Planning segments…', '正在规划分段…') : t('Adding…', '正在添加…');
         const label = submitting ? adding
             : chainReason || (byLine() ? lineLabel()
-            : runMode === 'batch' ? t(`Add ${count.value || '…'} videos`, `添加 ${count.value || '…'} 个视频`)
+            : runMode === 'batch' ? t('Add {count} videos', '添加 {count} 个视频', { count: count.value || '…' })
             : runMode === 'loop' ? (queueState?.looping ? t('Looping', '循环中') : t('Start loop', '开始循环'))
             : busy ? t('Add to queue', '加入队列')
             : !borrowed && previewFirst.checked && !previewFirst.disabled ? t('Generate preview', '生成预览') : t('Generate video', '生成视频'));
@@ -2532,7 +2687,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         // The hover card names what the button does now (its own label), and when it is greyed, why and how to free it.
         const lineUse = enhancer.element.dataset.enabled === 'true'
             ? t('Each line is one video, sent as written without enhancement', '每行生成一个视频，按原文发送，不做描述增强')
-            : t('Each line of the description is one video', '描述的每一行生成一个视频');
+            : t('Each line of the prompt is one video', '提示词的每一行生成一个视频');
         const use = videoMissing ? t('Download the video model before generating', '下载视频模型后才能生成视频')
             : generate.disabled ? ''
             : byLine() ? lineUse
@@ -2547,8 +2702,11 @@ export function openStudio(node, {extendFrom = null} = {}) {
             : chainWait ? t('Parts are generating. Wait, or cancel them in the queue.', '分段视频生成中，完成或在队列里取消后可再生成')
             : enhancer.reversing ? t('Writing the prompt. One moment.', '正在生成提示词，请稍候')
             : lengthControl.blocked ? lengthControl.message || ''
+            : fastShort ? fastShortfallWords(fastShort)
+            : fastWait === 'checking' ? fastUnknownWords(fastWait)
             : t('A loop is running. Stop it to start again.', '正在循环生成，停止后可重新开始');
-        const lengthSaid = lengthControl.blocked && !videoMissing ? lengthControl.visibleMessage : '';
+        const lengthSaid = videoMissing ? '' : lengthControl.blocked ? lengthControl.visibleMessage : fastShort ? fastShortfallWords(fastShort)
+            : fastWait ? fastUnknownWords(fastWait) : '';
         if (lengthWhy.textContent !== lengthSaid) lengthWhy.textContent = lengthSaid;
         if (lengthWhy.hidden !== !lengthSaid) lengthWhy.hidden = !lengthSaid;
         const words = {fvTipName: keyLabel.textContent.replace(/…$/, ''), fvTipUse: use && keySetup && keyShowsEta ? `${use} · ${t('Includes first-time setup', '含首次准备')}` : use, fvTipKey: TIPS['studio.generate'].key, fvTipWhy: why};
@@ -2570,7 +2728,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             if (count.value !== shownCount) { count.value = shownCount; count.fvAtPaint?.(); }
         }
         put(perLineField, 'hidden', !linesUsable()); put(perLine, 'disabled', runMode !== 'batch');
-        const lineTip = {fvTipName: t('One prompt per line', '每行一条描述'), fvTipUse: lineUse,
+        const lineTip = {fvTipName: t('One prompt per line', '每行一条提示词'), fvTipUse: lineUse,
             fvTipWhy: perLine.disabled ? t('Choose Batch to use it', '选“批量”后可用') : ''};
         for (const [key, text] of Object.entries(lineTip)) {
             if (text) { if (perLineField.dataset[key] !== text) perLineField.dataset[key] = text; } else delete perLineField.dataset[key];
@@ -2579,8 +2737,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
         put(modeHelp, 'textContent', multiple ? t('Videos made in parts cannot use batch or loop.', '分段视频不能批量或循环生成。') : runMode === 'loop'
             ? t('Same settings, a new seed each time. Stops when this page closes.', '用当前设置，每次换一个种子；关闭网页后停止。')
             : byLine() ? (enhancer.element.dataset.enabled === 'true'
-                ? t('Each line of the description is one video, sent as written without enhancement.', '描述的每一行生成一个视频，按原文发送，不做描述增强。')
-                : t('Each line of the description is one video.', '描述的每一行生成一个视频。'))
+                ? t('Each line of the prompt is one video, sent as written without enhancement.', '提示词的每一行生成一个视频，按原文发送，不做提示词增强。')
+                : t('Each line of the prompt is one video.', '提示词的每一行生成一个视频。'))
             : t('Same settings, a new seed for each video.', '用当前设置，每个视频换一个种子。'));
         // With one video per GPU each running row carries its own Cancel; "current" would be ambiguous.
         put(cancelCurrent, 'hidden', !chainController?.active && (!queueState?.running || Boolean(queueState?.running_all)));
@@ -2624,14 +2782,14 @@ export function openStudio(node, {extendFrom = null} = {}) {
         if (wasBusy && !busy) { requestAssets?.refresh(true); }
         const g = active?.inputs;
         runningSummary = Number.isFinite(g?.width) && Number.isFinite(g?.height)
-            ? [t('Generating', '正在生成'), `${g.width} × ${g.height}`, Number(g.seconds) > 0 ? t(`${g.seconds} s`, `${g.seconds} 秒`) : ''].filter(Boolean).join(' · ') : '';
+            ? [t('Generating', '正在生成'), `${g.width} × ${g.height}`, Number(g.seconds) > 0 ? t('{seconds} s', '{seconds} 秒', { seconds: g.seconds }) : ''].filter(Boolean).join(' · ') : '';
         // The right-hand frame belongs to the submitted video. Draft edits on
         // the left must never reshape a video currently being generated.
         if (Number.isFinite(g?.width) && Number.isFinite(g?.height)) previewSize(g.width, g.height);
         const queueRows = state.running_all ? [...state.running_all, ...state.pending] : state.pending;
         const running = state.running_all?.length || 0, waiting = state.pending.length;
-        queueToggle.textContent = !state.running_all ? t(`Queued · ${waiting}`, `排队 ${waiting} 个`)
-            : [running && t(`${running} generating`, `生成中 ${running} 个`), waiting && t(`${waiting} queued`, `排队 ${waiting} 个`)]
+        queueToggle.textContent = !state.running_all ? t('Queued · {waiting}', '排队 {waiting} 个', { waiting })
+            : [running && t('{running} generating', '生成中 {running} 个', { running }), waiting && t('{waiting} queued', '排队 {waiting} 个', { waiting })]
                 .filter(Boolean).join(' · ');
         queueDetails.hidden = queueRows.length === 0;
         const signature = JSON.stringify(queueRows.map(row => [row.id, row.inputs.width, row.inputs.height,
@@ -2654,7 +2812,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
                 if (executing) {
                     const bar = el('div', null, 'fv-queue-bar'), fill = el('div', null, 'fv-queue-fill');
                     bar.setAttribute('role', 'progressbar'); bar.setAttribute('aria-valuemin', '0'); bar.setAttribute('aria-valuemax', '100');
-                    bar.setAttribute('aria-label', t(`${size} · ${row.inputs.seconds} s`, `${size} · ${row.inputs.seconds} 秒`));
+                    bar.setAttribute('aria-label', t('{size} · {seconds} s', '{size} · {seconds} 秒', { size, seconds: row.inputs.seconds }));
                     const fraction = row.progress?.overall?.fraction;
                     if (Number.isFinite(fraction)) {
                         const percent = Math.min(100, Math.max(0, fraction * 100));
@@ -2667,8 +2825,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
                     try { await queueController.cancel(row.id); }
                     catch (error) { showQueueError(error); remove.disabled = false; }
                 }, 'fv-quiet');
-                remove.setAttribute('aria-label', executing ? t(`Cancel ${size} · ${row.inputs.seconds} s`, `取消 ${size} · ${row.inputs.seconds} 秒`)
-                    : t(`Remove queued video ${index + 1}`, `移除排队的第 ${index + 1} 个`));
+                remove.setAttribute('aria-label', executing ? t('Cancel {size} · {seconds} s', '取消 {size} · {seconds} 秒', { size, seconds: row.inputs.seconds })
+                    : t('Remove queued video {number}', '移除排队的第 {number} 个', { number: index + 1 }));
                 item.append(description);
                 // The buttons move together: on a narrow list they drop below the text, aligned right.
                 const actions = el('div', null, 'fv-queue-buttons');
@@ -2679,7 +2837,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
                         try { await queueController.moveFirst(row.id); showMoved(); }
                         catch (error) { movedId = null; showQueueError(error); first.disabled = remove.disabled = false; }
                     }, 'fv-quiet');
-                    first.setAttribute('aria-label', t(`Move queued video ${index + 1} to front`, `把排队的第 ${index + 1} 个排到最前`));
+                    first.setAttribute('aria-label', t('Move queued video {number} to front', '把排队的第 {number} 个排到最前', { number: index + 1 }));
                     actions.append(first);
                 }
                 actions.append(remove); item.append(actions); queueList.append(item);
@@ -2742,7 +2900,14 @@ export function openStudio(node, {extendFrom = null} = {}) {
         const invalid = [...dialog.querySelectorAll('input:not(:disabled)')].find(e => !e.form && !e.classList.contains('fvp-dim') && !e.checkValidity());
         if (invalid) {
             const details = invalid.closest('details'); if (details) details.open = true;
-            if (invalid.dataset.fvLength === 'block') { lengthControl.reportBlock(); invalid.focus(); invalid.scrollIntoView({block: 'center'}); return; }
+            // Three columns: a field in the folded Advanced options section opens it (the field must be on screen to say what is wrong).
+            const folded = invalid.closest('.fv-sc-section[data-open=false]'); if (folded) folded.querySelector('.fv-iv-sec-toggle')?.click();
+            if (invalid.dataset.fvLength === 'block') {
+                lengthControl.reportBlock();
+                // The Advanced options tray repaints its rows on events inside it; the tray was already open (three columns keep it so), so it hears of the reason from here.
+                invalid.closest('.fvs-tray')?.dispatchEvent(new Event('click'));
+                invalid.focus(); invalid.scrollIntoView({block: 'center'}); return;
+            }
             if (invalid.validity.valueMissing) {
                 const message = new Map([[seconds, t('Fill in the duration.', '请填写时长。')],
                     [width, t('Fill in the width.', '请填写宽度。')], [height, t('Fill in the height.', '请填写高度。')],
@@ -2769,7 +2934,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             invalid.focus(); return;
         }
         // One prompt per line with no lines: say what to write (generating without a prompt is not offered here).
-        if (byLine() && !lineTexts().length) { status.dataset.error = 'true'; status.textContent = t('Write one prompt per line, then add them.', '每行写一条描述后再添加。'); prompt.focus(); return; }
+        if (byLine() && !lineTexts().length) { status.dataset.error = 'true'; status.textContent = t('Write one prompt per line, then add them.', '每行写一条提示词后再添加。'); prompt.focus(); return; }
         if (!emptyAllowed && !extension.source && !prompt.disabled && !prompt.value.trim() && !untouched() && !swapState(mediaNode)) {
             showEmptyPrompt({t, anchor: runrow, field: prompt, onContinue: () => submitDraft({allowEmpty: true})}); return;
         }
@@ -2781,9 +2946,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
         if (timedNote) { status.dataset.error = 'true'; status.textContent = timedNote; prompt.focus(); return; }
         const chosenMode = runMode, texts = byLine() ? lineTexts() : null;
         const batchCount = texts ? texts.length : chosenMode === 'batch' ? Number(count.value) : 1;
-        if (texts && !texts.length) { status.dataset.error = 'true'; status.textContent = t('Write one prompt per line, then add them.', '每行写一条描述后再添加。'); prompt.focus(); return; }
-        if (texts && texts.length > 100) { status.dataset.error = 'true'; status.textContent = t(`At most 100 lines at a time; there are ${texts.length}.`, `一次最多 100 行，现在有 ${texts.length} 行。`); prompt.focus(); return; }
-        if (texts && timedParse(texts.join('\n'))[1].length) { status.dataset.error = 'true'; status.textContent = t('Timed lines cannot be split into separate videos. Turn off One prompt per line.', '带时间的台词不能拆成多个视频，请关闭“每行一条描述”。'); return; }
+        if (texts && !texts.length) { status.dataset.error = 'true'; status.textContent = t('Write one prompt per line, then add them.', '每行写一条提示词后再添加。'); prompt.focus(); return; }
+        if (texts && texts.length > 100) { status.dataset.error = 'true'; status.textContent = t('At most 100 lines at a time; there are {count}.', '一次最多 100 行，现在有 {count} 行。', { count: texts.length }); prompt.focus(); return; }
+        if (texts && timedParse(texts.join('\n'))[1].length) { status.dataset.error = 'true'; status.textContent = t('Timed lines cannot be split into separate videos. Turn off One prompt per line.', '带时间的台词不能拆成多个视频，请关闭“每行一条提示词”。'); return; }
         const originalSeed = value(node, 'seed'), seedMode = mode.value;
         // A request that is not accepted leaves the node mode as the user had it; a retry turns it on again.
         // Once the server has taken a request it stays taken; only a request it never took is undone.
@@ -2799,6 +2964,11 @@ export function openStudio(node, {extendFrom = null} = {}) {
             if (selected === 'input' && !dimensionsLinked) await inputRatio(true);
             const lengthPlan = await lengthControl.ready();
             if (disposed || lengthControl.blocked) return;
+            // A saved or restored Fast setting on a machine the planner has not offered it to is sampled at Light.
+            if (fastOn() && !fastOffered()) chooseEffort(effort.levels().find(tier => tier.name === 'Light'));
+            const short = fastShortfall();
+            if (short) { status.dataset.error = 'true'; status.textContent = fastShortfallWords(short); return; }
+            if (fastUnknown() === 'checking') { status.dataset.error = 'true'; status.textContent = fastUnknownWords('checking'); return; }
             if (lengthControl.absent && !durationNote.settle()) return;
             if (originalOn && lengthPlan?.count > 1 && !twoPass.checked) { status.dataset.error = 'true'; status.textContent = partsNeedTwoPassText(t); return; }
             if (lengthPlan?.count > 1 && chosenMode !== 'single') { status.textContent = t('Videos made in parts cannot use batch or loop.', '分段视频不能批量或循环生成。'); return; }
@@ -2830,6 +3000,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
             snapshot = singleRunSnapshot(extendSnapshot(graph, node.id, source,
                 {multiple: lengthPlan?.count > 1}), node.id, lengthPlan);
             if (!snapshot) { fault(t('Could not prepare this run. Try again.', '没能准备这次生成，请重试。')); return; }
+            // The Fast level makes one whole video: the parts of a longer one are sampled at Light.
+            if (fastOn() && lengthPlan?.count > 1) Object.assign(snapshot.output[node.id].inputs, {fast_mode: 'none', two_pass: true, preview: false});
             const seedIndex = node.widgets.findIndex(w => w.name === 'seed');
             capturing = false;
             for (const section of controls.querySelectorAll('.fv-section')) section.inert = false;
@@ -2857,7 +3029,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             if (accepted) held?.done(); else held?.restore();
             // A prompt that was generated goes to the top of the history, with the size, length and level it used.
             if (accepted && prompt.value.trim()) rememberPrompt({text: prompt.value, w: Number(value(node, 'width')), h: Number(value(node, 'height')),
-                seconds: Number(seconds.value), level: effortFor(Number(baseSteps.value), twoPass.checked, Number(refineSteps.value), stepCacheNow(), effort.levels(), upscaleNow())?.name || null});
+                seconds: Number(seconds.value), level: fastOn() ? FAST_EFFORT.name : effortFor(Number(baseSteps.value), twoPass.checked, Number(refineSteps.value), stepCacheNow(), effort.levels(), upscaleNow())?.name || null});
             capturing = false;
             for (const section of controls.querySelectorAll('.fv-section')) section.inert = false;
             updateRunButton();
@@ -2874,7 +3046,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         const length = lengthControl.plan?.count > 1 ? lengthControl.plan.seconds : Number.isFinite(frames) ? frames / 24 : null;
         const whole = Math.round(length), minutes = Math.floor(whole / 60), rest = whole % 60;
         duration.textContent = length === null ? '—' : `${length <= 60 ? `${lengthControl.plan?.count > 1 ? length : length.toFixed(3)} s`
-            : rest ? t(`${minutes} min ${rest} s`, `${minutes} 分 ${rest} 秒`) : t(`${minutes} min`, `${minutes} 分钟`)} · 24 fps`;
+            : rest ? t('{minutes} min {seconds} s', '{minutes} 分 {seconds} 秒', { minutes, seconds: rest }) : t('{minutes} min', '{minutes} 分钟', { minutes })} · 24 fps`;
     }
     function updateCanvas() {
         syncResolutionLabel();
@@ -2892,7 +3064,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         // An empty frame takes the chosen shape; a work on the stage keeps its own (the outline shows the new one).
         if (!busy && (nextShown || !stageMedia.querySelector('video, img'))) { previewSize(Number(w), Number(h)); if (nextShown) nextSize.textContent = `${w} × ${h}`; }
         framePicker?.set({shape: selected, ratio: studioShapes(t).find(([id]) => id === selected)?.[2] || Number(w) / Number(h) || ratio, pixels: Number(mp.value), width: Number(w), height: Number(h), locked: shapeKept, empty: emptySide,
-            unavailable: {input: mediaPicture() ? '' : t('Add a picture in Media first', '先在素材里添加图片')},
+            unavailable: {input: mediaPicture() ? '' : t('Add an image in Media first', '先在素材里添加图片')},
             disabled: dimensionsLinked || Boolean(extension.source)});
         refreshEffortEstimate();
         consoleUI?.sync();
@@ -3028,7 +3200,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             if (lengthControl.commit()) updateCanvas();
         }
     }
-    const mediaChanged = async e => { if (String(e.detail) !== String(mediaNode?.id)) return; syncOriginalAudio(); refreshEffortEstimate(true); framePicker?.set({unavailable: {input: mediaPicture() ? '' : t('Add a picture in Media first', '先在素材里添加图片')}}); if (selected !== 'input') return; try { await inputRatio(); } catch (error) { status.textContent = error.message; } };
+    const mediaChanged = async e => { if (String(e.detail) !== String(mediaNode?.id)) return; syncOriginalAudio(); refreshEffortEstimate(true); framePicker?.set({unavailable: {input: mediaPicture() ? '' : t('Add an image in Media first', '先在素材里添加图片')}}); if (selected !== 'input') return; try { await inputRatio(); } catch (error) { status.textContent = error.message; } };
     const lorasChanged = e => { if (String(e.detail) === String(loraNode?.id)) refreshEffortEstimate(true); };
     window.addEventListener('freevideo-loras', lorasChanged);
     cleanup.push(() => window.removeEventListener('freevideo-loras', lorasChanged));
@@ -3100,15 +3272,21 @@ export function openStudio(node, {extendFrom = null} = {}) {
     cleanup.push(listenDialogKey(dialog, 'keydown', escape));
     cleanup.push(isolateDialogKeys(dialog, event => routeDialogKey(event, dialog)));
 
-    // Escape first closes the recent videos panel of a narrower window, then the studio.
+    // Escape first closes a drawer of a narrower window (the settings or the works), then the studio.
+    const closeWorksDrawer = () => {
+        const panels = body.studioPanels;
+        if (panels.drawer()) { panels.closeDrawer(); return true; }
+        if (panels.below()) { panels.setPanel('right', false); return true; }
+        return false;
+    };
     // An open result menu (More, delete) closes first, wherever the focus is, and gives it back to the menu's button.
     const closeMenu = () => {
         const open = [...dialog.querySelectorAll('details.fv-action-menu[open]')].pop();
         if (!open) return false;
         open.open = false; open.querySelector(':scope>summary')?.focus({preventScroll: true}); return true;
     };
-    dialog.addEventListener('cancel', e => { e.preventDefault(); if (!closeMenu() && !compare.close() && !promptLibrary?.hide() && !consoleUI?.dismiss() && !recent.dismiss()) closeDialog(dialog); });
-    const dispose = () => { if (disposed) return; disposed = true; borrowed?.release({disposing: true}); blockOriginal('extend', false); blockOriginal('preview', false); for (const f of cleanup) f(); stage.querySelector('video')?.pause(); dialog.remove(); if (current?.dialog === dialog) { current = null; viewChanged('nodes', node); } };
+    dialog.addEventListener('cancel', e => { e.preventDefault(); if (!closeMenu() && !compare.close() && !promptLibrary?.hide() && !consoleUI?.dismiss() && !closeWorksDrawer()) closeDialog(dialog); });
+    const dispose = () => { if (disposed) return; disposed = true; borrowed?.release({disposing: true}); blockOriginal('extend', false); blockOriginal('preview', false); blockOriginal('fast', false); for (const f of cleanup) f(); stage.querySelector('video')?.pause(); dialog.remove(); if (current?.dialog === dialog) { current = null; viewChanged('nodes', node); } };
     const onClose = () => {
         // The browser's own close event of a switch comes with the next frame; if the panel was opened again before it
         // (back from the node view at once), that late event is not a close and must not take the panel away.
@@ -3125,6 +3303,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     let popHolder = null;
     current.borrow = ({mount, submit, label = null, previews = null, disabled = null, onSeconds = null, onFirstFrame = null, initial = {}, locked = []}) => {
         if (borrowed || disposed) return null;
+        columns?.restore(); // the editor shows the console bar, not the column
         const outer = mount.closest('dialog') || document.body;
         const home = {parent: controls.parentNode, next: controls.nextSibling};
         // The pop-ups travel inside one display:contents holder, so a switch moves one node instead of every pop-up.
@@ -3151,16 +3330,19 @@ export function openStudio(node, {extendFrom = null} = {}) {
             release({disposing = false} = {}) {
                 if (!borrowed) return;
                 borrowed = null; shadow = null;
+                placeReverse();
                 unlock(); updateFirstFrame();
                 shell.remove();
                 if (!disposing) {
                     if (home.next?.parentNode === home.parent) home.parent.insertBefore(controls, home.next); else home.parent.append(controls);
                     dialog.append(popHolder);
+                    columns?.apply();
                 }
                 updateRunButton();
             }};
         shadow = new Map();
         borrowed = {submit, label: () => (state.labelFn ?? label)?.(), previews, disabled, onSeconds, onFirstFrame, firstFrame: null, applying: false, release: state.release};
+        placeReverse();
         const unlock = () => {
             for (const control of lockedNow.splice(0)) { control.disabled = false; delete control.dataset.fvLocked; }
             for (const element of [framePicker?.element, stepper?.element]) delete element?.dataset.fvLocked;
@@ -3188,7 +3370,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     capabilityView = createCapabilityView({node, api, t, getState: () => ({ratio,
         custom: selected === 'custom', steps: Number(baseSteps.value), twoPass: twoPass.checked,
         refine: Number(refineSteps.value), stepCache: stepCacheNow(), upscale: upscaleNow(), disabled: Boolean(extension.source) || dimensionsLinked || seconds.disabled}),
-        onEstimate: () => showEffortEstimate(), onGrid: grid => effort.setLevels(effortsFrom(grid)), onPick: point => {
+        onEstimate: () => showEffortEstimate(), onGrid: applyFastOffer, onPick: point => {
         pixels = point.pixels; mp.value = String(pixels);
         set(node, 'width', point.width); set(node, 'height', point.height);
         node.properties.freevideo_pixels = pixels;
@@ -3199,7 +3381,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     function syncExtension() {
         releaseExtendThumbnail(); extendMount.replaceChildren();
         const source = extension.source;
-        extendMount.hidden = !source; mediaMount.classList.toggle('fv-extend-active', Boolean(source)); blockOriginal('extend', Boolean(source), {text: ['"Use as is" is not available while continuing a video. Remove "Continues this video" first.', '接在视频之后时不能“原样使用”，请先移除“接在这条视频后面”。']});
+        extendMount.hidden = !source; mediaMount.classList.toggle('fv-extend-active', Boolean(source)); blockOriginal('extend', Boolean(source), {text: ['"Use as is" is not available while extending a video. Remove "Extends this video" first.', '接在视频之后时不能“原样使用”，请先移除“接在这条视频后面”。']});
         if (source) runMode = 'single';
         canvasLock.hidden = !source;
         mp.disabled = width.disabled = height.disabled = Boolean(source) || dimensionsLinked;
@@ -3271,8 +3453,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     function guideItem() {
         const item = el('a', null, 'fv-action fv-action-secondary fvs-phone-only');
         item.href = promptHelp.href; item.target = '_blank'; item.rel = 'noopener noreferrer';
-        item.append(el('span', t('How to write a prompt', '描述写法')));
-        item.dataset.fvTipName = t('How to write a prompt', '描述写法'); item.dataset.fvTipUse = t('Open the guide to writing a good prompt', '打开描述写法指南，写得更准');
+        item.append(el('span', t('How to write a prompt', '提示词写法')));
+        item.dataset.fvTipName = t('How to write a prompt', '提示词写法'); item.dataset.fvTipUse = t('Open the guide to writing a good prompt', '打开提示词写法指南，写得更准');
         return item;
     }
     // A press or focus anywhere outside the open tray (the description, another control, the picture, empty space) puts
@@ -3281,6 +3463,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const keepsTray = target => {
         const open = consoleUI?.open(); if (!open || !target?.closest) return true;
         if (target.closest('.fvs-tray[open]') || target.closest('.fvs-chip[aria-controls]')) return true;
+        // Three columns: the Media tray stands inside the Prompt section (not floating over the console), so a press or focus elsewhere
+        // does not fold it; its chip, Generate and Esc do (a continuation keeps its source in it).
+        if (body.dataset.cols === '3' && dialog.querySelector('.fv-sc-section .fvs-tray[open]:not([data-pinned])')) return true;
         if (target.closest('[popover], [role=listbox], [role=menu], .fv-select-menu, .fv-tip, .fv-ed-expand-dialog')) return true;
         return target.closest('dialog') !== dialog;
     };
@@ -3305,13 +3490,13 @@ export function openStudio(node, {extendFrom = null} = {}) {
     seconds.addEventListener('change', () => {
         const n = Number(seconds.value), most = longest(), least = 2;
         if (seconds.value === '' || !Number.isFinite(n) || seconds.disabled) return;
-        if (most > 0 && n > most) { seconds.value = String(most); durationNote.say(t(`At most ${most} s`, `最长 ${most} 秒`)); }
-        else if (n < least) { seconds.value = String(least); durationNote.say(t(`At least ${least} s`, `最短 ${least} 秒`)); }
+        if (most > 0 && n > most) { seconds.value = String(most); durationNote.say(t('At most {most} s', '最长 {most} 秒', { most })); }
+        else if (n < least) { seconds.value = String(least); durationNote.say(t('At least {least} s', '最短 {least} 秒', { least })); }
     }, true);
     const stepValue = stepper.element.querySelector('.fvs-step-value');
     const paintDuration = () => {
         const plan = lengthControl?.plan, parts = plan?.count > 1 ? plan.count : 0;
-        stepValue.dataset.fvTipUse = parts ? t(`Made in ${parts} parts and joined`, `分 ${parts} 段生成并拼接`) : t('Click to type an exact length', '点一下输入精确时长');
+        stepValue.dataset.fvTipUse = parts ? t('Made in {parts} parts and joined', '分 {parts} 段生成并拼接', { parts }) : t('Click to type an exact length', '点一下输入精确时长');
         stepper.sync();
     };
     seconds.addEventListener('input', paintDuration); seconds.addEventListener('change', paintDuration);
@@ -3319,11 +3504,11 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // track with the knob inside, as before), one line under it on what the level gives (no times), and the two-pass
     // choice.
     const qualityChip = createPopChip({host: dialog, kind: 'quality', onOpen: () => paintQuality(), name: t('Quality', '质量'), icon: 'M8 2l1.6 3.6L13.5 6l-2.9 2.7.8 3.9L8 10.7 4.6 12.6l.8-3.9L2.5 6l3.9-.4Z'});
-    const LEVEL_WORDS = {Light: ['Fastest, for trying ideas', '最快，适合试效果'], Medium: ['For everyday use', '日常使用'], High: ['More detail, slower', '细节更多，较慢'], Max: ['The most detail, slowest', '细节最多，最慢']};
+    const LEVEL_WORDS = {Fast: FAST_OPTION_TEXT, Light: ['Fastest, for trying ideas', '最快，适合试效果'], Medium: ['For everyday use', '日常使用'], High: ['More detail, slower', '细节更多，较慢'], Max: ['The most detail, slowest', '细节最多，最慢']};
     const levelUse = el('p', '', 'fvp-level-use'); levelUse.setAttribute('aria-live', 'polite');
-    effort.element.after(levelUse); qualityChip.body.append(samplingSettings);
-    const qualityLevel = () => effortFor(Number(baseSteps.value), twoPass.checked, Number(refineSteps.value), stepCacheNow(), effort.levels(), upscaleNow());
-    const sayLevel = tier => { const said = tier ? t(...(LEVEL_WORDS[tier.name] || ['', ''])) : t('Custom steps', '自定义步数'); if (levelUse.textContent !== said) levelUse.textContent = said; };
+    effort.element.after(levelUse, fastPack.element); qualityChip.body.append(samplingSettings);
+    const qualityLevel = () => fastOn() ? effort.levels().find(tier => tier.fast) || FAST_EFFORT : effortFor(Number(baseSteps.value), twoPass.checked, Number(refineSteps.value), stepCacheNow(), effort.levels(), upscaleNow());
+    const sayLevel = tier => { const said = tier?.fast && fastParts() ? '' : tier?.fast && fastPack.needs() ? fastPack.needs() : tier?.name === 'Light' && effort.levels().some(level => level.fast) ? t('Quick, for trying ideas', '速度较快，适合试效果') : tier ? t(...(LEVEL_WORDS[tier.name] || ['', ''])) : t('Custom steps', '自定义步数'); if (levelUse.textContent !== said) levelUse.textContent = said; };
     effortPointed = tier => sayLevel(tier || qualityLevel());
     const paintQuality = () => {
         const level = qualityLevel();
@@ -3354,7 +3539,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         chips: [
             {id: 'media', tray: 'media', icon: 'media', read: () => {
                 const n = mediaCount();
-                return {label: t('Media', '素材'), badge: n || null, tip: [t('Media', '素材'), t('Add reference pictures, video and sound', '加参考图、视频和声音')]};
+                return {label: t('Media', '素材'), badge: n || null, tip: [t('Media', '素材'), t('Add reference images, video and sound', '加参考图、视频和声音')]};
             }},
             {element: mention},
             {element: framePicker.element},
@@ -3373,6 +3558,15 @@ export function openStudio(node, {extendFrom = null} = {}) {
             // An open tray: the play bar and the bar under the picture step back (CSS); they show again when it closes.
             void open;
         }});
+    // The console replaced the controls' children: the fold button and the rail (how a folded settings column opens again) go back in.
+    if (body.dataset.cols === '3') controls.prepend(body.foldLeft), controls.append(body.settingsRail);
+    if (body.dataset.cols === '3') {
+        const part = id => consoleUI.chip(id);
+        columns = layoutColumns({t, controls, consoleUI, fold: body.foldLeft, rail: body.settingsRail, parts: {media: part('media'), mention, enhance: enhancer.chip, size: framePicker.element,
+            duration: stepper.element, quality: effort.element, pass: passMode, runbar,
+            // The level's line and the Fast level's download row stand under the levels, as in the Quality window (the column has no such window).
+            qualityMore: [levelUse, fastPack.element]}});
+    }
     // The two panels repaint whenever the console's row does.
     { const sync = consoleUI.sync; consoleUI.sync = () => { sync(); paintDuration(); paintQuality(); }; }
     paintDuration(); paintQuality();
@@ -3411,20 +3605,41 @@ export function openStudio(node, {extendFrom = null} = {}) {
     for (const tray of consoleUI.trays.querySelectorAll('.fvs-tray')) trayWatch?.observe(tray);
     cleanup.push(() => trayWatch?.disconnect());
     // The one-line slot sits at the top of the dock, above an open tray and the console, in room kept for it.
-    controls.prepend(consoleUI.slot);
+    // (In three columns the settings column keeps it in its foot, under Generate, whether or not the editor has borrowed the bar.)
+    if (body.dataset.cols !== '3') controls.prepend(consoleUI.slot);
     // The run's status line: in that notes line on wider windows (one band between the picture's bar and the console),
     // on its own row under the bar on phones.
     const placeStatus = () => {
-        if (!phone?.matches) { if (status.parentElement !== consoleUI.slot) consoleUI.slot.append(status); }
+        // (Three columns: the settings column's foot at every width, so a reason says itself beside the field it is about, also on a phone.)
+        if (!phone?.matches || body.dataset.cols === '3') { if (status.parentElement !== consoleUI.slot) consoleUI.slot.append(status); }
         else if (status.parentElement !== output) reuseRow.before(status);
         fitPreview();
     };
     placeStatus(); phone?.addEventListener?.('change', placeStatus); cleanup.push(() => phone?.removeEventListener?.('change', placeStatus));
+    // A tray or a small window opened over the band (their glass lets 6% through) would show its line as a faint second
+    // copy under the window: while one covers a shown note, the line goes clear (still read out: glass/studio.css).
+    let coverFrame = 0;
+    const coverBand = () => {
+        coverFrame = 0;
+        const notes = [...consoleUI.slot.children].filter(item => !item.hidden && item.textContent.trim()).map(item => item.getBoundingClientRect()).filter(r => r.width && r.height);
+        // Only what floats is a window: in three columns a tray is a part of the column, and one scrolled out of sight still has its place.
+        const windows = [...dialog.querySelectorAll('.fvs-tray[open], .fvp-pop:not([hidden])')].filter(item => /^(fixed|absolute)$/.test(getComputedStyle(item).position))
+            .map(item => item.getBoundingClientRect()).filter(r => r.width && r.height);
+        const covered = notes.some(n => windows.some(w => w.left < n.right && w.right > n.left && w.top < n.bottom && w.bottom > n.top));
+        if (controls.dataset.statusCovered !== String(covered)) controls.dataset.statusCovered = String(covered);
+    };
+    const queueCover = () => { if (!coverFrame) coverFrame = requestAnimationFrame(() => { coverFrame = requestAnimationFrame(coverBand); }); };
+    const coverWatch = new MutationObserver(queueCover);
+    coverWatch.observe(dialog, {subtree: true, attributes: true, attributeFilter: ['open', 'hidden', 'data-open', 'data-closing']});
+    // A tray rises 8 px into place as it opens: look again once it has settled.
+    globalThis.addEventListener('resize', queueCover); dialog.addEventListener('animationend', queueCover);
+    cleanup.push(() => { coverWatch.disconnect(); globalThis.removeEventListener('resize', queueCover); cancelAnimationFrame(coverFrame); });
     // The band above the console is kept only while its line has something to say (glass/studio.css), so an empty band
     // never sits between the picture and the console.
     const syncBand = () => {
         const said = [...consoleUI.slot.children].some(item => !item.hidden && item.textContent.trim() && getComputedStyle(item).display !== 'none');
         if (controls.dataset.status !== String(said)) controls.dataset.status = String(said);
+        queueCover();
     };
     const bandWatch = new MutationObserver(syncBand);
     bandWatch.observe(consoleUI.slot, {childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['hidden', 'data-state']});
@@ -3434,6 +3649,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const bandSize = typeof ResizeObserver === 'function' ? new ResizeObserver(() => {
         const height = `${Math.ceil(consoleUI.slot.getBoundingClientRect().height)}px`;
         if (controls.style.getPropertyValue('--fvs-band') !== height) controls.style.setProperty('--fvs-band', height);
+        queueCover();
     }) : null;
     bandSize?.observe(consoleUI.slot); cleanup.push(() => bandSize?.disconnect());
     // Receipts (filled in, preset applied or saved) go to the shared toast in the top bar's right column (a bottom strip
@@ -3462,17 +3678,18 @@ export function openStudio(node, {extendFrom = null} = {}) {
     reuse.receipt = (text, undo) => toast.actions === true && notify(text, undo);
     cleanup.push(() => clearTimeout(noticeTimer));
     // Prompt history, templates and presets (F4): history is written when a request is accepted, below in submitDraft.
-    const levelNow = () => effortFor(Number(baseSteps.value), twoPass.checked, Number(refineSteps.value), stepCacheNow(), effort.levels(), upscaleNow());
+    const levelNow = () => fastOn() ? FAST_EFFORT : effortFor(Number(baseSteps.value), twoPass.checked, Number(refineSteps.value), stepCacheNow(), effort.levels(), upscaleNow());
     const enhanceSwitch = () => enhancer.element.querySelector('.fv-enhance-toggle input');
     const describeSettings = item => {
         const level = item.level && SAMPLING_LEVELS().find(tier => tier.name === item.level);
         const shape = item.aspect && studioShapes(t).find(([id]) => id === item.aspect)?.[1];
         const size = item.w && item.h ? `${item.w} × ${item.h}` : item.pixels ? `${Number(item.pixels).toFixed(2)} MP` : '';
-        return [shape, size, Number(item.seconds) > 0 ? t(`${item.seconds} s`, `${item.seconds} 秒`) : '', level ? effortName(t, level) : '',
-            typeof item.prompt === 'string' ? t('with prompt', '含描述') : ''].filter(Boolean).join(' · ');
+        return [shape, size, Number(item.seconds) > 0 ? t('{seconds} s', '{seconds} 秒', { seconds: item.seconds }) : '', level ? effortName(t, level) : '',
+            typeof item.prompt === 'string' ? t('with prompt', '含提示词') : ''].filter(Boolean).join(' · ');
     };
     const SAMPLING_LEVELS = () => effort.levels();
-    promptLibrary = createPromptLibrary({t, host: consoleUI.element, notify, describe: describeSettings, guide: promptHelp.href,
+    // The panel stands over the console; in three columns the console is not on the page, so it stands in the body (a card beside the settings column), and in the editor's borrowed bar in the bar's own console.
+    promptLibrary = createPromptLibrary({t, host: () => (borrowed || body.dataset.cols !== '3' ? consoleUI.element : body), notify, describe: describeSettings, guide: promptHelp.href,
         fill: text => {
             if (prompt.disabled) return null;
             const before = value(node, 'text');
@@ -3503,8 +3720,14 @@ export function openStudio(node, {extendFrom = null} = {}) {
             if (!baseSteps.disabled) {
                 holdPreview(false);
                 const tier = settings.level && effort.levels().find(level => level.name === settings.level);
-                if (tier) chooseEffort(tier);
+                // A Fast preset where this machine does not list it, or before its files are here, is sampled at Light;
+                // with the level listed, its download is offered.
+                if (settings.level === FAST_EFFORT.name && (!tier || !fastPack.present)) {
+                    chooseEffort(effort.levels().find(level => level.name === 'Light'));
+                    if (tier) fastPack.ask();
+                } else if (tier) chooseEffort(tier);
                 else if (settings.steps) {
+                    fastLeft();
                     baseSteps.value = String(settings.steps.base); refineSteps.value = String(settings.steps.refine); twoPass.checked = Boolean(settings.steps.twoPass);
                     set(node, 'two_pass', twoPass.checked); set(node, 'step_cache', settings.steps.stepCache || 'none'); setUpscale(settings.steps.upscale || 2);
                     syncSamplingSteps();
@@ -3517,7 +3740,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
                 try { const reply = await api.fetchApi('/models/loras', {cache: 'no-store'}); names = reply.ok ? await reply.json() : []; } catch {}
                 const rows = settings.loras.filter(row => names.includes(row.name)), missing = settings.loras.filter(row => !names.includes(row.name)).map(row => row.name);
                 if (set(loraNode, 'adapters', JSON.stringify(rows))) window.dispatchEvent(new CustomEvent('freevideo-loras', {detail: loraNode.id}));
-                if (missing.length) problems.push(t(`LoRA not found: ${missing.join(', ')}`, `找不到 LoRA：${missing.join('、')}`));
+                if (missing.length) problems.push(t('LoRA not found: {names}', '找不到 LoRA：{names}', { names: missing.join(t(', ', '、')) }));
             }
             const toggle = enhanceSwitch();
             if (typeof settings.enhance === 'boolean' && toggle && !toggle.disabled && toggle.checked !== settings.enhance) toggle.click();
@@ -3541,9 +3764,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
         const on = enhancer.reversing, why = reverseQueueWhy();
         reverseKey.dataset.state = on ? 'running' : '';
         reverseKey.setAttribute('aria-disabled', String(!on && !!why));
-        reverseKey.setAttribute('aria-label', on ? t('Stop', '停止') : t('Prompt from a picture or video', '从图片或视频生成提示词'));
-        reverseKey.dataset.fvTipName = on ? t('Stop', '停止') : t('Prompt from a picture or video', '从图片或视频生成提示词');
-        if (on) delete reverseKey.dataset.fvTipUse; else reverseKey.dataset.fvTipUse = t('Pick a picture or video; its description fills the box', '选一张图片或一段视频，生成的描述填入描述框');
+        reverseKey.setAttribute('aria-label', on ? t('Stop', '停止') : t('Prompt from an image or video', '从图片或视频生成提示词'));
+        reverseKey.dataset.fvTipName = on ? t('Stop', '停止') : t('Prompt from an image or video', '从图片或视频生成提示词');
+        if (on) delete reverseKey.dataset.fvTipUse; else reverseKey.dataset.fvTipUse = t('Pick an image or video; its prompt fills the box', '选一张图片或一段视频，生成的提示词填入提示词框');
         if (!on && why) reverseKey.dataset.fvTipWhy = why; else delete reverseKey.dataset.fvTipWhy;
         reverseKey.title = [reverseKey.dataset.fvTipName, reverseKey.dataset.fvTipUse].filter(Boolean).join(' · ');
         const html = on ? stopIcon : reverseIcon; if (reverseKey.dataset.icon !== String(on)) { reverseKey.innerHTML = html; reverseKey.dataset.icon = String(on); }
@@ -3589,8 +3812,10 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // At phone width the prompt tools stand in a column beside the box, and a third key would make the console taller than it
     // is without reverse: there the key sits in the options row, right of Enhance, as an icon (same key, same words).
     const reversePhone = window.matchMedia?.('(max-width:760px)');
-    const placeReverse = () => {
-        const inRow = Boolean(reversePhone?.matches);
+    placeReverse = () => {
+        // (The three-column panel has no tools column beside the box: the key stays in the Prompt section's head at every width.
+        // The editor's lent bar is the console again, with the tools column: at phone width the key is in the options row there too.)
+        const inRow = Boolean(reversePhone?.matches) && (body.dataset.cols !== '3' || Boolean(borrowed));
         // In the row it is one of the round keys (like LoRA and Settings); in the tools column it is a library-style key.
         reverseKey.classList.toggle('fvs-chip', inRow); reverseKey.classList.toggle('fvs-library-button', !inRow);
         if (inRow) enhancer.chip.after(reverseKey); else promptTools.prepend(reverseKey);
@@ -3600,7 +3825,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     consoleUI.trays.querySelector('[data-tray=size] .fvs-tray-title')?.append(canvasLock);
     consoleUI.element.classList.add('sgf-avoid');
     mention.dataset.fvTipName = t('Mention', '引用');
-    mention.dataset.fvTipUse = t('Bring a picture or character into the prompt', '在描述里引用素材或角色'); mention.dataset.fvTipKey = '@';
+    mention.dataset.fvTipUse = t('Bring an image or character into the prompt', '在提示词里引用素材或角色'); mention.dataset.fvTipKey = '@';
     // The Generate button's hover words follow its label (updateRunButton).
     updateRunButton();
     // The chips repeat what the trays hold: read them again whenever a setting or its estimate changes.
@@ -3640,7 +3865,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     cleanup.push(registerTourWorkspace(tourContext));
     const tourTimer = setTimeout(async () => { const state = await firstStart.ready; if (!closed && !state?.firstRun && !tourContext.isBusy()) offerVersionTour(tourContext); }, 1400);
     cleanup.push(() => clearTimeout(tourTimer));
-    const recentLoad = recent.refresh();
+    const recentLoad = worksColumn.refresh();
     if (node.freevideoProgress && !node.freevideoProgress.chain) { showProgress(node.freevideoProgress); markReady(); }
     else if (result) showResult(result);
     // Do not change any saved width/height simply by opening a workflow.

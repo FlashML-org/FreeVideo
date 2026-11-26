@@ -8,7 +8,7 @@ import { zoomable } from './picture_zoom.js';
 // step(by) → the URL of the picture now shown, or '' at an end.
 export function openPictureViewer({host, url, step = null, onClose = () => {}}) {
     const root = el('div', 'fv-iv-viewer'); root.setAttribute('role', 'dialog'); root.setAttribute('aria-modal', 'true');
-    root.setAttribute('aria-label', t('Picture', '图片')); root.tabIndex = -1;
+    root.setAttribute('aria-label', t('Image', '图片')); root.tabIndex = -1;
     const img = el('img', 'fv-iv-viewer-img'); img.alt = ''; img.draggable = false; img.src = url;
     const close = button('fv-iv-icon-btn fv-iv-viewer-x', {iconName: 'x', name: t('Close', '关闭'), use: t('Back to the view', '回到视图'), key: 'Esc'});
     root.append(img, close); host.append(root);

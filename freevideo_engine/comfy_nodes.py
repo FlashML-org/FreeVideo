@@ -82,6 +82,12 @@ def step_cache_option(value):
     return {'step_cache': value} if value in STEP_CACHE_OPTIONS and value != 'none' else {}
 
 
+FAST_MODE_OPTIONS = ('none', 'fast2')
+def fast_mode_option(value):
+    """Bridge keyword for the Fastest mode widget; a workflow without it or with 'none' adds nothing."""
+    return {'fast_mode': value} if value in FAST_MODE_OPTIONS and value != 'none' else {}
+
+
 UPSCALE_OPTIONS = ('2', '1.5', '1.2')  # two_pass.SCALES as the widget shows them
 
 
@@ -94,12 +100,16 @@ def upscale_option(value):
     return {'upscale_factor': float(text)} if text in UPSCALE_OPTIONS and text != '2' else {}
 
 
+# The three input labels before they followed the interface wording (0.6.12); a search for the old name still finds the node.
+LEGACY_INPUT_NAMES = ('Continue from video', 'Two-pass acceleration', 'Two-pass: preview first pass')
+
+
 class FreeVideoGenerate(io.ComfyNode):
     @classmethod
     def define_schema(cls):
         return io.Schema(
             node_id='FreeVideoGenerate', display_name='FreeVideo · Video + Audio',
-            category='FreeVideo', search_aliases=['VDN', 'H3', 'i2v', 'fl2v', 'ref2v'],
+            category='FreeVideo', search_aliases=['VDN', 'H3', 'i2v', 'fl2v', 'ref2v', *LEGACY_INPUT_NAMES],
             description='Generate a video with audio using your FreeVideo installation. Memory placement, '
                         'caches and validated optimizations are automatic. Outputs and diagnostics are retained.',
             inputs=[
@@ -123,23 +133,23 @@ class FreeVideoGenerate(io.ComfyNode):
                             'When it is connected, the prompt and media inputs are not used. '
                             'Conditioning from generic CLIP nodes is rejected.'),
                 Media.Input('media', optional=True, tooltip='Unified Media panel: keyframes or ordered references.'),
-                io.Boolean.Input('two_pass', display_name='Two-pass acceleration', default=True, optional=True,
+                io.Boolean.Input('two_pass', display_name='Faster second pass', default=True, optional=True,
                     tooltip='Usually faster: generate at a lower resolution, then upscale and finish sampling at the target size.'),
                 io.Int.Input('base_steps', display_name='First-pass steps', default=8, min=1, max=32, optional=True,
-                    tooltip='Default: 8. Two-pass acceleration runs only with 8 first-pass steps; any other count '
+                    tooltip='Default: 8. The faster second pass runs only with 8 first-pass steps; any other count '
                             'generates in one pass of that many steps. Changing sampling steps may reduce generation quality.'),
                 io.Int.Input('refine_steps', display_name='Second-pass steps', default=3, min=1, max=31, optional=True,
                     tooltip='Default: 3. Three steps use the independent refinement schedule. Changing sampling steps may reduce generation quality.'),
                 io.Boolean.Input('force_regenerate', display_name='Force regeneration', default=False, optional=True,
                     tooltip='Generate again even when an identical completed video is saved locally.'),
-                io.Boolean.Input('preview', display_name='Two-pass: preview first pass', default=False, optional=True,
-                    tooltip='Part of two-pass acceleration: pause after the half-resolution first pass and save it as a preview. '
+                io.Boolean.Input('preview', display_name='Preview first', default=False, optional=True,
+                    tooltip='Part of the faster second pass: pause after the half-resolution first pass and save it as a preview. '
                             'Run the second pass from the result when it looks right; it continues from the same latents.'),
                 io.String.Input('refine_from', display_name='Second pass of preview', default='', optional=True, advanced=True,
                     socketless=True, tooltip='Set by the Run second pass button: the preview video to continue. '
                                              "The second pass uses the preview's own prompt, seed, size and inputs."),
-                io.String.Input('continue_from', display_name='Continue from video', default='', optional=True, advanced=True,
-                    tooltip='For long videos generated in segments: continue after this MP4. Use its ComfyUI output '
+                io.String.Input('continue_from', display_name='Extend from video', default='', optional=True, advanced=True,
+                    tooltip='For long videos generated in segments: extend after this MP4. Use its ComfyUI output '
                             'subfolder/filename or an absolute path inside ComfyUI output or input.'),
                 io.Int.Input('frames', display_name='Total frames', default=0, min=0, max=2**31-1, optional=True, advanced=True,
                     tooltip='For long videos generated in segments: 0 uses Duration; otherwise use 5 + 17n, at least 39. '
@@ -147,7 +157,7 @@ class FreeVideoGenerate(io.ComfyNode):
                 io.Boolean.Input('first_frame_reference', display_name='First-frame reference', default=False,
                     optional=True, advanced=True, tooltip='Reduces drift.'),
                 io.Boolean.Input('voice_reference', display_name='Voice reference', default=False,
-                    optional=True, advanced=True, tooltip='Keeps the opening voice consistent in continued dialogue.'),
+                    optional=True, advanced=True, tooltip='Keeps the opening voice consistent in extended dialogue.'),
                 io.Boolean.Input('hide_tail', display_name='Hide dialogue tail', default=False,
                     optional=True, advanced=True, tooltip='Generates and discards 17 extra frames to keep dialogue moving between parts.'),
                 # Last, so the widget values of saved workflows keep their positions.
@@ -156,7 +166,7 @@ class FreeVideoGenerate(io.ComfyNode):
                     tooltip='Reuses work between similar sampling steps to finish sooner, with a small change to the result.'),
                 io.Combo.Input('upscale_factor', display_name='Upscale factor', options=list(UPSCALE_OPTIONS), default='2',
                     optional=True, advanced=True,
-                    tooltip='Two-pass only: a smaller factor starts from a larger first pass, for more detail and a longer run.'),
+                    tooltip='Second pass only: a smaller factor starts from a larger first pass, for more detail and a longer run.'),
                 io.Boolean.Input('allow_empty_prompt', display_name='Allow empty prompt', default=False,
                     optional=True, advanced=True, tooltip='Generates from an empty prompt instead of asking for one.'),
                 io.String.Input('upscale_from', display_name='Upscale video', default='', optional=True, advanced=True,
@@ -165,6 +175,9 @@ class FreeVideoGenerate(io.ComfyNode):
                 io.String.Input('upscale_to', display_name='Upscale size', default='', optional=True, advanced=True,
                     socketless=True, tooltip='Set by Upscale in Creations: empty for one 1.5x step, 4k for the 4K size '
                                              'made frame by frame by a small upscale model.'),
+                io.Combo.Input('fast_mode', display_name='Fastest mode', options=list(FAST_MODE_OPTIONS), default='none',
+                    optional=True, advanced=True,
+                    tooltip='Uses an additional two-step model and skips the video decoder.'),
             ],
             outputs=[io.Video.Output('video'), io.String.Output('report', display_name='Report JSON')],
             hidden=[io.Hidden.unique_id, io.Hidden.prompt, io.Hidden.extra_pnginfo],
@@ -174,7 +187,7 @@ class FreeVideoGenerate(io.ComfyNode):
     @classmethod
     def validate_inputs(cls, text, width, height, seconds, seed, continue_from='', frames=0, two_pass=True,
                         preview=False, refine_from='', base_steps=8, refine_steps=3, step_cache='none',
-                        upscale_factor='2', allow_empty_prompt=False, upscale_from='', upscale_to=''):
+                        upscale_factor='2', allow_empty_prompt=False, upscale_from='', upscale_to='', fast_mode='none'):
         # ComfyUI marks every input named here when a check fails, so only the checked widgets are
         # listed. Linked pictures, media and conditioning have no value before the run anyway.
         # step_cache and upscale_factor are named so ComfyUI skips their option lists: an older saved
@@ -185,6 +198,13 @@ class FreeVideoGenerate(io.ComfyNode):
             return True if optional_text(upscale_to) in (None, '', '4k') else 'Upscale size must be empty or 4k'
         try:
             options = request_options(continue_from, node_frames(frames))
+            if fast_mode_option(fast_mode):
+                from .fast_tier import bridge_steps
+                two_pass, base_steps, refine_steps = bridge_steps(fast_mode, preview=preview is True,
+                    refine_from=refine_from, continue_from=options.get('continue_from'),
+                    step_cache=step_cache_option(step_cache).get('step_cache'),
+                    upscale_factor=upscale_option(upscale_factor).get('upscale_factor', 2))
+                preview = False
             if options.get('continue_from'):
                 # A continued part turns on two passes and takes keyframes as pictures; only NVIDIA keeps its preview (execute).
                 from .continuation import previews_supported
@@ -198,7 +218,7 @@ class FreeVideoGenerate(io.ComfyNode):
                 from .two_pass import validate_steps
                 validate_steps(base_steps, refine_steps, two_pass)
                 if preview and not two_pass:
-                    return 'Preview first needs two-pass acceleration.'
+                    return 'Preview first needs the faster second pass.'
             comfy_bridge.installation()
         except (OSError, ValueError, KeyError) as error:
             from .continuation import UNSUPPORTED
@@ -221,7 +241,8 @@ class FreeVideoGenerate(io.ComfyNode):
                 references=None, loras=None, conditioning=None, media=None, two_pass=True,
                 force_regenerate=False, base_steps=8, refine_steps=3, preview=False, refine_from='',
                 continue_from='', frames=0, first_frame_reference=False, voice_reference=False, hide_tail=False,
-                step_cache='none', upscale_factor='2', allow_empty_prompt=False, upscale_from='', upscale_to=''):
+                step_cache='none', upscale_factor='2', allow_empty_prompt=False, upscale_from='', upscale_to='',
+                fast_mode='none'):
         from .comfy_environment import control_process
         from .gpu_pool import pool_enabled
         if control_process() and pool_enabled():
@@ -242,6 +263,14 @@ class FreeVideoGenerate(io.ComfyNode):
         chain = block_context(PromptServer.instance, node_id)
         options = request_options(continue_from, node_frames(frames))
         notes = []
+        if fast_mode_option(fast_mode):
+            # Refused here, before any model is stopped or loaded.
+            from .fast_tier import bridge_steps
+            two_pass, base_steps, refine_steps = bridge_steps(fast_mode, preview=preview is True, refine_from=refine_from,
+                continue_from=options.get('continue_from'), upscale_from=upscale_from,
+                step_cache=step_cache_option(step_cache).get('step_cache'),
+                upscale_factor=upscale_option(upscale_factor).get('upscale_factor', 2),
+                parts=chain.get('count', 1) if chain is not None else 1)
         if options.get('continue_from') or chain is not None and chain.get('count', 1) > 1:
             base_steps, refine_steps, step_cache, note = part_steps(base_steps, refine_steps, step_cache)
             if note:
@@ -249,12 +278,12 @@ class FreeVideoGenerate(io.ComfyNode):
                 notes.append(note)
         if options.get('continue_from') and not two_pass:
             two_pass = True
-            notes.append('Continuing a video needs "Two-pass acceleration", so it is on for this part.')
+            notes.append('Extending a video needs "Faster second pass", so it is on for this part.')
         if options.get('continue_from') and preview:
             from .continuation import previews_supported
             if not previews_supported():
                 preview = False
-                notes.append('A continued part is made in full, without stopping at the preview.')
+                notes.append('An extended part is made in full, without stopping at the preview.')
         from .two_pass import validate_steps
         if not refine_from and not upscale_from:
             validate_steps(base_steps, refine_steps, two_pass)
@@ -418,6 +447,7 @@ class FreeVideoGenerate(io.ComfyNode):
                 **({'upscale_to': '4k'} if frames_upscale else {}),
                 **step_cache_option(step_cache),
                 **upscale_option(upscale_factor),
+                **fast_mode_option(fast_mode),
                 **({'report_extra': {'chain': report_fields(chain)}} if chain is not None else {}))
             relative = output.relative_to(output_root)
             report = output.with_suffix('.request.json').read_text(encoding='utf-8')

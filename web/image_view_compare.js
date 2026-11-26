@@ -17,7 +17,7 @@ export function compareView({pictureURL, labelOf, ratioOf = () => 0, onPick, onR
     const root = el('div', 'fv-iv-compare'); root.dataset.shown = 'false'; root.inert = true; root.setAttribute('aria-hidden', 'true');
     const bar = el('div', 'fv-iv-compare-bar');
     const note = el('span', 'fv-iv-compare-note');
-    const close = button('fv-iv-text-btn', {iconName: 'x', label: t('Done', '完成'), name: t('Leave compare', '退出对比'), use: t('Clear the selection and see one picture', '取消多选，回到单张'), key: 'Esc'});
+    const close = button('fv-iv-text-btn', {iconName: 'x', label: t('Done', '完成'), name: t('Leave compare', '退出对比'), use: t('Clear the selection and see one image', '取消多选，回到单张'), key: 'Esc'});
     bar.append(note, el('span', 'fv-iv-grow'), close);
     const panes = el('div', 'fv-iv-compare-panes');
     root.append(bar, panes);
@@ -81,7 +81,7 @@ export function compareView({pictureURL, labelOf, ratioOf = () => 0, onPick, onR
         root.dataset.shown = String(shown); root.inert = !shown; root.setAttribute('aria-hidden', String(!shown));
         if (!shown) return;
         const n = state.files.length, total = state.total || n;
-        note.textContent = total > n ? t(`Comparing the first ${n} of ${total}`, `对比前 ${n} 张（已选 ${total} 张）`) : t(`Comparing ${n}`, `对比 ${n} 张`);
+        note.textContent = total > n ? t('Comparing the first {n} of {total}', '对比前 {n} 张（已选 {total} 张）', { n, total }) : t('Comparing {n}', '对比 {n} 张', { n });
         const mode = n === 2 ? pairMode(ratioOf(state.files[0]), ratioOf(state.files[1])) : 'grid';
         const key = mode + '|' + state.files.join('|') + '|' + state.files.map(labelOf).join('|');
         if (key === current) return; current = key;

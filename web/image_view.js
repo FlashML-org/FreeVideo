@@ -19,7 +19,7 @@ import { openAutopilot, viewChanged, viewSwitch } from './view_navigation.js';
 import { wordmark } from './wordmark.js';
 import { keepViewSwitchPlace } from './view_switch_place.js';
 import { openReferenceMenu, removeSavedImages } from './image_library.js';
-import { BLANK_CANVAS_AREAS, createImageGenClient, fittedNote, imageGenError, imageRemainingText, imageReportBar, originStep, renderImageFailure } from './image_generation.js';
+import { BLANK_CANVAS_AREAS, createImageGenClient, fittedNote, imageGenError, imageRemainingText, imageReportBar, originStep, renderImageFailure, WAITING_TEXT } from './image_generation.js';
 import { duration } from './generation_progress.js';
 import { randomSeed } from './studio_queue.js';
 import { createLayout } from './image_view_layout.js';
@@ -30,10 +30,12 @@ import { el, icon, t, cn, tip, button, section, readStore, writeStore, mod } fro
 import { IMAGE_MODELS, modelPicker, modelState, verifyText, pausedText } from './image_view_models.js';
 import { RANGES, RATIOS, areaRange, estimateSeconds, machineLimit, presetAt, ratioValue, sizePicker, sizeFor, sizeText, megapixels } from './image_view_size.js';
 import { createMetaStore, createTrash, filterCounts, filterRows, groupRows, historyPanel, sessionPrompts } from './image_view_history.js';
-import { brokenMentions, mentionText, mentionsToEngine, posePrompt, promptMentions, renumberMentions, sketchPrompt } from './image_view_mentions.js';
+import { PICTURE_WORDS, SUBJECT_WORDS, brokenMentions, mentionText, mentionsToEngine, posePrompt, promptMentions, renumberMentions, sketchPrompt } from './image_view_mentions.js';
 import { HISTORY_KEY, forgetDeletedPrompts, promptLibrary, rememberPrompt } from './image_view_prompts.js';
 import { COMPARE_MAX, compareView } from './image_view_compare.js';
 import { queuePanel } from './image_view_queue.js';
+import { createWorkColumn } from './work_column.js';
+import { pictureURL } from './picture_url.js';
 import { isHeld, worksClient, saveToWorks } from './image_works.js';
 import { createWarmer } from './image_view_warm.js';
 import { preloadMode } from './preload_setting.js';
@@ -41,7 +43,9 @@ import { openPictureViewer } from './image_view_viewer.js';
 import { LORA_MODEL, imageViewLora } from './image_view_lora.js';
 import { hasPictureThumbnail, mediaQueue, pictureThumbnailURL } from './work_media.js';
 import { fieldNote } from './field_note.js';
+import { createPanelShell } from './panel_shell.js';
 import { copyText } from './clipboard_text.js';
+import { pageLang } from './i18n_tables.js';
 
 export { IMAGE_MODELS, RATIOS };
 for (const name of ['./image_view.css']) {
@@ -123,7 +127,6 @@ export function createFakeImageClient({delay = 600, ready = {'minimax-h3-image':
     };
 }
 
-const pictureURL = file => { const at = file.lastIndexOf('/'); return api.apiURL('/view?' + new URLSearchParams({filename: file.slice(at + 1), subfolder: at < 0 ? '' : file.slice(0, at), type: 'input'})); };
 // Tiles, the rail and the source line show a picture's small copy; the stage, the viewer and comparisons the picture.
 const thumbURL = file => hasPictureThumbnail(file) ? pictureThumbnailURL(file) : pictureURL(file);
 const SAMPLE_PROMPTS = {
@@ -187,7 +190,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     kept?.dispose(); kept = null;
     void poll;
     studio?.querySelectorAll('video,audio').forEach(media => media.pause());
-    const dialog = el('dialog', 'fv-studio fv-image'); dialog.dataset.fvReady = 'false'; dialog.lang = cn ? 'zh' : 'en'; dialog.setAttribute('aria-label', t('Images', '图像视图'));
+    const dialog = el('dialog', 'fv-studio fv-image'); dialog.dataset.fvReady = 'false'; dialog.lang = pageLang(); dialog.setAttribute('aria-label', t('Images', '图像视图'));
     const header = el('header', 'fv-header'), brand = el('div', 'fv-brand'), tools = el('div', 'fv-header-actions');
     brand.append(wordmark());
     const settings = el('button', 'fv-quiet', t('Settings', '设置')); settings.type = 'button'; settings.onclick = openSetup;
@@ -245,13 +248,13 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     // ───── Layout ─────
     const body = el('div', 'fv-image-body fv-iv');
     const left = el('aside', 'fv-iv-panel fv-iv-left fv-image-left fv-glass fv-g2'), stage = el('main', 'fv-iv-stage fv-image-stage'), column = el('aside', 'fv-iv-panel fv-iv-right fv-image-works-column fv-glass fv-g2');
-    left.setAttribute('aria-label', t('Make a picture', '生成图片')); column.setAttribute('aria-label', t('Works', '作品'));
+    left.setAttribute('aria-label', t('Make an image', '生成图片')); column.setAttribute('aria-label', t('Creations', '作品'));
     body.append(left, stage, column);
 
     // Left panel: head, the groups, the foot with the status slot and Generate.
     const leftHead = el('div', 'fv-iv-panel-head');
-    const leftCollapse = button('fv-iv-icon-btn fv-iv-collapse', {iconName: 'panelL', name: t('Hide settings', '收起设置栏'), use: t('More room for the picture', '给画面腾出空间')});
-    leftHead.append(el('h2', 'fv-iv-panel-title', t('Create', '生成')), el('span', 'fv-iv-grow'), leftCollapse);
+    const leftCollapse = button('fv-iv-icon-btn fv-iv-collapse', {iconName: 'panelL', name: t('Hide settings', '收起设置栏'), use: t('More room for the image', '给画面腾出空间')});
+    leftHead.append(el('h2', 'fv-iv-panel-title', t('Generate', '生成')), el('span', 'fv-iv-grow'), leftCollapse);
     const scroll = el('div', 'fv-iv-panel-scroll');
     const inputs = el('div', 'fv-image-inputs');
 
@@ -264,7 +267,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
 
     // Prompt: the enhancer wraps the box, as on the video page.
     // Every group is open as it is (CEO: nobody folds these); when the panel has no room it scrolls.
-    const promptGroup = section('prompt', {title: t('Prompt', '描述'), iconName: 'prompt', fixed: true});
+    const promptGroup = section('prompt', {title: t('Prompt', '提示词'), iconName: 'prompt', fixed: true});
     const prompt = el('textarea', 'fv-image-prompt fv-iv-prompt'); prompt.rows = 3; prompt.maxLength = 2000;
     // Prompt help (the creation panel's own: switch, original and rewritten, rewrite again, back to the original,
     // download and enable, errors) for a picture: the engine rewrites in the chosen model's own style, with the
@@ -287,8 +290,8 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         // The rewrite names only the pictures sent with it, as the generation does.
         prepare: text => {
             const sent = references.slice(0, cap_(model)).length;
-            return mentionsToEngine(text, sent).replace(/(?:图\s?|Image\s)(\d+)/g, (all, n) => Number(n) >= 1 && Number(n) <= sent ? `<Picture ${n}>` : all)
-                .replace(/(?:主体\s?|Subject\s)(\d+)/g, (_, n) => `<Subject ${n}>`);
+            return mentionsToEngine(text, sent).replace(PICTURE_WORDS, (all, n) => Number(n) >= 1 && Number(n) <= sent ? `<Picture ${n}>` : all)
+                .replace(SUBJECT_WORDS, (_, n) => `<Subject ${n}>`);
         },
         restore: text => text.replace(/<Picture (\d+)>/g, (_, n) => mentionText(n)).replace(/<Subject (\d+)>/g, (_, n) => subject(Number(n)))});
     let enhancerReady = false;
@@ -316,7 +319,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     enhancer.chip.classList.add('fv-iv-text-btn', 'fv-iv-enhance-tool'); enhancer.chip.querySelector('span')?.classList.add('fv-iv-btn-label');
     // Prompt from a picture or video: a key beside Expand; while it runs the same key stops it. The file only feeds the
     // description (it is not added to the references).
-    const reverseKey = button('fv-iv-icon-btn fv-iv-reverse-tool', {iconName: 'reverse', name: t('Prompt from a picture or video', '从图片或视频生成提示词'), use: t("Pick a picture or video; its description fills the box", '选一张图片或一段视频，生成的描述填入描述框')});
+    const reverseKey = button('fv-iv-icon-btn fv-iv-reverse-tool', {iconName: 'reverse', name: t('Prompt from an image or video', '从图片或视频生成提示词'), use: t("Pick an image or video; its prompt fills the box", '选一张图片或一段视频，生成的提示词填入提示词框')});
     promptBar.append(refAdd, sketchAdd, layoutAdd, enhancer.chip, el('span', 'fv-iv-grow'), promptCount, reverseKey, expand.element);
     // The row stays on one line inside the panel, Expand at the same inset as the box: when its words do not fit (a
     // narrow panel, longer words), its keys keep their icons only (their hover cards still name them). Measured again
@@ -334,12 +337,12 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     promptGroup.body.append(enhancer.element, promptBar);
 
     // References.
-    const refGroup = section('refs', {title: t('Reference pictures', '参考图'), iconName: 'refs'});
+    const refGroup = section('refs', {title: t('Reference images', '参考图'), iconName: 'refs'});
     const strip = el('div', 'fv-image-references fv-iv-refs'), notice = el('p', 'fv-image-notice'); notice.hidden = true; notice.setAttribute('aria-hidden', 'true');
     const refNote = el('p', 'fv-iv-note');
     const pick = el('input'); pick.type = 'file'; pick.accept = 'image/*'; pick.multiple = true; pick.hidden = true;
     promptGroup.body.append(strip, refNote, notice, pick);
-    const refHeadAdd = button('fv-iv-icon-btn fv-iv-sec-add', {iconName: 'plus', name: t('Add a reference picture', '添加参考图'), use: t('From works, the library or this computer', '从作品、素材库或电脑选择')});
+    const refHeadAdd = button('fv-iv-icon-btn fv-iv-sec-add', {iconName: 'plus', name: t('Add a reference image', '添加参考图'), use: t('From creations, the library or this computer', '从作品、素材库或电脑选择')});
     refHeadAdd.addEventListener('click', () => openRefMenu(refHeadAdd));
     refAdd.addEventListener('click', () => openRefMenu(refAdd));
     refGroup.tools.append(refHeadAdd);
@@ -352,7 +355,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     advGroup.element.classList.add('fv-image-advanced');
     const advanced = {get open() { return advGroup.isOpen(); }, set open(value) { advGroup.open(!!value); }};
     const seedInput = el('input'); seedInput.type = 'number'; seedInput.min = '0'; seedInput.max = String(2 ** 53 - 1); seedInput.step = '1';
-    seedInput.placeholder = t('New each run', '每次随机'); tip(seedInput, t('Seed', '种子'), t('Empty: new each time; a number repeats a picture', '留空每次不同；填数字可复现同一张'));
+    seedInput.placeholder = t('New each run', '每次随机'); tip(seedInput, t('Seed', '种子'), t('Empty: new each time; a number repeats an image', '留空每次不同；填数字可复现同一张'));
     const dice = button('fv-iv-icon-btn', {iconName: 'dice', name: t('Random seed', '随机种子'), use: t('Fill in a random seed', '填入一个随机种子')});
     dice.addEventListener('click', () => { seedInput.value = String(randomSeed()); render(); });
     seedInput.addEventListener('input', () => render());
@@ -384,10 +387,10 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     go.append(goFill, goLabel, goSub);
     leftFoot.append(slot, note, go);
     const leftRail = el('div', 'fv-iv-rail');
-    const railOpen = button('fv-iv-icon-btn', {iconName: 'panelL', name: t('Show settings', '展开设置栏'), use: t('Model, prompt, size and more', '模型、描述、尺寸等')});
+    const railOpen = button('fv-iv-icon-btn', {iconName: 'panelL', name: t('Show settings', '展开设置栏'), use: t('Model, prompt, size and more', '模型、提示词、尺寸等')});
     const railGen = button('fv-iv-icon-btn fv-iv-rail-go', {iconName: 'gen'});
     leftRail.append(railOpen, el('i', 'fv-iv-rail-sep'), ...['model', 'prompt', 'refs', 'size'].map(name => {
-        const b = button('fv-iv-icon-btn', {iconName: name, name: {model: t('Model', '模型'), prompt: t('Prompt', '描述'), refs: t('Reference pictures', '参考图'), size: t('Frame & size', '画幅与尺寸')}[name], use: t('Open the settings at this group', '展开设置栏并跳到这一组')});
+        const b = button('fv-iv-icon-btn', {iconName: name, name: {model: t('Model', '模型'), prompt: t('Prompt', '提示词'), refs: t('Reference images', '参考图'), size: t('Frame & size', '画幅与尺寸')}[name], use: t('Open the settings at this group', '展开设置栏并跳到这一组')});
         b.addEventListener('click', () => { setPanel('left', true); const s = inputs.querySelector(`[data-section=${name}]`); s?.scrollIntoView({block: 'nearest'}); });
         return b;
     }), el('span', 'fv-iv-grow'), railGen);
@@ -410,7 +413,10 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     const clearStep = () => { stepURL = ''; stepPicture.removeAttribute('src'); stepFrame.hidden = true; block.classList.remove('fv-image-block-low'); };
     const block = el('div', 'fv-image-block'), progressText = el('p', 'fv-image-progress');
     const progressLine = el('b'), progressSub = el('span'), runReport = el('div', 'fv-image-run-report');
-    progressLine.setAttribute('role', 'status'); progressText.append(progressLine, progressSub); block.append(progressText, runReport);
+    // While the page waits for FreeVideo to come back (#1121): a button that stops waiting, beside the waiting line.
+    const stopWaiting = el('button', 'fv-action fv-image-stop-waiting'); stopWaiting.type = 'button'; stopWaiting.hidden = true;
+    stopWaiting.onclick = () => { if (running?.id) jobs.stopWaiting(running.id); };
+    progressLine.setAttribute('role', 'status'); progressText.append(progressLine, progressSub, stopWaiting); block.append(progressText, runReport);
     const meter = el('i', 'fv-iv-meter');
     // The video's rising wave: it reads the level from this element, as in the studio.
     const sceneHost = el('div', 'fv-iv-scene'), level = el('div'); level.hidden = true; sceneHost.append(level);
@@ -419,7 +425,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     for (const key of cn ? ['fox', 'window', 'perfume', 'fjord'] : ['jazz', 'window', 'perfume', 'fjord']) {
         const b = el('button'), i = el('img'); b.type = 'button'; i.alt = ''; i.draggable = false; i.src = new URL(`./assets/tour/sample-${key}.webp`, import.meta.url).href;
         if (key === 'jazz') i.style.objectPosition = '50% 0';
-        tip(b, t('Try this prompt', '试试这条描述'), SAMPLE_PROMPTS[key].slice(0, 48) + '…'); b.append(i);
+        tip(b, t('Try this prompt', '试试这条提示词'), SAMPLE_PROMPTS[key].slice(0, 48) + '…'); b.append(i);
         b.onclick = () => { prompt.value = SAMPLE_PROMPTS[key]; prompt.dispatchEvent(new Event('input', {bubbles: true})); promptGroup.open(true); prompt.focus(); };
         grid.append(b);
     }
@@ -447,21 +453,21 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     const cap = el('div', 'fv-iv-cap fv-image-actions sgf-avoid');
     const info_ = el('p', 'fv-image-info fv-iv-cap-info'), infoText = el('span'), doneReport = el('span', 'fv-image-done-report');
     // The picture's facts, the prompt among them (selectable, to copy), one click from its caption.
-    const infoBtn = button('fv-iv-icon-btn fv-iv-info-btn', {iconName: 'info', name: t('About this picture', '图片信息'), use: t('Prompt, model, size and time', '提示词、模型、尺寸和用时'), key: 'I'});
-    const infoPop = el('div', 'fv-iv-info'); infoPop.setAttribute('aria-label', t('About this picture', '图片信息'));
-    infoBtn.addEventListener('click', () => { if (rightTab === 'info' && column.dataset.collapsed !== 'true') setRightTab('works'); else { setRightTab('info'); setPanel('right', true); } });
+    const infoBtn = button('fv-iv-icon-btn fv-iv-info-btn', {iconName: 'info', name: t('About this image', '图片信息'), use: t('Prompt, model, size and time', '提示词、模型、尺寸和用时'), key: 'I'});
+    const infoPop = el('div', 'fv-iv-info'); infoPop.setAttribute('aria-label', t('About this image', '图片信息'));
+    infoBtn.addEventListener('click', () => { if (workColumn.tab === 'info' && column.dataset.collapsed !== 'true') setRightTab('works'); else { setRightTab('info'); setPanel('right', true); } });
     info_.append(infoBtn, infoText, doneReport);
     const editThis = button('fv-iv-text-btn fv-image-action', {iconName: 'edit', label: t('Edit', '编辑'), name: t('Edit', '编辑'), use: t('Make a new version: it becomes Image 1', '以这张为图 1，描述要改的地方')});
-    const asReference = button('fv-iv-text-btn fv-image-action', {iconName: 'asref', label: t('Use as reference', '用作参考图'), name: t('Use as reference', '用作参考图'), use: t('Add it to the reference pictures', '加入参考图')});
+    const asReference = button('fv-iv-text-btn fv-image-action', {iconName: 'asref', label: t('Use as reference', '用作参考图'), name: t('Use as reference', '用作参考图'), use: t('Add it to the reference images', '加入参考图')});
     const favBtn = button('fv-iv-icon-btn fv-iv-fav-btn', {iconName: 'star'});
     const save = el('a', 'fv-iv-icon-btn fv-iv-btn fv-image-action'); save.setAttribute('download', ''); save.append(icon('down'));
-    tip(save, t('Download', '下载'), t('Save the full-size picture', '保存原尺寸图片'));
+    tip(save, t('Download', '下载'), t('Save the full-size image', '保存原尺寸图片'));
     const moreButton = button('fv-iv-icon-btn', {iconName: 'more', name: t('More', '更多'), use: t('Folder, copy prompt, delete', '打开文件夹、复制提示词、删除')});
     moreButton.setAttribute('aria-haspopup', 'true');
     const more = el('div', 'fv-iv-menu fv-image-more fv-glass fv-g3'); more.hidden = true; more.setAttribute('role', 'menu');
     const menuItem = (iconName, text, use, onClick, cls = '') => { const b = el('button', 'fv-iv-menu-item ' + cls); b.type = 'button'; b.setAttribute('role', 'menuitem'); b.append(icon(iconName), el('span', '', text)); tip(b, text, use); b.addEventListener('click', () => { more.hidden = true; onClick(); }); return b; };
     const copyPrompt = () => { void copyText(promptFor(shownFile)); };     // with the selection copy where the clipboard API is missing (LAN over http)
-    const usePromptItem = menuItem('prompt', t('Use prompt', '使用提示词'), t('Put its prompt back in the box', '把它的提示词填回描述框'), () => usePrompt(shownFile));
+    const usePromptItem = menuItem('prompt', t('Use prompt', '使用提示词'), t('Put its prompt back in the box', '把它的提示词填回提示词框'), () => usePrompt(shownFile));
     // For MOSS the boxes are part of the prompt: they come back with the words, and MOSS is chosen.
     function usePrompt(file) {
         const text = promptFor(file), boxes = layoutOf[file];
@@ -469,17 +475,17 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         prompt.value = text; prompt.dispatchEvent(new Event('input', {bubbles: true})); promptGroup.open(true);
         if (boxes) { const moss = IMAGE_MODELS.find(m => m.id === MOSS); if (moss && model.id !== MOSS) chooseModel(moss); layout.set(boxes); }
     }
-    more.append(menuItem('folder', t('Open folder', '打开文件夹'), t('Show the pictures on this computer', '在电脑上打开保存图片的文件夹'), () => void openFolder()),
-        menuItem('copy', t('Copy prompt', '复制提示词'), t('Copy the words this picture was made from', '复制这张图的提示词'), copyPrompt), usePromptItem,
+    more.append(menuItem('folder', t('Open folder', '打开文件夹'), t('Show the images on this computer', '在电脑上打开保存图片的文件夹'), () => void openFolder()),
+        menuItem('copy', t('Copy prompt', '复制提示词'), t('Copy the words this image was made from', '复制这张图的提示词'), copyPrompt), usePromptItem,
         menuItem('trash', t('Delete', '删除'), t('Move to recently deleted; can be undone', '移到最近删除，可以撤销'), () => deleteFiles([shownFile]), 'fv-iv-danger'));
     const moreHost = el('span', 'fv-image-more-host fv-iv-more-host'); moreHost.append(moreButton, more);
     // Where there is room the menu's actions sit in the row itself; the menu is left for a phone.
     const inline = el('span', 'fv-iv-cap-inline');
     const inlineBtn = (iconName, name, use, onClick, cls = '') => { const b = button('fv-iv-icon-btn ' + cls, {iconName, name, use}); b.addEventListener('click', onClick); return b; };
-    const copyInline = inlineBtn('copy', t('Copy prompt', '复制提示词'), t('Copy the words this picture was made from', '复制这张图的提示词'), copyPrompt);
-    const useInline = inlineBtn('prompt', t('Use prompt', '使用提示词'), t('Put its prompt back in the box', '把它的提示词填回描述框'), () => usePromptItem.click());
+    const copyInline = inlineBtn('copy', t('Copy prompt', '复制提示词'), t('Copy the words this image was made from', '复制这张图的提示词'), copyPrompt);
+    const useInline = inlineBtn('prompt', t('Use prompt', '使用提示词'), t('Put its prompt back in the box', '把它的提示词填回提示词框'), () => usePromptItem.click());
     inline.append(copyInline, useInline,
-        inlineBtn('folder', t('Open folder', '打开文件夹'), t('Show the pictures on this computer', '在电脑上打开保存图片的文件夹'), () => void openFolder()),
+        inlineBtn('folder', t('Open folder', '打开文件夹'), t('Show the images on this computer', '在电脑上打开保存图片的文件夹'), () => void openFolder()),
         inlineBtn('trash', t('Delete', '删除'), t('Move to recently deleted; can be undone', '移到最近删除，可以撤销'), () => deleteFiles([shownFile]), 'fv-iv-danger'));
     const capActions = el('div', 'fv-iv-cap-actions'); capActions.append(editThis, asReference, el('i', 'fv-iv-sep'), favBtn, save, inline, moreHost);
     cap.append(info_, capActions);
@@ -492,30 +498,30 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         if (model_) parts.push(row(t('Model', '模型'), model_));
         const w = picture.dataset.file === shownFile && picture.naturalWidth ? picture.naturalWidth : m.width, h = picture.dataset.file === shownFile && picture.naturalHeight ? picture.naturalHeight : m.height;
         if (w) parts.push(row(t('Size', '尺寸'), `${w} × ${h} · ${megapixels(w * h)} MP`));
-        if (m.seconds) parts.push(row(t('Time', '用时'), t(`${m.seconds} s`, `${m.seconds} 秒`)));
+        if (m.seconds) parts.push(row(t('Time', '用时'), t('{seconds} s', '{seconds} 秒', { seconds: m.seconds })));
         if (m.seed) parts.push(row(t('Seed', '种子'), String(m.seed)));
         const drawn = layoutOf[shownFile]?.length;
-        if (drawn) parts.push(row(t('Layout', '布局'), t(`${drawn} ${drawn === 1 ? 'box' : 'boxes'}`, `${drawn} 个框`)));
+        if (drawn) parts.push(row(t('Layout', '布局'), (drawn === 1 ? t('1 box', '1 个框') : t('{count} boxes', '{count} 个框', { count: drawn }))));
         // Where it came from (an edit of another work): its thumbnail and name, opening it on the stage.
         if (m.source) {
             const name = String(m.source).slice(String(m.source).lastIndexOf('/') + 1), there = rows.find(r => r.file === m.source || r.name === name);
             const line = el('div', 'fv-iv-info-row fv-iv-info-row-src'), go = el('button', 'fv-iv-info-src'); go.type = 'button';
             if (there) { const img = el('img'); img.src = thumbURL(there.file); img.alt = ''; img.loading = 'lazy'; go.append(img); }
             go.append(el('span', '', name));
-            if (there) { tip(go, t('Open the source', '打开来源'), t('Show the work this picture was made from', '显示这张图的来源作品')); go.addEventListener('click', () => showFile(there.file)); }
-            else { go.disabled = true; tip(go, t('Source', '来源'), t('The source is no longer in the works', '来源作品已不在作品里')); }
+            if (there) { tip(go, t('Open the source', '打开来源'), t('Show the creation this image was made from', '显示这张图的来源作品')); go.addEventListener('click', () => showFile(there.file)); }
+            else { go.disabled = true; tip(go, t('Source', '来源'), t('The source is no longer in the creations', '来源作品已不在作品里')); }
             line.append(el('span', 'fv-iv-info-k', t('Source', '来源')), go); parts.push(line);
         }
-        if (!text) parts.push(el('p', 'fv-iv-info-none', t('Prompts are not kept in this browser; one shows while the page that made the picture is open.', '提示词不保存在浏览器里，只在生成它的页面打开期间显示。')));
+        if (!text) parts.push(el('p', 'fv-iv-info-none', t('Prompts are not kept in this browser; one shows while the page that made the image is open.', '提示词不保存在浏览器里，只在生成它的页面打开期间显示。')));
         if (text || drawn) {
             const acts = el('div', 'fv-iv-info-acts');
-            const copy = button('fv-iv-text-btn', {iconName: 'copy', label: t('Copy prompt', '复制提示词'), name: t('Copy prompt', '复制提示词'), use: t('Copy the words this picture was made from', '复制这张图的提示词')});
+            const copy = button('fv-iv-text-btn', {iconName: 'copy', label: t('Copy prompt', '复制提示词'), name: t('Copy prompt', '复制提示词'), use: t('Copy the words this image was made from', '复制这张图的提示词')});
             copy.addEventListener('click', copyPrompt);
-            const reuse = button('fv-iv-text-btn', {iconName: 'prompt', label: t('Use prompt', '使用提示词'), name: t('Use prompt', '使用提示词'), use: t('Put its prompt back in the box', '把它的提示词填回描述框')});
+            const reuse = button('fv-iv-text-btn', {iconName: 'prompt', label: t('Use prompt', '使用提示词'), name: t('Use prompt', '使用提示词'), use: t('Put its prompt back in the box', '把它的提示词填回提示词框')});
             reuse.addEventListener('click', () => { usePrompt(shownFile); if (narrowQuery.matches || tallQuery.matches) setPanel('left', true); });
             acts.append(...(text ? [copy] : []), reuse); parts.push(acts);
         }
-        if (!shownFile) { const e = el('div', 'fv-iv-empty fv-iv-empty-small'); e.append(icon('info'), el('span', '', t('Pick a picture to see its facts', '选一张图片查看信息'))); parts.splice(0, parts.length, e); }
+        if (!shownFile) { const e = el('div', 'fv-iv-empty fv-iv-empty-small'); e.append(icon('info'), el('span', '', t('Pick an image to see its facts', '选一张图片查看信息'))); parts.splice(0, parts.length, e); }
         infoPop.replaceChildren(...parts);
     }
     // The picture is centred in the room above; the action row stays at the foot of the stage whatever the picture's shape.
@@ -568,13 +574,13 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         if (globalThis.FreeVideoShell?.setTheme) globalThis.FreeVideoShell.setTheme(next); else document.documentElement.dataset.theme = next;
         paintSettings();
     });
-    const KEYS = [[`${mod}+Enter`, t('Generate', '生成')], ['← →', t('Previous / next picture', '上一张 / 下一张')], ['F', t('Star or unstar', '收藏 / 取消收藏')], [`${mod} / Shift`, t('Pick several works to compare', '多选作品即可对比')], ['I', t('Picture facts', '图片信息')], ['Delete', t('Delete (to recently deleted)', '删除（移到最近删除）')],
-        [`${mod}+F`, t('Search works', '搜索作品')], [`${mod}+A`, t('Select all while selecting', '多选时全选')], ['Esc', t('Close the top layer', '关闭最上层')]];
+    const KEYS = [[`${mod}+Enter`, t('Generate', '生成')], ['← →', t('Previous / next image', '上一张 / 下一张')], ['F', t('Add to or remove from favorites', '收藏 / 取消收藏')], [`${mod} / Shift`, t('Pick several creations to compare', '多选作品即可对比')], ['I', t('Image facts', '图片信息')], ['Delete', t('Delete (to recently deleted)', '删除（移到最近删除）')],
+        [`${mod}+F`, t('Search creations', '搜索作品')], [`${mod}+A`, t('Select all while selecting', '多选时全选')], ['Esc', t('Close the top layer', '关闭最上层')]];
     keysPop.append(...KEYS.map(([k, what]) => { const r = el('div', 'fv-iv-key-row'); r.append(el('span', '', what), el('kbd', 'fv-iv-kbd', k)); return r; }));
     keysBtn.addEventListener('click', () => { keysPop.hidden = !keysPop.hidden; keysBtn.setAttribute('aria-pressed', String(!keysPop.hidden)); });
     function paintStatus() {
         const live = rows.filter(r => !isGone(r.file)).length;
-        sbarState.replaceChildren(el('i', 'fv-iv-dot' + (info ? '' : ' fv-iv-dot-wait')), el('span', '', info ? t(`Ready · ${live} pictures`, `就绪 · ${live} 张`) : t('Connecting…', '正在连接…')));
+        sbarState.replaceChildren(el('i', 'fv-iv-dot' + (info ? '' : ' fv-iv-dot-wait')), el('span', '', info ? t('Ready · {live} images', '就绪 · {live} 张', { live }) : t('Connecting…', '正在连接…')));
     }
     paintSettings();
 
@@ -594,39 +600,14 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         onPurge: () => { void trash.flush(); },
         onOpenFolder: () => void openFolder(),
         onCollapse: () => setPanel('right', false), onRun: () => returnToRun()});
-    const rightRail = el('div', 'fv-iv-rail fv-iv-rail-right');
-    const rightRailOpen = button('fv-iv-icon-btn', {iconName: 'panelR', name: t('Show works', '展开作品栏'), use: t('Your pictures, newest first', '你的图片，最新在前')});
-    const railThumbs = el('div', 'fv-iv-rail-thumbs');
-    rightRail.append(rightRailOpen, el('i', 'fv-iv-rail-sep'), railThumbs);
-    // The right column's three pages: works, the shown picture's facts, and the queue of every view.
-    const colHead = el('div', 'fv-iv-panel-head fv-iv-col-head');
-    const tabs = el('div', 'fv-iv-seg fv-iv-col-tabs'); tabs.setAttribute('role', 'tablist');
-    const tabWorks = button('', {label: t('Works', '作品'), name: t('Works', '作品'), use: t('Every picture made here', '在这里生成的所有图片')});
-    const tabInfo = button('', {label: t('Info', '信息'), name: t('Info', '信息'), use: t('Prompt, model, size and time of the shown picture', '当前图片的提示词、模型、尺寸和用时'), key: 'I'});
-    const tabQueue = button('', {label: t('Queue', '队列'), name: t('Queue', '队列'), use: t('What is generating in every view', '各个视图正在生成和排队的任务')});
-    const tabWorksN = el('span', 'fv-iv-tab-n'), tabQueueN = el('span', 'fv-iv-tab-n'); tabWorks.append(tabWorksN); tabQueue.append(tabQueueN);
-    for (const b of [tabWorks, tabInfo, tabQueue]) b.setAttribute('role', 'tab');
-    tabs.append(tabWorks, tabInfo, tabQueue);
-    const colCollapse = button('fv-iv-icon-btn fv-iv-collapse', {iconName: 'panelR', name: t('Hide works', '收起作品栏'), use: t('More room for the picture', '给画面腾出空间')});
-    colHead.append(tabs, colCollapse);
-    const infoPane = el('div', 'fv-iv-col-pane fv-iv-info-pane'); infoPane.append(infoPop);
+    // The right column (works, info, queue) is the shared component of web/work_column.js.
     const queue = queuePanel({jobs, confirmStop, pictureURL, onOpen: row => openQueued(row)});
-    queue.element.classList.add('fv-iv-col-pane');
-    let rightTab = readStore('freevideo.imageView.rightTab', 'works');
-    function setRightTab(name) {
-        rightTab = name; writeStore('freevideo.imageView.rightTab', name === 'info' ? 'works' : name);
-        column.dataset.tab = name;
-        for (const [b, n] of [[tabWorks, 'works'], [tabInfo, 'info'], [tabQueue, 'queue']]) { b.setAttribute('aria-pressed', String(n === name)); b.setAttribute('aria-selected', String(n === name)); }
-        works.element.hidden = name !== 'works'; infoPane.hidden = name !== 'info'; queue.element.hidden = name !== 'queue';
-        infoBtn.setAttribute('aria-pressed', String(name === 'info'));
-        if (name === 'info') paintInfo();
-    }
-    tabWorks.addEventListener('click', () => setRightTab('works'));
-    tabInfo.addEventListener('click', () => setRightTab('info'));
-    tabQueue.addEventListener('click', () => setRightTab('queue'));
-    colCollapse.addEventListener('click', () => setPanel('right', false));
-    column.addEventListener('fv-iv-queue', event => { tabQueueN.textContent = event.detail.active ? String(event.detail.active) : ''; });
-    column.append(colHead, works.element, infoPane, queue.element, rightRail);
+    const workColumn = createWorkColumn({works, info: infoPop, queue, storeKey: 'freevideo.imageView.rightTab',
+        onCollapse: () => setPanel('right', false), onOpen: () => setPanel('right', true),
+        onTab: name => { infoBtn.setAttribute('aria-pressed', String(name === 'info')); if (name === 'info') paintInfo(); }});
+    const setRightTab = name => workColumn.setTab(name);
+    const railThumbs = workColumn.railThumbs;
+    workColumn.mount(column);
     // A queued row opens its own generation screen: here for a picture, in its view otherwise.
     function openQueued(row) {
         if (row.kind === 'image' && (row.view === 'image' || !row.view)) {
@@ -652,7 +633,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             // The engine's own bin answers without a list: what it deleted leaves the works here, not only on the next load.
             if (answer.items) rows = answer.items; else rows = rows.filter(r => !gone.includes(r.file));
             if (gone.length) { meta.forget(gone); void removeSavedImages(api, gone).catch(() => {}); announce('freevideo-works-removed', gone, {undoable: false}); }
-            if (kept.size) say(t(`Could not delete ${kept.size}.`, `有 ${kept.size} 张没能删除。`));
+            if (kept.size) say(t('Could not delete {size}.', '有 {size} 张没能删除。', { size: kept.size }));
             if (undoNote && list?.some(f => undoNote.files.includes(f))) undoNote = null;
         }
         if (alive) { drawWorks(); render(); }
@@ -661,28 +642,10 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     // ───── Panels fold to a rail; the stage stays centred on the window either way ─────
     // Under 1280 wide both panels rest as rails and open as drawers over the stage, one at a time, so the picture
     // keeps the room; the stage still measures from the two rails, so it stays centred. Wide, they dock and fold.
-    const narrowQuery = matchMedia('(min-width: 720px) and (max-width: 1279px)');
-    // A tall window (portrait, wider than a phone): the settings open as a drawer over the works, and the works panel
-    // opens below them, taking the height they leave (at least 320 px), so it never narrows them from the side.
     const tallQuery = matchMedia('(orientation: portrait) and (min-width: 720px)');
-    let drawer = '', below = false;
-    function paintPanels() {
-        if (tallQuery.matches) {
-            if (drawer === 'right') drawer = '';
-            left.dataset.collapsed = String(drawer !== 'left'); column.dataset.collapsed = String(!below);
-            body.dataset.tall = 'true'; body.dataset.below = String(below); body.dataset.narrow = 'true'; body.dataset.drawer = drawer;
-            body.dataset.left = 'rail'; body.dataset.right = 'rail';
-            paintCover(); fitTallSoon();
-            return;
-        }
-        delete body.dataset.tall; delete body.dataset.below;
-        const narrow = narrowQuery.matches;
-        const leftShown = narrow ? drawer === 'left' : panels.left !== false, rightShown = narrow ? drawer === 'right' : panels.right !== false;
-        left.dataset.collapsed = String(!leftShown); column.dataset.collapsed = String(!rightShown);
-        body.dataset.narrow = String(narrow); body.dataset.drawer = narrow ? drawer : '';
-        body.dataset.left = leftShown && !narrow ? 'open' : 'rail'; body.dataset.right = rightShown && !narrow ? 'open' : 'rail';
-        paintCover();
-    }
+    const narrowQuery = matchMedia('(min-width: 720px) and (max-width: 1279px)');
+    const shell = createPanelShell({body, left, right: column, stage, panels, save: () => writeStore(PANEL_KEY, panels),
+        onPaint: () => { paintCover(); if (tallQuery.matches) fitTallSoon(); }, onOpenLeft: () => fitSoon()});
     // The next picture's empty frame is shown whole where the stage is not covered: an open settings drawer (narrow
     // windows) covers its left part, so the frame centres in the rest.
     function paintCover() {
@@ -693,17 +656,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         }
         shot.style.setProperty('--iv-cover', `${cover}px`);
     }
-    function setPanel(side, open) {
-        if (tallQuery.matches && side === 'right') below = open;
-        else if (tallQuery.matches || narrowQuery.matches) drawer = open ? side : drawer === side ? '' : drawer;
-        else { panels[side] = open; writeStore(PANEL_KEY, panels); }
-        paintPanels(); if (open && side === 'left') fitSoon();
-    }
-    narrowQuery.addEventListener('change', () => { drawer = ''; paintPanels(); fitSoon(); });
-    tallQuery.addEventListener('change', () => { drawer = ''; below = false; paintPanels(); fitSoon(); });
-    // A drawer closes when the stage is touched; on a tall window, when anything outside it is.
-    stage.addEventListener('pointerdown', () => { if (drawer) { drawer = ''; paintPanels(); } });
-    body.addEventListener('pointerdown', event => { if (tallQuery.matches && drawer === 'left' && !left.contains(event.target)) { drawer = ''; paintPanels(); } });
+    const setPanel = shell.setPanel, paintPanels = shell.paint;
     // The works grid on a tall window (the four samples, or three or four works compared): of one to four columns, the
     // layout that gives each picture the most room in the width and height there are; it keeps to the top. With the
     // works panel open below, the panel takes the height the grid leaves.
@@ -732,7 +685,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         if (stage.dataset.mode === 'compare' && comparer.element.dataset.mode === 'grid' && panes) {
             const files = compare?.files || [], ratios = files.map(file => { const m = meta.get(file); return m?.width ? m.width / m.height : 0; }).filter(r => r > 0);
             const ratio = ratios.length ? ratios.reduce((a, b) => a + b, 0) / ratios.length : 1;
-            const extra = below ? now - (TALL_PANEL + 12) : 0, height = panes.clientHeight + extra;
+            const extra = shell.below() ? now - (TALL_PANEL + 12) : 0, height = panes.clientHeight + extra;
             const g = bestGrid(files.length, ratio, panes.clientWidth, height, 12);
             if (g) {
                 for (const [name, value] of [['--iv-cols', g.cols], ['--iv-rows', g.rows], ['--iv-tw', `${g.w}px`], ['--iv-th', `${g.h}px`]]) panes.style.setProperty(name, String(value));
@@ -741,7 +694,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         } else if (stage.dataset.state === 'blank') {
             const pictures = [...grid.querySelectorAll('img')], first = pictures.find(i => i.naturalWidth);
             const ratio = first ? first.naturalWidth / first.naturalHeight : 1;
-            const extra = below ? now - (TALL_PANEL + 12) : 0, height = canvasArea.clientHeight - 88 + extra;
+            const extra = shell.below() ? now - (TALL_PANEL + 12) : 0, height = canvasArea.clientHeight - 88 + extra;
             const g = bestGrid(pictures.length, ratio, canvasArea.clientWidth, height, 12);
             if (g) {
                 for (const [name, value] of [['--iv-cols', g.cols], ['--iv-rows', g.rows]]) shot.style.setProperty(name, String(value));
@@ -749,7 +702,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
                 used = 1; spare = height - g.height;
             }
         }
-        const want = below ? Math.round(TALL_PANEL + 12 + (used ? Math.max(0, spare) : 0)) : 0;
+        const want = shell.below() ? Math.round(TALL_PANEL + 12 + (used ? Math.max(0, spare) : 0)) : 0;
         if (want) { if (Math.abs(want - now) > 1 || !body.style.getPropertyValue('--iv-below')) body.style.setProperty('--iv-below', `${want}px`); }
         else body.style.removeProperty('--iv-below');
     }
@@ -759,9 +712,8 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     comparer.element.addEventListener('load', () => { if (tallQuery.matches) fitTallSoon(); }, true);
     leftCollapse.addEventListener('click', () => setPanel('left', false));
     railOpen.addEventListener('click', () => setPanel('left', true));
-    rightRailOpen.addEventListener('click', () => setPanel('right', true));
     railGen.addEventListener('click', () => go.click());
-    paintPanels(); setRightTab(rightTab);
+    paintPanels(); setRightTab(workColumn.tab);
 
     // ───── Drop and paste ─────
     for (const target of [inputs, frame]) {
@@ -799,8 +751,8 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         });
         return [icon('info'), tx];
     }
-    const label = number => t(`Image ${number}`, `图 ${number}`);
-    const subject = number => t(`Subject ${number}`, `主体 ${number}`);
+    const label = number => t('Image {number}', '图 {number}', { number });
+    const subject = number => t('Subject {number}', '主体 {number}', { number });
     // Each model row says how many pictures it takes; the strip holds as many as the most generous one.
     // Until the engine answers, each model's usual reference count, so the strip has its final height from the first frame.
     const USUAL_CAPS = {'minimax-h3-image': 16, 'qwen-image-2.1-turbo': 4, 'moss-image-sft': 0};
@@ -818,7 +770,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         }
         // The note stays until the strip changes again.
         notice.dataset.keep = String(skipped > 0);
-        notice.textContent = skipped ? t(`At most ${most()}, ${skipped} more were not added.`, `最多 ${most()} 张，多出的 ${skipped} 张没有加入。`) : '';
+        notice.textContent = skipped ? t('At most {most}, {skipped} more were not added.', '最多 {most} 张，多出的 {skipped} 张没有加入。', { most: most(), skipped }) : '';
         render();
     }
     async function useAsReference(file, first) {
@@ -830,7 +782,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             changeRefs(() => { if (first) references.unshift(record); else references.push(record); });
             const probe = new Image(); probe.onload = () => { record.width = probe.naturalWidth; record.height = probe.naturalHeight; if (alive) render(); }; probe.src = record.url;
             promptGroup.open(true); render(); prompt.focus();
-        } catch { say(t('That picture could not be read.', '这张图读不了。')); }
+        } catch { say(t('That image could not be read.', '这张图读不了。')); }
     }
     // Any change to the pictures' order goes through here: the mentions in the prompt follow their pictures.
     function changeRefs(mutate) {
@@ -845,8 +797,8 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     // The engine reads <Picture N>; the page writes "@图N" / "@Image N" (and older prompts "图 N"). A prompt that names none gets them
     // listed, all but the sketches: the words around the description name those.
     function engineText(seed) {
-        const swapped = mentionsToEngine(prompt.value, references.length).replace(/(?:图\s?|Image\s)(\d+)/g, (_, n) => `<Picture ${n}>`)
-            .replace(/(?:主体\s?|Subject\s)(\d+)/g, (_, n) => `<Subject ${n}>`);
+        const swapped = mentionsToEngine(prompt.value, references.length).replace(PICTURE_WORDS, (_, n) => `<Picture ${n}>`)
+            .replace(SUBJECT_WORDS, (_, n) => `<Subject ${n}>`);
         // A sketch with mannequins takes the pose words (the other pictures listed in front when the text names none).
         const poseAt = references.findIndex((r, at) => r.sketch && r.pose && at < cap_(model));
         if (poseAt >= 0) {
@@ -870,7 +822,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     // The sketch canvas: the current frame, its long side at most 1536; a sketch opens again with its strokes.
     function sketchTarget() { const s = size(), k = Math.min(1, 1536 / Math.max(s.width, s.height)); return {width: Math.max(256, Math.round(s.width * k / 32) * 32), height: Math.max(256, Math.round(s.height * k / 32) * 32)}; }
     async function drawSketch(record = null) {
-        if (cap_(model) === 0) { say(t(`${model.short} does not take reference pictures; choose the other model`, `${model.short} 不使用参考图，请换另一个模型`)); return; }
+        if (cap_(model) === 0) { say(t('{short} does not take reference images; choose the other model', '{short} 不使用参考图，请换另一个模型', { short: model.short })); return; }
         if (!record && references.length >= most()) { say(t('The reference slots are full; remove one', '参考图已满，先移除一张')); return; }
         let outcome;
         try {
@@ -901,7 +853,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             const {openImageEditor} = await import('./image_editor.js').catch(error => { loadFailed = true; throw error; });
             outcome = await openImageEditor({source: record.original?.url || record.url, name: record.original?.file?.name || record.file?.name || 'reference.png', edit: record.edit || null,
                 role: 'reference', t, resolve: url => url, upload: async blob => client.upload(blob), imageGenClient: client});
-        } catch { say(loadFailed ? t('The image editor did not load. Reload the page and try again.', '图片编辑器没有加载出来。请刷新页面后再试。') : t('This picture could not be read. Choose another picture.', '这张图无法读取。请重新选择一张。')); return; }
+        } catch { say(loadFailed ? t('The image editor did not load. Reload the page and try again.', '图片编辑器没有加载出来。请刷新页面后再试。') : t('This image could not be read. Choose another image.', '这张图无法读取。请重新选择一张。')); return; }
         if (!alive || !outcome || !references.includes(record)) return;
         if (outcome.restore) { restoreReference(record); return; }
         if (!outcome.blob) return;
@@ -923,8 +875,8 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             const cell = el('span', 'fv-image-reference fv-iv-ref'), use = el('button', 'fv-image-reference-use'), x = el('button', 'fv-image-reference-remove');
             cell.dataset.over = String(at >= cap_(model)); cell.dataset.edited = String(!!r.original);
             use.type = x.type = 'button';
-            tip(use, t('Edit', '编辑'), r.original ? t(`${label(at + 1)}, edited. Crop or retouch it again`, `${label(at + 1)}（已编辑）：继续裁剪或修图`) : t(`Crop or retouch ${label(at + 1)}; it stays in its place`, `裁剪或修图${label(at + 1)}，改完放回原位`));
-            tip(x, t('Remove', '移除'), cell.dataset.over === 'true' ? t(`${model.short} takes ${cap_(model)}; remove this one`, `${model.short} 最多 ${cap_(model)} 张，请移除这张`) : t('Take this picture out', '去掉这张参考图'));
+            tip(use, t('Edit', '编辑'), r.original ? t('{name}, edited. Crop or retouch it again', '{name}（已编辑）：继续裁剪或修图', { name: label(at + 1) }) : t('Crop or retouch {name}; it stays in its place', '裁剪或修图{name}，改完放回原位', { name: label(at + 1) }));
+            tip(x, t('Remove', '移除'), cell.dataset.over === 'true' ? t('{short} takes {limit}; remove this one', '{short} 最多 {limit} 张，请移除这张', { short: model.short, limit: cap_(model) }) : t('Take this image out', '去掉这张参考图'));
             x.append(icon('x'));
             const i = el('img'); i.src = r.url; i.alt = ''; i.draggable = false; use.append(i, el('b', '', String(at + 1)));
             use.onclick = () => void editReference(r);
@@ -935,7 +887,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             if (r.original) {
                 const mark = el('i', 'fv-iv-ref-mark'); mark.append(icon('edit'));
                 const back = el('button', 'fv-iv-ref-restore'); back.type = 'button'; back.append(icon('restore'));
-                tip(back, t('Restore original', '恢复原图'), t('Put back the picture as it was before editing', '换回编辑前的原图'));
+                tip(back, t('Restore original', '恢复原图'), t('Put back the image as it was before editing', '换回编辑前的原图'));
                 back.onclick = () => restoreReference(r);
                 cell.append(mark, back);
             }
@@ -945,7 +897,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         // With pictures in the strip, one more small tile adds the next; with none, the tool row's button is the way in.
         if (room && references.length) {
             const add = el('button', 'fv-image-add fv-iv-ref fv-iv-ref-add'); add.type = 'button'; add.append(icon('plus'));
-            tip(add, t('Add a reference picture', '添加参考图'), t('From works, the library or this computer; or drop or paste', '从作品、素材库或电脑选择；也可拖入或粘贴'));
+            tip(add, t('Add a reference image', '添加参考图'), t('From creations, the library or this computer; or drop or paste', '从作品、素材库或电脑选择；也可拖入或粘贴'));
             add.onclick = () => openRefMenu(add);
             cells.push(add);
         }
@@ -954,9 +906,9 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         // No running count; only a full strip says so.
         refCount.textContent = cap_(model) && references.length >= cap_(model) ? t('Full', '已满') : '';
         refAdd.setAttribute('aria-disabled', String(!room));
-        tip(refAdd, t('Reference pictures', '参考图'), room ? t('Add from works, the library or this computer; or drop or paste', '从作品、素材库或电脑添加；也可拖入或粘贴') : '');
-        if (!room) refAdd.dataset.fvTipWhy = cap_(model) === 0 ? t(`${model.short} does not take reference pictures; choose the other model`, `${model.short} 不使用参考图，请换另一个模型`) : t('The reference slots are full; remove one', '参考图已满，先移除一张'); else delete refAdd.dataset.fvTipWhy;
-        refNote.textContent = info && cap_(model) === 0 && references.length ? t(`${model.short} does not take reference pictures.`, `${model.short} 不使用参考图。`) : '';
+        tip(refAdd, t('Reference images', '参考图'), room ? t('Add from creations, the library or this computer; or drop or paste', '从作品、素材库或电脑添加；也可拖入或粘贴') : '');
+        if (!room) refAdd.dataset.fvTipWhy = cap_(model) === 0 ? t('{short} does not take reference images; choose the other model', '{short} 不使用参考图，请换另一个模型', { short: model.short }) : t('The reference slots are full; remove one', '参考图已满，先移除一张'); else delete refAdd.dataset.fvTipWhy;
+        refNote.textContent = info && cap_(model) === 0 && references.length ? t('{short} does not take reference images.', '{short} 不使用参考图。', { short: model.short }) : '';
         refNote.hidden = !refNote.textContent;
         refHeadAdd.hidden = true;
     }
@@ -999,7 +951,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         const on = enhancer.reversing, why = reverseWhy();
         reverseKey.dataset.state = on ? 'running' : '';
         reverseKey.setAttribute('aria-disabled', String(!on && !!why)); reverseKey.dataset.fvTipWhy = !on && why ? why : ''; if (!why || on) delete reverseKey.dataset.fvTipWhy;
-        tip(reverseKey, on ? t('Stop', '停止') : t('Prompt from a picture or video', '从图片或视频生成提示词'), on ? '' : t('Pick a picture or video; its description fills the box', '选一张图片或一段视频，生成的描述填入描述框'));
+        tip(reverseKey, on ? t('Stop', '停止') : t('Prompt from an image or video', '从图片或视频生成提示词'), on ? '' : t('Pick an image or video; its prompt fills the box', '选一张图片或一段视频，生成的提示词填入提示词框'));
         reverseKey.replaceChildren(icon(on ? 'stop' : 'reverse'));
         go.disabled = go.disabled || on;
     };
@@ -1065,7 +1017,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
 
     // ───── Drawing ─────
     const visible = () => filterRows(rows.filter(r => !isGone(r.file)), {filter, query, sort}, meta);
-    const labelOf = file => { const m = meta.get(file); return [IMAGE_MODELS.find(x => x.id === m?.model)?.short, m?.width ? `${m.width} × ${m.height}` : '', m?.seconds ? t(`${m.seconds} s`, `${m.seconds} 秒`) : ''].filter(Boolean).join(' · ') || t('Picture', '图片'); };
+    const labelOf = file => { const m = meta.get(file); return [IMAGE_MODELS.find(x => x.id === m?.model)?.short, m?.width ? `${m.width} × ${m.height}` : '', m?.seconds ? t('{seconds} s', '{seconds} 秒', { seconds: m.seconds }) : ''].filter(Boolean).join(' · ') || t('Image', '图片'); };
     const runRow = () => running?.id ? jobs.get(running.id) : null;
 
     function paintSlot() {
@@ -1076,21 +1028,24 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         else if (note.textContent) { kind = note.dataset.kind === 'busy' ? 'info' : 'warn'; parts = [icon(kind === 'info' ? 'clock' : 'warn'), el('span', 'fv-iv-slot-tx', note.textContent)]; }
         else if (tooMany) {
             kind = 'warn';
-            parts = [icon('warn'), el('span', 'fv-iv-slot-tx', cap_(model) === 0 ? t(`${model.short} does not take reference pictures. Remove ${over()}.`, `${model.short} 暂不支持参考图，请移除 ${over()} 张。`) : t(`${model.short} takes at most ${cap_(model)}. Remove ${over()}.`, `${model.short} 最多 ${cap_(model)} 张，请移除 ${over()} 张。`))];
+            parts = [icon('warn'), el('span', 'fv-iv-slot-tx', cap_(model) === 0 ? t('{short} does not take reference images. Remove {extra}.', '{short} 暂不支持参考图，请移除 {extra} 张。', { short: model.short, extra: over() }) : t('{short} takes at most {limit}. Remove {extra}.', '{short} 最多 {limit} 张，请移除 {extra} 张。', { short: model.short, limit: cap_(model), extra: over() }))];
         } else if (notice.dataset.keep === 'true' && notice.textContent) { kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', notice.textContent)]; }
         else if (brokenMentions(prompt.value, references.length)) {
-            kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', t('A picture named in the prompt was removed; choose it again with @', '描述里引用的参考图已移除，请用 @ 重新选择'))];
+            kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', t('An image named in the prompt was removed; choose it again with @', '提示词里引用的参考图已移除，请用 @ 重新选择'))];
         }
         else if (s.state === 'failed') {
-            kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', t(`${model.short} download failed${s.reason ? ': ' + s.reason.replace(/[.。]$/, '') : ''}. Retry to continue; if it keeps failing, report the problem.`, `${model.short} 下载失败${s.reason ? '：' + s.reason.replace(/[.。]$/, '') : ''}。请重试以继续下载；仍然失败时，请提交问题。`))];
+            kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', s.reason
+                ? t('{model} download failed: {reason}. Retry to continue; if it keeps failing, report the problem.', '{model} 下载失败：{reason}。请重试以继续下载；仍然失败时，请提交问题。',
+                    { model: model.short, reason: s.reason.replace(/[.。]$/, '') })
+                : t('{model} download failed. Retry to continue; if it keeps failing, report the problem.', '{model} 下载失败。请重试以继续下载；仍然失败时，请提交问题。', { model: model.short }))];
         } else if (s.state === 'downloading' && s.paused) {
             // What the download waits for, and that the model row's Continue download runs it now.
-            kind = 'info'; parts = [icon('clock'), el('span', 'fv-iv-slot-tx', t(`${model.short}: ${pausedText(s)}`, `${model.short}：${pausedText(s)}`))];
+            kind = 'info'; parts = [icon('clock'), el('span', 'fv-iv-slot-tx', t('{short}: {state}', '{short}：{state}', { short: model.short, state: pausedText(s) }))];
         } else if (s.state === 'downloading') {
-            kind = 'info'; parts = [icon(s.unknown ? 'clock' : 'down'), el('span', 'fv-iv-slot-tx', s.verifying ? (pendingGenerate ? t(`Verifying ${model.short}; it generates when done`, `正在校验 ${model.short}，完成后自动生成`) : t(`Verifying ${model.short}`, `正在校验 ${model.short}`))
-                : pendingGenerate ? t(`Installing ${model.short}; it generates when done`, `正在安装 ${model.short}，完成后自动生成`) : t(`Installing ${model.short}`, `正在安装 ${model.short}`))];
+            kind = 'info'; parts = [icon(s.unknown ? 'clock' : 'down'), el('span', 'fv-iv-slot-tx', s.verifying ? (pendingGenerate ? t('Verifying {short}; it generates when done', '正在校验 {short}，完成后自动生成', { short: model.short }) : t('Verifying {short}', '正在校验 {short}', { short: model.short }))
+                : pendingGenerate ? t('Installing {short}; it generates when done', '正在安装 {short}，完成后自动生成', { short: model.short }) : t('Installing {short}', '正在安装 {short}', { short: model.short }))];
         } else if (s.state === 'missing') {
-            kind = 'info'; parts = [icon('cloud'), el('span', 'fv-iv-slot-tx', t(`${model.short} is not installed; Generate installs it first`, `${model.short} 未安装，点生成会先安装`))];
+            kind = 'info'; parts = [icon('cloud'), el('span', 'fv-iv-slot-tx', t('{short} is not installed; Generate installs it first', '{short} 未安装，点生成会先安装', { short: model.short }))];
         } else if (sizeWarning()) { kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', sizeWarning())]; }
         else if (fitted && fitted.file === shownFile) { kind = 'info'; parts = [icon('info'), el('span', 'fv-iv-slot-tx', fittedNote(fitted, t, !!info?.unified_memory))]; }
         else parts = running ? [el('span', 'fv-iv-slot-tx', t('Generating; you can leave this view', '正在生成，可以离开这个视图'))] : [];
@@ -1105,7 +1060,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         const limit = machineLimit(model.id, info, fittedAreas[model.id]), now = size();
         if (!Number.isFinite(limit.area) || now.width * now.height <= limit.area * 1.02) return '';
         const smaller = sizeFor(model.id, ratioValue(shapeOf()), limit.area);
-        return t(`May not fit this computer; it would be made at about ${sizeText(smaller)}`, `这台电脑可能放不下，会自动改为约 ${sizeText(smaller)}`);
+        return t('May not fit this computer; it would be made at about {size}', '这台电脑可能放不下，会自动改为约 {size}', { size: sizeText(smaller) });
     }
     // The left panel's first screen is whole: groups that would be cut at its bottom fold for this screen only
     // (the saved choice stays), least needed first; more room opens them again. A group the user opens stays open.
@@ -1152,20 +1107,20 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         delete go.dataset.fvTipWhy;
         if (busy) {
             goLabel.textContent = t('Stop', '停止'); goSub.textContent = '';
-            tip(go, t('Stop', '停止'), t('Cancel this picture; asks first', '取消这一张，会先确认'));
+            tip(go, t('Stop', '停止'), t('Cancel this image; asks first', '取消这一张，会先确认'));
         } else if (s.state === 'downloading') {
-            goLabel.textContent = s.verifying ? verifyText(s) : s.paused ? t(`Paused ${Math.floor(s.fraction * 100)}%`, `已暂停 ${Math.floor(s.fraction * 100)}%`)
-                : t(`Installing ${Math.floor(s.fraction * 100)}%`, `正在安装 ${Math.floor(s.fraction * 100)}%`);
+            goLabel.textContent = s.verifying ? verifyText(s) : s.paused ? t('Paused {percent}%', '已暂停 {percent}%', { percent: Math.floor(s.fraction * 100) })
+                : t('Installing {percent}%', '正在安装 {percent}%', { percent: Math.floor(s.fraction * 100) });
             goSub.textContent = pendingGenerate ? t('then generates', '完成后生成') : '';
             tip(go, pendingGenerate ? t('Generates when installed', '安装完自动生成') : t('Generate when installed', '安装完再生成'), pendingGenerate ? t('Press to not generate after it', '再按一次取消自动生成') : t('Press to generate as soon as it is installed', '按下后，安装完成即自动生成'));
         } else if (s.state === 'missing' || s.state === 'failed') {
-            goLabel.textContent = t('Install and generate', '安装并生成'); goSub.textContent = s.total ? t(`about ${(s.total / 1e9).toFixed(1)} GB`, `约 ${(s.total / 1e9).toFixed(1)} GB`) : '';
-            tip(go, t('Install and generate', '安装并生成'), t(`Downloads ${model.short}, then makes the picture`, `先下载 ${model.short}，再生成图片`), `${mod}+Enter`);
+            goLabel.textContent = t('Install and generate', '安装并生成'); goSub.textContent = s.total ? t('about {size} GB', '约 {size} GB', { size: (s.total / 1e9).toFixed(1) }) : '';
+            tip(go, t('Install and generate', '安装并生成'), t('Downloads {short}, then makes the image', '先下载 {short}，再生成图片', { short: model.short }), `${mod}+Enter`);
         } else {
             // The size is said once, on its own chip; Generate says only how long it may take.
-            goLabel.textContent = t('Generate', '生成'); goSub.textContent = est ? t(`about ${est} s`, `约 ${est} 秒`) : '';
-            tip(go, t('Generate', '生成'), t(`Makes a ${sizeText(now)} picture`, `生成一张 ${sizeText(now)} 的图片`), `${mod}+Enter`);
-            if (!hasWords()) go.dataset.fvTipWhy = t('Describe the picture first', '先写一句描述');
+            goLabel.textContent = t('Generate', '生成'); goSub.textContent = est ? t('about {est} s', '约 {est} 秒', { est }) : '';
+            tip(go, t('Generate', '生成'), t('Makes a {size} image', '生成一张 {size} 的图片', { size: sizeText(now) }), `${mod}+Enter`);
+            if (!hasWords()) go.dataset.fvTipWhy = t('Describe the image first', '先写一句描述');
         }
         // With no time (or size) to say beside it, the word sits alone in the middle of the key.
         go.dataset.eta = String(!!goSub.textContent);
@@ -1210,7 +1165,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             ? t('Describe the people, their clothes and the place, for example: a young woman in a beige trench coat on a pier at dusk', '写下人物、衣着和地点，例如：穿米色风衣的年轻女性，站在黄昏的海边栈桥上')
             : references.some((r, at) => r.sketch && at < cap_(model))
                 ? t('Write what the sketch shows, for example: a person raising both hands', '写下草图画的是什么，例如：一个人举起双手') : '';
-        prompt.setAttribute('aria-label', references.length ? t('What to make or change', '要画什么或要改什么') : t('Describe the picture', '描述画面'));
+        prompt.setAttribute('aria-label', references.length ? t('What to make or change', '要画什么或要改什么') : t('Describe the image', '描述画面'));
         // Said only near the limit.
         promptCount.textContent = prompt.value.length >= 1600 ? `${prompt.value.length} / 2000` : '';
         // The count shows only near the limit; the row is fitted again when it comes or goes.
@@ -1226,7 +1181,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         sizer.paint({model: model.id, ratio, ref: references.length && firstRef() ? {url: references[0].url, ratio: ratioValue(firstRef())} : null, custom,
             area, size: sent, locked, limit, ratioValue: ratioValue(shapeOf())});
         seedInput.disabled = busy;
-        advGroup.meta.textContent = seedInput.value ? t(`Seed ${seedInput.value}`, `种子 ${seedInput.value}`) : '';
+        advGroup.meta.textContent = seedInput.value ? t('Seed {value}', '种子 {value}', { value: seedInput.value }) : '';
         paintGo(); paintSlot();
         drawStage();
         const row = runRow(); paintRunTile(row?.percent || 0);
@@ -1271,7 +1226,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         if (next) {
             draftSize.textContent = sizeText(next);
             const est = estimateSeconds(meta.samples(), model.id, next.width * next.height);
-            draftHint.textContent = draftPreview ? '' : [t('Next picture', '下一张'), est ? t(`about ${est} s`, `约 ${est} 秒`) : ''].filter(Boolean).join(' · ');
+            draftHint.textContent = draftPreview ? '' : [t('Next image', '下一张'), est ? t('about {est} s', '约 {est} 秒', { est }) : ''].filter(Boolean).join(' · ');
         }
         if (state === 'done') {
             const mine = lastReport?.file === shownFile ? lastReport.id : null;
@@ -1298,24 +1253,24 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             save.href = url; save.setAttribute('download', shownFile.slice(shownFile.lastIndexOf('/') + 1));
             const full = references.length >= most() || cap_(model) === 0;
             editThis.disabled = asReference.disabled = full;
-            const why = cap_(model) === 0 ? t(`${model.short} takes no references; choose the other model`, `${model.short} 不用参考图，请换另一个模型`) : t('The reference slots are full; remove one', '参考图已满，先移除一张');
+            const why = cap_(model) === 0 ? t('{short} takes no references; choose the other model', '{short} 不用参考图，请换另一个模型', { short: model.short }) : t('The reference slots are full; remove one', '参考图已满，先移除一张');
             tip(editThis, t('Edit', '编辑'), t('Make a new version: it becomes Image 1', '以这张为图 1，描述要改的地方'));
-            tip(asReference, t('Use as reference', '用作参考图'), t('Add it to the reference pictures', '加入参考图'));
+            tip(asReference, t('Use as reference', '用作参考图'), t('Add it to the reference images', '加入参考图'));
             for (const b of [editThis, asReference]) { if (full) b.dataset.fvTipWhy = why; else delete b.dataset.fvTipWhy; }
             const fav = meta.isFav(shownFile); favBtn.setAttribute('aria-pressed', String(fav));
-            tip(favBtn, fav ? t('Remove star', '取消收藏') : t('Star', '收藏'), fav ? t('Take it out of favourites', '移出收藏') : t('Keep it in favourites', '加入收藏'), 'F');
+            tip(favBtn, fav ? t('Remove from favorites', '取消收藏') : t('Favorite', '收藏'), fav ? t('Take it out of favorites', '移出收藏') : t('Keep it in favorites', '加入收藏'), 'F');
             const known = promptFor(shownFile) || layoutOf[shownFile]; usePromptItem.hidden = useInline.hidden = !known; copyInline.hidden = !promptFor(shownFile);
             // The line under the picture is about the picture shown: the model that made it, its size, its shape and the time it took.
             const width = picture.naturalWidth && picture.dataset.file === shownFile ? picture.naturalWidth : shown?.width || 0, height = picture.naturalWidth && picture.dataset.file === shownFile ? picture.naturalHeight : shown?.height || 0;
             const madeBy = IMAGE_MODELS.find(m => m.id === (shown?.model || rows.find(r => r.file === shownFile)?.model))?.name;
             infoText.textContent = [madeBy, width ? `${width} × ${height}` : '', width ? pictureShape(width, height) : '',
-                shown?.seconds ? t(`${shown.seconds} s`, `${shown.seconds} 秒`) : started ? t(`${started} s`, `${started} 秒`) : ''].filter(Boolean).join(' · ');
+                shown?.seconds ? t('{seconds} s', '{seconds} 秒', { seconds: shown.seconds }) : started ? t('{started} s', '{started} 秒', { started }) : ''].filter(Boolean).join(' · ');
         }
         comparer.paint(compare);
         stage.dataset.mode = compare ? 'compare' : 'single';
         if (tallQuery.matches) fitTallSoon();
-        if (rightTab === 'info' && infoPop.dataset.file !== shownFile) { infoPop.dataset.file = shownFile; paintInfo(); }
-        tabWorksN.textContent = '';
+        if (workColumn.tab === 'info' && infoPop.dataset.file !== shownFile) { infoPop.dataset.file = shownFile; paintInfo(); }
+        workColumn.setWorksCount('');
     }
     picture.onload = () => {
         // Its real shape is kept, so the next time this picture opens its frame is the right size from the first frame.
@@ -1434,9 +1389,9 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             if (length > 0 && length <= 2000) return true;
             note.dataset.kind = '';
             say(length > 2000
-                ? t(`With the picture references counted, the prompt is over 2,000 characters. Shorten it by ${length - 2000} and try again.`,
-                    `加上图片引用后，提示词超过 2000 字。请缩短 ${length - 2000} 字后重试。`)
-                : t('The prompt has only picture references and no words. Describe the picture you want, then try again.', '提示词里只有图片引用，没有文字。请写上要生成的画面后重试。'));
+                ? t('With the image references counted, the prompt is over 2,000 characters. Shorten it by {count} and try again.',
+                    '加上图片引用后，提示词超过 2000 字。请缩短 {count} 字后重试。', { count: length - 2000 })
+                : t('The prompt has only image references and no words. Describe the image you want, then try again.', '提示词里只有图片引用，没有文字。请写上要生成的画面后重试。'));
             return false;
         };
         if (!fits()) { prompt.focus(); return; }
@@ -1509,7 +1464,11 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             progressLine.textContent = row.status === 'running' ? [words, `${Math.floor(percent * 100)}%`].join(' · ') : words;
             // The second line changes with every report, so the page never looks stuck; elapsed counts from the job's own start.
             const begun = row.started_at || row.created_at || Date.now();
-            progressSub.textContent = [`${t('Elapsed', '已用时')} ${duration((Date.now() - begun) / 1000)}`, imageRemainingText(row.eta_seconds, t)].filter(Boolean).join(' · ');
+            const waiting = Boolean(row.meta?.reconnecting);
+            // While waiting, no estimate: nothing is being made until FreeVideo answers again.
+            progressSub.textContent = [`${t('Elapsed', '已用时')} ${duration((Date.now() - begun) / 1000)}`, waiting ? '' : imageRemainingText(row.eta_seconds, t)].filter(Boolean).join(' · ');
+            if (waiting) progressLine.textContent = t(...WAITING_TEXT.status);
+            stopWaiting.hidden = !waiting; stopWaiting.textContent = t(...WAITING_TEXT.stop);
             level.hidden = false; level.dataset.counted = row.status === 'running' ? 'true' : 'false'; level.style.setProperty('--fv-progress', String(percent * 100));
             if (row.meta?.preview) showStep(row.meta.preview);
             const reportId = row.meta?.report_id;
@@ -1520,7 +1479,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             return;
         }
         // Ended: the page lets go of the job; the floating window has nothing more to say about it once seen here.
-        unwatch?.(); unwatch = null; running = null; level.hidden = true; clearStep(); delete canvas.dataset.fvTaskId;
+        unwatch?.(); unwatch = null; running = null; level.hidden = true; clearStep(); delete canvas.dataset.fvTaskId; stopWaiting.hidden = true;
         jobs.markSeen(row.id);
         if (row.status === 'done' && row.result?.file) {
             shownFile = row.result.file; promptOf[shownFile] = row.meta?.text ?? row.prompt ?? ''; if (row.meta?.layout) layoutOf[shownFile] = row.meta.layout;
@@ -1530,6 +1489,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         } else if (row.status === 'failed' || row.status === 'interrupted') {
             const reason = row.failure || {};
             failure = {error: reason.code || 'generation_failed', report_id: reason.report_id, stage: reason.stage, step: reason.step, fitted: reason.fitted, memory: reason.memory, other_usage: reason.other_usage,
+                cause: reason.cause, misses: reason.misses,
                 retryStandard: row.meta?.tier === 'high' && reason.code === 'no_memory'};
             renderFailure(); jobs.dismiss(row.id);
         } else jobs.dismiss(row.id);
@@ -1544,16 +1504,17 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         // A model this computer does not run: the way on is the other model, one press.
         const other = failure.error === 'model_unavailable' ? IMAGE_MODELS.find(m => m.id !== model.id && offers(m)) : null;
         renderImageFailure(failHost, {...failure, info}, t, {retry: other ? {
-            label: [`Use ${other.name}`, `改用 ${other.name}`],
+            label: ['Use {model}', '改用 {model}', { model: other.name }],
             onClick: () => { chooseModel(other); void generate(); }} : {
             label: failure.retryStandard ? ['Retry at Standard', '改用标准并重试'] : ['Retry', '重试'],
             onClick: () => { if (failure.noList) { failure = null; render(); go.onclick(); return; } if (failure.retryStandard) { area = RANGES[model.id].presets.standard; keepSize(); } void generate(); }}});
         const head = el('div', 'fv-iv-fail-head'), mark = el('i', 'fv-iv-fail-icon'); mark.append(icon('warn'));
-        head.append(mark, el('h3', '', failure.error === 'engine_closed' || failure.error === 'engine_restarted' ? t('The engine stopped', '引擎停止了') : t('The picture was not made', '这张没有生成出来')));
+        // One title for every failure; why FreeVideo went away is in the sentence below it (Lane, engine-closed-reason).
+        head.append(mark, el('h3', '', t('The image was not made', '这张没有生成出来')));
         failHost.prepend(head);
         const stage_ = STAGE_WORDS[failure.stage];
         // No request was made when the list could not be fetched: there is no model or size to name.
-        if (!failure.noList) failHost.append(el('p', 'fv-iv-fail-facts', [model.short, sizeText(asked), stage_ ? t(`stopped at: ${stage_[0].toLowerCase()}`, `停在：${stage_[1]}`) : ''].filter(Boolean).join(' · ')));
+        if (!failure.noList) failHost.append(el('p', 'fv-iv-fail-facts', [model.short, sizeText(asked), stage_ ? t('stopped at: {stage}', '停在：{stage}', { stage: t(...[stage_[0].toLowerCase(), stage_[1]]) }) : ''].filter(Boolean).join(' · ')));
     }
     // ── run: tasks owns this block (job store) ──
     // Stop asks first; closing the page or switching views never stops the job.
@@ -1591,7 +1552,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         else if (!hasWords()) { promptGroup.open(true); prompt.focus(); }
         else void generate();
     };
-    go.addEventListener('click', () => { if (drawer === 'left' && go.dataset.state === 'ready' && hasWords()) { drawer = ''; paintPanels(); } }, {capture: true});
+    go.addEventListener('click', () => { if (shell.drawer() === 'left' && go.dataset.state === 'ready' && hasWords()) shell.closeDrawer(); }, {capture: true});
     prompt.addEventListener('input', () => { growPrompt(); render(); });
     // Getting the model ready before Generate is pressed (nothing of it shows): being here a few seconds loads the model
     // where the card has free room for it (eager loading; the engine reads the files ahead where it would take the
@@ -1622,7 +1583,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         try {
             const {openImageEditor} = await import('./image_editor.js').catch(error => { loadFailed = true; throw error; });
             outcome = await openImageEditor({source: file, name: file, role: 'reference', t, resolve: pictureURL, upload: async blob => client.upload(blob), imageGenClient: client});
-        } catch { say(loadFailed ? t('The image editor did not load. Reload the page and try again.', '图片编辑器没有加载出来。请刷新页面后再试。') : t('This picture could not be read. Choose another picture.', '这张图无法读取。请重新选择一张。')); return; }
+        } catch { say(loadFailed ? t('The image editor did not load. Reload the page and try again.', '图片编辑器没有加载出来。请刷新页面后再试。') : t('This image could not be read. Choose another image.', '这张图无法读取。请重新选择一张。')); return; }
         if (!alive || !outcome?.blob) return;
         try {
             const edited = new File([outcome.blob], outcome.name || 'edited.png', {type: outcome.blob.type || 'image/png'});
@@ -1632,7 +1593,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             const record = {file: edited, url: URL.createObjectURL(edited), width: outcome.width, height: outcome.height};
             if (references.length >= most()) URL.revokeObjectURL(record.url); else { changeRefs(() => references.unshift(record)); promptGroup.open(true); }
             render();
-        } catch (error) { say(isNetworkTypeError(error) ? connectionLostText(t) : t('The edited picture could not be saved. Try again; if it keeps failing, report the problem.', '编辑后的图片没能保存。请重试；仍然失败时，请提交问题。')); }
+        } catch (error) { say(isNetworkTypeError(error) ? connectionLostText(t) : t('The edited image could not be saved. Try again; if it keeps failing, report the problem.', '编辑后的图片没能保存。请重试；仍然失败时，请提交问题。')); }
     }
     asReference.addEventListener('click', () => void useAsReference(shownFile, false));
     // Opens downward when it fits inside the stage, otherwise upward over the picture.
@@ -1724,7 +1685,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         if (layout.tookEscape() || layout.escape()) return;
         if (!more.hidden) more.hidden = true;
         else if (!keysPop.hidden) { keysPop.hidden = true; keysBtn.setAttribute('aria-pressed', 'false'); }
-        else if (drawer) { drawer = ''; paintPanels(); }
+        else if (shell.drawer()) shell.closeDrawer();
         else if (compare) { selecting = false; picked.clear(); drawWorks(); render(); }
         else if (draft && shownFile) { draft = false; draftPreview = null; render(); }
         else if (view === 'trash') { view = 'works'; drawWorks(); }

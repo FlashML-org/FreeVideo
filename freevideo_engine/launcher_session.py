@@ -137,6 +137,9 @@ class BrowserRefused(OSError):
     """The system did not accept the request to open the browser."""
 
 
+# Texts a function gave only in Chinese (no English to look the pair up by); Session.both notes them, tests read it.
+CHINESE_ONLY = set()
+
 class Session:
     # A launcher started from an offline package (portable_launcher.PortableSession).
     bundled = False
@@ -216,7 +219,11 @@ class Session:
         self.form['engine'] = os.environ.get('FREEVIDEO_HOME') or self.form['engine']
         if saved.get('comfy') and 'new_comfy' not in saved:
             self.form['new_comfy'] = False
-        self.language = saved['language'] if 'language' in saved else default_language()
+        # A new installation follows the system language ('auto'); the language key's first item.
+        self.language = saved['language'] if 'language' in saved else 'auto'
+        # The language in the settings file as last read or written here: the web page's settings write the same file, and a
+        # different value there means it was changed on the page (a choice made here is written at once).
+        self._language_seen = saved.get('language')
         self.selected = saved.get('installation')
         self.repair_request = None
         self.saved_setup = saved.get('setup', {})
@@ -302,12 +309,19 @@ class Session:
                 self.activate_offline(root)
         self.inspect_compatibility()
 
-    def t(self, en, zh):
-        return zh if self.language.startswith('zh') else en
+    def t(self, en, zh, values=None):
+        """The interface text for a pair in the interface language ({name} placeholders filled from values)."""
+        from .i18n import tr
+        return tr(en, zh, self.ui_language(), values)
+
+    def chinese(self):
+        """Whether text written as an (English, Chinese) pair shows its Chinese: the interface is Simplified Chinese. Other
+        languages read their file through t(); functions that only take zh= give them English for now."""
+        return self.ui_language() == 'zh-Hans'
 
     def phrase(self, make):
         """Text that stays on screen: make(t) builds it with t(en, zh), and a language switch rewords it."""
-        return Phrase.build(make, self.language.startswith('zh'))
+        return Phrase.build(make, self.ui_language())
 
     def task_busy(self):
         """Work that must finish before another installation operation starts."""
@@ -347,7 +361,33 @@ class Session:
                     self.selected['lan_access'] = self.form.get('lan_access') is True
             except ValueError:
                 pass  # Save the editable draft while retaining a valid installation.
+        self.follow_saved_language()
         self.store.write(self.form, self.language, self.selected, self.saved_setup)
+        self._language_seen = self.language
+
+    def follow_saved_language(self):
+        """Take the interface language saved on the web page while the launcher is open, so saving any other setting here
+        does not put the old language back. Read before every save and when the window comes to the front; True when the
+        language changed."""
+        try:
+            saved = self.store.read().get('language')
+        except (OSError, ValueError):
+            return False
+        if saved is None or saved == self._language_seen:
+            return False
+        self._language_seen = saved
+        if saved == self.language:
+            return False
+        self.set_language(saved)
+        return True
+
+    def set_language(self, value):
+        self.language = str(value)
+        if self.updater:
+            self.updater.language = self.language
+        # Messages already shown are reworded too, not left in the old language until the next failure.
+        for name in ('browser_error', 'notice', 'download_error'):
+            setattr(self, name, follow_language(getattr(self, name), self.ui_language()))
 
     def remember(self, selection, persist=True):
         self.selected = dict(selection)
@@ -367,12 +407,9 @@ class Session:
             self.explain_busy()
             return
         if key == 'language':
-            self.language = str(value)
-            if self.updater:
-                self.updater.language = self.language
-            # Messages already shown are reworded too, not left in the old language until the next failure.
-            for name in ('browser_error', 'notice', 'download_error'):
-                setattr(self, name, follow_language(getattr(self, name), self.language.startswith('zh')))
+            # Take a change made on the web page first, so the save below does not read this choice as stale.
+            self.follow_saved_language()
+            self.set_language(value)
             self.persist(); return
         if key == 'token':
             if self.controller.busy:
@@ -405,8 +442,8 @@ class Session:
             raise ValueError('Unknown environment installation method')
         if key == 'environment_method' and value == 'manual' and not runtime_packages_supported():
             system = 'Mac' if sys.platform == 'darwin' else 'Linux'
-            raise ValueError(self.t('The %s environment is prepared automatically. Import model packages in the next step.' % system,
-                                   '%s 运行环境由安装器自动准备，请在下一步导入模型包。' % system))
+            raise ValueError(self.t('The {system} environment is prepared automatically. Import model packages in the next step.',
+                                   '{system} 运行环境由安装器自动准备，请在下一步导入模型包。', dict(system=system)))
         if key == 'model_method' and value not in ('auto', 'manual', 'reuse'):
             raise ValueError('Unknown model download method')
         if key == 'install_model' and value not in ('video', 'image'):
@@ -542,7 +579,7 @@ class Session:
 
     def downloads_view(self):
         if self.download_scope == 'image':
-            zh, decimal_sizes = self.language.startswith('zh'), sys.platform == 'darwin'
+            zh, decimal_sizes = self.ui_language(), sys.platform == 'darwin'
             key = (zh, decimal_sizes)
             if self._image_download_view is None or self._image_download_view[0] != key:
                 self._image_download_view = (key, image_download_view(zh, decimal_sizes=decimal_sizes))
@@ -551,7 +588,7 @@ class Session:
         plan = row.get('plan', {}) if row.get('status') == 'review' else {}
         if not plan.get('download_files_verified', True):
             plan = {}
-        zh = self.language.startswith('zh')
+        zh = self.ui_language()
         decimal_sizes = sys.platform == 'darwin'
         # Only inputs that affect list content belong here. Disk/progress/notice
         # updates must not replace the QML model or its file delegates.
@@ -1101,14 +1138,15 @@ class Session:
             bad = sum(1 for v in installer.file_checks.values() if v.get('verification') in ('mismatch', 'missing')) or 1
             active = dict(active, state='checked')
             repairable = True
-            detail = self.t('1 file needs repair' if bad == 1 else f'{bad} files need repair', f'有 {bad} 个文件需要修复')
+            detail = (self.t('1 file needs repair', '有 1 个文件需要修复') if bad == 1 else
+                      self.t('{count} files need repair', '有 {count} 个文件需要修复', {'count': bad}))
         if active.get('state') == 'running':
             labels = {'install': ('Downloading', '正在下载'), 'repair': ('Repairing', '正在修复'),
                       'remove': ('Removing', '正在删除'), 'verify': ('Checking', '正在检查')}
             detail = self.t(*labels[active['action']])
             if active['action'] == 'verify' and active.get('verify_total'):
                 percent = min(100, int(100 * (active.get('verify_done') or 0) / active['verify_total']))
-                detail = self.t(f'Checking {percent}%', f'检查中 {percent}%')
+                detail = self.t('Checking {percent}%', '检查中 {percent}%', {'percent': percent})
             if active.get('action') == 'install' and active.get('phase') == 'verify':
                 detail = self.t('Checking', '正在校验')
         elif active.get('action') == 'verify' and active.get('state') == 'done':
@@ -1116,13 +1154,13 @@ class Session:
         elif active.get('state') == 'paused_for_generation':
             # What the download waits for: a video, a picture, or another task holding the graphics card.
             detail = {'busy_video': self.t('Paused while a video generates', '视频生成中，已暂停'),
-                      'busy_picture': self.t('Paused while a picture is made', '正在出图，已暂停'),
+                      'busy_picture': self.t('Paused while an image is made', '正在出图，已暂停'),
                       'busy_setup': self.t('Paused while FreeVideo installs, updates or cleans up', 'FreeVideo 正在安装、更新或清理，已暂停')}.get(
                 active.get('reason'), self.t('Paused: the graphics card is busy', '显卡忙，已暂停'))
         elif active.get('state') == 'cancelled':
             detail = self.t('Paused', '已暂停')
         elif active.get('state') == 'failed':
-            failure = image_pack_failure(active.get('reason'), zh=self.language.startswith('zh'))
+            failure = self.both(lambda zh: image_pack_failure(active.get('reason'), zh=zh))
             detail = failure['detail']
             repairable = repairable or active.get('reason') in ('needs_repair', 'integrity_failed')
         blocked = (self.controller.busy or self.importer.busy or self.cleaner.busy or self.archives_busy
@@ -1138,7 +1176,7 @@ class Session:
                     repairable=repairable, failure=failure, report_id=active.get('report_id'),
                     report_line=self._image_pack_report_line(),
                     engine_state=engine_state,
-                    engine_note=image_pack_failure('busy_engine', zh=self.language.startswith('zh'))['detail'] if running else '',
+                    engine_note=self.both(lambda zh: image_pack_failure('busy_engine', zh=zh))['detail'] if running else '',
                     engine_clicked=running and self.image_engine_clicked)
 
     def _image_pack_report_line(self):
@@ -1373,13 +1411,94 @@ class Session:
                     'the previous model is restored.', '模型切换未完成。请在安装页点击“重试”；无法完成时会恢复原来的模型。'),
                                       kept=self._installation_ready())
 
+    def language_view(self):
+        """For the language key: the languages there are, the saved choice ('auto' or the tag it reads as) and the
+        system's language. The list reads every language file, so it is made again only when the choice changes."""
+        if getattr(self, '_language_view', (None, None))[0] != self.language:
+            from .i18n import interface_language, language_choices
+            setting = str(self.language or '').strip()
+            follows = not setting or setting.lower() == 'auto'
+            self._language_view = (self.language, dict(
+                languages=language_choices(), language_setting='auto' if follows else interface_language(setting, default_language),
+                system_language=interface_language('auto', default_language)))
+        return self._language_view[1]
+
+    def both(self, make):
+        """make(zh) in the interface language. English and Simplified Chinese call it once; any other language calls it in
+        both and takes every text through t(English, Chinese): the language file's entry, Traditional Chinese's own
+        characters, else the English. A Chinese text without its English is noted in CHINESE_ONLY (tests read it)."""
+        language = self.ui_language()
+        if language in ('en', 'zh-Hans'):
+            return make(language == 'zh-Hans')
+        return self._paired(make(False), make(True), getattr(make, '__qualname__', 'text'))
+
+    def _paired(self, en, zh, where):
+        if isinstance(en, dict) and isinstance(zh, dict):
+            return {key: self._paired(en.get(key), zh.get(key), where + '.' + str(key)) for key in {**en, **zh}}
+        if isinstance(en, (list, tuple)) and isinstance(zh, (list, tuple)) and len(en) == len(zh):
+            return type(en)(self._paired(a, b, where) for a, b in zip(en, zh))
+        if isinstance(zh, str) and zh and not (isinstance(en, str) and en):
+            CHINESE_ONLY.add(where)
+            return self.t('', zh)
+        if isinstance(en, str) and isinstance(zh, str) and en != zh:
+            # A card's text is often a few sentences joined line by line (a detected model, then the steps): when the
+            # whole is not in the file, each line is looked up on its own.
+            lines_en, lines_zh = en.split('\n'), zh.split('\n')
+            if len(lines_en) > 1 and len(lines_en) == len(lines_zh) and not self._held(en, zh):
+                return '\n'.join(self._paired(a, b, where) for a, b in zip(lines_en, lines_zh))
+            return self.t(en, zh)
+        return en
+
+    def _held(self, en, zh):
+        """Whether the interface language's file holds this text (as English␟Chinese or as the English)."""
+        from .i18n import KEY_SEPARATOR, catalog
+        entries = catalog(self.ui_language())
+        return isinstance(entries.get(en + KEY_SEPARATOR + zh), str) or isinstance(entries.get(en), str)
+
+    def notes_zh(self):
+        """Whether release notes and their media captions show in Chinese: Simplified Chinese, and a language whose file
+        falls back to it (Traditional Chinese reads the Chinese notes in its own characters, not the English)."""
+        return self.chinese() or self._falls_back_to_chinese()
+
+    def _falls_back_to_chinese(self):
+        from .i18n import catalog
+        meta = catalog(self.ui_language()).get('_meta') or {}
+        return meta.get('fallback') == 'zh-Hans'
+
+    def notes_in_language(self, value):
+        """The update view with every Chinese text of its releases (notes, media captions) in the interface language's
+        characters; unchanged unless the language falls back to Simplified Chinese."""
+        if self.chinese() or not self._falls_back_to_chinese():
+            return value
+        from .i18n import catalog, from_simplified
+        entries = catalog(self.ui_language())
+
+        def convert(item, chinese=False):
+            if isinstance(item, dict):
+                return {key: convert(part, chinese or key == 'zh') for key, part in item.items()}
+            if isinstance(item, list):
+                return [convert(part, chinese) for part in item]
+            return from_simplified(entries, item) if chinese and isinstance(item, str) else item
+        return convert(value)
+
+    def ui_language(self):
+        """The language the interface shows (a language file's tag: 'en', 'zh-Hans', 'zh-Hant', ...): the saved setting,
+        or the system language when it is 'auto', matched to the languages there are. Kept until the setting changes."""
+        if getattr(self, '_ui_language', (None, None))[0] != self.language:
+            from .i18n import interface_language
+            self._ui_language = (self.language, interface_language(self.language, default_language))
+        return self._ui_language[1]
+
     def _browser_url(self, address):
-        """Return the URL used by the browser, with the launcher locale hint."""
-        if not address or not self.language.startswith('zh'):
+        """Return the URL used by the browser, with the launcher's interface language: freevideo_lang=zh for Simplified
+        Chinese, en for English, the tag for any other language. English is named too, so a page in a Chinese browser
+        still shows English when English is the chosen language."""
+        language = self.ui_language()
+        if not address:
             return address
         parsed = urlsplit(address)
         query = dict(parse_qsl(parsed.query, keep_blank_values=True))
-        query['freevideo_lang'] = 'zh'
+        query['freevideo_lang'] = 'zh' if language == 'zh-Hans' else language
         return urlunsplit((parsed.scheme, parsed.netloc, parsed.path,
                            urlencode(query), parsed.fragment))
 
@@ -1443,7 +1562,7 @@ class Session:
                 if self.compatibility.get('notice'):
                     from .compatibility_copy import notice_text
                     self.notice = Phrase(notice_text(self.compatibility, False), notice_text(self.compatibility, True),
-                                         self.language.startswith('zh'))
+                                         self.ui_language())
         except (OSError, ValueError, RuntimeError):
             self.compatibility = dict(available=False, level=0, automatic=False)
 
@@ -1481,7 +1600,7 @@ class Session:
         if installer:
             errors += [row.get('error', ''), *row.get('errors', [])]
             if shortcut.get('status') == 'failed':
-                errors.append(shortcut.get('error_zh' if self.language.startswith('zh') else 'error') or shortcut.get('error', ''))
+                errors.append(self.both(lambda zh: shortcut.get('error_zh' if zh else 'error') or shortcut.get('error', '')))
         message = plain_text('\n'.join(str(e) for e in errors if e))
         if installer and row.get('error') and row.get('denied'):
             from .denied_access import text
@@ -1489,7 +1608,7 @@ class Session:
             # Windows words many refusals alike and often names no file; where it happened travels with the message.
             # Only a permission failure takes the line: the other cards read the first lines of the message.
             if launcher_failure(message)['kind'] in ('permission', 'engine-folder-denied'):
-                message = plain_text(text(row['denied'], self.language.startswith('zh')) + '\n' + message)
+                message = plain_text(self.both(lambda zh: text(row['denied'], zh)) + '\n' + message)
         return message
 
     def diagnostic_error(self):
@@ -1947,14 +2066,15 @@ class Session:
         view = {k: row[k] for k in ('status', 'error', 'progress', 'candidate') if k in row}
         from .launcher_update import error_text, manual_install, release_page
         if row.get('error_code'):
-            view['error'] = error_text(row, self.language.startswith('zh'))
+            view['error'] = self.both(lambda zh: error_text(row, zh))
         view['release_page'] = release_page(self.updater.current) if self.updater else ''
         if self.updater and self.updater.install_failed and view.get('candidate'):
             # The new app did not go in and the old one is back: the reminder says so.
             from .launcher_update import mac_install_failure
-            reason = mac_install_failure(self.updater.install_failed_reason, self.language.startswith('zh'))
-            view['status'], view['error'] = 'error', self.t(*ACTION_COPY['update_install_failed']) + (
-                ('' if self.language.startswith('zh') else ' ') + reason if reason else '')
+            reason = self.both(lambda zh: mac_install_failure(self.updater.install_failed_reason, zh))
+            first = self.t(*ACTION_COPY['update_install_failed'])
+            # Sentences that end in a full stop of their own (Chinese, Japanese) need no space between them.
+            view['status'], view['error'] = 'error', first + (('' if first.endswith(('。', '．', '！', '？')) else ' ') + reason if reason else '')
         key = self.update_key()
         view.update(engine=self.engine_update_pending(), current=__version__,
                     current_release=public_details(self.updater.current) if self.updater else self.release_details,
@@ -2108,7 +2228,7 @@ class Session:
                     body=self.t('This frees %s of disk space. If the files are needed later, they will be downloaded again automatically.',
                                 '可释放 %s 磁盘空间。以后如需要，会自动重新下载。') % size,
                     delete_text=(self.t('Deleting…', '正在删除…') if thread is not None else
-                                 self.t('Try again', '再试一次') if self.adaln_retry else self.t('Delete', '删除')),
+                                 self.t('Retry', '重试') if self.adaln_retry else self.t('Delete', '删除')),
                     later_text=self.t('Not now', '暂不删除'))
 
     def sync_lan_from_store(self):
@@ -2315,7 +2435,7 @@ class Session:
         if row.get('status') != 'restart-required' or not isinstance(value, dict) or type(value.get('at')) not in (int, float):
             return ''
         from .engine_exit import describe
-        return describe(value, self.language.startswith('zh'))
+        return self.both(lambda zh: describe(value, zh))
 
     def old_versions_text(self):
         """What the background removal of earlier FreeVideo copies freed this session."""
@@ -2479,7 +2599,7 @@ class Session:
                         'Deleting them does not affect models, the runtime or your videos.',
                         '导入过的离线包压缩包仍保留在磁盘上，FreeVideo 已不再需要。删除后，模型、运行环境和作品都不受影响。'),
                     delete_text=(self.t('Deleting…', '正在删除…') if self.archives_busy else
-                                 self.t('Try again', '再试一次') if retry else
+                                 self.t('Retry', '重试') if retry else
                                  self.t('Delete and free %s', '删除并释放 %s') % size),
                     keep_text=self.t('Keep for now', '暂时保留'),
                     footnote=self.t('You can also delete them later in Settings › Preferences › Storage.',
@@ -2498,8 +2618,10 @@ class Session:
         if not offer or offer['bytes'] <= 0:
             return ''
         count = len(offer['paths'])
-        english = 'Delete 1 ZIP file (%s)? This cannot be undone.' if count == 1 else 'Delete %d ZIP files (%%s)? This cannot be undone.' % count
-        return self.t(english % self.archive_size(offer['bytes']), '删除 %d 个压缩包（%s）？删除后不能恢复。' % (count, self.archive_size(offer['bytes'])))
+        values = dict(count=count, size=self.archive_size(offer['bytes']))
+        if count == 1:
+            return self.t('Delete 1 ZIP file ({size})? This cannot be undone.', '删除 {count} 个压缩包（{size}）？删除后不能恢复。', values)
+        return self.t('Delete {count} ZIP files ({size})? This cannot be undone.', '删除 {count} 个压缩包（{size}）？删除后不能恢复。', values)
 
     def archives_done_text(self):
         freed = getattr(self, 'archives_freed', 0) or 0
@@ -2557,7 +2679,7 @@ class Session:
             text = str(text)
             least = self.lan_password_min()
             if len(text) < least:
-                raise ValueError(self.t('Use at least %d characters.' % least, '至少 %d 个字符。' % least))
+                raise ValueError(self.t('Use at least {count} characters.', '至少 {count} 个字符。', dict(count=least)))
             lan_password.set_password(engine, text)
         # The links change with the password; do not wait for the next poll.
         self.controller.access_polled = 0
@@ -2600,7 +2722,7 @@ class Session:
     def snapshot(self):
         from .failure_details import REPAIR_KINDS, launcher_failure, redacted_launcher_error, display_launcher_error, model_mismatch_package
         from .launcher_copy import display, progress_view, source_name
-        zh = self.language.startswith('zh')
+        language = self.ui_language()     # engine progress text in any language with a file
         row = self.controller.state
         busy = self.controller.busy or self.importer.busy or self.cleaner.busy
         # The sidebar card shows work being done; a plan waiting for confirmation is not work, but an
@@ -2610,12 +2732,12 @@ class Session:
         task = row.get('task', {})
         port_from = int(row['moved_from']) if row.get('status') == 'open' and 'moved_from' in row else 0
         port_to = (urlsplit(row.get('selection', {}).get('url') or row['url']).port or 80) if port_from else 0
-        progress = progress_view(task.get('progress') or {}, zh)
+        progress = progress_view(task.get('progress') or {}, language)
         offline_review = self.importer.state.get('status') == 'review'
         offline_progress = self.page == 'progress' and self.offline_review_page is not None
         if offline_progress:
-            progress = progress_view(self.importer.state, zh)
-        overall = progress_view(row.get('overall') or task.get('phase_progress') or {}, zh)
+            progress = progress_view(self.importer.state, language)
+        overall = progress_view(row.get('overall') or task.get('phase_progress') or {}, language)
         if self.importer.busy:
             # The sidebar's Working card follows the offline import, not the idle installer.
             state = self.importer.state
@@ -2628,7 +2750,7 @@ class Session:
                 if (state.get('count') or 0) > 1:
                     label += ' %d/%d' % (state.get('index') or 1, state['count'])
                 if state.get('detail'):
-                    label += ' · ' + display(state['detail'], zh)
+                    label += ' · ' + display(state['detail'], language)
             overall = dict(label=label, done=state.get('done'), total=state.get('total'))
         shortcut = row.get('shortcut') or {}
         # The offline import reports through self.error; what the idle installer last reported stays off its page.
@@ -2722,22 +2844,22 @@ class Session:
             current = dict(progress, unit='bytes', total=group['download_bytes'],
                            done=min(group['download_bytes'], group.get('downloaded_bytes') or 0),
                            rate=group.get('bytes_per_second') or progress.get('rate'))
-        file_text = progress_text(current, zh, decimal_sizes=sys.platform == 'darwin')
+        file_text = progress_text(current, self.ui_language(), decimal_sizes=sys.platform == 'darwin')
         if not hasattr(self, 'model_line'):
             self.model_line = ModelLine()
-        steady = self.model_line.line(progress, groups, display('Connecting to download server', zh), zh,
+        steady = self.model_line.line(progress, groups, display('Connecting to download server', language), language,
                                       sys.platform == 'darwin')
         file_text = steady if steady is not None else file_text
         if self.importer.busy and self.importer.state.get('activity'):
             imported = self.importer.state
             file_text = progress_text(dict(activity=imported['activity'], unit='bytes',
-                name=display('Package files', zh), done=imported.get('activity_done'), total=imported.get('activity_total')), zh)
+                name=display('Package files', language), done=imported.get('activity_done'), total=imported.get('activity_total')), language)
         if not hasattr(self, 'line_hold'):
             self.line_hold = LineHold()
         detail = clean(progress.get('detail', ''))
         urgent = (progress.get('notice') or progress.get('activity') == 'resume'
-                  or progress.get('state') in ('failed', 'cancelled') or steady == display('Connecting to download server', zh))
-        held = self.line_hold.text(file_text or detail, immediate=bool(urgent), zh=zh)
+                  or progress.get('state') in ('failed', 'cancelled') or steady == display('Connecting to download server', language))
+        held = self.line_hold.text(file_text or detail, immediate=bool(urgent), zh=language)   # a change of language resets the hold
         if held != (file_text or detail):
             file_text, detail = held, ''
         else:
@@ -2754,8 +2876,8 @@ class Session:
         source = preferences['source']
         plan = row.get('plan', {})
         from .model_repair import review_lines
-        replace_models = review_lines(self.importer.state.get('replace_models', []) if offline_review else
-                                     plan.get('replace_models', []), zh=zh, offline=offline_review)
+        replace_models = self.both(lambda zh: review_lines(self.importer.state.get('replace_models', []) if offline_review else
+                                                           plan.get('replace_models', []), zh=zh, offline=offline_review))
         estimate = []
         if plan.get('disk_mode') == 'extreme':
             estimate.append(self.t('Space saver (automatic)', '极限省空间（自动启用）'))
@@ -2764,9 +2886,9 @@ class Session:
             estimate.append(gpu)
         if 'model_download_bytes' in plan:
             from .bootstrap import download_bytes
-            estimate.append(self.t('Download ', '需下载 ')+disk_space.size_text(download_bytes(plan)))
+            estimate.append(self.t('Download {size}', '需下载 {size}', dict(size=disk_space.size_text(download_bytes(plan)))))
         if row.get('disks'):
-            estimate.append(self.t('Peak disk ~', '磁盘峰值约 ')+disk_space.size_text(sum(d.get('needed_bytes', 0) for d in row['disks'])))
+            estimate.append(self.t('Peak disk ~{size}', '磁盘峰值约 {size}', dict(size=disk_space.size_text(sum(d.get('needed_bytes', 0) for d in row['disks'])))))
         update = self.update_view()
         probe = self.probe.snapshot()
         if probe.get('status') == 'failed' and probe.get('error'):
@@ -2783,34 +2905,33 @@ class Session:
                 if group.startswith('torch-'):
                     names[group] = ('GPU packages', 'GPU 依赖')
                 route = self.t('direct', '直连') if entry.get('route') == 'direct' else self.t('current connection', '当前连接')
-                speeds.append(dict(source=source_name(entry['id'], zh)+' · '+route, group=self.t(*names.get(group, (group, group))),
-                    ok=entry.get('ok', False), rate=speed_text(entry, self.language.startswith('zh'))))
+                speeds.append(dict(source=self.both(lambda zh: source_name(entry['id'], zh))+' · '+route, group=self.t(*names.get(group, (group, group))),
+                    ok=entry.get('ok', False), rate=self.both(lambda zh: speed_text(entry, zh))))
         from .sampling_assets import total_bytes
         # The controller's record of the exception (class names and errno) belongs to its own message only: it tells an
         # unexpected failure from a message the launcher wrote, which str(error) alone cannot.
         own = (bool(row.get('error')) and not (self.error or self.browser_error or self.page_error)
                and not self.offline_page())
-        failure = launcher_failure(error, zh=self.language.startswith('zh'), can_repair=self.can_repair(),
-                                   repairs_comfy=self.repairs_comfy(), unavailable=self.repair_unavailable(),
-                                   model_package=model_mismatch_package(raw_error, zh),
-                                   exception=row.get('exception') if own else None)
+        repair_state = dict(can_repair=self.can_repair(), repairs_comfy=self.repairs_comfy(), unavailable=self.repair_unavailable())
+        failure = self.both(lambda zh: launcher_failure(error, zh=zh, **repair_state, model_package=model_mismatch_package(raw_error, zh),
+                                                        exception=row.get('exception') if own else None))
         if failure.get('kind') == 'gpu-driver-missing':
             from .display_adapters import adapters, line, nvidia_driver_listed, only_other_vendors
-            zh = self.language.startswith('zh')
             names = adapters()
-            if line(zh, names):
-                failure['note'] = line(zh, names)
+            note = self.both(lambda zh: line(zh, names))
+            if note:
+                failure['note'] = note
             if only_other_vendors(names):
                 # No NVIDIA card is listed: the card says what FreeVideo needs; the note names what was found.
                 from .failure_details import UNSUPPORTED_VENDOR
-                failure['title'], failure['action'] = UNSUPPORTED_VENDOR[1 if zh else 0]
+                failure['title'], failure['action'] = self.both(lambda zh: UNSUPPORTED_VENDOR[1 if zh else 0])
             elif nvidia_driver_listed(names):
                 # Its driver named the card, so a driver is installed but does not answer: reinstall it.
                 from .failure_details import DRIVER_NOT_WORKING
-                failure['title'], failure['action'] = DRIVER_NOT_WORKING[1 if zh else 0]
+                failure['title'], failure['action'] = self.both(lambda zh: DRIVER_NOT_WORKING[1 if zh else 0])
             elif names:
                 from .failure_details import DRIVER_FOR_LISTED_CARD
-                failure['title'], failure['action'] = DRIVER_FOR_LISTED_CARD[1 if zh else 0]
+                failure['title'], failure['action'] = self.both(lambda zh: DRIVER_FOR_LISTED_CARD[1 if zh else 0])
         if failure.get('path'):
             # The local repair instruction needs the actual file location; copied details stay redacted.
             from .model_repair import MISMATCH_PATH
@@ -2821,20 +2942,20 @@ class Session:
         if failure.get('kind') in ('permission', 'engine-folder-denied') and row.get('error') and row.get('denied'):
             from .denied_access import card_text
             # The card shows the detail instead of the action, so the action goes under the location.
-            location = card_text(row['denied'], zh)
+            location = self.both(lambda zh: card_text(row['denied'], zh))
             if location:
                 failure = dict(failure, detail=location + '\n' + failure['action'], action='')
         reasons = self.importer.state.get('write_reasons') or []
         if (self.importer.state.get('status') == 'error' and reasons
                 and self.error == self.importer.state.get('error') and failure.get('kind') != 'runtime-alias'):
             from .offline_errors import guidance
-            failure = dict(title=guidance('import-title', zh),
-                           detail=guidance(reasons[0], zh), action='', kind='offline-write')
+            failure = dict(title=self.both(lambda zh: guidance('import-title', zh)),
+                           detail=self.both(lambda zh: guidance(reasons[0], zh)), action='', kind='offline-write')
         disk = self.disk_view(row, failure)
         if disk and str(failure.get('kind', '')).startswith('disk'):
-            failure = launcher_failure(error, zh=self.language.startswith('zh'),
-                other_disk=self.form['new_comfy'] and any(d['enough'] for d in disk['others']),
-                disk_name=disk['name'] if disk['problem'] == 'disconnected' else '')
+            other_disk = self.form['new_comfy'] and any(d['enough'] for d in disk['others'])
+            failure = self.both(lambda zh: launcher_failure(error, zh=zh, other_disk=other_disk,
+                                                            disk_name=disk['name'] if disk['problem'] == 'disconnected' else ''))
         # A problem card comes first: no update window opens over it (one already open closes
         # without counting as "Later", and reminds again once the card is gone). Repair installs
         # the launcher's own engine as it sets up again, so with Repair on the card the engine
@@ -2845,12 +2966,12 @@ class Session:
         cleanup = dict(self.cleaner.state, busy=self.cleaner.busy)
         from .offline_errors import alias_failure
         if alias_failure(cleanup.get('error', '')):
-            cleanup['error'] = display_launcher_error(cleanup['error'], zh=zh)
+            cleanup['error'] = self.both(lambda zh: display_launcher_error(cleanup['error'], zh=zh))
         elif cleanup.get('status') == 'error':
             cleanup['message'] = self.t(*CLEANUP_FAILURES.get(cleanup.get('reason'), CLEANUP_FAILURES['failed']))
         model_upgrade = dict(self.upgrade.state, busy=self.upgrade.busy)
         if alias_failure(model_upgrade.get('error', '')):
-            model_upgrade['error'] = display_launcher_error(model_upgrade['error'], zh=zh)
+            model_upgrade['error'] = self.both(lambda zh: display_launcher_error(model_upgrade['error'], zh=zh))
         archive_offer = (self.archives_deleting_offer if self.archives_busy else
                          self.archives_prompt_offer if self.archives_retry_dialog else self.archive_offer())
         archives_idle = bool(archive_offer and archive_offer['paths']) and self.archives_idle()
@@ -2868,7 +2989,8 @@ class Session:
             download_state.update(error=self.t(*DOWNLOAD_COPY['error_read']), needs_check=True)
         return plain_data(dict(download_list=download_state, sampling_cache_bytes=total_bytes(), version=__version__, image_pack=image_pack,
             prompt_model=prompt_model, bytes_per_second=speed,
-            disk=disk, decimal_sizes=sys.platform == 'darwin', zh=self.language.startswith('zh'), form=dict(self.form),
+            disk=disk, decimal_sizes=sys.platform == 'darwin', zh=self.chinese(), ui_language=self.ui_language(), **self.language_view(),
+            form=dict(self.form),
             model_choice=self.model_choice(), image_only=self.image_only_choice(),
             image_installed=self.installed_machine().get('video_model') is False,
             video_missing=self.page == 'launcher' and self.video_missing(), can_add_video=self.can_repair(),
@@ -2882,11 +3004,11 @@ class Session:
             cleanup=cleanup,
             can_cleanup=self.can_manage() and not (self.updater and self.updater.busy),
             model_upgrade=dict(model_upgrade, switching=bool(self.model_switch)),
-            offline=dict(progress_view(self.importer.state, zh), runtime=bool(self.form['offline_runtime']),
+            offline=dict(progress_view(self.importer.state, language), runtime=bool(self.form['offline_runtime']),
                 runtime_supported=runtime_packages_supported(),
-                models=self.offline_model_count(), guide=package_instructions(self.form['new_comfy'] and self.form['environment_method'] == 'manual'
-                                           and not self.form['offline_runtime'], zh)),
-            video_model_guide=video_instructions(zh),
+                models=self.offline_model_count(), guide=self.both(lambda zh: package_instructions(
+                    self.form['new_comfy'] and self.form['environment_method'] == 'manual' and not self.form['offline_runtime'], zh))),
+            video_model_guide=self.both(video_instructions),
             adaln_dialog=self.adaln_dialog_view(error, update),
             selected=bool(self.selected), can_repair=self.can_repair(), repair_offered=repair_offered, error=error,
             field_error=dict(self.field_error or {}), retry_kind=self.retry_kind(), notice=self.notice,
@@ -2901,9 +3023,9 @@ class Session:
             # keep publishing changed snapshots after a launch has failed.
             elapsed=duration(time.monotonic()-self.started) if self.started and busy else '', summary=' · '.join(estimate),
             failure=failure, report_opened=self.report_opened[0] if self.report_cooling(self.report_opened[0]) else '',
-            source=source, source_name=source_name(source, zh), proxy_mode=preferences['proxy_mode'],
+            source=source, source_name=self.both(lambda zh: source_name(source, zh)), proxy_mode=preferences['proxy_mode'],
             probe=probe, speeds=speeds, token_set=bool(self.token),
-            log=self.tail.text, logs=[dict(label=display(n, zh), path=str(p)) for n, p in self.controller.terminal_sources()],
+            log=self.tail.text, logs=[dict(label=display(n, language), path=str(p)) for n, p in self.controller.terminal_sources()],
             url=(self._browser_url(row.get('url', '')) if row.get('status') == 'open' else ''), shortcut=shortcut,
             access_links=(list(self.controller.access_links) if row.get('status') == 'open'
                           and isinstance(self.controller.access_links, list) else []),
@@ -2923,7 +3045,7 @@ class Session:
             archives_toast=(self.t('Freed %s', '已释放 %s') % self.archive_size(self.archives_freed)
                             if self.archives_freed and time.monotonic() < self.archives_toast_until else ''),
             can_shortcut=bool(self.controller.selection and self.controller.selection.get('ready')),
-            update=update, engine_update_available=bool(row.get('engine_update_available')),
+            update=self.notes_in_language(update), notes_zh=self.notes_zh(), engine_update_available=bool(row.get('engine_update_available')),
             settings_path=str(self.store.primary),
             review_id=json.dumps(self.importer.state.get('replace_models', []), sort_keys=True) if offline_review else
                       row.get('plan', {}).get('plan_id', ''),

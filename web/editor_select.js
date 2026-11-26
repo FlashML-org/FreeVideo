@@ -6,6 +6,7 @@ export {copyContent, pasteContent} from './editor_room.js';
 import {transportSnapPoints} from './editor_transport_model.js';
 import {unlockedIds} from './editor_audio_model.js';
 import {isTextTrack, textDropLocked} from './editor_text_model.js';
+import {translatorFor} from './i18n.js';
 
 const end = clip => clip.start + clip.frames;
 // Where a moved group lands, to a tenth of a second.
@@ -76,7 +77,7 @@ export function createClipboard() {
     return {read: () => value && structuredClone(value), write: content => { value = structuredClone(content); }};
 }
 const pageClipboard = createClipboard();
-export function createSelectionActions({state, t = en => en, actions = {}, clipboard = pageClipboard}) {
+export function createSelectionActions({state, t = translatorFor(null, false), actions = {}, clipboard = pageClipboard}) {
     function report(error) {
         if (!(error instanceof model.EditError)) throw error;
         if (error.code === 'not_generated' && actions.notify) actions.notify(t('Not generated yet', '还没生成'));

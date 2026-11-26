@@ -128,24 +128,29 @@ def transfer_parts(done, total, rate, decimal_sizes=False):
 
 
 def progress_text(event, zh=False, *, decimal_sizes=False):
-    """One activity line for the launcher, including known transfer counts."""
-    t = lambda en, cn: cn if zh else en
+    """One activity line for the launcher, including known transfer counts. zh is the interface language: a tag ('en',
+    'zh-Hans', a language file's) or, as before, True for Simplified Chinese."""
+    from .i18n import code_language, tr
+    language = 'zh-Hans' if zh is True else 'en' if not zh else code_language(zh)
+    t = lambda en, cn, values=None: tr(en, cn, language, values)
+    zh = language == 'zh-Hans'
     activity, name = event.get('activity'), event.get('name') or ''
     # A Chinese name follows its verb directly; a Latin one (Python) keeps a space.
     gap = ' ' if name[:1].isascii() and name[:1].isalnum() else ''
-    if not zh and activity in VERB_ACTIVITIES and (
+    if language == 'en' and activity in VERB_ACTIVITIES and (
             name.startswith(COMPONENT_NAMES) or any(name == en for en, _ in NAMES.values())):
         name = name[:1].lower() + name[1:]  # In the middle of a sentence.
     if activity == 'count':
         done, total = event.get('done'), event.get('total')
         if number(done) and number(total) and total > 0 and done <= total:
-            return name + t(' · Completed ', ' · 已完成 ') + '%d / %d' % (done, total)
+            return t('{name} · Completed {done} / {total}', '{name} · 已完成 {done} / {total}', dict(name=name, done='%d' % done, total='%d' % total))
         return name
     if activity in ('verify', 'assemble', 'copy_bytes'):
-        verb = {'verify': ('Verifying ', '正在校验'), 'assemble': ('Assembling ', '正在合并'),
-                'copy_bytes': ('Copying ', '正在复制')}[activity]
+        values = dict(name=name, gap=gap)
         # MiB rather than tenths of GiB: even slow disks change the visible text.
-        parts = [t(verb[0], verb[1] + gap) + name]
+        parts = [t('Verifying {name}', '正在校验{gap}{name}', values) if activity == 'verify'
+                 else t('Assembling {name}', '正在合并{gap}{name}', values) if activity == 'assemble'
+                 else t('Copying {name}', '正在复制{gap}{name}', values)]
         done, total = event.get('done'), event.get('total')
         # Sampling caches are checked file by file; the changing count would only flicker.
         if (event.get('unit') == 'bytes' and number(done) and number(total) and total >= 2**20 and done <= total
@@ -156,8 +161,8 @@ def progress_text(event, zh=False, *, decimal_sizes=False):
         return t('The connection dropped; resuming the download and keeping what was already downloaded',
                  '连接中断，正在继续下载，已下载的部分会保留')
     if activity in ('check', 'copy'):
-        parts = [t('Checking ', '正在校验' + gap) + name if activity == 'check'
-                 else t('Copying ', '正在复制' + gap) + name]
+        parts = [t('Checking {name}', '正在校验{gap}{name}', dict(name=name, gap=gap)) if activity == 'check'
+                 else t('Copying {name}', '正在复制{gap}{name}', dict(name=name, gap=gap))]
         done, total = event.get('done'), event.get('total')
         # Below 1 KiB the size would read "0 / 0 KiB".
         if event.get('unit') == 'bytes' and number(done) and number(total) and total >= 1024 and done <= total:
@@ -173,7 +178,7 @@ def progress_text(event, zh=False, *, decimal_sizes=False):
         return ' · '.join(parts + transfer_parts(0, 0, event.get('rate'), decimal_sizes))
     if activity == 'download':
         total = event.get('total') if event.get('unit') == 'bytes' else 0
-        return ' · '.join([t('Downloading ', '正在下载' + gap) + name] +
+        return ' · '.join([t('Downloading {name}', '正在下载{gap}{name}', dict(name=name, gap=gap))] +
                           transfer_parts(event.get('done'), total or 0, event.get('rate'), decimal_sizes))
     return ''
 

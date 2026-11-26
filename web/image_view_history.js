@@ -153,8 +153,8 @@ export function createTrash({client, holdMs = 10000, now = () => Date.now(), set
     return trash;
 }
 
-const FILTER_WORDS = {all: ['All', '全部'], fav: ['Favourites', '收藏'], today: ['Today', '今天'], 'minimax-h3-image': ['H3', 'H3'], 'qwen-image-2.1-turbo': ['Qwen', 'Qwen'], 'moss-image-sft': ['MOSS', 'MOSS']};
-const SORT_WORDS = {new: ['Newest first', '最新在前'], old: ['Oldest first', '最早在前'], fav: ['Favourites first', '收藏在前']};
+const FILTER_WORDS = {all: ['All', '全部'], fav: ['Favorites', '收藏'], today: ['Today', '今天'], 'minimax-h3-image': ['H3', 'H3'], 'qwen-image-2.1-turbo': ['Qwen', 'Qwen'], 'moss-image-sft': ['MOSS', 'MOSS']};
+const SORT_WORDS = {new: ['Newest first', '最新在前'], old: ['Oldest first', '最早在前'], fav: ['Favorites first', '收藏在前']};
 
 // The column itself. `paint(state)` redraws; tiles are kept by file so pictures never reload on a redraw.
 // thumbURL: a picture's small copy for the tiles (the picture itself without one). queue: the page's background
@@ -164,13 +164,13 @@ export function historyPanel({pictureURL, thumbURL = pictureURL, queue = null, o
     const root = el('div', 'fv-iv-works');
     // Head: title and count, search, sort, select, fold.
     const head = el('div', 'fv-iv-panel-head');
-    const title = el('h2', 'fv-iv-panel-title', t('Works', '作品')), count = el('span', 'fv-iv-count');
+    const title = el('h2', 'fv-iv-panel-title', t('Creations', '作品')), count = el('span', 'fv-iv-count');
     const sortBtn = button('fv-iv-icon-btn', {iconName: 'sort'});
     const selectBtn = button('fv-iv-icon-btn', {iconName: 'select', name: t('Select', '选择'), use: t('Pick several to compare or delete', '选几张来对比或删除')});
-    const collapse = button('fv-iv-icon-btn fv-iv-collapse', {iconName: 'panelR', name: t('Hide works', '收起作品栏'), use: t('More room for the picture', '给画面腾出空间')});
+    const collapse = button('fv-iv-icon-btn fv-iv-collapse', {iconName: 'panelR', name: t('Hide creations', '收起作品栏'), use: t('More room for the image', '给画面腾出空间')});
     head.append(title, count, el('span', 'fv-iv-grow'), collapse);
     const searchRow = el('label', 'fv-iv-search'); const query = el('input'); query.type = 'search'; query.placeholder = t('Search prompts', '搜索提示词');
-    tip(query, t('Search', '搜索'), t('Find pictures by their prompt', '按提示词查找图片'), `${mod}+F`); searchRow.append(icon('search'), query);
+    tip(query, t('Search', '搜索'), t('Find images by their prompt', '按提示词查找图片'), `${mod}+F`); searchRow.append(icon('search'), query);
     const toolsRow = el('div', 'fv-iv-works-tools'); toolsRow.append(searchRow, sortBtn, selectBtn);
     const chips = el('div', 'fv-iv-chips'); chips.setAttribute('role', 'tablist');
     const chipButtons = FILTERS.map(f => { const b = button('fv-iv-chip'); b.dataset.filter = f; b.setAttribute('role', 'tab'); b.append(el('span', 'fv-iv-btn-label', t(...FILTER_WORDS[f])), el('span', 'fv-iv-chip-n')); b.addEventListener('click', () => onFilter(f)); return b; });
@@ -186,16 +186,16 @@ export function historyPanel({pictureURL, thumbURL = pictureURL, queue = null, o
     // Foot: the selection bar, or the way to recently deleted and the folder.
     const foot = el('div', 'fv-iv-panel-foot');
     const batch = el('div', 'fv-iv-batch'), picked = el('b', 'fv-iv-picked');
-    const allBtn = button('fv-iv-text-btn', {label: t('All', '全选'), name: t('Select all', '全选'), use: t('Pick every picture shown', '选中当前显示的全部图片'), key: `${mod}+A`});
+    const allBtn = button('fv-iv-text-btn', {label: t('All', '全选'), name: t('Select all', '全选'), use: t('Pick every image shown', '选中当前显示的全部图片'), key: `${mod}+A`});
     const favBtn = button('fv-iv-icon-btn', {iconName: 'star'});
     const deleteBtn = button('fv-iv-icon-btn fv-iv-danger', {iconName: 'trash'});
     const doneBtn = button('fv-iv-text-btn', {label: t('Done', '完成'), name: t('Done', '完成'), use: t('Leave selection', '退出多选'), key: 'Esc'});
     // Two or more picked are compared on the stage by themselves; the bar keeps what is done to all of them.
     batch.append(picked, allBtn, el('span', 'fv-iv-grow'), favBtn, deleteBtn, doneBtn);
     const links = el('div', 'fv-iv-links');
-    const trashLink = button('fv-iv-link', {iconName: 'trash', label: t('Recently deleted', '最近删除'), name: t('Recently deleted', '最近删除'), use: t('Bring back a picture you just deleted', '找回刚删除的图片')});
+    const trashLink = button('fv-iv-link', {iconName: 'trash', label: t('Recently deleted', '最近删除'), name: t('Recently deleted', '最近删除'), use: t('Bring back an image you just deleted', '找回刚删除的图片')});
     const trashN = el('span', 'fv-iv-link-n'); trashLink.append(trashN);
-    const folderLink = button('fv-iv-icon-btn', {iconName: 'folder', name: t('Open folder', '打开文件夹'), use: t('Show the pictures on this computer', '在电脑上打开保存图片的文件夹')});
+    const folderLink = button('fv-iv-icon-btn', {iconName: 'folder', name: t('Open folder', '打开文件夹'), use: t('Show the images on this computer', '在电脑上打开保存图片的文件夹')});
     links.append(trashLink, el('span', 'fv-iv-grow'), folderLink);
     foot.append(batch, links);
     root.append(head, toolsRow, chips, sortMenu, body, foot);
@@ -277,12 +277,12 @@ export function historyPanel({pictureURL, thumbURL = pictureURL, queue = null, o
             b.setAttribute('aria-selected', String(state.filter === f)); b.setAttribute('aria-pressed', String(state.filter === f));
             b.querySelector('.fv-iv-chip-n').textContent = '';
             b.hidden = (f.includes('-') && !n && state.filter !== f);
-            tip(b, t(...FILTER_WORDS[f]), {all: t('Show every picture', '显示全部图片'), fav: t('Only the starred ones', '只看收藏的图片'), today: t('Only pictures made today', '只看今天生成的'),
-                'minimax-h3-image': t('Only pictures made with H3 Image', '只看 H3 Image 生成的'), 'qwen-image-2.1-turbo': t('Only pictures made with Qwen-Image', '只看 Qwen-Image 生成的'),
-                'moss-image-sft': t('Only pictures made with MOSS-Image', '只看 MOSS-Image 生成的')}[f]);
+            tip(b, t(...FILTER_WORDS[f]), {all: t('Show every image', '显示全部图片'), fav: t('Only the starred ones', '只看收藏的图片'), today: t('Only images made today', '只看今天生成的'),
+                'minimax-h3-image': t('Only images made with H3 Image', '只看 H3 Image 生成的'), 'qwen-image-2.1-turbo': t('Only images made with Qwen-Image', '只看 Qwen-Image 生成的'),
+                'moss-image-sft': t('Only images made with MOSS-Image', '只看 MOSS-Image 生成的')}[f]);
         }
         for (const item of sortItems) item.setAttribute('aria-checked', String(item.dataset.sort === state.sort));
-        tip(sortBtn, t('Sort', '排序'), t(`Now: ${t(...SORT_WORDS[state.sort])}`, `当前：${t(...SORT_WORDS[state.sort])}`));
+        tip(sortBtn, t('Sort', '排序'), t('Now: {order}', '当前：{order}', { order: t(...SORT_WORDS[state.sort]) }));
         selectBtn.setAttribute('aria-pressed', String(state.selecting));
         if (query.value !== state.query && document.activeElement !== query) query.value = state.query;
         // Grid.
@@ -320,7 +320,7 @@ export function historyPanel({pictureURL, thumbURL = pictureURL, queue = null, o
                     tile.classList.toggle('fv-iv-picked', state.picked.has(row.file));
                     tile.classList.toggle('fv-iv-fav', state.meta.isFav(row.file));
                     const open = tile.firstChild, words = promptOfRow(row);
-                    tip(open, words ? (words.length > 40 ? words.slice(0, 40) + '…' : words) : t('Picture', '图片'),
+                    tip(open, words ? (words.length > 40 ? words.slice(0, 40) + '…' : words) : t('Image', '图片'),
                         state.selecting ? t('Click to pick; Shift picks a run', '点选；按住 Shift 连选') : t('Show it on the stage; pick several to compare', '在中间显示；多选即可对比'));
                     open.setAttribute('aria-pressed', String(state.selecting ? state.picked.has(row.file) : row.file === state.shownFile));
                     open.setAttribute('aria-selected', String(state.selecting ? state.picked.has(row.file) : row.file === state.shownFile));
@@ -334,22 +334,23 @@ export function historyPanel({pictureURL, thumbURL = pictureURL, queue = null, o
             reconcile(grid, blocks);
             for (const [file, tile] of tiles) if (!order.includes(file) && !state.allFiles.has(file)) originals?.unobserve(tile), tiles.delete(file), tile.remove();
             empty.hidden = state.rows.length > 0 || !!state.running || !!state.loading;
-            empty.replaceChildren(icon(state.total ? 'search' : 'asref'), el('span', '', state.total ? t('Nothing matches', '没有符合条件的图片') : t('Pictures you make appear here', '生成的图片会出现在这里')));
+            // With no work at all the page stays empty: no sentence (design 11-19); a filter that hides every work says so.
+            if (state.total) empty.replaceChildren(icon('search'), el('span', '', t('Nothing matches', '没有符合条件的图片'))); else empty.replaceChildren();
         } else {
             empty.hidden = true;
             const rows = state.trash;
             const headRow = el('div', 'fv-iv-trash-head');
-            const back = button('fv-iv-text-btn', {iconName: 'left', label: t('Works', '作品'), name: t('Back to works', '回到作品'), use: t('Leave recently deleted', '离开最近删除'), key: 'Esc'});
+            const back = button('fv-iv-text-btn', {iconName: 'left', label: t('Creations', '作品'), name: t('Back to creations', '回到作品'), use: t('Leave recently deleted', '离开最近删除'), key: 'Esc'});
             back.addEventListener('click', () => onTrash(false));
             headRow.append(back, el('span', 'fv-iv-grow'));
             if (rows.length) { const all = button('fv-iv-text-btn fv-iv-danger', {label: t('Delete now', '立即删除'), name: t('Delete now', '立即删除'), use: t('Remove these for good, without waiting', '不再等待，永久删除这些图片')}); all.addEventListener('click', () => onPurge(null)); headRow.append(all); }
-            const note = el('p', 'fv-iv-trash-note', t(`Deleted pictures stay here for ${Math.round(state.holdSeconds)} s, then they are gone.`, `删除的图片在这里保留 ${Math.round(state.holdSeconds)} 秒，之后永久删除。`));
+            const note = el('p', 'fv-iv-trash-note', t('Deleted images stay here for {seconds} s, then they are gone.', '删除的图片在这里保留 {seconds} 秒，之后永久删除。', { seconds: Math.round(state.holdSeconds) }));
             const list = el('div', 'fv-iv-trash-list');
             for (const h of rows) {
                 const item = el('div', 'fv-iv-trash-row'); const th = el('img'); th.alt = ''; th.src = pictureURL(h.row.file);
                 const left = Math.max(0, Math.ceil((h.at + state.holdSeconds * 1000 - Date.now()) / 1000));
-                const tx = el('span', 'fv-iv-trash-tx'); tx.append(el('b', '', promptOfRow(h.row) || h.row.name || h.row.file), el('small', '', t(`Gone in ${left} s`, `${left} 秒后永久删除`)));
-                const restore = button('fv-iv-text-btn', {iconName: 'restore', label: t('Restore', '恢复'), name: t('Restore', '恢复'), use: t('Put it back in works', '放回作品里')});
+                const tx = el('span', 'fv-iv-trash-tx'); tx.append(el('b', '', promptOfRow(h.row) || h.row.name || h.row.file), el('small', '', t('Gone in {left} s', '{left} 秒后永久删除', { left })));
+                const restore = button('fv-iv-text-btn', {iconName: 'restore', label: t('Restore', '恢复'), name: t('Restore', '恢复'), use: t('Put it back in creations', '放回作品里')});
                 restore.addEventListener('click', () => onRestore([h.row.file]));
                 item.append(th, tx, restore); list.append(item);
             }
@@ -358,12 +359,12 @@ export function historyPanel({pictureURL, thumbURL = pictureURL, queue = null, o
         }
         // Foot.
         batch.hidden = !state.selecting; links.hidden = state.selecting;
-        picked.textContent = t(`${state.picked.size} selected`, `已选 ${state.picked.size} 张`);
+        picked.textContent = t('{size} selected', '已选 {size} 张', { size: state.picked.size });
         const none = state.picked.size === 0;
         const allFav = !none && [...state.picked].every(f => state.meta.isFav(f));
         favBtn.setAttribute('aria-disabled', String(none)); deleteBtn.setAttribute('aria-disabled', String(none));
-        tip(favBtn, allFav ? t('Remove star', '取消收藏') : t('Star', '收藏'), none ? t('Pick a picture first', '先选中图片') : allFav ? t('Take these out of favourites', '把选中的移出收藏') : t('Keep these in favourites', '把选中的加入收藏'), 'F');
-        tip(deleteBtn, t('Delete', '删除'), none ? t('Pick a picture first', '先选中图片') : t('Move to recently deleted; can be undone', '移到最近删除，可以撤销'), 'Delete');
+        tip(favBtn, allFav ? t('Remove from favorites', '取消收藏') : t('Favorite', '收藏'), none ? t('Pick an image first', '先选中图片') : allFav ? t('Take these out of favorites', '把选中的移出收藏') : t('Keep these in favorites', '把选中的加入收藏'), 'F');
+        tip(deleteBtn, t('Delete', '删除'), none ? t('Pick an image first', '先选中图片') : t('Move to recently deleted; can be undone', '移到最近删除，可以撤销'), 'Delete');
         trashN.textContent = state.trash.length ? String(state.trash.length) : '';
         trashLink.setAttribute('aria-pressed', String(state.view === 'trash'));
     }

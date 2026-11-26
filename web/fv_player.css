@@ -16,6 +16,6 @@ video.fv-player-video{cursor:pointer}
 .fv-player-over[hidden]{display:none}
 .fv-player-over .fv-player-time{color:#ffffffcc}
 .fv-player-over .fv-player-rail{background:#ffffff40}
-audio:has(+ .fv-player-bar){display:none}
+audio.fv-player-audio{display:none}
 /* Too narrow for a progress bar that can be seen or dragged (a short clip's card): leave the keys and the time, not a lone dot. */
 @container (max-width:210px){.fv-player-track{display:none}.fv-player-time{margin-left:auto}}

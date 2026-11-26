@@ -20,40 +20,40 @@ const PLAIN_ERRORS = [
         title: ['FreeVideo is busy with another task', 'FreeVideo 正在处理另一个任务'],
         summary: ['Try again when it finishes. If nothing else is running, close duplicate FreeVideo instances, then try again.',
             '请在它完成后重试。若没有其他任务在进行，请关闭重复运行的 FreeVideo 后重试。']},
-    {key: 'continuation-missing', message: 'The previous video has no usable continuation data. Generate it again with this version of FreeVideo.',
-        title: ['This video cannot be continued', '这个视频暂时不能接续'],
-        summary: ['Generate the previous video again, then continue it.', '请重新生成上一段视频，再接续。']},
-    {key: 'continuation-short', message: 'The previous video is too short to continue; it needs to be at least 1.7 s long.',
+    {key: 'continuation-missing', message: 'The previous video lacks the data needed to extend it. Generate it again with this version of FreeVideo.',
+        title: ['This video cannot be extended', '这个视频暂时不能接续'],
+        summary: ['Generate the previous video again, then extend it.', '请重新生成上一段视频，再接续。']},
+    {key: 'continuation-short', message: 'The previous video is too short to extend; it needs to be at least 1.7 s long.',
         title: ['The previous video is too short', '上一段视频太短'],
         summary: ['Choose a video that is at least 1.7 seconds long.', '请选择至少 1.7 秒的视频。']},
     {key: 'continuation-unreadable', message: 'The previous video cannot be read.',
         title: ['The previous video cannot be read', '无法读取上一段视频'],
         summary: ['Choose an MP4 video that plays normally.', '请选择能正常播放的 MP4 视频。']},
-    {key: 'continuation-rate', message: "The previous video's frame rate is too low to continue; it needs at least 10 frames per second.",
+    {key: 'continuation-rate', message: "The previous video's frame rate is too low to extend; it needs at least 10 frames per second.",
         title: ["The previous video's frame rate is too low", '上一段视频帧率太低'],
         summary: ['Choose a video with at least 10 frames per second.', '请选择每秒至少 10 帧的视频。']},
     {key: 'continuation-size', message: 'Use the same aspect ratio as the previous video.',
         title: ['The two videos have different aspect ratios', '两段视频的画面比例不同'],
         summary: ['Choose a video size with the same aspect ratio as the previous video.', '请选择与上一段视频比例相同的画面大小。']},
-    {key: 'continuation-route', message: 'Continue from video cannot be used with these settings. Continuing a video needs an NVIDIA GPU or a Mac. To make a new video, clear "Continue from video".',
-        title: ['This computer can\'t continue a video', '这台电脑无法接续视频'],
-        summary: ['Continuing a video needs an NVIDIA GPU or a Mac. To make a new video, clear "Continue from video".', '接续视频需要 NVIDIA 显卡或 Mac。要生成新视频，请清空“接着生成”。']},
-    {key: 'continuation-passes', message: 'Continue from video cannot be used with these settings. Turn on "Two-pass acceleration" and turn off the first-pass preview.',
-        title: ['Continuing needs two-pass acceleration', '接续需要二采加速'],
-        summary: ['Turn on "Two-pass acceleration" and turn off the first-pass preview.', '请打开“二采加速”，并关闭先出预览。']},
-    {key: 'continuation-refine', message: 'Continue from video cannot be used with these settings. Clear either "Second pass of preview" or "Continue from video".',
-        title: ['A continued part is made in full', '接续会完整生成这一段'],
-        summary: ['Clear either "Second pass of preview" or "Continue from video".', '请清空“继续二采”或“接着生成”其中一项。']},
-    {key: 'continuation-media', message: 'Continue from video cannot be used with these settings. Connect up to 3 pictures as references, and remove video, audio and pre-encoded inputs.',
-        title: ['A continued part takes picture references only', '接续段只能用图片参考'],
-        summary: ['Connect up to 3 pictures as references, and remove video, audio and pre-encoded inputs.', '最多接 3 张图片作为参考图，并移除视频、音频参考和预编码输入。']},
+    {key: 'continuation-route', message: 'Extend from video cannot be used with these settings. Extending a video needs an NVIDIA GPU or a Mac. To make a new video, clear "Extend from video".',
+        title: ['This computer can\'t extend a video', '这台电脑无法接续视频'],
+        summary: ['Extending a video needs an NVIDIA GPU or a Mac. To make a new video, clear "Extend from video".', '接续视频需要 NVIDIA 显卡或 Mac。要生成新视频，请清空“接着生成”。']},
+    {key: 'continuation-passes', message: 'Extend from video cannot be used with these settings. Turn on "Faster second pass" and turn off the first-pass preview.',
+        title: ['Extending needs the faster second pass', '接续需要二采加速'],
+        summary: ['Turn on "Faster second pass" and turn off the first-pass preview.', '请打开“二采加速”，并关闭先出预览。']},
+    {key: 'continuation-refine', message: 'Extend from video cannot be used with these settings. Clear either "Second pass of preview" or "Extend from video".',
+        title: ['An extended part is made in full', '接续会完整生成这一段'],
+        summary: ['Clear either "Second pass of preview" or "Extend from video".', '请清空“继续二采”或“接着生成”其中一项。']},
+    {key: 'continuation-media', message: 'Extend from video cannot be used with these settings. Connect up to 3 images as references, and remove video, audio and pre-encoded inputs.',
+        title: ['An extended part takes image references only', '接续段只能用图片参考'],
+        summary: ['Connect up to 3 images as references, and remove video, audio and pre-encoded inputs.', '最多接 3 张图片作为参考图，并移除视频、音频参考和预编码输入。']},
     // Only the Mac engine still refuses keyframes next to references; elsewhere they become still guides.
     {key: 'media-mixed-layout', message: 'Reference and first/last keyframe layouts cannot be mixed in one request on this Mac; keep one of the two',
         title: ['Use references or first and last frames', '参考素材与首尾帧请选其一'],
         summary: ['On a Mac, keep one of the two: turn off the media cards or inputs you are not using, then generate again.', '在 Mac 上请保留其中一种：关闭本次不用的素材卡片或输入，再重新生成。']},
     {key: 'audio-original-passes', prefixes: ['audio_original_passes:'],
-        title: ['This audio needs two-pass acceleration', '这段音频需要二采加速'],
-        summary: ['Turn on "Two-pass acceleration" or set the audio to "Reference".', '请打开“二采加速”，或把音频改选“参考”。']},
+        title: ['This audio needs the faster second pass', '这段音频需要二采加速'],
+        summary: ['Turn on "Faster second pass" or set the audio to "Reference".', '请打开“二采加速”，或把音频改选“参考”。']},
     {key: 'audio-original-route', prefixes: ['audio_original_route:'],
         title: ['"Use as is" is not available here', '这里还不能用“原样使用”'],
         summary: ['Set the audio to "Reference".', '请把音频改选“参考”。']},
@@ -280,7 +280,10 @@ function reportRedactor(detail, context) {
     };
     const redact = value => {
         let text = removeInputs(value);
-        text = text.replace(/\b(?:https?|wss?|ftp|file):\/\/[^\s<>"']+/gi, '<URL REMOVED>')
+        // A local file written as a URL first (file:///C:/Users/..., file:/C:/..., file:C:/..., %-escaped): to the end of
+        // the path like any path, spaces included, so no part of a user name is left after it.
+        text = text.replace(/(^|[^A-Za-z0-9_\/])file:(?:\/\/[^\/\s<>"']*)?(?:\/+|(?=[A-Za-z]:[\\/]))[^\r\n"'<>;,\)\]]*/gi, '$1<PATH REMOVED>')
+            .replace(/\b(?:https?|wss?|ftp|file):\/\/[^\s<>"']+/gi, '<URL REMOVED>')
             .replace(/\b(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, '<CREDENTIAL REMOVED>')
             .replace(/\b(?:hf_|sk-|gh[pousr]_|github_pat_)[A-Za-z0-9_-]{8,}\b/g, '<CREDENTIAL REMOVED>')
             .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, '<CREDENTIAL REMOVED>')
@@ -452,13 +455,9 @@ export function failureAdvice(value, t, known = knownError(value)) {
         const available = known.available.filter(i => SAMPLING_EFFORTS[i]?.steps !== known.base_steps || SAMPLING_EFFORTS[i].twoPass !== known.two_pass);
         // Iris: a level name and its 档 never break apart. The summary is set as text,
         // so word joiners (U+2060) keep each group on one line instead of markup.
-        const keep = value => [...value].join('\u2060');
-        const join = language => {
-            const names = available.map(i => language ? `“${levels[i][1]}”` : levels[i][0]);
-            if (language) names[names.length - 1] += '档';
-            const kept = language ? names.map(keep) : names;
-            return kept.length < 2 ? kept[0] || '' : kept.slice(0, -1).join(language ? '、' : ', ') + (language ? '或' : ' or ') + kept.at(-1);
-        };
+        const keep = value => /[\u4e00-\u9fff]/.test(value) ? [...value].join('\u2060') : value;
+        const also = available.map((i, at) => keep(at === available.length - 1 ? t('{level}', '“{level}”档', { level: t(...levels[i]) }) : t('{level}', '“{level}”', { level: t(...levels[i]) })));
+        const list = also.length < 2 ? also[0] || '' : also.slice(0, -1).join(t(', ', '、')) + t(' or ', '或') + also.at(-1);
         const bytes = known.missing_bytes;
         // As launcher_copy.size_text: one decimal for GiB, whole MiB; decimal units on macOS.
         let size = bytes >= 2**30 ? (bytes / 2**30).toFixed(1) + ' GiB' : Math.floor(bytes / 2**20) + ' MiB';
@@ -468,12 +467,12 @@ export function failureAdvice(value, t, known = knownError(value)) {
         }
         // A custom step count is not a quality level: no "档" / "quality level" for it.
         const title = custom
-            ? [`Custom (${known.base_steps} steps) is not downloaded yet`, `“自定义（${known.base_steps} 步）”还没下载`]
-            : [`The ${levels[index][0]} quality level is not downloaded yet`, `${keep(`“${levels[index][1]}”档`)}还没下载`];
-        const what = custom ? ['This step count', '这个步数'] : ['This level', '这一档'];
-        return {...row('sampling-table', title,
-            [`${what[0]} needs a download (about ${size}) that did not finish this time. Generate again when online and it downloads automatically.${available.length ? ` You can also use ${join(0)} for now.` : ''}`,
-             `${what[1]}要先下载（约 ${size}），这次没能下载。联网后再生成一次，会自动下载。${available.length ? `也可以先用${join(1)}。` : ''}`], ['', '']), plain: true};
+            ? ['Custom ({steps} steps) is not downloaded yet', '“自定义（{steps} 步）”还没下载', { steps: known.base_steps }]
+            : ['The {level} quality level is not downloaded yet', '“\u2060{level}\u2060”\u2060档还没下载', { level: keep(t(...levels[index])) }];
+        const summary = custom
+            ? t('This step count needs a download (about {size}) that did not finish this time. Generate again when online and it downloads automatically.', '这个步数要先下载（约 {size}），这次没能下载。联网后再生成一次，会自动下载。', { size })
+            : t('This level needs a download (about {size}) that did not finish this time. Generate again when online and it downloads automatically.', '这一档要先下载（约 {size}），这次没能下载。联网后再生成一次，会自动下载。', { size });
+        return {...row('sampling-table', title, ['', ''], ['', '']), summary: summary + (available.length ? t(' You can also use {levels} for now.', '也可以先用{levels}。', { levels: list }) : ''), plain: true};
     }
     // ComfyUI and worker tracebacks carry English exceptions. Translate these
     // actionable failures through the existing signature/advice path.
@@ -498,12 +497,14 @@ export function failureAdvice(value, t, known = knownError(value)) {
         const fits = [...(/Fits now: ([^\n]+?)\.?(?:\n|$)/.exec(text)?.[1] || '').matchAll(/(\d+)x(\d+) (up to|at) ([\d.]+) s/g)]
             .map(([, width, height, kind, seconds]) => ({width, height, longest: kind === 'up to', seconds: Number(seconds)}));
         if (fits.length) {
-            const en = fits.map(f => f.longest ? `${f.width}\u00a0×\u00a0${f.height} up to ${f.seconds.toFixed(1)}\u00a0s` : `${f.width}\u00a0×\u00a0${f.height} at ${f.seconds.toFixed(1)}\u00a0s`).join(', or ');
-            const zh = fits.map(f => f.longest ? `${f.width}\u00a0×\u00a0${f.height} 最长 ${f.seconds.toFixed(1)}\u00a0秒` : `${f.width}\u00a0×\u00a0${f.height} 生成 ${f.seconds.toFixed(1)}\u00a0秒`).join('，或 ');
+            const sizes = fits.map(f => {
+                const values = { size: `${f.width}\u00a0×\u00a0${f.height}`, seconds: f.seconds.toFixed(1) };
+                return f.longest ? t('{size} up to {seconds}\u00a0s', '{size} 最长 {seconds}\u00a0秒', values) : t('{size} at {seconds}\u00a0s', '{size} 生成 {seconds}\u00a0秒', values);
+            }).join(t(', or ', '，或 '));
             return row('resources', ['Not enough GPU memory', '显存不足'],
                 ['Generation needs more GPU memory than is currently available.', '生成所需显存超过当前可用量。'],
-                [`This computer can make ${en} right now. Change the duration or resolution and generate again; closing other programs that use the GPU also frees memory.`,
-                 `现在可以生成：${zh}。请调整时长或清晰度后重新生成；关闭其他占用显卡的程序也可以腾出显存。`]);
+                ['This computer can make {sizes} right now. Change the duration or resolution and generate again; closing other programs that use the GPU also frees memory.',
+                 '现在可以生成：{sizes}。请调整时长或清晰度后重新生成；关闭其他占用显卡的程序也可以腾出显存。', { sizes }]);
         }
         return row('resources', ['The request exceeds available memory', '当前任务的可用内存不足'],
             ['Generation did not start because there is not enough available RAM or GPU memory.', '可用内存或显存不足，本次生成未开始。'],
@@ -524,8 +525,8 @@ export function failureAdvice(value, t, known = knownError(value)) {
         // The engine states what it saw ("2.2 GiB of 8.0 GiB is available and 4.0 GiB is required"); an older report has no numbers.
         const seen = /(\d+(?:\.\d)?) GiB of (\d+(?:\.\d)?) GiB is available and (\d+(?:\.\d)?) GiB is required/.exec(text);
         return row('unified-memory', ['Not enough unified memory', '统一内存不足'],
-            seen ? [`This Mac has ${seen[1]}\u00a0GiB of ${seen[2]}\u00a0GiB memory available. A generation needs at least ${seen[3]}\u00a0GiB to start.`,
-                    `这台 Mac 共 ${seen[2]}\u00a0GiB 内存，当前可用 ${seen[1]}\u00a0GiB，开始生成至少需要 ${seen[3]}\u00a0GiB。`]
+            seen ? ['This Mac has {free}\u00a0GiB of {total}\u00a0GiB memory available. A generation needs at least {needed}\u00a0GiB to start.',
+                    '这台 Mac 共 {total}\u00a0GiB 内存，当前可用 {free}\u00a0GiB，开始生成至少需要 {needed}\u00a0GiB。', { free: seen[1], total: seen[2], needed: seen[3] }]
                 : ['This Mac does not have enough free memory right now to start this generation.', '这台 Mac 当前可用的内存不足以开始这次生成。'],
             ['Close other memory-heavy applications and retry. Export the report if it still fails.', '请关闭其他占用内存较多的程序后重试。仍然失败时，请导出报告。']);
     }
@@ -602,7 +603,7 @@ export function failureAdvice(value, t, known = knownError(value)) {
     if (/Not enough disk space to save the 4K video/.test(text)) {
         const megabytes = /about (\d+) MB is needed/.exec(text)?.[1];
         return row('upscale-disk', ['Not enough disk space for the upscaled video', '磁盘空间不足，放大后的视频没能保存'],
-            megabytes ? [`The upscaled video needs about ${megabytes} MB on the drive of the output folder.`, `放大后的视频需要输出文件夹所在磁盘约 ${megabytes} MB 空间。`]
+            megabytes ? ['The upscaled video needs about {megabytes} MB on the drive of the output folder.', '放大后的视频需要输出文件夹所在磁盘约 {megabytes} MB 空间。', { megabytes }]
                 : ['The upscaled video needs more space on the drive of the output folder.', '放大后的视频需要输出文件夹所在磁盘更多空间。'],
             ['Free some space on that drive, then try again.', '请在该磁盘上腾出空间后重试。']);
     }
@@ -614,6 +615,14 @@ export function failureAdvice(value, t, known = knownError(value)) {
         return row('disk', ['Disk space is insufficient', '磁盘空间不足'],
             ['FreeVideo could not write a required file.', 'FreeVideo 无法写入所需文件。'],
             ['Free space on the installation/output drive and retry. Keep model downloads and retained outputs if you want to resume or inspect them.', '清理安装目录或输出目录所在磁盘的空间后重试；保留模型下载和输出文件，便于续传或排查。']);
+    // freevideo_engine/network.py PackageResolutionError: the versions do not fit this computer, not the download.
+    if (/Required packages cannot be installed on this computer/.test(text)) {
+        const names = /Required packages cannot be installed on this computer: ([^\r\n]+?)\.(?:\r?\n|$)/.exec(text);
+        return row('package-resolution', ['No version of the required packages is available for this computer', '所需的软件包没有适用于这台电脑的版本'],
+            names ? [names[1], names[1]] : ['', ''],
+            ['Switching the download source or connection mode gives the same result. Choose "Export report", then "Report a problem", and attach the report.',
+             '更换下载源或连接方式后结果相同。请先点击“导出报告”，再点击“提交问题”并附上报告。']);
+    }
     if (/Model download paused|unexpected-transfer-size|ConnectionError|ConnectTimeout|ReadTimeout|Every download source failed|All Git sources failed|All package sources failed|curl-28/i.test(text))
         return row('download', ['Download needs attention', '下载未完成'],
             ['A transfer failed or its received data did not match the expected file.', '传输中断，或收到的数据与预期文件不一致。'],
@@ -631,10 +640,16 @@ export function failureAdvice(value, t, known = knownError(value)) {
     // The generation process ended without a Python error: it crashed or was ended from outside. The code
     // names which (freevideo_engine/failure_details.py generation_failure prints "(exit N)"); the number stays in the details.
     // A "Cause:" line means the process did report an error (a named one that no row above knows): it is not an unexplained exit.
+    // A process ended from outside keeps its own card below: another level would not help.
     const exit = /^Cause: /m.test(text) ? null : /FreeVideo generation failed \(exit (-?\d+)\)/.exec(text);
+    const killed = !!exit && [137, -9, 3221225786].includes(Number(exit[1]));
+    // Only here, after every more specific card: memory, disk or an output folder are not solved by another level.
+    if (!killed && /^FreeVideo generation failed(?: \(exit -?\d+\))?$/m.test(text)
+        && /^FAST_MODE_FAILED: The fastest mode could not run\.$/m.test(text))
+        return row('fast-mode-failed', ['The Fast level did not finish', '极\u2060速\u2060档未能完成生成'],
+            ['Switch to the Light level and generate again.', '请改用轻\u2060量\u2060档后重新生成。'],
+            ['If it happens again, choose "Report a problem" to send us the report.', '再次出现时，请点击“提交问题”，把报告发给我们。']);
     if (exit) {
-        const code = Number(exit[1]);
-        const killed = code === 137 || code === -9 || code === 3221225786;
         return row('process-exit', ['Generation stopped unexpectedly', '生成意外中断'],
             killed ? ['The generation was ended by another program.', '生成已被其他程序结束。']
                    : ['FreeVideo closed unexpectedly while generating.', '生成过程中 FreeVideo 意外关闭。'],
@@ -716,14 +731,14 @@ export function adviceFor(report, t, value) {
     }
     // The name comes from the error as it arrived; a card shown again from its report says it without one.
     const media = advice.kind === 'media-missing' ? missingMedia(value) : null;
-    if (media) advice.summary = t(`"${media}" could not be found. Upload or select it again, then generate.`, `素材“${media}”已不存在，请重新上传或选择后再生成。`);
+    if (media) advice.summary = t('"{media}" could not be found. Upload or select it again, then generate.', '素材“{media}”已不存在，请重新上传或选择后再生成。', { media });
     // Every failure except a rejected input (which the user fixes in place) has one layout: written title,
     // Export report / Submit to GitHub, the raw error only inside the technical details.
     const generated = !['validation', 'media-missing'].includes(advice.kind);
     // A generation that stopped without a known cause is named by the stage it stopped in.
     if (generated && advice.kind === 'unknown' && report.stage === 'execution') {
         const stage = failureStage(report);
-        advice.title = stage ? t(`Generation did not finish: ${stage[0]}`, `生成未完成：${stage[1]}`) : t('Generation did not finish', '生成未完成');
+        advice.title = stage ? t('Generation did not finish: {stage}', '生成未完成：{stage}', { stage: t(...stage.slice(0, 2)) }) : t('Generation did not finish', '生成未完成');
     }
     return {advice, generated};
 }

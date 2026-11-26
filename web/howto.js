@@ -1,4 +1,5 @@
 import {showHowTo} from './first_run_guide.js';
+import {translator} from './i18n.js';
 
 // Short walk-throughs played over the live interface (the shared anchored layer, as the first-run guide uses).
 // A step names its control; when that control is not on screen (nothing generated yet, say) `image` stands in for it.
@@ -38,9 +39,9 @@ const HOWTOS = [
             {id: 'media', target: mediaSection, en: 'Add images here and set each one as a reference, first frame, or last frame.',
                 zh: '在此添加图片，每张可设为参\u2060考、首\u2060帧或尾\u2060帧。'},
             {id: 'describe', prepare: putMediaAway, anchor: '[data-fv-guide="describe"]', en: 'Type @ in the prompt and choose an image, then say what it does in the scene.',
-                zh: '在描述中输入 @ 选择图片，并写明它在画面中的作用。'},
+                zh: '在提示词中输入 @ 选择图片，并写明它在画面中的作用。'},
             {id: 'media-av', target: mediaSection, en: 'Videos and audio can be references too: add them the same way with "Add" and mention them in the prompt with @.',
-                zh: '视频和音频也可作为参考：同样点“添\u2060加”，在描述中输入 @ 引用。'},
+                zh: '视频和音频也可作为参考：同样点“添\u2060加”，在提示词中输入 @ 引用。'},
             {id: 'generate', prepare: putMediaAway, anchor: '[data-fv-guide="generate"]', en: 'Choose "Generate video".', zh: '点“生成视频”。'}]},
     {id: 'long-video', view: 'studio', needsParts: true, title: ['Make a longer video', '连续的长视频'],
         steps: [
@@ -48,12 +49,12 @@ const HOWTOS = [
                 zh: '填写更长的时长，会自动分段生成。'},
             {id: 'generate', anchor: '[data-fv-guide="generate"]', en: 'Choose "Generate video".', zh: '点“生成视频”。'},
             {id: 'extend', anchor: '.fv-action-extend', image: 'extend-button',
-                en: 'Choose "Extend" below a finished video to continue it. Each continued part is at least 5 seconds, and the last one can be as short as 2 seconds. With a part shorter than 10 seconds, one video has at most 4 parts.',
+                en: 'Choose "Extend" below a finished video to add the next part. Each added part is at least 5 seconds, and the last one can be as short as 2 seconds. With a part shorter than 10 seconds, one video has at most 4 parts.',
                 zh: '在生成好的视频下方点“接着生成”，继续下一段。接着生成的每一段至少 5 秒，最后一段可短至 2 秒。有短于 10 秒的段时，一条视频最多 4 段。'},
             {id: 'longer', anchor: '[data-view="editor"]', en: 'Parts can also be added one by one in "Edit".', zh: '也可在“剪辑视图”中逐段接续。'}]},
     {id: 'editor-extend-refs', view: 'editor', title: ['Add reference images when extending in Edit', '在剪辑视图延长时加参考图'],
         steps: [
-            {id: 'editor-timeline', target: selectedPart, en: 'Select the part to continue.', zh: '选中要接续的一段。'},
+            {id: 'editor-timeline', target: selectedPart, en: 'Select the part to extend.', zh: '选中要接续的一段。'},
             {id: 'editor-refs', anchor: '[data-fv-guide="editor-refs"]', image: 'editor-refs', prefer: ['below', 'left', 'right', 'above'],
                 en: 'Choose "Media" to upload or generate images.', zh: '点“素材”，上传或生成图片。'},
             {id: 'editor-describe', anchor: '[data-fv-guide="editor-describe"]', en: 'Describe it, then choose "Generate".', zh: '填写描述，然后点“生成”。'}]},
@@ -73,7 +74,7 @@ const HOWTOS = [
             {id: 'voice-generate', anchor: '[data-fv-guide="editor-generate"]', en: 'Choose "Redub" to speak the changed lines again.', zh: '点“重新配音”，只重配改过的句子。'}]}
 ];
 
-export const howToList = cn => HOWTOS.map(({id, title}) => ({id, title: title[cn ? 1 : 0]}));
+export const howToList = cn => HOWTOS.map(({id, title}) => ({id, title: translator(cn)(...title)}));
 
 // Devices that cannot make longer videos in parts have no Extend button, so that how-to is not offered.
 // An unreadable answer keeps it, as the length field's own line does.
@@ -90,7 +91,7 @@ export async function howToAvailable(id) {
 }
 export async function availableHowToList(cn) {
     const parts = await canMakeParts();
-    return HOWTOS.filter(item => parts || !item.needsParts).map(({id, title}) => ({id, title: title[cn ? 1 : 0]}));
+    return HOWTOS.filter(item => parts || !item.needsParts).map(({id, title}) => ({id, title: translator(cn)(...title)}));
 }
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));

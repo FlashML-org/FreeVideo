@@ -21,6 +21,7 @@ import { hasPictureThumbnail, mediaQueue, pictureThumbnailURL, watchCards } from
 import { zoomable } from './picture_zoom.js';
 import { createUpscaleOffer, upscaleChoices, UPSCALE_USE, UPSCALE_QUEUED, UPSCALE_FAILED } from './upscale_offer.js';
 import { capabilityPoints } from './chain_support.js';
+import { LANGUAGE } from './i18n.js';
 
 const style = document.createElement('link');
 style.rel = 'stylesheet'; style.href = new URL('./library.css', import.meta.url).href; document.head.append(style);
@@ -216,7 +217,8 @@ const videoFolderMessage = (t, answer, single = false) => !answer
     ? t('Could not open the folder. Open it on the computer that runs FreeVideo.', '没能打开文件夹。请在运行 FreeVideo 的电脑上打开。')
     : answer.missing ? t('The video file cannot be found. If you moved the file, refresh the page.', '找不到这条视频的文件。如果移动过文件，请刷新页面。')
     : answer.opened === false && answer.folder
-        ? t(`Could not open the folder. ${single ? 'This video is' : 'The videos are'} in ${answer.folder}`, `没能打开文件夹。视频在 ${answer.folder}`) : '';
+        ? (single ? t('Could not open the folder. This video is in {folder}', '没能打开文件夹。视频在 {folder}', { folder: answer.folder })
+            : t('Could not open the folder. The videos are in {folder}', '没能打开文件夹。视频在 {folder}', { folder: answer.folder })) : '';
 // Keeps earlier batches of one click undoable while its next request runs, then gives them the normal time again.
 async function holdBatches(tokens, running) {
     const states = await askUndoState('/freevideo/library/hold', {batches: tokens, running});
@@ -275,9 +277,11 @@ export async function libraryPage(t, {limit = 24, before = null, favorite = null
     return response.json();
 }
 
-export function videoTimestamp(row, t) {
+export function videoTimestamp(row, t, language = LANGUAGE) {
     const value = new Date(row.created_at);
-    if (Number.isNaN(value.getTime())) return row.kind === 'image' ? t('Saved picture', '已保存的图片') : t('Saved video', '已保存的视频');
+    if (Number.isNaN(value.getTime())) return row.kind === 'image' ? t('Saved image', '已保存的图片') : t('Saved video', '已保存的视频');
+    // A language file's page: the date as that language writes it.
+    if (language !== 'en' && language !== 'zh-Hans') return new Intl.DateTimeFormat(language, {month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'}).format(value);
     if (t('en', 'zh') === 'zh') return `${value.getMonth() + 1}月${value.getDate()}日 ${String(value.getHours()).padStart(2, '0')}:${String(value.getMinutes()).padStart(2, '0')}`;
     return value.toLocaleString('en-US', {month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true});
 }
@@ -288,7 +292,7 @@ export function videoDimensions(row, t = null) {
     const shown = row.preview && row.preview_geometry?.width ? row.preview_geometry : g;
     if (shown.width && shown.height) parts.push(`${shown.width} × ${shown.height}`);
     const duration = g.seconds || (g.frames && g.frames / (g.fps || 24));
-    if (duration) parts.push(t ? t(`${Number(duration).toFixed(1)} s`, `${Number(duration).toFixed(1)} 秒`) : `${Number(duration).toFixed(1)} s`);
+    if (duration) parts.push(t ? t('{seconds} s', '{seconds} 秒', { seconds: Number(duration).toFixed(1) }) : `${Number(duration).toFixed(1)} s`);
     return parts.join(' · ');
 }
 
@@ -320,11 +324,11 @@ async function workflowBackfill(collection, t, before = null) {
         actions.replaceChildren();
         while ((value = await status()) && value.state === 'running') await new Promise(resolve => setTimeout(resolve, 1500));
         const result = value?.result || {};
-        heading.textContent = result.embedded ? t(`Settings added to ${result.embedded} videos`, `已为 ${result.embedded} 个视频补上生成设置`) : t('No video was changed', '没有视频被改动');
+        heading.textContent = result.embedded ? t('Settings added to {embedded} videos', '已为 {embedded} 个视频补上生成设置', { embedded: result.embedded }) : t('No video was changed', '没有视频被改动');
         text.textContent = result.embedded
             ? t('Drop them back onto FreeVideo to bring back the settings they were made with. Each original is kept as a backup.', '把它们拖回 FreeVideo 即可还原生成时的设置。每个原视频都另存了一份备份。')
             : t('Videos that could not be checked safely were left as they were.', '无法安全确认的视频都保持原样。');
-        if (result.failed) text.textContent += ' ' + t(`${result.failed} videos were left unchanged and will be offered again.`, `另有 ${result.failed} 个视频未改动，之后会再次提示。`);
+        if (result.failed) text.textContent += ' ' + t('{failed} videos were left unchanged and will be offered again.', '另有 {failed} 个视频未改动，之后会再次提示。', { failed: result.failed });
         const full = Math.min(Number.isSafeInteger(result.no_space) ? result.no_space : 0, result.failed || 0);
         if (full > 0) text.textContent += ' ' + t(full === result.failed ? 'The disk is full. Free some space first.' : `${full} of them could not be changed because the disk is full. Free some space first.`,
             full === result.failed ? '磁盘空间不够，请先空出空间。' : `其中 ${full} 个因磁盘空间不够，请先空出空间。`);
@@ -332,8 +336,8 @@ async function workflowBackfill(collection, t, before = null) {
     }
     if (value.state === 'running') { follow(); return; }
     heading.textContent = t('Add settings to earlier videos', '为之前的视频补上生成设置');
-    text.textContent = t(`${value.count} earlier videos can get the settings they were made with, so dropping them back onto FreeVideo brings those settings back. Nothing changes before confirming, and each original is kept as a backup (about ${gb(value.bytes)} GB).`,
-        `有 ${value.count} 个之前生成的视频可以补上生成时的设置，之后拖回 FreeVideo 即可还原。确认前不会改动任何文件，每个原视频都会另存一份备份（约 ${gb(value.bytes)} GB）。`);
+    text.textContent = t('{count} earlier videos can get the settings they were made with, so dropping them back onto FreeVideo brings those settings back. Nothing changes before confirming, and each original is kept as a backup (about {size} GB).',
+        '有 {count} 个之前生成的视频可以补上生成时的设置，之后拖回 FreeVideo 即可还原。确认前不会改动任何文件，每个原视频都会另存一份备份（约 {size} GB）。', { count: value.count, size: gb(value.bytes) });
     const run = button(t('Add settings', '补上设置'), async () => {
         run.disabled = later.disabled = true;
         try { if (!(await post('run')).ok) throw new Error(); follow(); }
@@ -464,7 +468,7 @@ export function openLibrary(t, options = {}) {
     const tabWorks = button(t('Creations', '作品'), () => showTab('works'), 'fv-library-tab');
     const tabCast = button(t('Cast', '角色'), () => showTab('cast'), 'fv-library-tab');
     for (const tab of [tabWorks, tabCast]) tab.setAttribute('role', 'tab');
-    tip(tabWorks, t('Creations', '作品'), t('Generated videos and pictures', '生成的视频和图片'));
+    tip(tabWorks, t('Creations', '作品'), t('Generated videos and images', '生成的视频和图片'));
     tip(tabCast, t('Cast', '角色'), t('Characters, scenes and props to reuse', '可反复使用的角色、场景和道具'));
     title.replaceChildren(tabWorks, tabCast);
     let tab = 'works', castRoom = null;
@@ -517,9 +521,9 @@ export function openLibrary(t, options = {}) {
         item.setAttribute('aria-label', name); tip(item, name, use);
         places.append(item); return item;
     };
-    const placeAll = placeButton('all', t('All', '全部'), 'grid', t('Every video and picture', '所有视频和图片'));
+    const placeAll = placeButton('all', t('All', '全部'), 'grid', t('Every video and image', '所有视频和图片'));
     const placeVideo = placeButton('video', t('Videos', '视频'), 'video', t('Only the generated videos', '只看生成的视频'));
-    const placeImage = placeButton('image', t('Pictures', '图片'), 'picture', t('Only the generated pictures', '只看生成的图片'));
+    const placeImage = placeButton('image', t('Images', '图片'), 'picture', t('Only the generated images', '只看生成的图片'));
     const placeFavorites = placeButton('favorites', t('Favorites', '收藏'), 'heart', t('Creations marked with the heart', '点过爱心的作品'));
     const tagGroup = sideGroup(t('Tags', '标签'), 'fv-library-tags');
     const tagList = el('div', null, 'fv-library-tag-list');
@@ -532,11 +536,11 @@ export function openLibrary(t, options = {}) {
     placeTrash.append(line('trash'), el('span', t('Recently deleted', '最近删除'), 'fv-library-place-name'), el('span', '', 'fv-library-count'));
     tip(placeTrash, t('Recently deleted', '最近删除'), t('Bring back what was just deleted', '恢复刚删除的作品'));
     const openFolder = button('', async () => {
-        try { const answer = await (await pictures()).historyOpen(); if (answer && answer.opened === false && answer.folder) say(t(`The pictures are in ${answer.folder}`, `图片在 ${answer.folder}`)); }
+        try { const answer = await (await pictures()).historyOpen(); if (answer && answer.opened === false && answer.folder) say(t('The images are in {folder}', '图片在 {folder}', { folder: answer.folder })); }
         catch { say(t('Could not open the folder.', '没能打开文件夹。'), true); }
     }, 'fv-library-place fv-library-open-folder');
-    openFolder.append(line('folder'), el('span', t('Picture folder', '图片文件夹'), 'fv-library-place-name'));
-    tip(openFolder, t('Picture folder', '图片文件夹'), t('Show the pictures in the file manager', '在文件管理器里打开图片所在文件夹'));
+    openFolder.append(line('folder'), el('span', t('Image folder', '图片文件夹'), 'fv-library-place-name'));
+    tip(openFolder, t('Image folder', '图片文件夹'), t('Show the images in the file manager', '在文件管理器里打开图片所在文件夹'));
     const openVideoFolderButton = button('', async () => {
         const answer = await openVideoFolder(); const text = videoFolderMessage(t, answer);
         if (text) say(text, !answer || answer.missing, answer?.folder ? 20000 : 4000);  // a path stays long enough to be copied
@@ -597,7 +601,7 @@ export function openLibrary(t, options = {}) {
     const barDownload = button('', () => downloadPicked(), 'fv-quiet fv-library-bar-download');
     barDownload.append(line('download'), el('span', t('Download', '下载')));
     barDownload.setAttribute('aria-label', t('Download', '下载'));
-    tip(barDownload, t('Download', '下载'), t('Save the picked works as a zip file', '将所选作品保存为压缩包'));
+    tip(barDownload, t('Download', '下载'), t('Save the picked creations as a zip file', '将所选作品保存为压缩包'));
     const barCompare = button('', () => { const keys = [...picked]; if (keys.length === 2) openCompare(keys); }, 'fv-quiet fv-library-bar-compare');
     barCompare.append(line('compare'), el('span', t('Compare', '对比')));
     barCompare.setAttribute('aria-label', t('Compare', '对比'));
@@ -653,7 +657,7 @@ export function openLibrary(t, options = {}) {
     summary.append(summaryTitle, summaryNote, summaryGrid); detail.append(summary);
     function drawSummary(size) {
         const count = picked.size;
-        summaryTitle.textContent = count ? t(`${count} selected`, `已选 ${count} 个作品`) + (size == null ? '' : ` · ${t('about', '约')} ${gb(size)}`) : '';
+        summaryTitle.textContent = count ? t('{count} selected', '已选 {count} 个作品', { count }) + (size == null ? '' : ` · ${t('about', '约')} ${gb(size)}`) : '';
         summaryTitle.hidden = !count;
         summaryNote.hidden = !count;
         const keys = [...picked].slice(0, 12), have = [...summaryGrid.children].map(node => node.dataset.key);
@@ -812,8 +816,8 @@ export function openLibrary(t, options = {}) {
         }, () => { detail += ' head-failed'; });
         return note;
     }
-    const pictureProblem = () => { const note = el('p', null, 'fv-library-message'); fault(note, t('This picture can no longer be read. It may have been moved or deleted.', '这张图片已无法读取，可能已被移动或删除。')); return note; };
-    const pictureDimensions = row => [t('Picture', '图片'), row.size?.width ? `${row.size.width} × ${row.size.height}` : ''].filter(Boolean).join(' · ');
+    const pictureProblem = () => { const note = el('p', null, 'fv-library-message'); fault(note, t('This image can no longer be read. It may have been moved or deleted.', '这张图片已无法读取，可能已被移动或删除。')); return note; };
+    const pictureDimensions = row => [t('Image', '图片'), row.size?.width ? `${row.size.width} × ${row.size.height}` : ''].filter(Boolean).join(' · ');
     // The hover tips of the shared action bar, which the studio's module builds.
     function tipActions(root) {
         for (const [selector, name, use] of [
@@ -821,8 +825,8 @@ export function openLibrary(t, options = {}) {
             ['a.fv-action', t('Download video', '下载视频'), t('Save the MP4 to this computer', '把视频文件保存到电脑')],
             ['.fv-action-copy', t('Copy path', '复制路径'), t('Copy where the file is saved', '复制文件保存的位置')],
             ['.fv-action-reuse', t('Reuse settings', '复用设置'), t('Fill the creation panel with these settings', '把这次的设置填回创作面板')],
-            ['.fv-action-extend', t('Continue', '接着生成'), t('Make a longer video from its end', '从结尾继续生成更长的视频')],
-            ['.fv-share-trigger', t('Share', '分享'), t('Make a picture or clip to share', '生成可分享的图片或短片')],
+            ['.fv-action-extend', t('Extend', '接着生成'), t('Make a longer video from its end', '从结尾继续生成更长的视频')],
+            ['.fv-share-trigger', t('Share', '分享'), t('Make an image or clip to share', '生成可分享的图片或短片')],
             ['.fv-action-report', t('Download report', '下载报告'), t('Save the diagnostic report of this run', '保存这次生成的诊断报告')],
             ['.fv-action-delete > summary', t('Delete', '删除'), t('Delete it; undo for 10 seconds', '删除这个作品，10 秒内可撤销')],
             ['.fv-action-second-pass', t('Run second pass', '继续二采'), t('Finish the full-resolution video', '从预览继续生成全分辨率视频')],
@@ -843,13 +847,13 @@ export function openLibrary(t, options = {}) {
         };
         syncHeart();
         const download = el('a', null, 'fv-action fv-action-primary'); download.href = pictureURL(row); download.download = row.name || '';
-        download.append(icon('download'), el('span', t('Download picture', '下载图片')));
-        tip(download, t('Download picture', '下载图片'), t('Save the picture to this computer', '把图片保存到电脑'));
+        download.append(icon('download'), el('span', t('Download image', '下载图片')));
+        tip(download, t('Download image', '下载图片'), t('Save the image to this computer', '把图片保存到电脑'));
         // The image view's own next steps for a picture: its prompt back in the box, and the picture itself.
         const text = picturePrompt(row);
         const usePrompt = button('', () => usePicturePrompt(text), 'fv-action fv-action-secondary fv-action-use-prompt');
         usePrompt.append(icon('reuse'), el('span', t('Use prompt', '使用提示词')));
-        tip(usePrompt, t('Use prompt', '使用提示词'), t('Put its prompt in the box of the image view', '把它的提示词填回图像视图的描述框'));
+        tip(usePrompt, t('Use prompt', '使用提示词'), t('Put its prompt in the box of the image view', '把它的提示词填回图像视图的提示词框'));
         usePrompt.hidden = !text;
         const imageView = button('', () => openInImageView(row), 'fv-action fv-action-secondary fv-action-image-view');
         imageView.append(line('picture'), el('span', t('Open in Images', '在图像视图打开')));
@@ -899,7 +903,7 @@ export function openLibrary(t, options = {}) {
             // A picture's time, as the image view shows it; kept only for pictures made in this browser.
             const seconds = Number(pictureFacts.get(row.file)?.seconds);
             stats.replaceChildren();
-            if (seconds > 0) { const item = el('div', null, 'fv-stat'); item.append(el('strong', t(`${seconds} s`, `${seconds} 秒`)), el('span', t('Time', '用时'))); stats.append(item); }
+            if (seconds > 0) { const item = el('div', null, 'fv-stat'); item.append(el('strong', t('{seconds} s', '{seconds} 秒', { seconds })), el('span', t('Time', '用时'))); stats.append(item); }
             stats.hidden = !stats.childElementCount; budget.textContent = ''; sound.textContent = ''; run.hidden = stats.hidden;
             if (reveal) dialog.dataset.detail = 'true'; return;
         }
@@ -941,7 +945,7 @@ export function openLibrary(t, options = {}) {
             if (editor && !disposed) { dialog.close(); editor.element?.focus({preventScroll: true}); }
             return editor;
         }
-        catch (error) { fault(notice, userMessage(error, t, t('Could not open the editor. Try again.', '无法打开剪辑，请重试。')), ['Continue video', '延长视频'], null, error); }
+        catch (error) { fault(notice, userMessage(error, t, t('Could not open the editor. Try again.', '无法打开剪辑，请重试。')), ['Extend video', '延长视频'], null, error); }
     }
     // Fill the creation panel with a video's prompt, size, length and seed, then go back to it.
     async function reuseSaved(row) {
@@ -1052,7 +1056,7 @@ export function openLibrary(t, options = {}) {
                 if (shownMark) {
                     stack.textContent = String(head.videos.length);
                     stack.setAttribute('aria-expanded', String(unfoldedNow));
-                    stack.setAttribute('aria-label', t(`${head.videos.length} videos from this task`, `同一任务的 ${head.videos.length} 个视频`));
+                    stack.setAttribute('aria-label', t('{count} videos from this task', '同一任务的 {count} 个视频', { count: head.videos.length }));
                 }
             }
         }
@@ -1065,6 +1069,7 @@ export function openLibrary(t, options = {}) {
         const yesterday = dayOf({created_at: new Date(Date.now() - 864e5).toISOString()});
         if (day === today) return t('Today', '今天');
         if (day === yesterday) return t('Yesterday', '昨天');
+        if (!Number.isNaN(value.getTime()) && LANGUAGE !== 'en' && LANGUAGE !== 'zh-Hans') return value.toLocaleDateString(LANGUAGE, {month: 'long', day: 'numeric', weekday: 'short'});
         return Number.isNaN(value.getTime()) ? day : (t('en', 'zh') === 'zh' ? `${value.getMonth() + 1}月${value.getDate()}日 ${value.toLocaleDateString('zh-CN', {weekday: 'short'})}` : value.toLocaleDateString('en-US', {month: 'long', day: 'numeric', weekday: 'short'}));
     };
     const dayOfKey = key => dayOf(works.get(key) || {});
@@ -1084,7 +1089,7 @@ export function openLibrary(t, options = {}) {
     const snippet = text => { const first = String(text || '').replace(/\s+/g, ' ').trim(); return first.length > 40 ? first.slice(0, 40) + '…' : first; };
     const clock = row => { const value = new Date(row.created_at); return Number.isNaN(value.getTime()) ? '' : `${String(value.getHours()).padStart(2, '0')}:${String(value.getMinutes()).padStart(2, '0')}`; };
     // A creation is named by its words (or by what it is), never by a date or a time; the line under it is its size.
-    const workName = row => row.agent?.label || snippet(row.kind === 'image' ? picturePrompt(row) : prompts.get(row.id)) || (row.kind === 'image' ? t('Picture', '图片') : t('Video', '视频'));
+    const workName = row => row.agent?.label || snippet(row.kind === 'image' ? picturePrompt(row) : prompts.get(row.id)) || (row.kind === 'image' ? t('Image', '图片') : t('Video', '视频'));
     function labelCard(key) {
         const row = works.get(key), card = cards.get(key);
         if (!row || !card) return;
@@ -1117,7 +1122,7 @@ export function openLibrary(t, options = {}) {
         if (row.kind === 'image') {
             // A picture's words come from the engine's record (or this page's memory); one without says so.
             const text = picturePrompt(row);
-            promptText.textContent = text || t('This picture kept no prompt.', '这张图片没有保存提示词。');
+            promptText.textContent = text || t('This image kept no prompt.', '这张图片没有保存提示词。');
             promptText.dataset.none = String(!text); promptCopy.hidden = !text; promptBox.hidden = false;
             return;
         }
@@ -1270,8 +1275,8 @@ export function openLibrary(t, options = {}) {
         if (filter.tag) return t('No creation has this tag yet. Select creations and press Tag.', '还没有作品带这个标签。选中作品后点“标签”。');
         if (filter.period !== 'any' || filter.source || filter.preview || filter.agent) return t('Nothing matches these filters.', '没有符合筛选条件的作品。');
         if (filter.favorites) return t("No favorite creations. Click the heart in a creation's details to add one.", '暂无收藏的作品。点作品详情中的爱心图标收藏。');
-        if (filter.kind === 'image') return picturesState === 'failed' ? t('Pictures could not be read just now.', '图片暂时无法读取。') : t('Pictures made in the image view appear here.', '在图像视图里生成的图片会保存在这里。');
-        return t('Finished videos and pictures appear here.', '生成完成的视频和图片会保存在这里。');
+        if (filter.kind === 'image') return picturesState === 'failed' ? t('Images could not be read just now.', '图片暂时无法读取。') : t('Images made in the image view appear here.', '在图像视图里生成的图片会保存在这里。');
+        return t('Finished videos and images appear here.', '生成完成的视频和图片会保存在这里。');
     }
     function syncCounts() {
         const videos = [...works.values()].filter(row => row.kind !== 'image');
@@ -1390,7 +1395,7 @@ export function openLibrary(t, options = {}) {
         const period = [['any', t('Any time', '任何时间')], ['today', t('Today', '今天')], ['week', t('Last 7 days', '最近 7 天')], ['month', t('Last 30 days', '最近 30 天')]];
         filterMenu.replaceChildren(el('div', t('When', '时间'), 'fv-library-menu-label'));
         for (const [key, label] of period) filterMenu.append(menuItem(label, filter.period === key, () => { filter.period = key; drawFilterMenu(); applyFilter(); }));
-        filterMenu.append(el('div', null, 'fv-library-menu-sep'), el('div', t('Pictures from', '图片来源'), 'fv-library-menu-label'));
+        filterMenu.append(el('div', null, 'fv-library-menu-sep'), el('div', t('Images from', '图片来源'), 'fv-library-menu-label'));
         for (const [key, label] of [['', t('Any', '全部')], ['image', t('Image', '图片')], ['edit', t('Edit', '编辑')], ['cast', t('Character', '角色')]]) {
             filterMenu.append(menuItem(label, filter.source === key, () => { filter.source = key; drawFilterMenu(); applyFilter(); }));
         }
@@ -1431,7 +1436,7 @@ export function openLibrary(t, options = {}) {
     function openTagMenu(anchor, keys, point = null) {
         if (!keys.length) return;
         const draw = () => {
-            tagMenu.replaceChildren(el('div', keys.length > 1 ? t(`Tags for ${keys.length} creations`, `${keys.length} 个作品的标签`) : t('Tags', '标签'), 'fv-library-menu-label'));
+            tagMenu.replaceChildren(el('div', keys.length > 1 ? t('Tags for {count} creations', '{count} 个作品的标签', { count: keys.length }) : t('Tags', '标签'), 'fv-library-menu-label'));
             for (const tag of meta.tags()) {
                 const have = keys.filter(key => meta.tagsOf(key).includes(tag.id)).length;
                 const item = menuItem(tag.name, have === keys.length, () => { meta.setTags(keys, have === keys.length ? [] : [tag.id], have === keys.length ? [tag.id] : []); draw(); }, 'menuitemcheckbox');
@@ -1465,7 +1470,7 @@ export function openLibrary(t, options = {}) {
             for (const key of keys) { const row = works.get(key); if (!isVideo(key)) { row.favorite = value; syncFavorite(row); } }
             let failed = 0;
             for (const key of keys.filter(isVideo)) { try { await saveFavorite(works.get(key), value, true); } catch { failed++; } }
-            if (!disposed) { if (failed) say(t(`${failed} could not be changed. Try again.`, `有 ${failed} 个没能更改，请重试。`), true); if (selected) select(selected, false); render(); }
+            if (!disposed) { if (failed) say(t('{failed} could not be changed. Try again.', '有 {failed} 个没能更改，请重试。', { failed }), true); if (selected) select(selected, false); render(); }
         }});
         const tagRows = meta.tags().map(tag => {
             const have = keys.filter(key => meta.tagsOf(key).includes(tag.id)).length;
@@ -1478,7 +1483,7 @@ export function openLibrary(t, options = {}) {
         items.push({id: 'compare', icon: 'compare', label: ['Compare', '对比'], disabled: comparing ? '' : ['Select exactly two creations first', '先正好选中两个作品'], run: () => openCompare(comparing)});
         if (one) {
             items.push('-');
-            items.push({id: 'download', icon: 'download', label: one.kind === 'image' ? ['Download picture', '下载图片'] : ['Download video', '下载视频'], run: () => {
+            items.push({id: 'download', icon: 'download', label: one.kind === 'image' ? ['Download image', '下载图片'] : ['Download video', '下载视频'], run: () => {
                 downloadOne(one);
             }});
             if (one.kind !== 'image') {
@@ -1496,19 +1501,19 @@ export function openLibrary(t, options = {}) {
                 items.push({id: 'reuse', icon: 'reuse', label: ['Reuse settings', '复用设置'],
                     disabled: one.preview ? ['A first-pass preview: finish it first', '这是一采预览，先继续二采'] : '',
                     run: () => reuseSaved(one)});
-                items.push({id: 'extend', icon: 'arrow', label: ['Continue', '接着生成'], disabled: canExtend(one) ? '' : ['This video cannot be continued', '这条视频不能接着生成'],
+                items.push({id: 'extend', icon: 'arrow', label: ['Extend', '接着生成'], disabled: canExtend(one) ? '' : ['This video cannot be extended', '这条视频不能接着生成'],
                     run: () => extendSaved(one)});
             }
             if (one.kind === 'image') {
-                const text = picturePrompt(one), none = text ? '' : ['This picture kept no prompt', '这张图片没有保存提示词'];
+                const text = picturePrompt(one), none = text ? '' : ['This image kept no prompt', '这张图片没有保存提示词'];
                 items.push({id: 'use-prompt', icon: 'reuse', label: ['Use prompt', '使用提示词'], disabled: none,
-                    use: ['Put its prompt in the box of the image view', '把它的提示词填回图像视图的描述框'], run: () => usePicturePrompt(text)});
+                    use: ['Put its prompt in the box of the image view', '把它的提示词填回图像视图的提示词框'], run: () => usePicturePrompt(text)});
                 items.push({id: 'image-view', icon: 'image', label: ['Open in Images', '在图像视图打开'],
                     use: ['Use it as a reference or make more like it there', '在那里用作参考图，或接着生成'], run: () => openInImageView(one)});
             }
             const promptOf = one.kind === 'image' ? picturePrompt(one) : prompts.get(one.id);
             items.push({id: 'copy-prompt', icon: 'copy', label: ['Copy prompt', '复制提示词'],
-                disabled: promptOf ? '' : one.kind === 'image' ? ['This picture kept no prompt', '这张图片没有保存提示词'] : ['This video kept no prompt', '这条视频没有保存提示词'],
+                disabled: promptOf ? '' : one.kind === 'image' ? ['This image kept no prompt', '这张图片没有保存提示词'] : ['This video kept no prompt', '这条视频没有保存提示词'],
                 run: async () => { if (await copyText(promptOf)) say(t('Prompt copied.', '已复制提示词。')); else say(t('Could not copy. Try again.', '未能复制，请重试。'), true); }});
         }
         if (one) items.push({id: 'folder', icon: 'folder', label: ['Show in folder', '在文件夹中显示'],
@@ -1518,13 +1523,13 @@ export function openLibrary(t, options = {}) {
                     if (text) say(text, !answer || answer.missing, answer?.folder ? 20000 : 4000);
                     return;
                 }
-                try { const answer = await (await pictures()).historyOpen(); if (answer && answer.opened === false && answer.folder) say(t(`The pictures are in ${answer.folder}`, `图片在 ${answer.folder}`)); }
+                try { const answer = await (await pictures()).historyOpen(); if (answer && answer.opened === false && answer.folder) say(t('The images are in {folder}', '图片在 {folder}', { folder: answer.folder })); }
                 catch { say(t('Could not open the folder.', '没能打开文件夹。'), true); }
             }});
         if (!selecting) items.push({id: 'select', icon: 'check', label: ['Select', '选择'], use: ['Start selecting with this one', '从这一个开始多选'],
             run: () => { setSelecting(true); picked.add(keys[0]); anchor = keys[0]; syncSelection(); }});
         items.push('-');
-        items.push({id: 'trash', icon: 'trash', danger: true, label: keys.length > 1 ? [`Delete ${keys.length}`, `删除 ${keys.length} 个`] : ['Delete', '删除'], key: 'Delete',
+        items.push({id: 'trash', icon: 'trash', danger: true, label: keys.length > 1 ? ['Delete {count}', '删除 {count} 个', { count: keys.length }] : ['Delete', '删除'], key: 'Delete',
             use: ['Delete; undo for 10 seconds', '删除，10 秒内可撤销'], run: async () => {
                 const result = await removeKeys(keys);
                 if (disposed) return;
@@ -1616,7 +1621,7 @@ export function openLibrary(t, options = {}) {
         }
         if (!selecting) { stageFollowsSelection(); return; }
         const count = picked.size, size = pickedSize();
-        pickCount.textContent = t(`${count} selected`, `已选 ${count} 个`);
+        pickCount.textContent = t('{count} selected', '已选 {count} 个', { count });
         drawSummary(size);
         if (fetchSizes) wantedSizes();
         const about = size == null ? '' : ` · ${t('about', '约')} ${gb(size)}`;
@@ -1627,14 +1632,15 @@ export function openLibrary(t, options = {}) {
         const why = count ? '' : t('Select creations first', '先选择作品');
         for (const control of [barFavorite, barTag, barDownload, barDelete]) { if (why) control.dataset.fvTipWhy = why; else delete control.dataset.fvTipWhy; }
         if (confirming) {
-            barLabel.textContent = t(`Delete ${count} ${count === 1 ? 'creation' : 'creations'}?${size == null ? '' : ` About ${gb(size)}.`}`, `删除 ${count} 个作品？${size == null ? '' : `共约 ${gb(size)}。`}`);
+            barLabel.textContent = (count === 1 ? t('Delete 1 creation?', '删除 1 个作品？') : t('Delete {count} creations?', '删除 {count} 个作品？', { count }))
+                + (size == null ? '' : t(' About {size}.', '共约 {size}。', { size: gb(size) }));
             barText.textContent = t('They can be brought back for 10 seconds.', '10 秒内可以撤销。');
             barDelete.textContent = deleting ? t('Deleting…', '正在删除…') : t('Delete', '删除');
             barCancel.disabled = barDelete.disabled = deleting;
         } else {
-            barLabel.textContent = count ? t(`${count} selected`, `已选 ${count} 个`) : t('Select creations on the shelf', '点作品来选择');
+            barLabel.textContent = count ? t('{count} selected', '已选 {count} 个', { count }) : t('Select creations on the shelf', '点作品来选择');
             barText.textContent = '';
-            barDelete.textContent = count ? t(`Delete ${count}`, `删除 ${count} 个`) + about : t('Delete', '删除');
+            barDelete.textContent = count ? t('Delete {count}', '删除 {count} 个', { count }) + about : t('Delete', '删除');
             barDelete.disabled = deleting || !count;
             barFavorite.disabled = barTag.disabled = barDownload.disabled = deleting || !count;
         }
@@ -1674,7 +1680,7 @@ export function openLibrary(t, options = {}) {
             cell.append(media, el('figcaption', viewerName(row))); stage.append(cell);
         }
         const top = el('div', null, 'fv-library-viewer-bar');
-        const label = el('div', null, 'fv-library-viewer-label'); label.append(el('strong', t(`Comparing ${rows.length}`, `对比 ${rows.length} 个`)));
+        const label = el('div', null, 'fv-library-viewer-label'); label.append(el('strong', t('Comparing {count}', '对比 {count} 个', { count: rows.length })));
         const close = button('', () => setSelecting(false), 'fv-library-viewer-button'); close.append(line('close'));
         close.setAttribute('aria-label', t('Stop selecting', '退出多选')); tip(close, t('Stop selecting', '退出多选'), t('Back to one creation', '回到单个作品'), 'Esc');
         top.append(label, close);
@@ -1706,7 +1712,7 @@ export function openLibrary(t, options = {}) {
         if (!chosen.length || deleting) return;
         if (chosen.length === 1) { downloadOne(chosen[0]); return; }
         const asked = zipPayloads(chosen);
-        if (!asked.length) { say(t('These works cannot be downloaded.', '这些作品无法下载。'), true); return; }
+        if (!asked.length) { say(t('These creations cannot be downloaded.', '这些作品无法下载。'), true); return; }
         let answers;
         try { answers = await checkZips(api, asked); } catch { answers = asked.map(() => ({ready: 0, skipped: 0, failed: true})); }
         const payloads = asked.filter((_, at) => answers[at].ready > 0);
@@ -1714,12 +1720,12 @@ export function openLibrary(t, options = {}) {
         const left = chosen.length - count;
         if (!payloads.length) {
             say(answers.some(answer => answer.failed) ? t('Could not start the download. Try again.', '无法开始下载，请重试。')
-                : t('These works cannot be read.', '无法读取这些作品。'), true);
+                : t('These creations cannot be read.', '无法读取这些作品。'), true);
             return;
         }
-        const zips = payloads.length > 1 ? t(` in ${payloads.length} zip files`, `，分成 ${payloads.length} 个压缩包`) : '';
-        const missing = left > 0 ? t(`, ${left} could not be read`, `，其中 ${left} 个无法读取`) : '';
-        say(t(`Downloading ${count} ${count === 1 ? 'work' : 'works'}${zips}${missing}`, `正在下载 ${count} 个作品${zips}${missing}`), left > 0);
+        const zips = payloads.length > 1 ? t(' in {count} zip files', '，分成 {count} 个压缩包', { count: payloads.length }) : '';
+        const missing = left > 0 ? t(', {left} could not be read', '，其中 {left} 个无法读取', { left }) : '';
+        say((count === 1 ? t('Downloading 1 creation', '正在下载 1 个作品') : t('Downloading {count} creations', '正在下载 {count} 个作品', { count })) + zips + missing, left > 0);
         try { await postZips(api, payloads, {alive: () => !disposed}); }
         catch { say(t('Could not start the download. Try again.', '无法开始下载，请重试。'), true); }
     }
@@ -1732,7 +1738,7 @@ export function openLibrary(t, options = {}) {
         for (const key of keys.filter(isVideo)) { try { await saveFavorite(works.get(key), value, true); } catch { failed++; } }
         if (disposed) return;
         barFavorite.disabled = false;
-        say(failed ? t(`${failed} could not be changed. Try again.`, `有 ${failed} 个没能更改，请重试。`) : value ? t('Added to Favorites.', '已加入收藏。') : t('Removed from Favorites.', '已移出收藏。'), !!failed);
+        say(failed ? t('{failed} could not be changed. Try again.', '有 {failed} 个没能更改，请重试。', { failed }) : value ? t('Added to Favorites.', '已加入收藏。') : t('Removed from Favorites.', '已移出收藏。'), !!failed);
         render();
     }
     async function confirmDelete() {
@@ -1774,7 +1780,7 @@ export function openLibrary(t, options = {}) {
         const due = Math.min(...live.map(row => row.due), ...held.map(row => row.due));
         const ring = el('span', null, 'fv-library-ring'); ring.style.setProperty('--fv-left', String(Math.max(0, Math.min(1, (due - Date.now()) / 10000))));
         ring.style.setProperty('--fv-ms', `${Math.max(0, due - Date.now())}ms`);
-        const text = el('span', t(`Deleted ${deletedCount}`, `已删除 ${deletedCount} 个`));
+        const text = el('span', t('Deleted {deletedCount}', '已删除 {deletedCount} 个', { deletedCount }));
         const undo = button(t('Undo', '撤销'), () => undoAll(tokens, batches, undo), 'fv-quiet');
         tip(undo, t('Undo', '撤销'), t('Bring the deleted creations back', '恢复刚删除的作品'), '⌘Z');
         undoBar.append(ring, text, undo, ...notes);
@@ -1810,7 +1816,7 @@ export function openLibrary(t, options = {}) {
         undoFailure = '';
         undoBar.hidden = false;
         undoBar.replaceChildren(el('span', expired ? t('The undo time has passed.', '已过了撤销时间。')
-            : lost ? t(`Restored, but ${lost} could not be brought back.`, `已恢复，其中 ${lost} 个没能恢复。`) : t('Restored.', '已恢复。')));
+            : lost ? t('Restored, but {lost} could not be brought back.', '已恢复，其中 {lost} 个没能恢复。', { lost }) : t('Restored.', '已恢复。')));
         if (lost && !expired) {
             const text = undoBar.firstElementChild.textContent;
             undoBar.append(issueButton(t, () => ({where: ['Restore creations', '恢复作品'], message: text})));
@@ -1846,8 +1852,8 @@ export function openLibrary(t, options = {}) {
             const restore = button('', () => undoAll(block.token ? [block.token] : [], block.batch ? [block.batch] : [], restore), 'fv-quiet fv-library-restore');
             restore.append(line('restore'), el('span', t('Restore', '恢复')));
             tip(restore, t('Restore', '恢复'), t('Put these creations back on the shelf', '把这些作品放回作品库'));
-            top.append(el('strong', t(`${block.count} ${block.count === 1 ? 'creation' : 'creations'}`, `${block.count} 个作品`)),
-                el('span', t(`${left} s left`, `还剩 ${left} 秒`), 'fv-library-trash-left'), restore);
+            top.append(el('strong', block.count === 1 ? t('1 creation', '1 个作品') : t('{count} creations', '{count} 个作品', { count: block.count })),
+                el('span', t('{left} s left', '还剩 {left} 秒', { left }), 'fv-library-trash-left'), restore);
             const strip = el('div', null, 'fv-library-trash-strip');
             for (const row of block.rows.slice(0, 12)) {
                 const cell = el('div', null, 'fv-library-trash-cell');
@@ -1860,10 +1866,12 @@ export function openLibrary(t, options = {}) {
     }
     const skippedText = skipped => {
         const using = skipped.filter(row => row.reason !== 'foreign-files').length, other = skipped.length - using;
-        const folders = (count, en) => count === 1 ? en.replace('folders have', 'folder has') : en;
-        if (using && other) return t(`${using + other} kept: ${using} in use, ${other} ${folders(other, 'folders have')} other files.`, `${using + other} 个已保留：${using} 个正在使用，${other} 个文件夹里有别的文件。`);
-        if (using) return t(`${using} in use, kept.`, `${using} 个正在使用，已保留。`);
-        return t(`${other} ${folders(other, 'folders have')} other files, kept.`, `${other} 个文件夹里有别的文件，已保留。`);
+        if (using && other) return other === 1
+            ? t('{kept} kept: {using} in use, 1 folder has other files.', '{kept} 个已保留：{using} 个正在使用，1 个文件夹里有别的文件。', { kept: using + other, using })
+            : t('{kept} kept: {using} in use, {other} folders have other files.', '{kept} 个已保留：{using} 个正在使用，{other} 个文件夹里有别的文件。', { kept: using + other, using, other });
+        if (using) return t('{using} in use, kept.', '{using} 个正在使用，已保留。', { using });
+        return other === 1 ? t('1 folder has other files, kept.', '1 个文件夹里有别的文件，已保留。')
+            : t('{other} folders have other files, kept.', '{other} 个文件夹里有别的文件，已保留。', { other });
     };
     function leaveShelf(key) {
         const row = works.get(key);
@@ -1971,7 +1979,7 @@ export function openLibrary(t, options = {}) {
             for (const key of removed) picked.delete(key);
             confirming = false;
             undoFailure = removed.size
-                ? t(`${picked.size} could not be deleted. Try again.`, `还有 ${picked.size} 个没能删除，请重试。`)
+                ? t('{size} could not be deleted. Try again.', '还有 {size} 个没能删除，请重试。', { size: picked.size })
                 : why || t('Could not delete. Try again.', '没能删除，请重试。');
             if (!picked.size) setSelecting(false);
         } else { undoFailure = ''; setSelecting(false); }
@@ -2101,7 +2109,8 @@ export function openLibrary(t, options = {}) {
                 fromCache = false;
             }
             unread += Number.isSafeInteger(data.unreadable) && data.unreadable > 0 ? data.unreadable : 0;
-            unreadable.textContent = unread ? t(`${unread} ${unread === 1 ? 'creation' : 'creations'} could not be read`, `另有 ${unread} 个作品无法读取`) : '';
+            unreadable.textContent = !unread ? '' : unread === 1 ? t('1 creation could not be read', '另有 1 个作品无法读取')
+                : t('{count} creations could not be read', '另有 {count} 个作品无法读取', { count: unread });
             for (const row of data.items || []) append(row);
             for (const row of arrivals) append(row);
             // Pages already read below the first stay; their cursor carries on from where it was.
@@ -2182,7 +2191,7 @@ export function openLibrary(t, options = {}) {
     let viewerMuted = true, idleTimer = 0, infoOpen = false, menuClosedAt = 0;
     const viewerName = row => {
         const words = String(row.agent?.label || (row.kind === 'image' ? picturePrompt(row) : prompts.get(row.id)) || '').replace(/\s+/g, ' ').trim();
-        return words ? words.slice(0, 300) : row.kind === 'image' ? t('Picture', '图片') : t('Video', '视频');
+        return words ? words.slice(0, 300) : row.kind === 'image' ? t('Image', '图片') : t('Video', '视频');
     };
     function wake() {
         if (viewing == null || viewing === 'compare') return;
@@ -2217,9 +2226,9 @@ export function openLibrary(t, options = {}) {
         more.classList.add('fv-library-viewer-more');
         if (row.kind === 'image') {
             const download = el('a', null, 'fv-library-viewer-action'); download.href = pictureURL(row); download.download = row.name || '';
-            download.append(icon('download'), el('span', t('Download', '下载'))); tip(download, t('Download picture', '下载图片'), t('Save the picture to this computer', '把图片保存到电脑'));
+            download.append(icon('download'), el('span', t('Download', '下载'))); tip(download, t('Download image', '下载图片'), t('Save the image to this computer', '把图片保存到电脑'));
             const text = picturePrompt(row);
-            const usePrompt = viewerAction(t('Use prompt', '使用提示词'), t('Put its prompt in the box of the image view', '把它的提示词填回图像视图的描述框'), icon('reuse'), () => usePicturePrompt(text));
+            const usePrompt = viewerAction(t('Use prompt', '使用提示词'), t('Put its prompt in the box of the image view', '把它的提示词填回图像视图的提示词框'), icon('reuse'), () => usePicturePrompt(text));
             usePrompt.hidden = !text;
             const imageView = viewerAction(t('Open in Images', '在图像视图打开'), t('Use it as a reference or make more like it there', '在那里用作参考图，或接着生成'), line('picture'), () => openInImageView(row));
             foot.append(download, imageView, usePrompt, more);
@@ -2227,7 +2236,7 @@ export function openLibrary(t, options = {}) {
         }
         const download = el('a', null, 'fv-library-viewer-action'); download.href = outputDownloadURL(api, row.video); download.download = '';
         download.append(icon('download'), el('span', t('Download', '下载'))); tip(download, t('Download video', '下载视频'), t('Save the MP4 to this computer', '把视频文件保存到电脑'));
-        const extendButton = viewerAction(t('Continue', '接着生成'), canExtend(row) ? t('Make a longer video from its end', '从结尾继续生成更长的视频') : t('This video cannot be continued', '这条视频不能接着生成'), icon('extend'), () => { closeViewer(); extendSaved(row); });
+        const extendButton = viewerAction(t('Extend', '接着生成'), canExtend(row) ? t('Make a longer video from its end', '从结尾继续生成更长的视频') : t('This video cannot be extended', '这条视频不能接着生成'), icon('extend'), () => { closeViewer(); extendSaved(row); });
         extendButton.disabled = !canExtend(row);
         const again = row.preview && secondPassRunner()
             ? viewerAction(t('Run second pass', '继续二采'), t('Finish the full-resolution video', '从预览继续生成全分辨率视频'), icon('reuse'), () => { closeViewer(); secondPass(row); })
@@ -2242,7 +2251,7 @@ export function openLibrary(t, options = {}) {
         const extra = [{id: 'info', icon: 'info', label: infoOpen ? ['Hide info', '收起信息'] : ['Info', '信息'], use: ['Prompt and run details', '提示词和运行详情'], key: 'I', run: () => toggleInfo()}];
         if (row.kind !== 'image') {
             const share = links.querySelector('.fv-share-trigger'), copy = links.querySelector('.fv-action-copy');
-            if (share) extra.unshift({id: 'share', icon: 'globe', label: ['Share', '分享'], use: ['Make a picture or clip to share', '生成可分享的图片或短片'], run: () => share.click()});
+            if (share) extra.unshift({id: 'share', icon: 'globe', label: ['Share', '分享'], use: ['Make an image or clip to share', '生成可分享的图片或短片'], run: () => share.click()});
             if (copy) extra.push({id: 'copy-path', icon: 'folder', label: ['Copy path', '复制路径'], use: ['Copy where the file is saved', '复制文件保存的位置'], run: () => copy.click()});
         }
         // Deleting from the viewer moves on to the next creation (or closes when none is left).
@@ -2545,7 +2554,7 @@ export function openLibrary(t, options = {}) {
             const tag = meta.tag(id); if (!tag) continue;
             const chip = el('span', null, 'fv-library-chip'); chip.dataset.color = tag.color;
             const x = button('', () => { meta.setTags([key], [], [id]); }, 'fv-library-chip-remove'); x.append(line('close'));
-            x.setAttribute('aria-label', t(`Remove tag ${tag.name}`, `去掉标签“${tag.name}”`)); tip(x, t('Remove tag', '去掉标签'), t(`Take "${tag.name}" off this creation`, `从这个作品上去掉“${tag.name}”`));
+            x.setAttribute('aria-label', t('Remove tag {name}', '去掉标签“{name}”', { name: tag.name })); tip(x, t('Remove tag', '去掉标签'), t('Take "{name}" off this creation', '从这个作品上去掉“{name}”', { name: tag.name }));
             chip.append(el('span', tag.name), x); tagRow.append(chip);
         }
         const add = button('', () => openTagMenu(add, [key]), 'fv-library-chip fv-library-chip-add');
@@ -2615,7 +2624,7 @@ export function openLibrary(t, options = {}) {
     // A picture whose delete could not be done comes back with a note.
     const pictureOff = pictureBin.subscribe(event => {
         if (disposed) return;
-        if (event?.failed?.length) { loadPictures().then(() => { render(); say(t(`${event.failed.length} could not be deleted; they are back.`, `有 ${event.failed.length} 个没能删除，已放回。`), true); }); return; }
+        if (event?.failed?.length) { loadPictures().then(() => { render(); say(t('{count} could not be deleted; they are back.', '有 {count} 个没能删除，已放回。', { count: event.failed.length }), true); }); return; }
         showUndo();
     });
     // A delete that an earlier opening of the dialog is still carrying out takes its creations off this one too.

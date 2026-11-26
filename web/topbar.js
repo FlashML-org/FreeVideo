@@ -263,18 +263,18 @@ function statusCapsule(t) {
 // tasks) is here, with the queue's stop and resume. Nothing is read in the background: the computer's numbers are
 // read while the panel is open (every 2 s), the assistant's state once per opening.
 let activity = null;
-const SECONDS = (t, value) => { const s = Math.max(1, Math.round(value)); return s < 120 ? t(`about ${s} s`, `约 ${s} 秒`) : t(`about ${Math.round(s / 60)} min`, `约 ${Math.round(s / 60)} 分钟`); };
+const SECONDS = (t, value) => { const s = Math.max(1, Math.round(value)); return s < 120 ? t('about {s} s', '约 {s} 秒', { s }) : t('about {minutes} min', '约 {minutes} 分钟', { minutes: Math.round(s / 60) }); };
 function jobTitle(row, t) {
     if (row.source === 'agent') return agentTitle(row.job, t);
     const text = String(row.meta?.text ?? row.prompt ?? '').replace(/\s+/g, ' ').trim();
-    return text || ({image: t('Picture', '图片'), video: t('Video', '视频'), chain: t('Long video', '长视频')}[row.kind] || t('Task', '任务'));
+    return text || ({image: t('Image', '图片'), video: t('Video', '视频'), chain: t('Long video', '长视频')}[row.kind] || t('Task', '任务'));
 }
 function jobLine(row, t) {
-    if (row.status === 'queued' || row.status === 'submitting') return row.position > 0 ? t(`Waiting, ${row.position} ahead`, `排队中，前面 ${row.position} 个`) : t('Waiting', '排队中');
+    if (row.status === 'queued' || row.status === 'submitting') return row.position > 0 ? t('Waiting, {position} ahead', '排队中，前面 {position} 个', { position: row.position }) : t('Waiting', '排队中');
     if (row.status === 'cancelling') return t('Stopping', '正在停止');
     if (row.status === 'running') {
         const percent = Math.round(100 * (Number(row.percent) || 0));
-        return [t(`Generating ${percent}%`, `生成中 ${percent}%`), Number.isFinite(row.eta_seconds) && row.eta_seconds > 0 ? SECONDS(t, row.eta_seconds) : ''].filter(Boolean).join(' · ');
+        return [t('Generating {percent}%', '生成中 {percent}%', { percent }), Number.isFinite(row.eta_seconds) && row.eta_seconds > 0 ? SECONDS(t, row.eta_seconds) : ''].filter(Boolean).join(' · ');
     }
     if (row.status === 'done') return t('Finished', '已完成');
     if (row.status === 'cancelled') return t('Stopped', '已停止');
@@ -287,7 +287,7 @@ function jobFigures(row, t) {
         const percent = Math.round(100 * (Number(row.percent) || 0));
         return [`${percent}%`, Number.isFinite(row.eta_seconds) && row.eta_seconds > 0 ? SECONDS(t, row.eta_seconds) : ''].filter(Boolean).join(' · ');
     }
-    if (row.status === 'queued' || row.status === 'submitting') return row.position > 0 ? t(`${row.position} ahead`, `前面 ${row.position} 个`) : t('Waiting', '排队中');
+    if (row.status === 'queued' || row.status === 'submitting') return row.position > 0 ? t('{position} ahead', '前面 {position} 个', { position: row.position }) : t('Waiting', '排队中');
     if (row.status === 'cancelling') return t('Stopping', '正在停止');
     if (row.status === 'done') return t('Finished', '已完成');
     if (row.status === 'cancelled') return t('Stopped', '已停止');
@@ -321,7 +321,7 @@ function buildActivity(t) {
         if (row.status === 'done' || isFailure(row)) jobs.markSeen?.(row.id);
     };
     const heading = (node, name, extra = null) => { const line = el('div', 'fv-tb-act-title'); line.append(el('span', '', name)); if (extra) line.append(extra); node.replaceChildren(line); };
-    const VIEW = {studio: t('Studio', '创作面板'), image: t('Image', '图像视图'), editor: t('Edit', '剪辑视图'), autopilot: t('Autopilot', 'AI 全自动'), nodes: t('Nodes', '节点视图')};
+    const VIEW = {studio: t('Create', '创作面板'), image: t('Image', '图像视图'), editor: t('Edit', '剪辑视图'), autopilot: t('Autopilot', 'AI 全自动'), nodes: t('Nodes', '节点视图')};
     // 2 · Tasks: one row each; a press goes back to its picture; Stop (or Remove from queue) is confirmed first.
     const stopLost = new Map(), LOST_MS = 8000;
     const taskRow = row => {
@@ -377,7 +377,7 @@ function buildActivity(t) {
         if (list.length) tasks.append(...list.map(taskRow)); else tasks.append(el('p', 'fv-tb-act-empty', t('Nothing is running.', '没有进行中的任务。')));
         // Assistant tasks the engine could not read are counted, not hidden.
         const unreadable = agentTasks.unreadable();
-        if (unreadable) tasks.append(el('p', 'fv-tb-act-empty fv-tb-act-unreadable', t(`${unreadable} ${unreadable === 1 ? 'job' : 'jobs'} could not be read`, `另有 ${unreadable} 个任务无法读取`)));
+        if (unreadable) tasks.append(el('p', 'fv-tb-act-empty fv-tb-act-unreadable', (unreadable === 1 ? t('1 job could not be read', '另有 1 个任务无法读取') : t('{count} jobs could not be read', '另有 {count} 个任务无法读取', { count: unreadable }))));
         drawFoot();
     };
     // 3 · This computer: video memory in large figures, then temperature, load and free disk, right-aligned.
@@ -433,7 +433,7 @@ function buildActivity(t) {
         foot.hidden = !busy && !waiting;
         if (foot.hidden) return;
         if (confirming) {
-            const ask = el('p', 'fv-tb-act-ask', waiting ? t(`Stop the current video? What is being made is not kept; the ${waiting} waiting will pause.`, `停止当前视频？正在生成的不会保留，排队的 ${waiting} 个会暂停。`)
+            const ask = el('p', 'fv-tb-act-ask', waiting ? t('Stop the current video? What is being made is not kept; the {waiting} waiting will pause.', '停止当前视频？正在生成的不会保留，排队的 {waiting} 个会暂停。', { waiting })
                 : t('Stop the current video? What is being made is not kept.', '停止当前视频？正在生成的不会保留。'));
             const keep = el('button', 'fv-tb-act-btn', t('Keep running', '继续运行')), stop = el('button', 'fv-tb-act-btn is-armed', t('Stop', '停止'));
             keep.type = stop.type = 'button';
@@ -451,7 +451,7 @@ function buildActivity(t) {
         foot.classList.remove('is-asking');
         const said = running ? jobLine(running, t) : t('Working', '运行中');
         foot.append(el('span', 'fv-tb-act-note', said));
-        if (waiting) foot.append(el('span', 'fv-tb-act-note is-quiet', t(`${waiting} waiting`, `排队 ${waiting}`)));
+        if (waiting) foot.append(el('span', 'fv-tb-act-note is-quiet', t('{waiting} waiting', '排队 {waiting}', { waiting })));
         foot.append(el('span', 'fv-tb-grow'));
         const stop = el('button', 'fv-tb-act-stop', t('Stop', '停止')); stop.type = 'button';
         tip(stop, t('Stop', '停止'), t('Stop what runs and pause the queue; asks first', '停止正在生成的并暂停队列，会先确认'));
@@ -517,7 +517,7 @@ export function topbarActions(t = t0) {
     const right = el('div', 'fv-tb-right');
     const capsule = statusCapsule(t);
     const search = paletteButton(t, 'fv-tb-btn fv-tb-search'); withIcon(search, 'search'); search.replaceChildren(); tip(search, ...w.search);
-    search.dataset.fvField = t('Search works, prompts and actions', '搜索作品、提示词和操作');
+    search.dataset.fvField = t('Search creations, prompts and actions', '搜索作品、提示词和操作');
     const sep = el('span', 'fv-tb-sep'); sep.setAttribute('aria-hidden', 'true');
     // The works library is one click away in every view and at every width: never folded into the menu (CEO 11-17).
     // It is a link like the five beside it (same box, icon, hover), kept out of the phone menu so it stays on the bar.

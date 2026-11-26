@@ -1,6 +1,7 @@
 // The Autopilot view's side panels. The conversation stays in the middle column; the right panel lists every task
 // of the chat being read (what is being made first, then the finished ones, newest first), each with its prompt,
 // time and state, searchable, and below it the details of the one picked. Pure helpers are exported for tests.
+import { LANGUAGE } from './i18n.js';
 import { setTip } from './tip_words.js';
 import {tip} from './autopilot_tips.js';
 
@@ -47,25 +48,29 @@ export function statusText(job, t, fraction = null) {
 
 // A time of day for today, with the day before it otherwise; nothing when the time is not known. `short` drops the
 // hour from earlier days (a list where the date is enough).
-export function localTime(value, t, now = new Date(), {short = false} = {}) {
+export function localTime(value, t, now = new Date(), {short = false, language = LANGUAGE} = {}) {
     const at = value instanceof Date ? value : typeof value === 'number' ? new Date(value * (value < 1e12 ? 1000 : 1)) : value ? new Date(value) : null;
     if (!at || Number.isNaN(at.getTime())) return '';
     const hm = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
     const day = d => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
     const days = Math.round((day(now) - day(at)) / 86400000);
     if (days === 0) return hm;
-    if (days === 1) return short ? t('Yesterday', '昨天') : t(`Yesterday ${hm}`, `昨天 ${hm}`);
-    const month = t(['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][at.getMonth()], `${at.getMonth() + 1}月`);
-    if (short) return at.getFullYear() === now.getFullYear() ? t(`${month} ${at.getDate()}`, `${month}${at.getDate()}日`) : t(`${month} ${at.getFullYear()}`, `${at.getFullYear()}年${month}`);
-    return at.getFullYear() === now.getFullYear() ? t(`${month} ${at.getDate()}, ${hm}`, `${month}${at.getDate()}日 ${hm}`)
-        : t(`${month} ${at.getDate()} ${at.getFullYear()}, ${hm}`, `${at.getFullYear()}年${month}${at.getDate()}日 ${hm}`);
+    if (days === 1) return short ? t('Yesterday', '昨天') : t('Yesterday {hm}', '昨天 {hm}', { hm });
+    const thisYear = at.getFullYear() === now.getFullYear(), year = at.getFullYear(), date = at.getDate();
+    // A language file's page: the date as that language writes it.
+    if (language !== 'en' && language !== 'zh-Hans') return new Intl.DateTimeFormat(language, {...(thisYear ? {} : {year: 'numeric'}), month: 'short',
+        ...(short && !thisYear ? {} : {day: 'numeric'}), ...(short ? {} : {hour: '2-digit', minute: '2-digit', hourCycle: 'h23'})}).format(at);
+    const en = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][at.getMonth()], zh = `${at.getMonth() + 1}月`;
+    const written = short ? (thisYear ? [`${en} ${date}`, `${zh}${date}日`] : [`${en} ${year}`, `${year}年${zh}`])
+        : thisYear ? [`${en} ${date}, ${hm}`, `${zh}${date}日 ${hm}`] : [`${en} ${date} ${year}, ${hm}`, `${year}年${zh}${date}日 ${hm}`];
+    return t(...written);
 }
 // How long a finished task took, from its two times; '' when either is missing.
 export function tookText(from, to, t) {
     const a = new Date(from).getTime(), b = new Date(to).getTime();
     if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) return '';
     const s = Math.round((b - a) / 1000), m = Math.floor(s / 60);
-    return s < 60 ? t(`${s} s`, `${s} 秒`) : t(`${m} min ${s % 60} s`, `${m} 分 ${s % 60} 秒`);
+    return s < 60 ? t('{s} s', '{s} 秒', { s }) : t('{m} min {seconds} s', '{m} 分 {seconds} 秒', { m, seconds: s % 60 });
 }
 
 // A task's time line: when it started, how long it has run and about how long is left; how long a finished one took.
@@ -73,15 +78,15 @@ const mmss = seconds => { const v = Math.max(0, Math.round(seconds)); return `${
 export function taskTimes(job, t, {left = null, now = Date.now()} = {}) {
     const key = statusKey(job), start = localTime(job.created_at, t, new Date(now)), began = new Date(job.created_at).getTime();
     if (key === 'running' || key === 'stopping') {
-        const parts = [start && t(`started ${start}`, `${start} 开始`)];
-        if (Number.isFinite(began) && now > began) parts.push(t(`${mmss((now - began) / 1000)} so far`, `已用 ${mmss((now - began) / 1000)}`));
-        if (left > 0) parts.push(left >= 60 ? t(`about ${Math.ceil(left / 60)} min left`, `约 ${Math.ceil(left / 60)} 分钟`) : t('under 1 min left', '不到 1 分钟'));
+        const parts = [start && t('started {start}', '{start} 开始', { start })];
+        if (Number.isFinite(began) && now > began) parts.push(t('{time} so far', '已用 {time}', { time: mmss((now - began) / 1000) }));
+        if (left > 0) parts.push(left >= 60 ? t('about {minutes} min left', '约 {minutes} 分钟', { minutes: Math.ceil(left / 60) }) : t('under 1 min left', '不到 1 分钟'));
         return parts.filter(Boolean).join(' · ');
     }
-    if (key === 'queued') return start ? t(`added ${start}`, `${start} 加入`) : '';
+    if (key === 'queued') return start ? t('added {start}', '{start} 加入', { start }) : '';
     if (key === 'done') {
         const took = Number.isFinite(began) ? (new Date(job.finished_at).getTime() - began) / 1000 : NaN;
-        return [start && t(`started ${start}`, `${start} 开始`), Number.isFinite(took) && took >= 0 ? t(`took ${mmss(took)}`, `用时 ${mmss(took)}`) : ''].filter(Boolean).join(' · ');
+        return [start && t('started {start}', '{start} 开始', { start }), Number.isFinite(took) && took >= 0 ? t('took {time}', '用时 {time}', { time: mmss(took) }) : ''].filter(Boolean).join(' · ');
     }
     return localTime(job.finished_at || job.created_at, t, new Date(now));
 }
@@ -205,9 +210,9 @@ export function createSideRail(t, handlers = {}) {
         });
         const active = rows.filter(row => ['running', 'queued', 'stopping'].includes(statusKey(row.job))).length;
         put(count, rows.length ? String(rows.length) : ''); count.hidden = !rows.length;
-        count.setAttribute('aria-label', t(`${rows.length} tasks, ${active} under way`, `${rows.length} 个任务，${active} 个进行中`));
+        count.setAttribute('aria-label', t('{count} tasks, {active} under way', '{count} 个任务，{active} 个进行中', { count: rows.length, active }));
         put(emptyTitle, rows.length ? (shown.length ? '' : t('No task matches', '没有匹配的任务')) : t('No tasks yet', '还没有任务'));
-        put(emptyText, rows.length ? (shown.length ? '' : t('Try other words or another filter.', '换个词或换个筛选试试。')) : t('Each video and picture the assistant makes is listed here, with its prompt, time and state.', '助手生成的每段视频和每张图片都会列在这里，带描述、时间和状态。'));
+        put(emptyText, rows.length ? (shown.length ? '' : t('Try other words or another filter.', '换个词或换个筛选试试。')) : t('Each video and image the assistant makes is listed here, with its prompt, time and state.', '助手生成的每段视频和每张图片都会列在这里，带提示词、时间和状态。'));
         emptyMark.hidden = !!rows.length;
         empty.hidden = !emptyTitle.textContent; searchRow.hidden = rows.length < 2 && !query; filters.hidden = !rows.length;
         drawDetail(); edges(list); edges(detail);
@@ -249,9 +254,9 @@ export function createSideRail(t, handlers = {}) {
         put(dPrompt, row.prompt || ''); dPrompt.hidden = !row.prompt;
         dPrompt.dataset.source = row.promptSource || 'request';
         setTip(dPrompt, {name: row.promptSource === 'job' ? t('Prompt', '提示词') : t('What you asked for', '你提出的要求')});
-        dFacts.replaceChildren(...fact(t('Kind', '类型'), job.kind === 'image' ? t('Picture', '图片') : job.kind === 'production' ? t('Film', '成片') : t('Video', '视频')),
+        dFacts.replaceChildren(...fact(t('Kind', '类型'), job.kind === 'image' ? t('Image', '图片') : job.kind === 'production' ? t('Film', '成片') : t('Video', '视频')),
             ...fact(t('Size', '尺寸'), job.width > 0 && job.height > 0 ? `${job.width} × ${job.height}` : ''),
-            ...fact(t('Length', '时长'), job.seconds > 0 ? t(`${job.seconds} s`, `${job.seconds} 秒`) : ''),
+            ...fact(t('Length', '时长'), job.seconds > 0 ? t('{seconds} s', '{seconds} 秒', { seconds: job.seconds }) : ''),
             ...fact(t('Started', '开始'), localTime(job.created_at, t)),
             ...fact(t('Took', '用时'), key === 'done' ? tookText(job.created_at, job.finished_at, t) : ''));
         dFacts.hidden = !dFacts.childElementCount;

@@ -136,19 +136,19 @@ export function deleteWithUndo(files, t) {
         const {toast} = await import('./notifications.js');
         const count = handle.files.length;
         let undone = false;
-        const note = toast(t(count === 1 ? 'Picture deleted' : `${count} pictures deleted`, `已删除 ${count} 张图片`), {ms: UNDO_MS,
-            action: {label: t('Undo', '撤销'), use: t('Put the pictures back', '把图片放回去'), run: () => { undone = true; handle.undo(); }}});
+        const note = toast(count === 1 ? t('Image deleted', '已删除 1 张图片') : t('{count} images deleted', '已删除 {count} 张图片', { count }), {ms: UNDO_MS,
+            action: {label: t('Undo', '撤销'), use: t('Put the images back', '把图片放回去'), run: () => { undone = true; handle.undo(); }}});
         const result = await handle.done;
         note.close();
         const named = result.kept.flatMap(file => cardsKeeping.get(file) || []);
         const inCards = result.kept.filter(file => cardsKeeping.has(file)), others = result.kept.length - inCards.length;
         if (!undone && inCards.length) {
             const cards = [...new Set(named)].join(', ');
-            toast(cards ? t(`Used by the character card ${cards}. Remove the picture from the card, or delete the card, then delete it here.`, `这张图正被角色卡 ${cards} 使用。先从角色卡中移除这张图，或删除角色卡后再删。`)
-                : t('Used by a character card. Remove the picture from the card, or delete the card, then delete it here.', '这张图正被角色卡使用。先从角色卡中移除这张图，或删除角色卡后再删。'), {tone: 'warn'});
+            toast(cards ? t('Used by the character card {cards}. Remove the image from the card, or delete the card, then delete it here.', '这张图正被角色卡 {cards} 使用。先从角色卡中移除这张图，或删除角色卡后再删。', { cards })
+                : t('Used by a character card. Remove the image from the card, or delete the card, then delete it here.', '这张图正被角色卡使用。先从角色卡中移除这张图，或删除角色卡后再删。'), {tone: 'warn'});
             for (const file of inCards) cardsKeeping.delete(file);
         }
-        if (!undone && others > 0) toast(t(`${others} could not be deleted.`, `有 ${others} 张没能删除。`), {tone: 'warn'});
+        if (!undone && others > 0) toast(t('{others} could not be deleted.', '有 {others} 张没能删除。', { others }), {tone: 'warn'});
     })();
     return handle;
 }

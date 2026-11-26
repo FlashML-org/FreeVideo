@@ -3,9 +3,9 @@ import {fileState} from './output_download.js';
 export const EXTEND_PROPERTY = 'freevideo_extend';
 export const EXTEND_TEXT = Object.freeze({
     action: ['Extend', '接着生成'],
-    source: ['Continues this video', '接在这条视频后面'],
+    source: ['Extends this video', '接在这条视频后面'],
     remove: ['Remove', '移除'],
-    prompt: ['Prompt', '描述'],
+    prompt: ['Prompt', '提示词'],
     unavailable: ['Video unavailable', '视频不可用'],
     unchecked: ['Could not check the video', '没能检查视频'],
 });
@@ -106,6 +106,7 @@ export function extendSnapshot(snapshot, node, source, {multiple = false} = {}) 
     inputs.width = source.geometry.width; inputs.height = source.geometry.height;
     const factor = continuationUpscale(inputs.base_steps ?? 8, inputs.two_pass, inputs.refine_steps ?? 3, inputs.step_cache, inputs.upscale_factor);
     inputs.preview = false; inputs.refine_from = ''; inputs.two_pass = true;
+    if ('fast_mode' in inputs) inputs.fast_mode = 'none';
     for (const [key, value] of [['base_steps', 8], ['refine_steps', 3], ['step_cache', 'none'], ['upscale_factor', factor]]) if (key in inputs) inputs[key] = value;
     // A continuation takes no first or last frame and no pre-encoded conditioning.
     for (const key of ['first', 'last', 'conditioning']) delete inputs[key];

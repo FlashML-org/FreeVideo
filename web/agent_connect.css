@@ -50,29 +50,29 @@
 /* Order: connection label, time left, phone, progress ring, feedback, tutorial; thresholds intentionally stay the
    same when feedback becomes an icon. */
 @container fv-autopilot-actions (width<619px){.fv-header[data-hx-now] :lang(zh) .fv-autopilot-lamp{width:30px;height:30px;padding:0;justify-content:center}.fv-header[data-hx-now] :lang(zh) .fv-autopilot-lamp>span{display:none}}
-@container fv-autopilot-actions (width<786px){.fv-header[data-hx-now] :lang(en) .fv-autopilot-lamp{width:30px;height:30px;padding:0;justify-content:center}.fv-header[data-hx-now] :lang(en) .fv-autopilot-lamp>span{display:none}}
+@container fv-autopilot-actions (width<786px){.fv-header[data-hx-now] :not(:lang(zh)) .fv-autopilot-lamp{width:30px;height:30px;padding:0;justify-content:center}.fv-header[data-hx-now] :not(:lang(zh)) .fv-autopilot-lamp>span{display:none}}
 @container fv-autopilot-actions (width<565px){:lang(zh) .fv-autopilot-now-go>em{display:none}}
-@container fv-autopilot-actions (width<704px){:lang(en) .fv-autopilot-now-go>em{display:none}}
+@container fv-autopilot-actions (width<704px){:not(:lang(zh)) .fv-autopilot-now-go>em{display:none}}
 @container fv-autopilot-actions (max-width:289px){:lang(zh) .fv-autopilot-now-go>span{display:none}}
-@container fv-autopilot-actions (max-width:330px){:lang(en) .fv-autopilot-now-go>span{display:none}}
+@container fv-autopilot-actions (max-width:330px){:not(:lang(zh)) .fv-autopilot-now-go>span{display:none}}
 @container fv-autopilot-actions (width<483px){:lang(zh) .fv-header[data-hx-now] .fv-lan{display:none}}
 @container fv-autopilot-actions (width<433px){:lang(zh) .fv-autopilot-now-go>i{display:none}}
 @container fv-autopilot-actions (width<412px){:lang(zh) .fv-header[data-hx-now] .fv-feedback-entry:not(.fv-guide-entry){display:none}}
 @container fv-autopilot-actions (width<362px){:lang(zh) .fv-header[data-hx-now] .fv-guide-entry{display:none}}
-@container fv-autopilot-actions (width<601px){:lang(en) .fv-header[data-hx-now] .fv-lan{display:none}}
-@container fv-autopilot-actions (width<537px){:lang(en) .fv-autopilot-now-go>i{display:none}}
-@container fv-autopilot-actions (width<516px){:lang(en) .fv-header[data-hx-now] .fv-feedback-entry:not(.fv-guide-entry){display:none}}
-@container fv-autopilot-actions (width<431px){:lang(en) .fv-header[data-hx-now] .fv-guide-entry{display:none}}
+@container fv-autopilot-actions (width<601px){:not(:lang(zh)) .fv-header[data-hx-now] .fv-lan{display:none}}
+@container fv-autopilot-actions (width<537px){:not(:lang(zh)) .fv-autopilot-now-go>i{display:none}}
+@container fv-autopilot-actions (width<516px){:not(:lang(zh)) .fv-header[data-hx-now] .fv-feedback-entry:not(.fv-guide-entry){display:none}}
+@container fv-autopilot-actions (width<431px){:not(:lang(zh)) .fv-header[data-hx-now] .fv-guide-entry{display:none}}
 @container fv-autopilot-actions (max-width:260px){.fv-header[data-hx-now] .fv-feedback-entry:not(.fv-guide-entry){display:none}}
 /* Then the version entry, so the running job keeps its percentage and Stop beside the dot and Settings. */
 @container fv-autopilot-actions (width<203px){:lang(zh) .fv-header[data-hx-now] .fv-version-info{display:none}}
-@container fv-autopilot-actions (width<256px){:lang(en) .fv-header[data-hx-now] .fv-version-info{display:none}}
+@container fv-autopilot-actions (width<256px){:not(:lang(zh)) .fv-header[data-hx-now] .fv-version-info{display:none}}
 /* Without a job nothing but the entries share the column; they yield in the same order, by the width they need. */
-@container fv-autopilot-actions (width<480px){.fv-header:not([data-hx-now]) .fv-autopilot-lamp:lang(en){width:30px;height:30px;padding:0;justify-content:center}.fv-header:not([data-hx-now]) .fv-autopilot-lamp:lang(en)>span{display:none}}
-@container fv-autopilot-actions (width<398px){.fv-header:not([data-hx-now]) .fv-lan:lang(en){display:none}}
-@container fv-autopilot-actions (width<334px){.fv-header:not([data-hx-now]) .fv-feedback-entry:not(.fv-guide-entry):lang(en){display:none}}
-@container fv-autopilot-actions (width<249px){.fv-header:not([data-hx-now]) .fv-guide-entry:lang(en){display:none}}
-@container fv-autopilot-actions (width<176px){.fv-header:not([data-hx-now]) .fv-version-info:lang(en){display:none}}
+@container fv-autopilot-actions (width<480px){.fv-header:not([data-hx-now]) .fv-autopilot-lamp:not(:lang(zh)){width:30px;height:30px;padding:0;justify-content:center}.fv-header:not([data-hx-now]) .fv-autopilot-lamp:not(:lang(zh))>span{display:none}}
+@container fv-autopilot-actions (width<398px){.fv-header:not([data-hx-now]) .fv-lan:not(:lang(zh)){display:none}}
+@container fv-autopilot-actions (width<334px){.fv-header:not([data-hx-now]) .fv-feedback-entry:not(.fv-guide-entry):not(:lang(zh)){display:none}}
+@container fv-autopilot-actions (width<249px){.fv-header:not([data-hx-now]) .fv-guide-entry:not(:lang(zh)){display:none}}
+@container fv-autopilot-actions (width<176px){.fv-header:not([data-hx-now]) .fv-version-info:not(:lang(zh)){display:none}}
 @container fv-autopilot-actions (width<335px){.fv-header:not([data-hx-now]) .fv-autopilot-lamp:lang(zh){width:30px;height:30px;padding:0;justify-content:center}.fv-header:not([data-hx-now]) .fv-autopilot-lamp:lang(zh)>span{display:none}}
 @container fv-autopilot-actions (width<281px){.fv-header:not([data-hx-now]) .fv-lan:lang(zh){display:none}}
 @container fv-autopilot-actions (width<231px){.fv-header:not([data-hx-now]) .fv-feedback-entry:not(.fv-guide-entry):lang(zh){display:none}}

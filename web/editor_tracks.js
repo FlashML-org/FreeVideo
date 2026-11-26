@@ -19,6 +19,7 @@ import {speedEdited} from './editor_speed_model.js';
 import {MUSIC_TRACK, MAX_MUSIC_FRAMES} from './editor_music_model.js';
 import {applyTip, switchTip, setTip} from './editor_tracks_tips.js';
 import {setAttr, setData, setHidden, setText} from './dom_quiet.js';
+import {translatorFor} from './i18n.js';
 // A range drawn on the music track alone: music for that stretch.
 const musicRange = selection => selection?.kind === 'range' && selection.tracks?.length === 1 && selection.tracks[0] === MUSIC_TRACK;
 
@@ -206,7 +207,7 @@ const icon = kind => {
     svg.append(path); return svg;
 };
 
-export function createTracks(host, {state, sources = {}, t = en => en, actions = {}, blockProgress} = {}) {
+export function createTracks(host, {state, sources = {}, t = translatorFor(null, false), actions = {}, blockProgress} = {}) {
     // The floating task window keeps clear of the tracks (sgf-avoid).
     // Resolves once the rows, clips and opening zoom are laid out at their final geometry (the view's readiness waits on it).
     let settleReady = null;
@@ -439,9 +440,9 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         if (selection?.kind === 'range' || pending) handles(selectionBox);
         if (selection?.kind === 'range') {
             const width = pixels(shape.frames), seconds = Math.round(shape.frames / model.FPS);
-            const label = create('span', 'fv-ed-planned-label', t(`${seconds} s`, `${seconds} 秒`));
+            const label = create('span', 'fv-ed-planned-label', t('{seconds} s', '{seconds} 秒', { seconds }));
             label.hidden = width < 44; selectionBox.append(label);
-            if (label.scrollWidth > label.clientWidth) label.textContent = t(`${seconds} s`, `${seconds} 秒`);
+            if (label.scrollWidth > label.clientWidth) label.textContent = t('{seconds} s', '{seconds} 秒', { seconds });
         }
         plannedLines.replaceChildren();
         for (const item of clips.values()) {
@@ -450,8 +451,8 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
                 if (!label) { label = create('span', 'fv-ed-planned-label'); item.element.append(label); }
                 const width = pixels(item.clip.frames), seconds = Math.round(item.clip.frames / model.FPS);
                 label.hidden = width < 44;
-                label.textContent = t(`${seconds} s`, `${seconds} 秒`);
-                if (label.scrollWidth > label.clientWidth) label.textContent = t(`${seconds} s`, `${seconds} 秒`);
+                label.textContent = t('{seconds} s', '{seconds} 秒', { seconds });
+                if (label.scrollWidth > label.clientWidth) label.textContent = t('{seconds} s', '{seconds} 秒', { seconds });
             } else item.element.querySelector('.fv-ed-planned-label')?.remove();
             const neighbor = item.track === 'v1' && plannedNeighbor(item);
             if (neighbor) {
@@ -664,7 +665,7 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         const order = [];
         for (const track of tracks) {
             const name = track.kind === 'text' ? t('Text', '文字') : track.kind === 'subtitle' ? t('Subtitles', '字幕') : track.kind === 'video' ? t('Video', '画面') : track.stem ? STEM_NAMES[track.stem] : track.id === 'a3'
-                ? t('Voice', '录音') : twoAudio ? t(`Audio ${track.id.slice(1)}`, `声音 ${track.id.slice(1)}`) : t('Audio', '声音');
+                ? t('Voice', '录音') : twoAudio ? t('Audio {number}', '声音 {number}', { number: track.id.slice(1) }) : t('Audio', '声音');
             let row = rows.get(track.id);
             if (!row) {
                 const node = create('div', 'fv-ed-track-row'); node.dataset.track = track.id;
@@ -740,11 +741,11 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
                 const seconds = Math.round(clip.frames / model.FPS);
                 // Hover help: which clip it is, and its description (first 24 characters) or its length and state.
                 const said = (clip.text || '').trim(), words = [...said];
-                setTip(item.element, {name: t(`${name} · clip ${index + 1}`, `${name} · 第 ${index + 1} 段`),
-                    use: words.length ? (words.length > 24 ? `${words.slice(0, 24).join('')}…` : said) : t(`${seconds} s · ${status}`, `${seconds} 秒 · ${status}`)});
-                const seamText = seam === 'continued' ? t(', continues the clip before', '，接续上一段') : seam === 'separate' ? t(', separate shot', '，独立镜头') : '';
-                item.element.setAttribute('aria-label', t(`${name}, clip ${index + 1}, ${seconds} s, ${status}${seamText}`,
-                    `${name}，第 ${index + 1} 段，${seconds} 秒，${status}${seamText}`));
+                setTip(item.element, {name: t('{name} · clip {number}', '{name} · 第 {number} 段', { name, number: index + 1 }),
+                    use: words.length ? (words.length > 24 ? `${words.slice(0, 24).join('')}…` : said) : t('{seconds} s · {status}', '{seconds} 秒 · {status}', { seconds, status })});
+                const seamText = seam === 'continued' ? t(', extends the clip before', '，接续上一段') : seam === 'separate' ? t(', separate shot', '，独立镜头') : '';
+                item.element.setAttribute('aria-label', t('{name}, clip {number}, {seconds} s, {status}{seamText}',
+                    '{name}，第 {number} 段，{seconds} 秒，{status}{seamText}', { name, number: index + 1, seconds, status, seamText }));
                 // Pending replacements can retain their old media; state styling
                 // overlays it until the model reports that the new media is done.
                 // The imported sound under a sound-led range is kept as it is, so its waveform stays in view while the picture is made.
@@ -797,9 +798,9 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
         const seconds = Math.round(selection.frames / model.FPS);
         let count = 1;
         try { count = rangeParts(selection).length; } catch (error) { if (!(error instanceof model.EditError)) throw error; }
-        const label = limited != null ? t(`Max ${limited} s`, `最长 ${limited} 秒`)
+        const label = limited != null ? t('Max {limited} s', '最长 {limited} 秒', { limited })
             : moving ? `${preciseClock(selection.start)} – ${preciseClock(selection.start + selection.frames)}`
-                : t(`${extended ? '+' : ''}${seconds} s`, `${extended ? '+' : ''}${seconds} 秒`);
+                : t('{sign}{seconds} s', '{sign}{seconds} 秒', { sign: extended ? '+' : '', seconds });
         tooltip.textContent = label; tooltip.hidden = false;
         const bounds = element.getBoundingClientRect();
         tooltip.style.left = `${clamp(event.clientX - bounds.left + 14, 8, Math.max(8, bounds.width - 300))}px`;
@@ -862,7 +863,7 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
             clicked = drawn.find(clip => frame >= clip.start && frame < clip.start + clip.frames) ?? (frame < range.start ? drawn[0] : drawn.at(-1));
             if (text) next = model.describe(next, [drawn[0].id], text);
         } catch (error) { if (error instanceof model.EditError) return; throw error; }
-        attempt(t('Edit description', '修改说明'), () => next, {selectionAfter: {kind: 'clip', ids: model.pair(next, clicked.id).map(clip => clip.id)}});
+        attempt(t('Edit prompt', '修改提示词'), () => next, {selectionAfter: {kind: 'clip', ids: model.pair(next, clicked.id).map(clip => clip.id)}});
     }
     function clickSelection(event) {
         if (event.range) { choosePart(event); return; }
@@ -1176,8 +1177,8 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
             if (gesture.edge === 'end' && (growth > 0 || blocked)) {
                 clearTimeout(estimateTimer); estimateToken++;
                 // A length below the shortest continued part shows that rule; release sets it to that length.
-                tooltip.textContent = blocked ? '' : result.raised ? t(`At least ${result.frames / model.FPS} s`, `至少 ${result.frames / model.FPS} 秒`)
-                    : t(`+${Math.round(growth / model.FPS)} s`, `＋${Math.round(growth / model.FPS)} 秒`);
+                tooltip.textContent = blocked ? '' : result.raised ? t('At least {seconds} s', '至少 {seconds} 秒', { seconds: result.frames / model.FPS })
+                    : t('+{seconds} s', '＋{seconds} 秒', { seconds: Math.round(growth / model.FPS) });
                 tooltip.hidden = !!blocked;
                 selectionBox.classList.toggle('fv-ed-cannot-drop', !!blocked);
             }
@@ -1239,8 +1240,8 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
             if (extendClip(finished.id, frames) && result.raised) {
                 // Say the new length (tenths, rounded down like other durations) so the change is visible.
                 const least = model.RULES.lastSeconds, length = secondsText(result.frames, model.FPS);
-                actions.notify?.(result.least ? t(`Lengthened to ${length} s. The last part must be at least ${least} seconds.`, `已加长到 ${length} 秒。最后一段至少 ${least} 秒。`)
-                    : t(`Lengthened to ${length} s.`, `已加长到 ${length} 秒。`));
+                actions.notify?.(result.least ? t('Lengthened to {length} s. The last part must be at least {least} seconds.', '已加长到 {length} 秒。最后一段至少 {least} 秒。', { length, least })
+                    : t('Lengthened to {length} s.', '已加长到 {length} 秒。', { length }));
             }
         } else attempt(t('Trim', '裁短'), record => model.trim(record, finished.id, finished.edge, result.frame));
         renderSelection();
@@ -1378,7 +1379,7 @@ export function createTracks(host, {state, sources = {}, t = en => en, actions =
                 const preview = model.insertSource(state.record, {...draggedSource, at: frame.frame, targetTrack: audioTargetAt(draggedSource, event)});
                 const added = previewSourcePlacement(preview), sound = added.find(item => item.track !== 'v1');
                 const name = sound ? !preview.tracks.some(track => track.id === 'a3') && preview.tracks.length === 3
-                    ? t(`Audio ${sound.track === 'a1' ? 1 : 2}`, `声音 ${sound.track === 'a1' ? 1 : 2}`) : t('Audio', '声音') : '';
+                    ? t('Audio {number}', '声音 {number}', { number: sound.track === 'a1' ? 1 : 2 }) : t('Audio', '声音') : '';
                 dropPoint = {frame: added[0].clip.start, label: `${preciseClock(added[0].clip.start)} – ${preciseClock(added[0].clip.start + draggedSource.frames)}${name ? ` · ${name}` : ''}`};
             } catch (error) {
                 if (!(error instanceof model.EditError)) throw error;

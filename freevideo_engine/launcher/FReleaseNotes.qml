@@ -7,6 +7,8 @@ ColumnLayout {
     // Versions between the installed one and `release`, newest first.
     property var earlier: []
     property bool zh: false
+    // The interface text for a pair; Main.qml passes its own t (the language file lookup), this is the fallback.
+    property var t: function(en, cn, values) { var text = zh ? cn : en; return values ? text.replace(/\{(\w+)\}/g, (whole, name) => name in values ? String(values[name]) : whole) : text }
     property string heading: ""
     readonly property var notes: release && release.release_notes ? release.release_notes[zh ? "zh" : "en"] : null
     // The width of the window the notes sit in. The layout is chosen from it, not from the notes' own width: that
@@ -56,7 +58,7 @@ ColumnLayout {
             Rectangle { width: Math.min(parent.width, tag.implicitWidth + 12); height: parent.height; radius: theme.radiusXs; color: theme.raised }
             Text {
                 id: tag; x: 6; y: 1; width: parent.width - 12
-                text: change.parts ? change.parts[0] : ""; color: theme.accent; font.pixelSize: theme.micro; elide: Text.ElideRight
+                text: change.parts ? change.parts[0] : ""; color: theme.accent; font.family: backend.fontFamily; font.pixelSize: theme.micro; elide: Text.ElideRight
             }
         }
         FText { text: change.parts ? change.parts[1] : "• " + change.text; color: change.parts ? theme.text : theme.muted; Layout.fillWidth: true }
@@ -64,10 +66,10 @@ ColumnLayout {
 
     FText { text: heading; font.weight: Font.DemiBold; font.pixelSize: theme.section; Layout.fillWidth: true }
     FText {
-        text: release && release.development ? (zh ? "开发版本" : "Development version") : (zh ? "构建号：" : "Build: ") + (release && release.version || "—")
+        text: release && release.development ? t("Development version", "开发版本") : t("Build: {version}", "构建号：{version}", {version: release && release.version || "—"})
         color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true
     }
-    FText { text: notes ? notes.summary : (zh ? "此版本未附带更新说明。" : "No release notes were included with this version."); Layout.fillWidth: true }
+    FText { text: notes ? notes.summary : t("No release notes were included with this version.", "此版本未附带更新说明。"); Layout.fillWidth: true }
     Repeater {
         model: notes ? notes.changes : []
         delegate: Change {

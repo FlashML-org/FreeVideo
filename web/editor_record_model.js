@@ -1,6 +1,7 @@
 // Recording from a microphone onto the sound tracks. Pure helpers: where a take starts and stops,
 // the 16-bit WAV a take is saved as (the server tells sound from picture by file suffix), the level shown while recording.
 import {FPS} from './editor_model.js';
+import {translatorFor} from './i18n.js';
 
 export const COUNTDOWN_SECONDS = 3;
 const AUDIO_TRACKS = ['a1', 'a2', 'a3'];
@@ -53,7 +54,7 @@ export function takeLedger() {
 export const secondsOf = frames => frames / FPS;
 
 // A take's name in the library: 录音 / Recording and the time it began.
-export function takeName(date, t = en => en) {
+export function takeName(date, t = translatorFor(null, false)) {
     const pad = value => String(value).padStart(2, '0');
     return `${t('Recording', '录音')} ${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}.wav`;
 }
@@ -97,5 +98,5 @@ export const elapsedText = seconds => `${Math.floor(Math.max(0, seconds) / 60)}:
 // only an id falls back to the number.
 export function deviceName(label, number, t) {
     const name = String(label || '').replace(/^(default|communications)\s*-\s*/i, '').replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)\s*$/i, '').trim();
-    return name || t(`Microphone ${number}`, `麦克风 ${number}`);
+    return name || t('Microphone {number}', '麦克风 {number}', { number });
 }

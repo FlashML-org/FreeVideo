@@ -101,7 +101,7 @@ export function createLayout({host, layer = document.body, onChange = () => {}, 
     function say(event) {
         // Once, beside the pointer, gone by itself: never a dialog, never left on the page.
         hint?.remove();
-        hint = el('div', 'fv-iv-lhint', t(`Up to ${limit} boxes`, `最多 ${limit} 个框`)); hint.setAttribute('role', 'status');
+        hint = el('div', 'fv-iv-lhint', t('Up to {limit} boxes', '最多 {limit} 个框', { limit })); hint.setAttribute('role', 'status');
         hint.style.left = `${event.clientX + 12}px`; hint.style.top = `${event.clientY + 12}px`;
         layer.append(hint);
         const mine = hint; setTimeout(() => { mine.remove(); if (hint === mine) hint = null; }, 1600);
@@ -150,8 +150,8 @@ export function createLayout({host, layer = document.body, onChange = () => {}, 
             head.append(no);
             if (quotedParts(item.line).length) {
                 const T = el('button', 'fv-iv-lbox-t', 'T'); T.type = 'button';
-                T.setAttribute('aria-pressed', String(!item.textOff)); T.setAttribute('aria-label', t('Text in the picture', '写进画面的字'));
-                tip(T, t('Text in the picture', '写进画面的字'));
+                T.setAttribute('aria-pressed', String(!item.textOff)); T.setAttribute('aria-label', t('Text in the image', '写进画面的字'));
+                tip(T, t('Text in the image', '写进画面的字'));
                 T.addEventListener('pointerdown', event => event.stopPropagation());
                 T.addEventListener('click', event => { event.stopPropagation(); remember(); item.textOff = !item.textOff; changed(); });
                 head.append(T);

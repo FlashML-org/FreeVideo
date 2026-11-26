@@ -14,7 +14,22 @@ and recomputed them.
 Every schedule the engine builds therefore takes its grid from here. The
 values are the fused ones, which the published tables were made with.
 """
+from contextlib import contextmanager
+from contextvars import ContextVar
 from functools import lru_cache
+
+# Unshifted points of a schedule that is not the uniform grid (fast_tier.RAW_GRID).
+_RAW_GRID = ContextVar('freevideo_raw_grid', default=None)
+
+
+@contextmanager
+def using(points):
+    """Sample on these unshifted points; None keeps the uniform grid."""
+    token = _RAW_GRID.set(points)
+    try:
+        yield
+    finally:
+        _RAW_GRID.reset(token)
 
 
 def uniform(steps):
@@ -44,9 +59,17 @@ def _scheduler_class():
 
         def set_timesteps(self, num_inference_steps=None, device=None, sigmas=None):
             if sigmas is None and type(num_inference_steps) is int and num_inference_steps >= 1:
-                base = uniform(num_inference_steps)
-                # The scheduler's own shift, applied to a grid it did not build.
-                sigmas = self._shift * base / (1 + (self._shift - 1) * base)
+                points = _RAW_GRID.get()
+                if points is None:
+                    base = uniform(num_inference_steps)
+                    # The scheduler's own shift, applied to a grid it did not build.
+                    sigmas = self._shift * base / (1 + (self._shift - 1) * base)
+                else:
+                    import torch
+                    if len(points) != num_inference_steps + 1:
+                        raise ValueError('The sampling grid does not match the step count')
+                    base = torch.tensor(points, dtype=torch.float64)
+                    sigmas = (self._shift * base / (1 + (self._shift - 1) * base)).float()
             super().set_timesteps(num_inference_steps, device=device, sigmas=sigmas)
             if self.start:
                 if not 0 < self.start < len(self.timesteps):

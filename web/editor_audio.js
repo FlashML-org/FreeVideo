@@ -9,6 +9,7 @@ import {clickSelection} from './editor_select.js';
 import {noteAtPointer, startPointerNotes, seconds as secondsText} from './editor_audio_notes.js';
 import {tip} from './editor_tips.js';
 import {sourceKey, mediaURL} from './editor_store.js';
+import {translatorFor} from './i18n.js';
 const el = (tag, cls, text) => { const node = document.createElement(tag); if (cls) node.className = cls; if (text != null) node.textContent = text; return node; };
 let styled = false;
 function styles() {
@@ -25,7 +26,7 @@ const tenths = frames => String(Math.round(frames / 24 * 10) / 10);
 const selectedAudio = state => state.selection?.kind === 'clip' ? state.record.tracks.filter(track => track.kind === 'audio')
     .flatMap(track => track.clips).filter(clip => state.selection.ids.includes(clip.id) && clip.source && !['queued', 'running'].includes(clip.pending)) : [];
 export const AUDIO_SHORTCUTS = Object.freeze([{key: 'delete', action: 'removeCrossfade'}, {key: 'backspace', action: 'removeCrossfade'}, {key: 'escape', action: 'clearCrossfade'}]);
-export function createAudioActions(state, {t = en => en, error = () => {}} = {}) {
+export function createAudioActions(state, {t = translatorFor(null, false), error = () => {}} = {}) {
     const apply = (label, change, options, report = false) => { try { return state.apply(label, change, options); } catch (value) { if (report) error(value); return {ok: false, reason: value.code || 'audio'}; } };
     return {
         detachAudio: id => { const result = apply(t('Detach audio', '分离原声'), record => sound.detachAudio(record, id)); if (result && result.ok !== false) state.select({kind: 'clip', ids: [id]}); return result; },
@@ -83,7 +84,7 @@ export function createAudioIntegration({state, player, t, error, adjust, library
     }
     return integration;
 }
-export function createAudioPanel(host, {state, player, t = en => en, error = () => {}, context}) {
+export function createAudioPanel(host, {state, player, t = translatorFor(null, false), error = () => {}, context}) {
     styles(); const value = controller(state), actions = createAudioActions(state, {t, error}), mode = replaceMode(state);
     const panel = el('div', 'fv-ed-audio-panel'), message = el('p', 'fv-ed-audio-message');
     const form = el('div', 'fv-ed-audio-form'), cross = el('div', 'fv-ed-audio-cross');
@@ -143,7 +144,7 @@ export function createAudioPanel(host, {state, player, t = en => en, error = () 
     const detach = el('button', 'fv-ed-audio-detach', t('Detach audio', '分离原声')); detach.type = 'button'; form.append(detach);
     const replace = el('button', 'fv-ed-audio-replace', t('Replace audio', '替换声音')); replace.type = 'button'; form.append(replace);
     cross.append(el('p', '', t('Crossfade', '交叉淡化')));
-    const limitNote = frames => noteAtPointer(t(`At most ${secondsText(frames)} s`, `最多 ${secondsText(frames)} 秒`), panel);
+    const limitNote = frames => noteAtPointer(t('At most {seconds} s', '最多 {seconds} 秒', { seconds: secondsText(frames) }), panel);
     const junctionLimit = () => { try { return sound.crossfadeLimit(state.record, value.junction); } catch { return null; } };
     const duration = input(cross, 'duration', t('Duration', '时长'), 0, 5, 1 / 24, 'number', {
         onChange: seconds => { if (value.junction) actions.setCrossfade(value.junction, Math.round(seconds * 24)); render(); },
@@ -178,7 +179,7 @@ export function createAudioPanel(host, {state, player, t = en => en, error = () 
         const clips = selectedAudio(state), selected = context?.clips || (state.selection?.kind === 'clip' ? state.record.tracks.flatMap(track => track.clips).filter(clip => state.selection.ids.includes(clip.id)) : []);
         const count = context?.count ?? selected.filter(clip => !selected.some(other => other.link === clip.id && sound.trackOf(state.record, other.id).kind === 'video')).length;
         const ctx = context || {t, single: count === 1, multiple: count > 1, hasAudio: !!clips.length, hasVideo: selected.some(clip => sound.trackOf(state.record, clip.id).kind === 'video'), busy: selected.some(clip => ['queued', 'running'].includes(clip.pending))};
-        message.textContent = count > 1 ? t(`${count} parts selected`, `已选 ${count} 段`) : '';
+        message.textContent = count > 1 ? t('{count} parts selected', '已选 {count} 段', { count }) : '';
         message.hidden = !!context || count === 1;
         const locked = selected.some(clip => sound.trackOf(state.record, clip.id).locked);
         const reason = disabledReason(ctx, {needs: 'audio'}) || (locked ? t('This track is locked', '这条轨道已锁定') : '');
@@ -198,7 +199,7 @@ export function createAudioPanel(host, {state, player, t = en => en, error = () 
             show(field, clips.map(clip => clip[name] || 0), frames => { field.value = frames / 24; });
         }
         if (clips.length > 1) {
-            fadeNote.textContent = t(`At most ${tenths(cap)} s`, `最多 ${tenths(cap)} 秒`);
+            fadeNote.textContent = t('At most {seconds} s', '最多 {seconds} 秒', { seconds: tenths(cap) });
         } else fadeNote.textContent = '';
         fadeNote.hidden = !fadeNote.textContent;
         const video = count === 1 ? selected.find(clip => sound.trackOf(state.record, clip.id).kind === 'video') : null;
@@ -223,7 +224,7 @@ export function createAudioPanel(host, {state, player, t = en => en, error = () 
         controls.forEach(control => control.dispose()); detach.onclick = replace.onclick = remove.onclick = null; }};
 }
 const paths = {muted: 'M2 6h3l4-3v10l-4-3H2zM12 5l3 6M15 5l-3 6', solo: 'M5 4h6M5 4v4h6v4H5', locked: 'M4 7h8v7H4zM5 7V4a3 3 0 0 1 6 0v3'};
-export function attachAudioTracks(element, {state, t = en => en, actions = {}}) {
+export function attachAudioTracks(element, {state, t = translatorFor(null, false), actions = {}}) {
     styles(); const value = controller(state), audioActions = createAudioActions(state, {t, error: actions.editError}), mode = replaceMode(state);
     const notice = el('div', 'fv-ed-audio-notice'); notice.hidden = true; notice.setAttribute('role', 'status'); element.append(notice);
     let noticeTimer = null;
@@ -278,7 +279,7 @@ export function attachAudioTracks(element, {state, t = en => en, actions = {}}) 
                 const activate = () => {
                     if (!right.crossfade) {
                         const reach = sound.crossfadeLimit(state.record, right.id);
-                        audioActions.setCrossfade(right.id, 12); if (reach.limit < 12) noteAtPointer(t(`At most ${secondsText(reach.limit)} s`, `最多 ${secondsText(reach.limit)} 秒`), diamond);
+                        audioActions.setCrossfade(right.id, 12); if (reach.limit < 12) noteAtPointer(t('At most {seconds} s', '最多 {seconds} 秒', { seconds: secondsText(reach.limit) }), diamond);
                         return;
                     } state.select({kind: 'clip', ids: [right.id]}); value.junction = right.id; announce(value); render(); };
                 diamond.onclick = activate; diamond.onkeydown = event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); activate(); } };

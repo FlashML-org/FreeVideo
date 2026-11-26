@@ -8,22 +8,22 @@ MAX_NAME = 512
 MIN_STRENGTH, MAX_STRENGTH = -2., 2.
 ERRORS = frozenset(('invalid_loras', 'invalid_lora_strength', 'duplicate_lora',
                     'too_many_loras', 'lora_not_found', 'invalid_lora_model'))
-MESSAGE_ZH = {
-    'invalid_loras': 'LoRA 设置有误，请重新选择文件。',
-    'invalid_lora_strength': 'LoRA 强度必须在 -2 到 2 之间。',
-    'duplicate_lora': '同一个 LoRA 只能选择一次，请移除重复项。',
-    'too_many_loras': '一张图片最多使用 8 个 LoRA，请减少数量。',
-    'lora_not_found': 'LoRA 文件找不到，请重新选择。',
-    'invalid_lora_model': '此 LoRA 不适用于图片生成，请换一个。',
+MESSAGES = {
+    'invalid_loras': ('The LoRA selection is invalid. Choose the files again.',
+                      'LoRA 设置有误，请重新选择文件。'),
+    'invalid_lora_strength': ('LoRA strength must be between -2 and 2.',
+                              'LoRA 强度必须在 -2 到 2 之间。'),
+    'duplicate_lora': ('Select each LoRA only once. Remove the duplicate.',
+                       '同一个 LoRA 只能选择一次，请移除重复项。'),
+    'too_many_loras': ('Use at most eight LoRAs per image.',
+                       '一张图片最多使用 8 个 LoRA，请减少数量。'),
+    'lora_not_found': ('The LoRA file could not be found. Choose it again.',
+                       'LoRA 文件找不到，请重新选择。'),
+    'invalid_lora_model': ('This LoRA cannot be used for images. Choose another one.',
+                           '此 LoRA 不适用于图片生成，请换一个。'),
 }
-MESSAGE_EN = {
-    'invalid_loras': 'The LoRA selection is invalid. Choose the files again.',
-    'invalid_lora_strength': 'LoRA strength must be between -2 and 2.',
-    'duplicate_lora': 'Select each LoRA only once. Remove the duplicate.',
-    'too_many_loras': 'Use at most eight LoRAs per picture.',
-    'lora_not_found': 'The LoRA file could not be found. Choose it again.',
-    'invalid_lora_model': 'This LoRA cannot be used for pictures. Choose another one.',
-}
+MESSAGE_EN = {code: pair[0] for code, pair in MESSAGES.items()}
+MESSAGE_ZH = {code: pair[1] for code, pair in MESSAGES.items()}
 
 
 def validate_selection(value):

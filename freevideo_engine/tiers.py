@@ -38,17 +38,15 @@ LEGACY_MAX = dict(steps=20, two_pass=False, step_cache=None, upscale=2)
 LEGACY_MAC_HIGH = dict(steps=16, two_pass=False, step_cache=None, upscale=2)
 
 # Sampling time of a cached pass as a share of the same pass without a cache,
-# for estimates that have no run with that cache yet. B200, 20 s clips
-# (/mnt/fvbench/eng5/tiers/RESULTS-b200.md): EasyCache-AV sampled 1.8-1.9x and
-# the first-block cache 1.4-1.5x faster than plain 20 steps. 10 s clips with the
-# GPU held to 8-48 GiB (/mnt/fvbench/remy/tiers-v2/REPORT.md): EasyCache-AV
+# for estimates that have no run with that cache yet. B200, 20 s clips:
+# EasyCache-AV sampled 1.8-1.9x and the first-block cache 1.4-1.5x faster than
+# plain 20 steps. 10 s clips with the GPU held to 8-48 GiB: EasyCache-AV
 # 0.48-0.75 of plain 20 steps (median about 0.6); a first-block cache kept at
-# 32-48 GiB 0.71-0.82. Under the current keep rule at 8-24 GiB
-# (review/quality-tiers-v2/linux-evidence.md) it is kept at 12 and 24 GiB,
-# 0.81-1.28 (median 0.87), and dropped at 8 and 16 GiB. The shares are not
-# fitted to the median: EasyCache-AV is slightly conservative, the first-block
-# cache near the 8-24 GiB median. A first-block cache the planner did not keep
-# is plain 20 steps.
+# 32-48 GiB 0.71-0.82. Under the current keep rule, on a B200 held to 8-24 GiB,
+# it is kept at 12 and 24 GiB, 0.81-1.28 (median 0.87), and dropped at 8 and
+# 16 GiB. The shares are not fitted to the median: EasyCache-AV is slightly
+# conservative, the first-block cache near the 8-24 GiB median. A first-block
+# cache the planner did not keep is plain 20 steps.
 # EasyCache-AV, guarded (at most 40% of steps reused, never twice in a row): measured on the RTX PRO 6000,
 # 864x1184, 5 s, 20 steps, 2 reused steps: 212 s against 238 s for the plain 20 steps (about .88 of the sampling).
 # At 16 steps the guarded cache reused 1–4 steps (about 14% on average),
@@ -57,10 +55,9 @@ SAMPLING_SHARE = {None: 1., 'easycache-av': .88, 'fbcache': .9}
 
 # Sampling time (both passes) of a two-pass request with this upscale factor,
 # as a share of the same request at 2x, for estimates without a run of that
-# factor. 1.5: H200, 1344x768 20 s, 221.5 s against 177.8 s
-# (/mnt/fvbench/eng5/tiers/REPORT.md section 2); the stage model gives 1.25-1.30
-# from 10 to 20 s on 8-141 GiB cards. 1.2: the stage model only (1.62-1.78),
-# not yet measured.
+# factor. 1.5: H200, 1344x768 20 s, 221.5 s against 177.8 s; the stage model
+# gives 1.25-1.30 from 10 to 20 s on 8-141 GiB cards. 1.2: the stage model
+# only (1.62-1.78), not yet measured.
 UPSCALE_SHARE = {2: 1., 1.5: 1.27, 1.2: 1.72}
 
 

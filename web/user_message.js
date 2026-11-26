@@ -33,12 +33,12 @@ export function userMessage(error, t, fallback = t('Did not finish. Try again.',
     if (network) return connectionLostText(t);
     const status = statusOf(error);
     if (error?.name === 'SyntaxError') {
-        return status ? t(`FreeVideo sent a reply this page could not read (HTTP ${status}). Try again, and report the problem if it happens again.`,
-            `FreeVideo 的回复无法读取（HTTP ${status}）。请重试，再次出现请提交问题。`)
+        return status ? t('FreeVideo sent a reply this page could not read (HTTP {status}). Try again, and report the problem if it happens again.',
+            'FreeVideo 的回复无法读取（HTTP {status}）。请重试，再次出现请提交问题。', { status })
             : t('FreeVideo sent a reply this page could not read. Try again, and report the problem if it happens again.',
                 'FreeVideo 的回复无法读取。请重试，再次出现请提交问题。');
     }
     const said = (typeof error === 'string' ? error : typeof error?.message === 'string' ? error.message : '').trim();
     if (said && !isRawErrorText(said)) return said;
-    return status ? t(`FreeVideo returned an error (HTTP ${status}). `, `FreeVideo 返回了错误（HTTP ${status}）。`) + fallback : fallback;
+    return status ? t('FreeVideo returned an error (HTTP {status}). ', 'FreeVideo 返回了错误（HTTP {status}）。', { status }) + fallback : fallback;
 }

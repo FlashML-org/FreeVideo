@@ -21,8 +21,8 @@
 .fv-editor .fv-ed-genbar>.fv-ed-duration.fv-ed-beside-leaving[hidden]{display:block!important;pointer-events:none}
 .fv-editor button:where(:not(.fv-header button)){height:36px;min-height:0;border-radius:var(--fv-r-sm);font:500 13px/1.4 var(--fv-font);white-space:nowrap}
 .fv-editor .fv-header{grid-column:1/-1;position:sticky;top:0;z-index:6;background:var(--fv-bg)}
-/* The update bar the creative panel brings along is one more grid row below the timeline: as wide as the window and kept at its bottom edge while the view scrolls, never past it. */
-.fv-studio.fv-editor>.fv-pop-holder>.fv-update-notice,.fv-studio.fv-editor>.fv-update-notice{grid-column:1/-1;grid-row:8;position:sticky;bottom:0;z-index:6}
+/* The update bar the creative panel brings along is one more grid row below the timeline: as wide as the window and kept at its bottom edge while the view scrolls, never past it. It is never shorter than its own rows (a short window squeezes the grid's last row, and the buttons would hang below the bar and below the window). */
+.fv-studio.fv-editor>.fv-pop-holder>.fv-update-notice,.fv-studio.fv-editor>.fv-update-notice{grid-column:1/-1;grid-row:8;position:sticky;bottom:0;z-index:6;min-height:max-content}
 /* On a narrow window the name and the close button share the first row and the buttons sit on one row below. */
 @media(max-width:680px){.fv-studio.fv-editor>.fv-pop-holder>.fv-update-notice,.fv-studio.fv-editor>.fv-update-notice{padding:8px 14px;justify-content:flex-start}.fv-studio.fv-editor>.fv-pop-holder>.fv-update-notice>span,.fv-studio.fv-editor>.fv-update-notice>span{flex:1 1 calc(100% - 60px);min-width:0;white-space:normal;order:0}.fv-studio.fv-editor>.fv-pop-holder>.fv-update-notice .fv-update-close,.fv-studio.fv-editor>.fv-update-notice .fv-update-close{order:1;margin-left:auto}.fv-studio.fv-editor>.fv-pop-holder>.fv-update-notice>:not(span):not(.fv-update-close),.fv-studio.fv-editor>.fv-update-notice>:not(span):not(.fv-update-close){order:2}}
 .fv-editor>:not(.fv-header){font-size:13px;line-height:1.4}
@@ -638,6 +638,8 @@
 .fv-ed-genbar-borrowed>.fv-borrowed{flex:1 1 100%;min-width:0;position:static;display:block;width:auto;height:auto;max-height:none;padding:0;border:0;background:none;box-shadow:none;transform:none;inset:auto}
 .fv-ed-genbar-borrowed>.fv-borrowed>.fv-body{display:block;position:static;width:auto;height:auto;padding:0}
 .fv-editor[data-bar-borrowed=true] .fv-ed-genbar-borrowed>.fv-borrowed .fv-controls{position:static;justify-self:stretch;width:auto;max-width:none}
+/* The lent bar draws no blur of its own: a backdrop-filter makes the box the containing block of every position:fixed window inside it (the Media, LoRA and Advanced windows), which are placed in window coordinates and would land outside it, clipped by the dialog. The bar lies on the editor's flat ground, so there is nothing for the blur to show. */
+.fv-editor[data-bar-borrowed=true] .fv-ed-genbar-borrowed>.fv-borrowed .fv-controls.fv-glass{-webkit-backdrop-filter:none;backdrop-filter:none}
 /* While a part is generating, the editor's Cancel (never its Continue, named by its tip) stands on the lent bar's greyed Generate key. On a row of its own under the bar it lay beneath the timeline toolbar, out of the mouse's reach. */
 @media(min-width:681px){.fv-ed-genbar-borrowed[data-mode=running][data-voice=false]>button:is([data-fv-tip-name="取消"],[data-fv-tip-name=Cancel]):not([hidden]){position:absolute;z-index:2;right:17px;top:var(--fv-ed-cancel-top,auto);bottom:var(--fv-ed-cancel-bottom,39px);width:140px;height:80px;background:var(--fv-ctl-solid,var(--fv-card));border:1px solid var(--fv-line2,var(--fv-border))}}
 [data-fv-locked]{opacity:.5}

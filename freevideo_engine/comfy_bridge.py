@@ -1394,7 +1394,8 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
              force_regenerate=False, base_steps=8, refine_steps=3, comfy_metadata=None,
              prompt_rewrite_report=None, preview=False, refine_from=None, report_extra=None,
              continue_from=None, frames=None, first_frame_reference=False, voice_reference=False, hide_tail=False,
-             step_cache=None, upscale_factor=2, allow_empty_prompt=False, upscale_from=None, upscale_to=None):
+             step_cache=None, upscale_factor=2, allow_empty_prompt=False, upscale_from=None, upscale_to=None,
+             fast_mode=None):
     from .comfy_environment import control_process
     if control_process(environ):
         raise RuntimeError('Generation requires a dispatched executor')
@@ -1475,6 +1476,10 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
     staged = bool(preview or upscale or work)
     from .refine_schedule import UPSCALE
     schedule = UPSCALE if work else None
+    if fast_mode is not None:
+        from . import fast_tier
+        two_pass, base_steps, refine_steps = fast_tier.bridge_steps(fast_mode, preview=preview, refine_from=refine_from,
+            continue_from=continue_from, upscale_from=upscale_from, step_cache=step_cache, upscale_factor=upscale_factor)
     from .preview import validate_flags
     validate_flags(preview, upscale, two_pass, base_steps)
     from .two_pass import validate_steps
@@ -1483,6 +1488,8 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                               allow_empty_prompt=allow_empty_prompt)
     source = Path(source or source_root()).resolve()
     root, machine = installation(source, environ)
+    if fast_mode is not None and machine.get('device_backend') == 'mps':
+        raise ValueError('The fastest mode is not available on Mac')
     continuation = None
 
     def check_ending():
@@ -1553,6 +1560,10 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
         command.append('--allow-empty-prompt')
     if step_cache is not None:
         command += ['--step-cache', step_cache]
+    if fast_mode is not None:
+        # The folder the engine process resolves (paths.installed_model_root). Before queueing, so a missing file is named at once.
+        fast_tier.files(environment.get('FREEVIDEO_MODEL_ROOT') or machine['model_root'])
+        command += ['--fast-mode', fast_mode]
     if two_pass and upscale_factor != 2:
         command += ['--upscale-factor', '%g' % upscale_factor]
     if frames is not None:
@@ -1771,6 +1782,9 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
         if step_cache is not None:
             # A cache changes the arithmetic; without one the identity stays that of earlier versions.
             keyed = dict(keyed, step_cache=step_cache)
+        if fast_mode is not None:
+            # The same step count without the adapter is another video.
+            keyed = dict(keyed, fast_mode=fast_mode, fast_adapter=fast_tier.FILES[fast_tier.ADAPTER][1])
         if hide_tail_frames:
             keyed = dict(keyed, hide_tail_frames=hide_tail_frames)
         identify = lambda check: request_key(prompt, seed, canvas, keyed, extra, machine,
@@ -1807,8 +1821,9 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                           if continue_from is not None and original_audio is None
                           else engine_task(extra.get('media', {}), media_base))
             # Tables follow the step count; the cache is carried for exact level recognition.
-            preparation = prepare_sampling_assets(root, machine, dict(planned, step_cache=step_cache) if step_cache else planned,
-                                                  asset_task,
+            # The fastest mode computes its modulation from the adapter and reads no table.
+            preparation = dict(status='not_needed', seconds=0.) if fast_mode is not None else prepare_sampling_assets(
+                root, machine, dict(planned, step_cache=step_cache) if step_cache else planned, asset_task,
                 progress=asset_progress, interrupted=interrupted, environ=environment)
         except BaseException:
             elapsed = time.monotonic() - preparation_started

@@ -58,6 +58,7 @@ import {openingChoice} from './editor_opening.js';
 import {CN} from './topbar_state.js';
 import {setDisabled} from './dom_quiet.js';
 import {randomUUID} from './random_id.js';
+import {translator, translatorFor} from './i18n.js';
 const editorStyles = Promise.all(['result_actions.css', 'editor.css', 'editor_expand.css', 'editor_tracks.css', 'editor_frame.css', 'editor_adjust.css', 'editor_adjust_picture.css', 'editor_preview_picture.css', 'editor_select.css', 'editor_menu.css', 'editor_text.css', 'editor_notes.css', 'editor_transport.css', 'glass/editor.css', 'editor_touch.css'].map(name => {
     const style = document.createElement('link'); style.rel = 'stylesheet'; style.href = new URL(name, import.meta.url).href;
     const ready = 'sheet' in style ? new Promise(resolve => { style.onload = style.onerror = resolve; }) : Promise.resolve();
@@ -72,20 +73,20 @@ const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls)
 // A half of a surrogate pair left by a cut or a paste is dropped; the description limit counts characters, not code units.
 export const wellFormed = text => typeof text === 'string' ? text.replace(/[\ud800-\udbff][\udc00-\udfff]|[\ud800-\udfff]/g, pair => pair.length === 2 ? pair : '') : text;
 export const characters = text => Array.from(text).length;
-export const textLongText = (t, limit) => t('The description is too long. Shorten it to %d characters or fewer.', '描述过长，请缩短到 %d 字以内。').replace('%d', limit);
+export const textLongText = (t, limit) => t('The prompt is too long. Shorten it to %d characters or fewer.', '提示词过长，请缩短到 %d 字以内。').replace('%d', limit);
 // The engine's limits on continuing parts, refused before a generation starts; the engine says the same.
 export const PARTS_LIMIT_CODES = ['chain_too_long', 'chain_part_too_short', 'chain_short_parts', 'chain_source_full'];
-export function partsLimitText(code, t = en => en, limit = null) {
+export function partsLimitText(code, t = translatorFor(null, false), limit = null) {
     const {followSeconds: least, fullSeconds: full, maxParts, shortMaxParts} = model.RULES;
-    if (code === 'chain_source_full') return t('This video already has the maximum of ' + maxParts + '\u00a0parts and cannot be extended.',
-        '这个视频已达 ' + maxParts + '\u00a0段上限，无法再接着生成。');
-    if (code === 'chain_part_too_short') return t(`A part followed by another part must be at least ${least} seconds. Make it longer.`, `后面还接着其他段时，这一段至少 ${least} 秒，请加长这一段。`);
-    if (code === 'chain_short_parts') { const most = limit ?? shortMaxParts; return t(`With a part shorter than ${full} seconds, one continuous shot can have up to ${most} parts. Make every part at least ${full} seconds long, or use fewer parts.`,
-        `有短于 ${full} 秒的段时，一个连续镜头最多 ${most} 段。请把每段加长到至少 ${full} 秒，或减少段数。`); }
-    return t(`One continuous shot can have up to ${limit ?? maxParts} parts. Make it shorter.`, `一个连续镜头最多 ${limit ?? maxParts} 段，请缩短。`);
+    if (code === 'chain_source_full') return t('This video already has the maximum of {count}\u00a0parts and cannot be extended.',
+        '这个视频已达 {count}\u00a0段上限，无法再接着生成。', { count: maxParts });
+    if (code === 'chain_part_too_short') return t('A part followed by another part must be at least {least} seconds. Make it longer.', '后面还接着其他段时，这一段至少 {least} 秒，请加长这一段。', { least });
+    if (code === 'chain_short_parts') { const most = limit ?? shortMaxParts; return t('With a part shorter than {full} seconds, one continuous shot can have up to {most} parts. Make every part at least {full} seconds long, or use fewer parts.',
+        '有短于 {full} 秒的段时，一个连续镜头最多 {most} 段。请把每段加长到至少 {full} 秒，或减少段数。', { full, most }); }
+    return t('One continuous shot can have up to {limit} parts. Make it shorter.', '一个连续镜头最多 {limit} 段，请缩短。', { limit: limit ?? maxParts });
 }
 // Shared by error() and actions.reasonText: one sentence naming the failed step.
-export function editorErrorText(value, t = en => en) {
+export function editorErrorText(value, t = translatorFor(null, false)) {
     if (isNetworkTypeError(value) || isNetworkTypeError(value?.detail)) return connectionLostText(t);
     // The worker's own "FreeVideo generation failed (exit 1)" header names nothing the user can act on.
     const oneLine = value => typeof value === 'string' ? value.trim().split(/[\r\n]+/).find(line => line.trim() && !/^\s*FreeVideo generation failed(?: \(exit -?\d+\))?\s*$/.test(line))?.trim() || '' : '';
@@ -96,16 +97,16 @@ export function editorErrorText(value, t = en => en) {
     const code = value?.code || detail?.code || value?.reason || detail?.reason || raw;
     const node = oneLine(detail?.node_type), step = `${value?.phase || ''} ${value?.stage || ''} ${node}`;
     const part = Number.isInteger(value?.index) ? value.index + 1 : null;
-    const generating = part ? t(`Generating part ${part}`, `生成第 ${part} 段`) : t('Generation', '生成');
+    const generating = part ? t('Generating part {part}', '生成第 {part} 段', { part }) : t('Generation', '生成');
     const stage = /encod|编码/i.test(step) ? t('Preparing', '准备生成') : /decod|解码/i.test(step) ? t('Making the video', '合成视频')
         : /load|model|加载/i.test(step) ? t('Loading the model', '加载模型') : generating;
     if (code === 'gpu_memory' || /out of memory|cuda.*memory|显存不足|显存不够/i.test(raw))
-        return t(`${stage}: not enough GPU memory.`, `${stage}时显存不足。`);
+        return t('{stage}: not enough GPU memory.', '{stage}时显存不足。', { stage });
     const known = {
-        chain_part_too_short: t(`A part followed by another part must be at least ${model.RULES.followSeconds} seconds.`, `后面还接着其他段时，这一段至少 ${model.RULES.followSeconds} 秒。`),
-        chain_short_parts: t(`With a part shorter than ${model.RULES.fullSeconds} seconds, one continuous shot can have up to ${model.RULES.shortMaxParts} parts.`,
-            `有短于 ${model.RULES.fullSeconds} 秒的段时，一个连续镜头最多 ${model.RULES.shortMaxParts} 段。`),
-        chain_too_long: t(`One continuous shot can have up to ${model.RULES.maxParts} parts.`, `一个连续镜头最多 ${model.RULES.maxParts} 段。`),
+        chain_part_too_short: t('A part followed by another part must be at least {followSeconds} seconds.', '后面还接着其他段时，这一段至少 {followSeconds} 秒。', { followSeconds: model.RULES.followSeconds }),
+        chain_short_parts: t('With a part shorter than {fullSeconds} seconds, one continuous shot can have up to {shortMaxParts} parts.',
+            '有短于 {fullSeconds} 秒的段时，一个连续镜头最多 {shortMaxParts} 段。', { fullSeconds: model.RULES.fullSeconds, shortMaxParts: model.RULES.shortMaxParts }),
+        chain_too_long: t('One continuous shot can have up to {maxParts} parts.', '一个连续镜头最多 {maxParts} 段。', { maxParts: model.RULES.maxParts }),
         too_long: t('This part is longer than the maximum length. Shorten it and try again.', '这一段超过了最长时长，请缩短后再试。'),
         missing_node: t('Generation is not ready. Restart FreeVideo.', '生成功能没有就绪，请重新启动 FreeVideo。'),
         chain_missing: t('Generation could not start. Choose "Generate" again.', '生成没能开始，请再点“生成”。'),
@@ -120,22 +121,25 @@ export function editorErrorText(value, t = en => en) {
     if (modelTableDamaged(whole))
         return t('Some of the model files are missing or damaged. ', '部分模型文件缺失或已损坏。') + t(...repairAction());
     if (['model_missing', 'missing_model', 'model_not_found'].includes(code) || /(?:model|checkpoint|模型).*(?:not found|missing|不存在|缺失)/i.test(raw))
-        return t(`Loading the model failed: ${raw || code}`, `加载模型时出错：${raw || code}`);
+        return t('Loading the model failed: {reason}', '加载模型时出错：{reason}', { reason: raw || code });
     if (['timeout', 'timed_out', 'generation_timeout'].includes(code) || /timed?\s*out|timeout|超时/i.test(raw))
-        return t(`${stage} timed out. Try again.`, `${stage}时等待超时，请再试一次。`);
+        return t('{stage} timed out. Try again.', '{stage}时等待超时，请再试一次。', { stage });
     const received = raw || (/^[a-z_]+$/.test(code) ? '' : code);
-    if (received) return t(`${generating} failed: ${received}`, `${generating}时出错：${received}`);
+    if (received) return t('{generating} failed: {received}', '{generating}时出错：{received}', { generating, received });
     // No readable text: say what the code names, and where the details are.
     const named = /^[a-z_]+$/.test(code) ? code : '';
-    return t(`${generating} failed. Try again; if it keeps failing, download the report and report the problem.${named ? ` Error code: ${named}` : ''}`,
-        `${generating}时出错。请重试；仍然失败请下载报告并提交问题。${named ? `错误代码：${named}` : ''}`);
+    return named
+        ? t('{generating} failed. Try again; if it keeps failing, download the report and report the problem. Error code: {code}',
+            '{generating}时出错。请重试；仍然失败请下载报告并提交问题。错误代码：{code}', { generating, code: named })
+        : t('{generating} failed. Try again; if it keeps failing, download the report and report the problem.',
+            '{generating}时出错。请重试；仍然失败请下载报告并提交问题。', { generating });
 }
 function exportErrorText(value, t) {
     if (isNetworkTypeError(value)) return connectionLostText(t);
     const message = [value?.response?.error?.message, value?.response?.error, value?.response?.message, value?.message]
         .find(text => typeof text === 'string' && text.trim() && text !== 'editor_request')?.trim().split(/[\r\n]+/)[0];
     // A bare status code means nothing to the user; the server's own words do.
-    return message ? t(`Export failed: ${message}`, `导出时出错：${message}`) : t('Export failed. Try again.', '导出时出错，请再试一次。');
+    return message ? t('Export failed: {message}', '导出时出错：{message}', { message }) : t('Export failed. Try again.', '导出时出错，请再试一次。');
 }
 // The save route's own messages are internal English, so only a full disk is named.
 function saveErrorText(value, t) {
@@ -171,7 +175,7 @@ function restoreGeneration(record, before, prepared) {
     return next;
 }
 const icon = path => { const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('viewBox', '0 0 16 16'); svg.setAttribute('aria-hidden', 'true'); svg.classList.add('fv-ed-glyph'); const line = document.createElementNS(svg.namespaceURI, 'path'); line.setAttribute('d', path); svg.append(line); return svg; };
-function basicBlockProgress(clipId, clipElement, t = en => en) {
+function basicBlockProgress(clipId, clipElement, t = translatorFor(null, false)) {
     const element = el('div', 'fv-ed-basic-progress'), water = el('div', 'fv-ed-basic-water'), percent = el('span', 'fv-ed-basic-percent');
     element.append(water, percent);
     let level = 0, run = null;
@@ -225,6 +229,8 @@ export function suspendCanvasPointer(canvas) {
 }
 
 // `components` replaces the optional progress module (see loadEditorComponents); tests also pass their generation stand-in here.
+// The sampling settings an edit's project keeps (editor_model.js SAMPLING_KEYS).
+const EDIT_SAMPLING = ['two_pass', 'base_steps', 'refine_steps', 'step_cache', 'upscale_factor'];
 export function openEditor({api, app, from = null, panel = {}, components: given = undefined, onView = view => viewChanged(view)}) {
     // A kept view (hidden when the user went to another view) comes back as it was: no rebuild, no reload. Opening a
     // work, another node's panel or a new creation panel builds a fresh one instead.
@@ -245,7 +251,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     }
     // The same language as the top bar and the other views, read once when the page opened (the app later drops the
     // address's query, so reading it again when the editor opened fell back to the browser's language).
-    const t = (en, zh) => CN ? zh : en;
+    const t = translator(CN);
     const returnFocus = document.activeElement;
     const even = value => Math.max(2, Math.floor(value / 2) * 2);
     // A new edit opens with an empty second sound track, where music is made.
@@ -479,8 +485,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         }
         if (code === 'timed_text' || code === 'middle_frames') { out(value.say); return {ok: false, reason: code, say: value.say}; }
         if (PARTS_LIMIT_CODES.includes(code)) {
-            const [en, zh] = (value.said || []).map(text => typeof text === 'string' && text ? text.slice(0, 200) : null);
-            const text = en && zh ? t(en, zh) : partsLimitText(code, t, Number.isInteger(value.limit) ? value.limit : null);
+            const said = (value.said || []).slice(0, 2).map(text => typeof text === 'string' && text ? text.slice(0, 200) : null);
+            const text = said[0] && said[1] ? t(...said) : partsLimitText(code, t, Number.isInteger(value.limit) ? value.limit : null);
             // A refused Generate keeps its reason on the bar's own line until the choice or the parts change.
             if (step === 'generate' && genbar && out === notify) genbar.say(text, false, null, true); else out(text);
             return {ok: false, reason: code, say: text};
@@ -488,7 +494,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if (['busy', 'locked', 'text', 'audio_full', 'overlap', 'range', 'no_audio'].includes(code)) {
             if (['locked', 'audio_full', 'overlap', 'range'].includes(code)) tracks?.flashBlocked?.(value.displayFrame);
             const said = {busy: t('This part is generating.', '这一段正在生成。'), locked: t('This track is locked.', '这条轨道已锁定。'),
-                text: t('Write a description first.', '先写一句描述。'), overlap: t('That spot is taken. Use an empty spot.', '这里已经有片段了，请放到空白处。'),
+                text: t('Write a prompt first.', '先写一句提示词。'), overlap: t('That spot is taken. Use an empty spot.', '这里已经有片段了，请放到空白处。'),
                 audio_full: t('Both audio tracks are full here. Move an audio clip first.', '这里两条声音轨都满了，请先挪开一段声音。'),
                 no_audio: t('This clip has no sound. Please choose one with sound.', '这个素材没有声音，请选一段有声音的。')}[code];
             if (said) out(said);
@@ -810,7 +816,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 }
             }
             if (disposed || closing || epoch !== projectEpoch) return;
-            if (picture) notify(t('Saved the current frame to Edit image > Generate with AI > Works.',
+            if (picture) notify(t('Saved the current frame to Edit image > Generate with AI > Creations.',
                 '已保存当前帧，位于“编辑图片 > AI 生成 > 作品库”。'));
         } catch (value) {
             if (disposed || epoch !== projectEpoch) return;
@@ -818,7 +824,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 range: t('There is no picture at this position. Move the playhead onto a clip.', '这个位置没有画面，请把播放头移到片段上。'),
                 generating: t('This part is still being generated. Save the frame when it is done.', '这一段还在生成，完成后再保存。'),
                 unreadable: t('A source file cannot be read. Import it again from the library.', '有素材读不出来，请在素材库重新导入。'),
-                not_writable: t('The picture folder cannot be written to. Check that the folder can be written to, then save the frame again.', '图片文件夹不可写。请检查这个文件夹的写入权限后再保存。'),
+                not_writable: t('The image folder cannot be written to. Check that the folder can be written to, then save the frame again.', '图片文件夹不可写。请检查这个文件夹的写入权限后再保存。'),
                 disk_full: t('The disk is full. Free some space, then save the frame again.', '磁盘空间不足，请清理出空间后再保存。')}[value?.reason];
             if (said) notify(said); else error(value, 'frame');
         } finally { savingFrame = false; }
@@ -831,7 +837,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         exportButton.classList.toggle('fv-primary', !!model.exportFrames(state.record) && !state.selection && !jobActive() && !exportStatus);
         const running = exportPreparing || ['running', 'queued'].includes(exportStatus?.state);
         if (['running', 'queued'].includes(exportStatus?.state) && exportStatus.queued) exportButton.textContent = t('Queued', '排队中');
-        else if (['running', 'queued'].includes(exportStatus?.state)) exportButton.textContent = t(`Export ${Math.round((exportStatus.fraction || 0) * 100)}%`, `导出 ${Math.round((exportStatus.fraction || 0) * 100)}%`);
+        else if (['running', 'queued'].includes(exportStatus?.state)) exportButton.textContent = t('Export {percent}%', '导出 {percent}%', { percent: Math.round((exportStatus.fraction || 0) * 100) });
         else if (exportPreparing) exportButton.textContent = queue.dirty ? t('Saving changes…', '正在保存改动…') : t('Exporting', '正在导出');
         else exportButton.textContent = exportStatus?.state === 'done' && exportMatches() ? t('View', '查看') : t('Export', '导出');
         // Never disabled: a press that cannot export says why next to it.
@@ -858,8 +864,11 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if (!value.node || !value.prompt?.[value.node]) throw new Error('missing_node');
         const inputs = value.prompt[value.node].inputs;
         // With the creation panel's bar in the editor, its values are the request's (the edit's size is its starting point).
-        if (!panel.barActive) Object.assign(inputs, state.record.settings || {}, capability.generationSize || generationSize(state.record));
-        else if (bar?.overrides) for (const [name, setting] of Object.entries(bar.overrides())) if (name in inputs && !Array.isArray(inputs[name])) inputs[name] = setting;
+        if (!panel.barActive) {
+            Object.assign(inputs, state.record.settings || {}, capability.generationSize || generationSize(state.record));
+            // Its own level is the edit's (its project cannot hold the Fast level): the node's Fast setting does not come with it.
+            if ('fast_mode' in inputs && EDIT_SAMPLING.some(key => key in (state.record.settings || {}))) inputs.fast_mode = 'none';
+        } else if (bar?.overrides) for (const [name, setting] of Object.entries(bar.overrides())) if (name in inputs && !Array.isArray(inputs[name])) inputs[name] = setting;
         // The first-frame reference is the work's own setting, the one the length limit is worked out from.
         if (panel.barActive && 'first_frame_reference' in inputs && !Array.isArray(inputs.first_frame_reference)) inputs.first_frame_reference = state.record.settings?.first_frame_reference === true;
         // The media panel's pictures guide every part (the engine keeps only the references for a part that continues);
@@ -1197,7 +1206,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             const rows = listed.filter(row => row.id !== state.record.id && !hiddenEmptyEdit(row, initial())); if (disposed || menu.hidden || !menu.contains(name)) return;
             if (rows.length || unread) { const line = el('div'); line.setAttribute('role', 'separator'); menu.append(line); }
             for (const row of rows) { const item = button(row.name || new Date(row.updated_at).toLocaleDateString(), () => switchProject(row.id), 'fv-ed-project'); item.setAttribute('role', 'menuitem'); item.title = item.textContent; menu.append(item); }
-            if (unread) menu.append(el('p', 'fv-ed-unreadable', t(`${unread} ${unread === 1 ? 'edit' : 'edits'} could not be read`, `另有 ${unread} 个剪辑无法读取`)));
+            if (unread) menu.append(el('p', 'fv-ed-unreadable', (unread === 1 ? t('1 edit could not be read', '另有 1 个剪辑无法读取') : t('{count} edits could not be read', '另有 {count} 个剪辑无法读取', { count: unread }))));
         } catch (value) { error(value, null, undefined, 'projects'); }
         name.focus(); name.select();
     }
@@ -1328,7 +1337,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             if (ids.length === 1 && music.target({kind: 'clip', ids})) return music.describe(ids[0], text);
             if (ids.length === 1 && narration.target({kind: 'clip', ids})) return narration.describe(ids[0], text);
             if (!ids.every(id => editablePart(model.find(state.record, id)))) return false;
-            try { state.apply(t('Edit description', '修改说明'), record => model.describePlanned(record, ids, text)); return true; }
+            try { state.apply(t('Edit prompt', '修改提示词'), record => model.describePlanned(record, ids, text)); return true; }
             catch (value) { if (value instanceof model.EditError) return false; throw value; }
         },
         needsText(selection = state.selection) {
@@ -1510,13 +1519,16 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 Object.assign(frozen.prompt[frozen.node].inputs, follow || {});
                 // A preview is one part; any other part samples both passes, whatever the panel shows.
                 const inputs = frozen.prompt[frozen.node].inputs, alone = request.blocks.length === 1 && (store.continuationPreview || !beforeKeys.some(Boolean));
+                // The Fast level makes one part that continues nothing; any other part samples as the control then says.
+                if ('fast_mode' in inputs && inputs.fast_mode !== 'none' && (!panel.fastOffered || secondPass || request.blocks.length !== 1 || beforeKeys.some(Boolean)))
+                    Object.assign(inputs, {fast_mode: 'none', two_pass: true, base_steps: 8, refine_steps: 3, step_cache: 'none', upscale_factor: '2'});
                 if (secondPass) {
                     if (!alone) throw new model.EditError('unsupported');
                     Object.assign(inputs, {two_pass: true, preview: false, refine_from: secondPass});
                 } else {
                     // By the steps in this very request: they may have changed on the node since the key was drawn.
                     const stepsFit = beforeKeys.some(Boolean) || typeof inputs.base_steps !== 'number' || inputs.base_steps === 8;
-                    if ('preview' in inputs || previewing) inputs.preview = previewing && alone && stepsFit;
+                    if ('preview' in inputs || previewing) inputs.preview = previewing && alone && stepsFit && (inputs.fast_mode || 'none') === 'none';
                     if ('refine_from' in inputs) inputs.refine_from = '';
                 }
                 await followSound(frozen, prepared, ids);
@@ -1610,7 +1622,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 selection = state.select(moved); said = t('Moved to the next empty spot.', '已挪到后面的空位。'); genbar?.say(said);
             }
             let used = null, texts = null, shown = selection === state.selection;
-            const before = t('Used the description of the part before.', '沿用了上一段的描述。'), latest = t('Used the latest description.', '沿用了最近一次的描述。');
+            const before = t('Used the prompt of the part before.', '沿用了上一段的提示词。'), latest = t('Used the latest prompt.', '沿用了最近一次的提示词。');
             let run = partRun(selection);
             if (run) {
                 // What is in the box is the chosen parts' description; each part goes with its own, and one with
@@ -2047,8 +2059,8 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             {id: 'editor.record', title: ['Record from the microphone', '用麦克风录音'], group: ['Sound', '声音'], run: () => recordTool.click()},
             {id: 'editor.adjust', title: ['Adjust the selection', '调整选中的片段'], use: ['Volume, speed, picture and text', '声音、速度、画面和文字'], run: () => adjust.narrow ? adjust.open() : adjustHost.querySelector('[role=tab][aria-selected=true]')?.focus()},
             {id: 'editor.import', title: ['Import files', '导入文件'], keywords: ['media', 'library', '素材'], run: press('.fv-ed-library-import')},
-            {id: 'editor.history', title: ['Earlier descriptions', '用过的描述'], keywords: ['prompt', 'history', '提示词', '历史'], why: () => genHost.querySelector('.fv-ed-history-button')?.disabled ? t('Choose a part first', '先选中一段') : '', run: press('.fv-ed-history-button')},
-            {id: 'editor.frame', title: ['Save the current frame as a picture', '把当前帧存成图片'], run: () => void saveFrame()},
+            {id: 'editor.history', title: ['Earlier prompts', '用过的提示词'], keywords: ['prompt', 'history', '提示词', '历史'], why: () => genHost.querySelector('.fv-ed-history-button')?.disabled ? t('Choose a part first', '先选中一段') : '', run: press('.fv-ed-history-button')},
+            {id: 'editor.frame', title: ['Save the current frame as an image', '把当前帧存成图片'], run: () => void saveFrame()},
             {id: 'editor.new', title: ['New edit', '新建剪辑'], group: ['Edit', '剪辑'], run: () => void switchProject(null)},
             {id: 'editor.rename', title: ['Rename or open another edit', '改名或打开其他剪辑'], group: ['Edit', '剪辑'], run: () => void showMenu()},
         ]);
@@ -2058,7 +2070,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     import('./shortcuts.js').then(module => {
         if (disposed) return;
         listeners.push(module.registerShortcuts('editor', [
-            {keys: 'Mod+Enter', title: ['Generate (in the description)', '生成（在描述框里）'], group: ['Generate', '生成']},
+            {keys: 'Mod+Enter', title: ['Generate (in the prompt box)', '生成（在提示词框里）'], group: ['Generate', '生成']},
             {keys: 'Mod+Y', title: ['Redo', '重做'], group: ['Editing', '编辑']},
             {keys: 'Shift+← / Shift+→', title: ['Back / forward ten frames', '后退 / 前进 10 帧'], group: ['Playback', '播放']},
         ]));
@@ -2120,7 +2132,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         previous.disabled = busy || multiple || !clips.some(clip => clip.versions.length);
         const versioned = clips.find(clip => clip.versions.length), list = versioned ? model.takes(versioned) : [];
         const position = list.findIndex(item => item.index === -1) + 1;
-        tip(previous, {name: t('Previous version', '上一版'), use: list.length > 1 ? t(`Step back to an earlier take (now take ${position} of ${list.length})`, `换到更早生成的一版（现在是第 ${position}/${list.length} 版）`) : t('Swap this part back to its earlier take', '把这一段换回之前生成的版本'),
+        tip(previous, {name: t('Previous version', '上一版'), use: list.length > 1 ? t('Step back to an earlier take (now take {position} of {count})', '换到更早生成的一版（现在是第 {position}/{count} 版）', { position, count: list.length }) : t('Swap this part back to its earlier take', '把这一段换回之前生成的版本'),
             why: !previous.disabled ? '' : busy ? t('This part is generating', '这一段正在生成') : multiple ? t('Select only one part', '只选一段') : t('This part has no earlier take', '这一段没有更早的版本')});
         updateSecondPass();
         updateZoom();

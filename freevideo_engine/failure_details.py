@@ -14,6 +14,8 @@ from .two_pass import SCALES
 
 STEP_OUTPUT = '\n\nFull step output:\n'
 QUALITY_LEVELS = (('Light', '轻量'), ('Medium', '标准'), ('High', '精细'), ('Max', '极致'))  # tiers.TIERS order
+# Marks a fastest mode failure. web/error_panel.js shows its card when no more specific one applies.
+FAST_MODE_FAILED = 'FAST_MODE_FAILED: The fastest mode could not run.'
 ENGINE_BUSY_TITLE = ('FreeVideo is busy with another task', 'FreeVideo 正在处理另一个任务')
 ENGINE_BUSY_DETAIL = (
     'Try again when it finishes. If nothing else is running, close duplicate FreeVideo instances, then try again.',
@@ -880,16 +882,16 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
          ('The ports for LAN access and the ports after them are in use or reserved by the system. Close the programs '
           'using these ports, then turn on LAN access again.',
           '局域网访问要用的端口和后面的端口都已被占用或被系统保留。请关闭占用这些端口的程序，再重新开启局域网访问。')),
-        (r'The previous video has no usable continuation data', 'continuation-missing',
-         ('This video cannot be continued', '这个视频暂时不能接续'),
-         ('Generate the previous video again, then continue it.', '请重新生成上一段视频，再接续。')),
-        (r'The previous video is too short to continue', 'continuation-short',
+        (r'The previous video lacks the data needed to extend it', 'continuation-missing',
+         ('This video cannot be extended', '这个视频暂时不能接续'),
+         ('Generate the previous video again, then extend it.', '请重新生成上一段视频，再接续。')),
+        (r'The previous video is too short to extend', 'continuation-short',
          ('The previous video is too short', '上一段视频太短'),
          ('Choose a video that is at least 1.7 seconds long.', '请选择至少 1.7 秒的视频。')),
         (r'The previous video cannot be read', 'continuation-unreadable',
          ('The previous video cannot be read', '无法读取上一段视频'),
          ('Choose an MP4 video that plays normally.', '请选择能正常播放的 MP4 视频。')),
-        (r"The previous video's frame rate is too low to continue", 'continuation-rate',
+        (r"The previous video's frame rate is too low to extend", 'continuation-rate',
          ("The previous video's frame rate is too low", '上一段视频帧率太低'),
          ('Choose a video with at least 10 frames per second.', '请选择每秒至少 10 帧的视频。')),
         (r'Use the same aspect ratio as the previous video', 'continuation-size',
@@ -897,26 +899,26 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
          ('Choose a video size with the same aspect ratio as the previous video.', '请选择与上一段视频比例相同的画面大小。')),
         (r'Frame count must be 5 \+ 17n and at least 39', 'continuation-frames',
          ('Choose a supported frame count', '请选择支持的帧数'),
-         ('Use 39, 56, 73, 90, or another value reached by adding 17. This includes the 22 repeated frames when continuing a video.',
+         ('Use 39, 56, 73, 90, or another value reached by adding 17. This includes the 22 repeated frames when extending a video.',
           '请使用 39、56、73、90 等每次增加 17 的帧数；接续时，这个数包含开头重复的 22 帧。')),
-        (r'Continue from video cannot be used with these settings\. Continuing a video needs an NVIDIA', 'continuation-route',
-         ("This computer can't continue a video", '这台电脑无法接续视频'),
-         ('Continuing a video needs an NVIDIA GPU or a Mac. To make a new video, clear "Continue from video".', '接续视频需要 NVIDIA 显卡或 Mac。要生成新视频，请清空“接着生成”。')),
-        (r'Continue from video cannot be used with these settings\. Turn on "Two-pass', 'continuation-passes',
-         ('Continuing needs two-pass acceleration', '接续需要二采加速'),
-         ('Turn on "Two-pass acceleration" and turn off the first-pass preview.', '请打开“二采加速”，并关闭先出预览。')),
+        (r'Extend from video cannot be used with these settings\. Extending a video needs an NVIDIA', 'continuation-route',
+         ("This computer can't extend a video", '这台电脑无法接续视频'),
+         ('Extending a video needs an NVIDIA GPU or a Mac. To make a new video, clear "Extend from video".', '接续视频需要 NVIDIA 显卡或 Mac。要生成新视频，请清空“接着生成”。')),
+        (r'Extend from video cannot be used with these settings\. Turn on "Faster', 'continuation-passes',
+         ('Extending needs the faster second pass', '接续需要二采加速'),
+         ('Turn on "Faster second pass" and turn off the first-pass preview.', '请打开“二采加速”，并关闭先出预览。')),
         (r'audio_original_passes: ', 'audio-original-passes',
-         ('This audio needs two-pass acceleration', '这段音频需要二采加速'),
-         ('Turn on "Two-pass acceleration" or set the audio to "Reference".', '请打开“二采加速”，或把音频改选“参考”。')),
+         ('This audio needs the faster second pass', '这段音频需要二采加速'),
+         ('Turn on "Faster second pass" or set the audio to "Reference".', '请打开“二采加速”，或把音频改选“参考”。')),
         (r'audio_original_route: ', 'audio-original-route',
          ('"Use as is" is not available here', '这里还不能用“原样使用”'),
          ('Set the audio to "Reference".', '请把音频改选“参考”。')),
-        (r'Continue from video cannot be used with these settings\. Clear either', 'continuation-refine',
-         ('A continued part is made in full', '接续会完整生成这一段'),
-         ('Clear either "Second pass of preview" or "Continue from video".', '请清空“继续二采”或“接着生成”其中一项。')),
-        (r'Continue from video cannot be used with these settings\. Connect up to 3 pictures', 'continuation-media',
-         ('A continued part takes picture references only', '接续段只能用图片参考'),
-         ('Connect up to 3 pictures as references, and remove video, audio and pre-encoded inputs.', '最多接 3 张图片作为参考图，并移除视频、音频参考和预编码输入。')),
+        (r'Extend from video cannot be used with these settings\. Clear either', 'continuation-refine',
+         ('An extended part is made in full', '接续会完整生成这一段'),
+         ('Clear either "Second pass of preview" or "Extend from video".', '请清空“继续二采”或“接着生成”其中一项。')),
+        (r'Extend from video cannot be used with these settings\. Connect up to 3 images', 'continuation-media',
+         ('An extended part takes image references only', '接续段只能用图片参考'),
+         ('Connect up to 3 images as references, and remove video, audio and pre-encoded inputs.', '最多接 3 张图片作为参考图，并移除视频、音频参考和预编码输入。')),
         (r'Choose an existing MP4 video using its absolute path', 'continuation-file',
          ('Choose the previous video', '请选择上一段视频'),
          ('Select an existing MP4 video generated by FreeVideo. In ComfyUI, keep it inside the output or input folder.',
@@ -1043,6 +1045,11 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
          ('The model download sources cannot be reached', '无法连接模型下载源'),
          ('Check your network or proxy, or change the source or connection mode, then retry.',
           '请检查网络或代理，或切换下载源、连接模式后重试。')),
+        # network.PackageResolutionError: every source answered that the versions do not fit this computer.
+        (r'Required packages cannot be installed on this computer', 'package-resolution',
+         ('No version of the required packages is available for this computer', '所需的软件包没有适用于这台电脑的版本'),
+         ('Switching the download source or connection mode gives the same result. Choose "Export report", then "Report a problem", and attach the report.',
+          '更换下载源或连接方式后结果相同。请先点击“导出报告”，再点击“提交问题”并附上报告。')),
         (r'Model download paused|unexpected-transfer-size|ConnectionError|ConnectTimeout|ReadTimeout|HTTP probe failed|Could not resolve host|SSL certificate|Every download source failed|All Git sources failed|All package sources failed|Python download failed on every route', 'download',
          ('Download interrupted', '下载中断了'),
          ('Check your network or change the source or connection mode in Settings → Downloads, then retry.', '检查网络，或在“设置 → 下载”中切换下载源、连接模式后重试。')),
@@ -1155,6 +1162,11 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
                 found = re.search(r'\[CUDA_ARCH_UNSUPPORTED\]\s+(.+?)\s+\(SMunknown;', text)
                 if found:
                     detail = ('检测到：%s' if zh else 'Detected: %s') % found[1]
+                    return dict(title=title[zh], detail=detail + '\n' + action[zh], action='', kind=kind)
+            if kind == 'package-resolution':
+                found = re.search(r'Required packages cannot be installed on this computer: ([^\r\n]+?)\.(?:\r?\n|$)', text)
+                if found:
+                    detail = ('软件包：%s' if zh else 'Packages: %s') % found[1]
                     return dict(title=title[zh], detail=detail + '\n' + action[zh], action='', kind=kind)
             if kind == 'path-too-long':
                 # A dependency folder Git cannot read is named, above the same next step.
@@ -1508,8 +1520,9 @@ def generation_failure(run, exit_code=None, *, repair=None):
     # Managed failures contain only the exact busy sentence and optional holder
     # diagnostics. Other output must never acquire a busy classification.
     busy_lines = [line for line in _read(run / 'generate.log', 8192).splitlines() if line.strip()]
-    if exit_code == 1 and busy_lines[:1] == [ENGINE_BUSY] \
-            and all(line.startswith('Lock file open:') for line in busy_lines[1:]):
+    busy = exit_code == 1 and busy_lines[:1] == [ENGINE_BUSY] \
+        and all(line.startswith('Lock file open:') for line in busy_lines[1:])
+    if busy:
         lines.extend(busy_lines)
     # What the worker found when cuDNN refused its own files, ahead of the trace.
     explained = _runtime_explanation(report, REPAIR_MARK)
@@ -1590,6 +1603,8 @@ def generation_failure(run, exit_code=None, *, repair=None):
     summary = _mac_run(report, run, redactor)
     if summary:
         lines.insert(1 + bool(promoted) + bool(encoder_missing), summary)
+    if isinstance(report.get('fast_tier'), dict) and not busy:
+        lines.append(FAST_MODE_FAILED)
     lines.append('\nRetained outputs: ' + str(run))
     # The table failure can be in a retained child log rather than the report.
     # Keep its numeric metadata ahead of technical output for all interactive callers.

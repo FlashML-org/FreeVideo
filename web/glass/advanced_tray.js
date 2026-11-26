@@ -9,10 +9,11 @@
 import {TIPS} from '../tooltip_copy.js';
 import {randomSeed} from '../studio_queue.js';
 import './tray_pop.js';
+import { translator } from '../i18n.js';
 
 const make = (tag, cls, text) => { const element = document.createElement(tag); if (cls) element.className = cls; if (text != null) element.textContent = text; return element; };
-const say = (tray, en, zh) => tray.fvAtChinese ? zh : en;
-const pick = (tray, pair) => (tray.fvAtChinese ? pair?.[1] : pair?.[0]) || '';
+const say = (tray, en, zh, values) => translator(tray.fvAtChinese)(en, zh, values);
+const pick = (tray, pair) => (pair && say(tray, ...pair)) || '';
 const tipOn = (element, name, use = '', why = '') => {
     element.dataset.fvTipName = name;
     if (use) element.dataset.fvTipUse = use; else delete element.dataset.fvTipUse;
@@ -191,8 +192,8 @@ function paintLength(tray, dialog) {
     // the longest part. A duration that fits in one part leaves the field greyed and says nothing.
     let count = 0;
     if (!one && block && seconds > 0 && each > 0) {
-        const shown = (dialog.querySelector('.fvs-key-eta')?.textContent || '').match(/分\s*(\d+)\s*段|(\d+)\s*parts/);
-        count = shown ? Number(shown[1] || shown[2]) : seconds <= each ? 1 : Math.ceil(seconds / each);
+        const shown = Number(dialog.querySelector('.fvs-key-eta')?.dataset.parts);
+        count = shown > 1 ? shown : seconds <= each ? 1 : Math.ceil(seconds / each);
     }
     // An emptied box on a duration that needs parts stays editable, so it can be filled in.
     const idle = !one && count <= 1 && !(block?.value === '' && block.dataset.fvPartsNeeded === 'true');
@@ -204,7 +205,7 @@ function paintLength(tray, dialog) {
         const time = Number.isInteger(seconds) ? String(seconds) : seconds.toFixed(1);
         // More than eight parts is refused by the planner, which says so itself (below, as the problem line).
         const text = !one && block && !block.disabled && count > 1 && count <= 8
-            ? say(tray, `${time} s this time · made in ${count} parts and joined`, `这次 ${time} 秒 · 分 ${count} 段生成后接起来`) : '';
+            ? say(tray, '{seconds} s this time · made in {count} parts and joined', '这次 {seconds} 秒 · 分 {count} 段生成后接起来', { seconds: time, count }) : '';
         if (plan.textContent !== text) plan.textContent = text;
         toggle(plan, 'fv-at-gone', !text);
     }
@@ -212,8 +213,10 @@ function paintLength(tray, dialog) {
     const refusal = dialog.querySelector('.fv-length-plan:not([hidden])'), said = refusal ? (refusal.firstChild?.textContent || refusal.textContent || '').trim() : '';
     const problem = section.querySelector('.fv-at-problem');
     if (problem) { if (problem.textContent !== said) problem.textContent = said; toggle(problem, 'fv-at-gone', !said); }
-    toggle(part, 'fv-at-bad', Boolean(said) && /每段时长|每段最长|part length/i.test(said));
-    toggle(section.querySelector('.fv-at-segments[data-at=length]'), 'fv-at-bad', Boolean(said) && /单次|single run/i.test(said));
+    // Which rows the refusal is about: the part length, or the single run (in Chinese also the one that says what one run allows).
+    const code = said ? refusal.dataset.fvLengthError || '' : '';
+    toggle(part, 'fv-at-bad', code.startsWith('block_'));
+    toggle(section.querySelector('.fv-at-segments[data-at=length]'), 'fv-at-bad', code === 'single_unavailable' || code === 'block_too_long' && Boolean(tray.fvAtChinese));
 }
 
 // ── Reset to defaults: shown only while something differs; it presses the panel's own controls. ──
@@ -222,15 +225,16 @@ function state(tray, dialog) {
     const single = tray.querySelector('.fv-at-group[data-at=length] input[type=checkbox]');
     const unset = tray.querySelector('.fv-at-unset');
     const seedMode = tray.querySelector('.fv-at-group[data-at=seed] select');
-    // The Quality key in the console's row says Custom while the steps are set by hand (its small window, or the older tray chip).
-    const quality = (dialog.querySelector(`.fvs-chips .fvp-chip[aria-label="${say(tray, 'Quality', '质量')}"] .fvp-chip-label`)
-        || dialog.querySelector('.fvs-chip[data-chip=quality] .fvs-chip-label'))?.textContent.trim() || '';
+    // The studio's Quality levels strip says so itself while the steps are set by hand (data-custom), wherever it stands: in the
+    // Quality window beside its key (closed or open), or in the Quality section of the three-column panel, which has no such key.
+    // The tray may be lent to the editor's bar, a dialog other than the one it was made in: look where it stands now.
+    const custom = (tray.closest('dialog') || dialog).querySelector('.fv-effort[data-fv-studio-effort][data-custom=true]');
     return {
         mode: mode !== 'single',
         single: Boolean(single && single.checked && !single.disabled),
         length: Boolean(unset && !unset.hidden && !unset.disabled),
         seed: Boolean(seedMode && !seedMode.disabled && seedMode.value !== 'randomize'),
-        steps: /^(Custom|自定义)$/.test(quality),
+        steps: Boolean(custom),
     };
 }
 function paintReset(tray, dialog) {

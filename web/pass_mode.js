@@ -8,7 +8,7 @@ const plainListen = (target, type, handler) => {
 export function createPassMode({t, onChoose, listen = plainListen}) {
     const element = document.createElement('div');
     element.className = 'fv-pass-mode'; element.dataset.tourId = 'pass-mode'; element.setAttribute('role', 'radiogroup');
-    element.setAttribute('aria-label', t('Two-pass sampling', '二采加速'));
+    element.setAttribute('aria-label', t('Faster second pass', '二采加速'));
     const options = [['off', t('Off', '关闭')], ['on', t('On', '开启')], ['preview', t('Preview first', '先出预览')]].map(([mode, label]) => {
         const option = document.createElement('button');
         option.type = 'button'; option.textContent = label; option.dataset.mode = mode; option.setAttribute('role', 'radio');
@@ -36,6 +36,8 @@ export function createPassMode({t, onChoose, listen = plainListen}) {
             option.disabled = Boolean(state.disabled?.[key]);
             option.hidden = Boolean(state.hidden?.[key]);
             option.title = key === 'preview' ? state.hint || '' : '';
+            // Why the choice is closed, for its hover card (the Fast level is one pass).
+            if (state.why && option.disabled) option.dataset.fvTipWhy = state.why; else delete option.dataset.fvTipWhy;
         }
     }
     return {element, options, sync, dispose: stop};

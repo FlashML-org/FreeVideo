@@ -44,7 +44,7 @@ export function timeProblems(times, seconds) {
 export function problemText(problem, seconds, t) {
     if (problem.code === 'same') return t('Same time as another middle frame. Choose a different time.', '和另一张中间帧的时间相同，请错开。');
     const range = timeRange(seconds);
-    return range ? t(`Must be between ${shown(range.min)} and ${shown(range.max)} s.`, `时间需在 ${shown(range.min)} 到 ${shown(range.max)} 秒之间。`)
+    return range ? t('Must be between {min} and {max} s.', '时间需在 {min} 到 {max} 秒之间。', { min: shown(range.min), max: shown(range.max) })
         : t('Enter a time in seconds.', '请填写时间（秒）。');
 }
 export const labels = {
@@ -55,9 +55,10 @@ export const labels = {
     tooMany: t => t('Enable up to 3 middle frames.', '中间帧最多启用 3 张图片。'),
     needsBoth: t => t('Middle frames need both a first and a last frame.', '中间帧需要同时有首帧和尾帧。'),
     firstPartOnly: t => t('Middle frames apply to the first part only.', '中间帧只用于第一段。'),
-    continuing: t => t('When continuing a video, middle frames are not used; the first and last frames are used as references.',
+    continuing: t => t('When extending a video, middle frames are not used; the first and last frames are used as references.',
         '接续视频时不使用中间帧，首尾帧会用作参考图。'),
-    mode: (count, t) => t(`First + last frame · ${count} middle ${count === 1 ? 'frame' : 'frames'}`, `首尾帧生成 · ${count} 张中间帧`),
+    mode: (count, t) => count === 1 ? t('First + last frame · 1 middle frame', '首尾帧生成 · 1 张中间帧')
+        : t('First + last frame · {count} middle frames', '首尾帧生成 · {count} 张中间帧', { count }),
     chipTitle: (at, t) => `${t('Middle frame', '中间帧')} · ${shown(at)} ${t('s', '秒')}`,
 };
 // The sentence for the notice line when the middle frames cannot be used as they are; '' when they can.

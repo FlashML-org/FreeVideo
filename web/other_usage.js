@@ -20,6 +20,21 @@ export function otherUsageText(notice, t, fact = false) {
     return t(...OTHER_USAGE_COPY[key]).replaceAll('{vram_gib}', notice.vram_gib.toFixed(1))
         .replaceAll('{ram_gib}', notice.ram_gib.toFixed(1));
 }
+// The engine's failure reason and its next step, each looked up whole. A memory reason the engine wrote with the note
+// on other programs (agent/errors.py reasons(): reason_en/reason_zh hold it without the note) gets the note from the
+// template above, so no language file needs a sentence per number.
+export function engineReason(error, t) {
+    // Only when the template reads exactly as the engine's note in both languages (the engine rounds half to even, so
+    // 5.25 GB is 5.2 there and 5.3 here); otherwise the engine's whole sentence, as before.
+    const same = [[error.error_en, en => en], [error.error_zh, (en, zh) => zh]].every(([text, pick]) => {
+        const note = otherUsageText(error.other_usage, pick, true);
+        return note && typeof text === 'string' && text.endsWith(note);
+    });
+    const note = error.reason_en && error.reason_zh && same ? otherUsageText(error.other_usage, t, true) : '';
+    const said = note ? t(error.reason_en, error.reason_zh) : t(error.error_en, error.error_zh || error.error_en);
+    const step = error.next_en || error.next_zh ? t(error.next_en || '', error.next_zh || '') : '';
+    return [said, note, step].filter(Boolean).reduce((text, more) => text.replace(/[。.]$/, '') + t('. ', '。') + more);
+}
 export function claimOtherUsage(notice, storage) {
     try {
         storage ??= globalThis.sessionStorage;

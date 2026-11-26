@@ -729,6 +729,8 @@ def execute_attempts(history, identity, profile, canvas, launch, *,
         if prepare is not None:
             prepare(current)
         evidence['request_artifacts'] = report.get('artifacts')
+        if report.get('fast_tier'):
+            evidence['fast_tier'] = report['fast_tier']['mode']
         if report.get('resource_prediction') is not None:
             evidence['prediction'] = copy.deepcopy(report['resource_prediction'])
         geometry = attempt_geometry(canvas, current['engine'])

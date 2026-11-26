@@ -34,11 +34,11 @@ export function curve(xs, ys) {
 }
 
 export function aboutTime(seconds, t) {
-    if (seconds < 55) { const n = Math.max(10, Math.round(seconds / 10) * 10); return t(`About ${n} s`, `约 ${n} 秒`); }
+    if (seconds < 55) { const n = Math.max(10, Math.round(seconds / 10) * 10); return t('About {n} s', '约 {n} 秒', { n }); }
     const minutes = Math.round(seconds / 60);
-    if (minutes < 100) return t(`About ${minutes} min`, `约 ${minutes} 分钟`);
+    if (minutes < 100) return t('About {minutes} min', '约 {minutes} 分钟', { minutes });
     const hours = Math.round(seconds / 1800) / 2;
-    return t(`About ${hours} h`, `约 ${hours} 小时`);
+    return t('About {hours} h', '约 {hours} 小时', { hours });
 }
 
 // Send material facts only. An incomplete reference list uses the server's
@@ -189,6 +189,9 @@ export function surfacePixels(surface, width, height) {
 }
 
 let serial = 0;
+// What the estimate adds while the first build is still owed.
+export const setupNote = t => t(' · \u2060includes\u00a0first-time\u00a0setup', ' · \u2060含\u2060首\u2060次\u2060准\u2060备');
+
 export function createCapabilityView({node, api, t, getState, onPick, onEstimate, onGrid}) {
     if (!document.querySelector('link[data-fv-capability]')) {
         const css = el('link', ''); css.rel = 'stylesheet'; css.dataset.fvCapability = '';
@@ -222,7 +225,7 @@ export function createCapabilityView({node, api, t, getState, onPick, onEstimate
         hover = point; position(mark, x, y);
         time.textContent = aboutTime(point.estimate, t);
         const duration = point.seconds < 30 && point.seconds === surface.sizes[point.size].max
-            ? t(`up to ${point.seconds} s`, `单次最长 ${point.seconds} 秒`) : t(`${point.seconds} s`, `${point.seconds} 秒`);
+            ? t('up to {seconds} s', '单次最长 {seconds} 秒', { seconds: point.seconds }) : t('{seconds} s', '{seconds} 秒', { seconds: point.seconds });
         configuration.textContent = `${point.width} × ${point.height} · ${duration}`;
         plot.classList.add('is-hover');
         highlight();
@@ -256,7 +259,7 @@ export function createCapabilityView({node, api, t, getState, onPick, onEstimate
         now.hidden = !point || seconds > surface.top || seconds > surface.sizes[i].max;
         if (!now.hidden) position(now, surface.xs[i] * plot.clientWidth, (1 - seconds / surface.top) * plot.clientHeight);
         const max = i >= 0 ? Math.min(30, surface.sizes[i].max) : 0;
-        longest.textContent = !max ? '' : max < 30 ? t(`Up to ${max} s`, `单次最长 ${max} 秒`) : t('Single run: under 30 s', '单次不到 30 秒');
+        longest.textContent = !max ? '' : max < 30 ? t('Up to {max} s', '单次最长 {max} 秒', { max }) : t('Single run: under 30 s', '单次不到 30 秒');
         plot.setAttribute('aria-disabled', String(getState().disabled));
         highlight();
     }
@@ -277,7 +280,7 @@ export function createCapabilityView({node, api, t, getState, onPick, onEstimate
         img.data.set(surfacePixels(surface, width, height)); ctx.putImageData(img, 0, 0);
         yAxis.replaceChildren(); xAxis.replaceChildren();
         for (let s = 0; s <= surface.top; s += surface.top / 3) {
-            const label = el('span', '', t(`${s} s`, `${s} 秒`)); label.style.top = `${(1 - s / surface.top) * 100}%`; yAxis.append(label);
+            const label = el('span', '', t('{s} s', '{s} 秒', { s })); label.style.top = `${(1 - s / surface.top) * 100}%`; yAxis.append(label);
         }
         surface.sizes.forEach((size, i) => {
             const label = el('span', 'fv-range-size', `${size.pixels.toFixed(2)} MP`);
@@ -409,7 +412,33 @@ export function createCapabilityView({node, api, t, getState, onPick, onEstimate
         const seconds = tier?.estimate_seconds?.[i]?.[j];
         if (!positive(seconds)) return '';
         // The suffix stays in one piece so a narrow line moves it whole to the next line.
-        return aboutTime(seconds, t) + (grid.machine?.compile_owed === true ? t(' · \u2060includes\u00a0first-time\u00a0setup', ' · \u2060含\u2060首\u2060次\u2060准\u2060备') : '');
+        return aboutTime(seconds, t) + (grid.machine?.compile_owed === true ? setupNote(t) : '');
+    }, fast() {
+        // The fastest mode at the chosen size and length (capabilities.fast_mode): whether it fits, its time, and where it
+        // does not, why (the limit past this size's longest length) and the planner's ways out.
+        const fast = grid?.fast_mode;
+        // Read from the grid alone: the chart's surface follows the steps of a plain level, which the Fast level has not.
+        if (!fast?.listed) return null;
+        const i = grid.sizes.findIndex(s => s.width === Number(value(node, 'width')) && s.height === Number(value(node, 'height')));
+        if (i < 0) return null;
+        // A listed length is read from its cell; any other from the longest request that fits this size (the frames a
+        // one-run request of these seconds asks for, as the length control counts them).
+        const asked = Number(value(node, 'seconds')), j = grid.lengths.findIndex(l => l.seconds === asked);
+        const frames = Math.max(39, 5 + 17 * Math.ceil((24 * asked - 5) / 17));
+        const admits = row => {
+            if (j >= 0 && typeof row?.plan?.[i]?.[j] === 'number') return row.plan[i][j] >= 0;
+            // No length at all at this size is null in the grid: it does not fit.
+            const most = row?.max_frames?.[i];
+            return most === null ? false : Number.isInteger(most) ? most >= 0 && frames <= most : null;
+        };
+        const fits = admits(fast);
+        if (fits === null || !positive(asked)) return null;
+        const seconds = j >= 0 ? fast.estimate_seconds?.[i]?.[j] : null;
+        return {fits, limit: fast.limit?.[i] ?? null, actions: Array.isArray(fast.actions?.[i]) ? fast.actions[i] : [],
+            shorten: positive(fast.shorten_seconds?.[i]) ? fast.shorten_seconds[i] : null,
+            lightFits: admits(grid.tiers?.light) === true,
+            estimate: fits && positive(seconds) ? aboutTime(seconds, t) + (grid.machine?.compile_owed === true
+                ? setupNote(t) : '') : ''};
     }, warning(steps, twoPass, refine, stepCache = null, upscale = 2) {
         if (!grid || !surface) return '';
         const tier = gridTier(grid, steps, twoPass, refine, stepCache, upscale);

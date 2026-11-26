@@ -129,7 +129,7 @@ export function createEditorMusic({state, store, t, completeSources = async () =
         describe(id, text) {
             const found = target({kind: 'clip', ids: [id]});
             if (!found?.clip || api.running({kind: 'clip', ids: [id]}) || found.clip.text === text) return false;
-            state.apply(t('Edit description', '修改说明'), record => {
+            state.apply(t('Edit prompt', '修改提示词'), record => {
                 const next = JSON.parse(JSON.stringify(record));
                 next.tracks.flatMap(track => track.clips).find(clip => clip.id === id).text = text;
                 return next;

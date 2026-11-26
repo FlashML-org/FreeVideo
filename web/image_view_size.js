@@ -145,16 +145,16 @@ export function sizePicker({onChange, onPreview = () => {}}) {
         const all = sel => [...made.pop.querySelectorAll(sel)];
         for (const b of all('button[data-shape]')) {
             const id = b.dataset.shape;
-            if (id === 'same') tip(b, t('Match image', '跟随图片'), t('Match the first reference picture', '画幅跟第一张参考图一致'));
+            if (id === 'same') tip(b, t('Match image', '跟随图片'), t('Match the first reference image', '画幅跟第一张参考图一致'));
             else if (id === 'custom') tip(b, t('Custom shape', '自定义画幅'), t('The width and height typed last', '上次输入的宽和高'));
-            else tip(b, `${t(...SHAPE_WORDS[id])} ${id}`, t('Width to height of the picture', '画面的宽高比例'));
+            else tip(b, `${t(...SHAPE_WORDS[id])} ${id}`, t('Width to height of the image', '画面的宽高比例'));
         }
         const [frameMore, sizeMore] = all('.fvp-more-button');
         const q = sel => all(sel)[0];
         if (frameMore) tip(frameMore, t('More shapes', '更多画幅'), next.ref ? t('Other shapes and Image 1', '其他比例和“同图 1”') : t('Other shapes', '其他比例'));
         if (sizeMore) tip(sizeMore, t('More sizes', '更多尺寸'), t('Any size between the two ends', '两端之间的任意大小'));
         if (q('.fvp-custom-item')) tip(q('.fvp-custom-item'), t('Custom size', '自定义尺寸'), t('Drag, or type width × height', '拖动，或输入宽 × 高'));
-        if (q('.fvp-slider')) tip(q('.fvp-slider'), t('Picture size', '画面大小'), t('Drag to set the pixel count', '拖动选择像素数，宽高随之变化'), '← →');
+        if (q('.fvp-slider')) tip(q('.fvp-slider'), t('Image size', '画面大小'), t('Drag to set the pixel count', '拖动选择像素数，宽高随之变化'), '← →');
         const [width, height] = all('.fvp-dim');
         if (width) tip(width, t('Width', '宽度'), t('Type a width; snaps to 32', '输入宽度，自动对齐到 32 的倍数'));
         if (height) tip(height, t('Height', '高度'), t('Type a height; snaps to 32', '输入高度，自动对齐到 32 的倍数'));
@@ -176,12 +176,12 @@ export function sizePicker({onChange, onPreview = () => {}}) {
         // for a size above it are in the status line over Generate, not repeated here.
         picker.set({shape, ratio: next.ratioValue, pixels: next.area / PX, width: next.size.width, height: next.size.height, locked: next.locked,
             range: {min: limits.min / PX, max: limits.max / PX, step: range.step / PX},
-            unavailable: {same: next.ref ? '' : t('Add a reference picture first', '先添加参考图')},
+            unavailable: {same: next.ref ? '' : t('Add a reference image first', '先添加参考图')},
             limit: capped && limitArea > limits.min * 1.01 ? {pixels: limitArea / PX, note: ''} : null});
         // Each quick size says what it makes at this shape.
         for (const b of picker.picker.parts.size.querySelectorAll('button[data-pixels]')) {
             const area = presetIn(next.model, Number(b.dataset.pixels)), made = area ? sizeText(sizeFor(next.model, next.ratioValue, area)) : '';
-            tip(b, b.querySelector('.fvp-sub')?.textContent || '', t(`Quick size: ${made} at this shape`, `快捷尺寸：当前画幅下 ${made}`));
+            tip(b, b.querySelector('.fvp-sub')?.textContent || '', t('Quick size: {made} at this shape', '快捷尺寸：当前画幅下 {made}', { made }));
         }
         refocus?.();
     }

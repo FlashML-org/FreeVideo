@@ -7,7 +7,13 @@
 .fv-effort{--fv-position:0;--fv-snap:.18s;--fv-move:cubic-bezier(.25,1.15,.45,1);--fv-tone:var(--fv-accent,#6db8fa)}
 .fv-effort-heading{display:flex;align-items:baseline;gap:8px;margin:0 0 10px;color:var(--fv-muted,#969a9f);font:12px/1.5 var(--fv-font,system-ui)}
 .fv-effort-estimate{margin-left:auto;font-variant-numeric:tabular-nums;text-align:right;font-size:11px}
-.fv-effort-warning{margin:-4px 0 10px;color:var(--fv-warning);font:11px/1.5 var(--fv-font,system-ui);text-align:left}
+.fv-effort-warning{margin:-4px 0 10px;color:var(--fv-warning);font:11px/1.5 var(--fv-font,system-ui);text-align:left;text-wrap:pretty}
+/* The Fast level's download line in the same window: no one-character last line (Lane 11-24). */
+.fv-fast-pack .fv-swap-download-text{text-wrap:pretty}
+.fv-effort-ways{display:flex;flex-wrap:wrap;gap:8px;margin:-2px 0 12px}
+.fv-effort-way{min-height:var(--fv-h-sm,28px);padding:0 12px;border:1px solid var(--fv-border);border-radius:var(--fv-rad-ctl,8px);background:var(--fv-raised);color:var(--fv-ink);font:var(--fv-semibold,600) var(--fv-micro,12px)/1 var(--fv-font,system-ui);cursor:pointer}
+.fv-effort-way:hover{background:var(--fv-hover)}
+.fv-effort-way:focus-visible{outline:2px solid var(--fv-accent);outline-offset:2px}
 .fv-effort-rail{position:relative;cursor:pointer;touch-action:pan-y;user-select:none;-webkit-user-select:none;outline:none;border-radius:var(--fv-r-lg)}
 /* A thick track in the interface's own accent; the knob travels inside it. */
 .fv-effort-track{position:relative;display:block;height:36px;border-radius:var(--fv-r-lg);background:color-mix(in srgb,var(--fv-ink,#eee) 7%,transparent);box-shadow:inset 0 1px 2px #0005}

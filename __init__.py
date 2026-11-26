@@ -81,6 +81,8 @@ async def comfy_entrypoint():
     share_routes()
     from .freevideo_engine.swap_lora import register as swap_lora_routes
     swap_lora_routes()
+    from .freevideo_engine.fast_pack import register as fast_pack_routes
+    fast_pack_routes()
     from .freevideo_engine.comfy_metadata import register as workflow_backfill
     workflow_backfill()
     try:

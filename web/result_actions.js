@@ -25,6 +25,7 @@ const ICONS = {
     expand: '<path d="M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9"/>',
     copy: '<rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 5.5v-1a1 1 0 0 0-1-1h-5a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h1"/>',
     trash: '<path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.1a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-8.1M7 7v4M9 7v4"/>',
+    star: '<path d="M8 1.9 9.9 5.8l4.3.6-3.1 3 .8 4.3L8 11.7l-3.9 2 .8-4.3-3.1-3 4.3-.6Z"/>',
     heart: '<path d="M8 13.5 2.6 8.3a3.3 3.3 0 0 1 4.7-4.6L8 4.4l.7-.7a3.3 3.3 0 0 1 4.7 4.6Z"/>',
     reuse: '<path d="M2.8 8a5.2 5.2 0 1 0 1.6-3.8M2.8 2.6v2.8h2.8"/><path d="M8 5.6V8l1.8 1.2"/>',
     upscale: '<circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3M7 5v4M5 7h4"/>',
@@ -41,7 +42,7 @@ export function icon(name) {
 export function previewBadge(record, t) {
     const badge = document.createElement('span'); badge.className = 'fv-preview-badge';
     const g = record.preview_geometry;
-    badge.textContent = g?.width ? t(`First-pass preview · ${g.width} × ${g.height}`, `一采预览 · ${g.width} × ${g.height}`)
+    badge.textContent = g?.width ? t('First-pass preview · {width} × {height}', '一采预览 · {width} × {height}', { width: g.width, height: g.height })
         : t('First-pass preview', '一采预览');
     return badge;
 }
@@ -202,7 +203,7 @@ async function reuseAction(record, t, reuse) {
         clearTimeout(timer); stop();
         const button = action('button', '', 'reuse', 'fv-action-secondary fv-action-reuse');
         button.dataset.tourId = 'library-reuse';
-        button.dataset.fvTipName = label; button.dataset.fvTipUse = t('Bring back its prompt, size and length', '带回这条的描述、尺寸和时长');
+        button.dataset.fvTipName = label; button.dataset.fvTipUse = t('Bring back its prompt, size and length', '带回这条的提示词、尺寸和时长');
         button.lastElementChild.replaceWith(make(label));
         button.hidden = !offered();
         button.onclick = () => {
@@ -264,12 +265,20 @@ export function resultActions(record, t, {diagnostic = null, secondPass = null, 
     const bar = document.createElement('div'); bar.className = 'fv-actions';
     const stage = layout === 'stage';
     if (stage) bar.dataset.layout = 'stage';
-    let download = null, copy = null;
+    let download = null, copy = null, favoriteButton = null;
     if (secondPass) bar.append(secondPassAction(t, secondPass));
     if (favorite) {
-        const button = action('button', '', 'heart', 'fv-action-secondary fv-action-favorite');
+        const button = action('button', '', stage ? 'star' : 'heart', 'fv-action-secondary fv-action-favorite');
         const sync = () => {
             button.setAttribute('aria-pressed', String(!!record.favorite));
+            if (stage) {
+                // Under the picture the key names the state ("Favourite" / "Favourited"), after Download; its hover card says what a press does.
+                button.lastElementChild.textContent = record.favorite ? t('Favorited', '已收藏') : t('Favorite', '收藏');
+                button.dataset.fvTipName = record.favorite ? t('Favorited', '已收藏') : t('Favorite', '收藏');
+                button.dataset.fvTipUse = record.favorite ? t('Take this video out of favorites', '把这条视频移出收藏') : t('Keep it at the top of Creations', '在作品里置顶保留');
+                button.setAttribute('aria-label', button.lastElementChild.textContent);
+                return;
+            }
             button.lastElementChild.textContent = button.title = record.favorite
                 ? t('Remove from favorites', '取消收藏') : t('Add to favorites', '收藏');
             button.setAttribute('aria-label', button.title);
@@ -284,6 +293,7 @@ export function resultActions(record, t, {diagnostic = null, secondPass = null, 
             catch { /* Shown by the caller. */ }
             finally { sync(); button.disabled = false; button.removeAttribute('aria-busy'); }
         };
+        favoriteButton = button;
         bar.append(button);
     }
     if (record.video) {
@@ -294,6 +304,7 @@ export function resultActions(record, t, {diagnostic = null, secondPass = null, 
         download.dataset.fvTipName = t('Download video', '下载视频');
         download.dataset.fvTipUse = t('Save the video to this computer', '把视频保存到本机');
         bar.append(download);
+        if (stage && favoriteButton) download.after(favoriteButton);
         copy = action('button', t('Copy path', '复制路径'), 'copy', 'fv-action-secondary fv-action-copy');
         copy.dataset.fvTipName = t('Copy path', '复制路径');
         copy.dataset.fvTipUse = t('Copy where the file is saved', '复制视频文件所在位置');
@@ -308,7 +319,7 @@ export function resultActions(record, t, {diagnostic = null, secondPass = null, 
         };
         bar.append(copy);
         // The creative panel puts Reuse right after the primary action; Copy path goes under More there.
-        if (reuse) reuseAction(record, t, reuse).then(button => { if (button && bar.isConnected) (stage ? download : copy).after(button); });
+        if (reuse) reuseAction(record, t, reuse).then(button => { if (button && bar.isConnected) (stage ? favoriteButton || download : copy).after(button); });
     }
     if (extend && canExtend(record)) {
         const button = action('button', extendText(t, 'action'), 'extend', 'fv-action-secondary fv-action-extend');
@@ -317,7 +328,7 @@ export function resultActions(record, t, {diagnostic = null, secondPass = null, 
         let problem;
         const fault = () => {
             problem?.remove();
-            problem = issueButton(t, () => ({where: ['Continue video', '延长视频'], message: label.textContent}));
+            problem = issueButton(t, () => ({where: ['Extend video', '延长视频'], message: label.textContent}));
             button.after(problem);
         };
         // Only a video the server says is gone keeps the issue button; a check that could not finish just retries.
@@ -348,7 +359,7 @@ export function resultActions(record, t, {diagnostic = null, secondPass = null, 
     share.className = 'fv-action fv-action-secondary fv-share-trigger';
     const label = document.createElement('span'); label.textContent = share.textContent;
     share.replaceChildren(icon('share'), label);
-    share.dataset.fvTipName = label.textContent; share.dataset.fvTipUse = t('Export a video or picture to send', '导出可发送的视频或图片');
+    share.dataset.fvTipName = label.textContent; share.dataset.fvTipUse = t('Export a video or image to send', '导出可发送的视频或图片');
     bar.append(share);
     if (diagnostic) {
         const reportLabel = t('Download report', '下载报告');

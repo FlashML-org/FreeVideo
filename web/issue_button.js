@@ -3,6 +3,7 @@
 // and typed text never travel (the message goes through the same redaction as the failure card's report).
 import {createErrorReport} from './error_panel.js';
 import {focusReportTip, reportIssue, showReportTip} from './report_issue.js';
+import { translatorFor } from './i18n.js';
 
 const MESSAGE = 300, TAIL = 1500;
 const ISSUE_FORM = 'https://github.com/FlashML-org/FreeVideo/issues/new';
@@ -12,7 +13,7 @@ const ISSUE_FORM = 'https://github.com/FlashML-org/FreeVideo/issues/new';
  * ("Export", "导出"); `message` is the sentence the user sees; `facts` is an optional flat object of numbers,
  * states and fixed code identifiers (never user text or paths) that travels in the summary.
  */
-export function issueDraft({where, message, kind = null, facts = null}, t = en => en) {
+export function issueDraft({where, message, kind = null, facts = null}, t = translatorFor(null, false)) {
     const place = Array.isArray(where) ? where : [String(where || 'FreeVideo'), String(where || 'FreeVideo')];
     const clean = createErrorReport({exception_message: String(message || '')}).message;
     const lines = clean.split(/\r?\n/).filter(line => line.trim());

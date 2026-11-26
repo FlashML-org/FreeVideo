@@ -11,6 +11,7 @@
 import './tray_pop.js';
 import { mediaQueue } from '../work_media.js';
 import {setHidden} from '../dom_quiet.js';
+import { translator } from '../i18n.js';
 
 const CARD_KEYS = {'↑': 'fv-mt-up', '↓': 'fv-mt-down'};
 // How many saved works the works page lists (newest first, pictures and videos together).
@@ -81,7 +82,7 @@ function mediaOf(panel) {
     const shown = [...panel.querySelectorAll('.fv-mt-cards > .fv-card .fv-file')].map(label => label.title).join('\n');
     return (nodes.find(node => { try { return node.freevideoMedia.rows().map(row => row.file).join('\n') === shown; } catch { return false; } }) || nodes[0]).freevideoMedia;
 }
-const say = (panel, en, zh) => panel.fvMtChinese ? zh : en;
+const say = (panel, en, zh, values) => translator(panel.fvMtChinese)(en, zh, values);
 const make = (tag, cls, text) => { const element = document.createElement(tag); if (cls) element.className = cls; if (text != null) element.textContent = text; return element; };
 const FRAME = role => role === 'first' || role === 'last' || role === 'middle';
 const rowsOf = media => { try { return media ? media.rows() : []; } catch { return []; } };
@@ -98,11 +99,11 @@ function emptySlot(panel, role) {
     const name = role === 'first' ? say(panel, 'First frame', '首帧') : say(panel, 'Last frame', '尾帧');
     slot.setAttribute('aria-label', name);
     // Two small picture keys, named in their hover cards: this computer, and the saved works.
-    const computer = make('button', 'fv-mt-slot-key fv-mt-computer', say(panel, 'Computer', '电脑')), saved = make('button', 'fv-mt-slot-key fv-mt-saved', say(panel, 'Works', '作品库'));
-    computer.setAttribute('aria-label', `${name}: ${say(panel, 'from this computer', '从电脑选择')}`); saved.setAttribute('aria-label', `${name}: ${say(panel, 'from the works', '从作品库选择')}`);
+    const computer = make('button', 'fv-mt-slot-key fv-mt-computer', say(panel, 'Computer', '电脑')), saved = make('button', 'fv-mt-slot-key fv-mt-saved', say(panel, 'Creations', '作品库'));
+    computer.setAttribute('aria-label', `${name}: ${say(panel, 'from this computer', '从电脑选择')}`); saved.setAttribute('aria-label', `${name}: ${say(panel, 'from the creations', '从作品库选择')}`);
     computer.type = saved.type = 'button';
-    computer.dataset.fvTipName = say(panel, 'From this computer', '从电脑选择'); computer.dataset.fvTipUse = say(panel, `A picture as the ${name.toLowerCase()}`, `选一张图片作${name}`);
-    saved.dataset.fvTipName = say(panel, 'From the works', '从作品库选择'); saved.dataset.fvTipUse = say(panel, `A saved picture as the ${name.toLowerCase()}`, `选一张作品作${name}`);
+    computer.dataset.fvTipName = say(panel, 'From this computer', '从电脑选择'); computer.dataset.fvTipUse = role === 'first' ? say(panel, 'An image as the first frame', '选一张图片作首帧') : say(panel, 'An image as the last frame', '选一张图片作尾帧');
+    saved.dataset.fvTipName = say(panel, 'From the creations', '从作品库选择'); saved.dataset.fvTipUse = role === 'first' ? say(panel, 'A saved image as the first frame', '选一张作品作首帧') : say(panel, 'A saved image as the last frame', '选一张作品作尾帧');
     const picker = make('input'); picker.type = 'file'; picker.accept = 'image/*'; picker.hidden = true;
     picker.onchange = () => { if (picker.files?.length) media?.upload([picker.files[0]], {role}); picker.value = ''; };
     computer.onclick = () => picker.click();
@@ -127,7 +128,7 @@ function worksPage(panel) {
     back.onclick = () => showPage(panel, 'media', true);
     const filter = make('div', 'fv-mt-filter'); filter.setAttribute('role', 'radiogroup'); filter.setAttribute('aria-label', say(panel, 'Show', '显示'));
     const glide = make('span', 'fv-mt-glide'); glide.setAttribute('aria-hidden', 'true'); filter.append(glide);
-    for (const [kind, en, zh] of [['all', 'All', '全部'], ['video', 'Videos', '视频'], ['image', 'Pictures', '图片']]) {
+    for (const [kind, en, zh] of [['all', 'All', '全部'], ['video', 'Videos', '视频'], ['image', 'Images', '图片']]) {
         const key = make('button', '', say(panel, en, zh)); key.type = 'button'; key.dataset.kind = kind; key.setAttribute('role', 'radio');
         key.onclick = () => { if (key.disabled) return; panel.fvMtFilter = kind; drawWorks(panel); };
         filter.append(key);
@@ -169,7 +170,7 @@ function drawWorks(panel) {
     const media = mediaOf(panel), armed = panel.fvMtArmed, rows = rowsOf(media);
     const full = !media || rows.length >= media.limit;
     page.querySelector('.fv-mt-works-title').textContent = armed === 'first' ? say(panel, 'Choose the first frame', '选一张作首帧')
-        : armed === 'last' ? say(panel, 'Choose the last frame', '选一张作尾帧') : say(panel, 'Works', '作品库');
+        : armed === 'last' ? say(panel, 'Choose the last frame', '选一张作尾帧') : say(panel, 'Creations', '作品库');
     page.dataset.armed = armed || '';
     const filter = armed ? 'image' : panel.fvMtFilter || 'all';
     for (const key of page.querySelectorAll('.fv-mt-filter > button')) {
@@ -190,7 +191,7 @@ function drawWorks(panel) {
             if (picture.complete && picture.naturalWidth) { key.dataset.shown = 'true'; queueMicrotask(() => sharpen(key, item)); }
             keys.set(item.id, key);
         }
-        const video = item.kind === 'video', name = item.name || (video ? say(panel, 'Video', '视频') : say(panel, 'Picture', '图片'));
+        const video = item.kind === 'video', name = item.name || (video ? say(panel, 'Video', '视频') : say(panel, 'Image', '图片'));
         const here = !video && used.has(item.file);
         key.disabled = full || here || Boolean(media?.busy());
         key.toggleAttribute('data-used', here);
@@ -203,7 +204,7 @@ function drawWorks(panel) {
     const empty = page.querySelector('.fv-mt-works-empty');
     empty.hidden = Boolean(items.length) || !panel.fvMtLoaded;
     empty.textContent = filter === 'video' ? say(panel, 'No saved videos yet.', '作品库里还没有视频。')
-        : filter === 'image' ? say(panel, 'No saved pictures yet.', '作品库里还没有图片。') : say(panel, 'No saved works yet.', '作品库里还没有作品。');
+        : filter === 'image' ? say(panel, 'No saved images yet.', '作品库里还没有图片。') : say(panel, 'No saved creations yet.', '作品库里还没有作品。');
     page.dataset.loading = String(!panel.fvMtLoaded);
     glideTo(page.querySelector('.fv-mt-filter'));
 }
@@ -301,13 +302,13 @@ function markKeys(panel, toolbar) {
     const [add, generate, audio] = toolbar.querySelectorAll(':scope > button');
     if (add && !add.classList.contains('fv-mt-add-key')) {
         add.classList.add('fv-mt-add-key');
-        add.dataset.fvMtHint = say(panel, 'Drop or choose pictures, video or audio', '拖入或选择图片、视频、音频');
+        add.dataset.fvMtHint = say(panel, 'Drop or choose images, video or audio', '拖入或选择图片、视频、音频');
         const picker = toolbar.querySelector(':scope > input[type=file]');
         if (picker) add.onclick = () => picker.click();
-        add.dataset.fvTipName = say(panel, 'Add', '添加'); add.dataset.fvTipUse = say(panel, 'Pictures, video or audio from this computer', '从电脑添加图片、视频或音频');
+        add.dataset.fvTipName = say(panel, 'Add', '添加'); add.dataset.fvTipUse = say(panel, 'Images, video or audio from this computer', '从电脑添加图片、视频或音频');
     }
     generate?.classList.add('fv-mt-ai'); audio?.classList.add('fv-mt-audio');
-    for (const [key, use] of [[generate, say(panel, 'Make a reference picture from words', '用一句话生成一张参考图')], [audio, audio?.title]]) {
+    for (const [key, use] of [[generate, say(panel, 'Make a reference image from words', '用一句话生成一张参考图')], [audio, audio?.title]]) {
         if (!key || key.dataset.fvTipName) continue;
         key.dataset.fvTipName = key.textContent.trim(); if (use) key.dataset.fvTipUse = use;
         if (!key.getAttribute('aria-label')) key.setAttribute('aria-label', key.textContent.trim());
@@ -350,8 +351,10 @@ function markNow(panel) {
     if (!panel.fvMtActions) {
         const line = panel.fvMtActions = make('div', 'fv-mt-actions');
         const browse = make('button', 'fv-mt-browse'); browse.type = 'button';
-        browse.append(make('span', 'fv-mt-browse-name', say(panel, 'Choose from works', '从作品库选择')));
-        browse.dataset.fvTipName = say(panel, 'Choose from works', '从作品库选择'); browse.dataset.fvTipUse = say(panel, 'Add a saved video or picture', '加入作品库里的视频或图片');
+        // Its shown name is short (Lane 11-25) so the line keeps the AI and audio keys in a 268 px column; the hover card says
+        // the whole action.
+        browse.append(make('span', 'fv-mt-browse-name', say(panel, 'From creations', '从作品库选择')));
+        browse.dataset.fvTipName = say(panel, 'Choose from creations', '从作品库选择'); browse.dataset.fvTipUse = say(panel, 'Add a saved video or image', '加入作品库里的视频或图片');
         browse.onclick = () => openWorks(panel);
         line.append(browse, make('span', 'fv-mt-actions-gap'));
         panel.append(line);

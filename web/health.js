@@ -10,27 +10,29 @@ const query = new URLSearchParams(location.search);
 // The language rule of web/i18n.js, written out here because this file imports nothing at load: it must still run and
 // report when i18n.js itself fails to load. tests/i18n_runtime.mjs checks that the two agree.
 const language = query.get('freevideo_lang');
-const cn = language === 'zh' || (language !== 'en' && String(navigator.language || '').toLowerCase().startsWith('zh'));
+const cn = /^zh([-_]|$)/i.test(language || '') || (!language && String(navigator.language || '').toLowerCase().startsWith('zh'));
 const t = (en, zh) => cn ? zh : en;
+// t for the other modules' texts, which hold {name} placeholders.
+const filled = (en, zh, values) => (cn ? zh : en).replace(/\{(\w+)\}/g, (whole, name) => values && Object.hasOwn(values, name) ? String(values[name]) : whole);
 // launcher.js removes this flag during setup; read it before that.
 const launchVisit = query.get('freevideo') === 'launch';
 // Every script this folder ships; a test keeps the list in step with web/*.js.
 export const MODULES = ['fv_player.js', 'audio_original.js', 'chat_data.js', 'phone_model.js', 'phone.js', 'lan_access.js', 'monitor_panel.js', 'qrcodegen.js', 'agent_activity.js', 'agent_tasks.js', 'agent_confirm_settings.js', 'private_pin.js', 'private_settings.js', 'agent_connect.js', 'agent_session.js', 'autopilot.js', 'autopilot_chat.js', 'chat_attachments.js', 'autopilot_conversations.js', 'browser_extension.js', 'caret_rect.js', 'chain_support.js', 'chain_rules.js', 'timed_prompt.js', 'capability_view.js', 'cast_generate.js', 'cast_mention.js', 'cast_overlay.js', 'cast_source.js', 'compatibility.js', 'entry_showcase.js', 'engine_exit.js', 'error_panel.js', 'first_run_guide.js', 'fonts.js', 'freevideo.js', 'generation_progress.js',
     'editor.js', 'editor_actions.js', 'editor_lifecycle.js', 'editor_adjust.js', 'editor_adjust_picture.js', 'editor_picture_fields.js', 'editor_picture_session.js', 'editor_preview_picture.js', 'editor_entry.js', 'editor_expand.js', 'editor_export_dialog.js', 'editor_first_frame.js', 'editor_media_references.js', 'editor_references.js', 'middle_frames.js', 'editor_genbar.js', 'editor_duration.js', 'editor_geometry.js', 'editor_library.js', 'editor_menu.js', 'editor_stems.js', 'editor_record.js', 'editor_record_model.js', 'editor_voice.js', 'editor_voice_install.js', 'editor_voice_model.js', 'editor_voice_store.js', 'editor_model.js', 'editor_frame.js', 'editor_player.js', 'editor_room.js', 'editor_select.js', 'editor_state.js', 'editor_store.js', 'editor_tracks.js', 'editor_generation.js', 'editor_transport.js', 'editor_transport_model.js', 'editor_audio.js', 'editor_audio_model.js', 'editor_audio_notes.js', 'editor_audio_replace.js', 'editor_audio_rules.js', 'editor_music.js', 'editor_music_model.js', 'editor_speed.js', 'editor_speed_model.js', 'editor_failure.js', 'editor_header_fit.js', 'studio_header_fit.js',
-    'editor_loader.js', 'editor_text_coverage.js', 'editor_text.js', 'editor_toolbar_more.js', 'editor_text_model.js', 'editor_text_layout.js', 'editor_notes.js', 'editor_icons.js', 'dialog_keys.js', 'dom_quiet.js', 'done_notify.js', 'file_failure.js', 'has_mirror.js', 'failure_issue.js', 'feedback.js', 'frame_sizes.js', 'health.js', 'i18n.js', 'image_commands.js', 'random_id.js', 'clipboard_text.js', 'image_editor.js', 'image_editor_engine.js', 'image_generation.js', 'image_lora.js', 'image_view.js', 'launch_visit.js', 'launcher.js', 'length_plan.js', 'lora_triggers.js', 'lora_check.js', 'library.js', 'motion.js', 'native_errors.js', 'translate_guard.js', 'output_download.js', 'port_notice.js', 'preview_scene.js',
+    'editor_loader.js', 'editor_text_coverage.js', 'editor_text.js', 'editor_toolbar_more.js', 'editor_text_model.js', 'editor_text_layout.js', 'editor_notes.js', 'editor_icons.js', 'dialog_keys.js', 'dom_quiet.js', 'done_notify.js', 'file_failure.js', 'has_mirror.js', 'failure_issue.js', 'feedback.js', 'frame_sizes.js', 'health.js', 'i18n.js', 'image_commands.js', 'random_id.js', 'clipboard_text.js', 'image_editor.js', 'image_editor_engine.js', 'image_generation.js', 'image_lora.js', 'image_view.js', 'launch_visit.js', 'launcher.js', 'length_plan.js', 'lora_triggers.js', 'lora_check.js', 'library.js', 'motion.js', 'native_errors.js', 'translate_guard.js', 'output_download.js', 'port_notice.js', 'preview_scene.js', 'panel_shell.js',
     'progress_connection.js', 'prompt_draft.js', 'prompt_enhance.js', 'prompt_references.js', 'prompt_sections.js', 'prompt_terms.js', 'request_assets.js', 'repair_hint.js', 'report_issue.js', 'issue_button.js', 'studio_recent.js', 'media_queue.js', 'work_media.js', 'task_groups.js',
     'result_actions.js', 'result_reuse.js', 'sampling_effort.js', 'pass_mode.js','setup.js', 'share.js', 'share_layout.js', 'studio.js', 'studio_chain.js', 'studio_extend.js', 'studio_length.js', 'first_frame_row.js', 'replace_person.js', 'replace_state.js', 'optional_inputs.js', 'other_usage.js', 'studio_queue.js', 'studio_size.js',
     'toolbar_position.js', 'updates.js', 'video_model.js', 'view_navigation.js', 'whatsnew.js', 'whatsnew_pages.js', 'whatsnew_peaks.js', 'wordmark.js', 'workspace_restore.js', 'cast_library.js', 'media_upload.js', 'whitebox_encode.js', 'whitebox_mp4.js', 'whitebox_recording.js', 'whitebox_render.js', 'whitebox_scenes.js', 'whitebox_worker.js',
-    'empty_prompt_notice.js', 'feature_tour.js', 'feature_tour_content.js', 'howto.js', 'swap_lora.js', 'sound_bubble.js', 'tour_goto.js', 'tour_try.js', 'tutorial_book.js', 'tutorial_book_content.js',
+    'empty_prompt_notice.js', 'feature_tour.js', 'feature_tour_content.js', 'i18n_tables.js', 'howto.js', 'swap_lora.js', 'fast_pack.js', 'sound_bubble.js', 'tour_goto.js', 'tour_try.js', 'tutorial_book.js', 'tutorial_book_content.js',
     'shell.js', 'tooltip.js', 'tooltip_copy.js',
     'library_meta.js', 'cast_room.js',
     'editor_tracks_tips.js', 'tip_words.js', 'cut_tip.js', 'field_note.js', 'image_view_layout.js',
     'task_store.js', 'task_float.js',
-    'image_view_ui.js', 'image_view_size.js', 'image_view_models.js', 'image_view_history.js', 'image_view_prompts.js', 'image_view_compare.js', 'image_view_queue.js', 'image_view_mentions.js', 'image_view_warm.js', 'image_view_viewer.js', 'image_view_lora.js',
+    'image_view_ui.js', 'studio_columns.js', 'image_view_size.js', 'image_view_models.js', 'image_view_history.js', 'image_view_prompts.js', 'image_view_compare.js', 'image_view_queue.js', 'image_view_mentions.js', 'image_view_warm.js', 'image_view_viewer.js', 'image_view_lora.js', 'work_column.js', 'picture_url.js', 'studio_right_column.js', 'studio_works.js',
     'palette.js', 'picture_zoom.js', 'global_search.js', 'notifications.js', 'shortcuts.js', 'context_menu.js',
     'studio_console.js', 'studio_stage.js', 'prompt_library.js',
     'autopilot_panels.js', 'autopilot_tips.js', 'autopilot_history.js', 'a11y.js', 'topbar.js', 'view_switch_place.js', 'view_navigation_fit.js', 'editor_tips.js', 'editor_narration.js', 'editor_narration_model.js', 'editor_beats_model.js', 'empty_frame.js', 'studio_compare.js', 'image_library.js', 'fv_select.js', 'preview_style.js',
-    'feature_tour_layer.js', 'settings_room.js', 'settings_kit.js', 'settings_words.js',
+    'feature_tour_layer.js', 'settings_room.js', 'settings_kit.js', 'settings_words.js', 'language_picker.js',
     'image_works.js', 'cast_photo.js', 'editor_opening.js', 'editor_poster.js', 'topbar_state.js', 'preload_setting.js', 'private_offers.js', 'cast_face_crop.js', 'context_fallback.js', 'studio_warm.js',
     'pose_body.js', 'pose_props.js', 'pose_stage.js', 'pose_tool.js', 'release_media.js', 'ui_speed.js',
     'lora_menu.js', 'upscale_offer.js', 'user_message.js', 'workflow_drafts.js', 'comfy_templates.js'];
@@ -497,7 +499,7 @@ function extensionProblem(problem) {
     // Preserve the same known engine causes as the execution/queue cards.
     // A missing error-panel module must not disable this page check itself.
     if (problem.advice !== 'blocked' && errorUI) {
-        const cause = errorUI.failureAdvice(errorUI.errorText(problem.error || problem.text), t,
+        const cause = errorUI.failureAdvice(errorUI.errorText(problem.error || problem.text), filled,
             problem.error?.known_error ?? errorUI.createErrorReport(problem.error || problem.text).known_error);
         if (cause.kind !== 'unknown') return null;
     }
@@ -562,6 +564,8 @@ function details(problems) {
 // fail to load, so it builds the address itself (no shared module) and removes places and addresses.
 const ISSUE_FORM = 'https://github.com/FlashML-org/FreeVideo/issues/new';
 const forgetPlaces = text => String(text)
+    // A local file written as a URL (file:///C:/Users/..., file://localhost/..., %-escaped) is a place too.
+    .replace(/(^|[^A-Za-z0-9_\/])file:(?:\/\/[^\/\s'"<>]*)?(?:\/+|(?=[A-Za-z]:[\\/]))[^'"<>|\r\n]*/gi, '$1<path>')
     .replace(/https?:\/\/[^\s'"<>)]+/g, '<url>')
     .replace(/\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b/g, '<address>')
     .replace(/(?:[A-Za-z]:[\\/]|\\\\|~[\\/])[^'"<>|\r\n]+/g, '<path>')
@@ -631,7 +635,7 @@ function show(problems, asked = false) {
         font: '13px/1.55 "Segoe UI","FreeVideo Quotes","Microsoft YaHei UI","Noto Sans CJK SC","Noto Sans SC",system-ui,sans-serif'});
     const title = document.createElement('div');
     const extension = problems.map(extensionProblem).find(Boolean);
-    const extensionAdvice = extension && extensionUI.browserExtensionAdvice(extension, t,
+    const extensionAdvice = extension && extensionUI.browserExtensionAdvice(extension, filled,
         {blocked: problems.some(p => p.advice === 'blocked')});
     // Only what the user just asked for failed (opening from the menu): the page itself loaded.
     title.textContent = extensionAdvice?.title || (problems.every(p => p.asked) ? t('FreeVideo ran into a problem', 'FreeVideo 出错了')

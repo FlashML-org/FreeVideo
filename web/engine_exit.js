@@ -1,6 +1,7 @@
 // Why the ComfyUI before this one stopped, as far as the launcher saw it end. The page keeps the record it
 // found when it loaded, so only an exit that happened afterwards is announced; a feedback message carries
 // the newest record it knows. Only numbers and fixed words arrive from the engine, never log text.
+import { translatorFor } from './i18n.js';
 let baselineAt, latest = null, watching = null;
 
 const clock = at => {
@@ -44,9 +45,9 @@ export function knownEngineExit() {
 }
 
 /** One sentence for the status line after the engine started again. The exit status stays in the report. */
-export function engineExitText(record, t = en => en) {
-    return t(`The engine stopped unexpectedly at ${clock(record.at)} and has been restarted.`,
-        `引擎于 ${clock(record.at)} 意外停止，已重新启动。`);
+export function engineExitText(record, t = translatorFor(null, false)) {
+    return t('The engine stopped unexpectedly at {time} and has been restarted.',
+        '引擎于 {time} 意外停止，已重新启动。', { time: clock(record.at) });
 }
 
 // When the engine's loop was held up: times, lengths and the loop thread's innermost calls, as written by the engine
@@ -70,3 +71,19 @@ export function refreshLoopStalls(api) { return loadStalls(api); }
 
 /** The newest records this page has read, for a feedback message; empty when there are none. */
 export function knownLoopStalls() { return stalls; }
+
+/** Why FreeVideo stopped, from the launcher's record of it: 'memory' (a Windows out-of-memory status, or SIGKILL while the
+ * Linux kernel's out-of-memory count rose), 'ended' (the system or another program ended it), 'crashed', or 'unknown'
+ * (an exit that cannot be told apart: the card says only that FreeVideo stopped unexpectedly). Null without a record. */
+export function exitCause(record) {
+    if (!record || typeof record !== 'object') return null;
+    const kind = record.exit_class;
+    if (kind === 'system_commit_limit' || kind === 'system_no_memory') return 'memory';
+    if (kind === 'killed_by_signal' && record.code_text === 'SIGKILL' && record.oom_kills_since_start > 0) return 'memory';
+    // SIGTERM while the count rose: systemd stopping the rest of a group after the kernel ended one of it for memory.
+    // Only ComfyUI's own group's count (oom_scope cgroup): the computer's also counts other programs (dataroot-5x, 11-25).
+    if (kind === 'killed_by_signal' && record.code_text === 'SIGTERM' && record.oom_scope === 'cgroup' && record.oom_kills_since_start > 0) return 'memory_maybe';
+    if (kind === 'killed_by_signal' || kind === 'terminated_externally') return 'ended';
+    if (kind === 'native_crash' || kind === 'abort' || kind === 'system_stack_overflow') return 'crashed';
+    return 'unknown';
+}

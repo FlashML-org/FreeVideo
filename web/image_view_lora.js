@@ -31,7 +31,7 @@ export function imageViewLora({host, fetchApi, modelName = () => 'Qwen-Image 2.1
         chip.element.dataset.active = String(on && n > 0);
         tip(chip.element, 'LoRA', t('Add a style or character model', '叠加风格或人物模型'));
         if (on) delete chip.element.dataset.fvTipWhy;
-        else { chip.element.dataset.fvTipWhy = t(`LoRA works with ${modelName()}; choose it to use one`, `LoRA 用于 ${modelName()}，选用该模型后可添加`); chip.close(); }
+        else { chip.element.dataset.fvTipWhy = t('LoRA works with {model}; choose it to use one', 'LoRA 用于 {model}，选用该模型后可添加', { model: modelName() }); chip.close(); }
     }
     paint();
     return {element, paint,

@@ -1,9 +1,11 @@
 // Subtitle-style timed lines in a description, turned into MiniMax H3's timed prompt notation.
 // Same function as freevideo_engine/timed_prompt.py; both are checked against tests/fixtures/timed_prompt_cases.json.
+// A new shot is written "Cut: ..." or "切：..." in any language; a language file may name its own word for it
+// (_meta.keywords.cut in web/locales/<tag>.json), which is read in that language's page as well.
+import { KEYWORDS, keywordList, keywordSource } from './i18n.js';
+
 const TIME = /^[ \t　]*(\d{1,3}):([0-5]\d)(?:\.(\d{1,3}))?(?![\d.:])[ \t　]*([^\r\n]*)$/;
 const LOOSE = /^[ \t　]*\d{1,3}:\d{1,2}(?![\d:])/;
-const CUT = /^(?:cut|CUT|Cut|切)[ \t　]*[:：][ \t　]*([^\r\n]*)$/;
-const CUT_BARE = /^(?:cut|CUT|Cut|切)$/;
 const SPEECH = /^@?([^:：\s　][^:：]{0,11}?)[ \t　]*[:：][ \t　]*(\S[^\r\n]*)$/;
 const NAME_BREAK = /[,.;!?，。；！？]/;
 const WRITTEN = /\[Shot \d+\]|\bAt \d{2,}:\d{2}\.\d{3}/;
@@ -41,6 +43,17 @@ function ukrainian(words) {
     return ukrainianWords > russianWords;
 }
 
+// The cut word of a line ("Cut:", "切：", and the language's own, see _meta.keywords.cut), compiled once for a list of words.
+const cutPatterns = new Map();
+function cuts(words) {
+    const own = keywordList(words), key = own.join('\u0001');
+    if (!cutPatterns.has(key)) {
+        const source = keywordSource('cut', own);
+        cutPatterns.set(key, {line: new RegExp(`^${source}[ \\t　]*[:：][ \\t　]*([^\\r\\n]*)$`), bare: new RegExp(`^${source}$`)});
+    }
+    return cutPatterns.get(key);
+}
+
 export function language(words) {
     if (/[぀-ヿ]/.test(words)) return 'Japanese';
     if (/[가-힯]/.test(words)) return 'Korean';
@@ -58,8 +71,8 @@ function sentence(words) {
     return words + (CJK.test(words) ? '。' : '.');
 }
 
-export function parse(text) {
-    const head = [], lines = [], errors = [];
+export function parse(text, cutWords = KEYWORDS.cut) {
+    const head = [], lines = [], errors = [], {line: CUT, bare: CUT_BARE} = cuts(cutWords);
     text.split(/\r\n|\r|\n/).forEach((raw, index) => {
         const n = index + 1, found = TIME.exec(raw);
         if (!found) {
@@ -79,9 +92,9 @@ export function parse(text) {
     return [head, lines, errors];
 }
 
-export function convert(text, seconds, speakers = null, offset = 0) {
+export function convert(text, seconds, speakers = null, offset = 0, cutWords = KEYWORDS.cut) {
     if (typeof text !== 'string' || WRITTEN.test(text)) return {text, errors: [], timed: false};
-    const [head, lines, errors] = parse(text);
+    const [head, lines, errors] = parse(text, cutWords);
     if (!lines.length && !errors.length) return {text, errors: [], timed: false};
     const limit = Math.round(seconds * 1000), kept = [];
     const shift = Math.round(offset * 1000);
@@ -121,26 +134,26 @@ export function convert(text, seconds, speakers = null, offset = 0) {
 const shortClock = seconds => `${Math.floor(seconds / 60)}:${pad(Math.floor(seconds % 60), 2)}`;
 
 // The first line the user has to fix, in one sentence; '' when every timed line can be used.
-export function problem(text, seconds, t, offset = null) {
-    const {errors} = convert(text, seconds, null, offset ?? 0);
+export function problem(text, seconds, t, offset = null, cutWords = KEYWORDS.cut) {
+    const {errors} = convert(text, seconds, null, offset ?? 0, cutWords);
     if (!errors.length) return '';
     const {line, code} = errors[0], raw = text.split(/\r\n|\r|\n/)[line - 1] || '';
     const time = (/^[ \t　]*(\d{1,3}:\d{1,3}(?:\.\d{1,3})?)/.exec(raw) || [, ''])[1];
     const length = shortClock(seconds);
     if (code === 'out_of_range' && offset !== null) {
         const range = `${shortClock(offset)}\u2060–\u2060${shortClock(offset + seconds)}`;
-        return t(`Line ${line} is at ${time}, outside this part (${range}). Change it to a time within this part.`,
-            `第 ${line} 行的时间 ${time} 超出这一段（${range}），请改为这段内的时间。`);
+        return t('Line {line} is at {time}, outside this part ({range}). Change it to a time within this part.',
+            '第 {line} 行的时间 {time} 超出这一段（{range}），请改为这段内的时间。', { line, time, range });
     }
-    if (code === 'out_of_range') return t(`Line ${line} is at ${time}, beyond the video length (${length}). Change it to a time within ${length}.`,
-        `第 ${line} 行的时间 ${time} 超出视频时长（${length}），请改为 ${length} 以内的时间。`);
-    if (code === 'empty_cut') return t(`Line ${line} has nothing after the cut. Describe the new shot.`, `第 ${line} 行的“切：”后面没有内容，请写出新镜头的画面。`);
-    return t(`The time "${time}" on line ${line} is not valid. Write it as minutes:seconds, for example 0:05.`,
-        `第 ${line} 行的时间“${time}”无法识别，请按“分:秒”书写，例如 0:05。`);
+    if (code === 'out_of_range') return t('Line {line} is at {time}, beyond the video length ({length}). Change it to a time within {length}.',
+        '第 {line} 行的时间 {time} 超出视频时长（{length}），请改为 {length} 以内的时间。', { line, time, length });
+    if (code === 'empty_cut') return t('Line {line} has nothing after the cut. Describe the new shot.', '第 {line} 行的“切：”后面没有内容，请写出新镜头的画面。', { line });
+    return t('The time "{time}" on line {line} is not valid. Write it as minutes:seconds, for example 0:05.',
+        '第 {line} 行的时间“{time}”无法识别，请按“分:秒”书写，例如 0:05。', { time, line });
 }
 
 // What the model and the generator read: the converted text, or the typed text while a line is unusable.
-export function timedText(text, seconds, offset = 0) {
-    const done = convert(text, seconds, null, offset);
+export function timedText(text, seconds, offset = 0, cutWords = KEYWORDS.cut) {
+    const done = convert(text, seconds, null, offset, cutWords);
     return done.errors.length ? text : done.text;
 }

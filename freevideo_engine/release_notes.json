@@ -1,29 +1,66 @@
 {
   "schema": 1,
-  "product_version": "0.6.12",
+  "product_version": "0.6.13",
   "en": {
-    "summary": "0.6.12 fixes the Linux and Mac launchers failing to open ComfyUI in 0.6.11, keeps dialogue in more languages when prompts are enhanced, and voices Ukrainian dialogue in Ukrainian.",
+    "summary": "0.6.13 gives the create panel the same three-column layout as the image view, adds a Traditional Chinese interface and a Fast quality level that generates faster than Light, no longer stops installation on Windows on Arm computers while packages are prepared, and removes more user folder names, email addresses and sign-in details from reports.",
     "changes": [
-      "Linux and Mac: the 0.6.11 launcher failed to open ComfyUI; it now opens normally.",
-      "Prompt enhancement keeps dialogue in more languages: when a scene is written in Russian, Ukrainian, Spanish, French, German, Turkish, Vietnamese or a similar language, the quoted lines are passed to the voice word for word instead of being left out, and text on signs and posters stays on screen.",
-      "Ukrainian dialogue is voiced more accurately: lines are passed to the model as Ukrainian instead of Russian, so they no longer take on a Russian accent, while Russian lines that mention a Ukrainian place are still spoken as Russian.",
-      "Picture editing on Windows: when Windows has little memory left to commit, FreeVideo now places less of the text encoder on the graphics card and tries once more if that is still not enough, so editing with several reference pictures is less likely to stop at the text step for lack of memory.",
-      "More complete diagnostic reports: when the engine stops answering for more than five seconds, FreeVideo records what each part was doing at the time and includes it in feedback and diagnostic reports, to help find the cause.",
-      "Feedback and diagnostic reports keep numbers such as \"2.00 GiB\" intact when a field holds a short value."
+      "Three-column create panel: settings on the left, the video in the middle and your creations on the right, laid out like the image view. In narrower windows the side columns fold into icons that open as drawers, and in a phone-width window the video sits above the settings.",
+      "Creations beside the video: search, sort and favorite your videos, or pick two to compare, without leaving the create panel. A Favorite button under the video adds the current video to your favorites.",
+      "Advanced options in one section: LoRA, generation mode, seed, steps and parts are grouped in one section that stays closed until you open it and remembers how you left it.",
+      "Compact layout: turn on Compact layout in Settings > Appearance to keep only the prompt, the video and Generate in the create panel.",
+      "Queue: each task has its own stop or remove button, which asks before it acts, in both the create panel and the image view.",
+      "Traditional Chinese: the web interface and the launcher are available in Traditional Chinese, with Taiwan wording that also serves Hong Kong and Macau.",
+      "Choosing the interface language: the launcher's globe button opens a list of the languages, and Settings > Language in the web interface offers the same list. Until a language is chosen, FreeVideo follows the system language.",
+      "Messages in the chosen language: failure cards for videos, images and the launcher, and the reasons the engine gives, are shown in the interface language.",
+      "Fast level: the new Fast quality level generates faster than Light; in shots with a lot of motion, fine detail may flicker. The first time you choose it, FreeVideo downloads about 2.2 GB, only once.",
+      "Windows on Arm installation: on Windows on Arm computers, installation no longer fails while preparing packages and can continue. When a required package has no version for the computer, the launcher names the package instead of showing an interrupted download. Generating videos and images works as usual; editing projects and images with the Agent is not available yet, because a component it needs has no Arm version.",
+      "Privacy in reports: diagnostic reports and problem reports remove your user folder name from more forms of local file paths. Problem reports and download failure records also remove email addresses and sign-in details sent to download servers, while keeping the reason a file or connection failed.",
+      "Options row in narrow windows: when the editor's options row is short of room, Media and LoRA fold to their icon and count, then Enhance to its icon, and then the duration, size and quality keys take their short form, instead of the row wrapping or cutting keys off."
     ]
   },
   "zh": {
-    "summary": "0.6.12 修复了 0.6.11 在 Linux 和 Mac 上无法打开 ComfyUI 的问题；提示词改写会保留更多语言的台词，乌克兰语台词按乌克兰语配音。",
+    "summary": "0.6.13 的创作面板改为与图像视图一致的三栏布局，新增繁体中文界面和比轻量档更快的“极速”质量档；Windows on Arm 电脑上的安装不再在准备软件包时失败；报告中会去掉更多用户文件夹名、邮箱地址和登录信息。",
     "changes": [
-      "Linux 和 Mac：0.6.11 的启动器打开 ComfyUI 时会失败，现在可以正常打开。",
-      "提示词改写能保留更多语言的台词：用俄语、乌克兰语、西班牙语、法语、德语、土耳其语、越南语等写场景时，引号里的台词会原样交给模型配音，不再被漏掉；招牌、海报上的文字仍作为画面中的文字。",
-      "乌克兰语台词的配音更准：台词按乌克兰语交给模型，不再标成俄语，发音不再带俄语腔；俄语台词里提到乌克兰地名时仍按俄语念。",
-      "Windows 上编辑图片：当 Windows 可提交的内存所剩不多时，FreeVideo 在文本编码时少放一部分到显卡上，仍不足时再试一次，带多张参考图编辑时，文本这一步不容易再因内存不足停下。",
-      "诊断报告更完整：引擎停止应答超过五秒时，FreeVideo 会记下各部分当时在做什么，并随反馈和诊断报告一起带出，便于找出原因。",
-      "反馈和诊断报告里，输入框中的短内容不再改坏“2.00 GiB”这类数字。"
+      "三栏创作面板：左边是设置，中间是视频，右边是作品，排法与图像视图一致。窗口较窄时两侧栏收成图标，点开后以抽屉展开；窗口为手机宽度时，视频位于设置上方。",
+      "作品就在视频旁边：不离开创作面板，即可搜索、排序、收藏视频，或选两条视频并排对比。视频下方新增“收藏”键，可直接收藏当前视频。",
+      "高级选项收在一节：LoRA、生成方式、种子、步数和分段放在同一节，默认收起，并记住您上次的状态。",
+      "简洁模式：在“设置 > 外观”中打开“简洁模式”后，创作面板只保留提示词、视频和生成。",
+      "队列：每个任务都有自己的停止或移出键，操作前会先确认；创作面板和图像视图都一样。",
+      "繁体中文：网页界面和启动器都提供繁体中文，用词按台湾习惯，香港和澳门也适用。",
+      "选择界面语言：启动器右上角的地球按钮打开语言列表，网页的“设置 > 语言”里是同样的列表。没有选过时，FreeVideo 跟随系统语言。",
+      "提示用所选语言显示：视频、图片和启动器的失败卡片，以及引擎给出的原因，都按界面语言显示。",
+      "极速档：质量档位新增“极速”，生成比轻量档更快；动作较多的镜头里，画面细节可能闪烁。第一次选用时需下载约 2.2 GB，只需下载一次。",
+      "Windows on Arm 安装：在 Windows on Arm 电脑上，安装不再在准备软件包时失败，可以继续进行。所需软件包没有适用于这台电脑的版本时，启动器会写明是哪个软件包，不再显示为下载中断。生成视频和图片照常可用；用 Agent 编辑项目和图片暂不可用，因为所需组件尚无 Arm 版本。",
+      "报告中的隐私：诊断报告和提交的问题会从更多形式的本机文件路径中去掉用户文件夹名；提交的问题和下载失败的记录还会去掉邮箱地址和发给下载服务器的登录信息，同时保留文件或连接失败的原因。",
+      "窄窗口里的选项行：剪辑页的选项行放不下时，先把素材和 LoRA 收成图标加数量，再把增强收成图标，最后时长、尺寸和质量键改用简短写法，不再换行或截断按键。"
     ]
   },
   "history": [
+    {
+      "product_version": "0.6.12",
+      "en": {
+        "summary": "0.6.12 fixes the Linux and Mac launchers failing to open ComfyUI in 0.6.11, keeps dialogue in more languages when prompts are enhanced, and voices Ukrainian dialogue in Ukrainian.",
+        "changes": [
+          "Linux and Mac: the 0.6.11 launcher failed to open ComfyUI; it now opens normally.",
+          "Prompt enhancement keeps dialogue in more languages: when a scene is written in Russian, Ukrainian, Spanish, French, German, Turkish, Vietnamese or a similar language, the quoted lines are passed to the voice word for word instead of being left out, and text on signs and posters stays on screen.",
+          "Ukrainian dialogue is voiced more accurately: lines are passed to the model as Ukrainian instead of Russian, so they no longer take on a Russian accent, while Russian lines that mention a Ukrainian place are still spoken as Russian.",
+          "Picture editing on Windows: when Windows has little memory left to commit, FreeVideo now places less of the text encoder on the graphics card and tries once more if that is still not enough, so editing with several reference pictures is less likely to stop at the text step for lack of memory.",
+          "More complete diagnostic reports: when the engine stops answering for more than five seconds, FreeVideo records what each part was doing at the time and includes it in feedback and diagnostic reports, to help find the cause.",
+          "Feedback and diagnostic reports keep numbers such as \"2.00 GiB\" intact when a field holds a short value."
+        ]
+      },
+      "zh": {
+        "summary": "0.6.12 修复了 0.6.11 在 Linux 和 Mac 上无法打开 ComfyUI 的问题；提示词改写会保留更多语言的台词，乌克兰语台词按乌克兰语配音。",
+        "changes": [
+          "Linux 和 Mac：0.6.11 的启动器打开 ComfyUI 时会失败，现在可以正常打开。",
+          "提示词改写能保留更多语言的台词：用俄语、乌克兰语、西班牙语、法语、德语、土耳其语、越南语等写场景时，引号里的台词会原样交给模型配音，不再被漏掉；招牌、海报上的文字仍作为画面中的文字。",
+          "乌克兰语台词的配音更准：台词按乌克兰语交给模型，不再标成俄语，发音不再带俄语腔；俄语台词里提到乌克兰地名时仍按俄语念。",
+          "Windows 上编辑图片：当 Windows 可提交的内存所剩不多时，FreeVideo 在文本编码时少放一部分到显卡上，仍不足时再试一次，带多张参考图编辑时，文本这一步不容易再因内存不足停下。",
+          "诊断报告更完整：引擎停止应答超过五秒时，FreeVideo 会记下各部分当时在做什么，并随反馈和诊断报告一起带出，便于找出原因。",
+          "反馈和诊断报告里，输入框中的短内容不再改坏“2.00 GiB”这类数字。"
+        ]
+      }
+    },
     {
       "product_version": "0.6.11",
       "en": {
@@ -395,43 +432,6 @@
           "剪辑：生成之后仍可撤销，切换视图时未保存的修改会保留。",
           "模型安装：安装校验时显示“正在校验”和真实进度。",
           "其他：窄窗口下创作面板的按钮会换行，不再滑出视野；质量滑块拖动更跟手；新建角色时服装选项和 LoRA 在同一行。"
-        ]
-      }
-    },
-    {
-      "product_version": "0.6.0",
-      "en": {
-        "summary": "The new interface is friendlier, smoother and more modern, and privacy protection is stronger.",
-        "changes": [
-          "New interface: friendlier, smoother and more modern. Every running and queued video and picture can be seen and managed from any page. Generation keeps running when you switch pages, and your half-written prompt and reference pictures stay in place. Earlier videos can serve as references, and first and last frames can be picked straight from your works. A light theme is also available.",
-          "Stronger privacy: deleting a work also deletes its uploaded pictures and prompts, and downloads and shares leave out the prompt by default.",
-          "Image generation with more control: LoRA is supported, and hand-drawn sketches give finer control over the result. A picture deleted by mistake can be recovered from Recently deleted.",
-          "Characters from a photo: one photo makes a character card with front, side and back views.",
-          "Editor: the microphone is turned off automatically when you leave the editor, what has been recorded is kept when you stop with Esc, and export defaults to the full video at high quality.",
-          "Works library: works can be viewed and played properly even in a narrow window.",
-          "More reliable Mac installation: fixes an issue that kept the installation from completing on some Macs.",
-          "More reliable generation: prompt enhancement fails less often on 12 GB graphics cards, and graphics cards with little memory generate pictures normally.",
-          "Download and launcher: a video that cannot be downloaded now says so, and the launcher starts normally even if its saved template is missing or damaged.",
-          "Built-in director and agent tools: the director's choices and shot joining are shown in the conversation, a job's queue position is reported, and more clients are supported.",
-          "ComfyUI console: each log line now appears once.",
-          "Tutorial: new chapters on closing the launcher, repairing model files and making pictures of different shapes on a canvas."
-        ]
-      },
-      "zh": {
-        "summary": "全新界面带来更友好、丝滑、现代的体验，隐私保护进一步加强。",
-        "changes": [
-          "全新界面：更友好、丝滑、现代的体验。在任何页面都能看到和管理所有正在生成、排队的视频和图片；切换页面不会中断生成，写到一半的描述和参考图都还在；以前生成的视频也可以直接用作参考，首尾帧可以从作品中直接选；支持浅色主题。",
-          "隐私保护加强：删除作品时一并删除相关的上传图片和提示词，下载和分享默认不含提示词。",
-          "图片生成更可控：支持 LoRA，并可以通过手绘草图更精细地控制生成；误删的图片可在“最近删除”中找回。",
-          "照片生成角色：支持用一张照片生成角色卡，包括正面、侧面和背面形象。",
-          "剪辑：离开剪辑页面时自动关闭麦克风，按 Esc 结束录制时已录内容会保留，导出默认选择完整视频和高画质。",
-          "作品库：窄窗口下也能正常查看和播放作品。",
-          "Mac 安装更稳定：修复部分 Mac 无法完成安装的问题。",
-          "生成更稳定：12 GB 显卡上的提示词增强更不容易失败，显存较小的显卡也能正常生成图片。",
-          "下载与启动：视频无法下载时会给出提示，保存的模板缺失或损坏时启动器也能正常启动。",
-          "内置导演与智能体工具：导演的选择和镜头拼接过程显示在对话中，智能体工具会报告任务的排队位置，并兼容更多客户端。",
-          "ComfyUI 控制台：每行日志只显示一次。",
-          "教程：新增关闭启动器、修复模型文件、在画布上做不同比例图片三章。"
         ]
       }
     }

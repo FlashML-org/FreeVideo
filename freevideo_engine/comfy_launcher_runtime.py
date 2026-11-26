@@ -938,7 +938,7 @@ class Controller:
             from . import engine_exit
             if not engine or engine_exit.by_the_user(code):
                 return None
-            value = engine_exit.record(engine, code, log)
+            value = engine_exit.record(engine, code, log, oom_before=getattr(self, 'server_oom_kills', None))
             self.state = dict(self.state, status='restart-required', engine_exit=engine_exit.public(value))
             return value
 
@@ -1621,6 +1621,9 @@ class Controller:
             server = processes.popen(started, cwd=selected['root'], env=env, stdin=subprocess.DEVNULL,
                 stdout=log, stderr=subprocess.STDOUT, start_new_session=True, supervise=True)
             self.server = server
+            from .engine_exit import oom_baseline
+            # The kernel's out-of-memory counts when this ComfyUI started: its own cgroup's, and the whole computer's.
+            self.server_oom_kills = oom_baseline(server.pid)
             self.server_url = url
             self.server_address = selected['url']
         save(directory / 'launch.json', dict(command=command, pid=server.pid, root=selected['root'], url=url, **context))

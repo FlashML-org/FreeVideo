@@ -110,19 +110,21 @@ export function createPromptLibrary({t, host, fill, snapshot, apply, describe = 
     const mod = globalThis.navigator?.platform?.startsWith('Mac') ? '⌘' : 'Ctrl';
     button.setAttribute('aria-label', t('Prompt history, templates and presets', '提示词历史、模板和预设'));
     button.setAttribute('aria-haspopup', 'dialog'); button.setAttribute('aria-expanded', 'false');
-    setTip(button, t('History and presets', '历史与预设'), t('Reuse a prompt, a template or saved settings', '复用描述、模板或保存的设置'), `${mod} ↑`);
+    setTip(button, t('History and presets', '历史与预设'), t('Reuse a prompt, a template or saved settings', '复用提示词、模板或保存的设置'), `${mod} ↑`);
     const panel = el('section', 'fvs-library'); panel.hidden = true; panel.setAttribute('role', 'dialog');
     panel.setAttribute('aria-label', button.getAttribute('aria-label'));
     const tabs = el('div', 'fvs-library-tabs'); tabs.setAttribute('role', 'tablist');
     const search = el('input', 'fvs-library-search'); search.type = 'search';
-    search.placeholder = t('Search', '搜索'); search.setAttribute('aria-label', t('Search prompts', '搜索描述'));
+    search.placeholder = t('Search', '搜索'); search.setAttribute('aria-label', t('Search prompts', '搜索提示词'));
     const close = el('button', 'fvs-icon-button'); close.type = 'button'; close.innerHTML = svg(CLOSE);
     close.setAttribute('aria-label', t('Close', '关闭')); setTip(close, t('Close', '关闭'), t('Hide this panel', '收起这个面板'), 'Esc');
     const head = el('div', 'fvs-library-head'); head.append(tabs, search, close);
     const list = el('div', 'fvs-library-list'); list.setAttribute('role', 'listbox');
     const foot = el('div', 'fvs-library-foot');
     panel.append(head, list, foot);
-    host.append(panel);
+    // The host may be a function: the panel stands where the console is now (the column layout has no console on the page).
+    const home = () => (typeof host === 'function' ? host() : host);
+    home().append(panel);
     let tab = 'history', query = '';
     const TABS = [['history', t('History', '历史')], ['templates', t('Templates', '模板')], ['presets', t('Presets', '预设')]];
     const tabButtons = TABS.map(([id, label]) => {
@@ -130,7 +132,7 @@ export function createPromptLibrary({t, host, fill, snapshot, apply, describe = 
         b.onclick = () => { tab = id; render(); };
         tabs.append(b); return b;
     });
-    setTip(tabButtons[0], t('History', '历史'), t('Prompts you generated, newest first', '生成过的描述，最新在前'));
+    setTip(tabButtons[0], t('History', '历史'), t('Prompts you generated, newest first', '生成过的提示词，最新在前'));
     setTip(tabButtons[1], t('Templates', '模板'), t('Starting points to edit', '可修改的起点描述'));
     setTip(tabButtons[2], t('Presets', '预设'), t('Settings saved under a name', '按名称保存的一组设置'));
     const matches = text => !query || text.toLowerCase().includes(query);
@@ -151,7 +153,7 @@ export function createPromptLibrary({t, host, fill, snapshot, apply, describe = 
         return item;
     }
     function empty(text) { list.append(el('p', 'fvs-library-empty', text)); }
-    function use(text) { const undo = fill(text); hide(); notify(t('Prompt filled in', '已填入描述'), undo); }
+    function use(text) { const undo = fill(text); hide(); notify(t('Prompt filled in', '已填入提示词'), undo); }
     function render() {
         for (const b of tabButtons) { b.setAttribute('aria-selected', String(b.dataset.tab === tab)); b.tabIndex = b.dataset.tab === tab ? 0 : -1; }
         search.hidden = tab === 'presets';
@@ -160,22 +162,22 @@ export function createPromptLibrary({t, host, fill, snapshot, apply, describe = 
             const rows = promptHistory(storage).filter(item => matches(item.text));
             for (const item of rows) list.append(row(item.text, [when(item.at, t), describe(item)].filter(Boolean).join(' · '), () => use(item.text),
                 () => { forgetPrompt(item.text, storage); render(); }, t('Remove from history', '从历史移除')));
-            if (!rows.length) empty(query ? t('No prompt matches.', '没有匹配的描述。') : t('Prompts you generate appear here.', '生成过的描述会出现在这里。'));
+            if (!rows.length) empty(query ? t('No prompt matches.', '没有匹配的提示词。') : t('Prompts you generate appear here.', '生成过的提示词会出现在这里。'));
         } else if (tab === 'templates') {
             const rows = TEMPLATES.filter(item => matches(t(...item.title)) || matches(t(...item.text)));
             for (const item of rows) list.append(row(t(...item.title), t(...item.text), () => use(t(...item.text)), null, '', {named: true}));
             if (!rows.length) empty(t('No template matches.', '没有匹配的模板。'));
             if (guide) {
-                const link = el('a', 'fvs-library-guide', t('How to write a prompt ↗', '描述写法 ↗'));
+                const link = el('a', 'fvs-library-guide', t('How to write a prompt ↗', '提示词写法 ↗'));
                 link.href = guide; link.target = '_blank'; link.rel = 'noopener noreferrer';
-                setTip(link, t('How to write a prompt', '描述写法'), t('Open the guide to writing a good prompt', '打开描述写法指南，写得更准'));
+                setTip(link, t('How to write a prompt', '提示词写法'), t('Open the guide to writing a good prompt', '打开提示词写法指南，写得更准'));
                 foot.append(link);
             }
         } else {
             const rows = presets(storage);
             for (const item of rows) list.append(row(item.name, describe(item.settings), () => {
                 hide();
-                Promise.resolve(apply(item.settings)).then(problem => problem ? notify(problem, null, 'warn') : notify(t(`Preset applied: ${item.name}`, `已套用预设：${item.name}`)),
+                Promise.resolve(apply(item.settings)).then(problem => problem ? notify(problem, null, 'warn') : notify(t('Preset applied: {name}', '已套用预设：{name}', { name: item.name })),
                     () => notify(t('Could not apply the preset.', '预设没能套用。'), null, 'fail'));
             }, () => { removePreset(item.id, storage); render(); }, t('Delete preset', '删除预设'), {named: true}));
             if (!rows.length) empty(t('Save the current settings to use them again in one step.', '把当前设置存成预设，下次一步套用。'));
@@ -183,7 +185,7 @@ export function createPromptLibrary({t, host, fill, snapshot, apply, describe = 
             const name = el('input', 'fvs-preset-name'); name.type = 'text'; name.maxLength = 40; name.required = true;
             name.placeholder = t('Preset name', '预设名称'); name.setAttribute('aria-label', name.placeholder);
             const withPrompt = el('label', 'fvs-preset-check'), promptBox = el('input'); promptBox.type = 'checkbox';
-            withPrompt.append(promptBox, document.createTextNode(t('Include the prompt', '包含描述')));
+            withPrompt.append(promptBox, document.createTextNode(t('Include the prompt', '包含提示词')));
             const withSeed = el('label', 'fvs-preset-check'), seedBox = el('input'); seedBox.type = 'checkbox';
             withSeed.append(seedBox, document.createTextNode(t('Include the seed', '包含种子值')));
             const save = el('button', 'fvs-preset-save', t('Save', '保存')); save.type = 'submit';
@@ -205,6 +207,7 @@ export function createPromptLibrary({t, host, fill, snapshot, apply, describe = 
     function show(which) {
         if (which) tab = which;
         query = ''; search.value = '';
+        if (panel.parentNode !== home()) home().append(panel);
         panel.hidden = false; button.setAttribute('aria-expanded', 'true'); render();
         document.addEventListener('pointerdown', outside, true);
         (tab === 'presets' ? panel.querySelector('.fvs-preset-name') : search)?.focus({preventScroll: true});

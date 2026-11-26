@@ -3,12 +3,12 @@ import {agentPost, agentUpload} from './agent_session.js';
 
 export const ATTACH = {
     count: 4, bytes: 10 * 1024 * 1024, types: ['image/png', 'image/jpeg', 'image/webp'],
-    add: ['Add pictures', '添加图片'], remove: ['Remove', '移除'],
-    tooMany: ['Up to 4 pictures per message.', '一条消息最多 4 张图片。'],
-    tooLarge: ['Each picture must be under 10 MB.', '每张图片不能超过 10 MB。'],
-    notPicture: ['Only pictures can be added.', '只能添加图片。'],
-    unreadable: ['Could not read this picture. Please choose another one.', '无法读取这张图片，请换一张。'],
-    failed: ['Could not upload the picture. Click it to try again.', '图片上传失败，请点击该图片重试。'],
+    add: ['Add images', '添加图片'], remove: ['Remove', '移除'],
+    tooMany: ['Up to 4 images per message.', '一条消息最多 4 张图片。'],
+    tooLarge: ['Each image must be under 10 MB.', '每张图片不能超过 10 MB。'],
+    notPicture: ['Only images can be added.', '只能添加图片。'],
+    unreadable: ['Could not read this image. Please choose another one.', '无法读取这张图片，请换一张。'],
+    failed: ['Could not upload the image. Click it to try again.', '图片上传失败，请点击该图片重试。'],
     retry: ['Upload again', '重新上传'],
     icon: 'M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM4 16l4-4 4 4 3-3 5 5M15 9h.01',
 };

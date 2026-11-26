@@ -14,7 +14,7 @@ from . import network, processes
 from .comfy_bridge import installation
 from .comfy_environment import isolated_environment
 from .comfy_requirements import managed_requirements
-from .environments import uv_build_environment, uv_file_arguments, uv_folder
+from .environments import uv_build_environment, uv_file_arguments, uv_folder, windows_arm64
 from .locking import runtime_lock
 from .monitoring import save
 from .package_progress import PackageOutput
@@ -24,7 +24,13 @@ from .terminal_ui import LogProgress, TerminalUI
 # do not name what only they use (the editor rules engine for project and image edits),
 # and accept a range of PyAV: the version our media code was measured on is held here,
 # because a newer one reads and writes different audio (it matches the engine's constraints).
-NODE_PACKAGES = ('quickjs==1.19.4', 'av==18.1.0')
+def node_packages(arm64):
+    """The QuickJS binding publishes no win_arm64 wheel and would have to be compiled on the computer:
+    on Windows on Arm the editing tools say they are not available (editor_runtime.available) instead."""
+    return ('av==18.1.0',) if arm64 else ('quickjs==1.19.4', 'av==18.1.0')
+
+
+NODE_PACKAGES = node_packages(windows_arm64())
 
 
 def prepare(root, comfy, run=None, download=False, repair=False):

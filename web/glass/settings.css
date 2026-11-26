@@ -119,7 +119,7 @@ dialog.fv-set .st-ic{width:var(--fv-sp-32);height:var(--fv-sp-32);border-radius:
 dialog.fv-set .st-ic.is-ok{background:var(--fv-ok-soft);color:var(--fv-ok)}
 dialog.fv-set .st-rt{min-width:0}
 dialog.fv-set .st-rt b{display:block;font-size:var(--fv-fs-2);line-height:var(--fv-lh-2);font-weight:var(--fv-fw-2);color:var(--fv-fg)}
-dialog.fv-set .st-rt span{display:block;font-size:var(--fv-fs-1);line-height:var(--fv-lh-1);color:var(--fv-fg3);margin-top:var(--fv-sp-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+dialog.fv-set .st-rt span{display:block;font-size:var(--fv-fs-1);line-height:var(--fv-lh-1);color:var(--fv-fg3);margin-top:var(--fv-sp-2);overflow-wrap:anywhere;text-wrap:pretty}
 dialog.fv-set .st-rt .is-warn{color:var(--fv-warn);white-space:normal}
 dialog.fv-set .st-rt .is-caution{color:var(--fv-caution)}
 dialog.fv-set .st-rt .is-ok{color:var(--fv-ok)}
@@ -488,3 +488,39 @@ dialog.fv-set .st-search input:focus-visible{outline:none}
 @media (max-width:719px){dialog.fv-set .st-facts3 dt{flex:none;white-space:nowrap}dialog.fv-set .st-facts3 dd{min-width:0}}
 /* Tablets: the search field takes a finger (buttons and switches already reach 44 through their ::after). */
 @media (pointer:coarse){dialog.fv-set .st-search{height:var(--fv-touch)}}
+
+/* Interface language (language_picker.js): a button with the globe and the language's own name, and its list.
+   Sizes and colours from Iris's visual final (review/i18n/language-switch.md, 11-24); the launcher uses the same. */
+dialog.fv-set .st-lang{position:relative;flex:none}
+dialog.fv-set .st-lang-btn{display:inline-flex;align-items:center;gap:var(--fv-sp-8);height:32px;padding:0 var(--fv-sp-12);
+  border:0;border-radius:8px;background:var(--fv-ctl-bg);box-shadow:inset 0 0 0 1px var(--fv-line);color:var(--fv-fg);font:inherit;cursor:pointer}
+dialog.fv-set .st-lang-btn .fv-i{width:16px;height:16px}
+dialog.fv-set .st-lang-btn .fv-i:last-child{width:12px;height:12px;opacity:.7}
+dialog.fv-set .st-lang-btn:hover{background:var(--fv-ctl-hover,rgb(255 255 255 / .1))}
+dialog.fv-set .st-lang-btn:disabled{opacity:.6;cursor:default}
+dialog.fv-set .st-lang-pop{position:absolute;right:0;top:calc(100% + 6px);z-index:20;box-sizing:border-box;width:264px;padding:4px;
+  border-radius:var(--fv-r-md);background:rgb(var(--fv-solid3));box-shadow:0 0 0 1px var(--fv-line2),0 14px 36px rgb(0 0 0 / .45)}
+dialog.fv-set .st-lang-pop.is-up{top:auto;bottom:calc(100% + 6px)}
+dialog.fv-set .st-lang-search{position:relative;display:block;margin-bottom:4px}
+dialog.fv-set .st-lang-search[hidden]{display:none}
+dialog.fv-set .st-lang-glass{position:absolute;left:9px;top:9px;width:14px;height:14px;opacity:.6;pointer-events:none}
+dialog.fv-set .st-lang-find{display:block;box-sizing:border-box;width:100%;height:32px;padding:0 var(--fv-sp-12) 0 32px;-webkit-appearance:none;appearance:none;
+  border:1px solid var(--fv-line2);border-radius:var(--fv-r-sm);background:transparent;color:var(--fv-fg);font:inherit;outline:none;box-shadow:none}
+dialog.fv-set .st-lang-find:focus,dialog.fv-set .st-lang-find:focus-visible{border-color:var(--fv-accent-ink);outline:none!important;box-shadow:none!important}
+dialog.fv-set .st-lang-list{position:relative;overflow-y:auto;outline:none}
+/* The page draws the list's scroll bar (st-lang-track), so it shows on every system; the system one is hidden. */
+dialog.fv-set .st-lang-list{scrollbar-width:none}
+dialog.fv-set .st-lang-list::-webkit-scrollbar{display:none}
+dialog.fv-set .st-lang-track{position:absolute;right:3px;width:4px;pointer-events:none}
+dialog.fv-set .st-lang-track>i{display:block;width:4px;border-radius:2px;background:rgb(255 255 255 / .3)}
+:root[data-theme=light] dialog.fv-set .st-lang-track>i{background:rgb(30 40 60 / .3)}
+dialog.fv-set .st-lang-opt{display:flex;align-items:center;gap:var(--fv-sp-8);height:32px;padding:0 var(--fv-sp-12) 0 var(--fv-sp-8);
+  border-radius:var(--fv-r-sm);color:var(--fv-fg);font-weight:400;cursor:pointer;white-space:nowrap}
+dialog.fv-set .st-lang-opt .st-lang-mark{flex:none;width:16px;height:16px;visibility:hidden}
+dialog.fv-set .st-lang-opt.is-auto{position:relative;margin-bottom:9px}
+dialog.fv-set .st-lang-opt.is-auto::after{content:'';position:absolute;left:0;right:0;bottom:-5px;height:1px;background:var(--fv-line2)}
+dialog.fv-set .st-lang-opt.is-active{background:var(--fv-ctl-hover,rgb(255 255 255 / .08))}
+dialog.fv-set .st-lang-opt[aria-selected=true]{background:var(--fv-accent-soft);font-weight:600}
+dialog.fv-set .st-lang-opt[aria-selected=true] .st-lang-mark{visibility:visible}
+dialog.fv-set .st-lang-none{padding:var(--fv-sp-8) 0;color:var(--fv-fg3);text-align:center}
+:root[data-theme=light] dialog.fv-set .st-lang-pop{box-shadow:0 0 0 1px var(--fv-line2),0 14px 36px rgb(30 40 60 / .18)}

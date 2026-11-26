@@ -76,6 +76,8 @@ def generate(request, resident=None):
     live_budget = None
     decode_read_ahead = None
     decoder_read_ahead_closed = False
+    pixel_head = False
+    pixel_features = None  # the fastest mode's features for its pixel head, taken before the transformer is released
     original_error = None
     # A reused engine runs this request's tiling for the request and goes back to the one it was loaded with.
     from contextlib import ExitStack
@@ -386,7 +388,13 @@ def generate(request, resident=None):
             decode_read_ahead = DecoderReadAhead(engine.base, ram_budget_bytes=request.get('ram_budget_bytes'),
                                                  budget_is_estimate=request.get('ram_budget_is_estimate') is True)
             decoder_cached = resident is not None and 'video_vae' in resident.entries
-            if decoder_cached:
+            # Set only by a real Engine in the fastest mode (stand-ins and other engines have none of their own).
+            pixel_head = type(vars(engine).get('fast')).__name__ == 'Runtime' if hasattr(engine, '__dict__') else False
+            if pixel_head:
+                # The fastest mode draws its pixels with its own head; the video VAE is never read.
+                decoder_cached = True
+                decode_read_ahead.result.update(state='skipped', reason='The fastest mode does not use the video VAE')
+            elif decoder_cached:
                 decode_read_ahead.result.update(state='skipped', reason='Video VAE is already resident on the GPU')
             def read_decoder_ahead():
                 # Every offloaded layer in memory and none read in the last step.
@@ -735,6 +743,9 @@ def generate(request, resident=None):
             metrics.update(sampled)
             metrics.pop('sample_metrics_scope', None)
             base = engine.base
+            if pixel_head:
+                # On the CPU already; kept before the transformer goes.
+                pixel_features, pixel_adapter = engine.fast.features.take(), str(engine.fast.adapter)
             sample_finalize_phase('transformer_release')
             # A one-shot worker releases the transformer. An interactive worker
             # keeps it if live memory also covers decoding, otherwise evicts it.
@@ -787,7 +798,13 @@ def generate(request, resident=None):
                 continuation_data['audio_lead_in'] = value
                 # Older retained sampling tails predate the predecessor binding.
                 continuation_data['metadata']['source_id'] = continuation['source_id']
-        if redo_sound is not None:
+        if pixel_features is not None:
+            from .dwd_decode import pixels_to_file
+            metrics.update(pixels_to_file(*pixel_features, audio, request['output'], base=base, adapter=pixel_adapter,
+                                          artifacts_dir=artifacts, phase_callback=decode_phase, model_cache=resident,
+                                          output_size=output_size))
+            pixel_features = None
+        elif redo_sound is not None:
             from . import redo_audio
             decode_phase('audio_decode')
             sound = redo_audio.decode_sound(audio, base, request['geometry']['frames'])

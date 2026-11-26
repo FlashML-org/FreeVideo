@@ -7,7 +7,8 @@ import { api } from '../../scripts/api.js';
 import { app } from '../../scripts/app.js';
 import { jobs, imageSource, progressSource, chainSource, queueSource, journalSource, ACTIVE, FINAL } from './task_store.js';
 import { errorText, failureAdvice } from './error_panel.js';
-import { createImageGenClient, imageGenError, imageReportBar } from './image_generation.js';
+import { createImageGenClient, imageGenError, imageReportBar, lostEngineText, WAITING_TEXT } from './image_generation.js';
+import { exitCause, newEngineExit, watchEngineExit } from './engine_exit.js';
 import { saveGeneratedImage } from './image_library.js';
 import { isChinese, translator } from './i18n.js';
 
@@ -27,7 +28,9 @@ const outputURL = file => api.apiURL('/view?' + new URLSearchParams({filename: f
 export function startJobSources() {
     if (sourcesStarted) return; sourcesStarted = true;
     let storage = null; try { storage = globalThis.localStorage; } catch { /* Private windows keep jobs in memory only. */ }
-    imageSource(jobs, {client: createImageGenClient(), storage});
+    // Why FreeVideo went away while a picture was being made, as the launcher saw it end (#1121).
+    void watchEngineExit(api);
+    imageSource(jobs, {client: createImageGenClient(), storage, connection: api, lastExit: async () => exitCause(await newEngineExit(api))});
     // The request the engine runs on each node now, from its own events: a plain (one graphics card) run's progress
     // names no request, so this keeps every queued video a row of its own (task_store.js progressSource).
     const runningOn = new Map();
@@ -165,10 +168,10 @@ const VIEW_NAMES = {image: ['Images', '图像视图'], studio: ['Create', '创�
 const kindText = row => viewFor(row) === 'editor' ? t('Edit', '剪辑生成') : t(...(KIND[row.kind] || KIND.video));
 const clock = seconds => { const s = Math.max(0, Math.floor(seconds)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 // Short enough for the card's one line next to the count and Stop.
-const etaText = seconds => !Number.isFinite(seconds) ? '' : seconds >= 60 ? t(`About ${Math.ceil(seconds / 60)} min left`, `还需约 ${Math.ceil(seconds / 60)} 分钟`) : t('Under 1 min left', '不到 1 分钟');
+const etaText = seconds => !Number.isFinite(seconds) ? '' : seconds >= 60 ? t('About {minutes} min left', '还需约 {minutes} 分钟', { minutes: Math.ceil(seconds / 60) }) : t('Under 1 min left', '不到 1 分钟');
 const elapsedText = row => `${t('Elapsed', '已用时')} ${clock((Date.now() - (row.started_at || row.created_at || Date.now())) / 1000)}`;
 const percentOf = row => Math.floor(100 * (Number.isFinite(row.percent) ? row.percent : 0));
-const part = row => row.meta?.parts > 1 && row.meta?.part ? t(` · part ${row.meta.part}/${row.meta.parts}`, ` · 第 ${row.meta.part}/${row.meta.parts} 段`) : '';
+const part = row => row.meta?.parts > 1 && row.meta?.part ? t(' · part {part}/{parts}', ' · 第 {part}/{parts} 段', { part: row.meta.part, parts: row.meta.parts }) : '';
 function stateWord(row) {
     if (row.status === 'running') return null;
     return {submitting: t('Starting', '正在开始'), queued: t('Queued', '排队中'), cancelling: t('Stopping', '正在停止'), done: t('Done', '已完成'),
@@ -176,15 +179,18 @@ function stateWord(row) {
 }
 function reasonShort(row) {
     const code = row.failure?.code;
-    if (code === 'engine_closed') return t('The engine was closed', '引擎已关闭');
-    if (code === 'engine_restarted' || row.status === 'interrupted') return t('The engine restarted', '引擎已重启');
+    if (code === 'engine_closed') return t('Connection lost', '连接中断');
+    // Short enough for the card's line (Lane, copy_lane.float_short); the hover and the opened card say it whole.
+    if (code === 'engine_restarted' || row.status === 'interrupted') return t('Restarted', '已重新启动');
     return t('Open for the reason', '点开查看原因');
 }
 function reasonLong(row) {
     const code = row.failure?.code;
-    if (code === 'engine_closed') return t('FreeVideo stopped answering while this was being made. Start FreeVideo again, then generate again.', '生成过程中 FreeVideo 停止了响应。重新启动 FreeVideo 后再生成一次。');
-    if (code === 'engine_restarted' || row.status === 'interrupted') return t('FreeVideo restarted while this was being made, so it did not finish. Finished parts are in your works.', 'FreeVideo 在生成过程中重新启动，这次没有完成。已经完成的部分在作品里。');
-    if (row.kind === 'image') return imageGenError(code, row.failure, t) || t('The picture did not finish.', '这张图没有完成。');
+    // A picture: why FreeVideo went away, as far as the launcher saw it end, and what next (#1121).
+    if (row.kind === 'image' && (code === 'engine_closed' || code === 'engine_restarted')) return lostEngineText(code, row.failure?.cause, t).join(t(' ', ''));
+    if (code === 'engine_closed') return lostEngineText(code, row.failure?.cause, t).join(t(' ', ''));
+    if (code === 'engine_restarted' || row.status === 'interrupted') return t('FreeVideo restarted while this was being made, so it did not finish. Finished parts are in your creations.', 'FreeVideo 在生成过程中重新启动，这次没有完成。已经完成的部分在作品里。');
+    if (row.kind === 'image') return imageGenError(code, row.failure, t) || t('The image did not finish.', '这张图没有完成。');
     // The engine's own text is raw; it goes through the same advice as the create panel, and an unknown cause says so.
     const told = row.failure?.message ? failureAdvice(String(row.failure.message), t) : null;
     if (told?.summary) return told.summary + t(' ', '') + told.action;
@@ -197,10 +203,12 @@ function reasonLong(row) {
         'FreeVideo 没有给出这段视频失败的原因。请重试，仍然失败请提交问题。');
 }
 function line2(row) {
+    // Waiting for FreeVideo to come back (#1121): said, with the stop button turned into "Stop waiting".
+    if (row.meta?.reconnecting && ACTIVE.has(row.status)) return t(...WAITING_TEXT.short);
     if (row.status === 'running') return etaText(row.eta_seconds) || elapsedText(row);
     if (row.status === 'queued' || row.status === 'submitting') return t('Starts after the one before it', '等前一项完成后开始');
     if (row.status === 'cancelling') return elapsedText(row);
-    if (row.status === 'done') return t('Saved to your works', '已存入作品');
+    if (row.status === 'done') return t('Saved to your creations', '已存入作品');
     return reasonShort(row);
 }
 
@@ -249,10 +257,10 @@ export function confirmStop(anchor, {kind = 'video', queued = false, host = null
         if (agent) {
             title.textContent = queued ? t('Remove from the queue?', '取消排队？') : t('Stop this step?', '停止这一步？');
             text.textContent = queued ? t('It has not started; it will not run.', '这一步还没有开始，取消后不会进行。')
-                : t('What this step has made so far is not kept. Finished works stay.', '这一步做到一半的不会保留，已经完成的作品不受影响。');
+                : t('What this step has made so far is not kept. Finished creations stay.', '这一步做到一半的不会保留，已经完成的作品不受影响。');
         } else text.textContent = queued ? t('It has not started; it will not be made.', '这项还没有开始，取消后不会生成。')
             : voice ? t('Lines already dubbed are kept; the rest can be dubbed again later.', '已配好的台词会保留，其余台词可以稍后重新配音。')
-            : kind === 'image' ? t('This picture will not be kept.', '这张图不会保留。') : t('What has been made so far is not kept. Queued jobs go on.', '已生成的部分不会保留，排队的任务照常进行。');
+            : kind === 'image' ? t('This image will not be kept.', '这张图不会保留。') : t('What has been made so far is not kept. Queued jobs go on.', '已生成的部分不会保留，排队的任务照常进行。');
         const ask = el('div', 'sgf-ask'), acts = el('div', 'sgf-acts');
         const keep = el('button', 'pill line'), stop = el('button', 'pill danger');
         keep.type = stop.type = 'button'; keep.textContent = agent ? t('Keep going', '继续') : voice ? t('Keep dubbing', '继续配音') : t('Keep going', '继续生成'); stop.textContent = queued ? t('Remove', '取消排队') : t('Stop', '停止');
@@ -565,22 +573,26 @@ export function installTaskFloat() {
         $('.sgf-l2').textContent = stopError && row.id === ask ? stopError : line2(row) + (row.status === 'running' ? part(row) : '');
         more.hidden = list.length < 2;
         more.innerHTML = `<span>${list.length}</span>${open ? ICON.down : ICON.up}`; more.setAttribute('aria-expanded', String(open));
-        more.setAttribute('aria-label', t(`${list.length} jobs`, `${list.length} 项任务`));
+        more.setAttribute('aria-label', t('{count} jobs', '{count} 项任务', { count: list.length }));
         // While the list is open it speaks for itself (names and states): the count button gives no tip over it.
         if (open) for (const key of ['fvTipName', 'fvTipUse', 'fvTipKey']) delete more.dataset[key];
         else tip(more, t('Jobs', '任务列表'), t('Show every job in progress', '展开全部进行中的任务'));
         const stoppable = ACTIVE.has(row.status) && row.cancellable !== false && row.status !== 'cancelling';
         close.hidden = ACTIVE.has(row.status) && !stoppable;
         close.innerHTML = stoppable ? ICON.stop : ICON.x;
-        close.setAttribute('aria-label', stoppable ? t('Stop', '停止') : t('Dismiss', '收起'));
-        if (stoppable) tip(close, t('Stop', '停止'), t('Stop this generation (asks first)', '停止这次生成（会先确认）'));
-        else tip(close, t('Dismiss', '收起'), row.status === 'done' ? t('Hide this; the result stays in your works', '收起提示，成品仍在作品里') : t('Hide this message', '收起这条提示'));
+        const waiting = Boolean(row.meta?.reconnecting) && ACTIVE.has(row.status);
+        F.classList.toggle('waiting', waiting);
+        close.setAttribute('aria-label', waiting ? t(...WAITING_TEXT.stop) : stoppable ? t('Stop', '停止') : t('Dismiss', '收起'));
+        if (waiting) tip(close, t(...WAITING_TEXT.stop), t(...WAITING_TEXT.status));
+        else if (stoppable) tip(close, t('Stop', '停止'), t('Stop this generation (asks first)', '停止这次生成（会先确认）'));
+        else tip(close, t('Dismiss', '收起'), row.status === 'done' ? t('Hide this; the result stays in your creations', '收起提示，成品仍在作品里') : t('Hide this message', '收起这条提示'));
         const action = state === 'done' ? [t('Open', '打开'), t('See what was made', '查看这次生成的成品')]
             : state === 'fail' ? [t('See why', '查看原因'), t('Reason, what to do, and the report', '原因、可做的事和诊断报告')]
             : [t('Back to it', '回到生成'), t('Return to the generation; nothing restarts', '展开回生成画面，进度不中断')];
         // The hover tip says the whole state, whatever the card had to shorten, then what a click does.
-        const full = `${[label.textContent, l1.querySelector('.sgf-p')?.textContent].filter(Boolean).join(' ')} · ${$('.sgf-l2').textContent}`;
-        tip(card, full, `${action[0]}：${action[1]}`.replace('：', cn ? '：' : ': '), 'Enter');
+        const whole = row.meta?.reconnecting && ACTIVE.has(row.status) ? t(...WAITING_TEXT.status) : state === 'fail' && row.kind === 'image' && lostEngineText(row.failure?.code, row.failure?.cause, t)?.[0];
+        const full = `${[label.textContent, l1.querySelector('.sgf-p')?.textContent].filter(Boolean).join(' ')} · ${whole || $('.sgf-l2').textContent}`;
+        tip(card, full, t('{name}: {use}', '{name}：{use}', { name: action[0], use: action[1] }), 'Enter');
         card.setAttribute('aria-label', `${full}. ${action[0]}`);
         drawSheet(list);
         if (!shown) show();
@@ -616,7 +628,7 @@ export function installTaskFloat() {
             const row = rows.find(r => r.id === failCard);
             const box = el('div', 'sgf-fail'); box.setAttribute('role', 'dialog'); box.setAttribute('aria-label', t('What happened', '发生了什么'));
             const title = el('b'), text = el('p', 'fv-selectable'), acts = el('div', 'sgf-acts');
-            title.textContent = row.kind === 'image' ? t("The picture didn't finish", '这张图没有完成') : t("The video didn't finish", '这段视频没有完成');
+            title.textContent = row.kind === 'image' ? t("The image didn't finish", '这张图没有完成') : t("The video didn't finish", '这段视频没有完成');
             text.textContent = reasonLong(row);
             const report = row.failure?.report_id || row.meta?.report_id;
             if (report && row.kind === 'image') {
@@ -635,14 +647,14 @@ export function installTaskFloat() {
             tip(dismiss, dismiss.textContent, t('Hide this message', '收起这条提示'), 'Esc');
             acts.append(back, dismiss); box.append(title, text, acts); sheet.append(box);
         } else if (open && list.length > 1) {
-            const head = el('header'); const count = el('b'); count.textContent = t(`${list.length} jobs`, `${list.length} 项任务`); head.append(count); sheet.append(head);
+            const head = el('header'); const count = el('b'); count.textContent = t('{count} jobs', '{count} 项任务', { count: list.length }); head.append(count); sheet.append(head);
             for (const row of list) {
                 const line = el('button', 'sgf-row'); line.type = 'button'; line.dataset.k = 'go'; line.dataset.id = row.id;
                 line.dataset.st = row.status === 'running' ? 'run' : ACTIVE.has(row.status) ? 'queue' : row.status === 'done' ? 'done' : 'fail';
                 const th = el('span', 'sgf-rth'), pic = el('i', 'sgf-img'); th.append(pic, Object.assign(el('i', 'sgf-glyph', row.kind === 'image' ? ICON.image : ICON.video))); paintThumb(pic, row);
                 const tx = el('span', 'sgf-rtx'), name = el('b'), sub = el('span');
                 // A row's title is its kind, never its prompt (a prompt belongs to the work only).
-                name.textContent = row.kind === 'image' ? t('Picture', '图片任务') : viewFor(row) === 'editor' ? t('Edit', '剪辑任务') : t('Video', '视频任务');
+                name.textContent = row.kind === 'image' ? t('Image', '图片任务') : viewFor(row) === 'editor' ? t('Edit', '剪辑任务') : t('Video', '视频任务');
                 sub.textContent = `${t(...(VIEW_NAMES[viewFor(row)] || VIEW_NAMES.studio))} · ${row.status === 'running' ? `${percentOf(row)}%` : stateWord(row)}`;
                 tx.append(name, sub); line.append(th, tx);
                 if (row.status === 'running') { const bar = el('i', 'sgf-rbar'), fill = el('b'); fill.style.width = `${percentOf(row)}%`; bar.append(fill); line.append(bar); }
@@ -852,6 +864,8 @@ export function installTaskFloat() {
             drawSheet(); draw(); return;
         }
         if (button === close) {
+            // Waiting for FreeVideo: nothing can reach it to stop the job, so the button stops waiting (#1121).
+            if (row.meta?.reconnecting && ACTIVE.has(row.status)) { jobs.stopWaiting(row.id); draw(); return; }
             if (ACTIVE.has(row.status)) { ask = row.id; stopError = ''; open = false; failCard = null; drawSheet(); setTimeout(() => sheet.querySelector('[data-k="keep"]')?.focus({preventScroll: true}), 0); }
             else { jobs.dismiss(row.id); }
             return;

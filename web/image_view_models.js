@@ -4,6 +4,7 @@
 // not installed and pressing Generate installs it first, then generates.
 import { listenDialogKey } from './dialog_keys.js';
 import { el, icon, t, tip, button } from './image_view_ui.js';
+import { localized } from './i18n_tables.js';
 
 export const IMAGE_MODELS = Object.freeze([
     {id: 'minimax-h3-image', name: 'MiniMax H3 Image', short: 'H3 Image'},
@@ -30,7 +31,7 @@ export function modelState(info, id) {
             // A setup, update or cleanup holds the installation: the download goes on by itself and cannot be asked to go on.
             locked: install.state === 'paused_for_generation' && install.reason === 'busy_setup'};
     if (install.state === 'failed')
-        return {state: 'failed', row, total, done, fraction, reason: t(install.message_en || '', install.message_zh || '') || install.reason || ''};
+        return {state: 'failed', row, total, done, fraction, reason: localized({en: install.message_en || '', zh: install.message_zh || ''}, t) || install.reason || ''};
     return {state: 'missing', row, total, done, fraction, resume: done > 0};
 }
 
@@ -38,20 +39,20 @@ const gb = bytes => (bytes / 1e9).toFixed(1);
 // Why a download waits, as the engine reports it: only a video or a picture being made pauses it, and the user can
 // continue it at once.
 // What pressing Continue download does: the download runs now, beside the video or picture being made.
-export const continueUse = () => t('Download now; a video or picture being made may take longer', '现在就下载；正在进行的生成可能会变慢');
+export const continueUse = () => t('Download now; a video or image being made may take longer', '现在就下载；正在进行的生成可能会变慢');
 export function pausedText(state) {
     return state.waitsFor === 'busy_video' ? t('Paused while a video generates; resumes after it, or continue now', '视频生成中，下载已暂停，之后自动继续，也可以现在继续下载')
-        : state.waitsFor === 'busy_picture' ? t('Paused while a picture is made; resumes after it, or continue now', '正在出图，下载已暂停，出完自动继续，也可以现在继续下载')
+        : state.waitsFor === 'busy_picture' ? t('Paused while an image is made; resumes after it, or continue now', '正在出图，下载已暂停，出完自动继续，也可以现在继续下载')
         : state.waitsFor === 'busy_setup' ? t('Paused while FreeVideo installs, updates or cleans up; resumes after it', 'FreeVideo 正在安装、更新或清理，下载已暂停，结束后自动继续')
         : t('Paused while FreeVideo uses the graphics card for another task; resumes after it, or continue now', 'FreeVideo 正在用显卡做别的任务，下载已暂停，之后自动继续，也可以现在继续下载');
 }
 // Checking files already on disk: a percentage only when the engine reports one.
-export const verifyText = state => state.unknown ? t('Verifying', '正在校验') : t(`Verifying ${Math.floor(state.fraction * 100)}%`, `正在校验 ${Math.floor(state.fraction * 100)}%`);
+export const verifyText = state => state.unknown ? t('Verifying', '正在校验') : t('Verifying {percent}%', '正在校验 {percent}%', { percent: Math.floor(state.fraction * 100) });
 // The size to download, said once: files the video models already have are not fetched again.
 export function downloadText(state) {
     if (!state.total) return t('Download needed', '需下载');
-    if (state.resume) return t(`${gb(state.done)} of ${gb(state.total)} GB`, `已下载 ${gb(state.done)} / ${gb(state.total)} GB`);
-    return t(`Download needed · ${gb(state.total)} GB`, `需下载 · ${gb(state.total)} GB`);
+    if (state.resume) return t('{done} of {total} GB', '已下载 {done} / {total} GB', { done: gb(state.done), total: gb(state.total) });
+    return t('Download needed · {total} GB', '需下载 · {total} GB', { total: gb(state.total) });
 }
 export function statusLine(state) {
     switch (state.state) {
@@ -68,14 +69,14 @@ const ICON_OF = {ready: 'check', failed: 'warn', downloading: 'down', unavailabl
 const gbOf = state => state.total ? (state.total / 1e9).toFixed(1) : '';
 function useOf(model, state) {
     const shared = model.id !== 'moss-image-sft';
-    const size = state.total ? shared ? t(`about ${gbOf(state)} GB, files shared with video are not downloaded again`, `约 ${gbOf(state)} GB，和视频共用的文件不重复下载`)
-        : t(`about ${gbOf(state)} GB`, `约 ${gbOf(state)} GB`) : '';
+    const size = state.total ? shared ? t('about {size} GB, files shared with video are not downloaded again', '约 {size} GB，和视频共用的文件不重复下载', { size: gbOf(state) })
+        : t('about {size} GB', '约 {size} GB', { size: gbOf(state) }) : '';
     return {
-        ready: model.id === IMAGE_MODELS[0].id ? t('Large, detailed pictures, up to 16 references', '大尺寸、细节多，最多 16 张参考图')
-            : model.id === 'moss-image-sft' ? t('Pictures from a text prompt', '根据文字提示出图') : t('Fast pictures, up to 4 references', '出图快，最多 4 张参考图'),
+        ready: model.id === IMAGE_MODELS[0].id ? t('Large, detailed images, up to 16 references', '大尺寸、细节多，最多 16 张参考图')
+            : model.id === 'moss-image-sft' ? t('Images from a text prompt', '根据文字提示出图') : t('Fast images, up to 4 references', '出图快，最多 4 张参考图'),
         missing: state.row?.blocked_by ? t('Not installed: another model is downloading; this one installs after it, or when you press Generate', '未安装：另一个模型正在下载，完成后才会安装这个，也可点生成')
-            : t(`Not installed: Generate installs it first, ${size}`, `未安装：点生成会先安装，${size}`),
-        downloading: state.paused ? pausedText(state) : state.verifying ? (state.unknown ? t('Verifying the files; usable when done', '正在校验文件，完成后可以使用') : t(`Verifying the files ${Math.floor(state.fraction * 100)}%; usable when done`, `正在校验文件 ${Math.floor(state.fraction * 100)}%，完成后即可使用`)) : t(`Downloading ${Math.floor((state.fraction || 0) * 100)}%; usable when done`, `正在下载 ${Math.floor((state.fraction || 0) * 100)}%，完成后即可使用`),
+            : t('Not installed: Generate installs it first, {size}', '未安装：点生成会先安装，{size}', { size }),
+        downloading: state.paused ? pausedText(state) : state.verifying ? (state.unknown ? t('Verifying the files; usable when done', '正在校验文件，完成后可以使用') : t('Verifying the files {percent}%; usable when done', '正在校验文件 {percent}%，完成后即可使用', { percent: Math.floor(state.fraction * 100) })) : t('Downloading {percent}%; usable when done', '正在下载 {percent}%，完成后即可使用', { percent: Math.floor((state.fraction || 0) * 100) }),
         failed: state.reason || t('The download stopped; press Retry', '下载中断了，点重试'),
         unavailable: model.id === 'moss-image-sft' ? t('MOSS-Image needs an NVIDIA graphics card, which this computer does not have. Choose another model', 'MOSS-Image 需要 NVIDIA 显卡，这台电脑没有。请选别的模型')
             : t('This model needs an NVIDIA graphics card, which this computer does not have. Choose another model', '这个模型需要 NVIDIA 显卡，这台电脑没有。请选别的模型'),
@@ -148,9 +149,9 @@ export function modelPicker({host, onPick, onInstall, onPause}) {
         status.replaceChildren(icon(state.unknown ? 'clock' : ICON_OF[state.state] || 'cloud'), el('span', '', statusLine(state)));
         // Closed, the row names the model only; it speaks when something needs doing (to download, downloading, failed).
         status.hidden = state.state === 'ready' || state.state === 'checking';
-        tip(trigger, t('Model', '模型'), t(`${model.name}: ${useOf(model, state)}. Click to choose another`, `${model.name}：${useOf(model, state)}。点开换别的模型`));
+        tip(trigger, t('Model', '模型'), t('{name}: {state}. Click to choose another', '{name}：{state}。点开换别的模型', { name: model.name, state: useOf(model, state) }));
         const act = actionOf(state); action.hidden = !act; action.replaceChildren(el('span', 'fv-iv-btn-label', act));
-        if (act) tip(action, state.paused ? t('Continue download', '继续下载') : state.state === 'downloading' ? t('Pause download', '暂停下载') : state.state === 'failed' ? t('Retry download', '重新下载') : t(`Install ${model.short}`, `安装 ${model.short}`),
+        if (act) tip(action, state.paused ? t('Continue download', '继续下载') : state.state === 'downloading' ? t('Pause download', '暂停下载') : state.state === 'failed' ? t('Retry download', '重新下载') : t('Install {short}', '安装 {short}', { short: model.short }),
             state.paused ? continueUse() : useOf(model, state));
         bar.hidden = state.state !== 'downloading'; bar.style.setProperty('--p', String(state.fraction || 0));
         if (!list.hidden) { paintList(); place(); }

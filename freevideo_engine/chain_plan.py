@@ -9,7 +9,7 @@ import json
 import math
 from pathlib import Path
 
-from .geometry import geometry
+from .geometry import SHORTEST_SECONDS, geometry
 
 FPS, UNIT, OVERLAP = 24, 17, 22
 SINGLE_SECONDS, BLOCK_SECONDS, SHORTEST_BLOCK = 30, 15, 5
@@ -64,9 +64,11 @@ def parts_limit(short, first_frame=False, max_parts=MAX_PARTS):
 
 
 class PlanError(ValueError):
-    def __init__(self, code, message):
+    """`details`: fields the page reads besides the code, such as the shortest length for `too_short`."""
+    def __init__(self, code, message, **details):
         super().__init__(message)
         self.code = code
+        self.details = details
 
 
 def _number(value, name, whole=False):
@@ -138,7 +140,7 @@ def plan(seconds, single=False, max_frames=None, single_limit_seconds=None, bloc
     except PlanError:
         raise
     except ValueError as error:
-        raise PlanError('too_short', str(error)) from None
+        raise PlanError('too_short', str(error), min_seconds=SHORTEST_SECONDS) from None
     if seconds > MAX_SECONDS:
         raise PlanError('too_long', 'A video is at most 2 hours long')
     # The longest whole-second block this device can start a video with, and continue one with.

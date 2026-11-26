@@ -173,6 +173,8 @@ export function createJobStore({now = () => Date.now(), storage = null} = {}) {
         localOf: id => local[id] || null,
         async refresh() { await Promise.all([...new Set(sources.values())].map(source => source.refresh?.().catch?.(() => {}))); },
         // For sources only.
+        // A job waiting for FreeVideo to come back (meta.reconnecting): its source stops waiting and ends it (#1121).
+        stopWaiting(id) { const row = rows.get(id), source = sourceOf(row); return Boolean(source?.stopWaiting?.(id)); },
         upsert, addSource(name, source) { sources.set(name, source); return () => { if (sources.get(name) === source) sources.delete(name); }; },
         now,
     };
@@ -189,34 +191,59 @@ export const IMAGE_BUSY = new Set(['busy', 'busy_video']);
 
 export function imageSource(store, {client, storage = null, poll = 500, now = store.now, sleep = ms => new Promise(done => setTimeout(done, ms)),
     progress = defaultImageProgress, objectURL = blob => URL.createObjectURL(blob), revokeURL = url => URL.revokeObjectURL(url),
-    outageLimit = 8, newId = () => 'img-' + now().toString(36) + '-' + Math.random().toString(36).slice(2, 8)} = {}) {
+    outageLimit = 2, reconnectFor = 120000, lastExit = async () => null, connection = null,
+    newId = () => 'img-' + now().toString(36) + '-' + Math.random().toString(36).slice(2, 8)} = {}) {
     // The resume list holds the worker's job key, the model and the view: no prompt (old entries lose theirs on load).
-    const keys = readJSON(storage, IMAGE_KEY), tracking = new Set();
+    const keys = readJSON(storage, IMAGE_KEY), tracking = new Set(), missed = new Map(); // id → the last failed asks, for Stop waiting
+    // The page's socket to ComfyUI closing (its 'reconnecting' event) wakes every poll at once: two failed asks in a row
+    // and the page says it is waiting, within seconds of FreeVideo going away instead of after the backoff (#1121).
+    const wakers = new Set();
+    const nap = ms => new Promise(done => { const wake = () => { wakers.delete(wake); done(); }; wakers.add(wake); void Promise.resolve(sleep(ms)).then(wake); });
+    connection?.addEventListener?.('reconnecting', () => { for (const wake of [...wakers]) wake(); });
     if (Object.values(keys).some(entry => entry && 'prompt' in entry)) { for (const entry of Object.values(keys)) if (entry) delete entry.prompt; writeJSON(storage, IMAGE_KEY, keys); }
     // A page may hand its own client for its jobs; jobs found after a reload use the default. Only a client that says
     // standIn: true (a stand-in engine) keeps its pictures out of the library.
     const clients = new Map(), clientOf = id => clients.get(id) || client;
     const save = () => writeJSON(storage, IMAGE_KEY, keys);
     const forget = id => { delete keys[id]; save(); };
+    // Why FreeVideo went away, as the launcher saw it end (engine_exit.js exitCause): asked once the page can reach it.
+    const causeOf = async () => { try { return await lastExit(); } catch { return null; } };
 
     async function track(id) {
         if (tracking.has(id)) return; tracking.add(id);
-        let serial = 0, outages = 0, preview = store.get(id)?.meta?.preview || '';
+        // misses: the kind of the last failed asks (connection_lost, engine_error, http_502...); lostSince: when the page
+        // began to wait for FreeVideo to come back (#1121: an engine_closed that said nothing of why).
+        let serial = 0, outages = 0, preview = store.get(id)?.meta?.preview || '', misses = [], lostSince = null;
         try {
             for (;;) {
                 const entry = keys[id], row = store.get(id);
                 if (!entry || !row || FINAL.has(row.status)) return;
-                await sleep(poll);
+                if (!outages) await nap(poll);   // during an outage the backoff below is the wait
                 let status;
                 try { status = await clientOf(id).status(entry.job, entry.model); outages = 0; }
                 catch (error) {
                     if (GONE.has(error?.code)) {
-                        store.upsert({id, status: 'interrupted', failure: {code: 'engine_restarted'}}); forget(id); return;
+                        // FreeVideo came back without this job: it was restarted. Why it stopped is the launcher's to say.
+                        const cause = await causeOf();
+                        store.upsert({id, status: 'interrupted', failure: {code: 'engine_restarted', ...(cause ? {cause} : {}),
+                            ...(misses.length ? {misses} : {})}, meta: {reconnecting: null}});
+                        forget(id); return;
                     }
-                    // The engine is unreachable: a few misses are a reset, a run of them is a closed engine.
-                    if (++outages >= outageLimit) { store.upsert({id, status: 'failed', failure: {code: 'engine_closed'}}); forget(id); return; }
-                    await sleep(Math.min(8000, poll * 2 ** outages)); continue;
+                    misses = [...misses, missWord(error?.step && error.step !== 'start' ? error.step
+                        : error?.code || (error instanceof TypeError ? 'connection_lost' : 'unknown'))].slice(-3);
+                    missed.set(id, misses);
+                    // A few misses are a reset. A run of them: the page says it is waiting for FreeVideo to come back, and
+                    // waits a while longer (the user can stop waiting) before it calls the job lost.
+                    if (++outages >= outageLimit && lostSince === null) { lostSince = now(); store.upsert({id, meta: {reconnecting: {since: lostSince}}}); }
+                    if (lostSince !== null && now() - lostSince >= reconnectFor) {
+                        store.upsert({id, status: 'failed', failure: {code: 'engine_closed', cause: 'unreachable', misses}, meta: {reconnecting: null}});
+                        forget(id); return;
+                    }
+                    // Asked again soon enough that FreeVideo coming back is seen within a few seconds.
+                    await nap(Math.min(4000, poll * 2 ** Math.min(outages, 3))); continue;
                 }
+                if (lostSince !== null) { lostSince = null; store.upsert({id, meta: {reconnecting: null}}); }
+                misses = []; missed.delete(id);
                 const state = status.state === 'error' ? (status.error === 'cancelled' ? 'cancelled' : 'failed') : IMAGE_STATES[status.state] || 'running';
                 const percent = state === 'done' ? 1 : progress(status.stage, status.fraction, entry.withImages, status.overall);
                 const patch = {id, status: status.phase === 'cancelling' ? 'cancelling' : state, phase: status.stage || (state === 'queued' ? 'waiting' : ''),
@@ -272,6 +299,14 @@ export function imageSource(store, {client, storage = null, poll = 500, now = st
             void track(id);
             return {id};
         },
+        // The user stops waiting for FreeVideo to come back: the job ends now as lost, with what the page saw.
+        stopWaiting(id) {
+            const row = store.get(id);
+            if (!row?.meta?.reconnecting || FINAL.has(row.status)) return false;
+            const misses = missed.get(id) || []; missed.delete(id);
+            store.upsert({id, status: 'failed', failure: {code: 'engine_closed', cause: 'stopped_waiting', ...(misses.length ? {misses} : {})}, meta: {reconnecting: null}});
+            forget(id); return true;
+        },
         async cancel(row) {
             const entry = keys[row.id];
             if (!entry) return; // Not sent yet: submit sends the cancel once it has the key.
@@ -291,6 +326,9 @@ export function imageSource(store, {client, storage = null, poll = 500, now = st
     store.addSource('image', source);
     return source;
 }
+// What a failed ask was, for the problem report (#1121): a fixed word (connection_lost, engine_error, http_502...),
+// never the server's text, a prompt or a file name; anything else is 'other'.
+export const missWord = value => typeof value === 'string' && /^[a-z][a-z0-9_]{0,31}$/.test(value) ? value : 'other';
 const pick = value => value && typeof value === 'object' ? Object.fromEntries(['report_id', 'stage', 'step', 'fitted', 'memory', 'other_usage', 'message_zh']
     .filter(key => value[key] !== undefined).map(key => [key, value[key]])) : {};
 

@@ -670,7 +670,7 @@ async function openImageEditorNow({source = null, name = source || '', target = 
         hint.textContent = text; hint.hidden = !text;
     }
     const ratioLabel = id => ({
-        video: target ? t(`Video ${target.width} × ${target.height}`, `视频 ${target.width} × ${target.height}`) : t('Video', '视频'),
+        video: target ? t('Video {width} × {height}', '视频 {width} × {height}', { width: target.width, height: target.height }) : t('Video', '视频'),
         original: t('Original', '原图比例'), free: t('Free', '自由'),
     })[id] || id;
     function renderOptions() {
@@ -731,7 +731,7 @@ async function openImageEditorNow({source = null, name = source || '', target = 
             if (pointInfo && !pointInfo.ready) {
                 const running = install?.state === 'running';
                 const share = install?.total > 0 ? Math.min(100, Math.round(100 * (install.done || 0) / install.total)) : 0;
-                const b = running ? button(t(`Downloading ${share}%`, `正在下载 ${share}%`), null, () => {}, 'fv-ie-button fv-ie-point-download')
+                const b = running ? button(t('Downloading {share}%', '正在下载 {share}%', { share }), null, () => {}, 'fv-ie-button fv-ie-point-download')
                     : button(t('Download click-select model', '下载点选模型'), install?.state === 'failed' ? t(install.message_en, install.message_zh) : null,
                         async () => { try { pointInfo = {...pointInfo, install: (await genClient.segmentInstall()).install}; } catch { /* the next refresh shows it */ } void refreshPoint(); renderOptions(); }, 'fv-ie-button fv-ie-point-download');
                 if (running) b.disabled = true;
@@ -757,11 +757,11 @@ async function openImageEditorNow({source = null, name = source || '', target = 
             const o = opts.heal;
             add(sizeSlider(o), segmented([['all', t('Whole stroke', '整个涂抹区域')], ['text', t('Captions only', '只去字幕')]], o.text ? 'text' : 'all',
                 v => { o.text = v === 'text'; renderOptions(); }, t('Heal', '修复范围')).group,
-                note(o.text ? t('Paint over a caption. Only the white letters and outline are removed; the picture between them stays.', '涂过字幕，只去掉白字和描边，字间的画面保留。')
+                note(o.text ? t('Paint over a caption. Only the white letters and outline are removed; the image between them stays.', '涂过字幕，只去掉白字和描边，字间的画面保留。')
                     : t('Paint over the whole mark in one stroke; it is filled with texture from around it.', '一笔涂满要去掉的部分，松开后用周围的纹理补上。')));
         } else if (tool === 'clone') {
             const o = opts.clone;
-            const pick = button(o.picking ? t('Click the source…', '点击取样位置…') : t('Set source', '设置取样点'), t('Or Alt-click the picture', '也可以按住 Alt 点击画面'),
+            const pick = button(o.picking ? t('Click the source…', '点击取样位置…') : t('Set source', '设置取样点'), t('Or Alt-click the image', '也可以按住 Alt 点击画面'),
                 () => { o.picking = !o.picking; renderOptions(); }, 'fv-ie-button' + (o.picking ? ' fv-ie-active' : ''));
             add(sizeSlider(o), pct(o, 'hardness', t('Hardness', '硬度')), pct(o, 'opacity', t('Opacity', '不透明度')), pick);
         } else if (tool === 'blur') {
@@ -770,9 +770,9 @@ async function openImageEditorNow({source = null, name = source || '', target = 
             const o = opts.gradient;
             add(segmented([['linear', t('Linear', '线性')], ['radial', t('Radial', '径向')]], o.shape, v => { o.shape = v; }, t('Type', '类型')).group,
                 segmented([['bg', t('To background color', '到背景色')], ['clear', t('To transparent', '到透明')]], o.end, v => { o.end = v; }, t('End', '终点')).group,
-                note(t('Drag across the picture.', '在画面上拖动。')));
+                note(t('Drag across the image.', '在画面上拖动。')));
         } else if (tool === 'text') {
-            add(note(t('Click the picture to add text; click text to edit it.', '点击画面添加文字；点击已有文字进行编辑。')));
+            add(note(t('Click the image to add text; click text to edit it.', '点击画面添加文字；点击已有文字进行编辑。')));
         } else if (tool === 'shape') {
             const o = opts.shape;
             add(segmented([['rect', t('Rectangle', '矩形')], ['ellipse', t('Ellipse', '椭圆')], ['line', t('Line', '直线')]], o.type, v => { o.type = v; }, t('Shape', '形状')).group,
@@ -1138,7 +1138,7 @@ async function openImageEditorNow({source = null, name = source || '', target = 
     function commitInserted(next) { maskTarget = false; commit(next); }
     function addPaintLayer() {
         const n = doc.layers.filter(l => l.kind === 'paint').length + 1;
-        commitInserted(commands.addPaintLayer(doc, t(`Paint ${n}`, `绘画 ${n}`)));
+        commitInserted(commands.addPaintLayer(doc, t('Paint {n}', '绘画 {n}', { n })));
     }
     async function addImageLayer(file, label, {keepTool = false} = {}) {
         try {
@@ -1163,7 +1163,7 @@ async function openImageEditorNow({source = null, name = source || '', target = 
     function duplicateLayer() {
         const layer = active();
         if (!layer) return;
-        commitInserted(commands.duplicateLayer(doc, layer.id, t(`${layer.name} copy`, `${layer.name} 副本`)));
+        commitInserted(commands.duplicateLayer(doc, layer.id, t('{name} copy', '{name} 副本', { name: layer.name })));
     }
     function deleteLayer() {
         const layer = active(); if (!layer || layer.locked || doc.layers.length === 1) return;
@@ -1227,7 +1227,7 @@ async function openImageEditorNow({source = null, name = source || '', target = 
         }
         const color = el('input'); color.type = 'color'; color.value = e.color || bg; color.id = 'fv-ie-pad-color';
         const buttons = el('div', null, 'fv-ie-row fv-ie-end');
-        const advice = t(`The picture is ${ow} × ${oh} px. Add space on each side:`, `画面 ${ow} × ${oh} 像素，在四周补充空间：`);
+        const advice = t('The image is {ow} × {oh} px. Add space on each side:', '画面 {ow} × {oh} 像素，在四周补充空间：', { ow, oh });
         const reason = t('Enter whole numbers from 1 to 20000 for width and height.', '宽和高请填 1 到 20000 的整数。');
         const note = el('p', advice, 'fv-ie-opt-note');
         const values = () => Object.fromEntries(Object.entries(inputs).map(([key, input]) => [key, input.value.trim() ? Number(input.value) : NaN]));
@@ -1273,7 +1273,7 @@ async function openImageEditorNow({source = null, name = source || '', target = 
         // [id, label, size or null when it would not make the picture smaller, why not]
         const presets = [
             ...(target ? [['video', t('Video size', '视频尺寸'), video < 1 ? sized(video) : null,
-                t('The picture is no larger than the video', '图片已经不比视频大')]] : []),
+                t('The image is no larger than the video', '图片已经不比视频大')]] : []),
             ['half', '50%', sized(.5), ''],
             ['long', t('Long side 2048', '长边 2048'), long > 2048 ? sized(2048 / long) : null,
                 t('The long side is already 2048 px or less', '长边已经不超过 2048 像素')],
@@ -1302,7 +1302,7 @@ async function openImageEditorNow({source = null, name = source || '', target = 
         const dims = el('div', null, 'fv-ie-dims');
         dims.append(field(t('Width (px)', '宽（px）'), width), chain, field(t('Height (px)', '高（px）'), height));
         const notes = el('div', null, 'fv-ie-notes'), result = el('p', '', 'fv-ie-opt-note');
-        const stretch = el('p', t('With the proportions changed, pictures and shapes stretch; text keeps its shape.', '比例改变后，图片和形状会拉伸，文字保持原样。'), 'fv-ie-opt-note');
+        const stretch = el('p', t('With the proportions changed, images and shapes stretch; text keeps its shape.', '比例改变后，图片和形状会拉伸，文字保持原样。'), 'fv-ie-opt-note');
         const vector = doc.layers.some(l => l.kind === 'text' || l.kind === 'shape');
         const texts = doc.layers.some(l => l.kind === 'text');
         const scales = el('p', t('Text and shape layers scale too and stay editable.', '文字和形状图层会一起缩放，仍然可以编辑。'), 'fv-ie-opt-note');
@@ -1317,9 +1317,10 @@ async function openImageEditorNow({source = null, name = source || '', target = 
             // Proportions unchanged when the other side is the rounded one (either way round).
             same = Math.abs(h - Math.round(w * ch / cw)) <= 1 || Math.abs(w - Math.round(h * cw / ch)) <= 1;
             const k = Math.max(kx, ky), pct = v => `${Math.round(v * 100)}%`;
-            // How big against the original; verb is the Chinese 缩到 or 放大到.
-            const share = verb => same ? t(`${pct(k)} of the original`, `${verb}原来的 ${pct(k)}`)
-                : t(`Width ${pct(kx)} and height ${pct(ky)} of the original`, `宽为原来的 ${pct(kx)}、高为原来的 ${pct(ky)}`);
+            // How big against the original: enlarged or reduced (Chinese says 放大到 or 缩到).
+            const share = enlarged => same ? (enlarged ? t('{size} of the original', '放大到原来的 {size}', { size: pct(k) })
+                : t('{size} of the original', '缩到原来的 {size}', { size: pct(k) }))
+                : t('Width {width} and height {height} of the original', '宽为原来的 {width}、高为原来的 {height}', { width: pct(kx), height: pct(ky) });
             let text, warn = false;
             const {allowed, reason} = commands.imageSizeCheck(doc, w, h, target);
             if (reason === 'dimensions') { text = t('Enter whole numbers from 1 to 20000.', '请输入 1 到 20000 的整数。'); warn = true; }
@@ -1327,12 +1328,12 @@ async function openImageEditorNow({source = null, name = source || '', target = 
             else if (reason === 'pixels') { text = t('Up to 64 megapixels; reduce the width or height.', '最多 6400 万像素，请减小宽或高。'); warn = true; }
             else if (reason === 'unchanged') { text = t('The same size as now.', '和现在一样大。'); }
             else if (kx > 1 + 1e-9 || ky > 1 + 1e-9) {
-                text = t(`${share()}; enlarging makes the picture softer.`, `${share('放大到')}，画面会变模糊。`); warn = true;
+                text = t('{size}; enlarging makes the image softer.', '{size}，画面会变模糊。', { size: share(true) }); warn = true;
             } else if (target && presets[0][2] && w === presets[0][2][0] && h === presets[0][2][1]) {
-                text = t(`${share()}; fills a ${vsize} video.`, `${share('缩到')}，刚好铺满 ${vsize} 的视频。`);
+                text = t('{size}; fills a {vsize} video.', '{size}，刚好铺满 {vsize} 的视频。', { size: share(false), vsize });
             } else if (target && Math.max(target.width / w, target.height / h) > 1 + 1e-9) {
-                text = t(`Smaller than the ${vsize} video; the result will look softer.`, `比 ${vsize} 的视频小，生成的画面会变模糊。`); warn = true;
-            } else text = t(`${share()}.`, `${share('缩到')}。`);
+                text = t('Smaller than the {vsize} video; the result will look softer.', '比 {vsize} 的视频小，生成的画面会变模糊。', { vsize }); warn = true;
+            } else text = t('{size}.', '{size}。', { size: share(false) });
             result.textContent = text; result.classList.toggle('fv-ie-note-warn', warn);
             // With the proportions changed, the stretch note says what happens to each kind of layer.
             stretch.hidden = same || !texts || !valid(w) || !valid(h);
@@ -1349,7 +1350,7 @@ async function openImageEditorNow({source = null, name = source || '', target = 
         }
         sizeKeys(box, apply);
         box.append(el('h3', t('Image size', '图像大小')),
-            el('p', t(`Now ${now[0]} × ${now[1]} px`, `现在 ${now[0]} × ${now[1]} 像素`), 'fv-ie-opt-note'),
+            el('p', t('Now {width} × {height} px', '现在 {width} × {height} 像素', { width: now[0], height: now[1] }), 'fv-ie-opt-note'),
             choice.group, dims, notes, buttons);
         update();
         stage.append(box); width.focus(); width.select();
@@ -1395,7 +1396,7 @@ async function openImageEditorNow({source = null, name = source || '', target = 
     }
     function copyToLayer() {
         const layer = pixelLayer(); if (!layer) return;
-        const next = commands.copyToLayer(doc, layer.id, selection, t(`${layer.name} part`, `${layer.name} 局部`));
+        const next = commands.copyToLayer(doc, layer.id, selection, t('{name} part', '{name} 局部', { name: layer.name }));
         deselectQuiet(); commitInserted(next); select('move');
     }
     function maskFromSelection() {
@@ -1512,7 +1513,7 @@ async function openImageEditorNow({source = null, name = source || '', target = 
             if (px[3] < 16) { message(t('Nothing to pick here: this part is transparent.', '这里是透明的，没有可吸取的颜色。')); return null; }
             const hex = '#' + [px[0], px[1], px[2]].map(v => v.toString(16).padStart(2, '0')).join('');
             if (event.altKey) { bg = hex; bgInput.value = hex; } else { fg = hex; fgInput.value = hex; }
-            message(t(`Picked ${hex}.`, `已吸取 ${hex}。`));
+            message(t('Picked {hex}.', '已吸取 {hex}。', { hex }));
             return null;
         }
         if (use === 'text') {
@@ -1537,7 +1538,7 @@ async function openImageEditorNow({source = null, name = source || '', target = 
             if (reuse) { target = reuse; base = commands.setActive(doc, reuse.id); }
             else {
                 const n = doc.layers.filter(l => l.kind === 'paint').length + 1;
-                base = commands.addPaintLayer(doc, use === 'gradient' ? t('Gradient', '渐变') : t(`Paint ${n}`, `绘画 ${n}`));
+                base = commands.addPaintLayer(doc, use === 'gradient' ? t('Gradient', '渐变') : t('Paint {n}', '绘画 {n}', { n }));
                 target = base.layers.find(l => l.id === base.active);
             }
         } else if (!rasterKinds.has(layer.kind)) { message(t('Pick an image or paint layer to work on its pixels.', '请选择图片图层或绘画图层再处理像素。')); return null; }
@@ -1804,7 +1805,7 @@ async function openImageEditorNow({source = null, name = source || '', target = 
             return null;
         }
         message(t('Copied the original. Changes go on the copy.', '已复制原图，改动在副本上。'));
-        return commands.duplicateLayer(doc, layer.id, t(`${layer.name} copy`, `${layer.name} 副本`));
+        return commands.duplicateLayer(doc, layer.id, t('{name} copy', '{name} 副本', { name: layer.name }));
     }
     function cover(layer) {
         const r = rect(), centre = toD([r.x + r.w / 2, r.y + r.h / 2]);
@@ -1925,8 +1926,9 @@ async function openImageEditorNow({source = null, name = source || '', target = 
         status.textContent = t(en, zh); status.append(time);
         const show = () => {
             const s = Math.floor((performance.now() - since) / 1000), m = Math.floor(s / 60), r = s % 60;
-            time.textContent = s < 1 ? '…' : s < 60 ? t(` · ${s} s`, ` · ${s} 秒`)
-                : t(` · ${m} min${r ? ` ${r} s` : ''}`, ` · ${m} 分${r ? ` ${r} 秒` : ''}`);
+            time.textContent = s < 1 ? '…' : s < 60 ? t(' · {s} s', ' · {s} 秒', { s })
+                : r ? t(' · {minutes} min {seconds} s', ' · {minutes} 分 {seconds} 秒', { minutes: m, seconds: r })
+                : t(' · {minutes} min', ' · {minutes} 分', { minutes: m });
         };
         show();
         const timer = workingTimer = setInterval(show, 1000);

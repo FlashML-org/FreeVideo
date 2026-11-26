@@ -11,8 +11,8 @@ export function words(t = t0, mac = MAC) {
     const mod = mac ? '⌘' : 'Ctrl', alt = mac ? '⌥' : 'Alt';
     return {
         status: [t('Run status', '运行状态'), t('See running tasks and notices', '看进行中的任务和通知')],
-        search: [t('Search and commands', '搜索与命令'), t('Search works and run any action', '搜索作品、提示词并执行操作'), `${mod} K`],
-        works: [t('Creations', '作品库'), t('Open your works to sort and manage them', '打开作品库，筛选和管理')],
+        search: [t('Search and commands', '搜索与命令'), t('Search creations and run any action', '搜索作品、提示词并执行操作'), `${mod} K`],
+        works: [t('Creations', '作品库'), t('Open your creations to sort and manage them', '打开作品库，筛选和管理')],
         phone: [t('Phone', '手机'), t('Open on a phone on this network', '在同一网络的手机上打开')],
         version: [t('Version', '版本'), t('See updates and what is new', '查看更新和新功能')],
         tutorial: [t('Tutorials', '教程'), t('Learn each feature step by step', '一步步学会每个功能')],
@@ -22,8 +22,8 @@ export function words(t = t0, mac = MAC) {
         logo: [t('FreeVideo', 'FreeVideo'), t("Back to this view's start", '回到当前视图的首屏')],
         picker: [t('Switch view', '切换视图'), t('Choose one of the five views', '在五个视图之间切换')],
         views: {
-            studio: [t('Studio', '创作面板'), t('Make a video from one sentence', '写一句话，生成一段视频'), `${alt} 1`],
-            image: [t('Image', '图像视图'), t('Make and edit pictures', '生成和修改图片'), `${alt} 2`],
+            studio: [t('Create', '创作面板'), t('Make a video from one sentence', '写一句话，生成一段视频'), `${alt} 1`],
+            image: [t('Image', '图像视图'), t('Make and edit images', '生成和修改图片'), `${alt} 2`],
             nodes: [t('Nodes', '节点视图'), t('Combine generation steps freely with nodes', '用节点自由组合生成步骤'), `${alt} 3`],
             editor: [t('Edit', '剪辑视图'), t('Cut clips, add sound and captions', '剪片段，配声音和字幕'), `${alt} 4`],
             autopilot: [t('Autopilot', 'AI 全自动'), t('Describe it; the assistant films it', '说想法，助手分镜并拍完'), `${alt} 5`],
@@ -68,7 +68,7 @@ export function capsuleWords(t, state) {
 export function machineLine(state, t = t0) {
     if (!state) return '';
     const gb = bytes => (bytes / 2 ** 30).toFixed(1), parts = [];
-    if (state.memory_total) parts.push(t(`Video memory ${gb(state.memory_used)} / ${gb(state.memory_total)} GB`, `显存 ${gb(state.memory_used)} / ${gb(state.memory_total)} GB`));
+    if (state.memory_total) parts.push(t('Video memory {used} / {total} GB', '显存 {used} / {total} GB', { used: gb(state.memory_used), total: gb(state.memory_total) }));
     if (state.temperature != null) parts.push(`${state.temperature} °C`);
     return parts.join(' · ');
 }

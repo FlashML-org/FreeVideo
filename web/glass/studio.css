@@ -108,6 +108,9 @@
 .fv-studio.fv-create .fv-actions[data-layout=stage] .fv-action-primary{padding:0 var(--fv-sp-16);background:var(--fv-accent-fill);color:#fff;font-weight:600;box-shadow:inset 0 1px 0 rgb(255 255 255 / .2)}
 .fv-studio.fv-create .fv-actions[data-layout=stage] .fv-action-primary:hover{background:#1078df;color:#fff}
 .fv-studio.fv-create .fv-actions[data-layout=stage] .fv-action-icon{width:var(--fv-ctl);padding:0}
+/* the favourite key under the picture: lit and filled once the video is a favourite */
+.fv-studio.fv-create .fv-actions[data-layout=stage] .fv-action-favorite[aria-pressed=true]{color:var(--fv-accent-ink)}
+.fv-studio.fv-create .fv-actions[data-layout=stage] .fv-action-favorite[aria-pressed=true] svg{fill:currentColor}
 .fv-studio.fv-create .fv-actions[data-layout=stage] .fv-action-icon:not([data-state])>span:last-child:not(.fv-icon){position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .fv-studio.fv-create .fv-actions[data-layout=stage] .fv-action-icon[data-state]{width:auto;padding:0 var(--fv-sp-12)}
 .fv-studio.fv-create .fv-actions[data-layout=stage] .fv-action-more[open]>summary{background:var(--fv-ctl-hover);color:var(--fv-fg)}
@@ -173,6 +176,9 @@
   overflow:hidden;font-size:var(--fv-fs-1);line-height:20px;color:var(--fv-fg3);pointer-events:none}
 .fvs-console-status>*{pointer-events:auto;min-width:0;margin:0!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .fvs-console-status>[hidden]{display:none!important}
+/* A tray or a small window over the line: its glass would let the words show through faintly, so the line goes clear
+   under it (studio.js coverBand); it stays in the page and is still read out. */
+.fv-studio.fv-create .fv-controls[data-status-covered=true] .fvs-console-status{opacity:0}
 /* The run's status takes no room in the line while it says nothing, so a note beside it (a rewrite's failure and its
    report key) reads whole. */
 .fvs-console-status>.fv-status:empty{display:none!important}
@@ -841,6 +847,22 @@ html body .fv-studio.fv-create .fvs-console :is(.fvs-console-prompt,.fv-section,
 /* LoRA tray: an empty list is just a left-aligned Add; no standing note; the tray is as tall as what it holds. */
 .fv-studio.fv-create .fvs-tray .fv-lora-add{justify-content:flex-start}
 .fv-studio.fv-create .fvs-tray :is(.fv-lora-note,.fv-lora-list):empty{display:none}
+/* A row short of room folds its chips (web/studio_console.js fitRow; Iris 11-24): Media and LoRA keep their icon and
+   count, styled and placed as when open (no badge); without a count they are square (as wide as they are tall, like
+   @). Then Enhance keeps its star, square, its on state unchanged. The words stay for screen readers. */
+.fv-studio.fv-create .fvs-chips[data-fold] :is(.fvs-chip[data-chip=media],.fvs-chip[data-chip=lora]) .fvs-chip-label,
+.fv-studio.fv-create .fvs-chips:is([data-fold="2"],[data-fold="3"]) .fv-enhance-chip>span{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.fv-studio.fv-create .fvs-chips[data-fold] :is(.fvs-chip[data-chip=media],.fvs-chip[data-chip=lora]){padding:0 10px}
+.fv-studio.fv-create .fvs-chips[data-fold] :is(.fvs-chip[data-chip=media],.fvs-chip[data-chip=lora])[data-empty],
+.fv-studio.fv-create .fvs-chips:is([data-fold="2"],[data-fold="3"]) .fv-enhance-chip{width:auto;min-width:0;aspect-ratio:1;padding:0;justify-content:center}
+/* Third step (Lane 11-24): the phone's compact keys below (520 px): the duration shows its number (its name and hover
+   card keep the unit), the size and quality keys drop their drawings. */
+.fv-studio.fv-create .fvs-console .fvs-chips[data-fold="3"]>.fvs-stepper{padding:0 var(--fv-sp-2)}
+.fv-studio.fv-create .fvs-console .fvs-chips[data-fold="3"] .fvs-stepper .fvs-step{width:32px;min-width:32px}
+.fv-studio.fv-create .fvs-console .fvs-chips[data-fold="3"] .fvs-stepper .fvs-step-value{min-width:28px;padding:0 var(--fv-sp-4)}
+.fv-studio.fv-create .fvs-console .fvs-chips[data-fold="3"] .fvs-stepper .fvs-step-unit{display:none}
+.fv-studio.fv-create .fvs-console .fvs-chips[data-fold="3"]>.fvp-chip{padding:0 var(--fv-sp-8);gap:var(--fv-sp-4)}
+.fv-studio.fv-create .fvs-console .fvs-chips[data-fold="3"]>.fvp-chip>.fvp-chip-glyph{display:none}
 /* Narrow windows: the chips wrap inside the console (nothing scrolls out of sight); LoRA and Advanced sit together at
    the right end of the last line. */
 @media(max-width:760px){

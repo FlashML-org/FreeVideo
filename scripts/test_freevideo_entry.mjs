@@ -134,7 +134,12 @@ test('main browser entry registers both views and preserves node hooks', async t
         source = source.replace("from './fv_player.js'", `from '${new URL('../web/fv_player.js', import.meta.url).href}'`);
         source = source.replace("from './fv_select.js'", `from '${new URL('../web/fv_select.js', import.meta.url).href}'`);
         source = source.replace("from './tip_words.js'", `from '${new URL('../web/tip_words.js', import.meta.url).href}'`);
-        source = source.replace("from './i18n.js'", `from '${new URL('../web/i18n.js', import.meta.url).href}'`);
+        // i18n.js decides the page's language once, when it loads (as a page does on each load). Each round below sets
+        // navigator.language and loads freevideo.js again, so it gets an i18n.js of its own, read under that language;
+        // a single shared one would keep the system language Node started with (LANG=zh_CN gave the zh rules in en rounds).
+        const i18nHref = new URL('../web/i18n.js', import.meta.url).href;
+        source = source.replace("from './i18n.js'", `from '${i18nHref}'`);
+        const withLanguage = text => text.replaceAll(`from '${i18nHref}'`, `from '${i18nHref}?navigator=${encodeURIComponent(globalThis.navigator.language)}'`);
         source = source.replace("from './cut_tip.js'", `from '${new URL('../web/cut_tip.js', import.meta.url).href}'`);
         source = source.replace("from './middle_frames.js'", `from '${new URL('../web/middle_frames.js', import.meta.url).href}'`);
         source = source.replace("from './workflow_drafts.js'", `from '${new URL('../web/workflow_drafts.js', import.meta.url).href}'`);
@@ -182,7 +187,7 @@ test('main browser entry registers both views and preserves node hooks', async t
             .replace("import { installNativeErrorGuard } from './native_errors.js';", 'const installNativeErrorGuard = () => {};')
             .replace("import { installTranslateGuard } from './translate_guard.js';", 'const installTranslateGuard = () => {};')
             .replace("import { AUDIO_USE, usesOriginal, checkOriginal, checkedLength, failureText, multipleText, createUseSwitch, originalBlocked, stuckText, liftBlock } from './audio_original.js';", 'const {AUDIO_USE,usesOriginal,checkOriginal,checkedLength,failureText,multipleText,createUseSwitch,originalBlocked,stuckText,liftBlock} = globalThis.__freevideoEntryTest;');
-        await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
+        await import('data:text/javascript;base64,' + Buffer.from(withLanguage(source)).toString('base64'));
         const extension = extensions.find(row => row.name === 'FreeVideo.UnifiedMedia');
         assert.ok(extension, 'the main extension must register');
         await extension.setup();
@@ -253,7 +258,7 @@ test('main browser entry registers both views and preserves node hooks', async t
             await t.test(`${language} node step tooltips include the three-step exception for valid plans`, async () => {
                 navigator.language = language;
                 try {
-                    await import('data:text/javascript;base64,' + Buffer.from(source + `\n// tooltip language: ${language}`).toString('base64'));
+                    await import('data:text/javascript;base64,' + Buffer.from(withLanguage(source) + `\n// tooltip language: ${language}`).toString('base64'));
                     const localized = extensions.at(-1);
                     class LocalizedGenerateNode extends GenerateNode {}
                     await localized.beforeRegisterNodeDef(LocalizedGenerateNode, {name: 'FreeVideoGenerate'});
@@ -271,7 +276,7 @@ test('main browser entry registers both views and preserves node hooks', async t
             await t.test(`${language} advanced node labels preserve keys, values and untranslated copy`, async () => {
                 navigator.language = language;
                 try {
-                    await import('data:text/javascript;base64,' + Buffer.from(source + `\n// label language: ${language}`).toString('base64'));
+                    await import('data:text/javascript;base64,' + Buffer.from(withLanguage(source) + `\n// label language: ${language}`).toString('base64'));
                     const localized = extensions.at(-1);
                     class LocalizedGenerateNode extends GenerateNode {}
                     await localized.beforeRegisterNodeDef(LocalizedGenerateNode, {name: 'FreeVideoGenerate'});
@@ -281,10 +286,10 @@ test('main browser entry registers both views and preserves node hooks', async t
                         ['seconds', 'Duration (s)', '时长（秒）', 10],
                         ['seed', 'seed', '种子', 2026090903],
                         ['force_regenerate', 'Force regeneration', '重新生成', false, '跳过已保存结果的缓存。'],
-                        ['preview', 'Two-pass: preview first pass', '先出预览', false,
+                        ['preview', 'Preview first', '先出预览', false,
                             '先出低分辨率预览，满意后在结果里点“继续二采”，成片与直接生成一致。'],
                         ['refine_from', 'Second pass of preview', '继续二采', 'preview.mp4', '从这个预览继续生成全分辨率视频。'],
-                        ['continue_from', 'Continue from video', '接着生成', 'previous.mp4'],
+                        ['continue_from', 'Extend from video', '接着生成', 'previous.mp4'],
                         ['frames', 'Total frames', '帧数', 141],
                         ['first_frame_reference', 'First-frame reference', '首帧参考', true, '减小漂移'],
                         ['step_cache', 'Step cache', '步间缓存', 'none',
@@ -293,7 +298,7 @@ test('main browser entry registers both views and preserves node hooks', async t
                         ['voice_reference', 'Voice reference', '声音参考', true,
                             '接着生成对白时，沿用原视频开头的声音，让前后声音一致。'],
                         ['hide_tail', 'Hide dialogue tail', '隐藏对白尾段', true, '多生成 17 帧后丢弃，让对白在前后两段之间连贯。'],
-                        ['allow_empty_prompt', 'Allow empty prompt', '允许空描述', false, '描述为空时直接生成，不再提示。'],
+                        ['allow_empty_prompt', 'Allow empty prompt', '允许空提示词', false, '提示词为空时直接生成，不再提示。'],
                     ];
                     const node = new LocalizedGenerateNode();
                     node.widgets = rows.map(([name, label, , value]) => ({name, label, value, tooltip: `original ${name}`}));
@@ -617,7 +622,7 @@ test('main browser entry registers both views and preserves node hooks', async t
                 const calls = [], changes = [];
                 const callback = function (...args) { calls.push({receiver: this, args}); return 'chosen'; };
                 try {
-                    await import('data:text/javascript;base64,' + Buffer.from(source + `\n// audio warning: ${language}`).toString('base64'));
+                    await import('data:text/javascript;base64,' + Buffer.from(withLanguage(source) + `\n// audio warning: ${language}`).toString('base64'));
                     class AudioMedia extends GenerateNode {
                         constructor() {
                             super(); this.id = 570; this.type = 'FreeVideoMedia';

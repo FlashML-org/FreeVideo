@@ -3,6 +3,7 @@ import {retryAgentPost} from './agent_session.js';
 import {issueButton} from './issue_button.js';
 import {tip} from './autopilot_tips.js';
 import {failureAdvice} from './error_panel.js';
+import {engineReason} from './other_usage.js';
 // What agents connected to this FreeVideo are doing. Their requests share the
 // studio's queue, so people can see them, follow progress and stop them.
 const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('./agent_activity.css', import.meta.url).href; document.head.append(css);
@@ -44,14 +45,12 @@ export function failureReason(job, t) {
 }
 function failureLine(error, t) {
     // The engine's reason, then its next step when it has one.
-    const next = (said, step, zh) => said && step ? said.replace(/[。.]$/, '') + (zh ? '。' : '. ') + step : said;
-    if (error.error_en && error.error_en !== 'Did not finish')
-        return t(next(error.error_en, error.next_en), next(error.error_zh || error.error_en, error.next_zh, !!error.error_zh));
+    if (error.error_en && error.error_en !== 'Did not finish') return engineReason(error, t);
     const message = String(error.message || '').trim();
     const advice = message && failureAdvice(message, t);
     if (advice && advice.kind !== 'unknown') return [advice.title, advice.action].filter(Boolean).join(t('. ', '，'));
     const line = message.split(/\r?\n/).find(text => text.trim() && !/^Traceback/.test(text))?.trim().slice(0, 160);
-    return line ? t(`Did not finish: ${line}`, `没有完成：${line}`) : t('Did not finish', '没有完成');
+    return line ? t('Did not finish: {line}', '没有完成：{line}', { line }) : t('Did not finish', '没有完成');
 }
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 function glyph(path) {
@@ -61,18 +60,18 @@ function glyph(path) {
     return svg;
 }
 // The same two wordings as the conversation's cards.
-const left = (s, t) => s >= 60 ? t(`About ${Math.ceil(s / 60)} min`, `约 ${Math.ceil(s / 60)} 分钟`) : t('Under 1 min', '不到 1 分钟');
+const left = (s, t) => s >= 60 ? t('About {minutes} min', '约 {minutes} 分钟', { minutes: Math.ceil(s / 60) }) : t('Under 1 min', '不到 1 分钟');
 // The engine's phases in the reader's language.
 function phaseText(p, t, kind) {
     const step = p.step;
     // The first step is still getting ready: the line does not count from zero. A row here does not know which
     // part of a long video it is on, and a later part loads nothing, so it does not say the model is loading.
-    if (p.phase === 'sampling' && step?.total) return step.done >= 1 ? t(`Step ${step.done} / ${step.total}`, `生成 ${step.done} / ${step.total}`) : t('Preparing', '准备中');
+    if (p.phase === 'sampling' && step?.total) return step.done >= 1 ? t('Step {done} / {total}', '生成 {done} / {total}', { done: step.done, total: step.total }) : t('Preparing', '准备中');
     // Dubbing counts lines, not steps.
-    if (p.phase === 'dubbing' && step?.total) return t(`Line ${step.done} / ${step.total}`, `第 ${step.done} / ${step.total} 句`);
+    if (p.phase === 'dubbing' && step?.total) return t('Line {done} / {total}', '第 {done} / {total} 句', { done: step.done, total: step.total });
     // The sound finish separates each source clip in turn.
     const clip = /^separating (\d+)\/(\d+)$/.exec(p.phase || '');
-    if (clip) return t(`Separating tracks · clip ${clip[1]} / ${clip[2]}`, `分离音轨 · 第 ${clip[1]} / ${clip[2]} 段`);
+    if (clip) return t('Separating tracks · clip {clip} / {clips}', '分离音轨 · 第 {clip} / {clips} 段', { clip: clip[1], clips: clip[2] });
     // A picture's stages share names with a video's, but it saves no sound.
     if (kind === 'image' || kind === 'image_edit') {
         const own = {text: t('Reading prompt', '读取提示词'), encode: t('Preparing images', '准备图片'),
@@ -97,13 +96,13 @@ function status(job, t) {
     if (job.status === 'running') return t(en, zh);
     if (job.status === 'cancelling') return t('Stopping', '正在停止');
     if (job.status === 'queued') return job.progress?.queue_position
-        ? t(`In queue · #${job.progress.queue_position}`, `排队 · 第 ${job.progress.queue_position} 位`) : t('Queued', '排队中');
+        ? t('In queue · #{queue_position}', '排队 · 第 {queue_position} 位', { queue_position: job.progress.queue_position }) : t('Queued', '排队中');
     if (job.status === 'waiting') return job.waiting_for ? t('Waiting for earlier tasks', '等待前面的任务') : t('Waiting for the GPU', '等待显卡');
     return {succeeded: t('Done', '已完成'), failed: t('Failed', '失败'), cancelled: t('Cancelled', '已取消')}[job.status] || job.status;
 }
 export function title(job, t) {
     const name = NAMES[job.kind] || NAMES.generate;
-    return job.label || (t(name[0], name[1]) + (job.take ? ' · ' + t(`Take ${job.take}`, `第 ${job.take} 条`) : ''));
+    return job.label || (t(...name) + (job.take ? ' · ' + t('Take {take}', '第 {take} 条', { take: job.take }) : ''));
 }
 function row(job, t, api, refresh, open, cancellationErrors) {
     const item = el('li', 'fv-agent-job'); item.dataset.status = job.status; item.dataset.job = job.id;
@@ -229,7 +228,7 @@ export function createAgentActivity(t, api, host, {interval = [1500, 8000], open
         const key = refill(panel, list, fresh);
         const unreadable = Number.isSafeInteger(data.unreadable) && data.unreadable > 0 ? data.unreadable : 0;
         const skipped = el('div', 'fv-agent-unreadable', unreadable > 0
-            ? t(`${unreadable} ${unreadable === 1 ? 'job' : 'jobs'} could not be read`, `另有 ${unreadable} 个任务无法读取`) : '');
+            ? (unreadable === 1 ? t('1 job could not be read', '另有 1 个任务无法读取') : t('{count} jobs could not be read', '另有 {count} 个任务无法读取', { count: unreadable })) : '');
         skipped.hidden = !unreadable;
         if (list.parentNode === panel) {
             panel.querySelector(':scope > header')?.replaceWith(header);
@@ -252,7 +251,7 @@ export function createAgentActivity(t, api, host, {interval = [1500, 8000], open
             state = t(KINDS[running.kind]?.[0] || 'Working', KINDS[running.kind]?.[1] || '进行中');
             if (Number.isFinite(fraction) && fraction > 0) percent = ` ${Math.round(fraction * 100)}%`;
             if (active > 1) more = ` · +${active - 1}`;
-        } else if (active) state = t(`${active} waiting`, `${active} 个等待中`);
+        } else if (active) state = t('{active} waiting', '{active} 个等待中', { active });
         else state = t('Done', '已完成');
         label.replaceChildren(t('Assistant', '助手'), el('span', 'fv-agent-state-text', ' · ' + state), percent, el('span', 'fv-agent-more', more));
         element.setAttribute('aria-label', label.textContent);

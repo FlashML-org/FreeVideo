@@ -11,7 +11,10 @@ html body .fv-topbar.fv-topbar.fv-topbar{
   height:calc(var(--fv-header-h) + env(safe-area-inset-top,0px))!important;min-height:0!important;max-height:none;
   margin:0;padding:env(safe-area-inset-top,0px) var(--fv-tb-pad) 0!important;flex:none;overflow:visible;
   border:0!important;background:transparent!important;box-shadow:none!important;
+  --fv-font:"Segoe UI","FreeVideo Quotes","Microsoft YaHei UI","Noto Sans CJK SC","Noto Sans SC",system-ui,sans-serif; /* theme.css's, also in the settings room */
   font:400 var(--fv-fs-2)/1.5 var(--fv-font);color:var(--fv-fg);-webkit-user-select:none;user-select:none}
+/* Traditional Chinese: the page's own list (theme.css gives the page and every view the same one). */
+html[data-fv-language="zh-Hant"] body .fv-topbar.fv-topbar.fv-topbar{--fv-font:inherit}
 /* The editor scrolls under its bar: keep it pinned and opaque. */
 html body .fv-editor .fv-header.fv-topbar.fv-topbar.fv-topbar{position:sticky;top:0;z-index:9;background:var(--fv-bg)!important}
 html body .fv-topbar.fv-topbar.fv-topbar:is([data-fv-fit="1"],[data-fv-fit="2"]){column-gap:var(--fv-sp-8)}
@@ -52,7 +55,7 @@ html body .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch::before{content:"";posi
   border-radius:var(--fv-rad-pill);background:var(--fv-ctl-hover);box-shadow:inset 0 1px 0 var(--fv-edge-hi);pointer-events:none;
   clip-path:inset(0 calc(100% - var(--fv-tb-r,0px)) 0 var(--fv-tb-l,0px) round var(--fv-rad-pill))}
 html body .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch[data-fv-tb-ink]::before{transition:clip-path var(--fv-dur-2) var(--fv-ease-out)}
-html body .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch>button{position:relative;z-index:1;display:grid;grid-template-columns:auto;align-items:center;justify-items:center;
+html body .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch>button{position:relative;z-index:1;display:grid;grid-template-columns:auto;align-items:center;justify-items:center;justify-content:center;
   box-sizing:border-box;height:var(--fv-ctl);min-height:var(--fv-ctl);margin:0;padding:0 var(--fv-sp-16);border:0;border-radius:var(--fv-rad-pill);
   background:transparent!important;box-shadow:none!important;color:var(--fv-fg2);font-size:var(--fv-fs-2);font-weight:500;line-height:var(--fv-ctl);white-space:nowrap;cursor:pointer;
   transition:color var(--fv-dur-1) var(--fv-ease-out),scale 100ms var(--fv-ease-out)}
@@ -62,6 +65,7 @@ html body .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch>button:active{scale:.97
 html body .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch>button[aria-pressed=true]{color:var(--fv-fg);font-weight:600}
 /* The bold label's width is reserved (view_navigation.css), so the current tab never changes the pill's width. */
 html body .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch>button>span,html body .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch>button::after{grid-area:1/1}
+html body .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch>button::after{font-weight:600}
 html body .fv-topbar.fv-topbar.fv-topbar:is([data-fv-fit="1"],[data-fv-fit="2"])>.fv-view-switch>button{padding:0 var(--fv-sp-12)}
 html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="2"]>.fv-view-switch>button{padding:0 var(--fv-sp-10, 10px)}
 /* Phone: only the current tab shows, as a picker with a chevron; pressing it lists the views. */
@@ -70,7 +74,7 @@ html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"]{grid-template-columns:
 html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"]>.fv-view-switch{height:var(--fv-touch);padding:0;justify-self:center;min-width:0;max-width:100%}
 html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"]>.fv-view-switch::before{display:none}
 html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"]>.fv-view-switch>button:not([aria-pressed=true]){display:none}
-html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"]>.fv-view-switch>button[aria-pressed=true]{height:var(--fv-touch);min-height:var(--fv-touch);grid-template-columns:auto 16px;column-gap:var(--fv-sp-4);
+html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"]>.fv-view-switch>button[aria-pressed=true]{min-width:0;height:var(--fv-touch);min-height:var(--fv-touch);grid-template-columns:auto 16px;column-gap:var(--fv-sp-4);
   padding:0 var(--fv-sp-12) 0 var(--fv-sp-16);line-height:var(--fv-touch)}
 html body .fv-topbar.fv-topbar.fv-topbar[data-fv-fit="3"]>.fv-view-switch>button[aria-pressed=true]::before{content:"";grid-area:1/2;width:16px;height:16px;background:currentColor;opacity:.7;
   -webkit-mask:var(--fv-tb-chevron) center/16px 16px no-repeat;mask:var(--fv-tb-chevron) center/16px 16px no-repeat}

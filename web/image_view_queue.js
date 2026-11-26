@@ -7,24 +7,12 @@ const VIEW_WORDS = {image: ['Images', '图像视图'], studio: ['Create', '创�
 const STATUS_WORDS = {submitting: ['Starting', '正在开始'], queued: ['Waiting', '排队中'], running: ['Generating', '正在生成'], cancelling: ['Stopping', '正在停止'],
     done: ['Done', '已完成'], failed: ['Failed', '失败'], cancelled: ['Stopped', '已停止'], interrupted: ['Interrupted', '已中断']};
 const ACTIVE = new Set(['submitting', 'queued', 'running', 'cancelling']);
-export const queueSummary = rows => {
-    const running = rows.filter(r => r.status === 'running' || r.status === 'cancelling'), waiting = rows.filter(r => r.status === 'queued' || r.status === 'submitting');
-    return {running, waiting, active: running.length + waiting.length, percent: running[0] && Number.isFinite(running[0].percent) ? running[0].percent : null};
-};
-
 export function queuePanel({jobs, confirmStop, pictureURL, onOpen}) {
     const root = el('div', 'fv-iv-queue');
-    const body = el('div', 'fv-iv-queue-body'), foot = el('div', 'fv-iv-panel-foot fv-iv-queue-foot');
-    const footText = el('span', 'fv-iv-queue-sum');
-    const stop = button('fv-iv-text-btn fv-iv-danger', {iconName: 'stop', label: t('Stop', '停止'), name: t('Stop', '停止'), use: t('Stop what is generating; asks first', '停止正在生成的任务，会先确认')});
-    foot.append(footText, el('span', 'fv-iv-grow'), stop);
-    root.append(body, foot);
+    // No foot: what is generating is on its row, with the row's own stop key (the tab carries the count).
+    const body = el('div', 'fv-iv-queue-body');
+    root.append(body);
     let rows = [];
-    stop.addEventListener('click', async () => {
-        const {running} = queueSummary(rows); const row = running[0]; if (!row) return;
-        if (!await confirmStop(stop, {kind: row.kind === 'image' ? 'image' : 'video', queued: false})) return;
-        try { await jobs.cancel(row.id); } catch { /* the row says it is still running */ }
-    });
     function line(row) {
         const item = el('div', 'fv-iv-qrow'); item.dataset.status = row.status;
         const open = el('button', 'fv-iv-qrow-open'); open.type = 'button';
@@ -32,7 +20,7 @@ export function queuePanel({jobs, confirmStop, pictureURL, onOpen}) {
         const preview = row.meta?.preview || (row.status === 'done' && row.kind === 'image' && row.result?.file ? pictureURL(row.result.file) : '');
         if (preview) { const i = el('img'); i.alt = ''; i.src = preview; i.draggable = false; th.append(i); } else th.append(icon(row.kind === 'image' ? 'asref' : 'single'));
         const tx = el('span', 'fv-iv-qtx');
-        const title = (row.meta?.text || row.prompt || '').trim() || t(row.kind === 'image' ? 'Picture' : 'Video', row.kind === 'image' ? '图片' : '视频');
+        const title = (row.meta?.text || row.prompt || '').trim() || (row.kind === 'image' ? t('Image', '图片') : t('Video', '视频'));
         const status = t(...(STATUS_WORDS[row.status] || STATUS_WORDS.running)) + (row.status === 'running' && Number.isFinite(row.percent) ? ` ${Math.floor(row.percent * 100)}%` : '');
         tx.append(el('b', '', title), el('small', '', [t(...(VIEW_WORDS[row.view] || VIEW_WORDS.studio)), status].join(' · ')));
         open.append(th, tx);
@@ -61,10 +49,6 @@ export function queuePanel({jobs, confirmStop, pictureURL, onOpen}) {
         else { const e = el('div', 'fv-iv-empty fv-iv-empty-small'); e.append(icon('clock'), el('span', '', t('Nothing is generating', '没有正在生成的任务'))); sections.push(e); }
         if (done.length) { sections.push(head(t('Recent', '最近完成'))); sections.push(...done.map(line)); }
         body.replaceChildren(...sections);
-        const {running, waiting, percent} = queueSummary(rows);
-        footText.textContent = running.length ? [t(`Generating ${percent == null ? '' : Math.floor(percent * 100) + '%'}`.trim(), `正在生成 ${percent == null ? '' : Math.floor(percent * 100) + '%'}`.trim()), waiting.length ? t(`${waiting.length} waiting`, `排队 ${waiting.length}`) : ''].filter(Boolean).join(' · ')
-            : waiting.length ? t(`${waiting.length} waiting`, `排队 ${waiting.length}`) : t('Idle', '空闲');
-        stop.hidden = !running.length;
         root.dataset.count = String(active.length);
         root.dispatchEvent(new CustomEvent('fv-iv-queue', {bubbles: true, detail: {active: active.length}}));
     }

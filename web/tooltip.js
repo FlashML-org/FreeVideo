@@ -14,7 +14,8 @@
 // the words a hover shows; the moment a view writes its own attributes, the copy steps aside.
 import { TIPS, MATCHES, LABELS } from './tooltip_copy.js';
 import { installA11y } from './a11y.js';
-import { isChinese } from './i18n.js';
+import { isChinese, translator } from './i18n.js';
+import { englishOf } from './i18n_tables.js';
 
 if (globalThis.document?.head && !globalThis.document.head.querySelector?.('link[data-fv-sheet=tooltip]')) {
     const sheet = document.createElement('link');
@@ -23,8 +24,8 @@ if (globalThis.document?.head && !globalThis.document.head.querySelector?.('link
 }
 
 const query = new URLSearchParams(globalThis.location?.search || '');
-const cn = isChinese();
-const pick = value => Array.isArray(value) ? value[cn ? 1 : 0] : value;
+const t = translator(isChinese());
+const pick = value => Array.isArray(value) ? t(...value) : value;
 
 export const SHOW_DELAY = 500, HIDE_DELAY = 100, WARM_FOR = 700, GAP = 8, MARGIN = 8, LONG_PRESS = 500, MAX_WIDTH = 320;
 const timing = {show: SHOW_DELAY, hide: HIDE_DELAY, warm: WARM_FOR};
@@ -117,8 +118,9 @@ export function copyFor(element) {
     if (matched !== undefined) return matched;
     const label = labelOf(element);
     if (!label) return null;
+    const names = [label, ...englishOf(label)];
     for (const [pattern, id, within] of LABELS) {
-        if (!pattern.test(label)) continue;
+        if (!names.some(name => pattern.test(name))) continue;
         if (within && !element.closest?.(within)) continue;
         return TIPS[id] ? {id, entry: TIPS[id]} : null;
     }
@@ -490,7 +492,8 @@ function collect(root) {
 }
 const labelHit = element => {
     const label = labelOf(element);
-    const hit = label && LABELS.find(([pattern, , within]) => pattern.test(label) && (!within || element.closest(within)));
+    const names = label ? [label, ...englishOf(label)] : [];
+    const hit = label && LABELS.find(([pattern, , within]) => names.some(name => pattern.test(name)) && (!within || element.closest(within)));
     return hit && TIPS[hit[1]] ? {id: hit[1], entry: TIPS[hit[1]]} : null;
 };
 

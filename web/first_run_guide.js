@@ -1,6 +1,8 @@
 import {SHOWCASE_TEXT, showcaseChapter, loadShowcaseImage} from './entry_showcase.js';
 import './glass/library.js';
 import {openAnchor} from './feature_tour_layer.js';
+import {translator} from './i18n.js';
+import {localized, promptText} from './i18n_tables.js';
 
 const FILE = '/userdata/' + encodeURIComponent('freevideo/guide.json');
 const attempted = new Set();
@@ -21,14 +23,14 @@ export const REPLAY_TEXT = {
 // It never starts by itself; Settings › Getting started and the tutorial replay it in the view in front.
 export const CHAPTERS = [
     {id: 'describe', anchor: '[data-fv-guide="describe"]', added: false, title: ['Write one sentence', '写一句描述'],
-        en: 'Say who is where, doing what. Type @ to use added pictures and videos.',
+        en: 'Say who is where, doing what. Type @ to use added images and videos.',
         zh: '说清谁在哪里做什么。输入 @ 可引用添加的图片和视频。'},
     {id: 'generate', anchor: '[data-fv-guide="generate"]', added: false, title: ['Generate', '生成'],
         en: 'Shape, length and quality are on this row; progress shows on the picture.',
         zh: '画幅、时长和质量在这一行；进度显示在画面上。'},
     {id: 'longer', anchor: '[data-view="editor"]', target: dialog => tabsOrLength(dialog), added: true,
         title: ['Longer and more', '更长、更完整'],
-        en: 'A longer duration is made in parts; continue part by part in Edit, or let Autopilot film it.',
+        en: 'A longer duration is made in parts; extend part by part in Edit, or let Autopilot film it.',
         zh: '填更长的时长会自动分段；也可以到剪辑视图逐段接续，或交给 AI 全自动拍完。'},
     {id: 'editor-timeline', group: 'editor', anchor: '[data-fv-guide="editor-timeline"]', added: true, title: ['Drag it in', '拖进来'],
         en: 'Drag a video here.', zh: '把视频拖到这里。'},
@@ -40,11 +42,23 @@ export const CHAPTERS = [
 ];
 
 // "Longer and more" points at the Edit and Autopilot tabs that are on screen, or at the length on a phone.
+// An anchor in a settings or works column folded to its rail (a window narrower than 1280 px) is not a missing target: it stands
+// as that rail until the step is shown, and showing the step (reveal) opens the column as a drawer. Asking whether a step exists
+// opens nothing, so a person who has seen the guide is never given a drawer.
+const foldedPanel = node => node?.closest?.('.fv-body [data-collapsed=true]') || null;
+const atRail = (panel, node, reveal = null) => {
+    const box = (panel.querySelector(':scope > .fv-iv-rail') || panel).getBoundingClientRect(), shell = panel.closest('.fv-body')?.studioPanels;
+    return {node, folded: true, rect: {left: box.left, top: box.top, right: box.right, bottom: box.bottom, width: box.width, height: box.height},
+        reveal: () => { shell?.setPanel(panel.matches('.fv-work-column') ? 'right' : 'left', true); reveal?.(); }};
+};
 function tabsOrLength(dialog) {
     const shown = node => node?.isConnected && !node.closest('[hidden]') && node.getClientRects().length && node.getBoundingClientRect().width > 0;
     const tabs = [...dialog.querySelectorAll(':scope > .fv-header .fv-view-switch [data-view="editor"], :scope > .fv-header .fv-view-switch [data-view="autopilot"]')].filter(shown);
     const nodes = tabs.length ? tabs : [dialog.querySelector('[data-fv-guide="seconds"]')].filter(shown);
-    if (!nodes.length) return null;
+    if (!nodes.length) {
+        const field = dialog.querySelector('[data-fv-guide="seconds"]'), panel = field && !shown(field) ? foldedPanel(field) : null;
+        return panel ? atRail(panel, field) : null;
+    }
     const rects = nodes.map(node => node.getBoundingClientRect());
     const left = Math.min(...rects.map(r => r.left)), top = Math.min(...rects.map(r => r.top)), right = Math.max(...rects.map(r => r.right)), bottom = Math.max(...rects.map(r => r.bottom));
     return {node: nodes[0], rect: {left, top, right, bottom, width: right - left, height: bottom - top}};
@@ -159,7 +173,7 @@ const ROW_ICONS = {flag: 'M4 13.5V3M4 3.5h7.5l-1.5 2.5 1.5 2.5H4', play: 'M5 3.2
 const rowIcon = name => { const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('viewBox', '0 0 16 16'); svg.setAttribute('aria-hidden', 'true');
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path'); path.setAttribute('d', ROW_ICONS[name]); svg.append(path); return svg; };
 export function createGuideReplayEntry({dialog, cn, api, openWorkspace, replay = replayInFront}) {
-    const text = key => REPLAY_TEXT[key][cn ? 1 : 0], t = (en, zh) => cn ? zh : en;
+    const t = translator(cn), text = key => t(...REPLAY_TEXT[key]);
     const tipped = (node, name, use) => { node.dataset.fvTipName = name; node.dataset.fvTipUse = use; return node; };
     const section = el('section', null, 'fv-guide-replay'), row = el('div', null, 'fv-guide-replay-row'), rows = el('div', null, 'fv-guide-rows');
     const line = (icon, name, small, control) => { const item = el('div', null, 'fv-guide-row'), words = el('span'); words.append(el('b', name), el('small', small)); item.append(rowIcon(icon), words, control); return item; };
@@ -245,9 +259,15 @@ export function createGuideReplayEntry({dialog, cn, api, openWorkspace, replay =
 // Custom targets return viewport rectangles on every layout pass. They never
 // insert hit targets or change the editor's pointer handling.
 export function guideTarget(dialog, chapter, targets = {}) {
-    if (chapter.target) return chapter.target(dialog);
-    if (targets[chapter.id]) return targets[chapter.id]();
+    const customFn = chapter.target ? () => chapter.target(dialog) : targets[chapter.id];
+    if (customFn) {
+        const custom = customFn();
+        const panel = custom && !visible(custom.node) ? foldedPanel(custom.node) : null;
+        return panel ? atRail(panel, custom.node, custom.reveal) : custom;
+    }
     const nodes = (chapter.anchors || [chapter.anchor]).map(selector => dialog.querySelector(selector));
+    const folded = nodes.map(node => (node && !visible(node) ? foldedPanel(node) : null)).find(Boolean);
+    if (folded && nodes.every(node => node && (visible(node) || foldedPanel(node)))) return atRail(folded, nodes[0]);
     if (nodes.some(node => !visible(node))) return null;
     const rects = nodes.map(node => node.getBoundingClientRect());
     const left = Math.min(...rects.map(r => r.left)), top = Math.min(...rects.map(r => r.top));
@@ -256,7 +276,7 @@ export function guideTarget(dialog, chapter, targets = {}) {
 }
 
 export function createFirstRunGuide({dialog, api, cn, isBusy = () => false, group = 'studio', targets = {}, onShowcaseTry = null}) {
-    const t = (en, zh) => cn ? zh : en;
+    const t = translator(cn);
     const automatic = !attempted.has(group), editor = group === 'editor';
     const chapters = chaptersFor(group);
     if (!document.querySelector('link[data-fv-first-run-guide]')) {
@@ -271,7 +291,7 @@ export function createFirstRunGuide({dialog, api, cn, isBusy = () => false, grou
     const heldKeys = new Set();
     const resolved = chapter => {
         const value = guideTarget(dialog, chapter, targets);
-        return value && visible(value.node) && value.rect.width > 0 && value.rect.height > 0 ? value : null;
+        return value && (value.folded || visible(value.node)) && value.rect.width > 0 && value.rect.height > 0 ? value : null;
     };
     const available = () => chapters.filter(c => resolved(c)).map(c => c.id);
     const shown = step => resolved(step) || (step.image && touring);
@@ -335,7 +355,7 @@ export function createFirstRunGuide({dialog, api, cn, isBusy = () => false, grou
             head.append(title, close);
             const foot = el('div', null, 'fv-tour-foot'); foot.append(el('span', null, 'fv-tour-grow'));
             const next = button(t(...SHOWCASE_TEXT.try), 'primary', t(...SHOWCASE_TEXT.try), t('Fill this example in Autopilot', '在 AI 全自动里填好这个示例'));
-            next.dataset.fvTourPrimary = ''; next.onclick = () => { finish(); onShowcaseTry(t(...SHOWCASE_TEXT.example)); };
+            next.dataset.fvTourPrimary = ''; next.onclick = () => { finish(); onShowcaseTry(promptText(SHOWCASE_TEXT.example, cn)); };
             foot.append(next); body.append(head, foot);
             const media = el('div', null, 'fv-tour-mediabox'), figure = el('figure', null, 'fv-tour-media fv-showcase-media'); figure.append(showcase.image); media.append(figure);
             anchor = openAnchor({owner: dialog, target: null, level: 2, shapes: ['stand'], content: [media, body], focus: true, label: title.id,
@@ -362,7 +382,7 @@ export function createFirstRunGuide({dialog, api, cn, isBusy = () => false, grou
         const head = el('div', null, 'fv-tour-head'), title = el('h3', touring ? tourTitle || t('Walkthrough', '演示') : t(...(step.title || ['Getting started', '新手指引'])));
         title.id = 'fv-guide-title';
         head.append(title);
-        const message = el('p', cn ? step.zh : step.en, 'fv-tour-text fv-guide-message'); message.id = 'fv-guide-message';
+        const message = el('p', localized(step, t), 'fv-tour-text fv-guide-message'); message.id = 'fv-guide-message';
         message.setAttribute('aria-live', 'polite'); message.setAttribute('aria-atomic', 'true');
         const foot = el('div', null, 'fv-tour-foot');
         if (count > 1) {
@@ -561,7 +581,7 @@ export const FIRST_RUN_TEXT = {
     generate: ['Generate video', '生成视频'],
     hint: ['Click "Generate video" to get your first video.', '点“生成视频”，得到第一段视频。'],
     close: ['Close', '关闭'],
-    next: ['Continue this video', '接着生成这条视频'],
+    next: ['Extend this video', '接着生成这条视频'],
     longer: ['Extend', '接着生成'],
     edit: ['Edit', '剪辑'],
 };
@@ -596,7 +616,7 @@ export async function openFirstNextLonger() {
 
 export function createFirstStart({dialog, api, cn, prompt, onPrefill, onGenerate, onEdit,
     onLonger = openFirstNextLonger, isBusy = () => false}) {
-    const text = key => FIRST_RUN_TEXT[key][cn ? 1 : 0];
+    const t = translator(cn), text = key => key === 'prompt' ? promptText(FIRST_RUN_TEXT.prompt, cn) : t(...FIRST_RUN_TEXT[key]);
     let disposed = false, hint = null, next = null, timer = null, pending = null, showing = false;
     const hideBubble = () => { const shown = hint; hint = null; shown?.close('fade', 'replace'); };
     const tipped = (node, name, use, key = '') => { node.dataset.fvTipName = name; node.dataset.fvTipUse = use; if (key) node.dataset.fvTipKey = key; return node; };
@@ -628,14 +648,14 @@ export function createFirstStart({dialog, api, cn, prompt, onPrefill, onGenerate
         const body = el('div', null, 'fv-tour-body'), head = el('div', null, 'fv-tour-head'), title = el('h3', text('next')); title.id = 'fv-next-title';
         const close = el('button', null, 'fv-tour-x'); close.type = 'button'; close.setAttribute('aria-label', text('close'));
         close.innerHTML = '<svg class="fv-tour-i" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg>';
-        tipped(close, text('close'), cn ? '收起说明，不影响当前操作' : 'Hide this; nothing else changes', 'Esc');
+        tipped(close, text('close'), t('Hide this; nothing else changes', '收起说明，不影响当前操作'), 'Esc');
         head.append(title, close);
         const foot = el('div', null, 'fv-tour-foot'); foot.append(el('span', null, 'fv-tour-grow'));
-        const edit = tipped(el('button', text('edit'), 'fv-tour-btn'), text('edit'), cn ? '放进剪辑视图继续改' : 'Open it in Edit');
-        const longer = tipped(el('button', text('longer'), 'fv-tour-btn fv-primary'), text('longer'), cn ? '从结尾生成下一段' : 'Make the next part from the end');
+        const edit = tipped(el('button', text('edit'), 'fv-tour-btn'), text('edit'), t('Open it in Edit', '放进剪辑视图继续改'));
+        const longer = tipped(el('button', text('longer'), 'fv-tour-btn fv-primary'), text('longer'), t('Make the next part from the end', '从结尾生成下一段'));
         edit.type = longer.type = 'button'; edit.dataset.kind = 'fill'; longer.dataset.kind = 'primary'; longer.dataset.fvTourPrimary = '';
         foot.append(edit, longer);
-        body.append(head, el('p', cn ? '从结尾继续下一段，或到剪辑视图里排列。' : 'Continue from the end, or arrange it in Edit.', 'fv-tour-text'), foot);
+        body.append(head, el('p', t('Extend from the end, or arrange it in Edit.', '从结尾继续下一段，或到剪辑视图里排列。'), 'fv-tour-text'), foot);
         const leave = async action => { next?.close('now', 'replace'); next = null; await action(); };
         // The real result button continues the clip directly; the tutorial is the fallback when it is not on screen.
         longer.onclick = () => leave(() => { const real = dialog.querySelector('.fv-action-extend'); return real && !real.disabled ? real.click() : onLonger(); });

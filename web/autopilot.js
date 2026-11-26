@@ -16,6 +16,7 @@ import { keepViewSwitchPlace } from './view_switch_place.js';
 import { tip } from './autopilot_tips.js';
 import { agentPost } from './agent_session.js';
 import { isChinese, translator } from './i18n.js';
+import { pageLang } from './i18n_tables.js';
 
 const cn = isChinese();
 const t = translator(cn);
@@ -30,7 +31,7 @@ export function openAutopilotView(node, {studio = null, initialPrompt = '', init
     studio?.querySelectorAll('video,audio').forEach(media => media.pause());
     if (kept && kept.node === node && !initialScene) return kept.reopen(studio, initialPrompt);
     kept?.dispose(); kept = null;
-    const dialog = el('dialog', 'fv-studio fv-autopilot'); dialog.lang = cn ? 'zh' : 'en'; dialog.setAttribute('aria-label', t('Autopilot', 'AI 全自动'));
+    const dialog = el('dialog', 'fv-studio fv-autopilot'); dialog.lang = pageLang(); dialog.setAttribute('aria-label', t('Autopilot', 'AI 全自动'));
     // The shell's switch waits for the first screen: not ready until the card or the conversation is in place.
     dialog.dataset.fvReady = 'false';
     const header = el('header', 'fv-header'), brand = el('div', 'fv-brand'), tools = el('div', 'fv-header-actions');
@@ -115,7 +116,7 @@ export function openAutopilotView(node, {studio = null, initialPrompt = '', init
         halt.title = last.stopping ? t('Stopping…', '正在停止…') : t('Stop all', '全部停止'); halt.setAttribute('aria-label', halt.title);
         if (job) {
             const fraction = last.fraction || 0, running = job.status === 'running';
-            currentId = job.id; name.textContent = jobName(job, t); more.textContent = last.active > 1 ? t(`${last.active - 1} more`, `另有 ${last.active - 1} 项`) : '';
+            currentId = job.id; name.textContent = jobName(job, t); more.textContent = last.active > 1 ? t('{count} more', '另有 {count} 项', { count: last.active - 1 }) : '';
             percent.textContent = running && fraction >= .01 ? `${Math.floor(fraction * 100)}%` : '';
             eta.textContent = running && last.left != null ? about(last.left, t) : '';
             ring.style.setProperty('--p', String(fraction * 100)); line.style.width = `${fraction * 100}%`;

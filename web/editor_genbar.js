@@ -1,5 +1,6 @@
 // The editor owns its generation controls; progress can use the optional component.
 import { cutTip } from './cut_tip.js';
+import { pageLanguage } from './i18n.js';
 import {createFirstFrameSwitch} from './editor_first_frame.js';
 import {createDurationField} from './editor_duration.js';
 import {createEditorReferences} from './editor_references.js';
@@ -11,7 +12,7 @@ import {waitingText} from './chain_support.js';
 import {showEmptyPrompt} from './empty_prompt_notice.js';
 import {segmented} from './editor_adjust.js';
 import {createPassMode} from './pass_mode.js';
-import {createSamplingEffort, continuationUpscale, effortFor} from './sampling_effort.js';
+import {createSamplingEffort, continuationUpscale, effortFor, stepsWords} from './sampling_effort.js';
 import {createVoicePanel} from './editor_voice.js';
 import {createInstallPanel} from './editor_voice_install.js';
 import * as dubbing from './editor_voice_model.js';
@@ -25,13 +26,14 @@ function loadEffortSheet() {
 }
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 export const timeEstimate = (seconds, t) => seconds == null ? '' : seconds < 60
-    ? t(`about ${Math.max(1, Math.ceil(seconds))} s`, `约 ${Math.max(1, Math.ceil(seconds))} 秒`)
-    : t(`about ${Math.ceil(seconds / 60)} minutes`, `约 ${Math.ceil(seconds / 60)} 分钟`);
+    ? t('about {seconds} s', '约 {seconds} 秒', { seconds: Math.max(1, Math.ceil(seconds)) })
+    : t('about {minutes} minutes', '约 {minutes} 分钟', { minutes: Math.ceil(seconds / 60) });
 // A start of a few seconds reads "Starting…"; a longer one counts in the same form as the other waiting lines.
 export const startingText = (s, t) => {
     const m = Math.floor(s / 60), r = s % 60;
-    return s < 3 ? t('Starting…', '正在开始…') : s < 60 ? t(`Starting · ${s} s`, `正在开始 · ${s} 秒`)
-        : t(`Starting · ${m} min${r ? ` ${r} s` : ''}`, `正在开始 · ${m} 分${r ? ` ${r} 秒` : ''}`);
+    return s < 3 ? t('Starting…', '正在开始…') : s < 60 ? t('Starting · {s} s', '正在开始 · {s} 秒', { s })
+        : r ? t('Starting · {minutes} min {seconds} s', '正在开始 · {minutes} 分 {seconds} 秒', { minutes: m, seconds: r })
+        : t('Starting · {minutes} min', '正在开始 · {minutes} 分', { minutes: m });
 };
 // Provisional copy keys for Iris; decode/save sentences follow Studio's stage vocabulary.
 export const CLIP_FINALIZATION_COPY = {
@@ -105,12 +107,13 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
     const passControl = passMenu ? createPassMode({t, onChoose: mode => { actions.choosePass(mode); render(); }, listen: routed}) : null;
     // The creative panel's quality control (same component, same levels), above the two-pass choice in the same menu.
     // The steps are told where the control shows its estimate, which an edit has no use for: "8 + 3 steps", "8 steps", "12 steps".
-    const stepsText = (steps, twoPass, refine) => `${steps}${twoPass ? ' + ' + refine : ''} ${steps === 1 && !twoPass ? t('step', '步') : t('steps', '步')}`;
+    const stepsText = (steps, twoPass, refine) => stepsWords(t, steps, twoPass, refine);
     let quality = null, previewing = false, twoPassTitle = null;
     const effortControl = passMenu && actions.effort ? createSamplingEffort(t, {onChange: tier => { previewing = false; actions.chooseEffort(tier); render(); },
         onPreview: tier => {
             previewing = !!tier;
-            if (tier) effortControl.setEstimate(stepsText(tier.steps, tier.twoPass, 3));
+            // The Fast level's steps are the engine's: no count is shown for it.
+            if (tier) effortControl.setEstimate(tier.fast ? '' : stepsText(tier.steps, tier.twoPass, 3));
             else if (quality) effortControl.setEstimate(stepsText(quality.baseSteps, quality.twoPass, quality.refineSteps));
         },
         levels: actions.effortLevels?.() || undefined}) : null;
@@ -118,8 +121,8 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
     let stopPass = null, stopEffort = null;
     if (passMenu) {
         const toggle = el('summary'); toggle.setAttribute('aria-label', t('Sampling', '采样')); toggle.append(el('span', 'fv-chevron'));
-        tip(toggle, {name: t('Sampling', '采样'), use: t('Quality level and the two-pass choice for this part', '这一段的质量档位和二采')});
-        const panel = el('div', 'fv-ed-pass-menu'); twoPassTitle = el('strong', 'fv-ed-pass-sub', t('Two-pass', '二采'));
+        tip(toggle, {name: t('Sampling', '采样'), use: t('Quality level and the second pass choice for this part', '这一段的质量档位和二采')});
+        const panel = el('div', 'fv-ed-pass-menu'); twoPassTitle = el('strong', 'fv-ed-pass-sub', t('Second pass', '二采'));
         panel.append(el('strong', null, t('Sampling', '采样')), ...(effortControl ? [effortControl.element, twoPassTitle] : []), passControl.element);
         passMenu.append(toggle, panel); passMenu.hidden = true; generate.after(passMenu);
         stopPass = actions.onPass?.(() => render()) || null;
@@ -174,7 +177,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
             musicBytes = await music.downloadBytes();
             if (disposed) return;
         }
-        musicAssets.textContent = musicBytes > 0 ? t(`Downloads before generating: music model ${size(musicBytes)}`, `生成前会先下载：配乐模型 ${size(musicBytes)}`) : '';
+        musicAssets.textContent = musicBytes > 0 ? t('Downloads before generating: music model {size}', '生成前会先下载：配乐模型 {size}', { size: size(musicBytes) }) : '';
         musicAssets.hidden = !(musicBytes > 0) || host.dataset.mode !== 'selected' || !music.target();
     }
     // A new line said on an empty stretch of the recording track: the voice row above the description, and the dubbing
@@ -189,7 +192,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
     description.after(duration.element);
     // Where a narrow English bar starts Generate on a line of its own (editor.css); hidden elsewhere.
     const lineBreak = el('span', 'fv-ed-genbar-break'); lineBreak.setAttribute('aria-hidden', 'true');
-    generate.before(lineBreak); host.lang = t('en', 'zh-CN');
+    generate.before(lineBreak); host.lang = pageLanguage();
     // Dubbing: the lines of a chosen stretch of speech take the description box's place.
     const voice = actions.voice || null, voicePanel = voice ? createVoicePanel(host, voice.controller, {t}) : null;
     if (voicePanel) tray.append(voicePanel.element);
@@ -259,7 +262,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
             await actions.downloadFailureReport?.(id, {bar: failureBar, anchor: report.hidden ? failureReason : report, t,
                 current: () => !disposed && failureId === id && !failure.hidden});
         } catch (value) {
-            actions.notify?.(t(`Downloading the diagnostic report failed: ${value.message || value}`, `下载诊断报告时出错：${value.message || value}`), ['Editor diagnostic report', '剪辑器诊断报告']);
+            actions.notify?.(t('Downloading the diagnostic report failed: {reason}', '下载诊断报告时出错：{reason}', { reason: value.message || value }), ['Editor diagnostic report', '剪辑器诊断报告']);
         } finally { downloading = false; report.disabled = false; }
     }
     report.onclick = () => downloadFailure();
@@ -329,7 +332,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         input.placeholder = !writable ? t('Describe the part to generate', '描述要生成的片段') : musical ? t('Describe the music', '描述配乐') : narrated ? t('Write what to say', '写下要说的话') : sound ? t('Describe the picture', '描述画面') : t('Describe this part', '描述这一段');
         // The timeline's own stretch carries 'video-empty-range' (drawn on the picture row); the bar has a name of its own.
         if (sound) host.dataset.tourId = 'sound-range-bar'; else delete host.dataset.tourId;
-        input.setAttribute('aria-label', t('Description', '描述'));
+        input.setAttribute('aria-label', t('Prompt', '提示词'));
         // A video part becomes the next step once it has words: with the box empty Generate stays a secondary key (never
         // greyed; pressing it still asks whether to go on without a description).
         const wordless = !voiced && !musical && !narrated && !input.value.trim();
@@ -362,7 +365,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
             const left = words?.over ? null : words?.left ?? remaining;
             const time = finalization ? '' : words?.stall || (words?.over ? t('Taking longer than expected', '比预计久，仍在生成') : words?.time || (left != null ? timeEstimate(left, t) : ''));
             const stage = finalization ? t(...CLIP_FINALIZATION_COPY[finalization.key]) : words?.stage || (count === 1 && !time ? t('Preparing', '正在准备') : '');
-            const spans = [['fv-ed-gen-part', count > 1 ? t(`Part ${number}/${count}`, `第 ${number}/${count} 段`) : ''],
+            const spans = [['fv-ed-gen-part', count > 1 ? t('Part {number}/{count}', '第 {number}/{count} 段', { number, count }) : ''],
                 ['fv-ed-gen-stage', stage], ['fv-ed-gen-time', time]];
             const shown = spans.filter(([, text]) => text).map(([cls, text], index) => [cls, index ? ` · ${text}` : text]);
             hint.replaceChildren(...shown.map(([cls, text]) => el('span', cls, text)));
@@ -410,13 +413,13 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
                     const medium = effortFor(8, true, 3, null, levels || undefined, Number(factor))?.name === 'Medium';
                     quality = {baseSteps: 8, refineSteps: 3, twoPass: true, stepCache: null, upscale: Number(factor), disabled: true,
                         reason: lock === 'continuation'
-                            ? (medium ? t('A continuation uses the Medium level.', '接着生成使用标准档。') : t('A continuation uses the Light level.', '接着生成使用轻量档。'))
+                            ? (medium ? t('An extended part uses the Medium level.', '接着生成使用标准档。') : t('An extended part uses the Light level.', '接着生成使用轻量档。'))
                             : (medium ? t('Each part of a video made in parts uses the Medium level.', '分段生成时，每段使用标准档。') : t('Each part of a video made in parts uses the Light level.', '分段生成时，每段使用轻量档。'))};
                 }
                 effortControl.update(quality);
                 // On the wrapper too: a disabled control may not raise its own hover.
                 effortControl.element.title = lock ? quality.reason : '';
-                if (!previewing) effortControl.setEstimate(stepsText(quality.baseSteps, quality.twoPass, quality.refineSteps));
+                if (!previewing) effortControl.setEstimate(quality.fast ? '' : stepsText(quality.baseSteps, quality.twoPass, quality.refineSteps));
             }
             if (passMenu.hidden) passMenu.open = false;
         }
@@ -429,9 +432,9 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         resizeDescription();
         input.dispatchEvent(new Event('change'));
         tip(generate, {name: verbText.textContent, key: `${modKey}↵`,
-            use: downloadText() || (musical ? t('Make music for the chosen stretch', '为选中的范围生成配乐') : narrated ? t('Say the words in the chosen voice', '用选中的音色说出这段话')
+            use: downloadText() || (musical ? t('Make music for the chosen range', '为选中的范围生成配乐') : narrated ? t('Say the words in the chosen voice', '用选中的音色说出这段话')
                 : voiced ? t('Say the changed lines again', '把改过的台词重新配音') : !selected ? t('Choose a part or drag a range on the timeline first', '先在时间线上选中一段或拖出范围')
-                : generate.dataset.wordless === 'true' ? t('Write a description first', '先写描述') : t('Make the chosen part from the description', '按描述生成选中的这一段')),
+                : generate.dataset.wordless === 'true' ? t('Write a prompt first', '先写提示词') : t('Make the chosen part from the prompt', '按提示词生成选中的这一段')),
             why: !generate.disabled ? '' : busy ? t('This part is generating; Cancel stops it', '这一段正在生成，可按“取消”停止')
                 : previewSelection ? t('Release the range first', '先松开拖动的范围')
                 : !narrated && actions.generationWaiting?.() ? t('Waiting for generation to be ready', '正在等生成服务就绪')
@@ -440,14 +443,14 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         tip(cancel, {name: t('Cancel', '取消'), use: t('Stop this part; it stays as a draft', '停止生成，这一段留作草稿')});
         tip(resume, {name: t('Continue', '继续'), use: t('Start the stopped parts again', '把停下的段接着生成')});
         historyButton.disabled = input.disabled;
-        tip(historyButton, {name: t('Earlier descriptions', '用过的描述'), use: t('Reuse a description you generated with', '重用以前生成时写过的描述'), why: input.disabled ? t('Choose a part first', '先选中一段') : ''});
-        tip(input, {name: t('Description', '描述'), use: t('What this part should show', '写下这一段要生成的内容'), key: `${modKey}↵ ${t('generates', '生成')}`,
+        tip(historyButton, {name: t('Earlier prompts', '用过的提示词'), use: t('Reuse a prompt you generated with', '重用以前生成时写过的提示词'), why: input.disabled ? t('Choose a part first', '先选中一段') : ''});
+        tip(input, {name: t('Prompt', '提示词'), use: t('What this part should show', '写下这一段要生成的内容'), key: `${modKey}↵ ${t('generates', '生成')}`,
             why: input.disabled ? (busy ? t('This part is generating', '这一段正在生成') : t('Choose a part or drag a range first', '先选中一段或在时间线上拖出范围')) : ''});
         if (assets) { if (selected && !busy && !musical && !narrated) assets.refresh(); else assets.element.hidden = true; }
         showMusicAssets(selected && !busy && musical && !previewSelection);
         if (sayAssets) {
             const bytes = narrated && !busy ? narration.downloadBytes() : 0;
-            sayAssets.textContent = bytes > 0 ? t(`Downloads before generating: dubbing model ${size(bytes)}`, `生成前会先下载：配音模型 ${size(bytes)}`) : '';
+            sayAssets.textContent = bytes > 0 ? t('Downloads before generating: dubbing model {size}', '生成前会先下载：配音模型 {size}', { size: size(bytes) }) : '';
             sayAssets.hidden = !(bytes > 0);
         }
         if (selected && !busy && !voiced && !installing) {
@@ -533,7 +536,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
     // A large first download (the dubbing model) is asked about in the tray before it starts (E26).
     const askDownload = el('div', 'fv-ed-gen-ask'); askDownload.hidden = true; askDownload.setAttribute('role', 'alertdialog'); tray.append(askDownload);
     function confirmDownload(bytes) {
-        const words = el('span', 'fv-ed-gen-ask-text', t(`The first line downloads the dubbing model (${size(bytes)}) before it is made.`, `第一次配音要先下载配音模型（${size(bytes)}），下载完再生成。`));
+        const words = el('span', 'fv-ed-gen-ask-text', t('The first line downloads the dubbing model ({size}) before it is made.', '第一次配音要先下载配音模型（{size}），下载完再生成。', { size: size(bytes) }));
         const go = el('button', 'fv-primary', t('Download and generate', '下载并生成')), no = el('button', null, t('Not now', '先不下载'));
         go.type = no.type = 'button';
         tip(go, {name: t('Download and generate', '下载并生成'), use: t('Fetch the model once, then say the line', '下载一次模型，然后生成这句')});
@@ -549,7 +552,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         emptyWatch?.disconnect();
         const watch = new ResizeObserver(() => place());
         const box = showEmptyPrompt({t, anchor: host.lastElementChild, field: input, onContinue: () => press(true),
-            text: t('The description is empty.', '描述为空。'), onGone: () => watch.disconnect()});
+            text: t('The prompt is empty.', '提示词为空。'), onGone: () => watch.disconnect()});
         // The press is still settling (Generate's label, Cancel), so it follows the keys until it is gone.
         const place = () => {
             if (!box.isConnected) { watch.disconnect(); return; }
@@ -604,16 +607,16 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
     const historyButton = el('button', 'fv-ed-history-button'); historyButton.type = 'button'; historyButton.setAttribute('aria-haspopup', 'menu'); historyButton.setAttribute('aria-expanded', 'false');
     { const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('viewBox', '0 0 16 16'); svg.setAttribute('aria-hidden', 'true'); svg.classList.add('fv-ed-glyph');
       const path = document.createElementNS(svg.namespaceURI, 'path'); path.setAttribute('d', 'M2.5 8a5.5 5.5 0 1 0 1.6-3.9M2.5 2.5v2.6h2.6M8 5v3l2 1.5'); svg.append(path); historyButton.append(svg); }
-    historyButton.setAttribute('aria-label', t('Earlier descriptions', '用过的描述'));
+    historyButton.setAttribute('aria-label', t('Earlier prompts', '用过的提示词'));
     const historyList = el('div', 'fv-ed-history'); historyList.hidden = true; historyList.setAttribute('role', 'menu'); tray.append(historyList);
     function closeHistory(focus = false) { historyList.hidden = true; historyButton.setAttribute('aria-expanded', 'false'); if (focus) historyButton.focus(); }
     function openHistory() {
         const items = readHistory();
-        historyList.replaceChildren(el('div', 'fv-ed-history-title', t('Earlier descriptions', '用过的描述')));
-        if (!items.length) historyList.append(el('p', 'fv-ed-history-empty', t('Descriptions you generate with show here.', '生成过的描述会出现在这里。')));
+        historyList.replaceChildren(el('div', 'fv-ed-history-title', t('Earlier prompts', '用过的提示词')));
+        if (!items.length) historyList.append(el('p', 'fv-ed-history-empty', t('Prompts you generate with show here.', '生成过的提示词会出现在这里。')));
         for (const text of items) {
             const item = el('button', 'fv-ed-history-item', text); item.type = 'button'; item.setAttribute('role', 'menuitem');
-            tip(item, {name: t('Use this description', '用这段描述'), use: t('Put it in the box; nothing is generated yet', '放进描述框，还不会生成')});
+            tip(item, {name: t('Use this prompt', '用这段提示词'), use: t('Put it in the prompt box; nothing is generated yet', '放进提示词框，还不会生成')});
             item.onclick = () => { input.value = text; typed(text); closeHistory(); render(); input.focus(); };
             historyList.append(item);
         }

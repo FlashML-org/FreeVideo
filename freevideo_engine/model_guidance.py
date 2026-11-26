@@ -115,8 +115,17 @@ def download_write_reason(error, folder):
     return 'other'
 
 
+def interface_tag(zh):
+    """An interface language from the old zh flag or a tag: True is Simplified Chinese, False English."""
+    from .i18n import code_language
+    return 'zh-Hans' if zh is True else 'en' if not zh else code_language(zh)
+
+
 def download_copy(zh=False):
-    return {key: value[bool(zh)] for key, value in DOWNLOAD_COPY.items()}
+    """The download list's words in the interface language (zh: a language tag, or True for Simplified Chinese)."""
+    from .i18n import tr
+    language = interface_tag(zh)
+    return {key: tr(en, cn, language) for key, (en, cn) in DOWNLOAD_COPY.items()}
 
 
 def download_files(entries):
@@ -136,14 +145,15 @@ def download_files(entries):
 
 
 def download_view(plan, zh=False, *, decimal_sizes=False, families=LIST_FAMILIES, extra_copy=None):
+    from .i18n import tr
     from .launcher_copy import size_text
+    language = interface_tag(zh)
     def size(value):
         if value < (10**6 if decimal_sizes else 2**20):
-            unit = 'MB' if decimal_sizes else 'MiB'
-            return ('不到 1 ' if zh else 'under 1 ') + unit
+            return tr('under 1 {unit}', '不到 1 {unit}', language, dict(unit='MB' if decimal_sizes else 'MiB'))
         return size_text(value, decimal_sizes=decimal_sizes)
-    copy = download_copy(zh)
-    copy.update({key: value[bool(zh)] for key, value in (extra_copy or {}).items()})
+    copy = download_copy(language)
+    copy.update({key: tr(en, cn, language) for key, (en, cn) in (extra_copy or {}).items()})
     rows = plan.get('download_files', [])
     groups = []
     for group in families:

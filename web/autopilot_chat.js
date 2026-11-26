@@ -4,6 +4,7 @@ import { cutTip } from './cut_tip.js';
 import { setTip } from './tip_words.js';
 import {agentGet, agentPost, retryAgentPost} from './agent_session.js';
 import {emptyFrameIcon} from './empty_frame.js';
+import {engineReason} from './other_usage.js';
 import {ATTACH, attachmentURL, pickPictures, pictureGone, picturesOf, releasePicture, releasePictures, thumbnail, uploadPicture} from './chat_attachments.js';
 import {SCENE_TEXT, pickScene, sceneList, startScene, watchScene} from './whitebox_scenes.js';
 import {chatData, chatDelay, chatReadRequest, emptyChat, chatMerge, chatEntries, canSend, newId, SEND_ATTEMPTS, WAIT_FOR_AGENT, sendRefused, sendError, messageTooLong} from './chat_data.js';
@@ -48,15 +49,16 @@ let chatNumber = 0;
 // What the agent is doing before it answers, by the key it reports. Words the page does not know are not shown.
 export const STAGE_TEXT = Object.freeze({
     reading: ['Reading the request', '正在理解要求'], scripting: ['Writing the script', '正在写剧本'],
-    storyboarding: ['Planning the shots', '正在拆分镜头'], prompting: ['Writing the shot prompts', '正在写画面描述'],
+    storyboarding: ['Planning the shots', '正在拆分镜头'], prompting: ['Writing the shot prompts', '正在写提示词'],
     checking: ['Checking the results', '正在检查结果'], assembling: ['Joining the shots', '正在拼接镜头'],
 });
 const WORKING = ['running', 'queued', 'waiting', 'cancelling'], VIDEOS = ['generate', 'assemble'];
 // Beside the dots while the agent names no stage: the sentence is still on its way, or the agent has it and the seconds count.
 export function waitingText(s, t) {
     const m = Math.floor(s / 60), r = s % 60;
-    return s < 60 ? t(`Waiting for a reply · ${s} s`, `正在等待回复 · ${s} 秒`)
-        : t(`Waiting for a reply · ${m} min${r ? ` ${r} s` : ''}`, `正在等待回复 · ${m} 分${r ? ` ${r} 秒` : ''}`);
+    return s < 60 ? t('Waiting for a reply · {s} s', '正在等待回复 · {s} 秒', { s })
+        : r ? t('Waiting for a reply · {minutes} min {seconds} s', '正在等待回复 · {minutes} 分 {seconds} 秒', { minutes: m, seconds: r })
+        : t('Waiting for a reply · {minutes} min', '正在等待回复 · {minutes} 分', { minutes: m });
 }
 // What a job with no picture of its own is doing, in the reader's language.
 const QUIET = {vlm: ['Checking', '检查中'], enhance: ['Enhancing prompt', '增强提示词']};
@@ -65,7 +67,7 @@ const BUSY = {music: ['Making music', '制作配乐']};
 // A failed card's one action: go on keeping the finished parts, run the same request again, or say the words again.
 const AGAIN = {continue: ['Continue generating', '继续生成'], retry: ['Retry', '重试'], resend: ['Send again', '再发一次']};
 const WHITEBOX = {
-    generate: ['Generate video', '生成视频'], edit: ['Edit prompt', '改描述'], decline: ['Skip', '跳过'],
+    generate: ['Generate video', '生成视频'], edit: ['Edit prompt', '修改提示词'], decline: ['Skip', '跳过'],
     approved: ['Approved', '已确认'], superseded: ['Replaced', '已被替换'], declined: ['Skipped', '已跳过'],
     preview: ['Whitebox preview', '白模预览'], unavailable: ['Preview could not load', '预览加载失败'],
     play: ['Play', '播放'], pause: ['Pause', '暂停'], seconds: ['s', '秒'],
@@ -74,8 +76,6 @@ const WHITEBOX = {
 const GENERIC_FAILURE_ZH = '没有完成';
 // The failures whose next step is the problem report (agent/errors.py FAILURE_NEXT_*).
 const UNEXPECTED_FAILURES = ['internal_error', 'generation_failed'];
-// The engine's next step for a reason, as the sentence after it.
-const withNext = (reason, next, zh) => next ? reason.replace(/[。.]$/, '') + (zh ? '。' : '. ') + next : reason;
 // Sends and failure cards use the same public reason, including the engine's Chinese mapping.
 function failureReason(value, t) {
     const error = value.error, reason = error?.error_zh || value.error_zh, reasonEn = error?.error_en || value.error_en;
@@ -85,8 +85,9 @@ function failureReason(value, t) {
     const own = error?.error_zh ? error : value;
     // `message` is written for programs; people read the engine's own English reason. A refusal the engine
     // did not classify keeps its sentence, as before.
-    return t(withNext(reasonEn || error?.message || 'Did not finish', reasonEn && own.next_en),
-        withNext(reason || GENERIC_FAILURE_ZH, reason && own.next_zh, true));
+    return engineReason({error_en: reasonEn || error?.message || 'Did not finish', error_zh: reason || GENERIC_FAILURE_ZH,
+        reason_en: own.reason_en, reason_zh: own.reason_zh, other_usage: own.other_usage ?? error?.other_usage,
+        next_en: reasonEn && own.next_en, next_zh: reason && own.next_zh}, t);
 }
 
 // A failed job's one reason line. The engine's classified sentence (both languages) is for people; anything else is
@@ -106,7 +107,7 @@ export function failureCardReason(value, t) {
 
 export {about};
 export function clock(seconds) { const s = Math.max(0, Math.round(seconds)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
-export const jobName = (job, t) => job.label || (job.kind === 'image' ? t('Picture', '图片') : t('Video', '视频'));
+export const jobName = (job, t) => job.label || (job.kind === 'image' ? t('Image', '图片') : t('Video', '视频'));
 export {promptOf};
 export const jobFraction = job => Math.max(0, Math.min(1, Number(job.progress?.fraction) || 0));
 // What a job's last progress stands for `age` seconds after it was made, by the creation panel's rule.
@@ -194,7 +195,7 @@ const TAB_PREFIX = {ask: ['Needs your OK · ', '要确认 · '], failed: ['Faile
 export function jobMeta(job, t) {
     const parts = [];
     if (job.width > 0 && job.height > 0) parts.push(`${job.width} × ${job.height}`);
-    if (job.seconds > 0) parts.push(t(`${job.seconds} s`, `${job.seconds} 秒`));
+    if (job.seconds > 0) parts.push(t('{seconds} s', '{seconds} 秒', { seconds: job.seconds }));
     return parts.join(' · ');
 }
 // One number per part of a long video: 1 when made, how far along for the one being made, 0 for the rest.
@@ -394,7 +395,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
     const attachButton = press('fv-chat-attach', null, () => fileInput.click()), fileInput = el('input'), strip = el('ul', 'fv-chat-attached');
     attachButton.append(glyph(ATTACH.icon)); attachButton.title = t(...ATTACH.add); attachButton.setAttribute('aria-label', attachButton.title);
     fileInput.type = 'file'; fileInput.accept = ATTACH.types.join(','); fileInput.multiple = true; fileInput.hidden = true;
-    strip.hidden = true; strip.setAttribute('aria-label', t('Attached pictures', '已添加的图片'));
+    strip.hidden = true; strip.setAttribute('aria-label', t('Attached images', '已添加的图片'));
     const staged = new Map(), uploads = new Set();
     const stagedList = (session = draftSession) => { if (!staged.has(session)) staged.set(session, []); return staged.get(session); };
     const readyPictures = () => stagedList().filter(item => item.attachment).map(item => ({...item.attachment, preview: item.url}));
@@ -714,7 +715,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         if (conversations.current === session && neighbor) chooseChat(neighbor); else renderConversations();
         (listNodes.get(neighbor)?.button || newChat).focus({preventScroll: true});
         receiptFor = session;
-        receipt(t(`Deleted “${row?.title || 'chat'}”`, `已删除“${row?.title || '对话'}”`), t('Undo', '撤销'), 'undoDelete', () => {
+        receipt(t('Deleted “{title}”', '已删除“{title}”', { title: row?.title || t('chat', '对话') }), t('Undo', '撤销'), 'undoDelete', () => {
             clearTimeout(undoing.get(session)); undoing.delete(session); receiptFor = null; say(''); renderConversations();
             listNodes.get(session)?.button.focus({preventScroll: true});
         });
@@ -816,7 +817,8 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         menuState = conversationMenu(conversations, menuState);
         // After the final deletion, keep New chat reachable as the keyboard destination.
         const unreadable = conversations.unreadable;
-        skippedConversations.textContent = unreadable > 0 ? t(`${unreadable} ${unreadable === 1 ? 'conversation' : 'conversations'} could not be read`, `另有 ${unreadable} 个对话无法读取`) : '';
+        skippedConversations.textContent = !(unreadable > 0) ? '' : unreadable === 1 ? t('1 conversation could not be read', '另有 1 个对话无法读取')
+            : t('{count} conversations could not be read', '另有 {count} 个对话无法读取', { count: unreadable });
         skippedConversations.hidden = !unreadable;
         const visible = hasConversations(conversations) || conversations.supported === true && (deleted.size > 0 || unreadable > 0);
         element.dataset.conversations = String(visible); sidebar.hidden = tools.hidden = !visible; railEmpty.hidden = visible;
@@ -878,7 +880,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             const group = row.running > 0 ? 'running' : dayGroup(row.updated_at);
             node.row.dataset.group = group;
             node.row.dataset.groupLabel = t(...GROUP_WORDS[group]);
-            node.more.setAttribute('aria-label', t(`More: ${row.title}`, `更多：${row.title}`));
+            node.more.setAttribute('aria-label', t('More: {title}', '更多：{title}', { title: row.title }));
             node.more.hidden = !canDeleteConversation(row) && !canRenameConversation(row) || naming?.session === row.id;
             if (row.id === conversations.current) node.button.setAttribute('aria-current', 'true'); else node.button.removeAttribute('aria-current');
             if (list.children[index] !== node.row) list.insertBefore(node.row, list.children[index] || null);
@@ -1304,7 +1306,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             const where = cardLine(said, next, t);
             quiet = stalled(next);
             const waiting = t('Progress has not updated recently; generation is still running.', '进度暂未更新，仍在生成中。');
-            put(part, cells.length ? t(`Part ${block.index} / ${block.total}`, `第 ${block.index} / ${block.total} 段`) : quiet ? waiting : where);
+            put(part, cells.length ? t('Part {index} / {total}', '第 {index} / {total} 段', { index: block.index, total: block.total }) : quiet ? waiting : where);
             put(step, cells.length ? quiet ? waiting : where : '');
             const going = stopping.has(next.id) || next.status === 'cancelling';
             stop.disabled = going; stop.textContent = going ? t('Stopping…', '正在停止…') : t('Stop', '停止');
@@ -1631,7 +1633,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
             if (folded) {
                 const rest = beats.length - BEATS_SHOWN + 1;
                 const more = el('li', 'fv-chat-beats-more');
-                more.append(tip(press('fv-chat-link', t(`${rest} more`, `另外 ${rest} 拍`), () => { allBeats = true; shownState = null; render(); }), 'more8', t));
+                more.append(tip(press('fv-chat-link', t('{rest} more', '另外 {rest} 拍', { rest }), () => { allBeats = true; shownState = null; render(); }), 'more8', t));
                 outline.append(more);
             }
             outline.hidden = !beats.length;
@@ -1804,15 +1806,15 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         const running = of('running')[0], queued = of('queued').length, failed = of('failed').length, done = of('done').length;
         chatSummary = !state.session || !tasks.length ? null
             : running ? {text: running.title + ((running.fraction?.() ?? 0) >= .01 ? ` · ${Math.floor(running.fraction() * 100)}%` : ''), state: 'running'}
-            : queued ? {text: t(`${queued} queued`, `${queued} 项排队中`), state: 'queued'}
-            : failed ? {text: t(`${failed} did not finish`, `${failed} 项没有完成`), state: 'failed'}
-            : {text: t(`${done} done`, `${done} 项已完成`), state: 'done'};
+            : queued ? {text: t('{queued} queued', '{queued} 项排队中', { queued }), state: 'queued'}
+            : failed ? {text: t('{failed} did not finish', '{failed} 项没有完成', { failed }), state: 'failed'}
+            : {text: t('{done} done', '{done} 项已完成', { done }), state: 'done'};
         shotWords = tasks.flatMap(row => [row.title, row.prompt].filter(Boolean));
         const node = listNodes.get(state.session);
         if (node && !searchBox.value.trim()) { put(node.where, chatSummary?.text || ''); node.where.dataset.state = chatSummary?.state || ''; node.where.hidden = !chatSummary; }
         const row = conversations.conversations.find(item => item.id === state.session);
         put(headTitle, row?.title || (state.session && entries().length ? t('New chat', '新对话') : ''));
-        put(headSub, [tasks.length ? t(`${tasks.length} tasks`, `${tasks.length} 个任务`) : '', chatSummary && chatSummary.state !== 'done' ? chatSummary.text : '', row ? localTime(row.updated_at, t) : ''].filter(Boolean).join(' · '));
+        put(headSub, [tasks.length ? t('{count} tasks', '{count} 个任务', { count: tasks.length }) : '', chatSummary && chatSummary.state !== 'done' ? chatSummary.text : '', row ? localTime(row.updated_at, t) : ''].filter(Boolean).join(' · '));
         head.dataset.empty = String(!headTitle.textContent);
     }
     const entries = () => chatEntries(state);

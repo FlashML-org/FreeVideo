@@ -78,8 +78,8 @@ const NOTE_STATES = new Set(['done', 'failed', 'interrupted']);
 // A person-readable cause only: the raw code is never shown, so an unknown one gives nothing and the line says where to look.
 const reasonOf = failure => {
     const code = failure?.code;
-    if (code === 'engine_closed') return words(['The engine was closed', '引擎已关闭']);
-    if (code === 'engine_restarted') return words(['The engine restarted', '引擎已重启']);
+    if (code === 'engine_closed') return words(['Connection lost', '连接中断']);
+    if (code === 'engine_restarted') return words(['FreeVideo restarted', 'FreeVideo 已重新启动']);
     return '';
 };
 export function noteFromJob(row, previous, now = Date.now()) {
@@ -110,13 +110,17 @@ export function installChanges(before = {}, after = {}) {
     return notes;
 }
 // What the worker says about each model, reduced to {state, done, total, label, ready, reason}.
-export function installState(info, cn = CN) {
+export function installState(info, cn = null) {
+    // The worker's reason comes in English and Chinese: the page's language reads it through t() (its language file); a
+    // caller may still ask for one of the two (true: Chinese, false: English).
+    const say = typeof cn === 'boolean' ? (en, zh) => cn ? zh : en : t;
     const out = {};
     for (const model of info?.models || []) {
         const install = model.install || {};
         const state = model.ready ? 'done' : install.state === 'running' || install.state === 'paused_for_generation' || model.downloading ? 'running' : install.state || 'idle';
         out[model.id] = {state, ready: Boolean(model.ready), done: install.done ?? model.bytes_done ?? 0, total: install.total ?? model.bytes_total ?? 0, label: model.label || model.id,
-            paused: install.state === 'paused_for_generation', reason: clean(cn ? install.message_zh || install.message_en : install.message_en || install.message_zh)};
+            paused: install.state === 'paused_for_generation',
+            reason: clean(install.message_en && install.message_zh ? say(install.message_en, install.message_zh) : install.message_en || install.message_zh || '')};
     }
     return out;
 }
@@ -127,24 +131,25 @@ export function latestFinished(list = jobs.list()) {
 }
 
 // ── Words ──
-const KIND = {image: ['Picture', '图像'], video: ['Video', '视频'], chain: ['Long video', '长视频']};
+const KIND = {image: ['Image', '图像'], video: ['Video', '视频'], chain: ['Long video', '长视频']};
 const ago = (at, cn = CN) => {
     const s = Math.max(0, Math.round((Date.now() - at) / 1000));
-    if (s < 60) return cn ? '刚刚' : 'Just now';
-    if (s < 3600) return cn ? `${Math.floor(s / 60)} 分钟前` : `${Math.floor(s / 60)} min ago`;
-    if (s < 86400) return cn ? `${Math.floor(s / 3600)} 小时前` : `${Math.floor(s / 3600)} h ago`;
-    return cn ? `${Math.floor(s / 86400)} 天前` : `${Math.floor(s / 86400)} d ago`;
+    if (s < 60) return words(['Just now', '刚刚'], cn);
+    if (s < 3600) return words(['{count} min ago', '{count} 分钟前', { count: Math.floor(s / 60) }], cn);
+    if (s < 86400) return words(['{count} h ago', '{count} 小时前', { count: Math.floor(s / 3600) }], cn);
+    return words(['{count} d ago', '{count} 天前', { count: Math.floor(s / 86400) }], cn);
 };
 export function noteWords(note, cn = CN) {
     const w = pair => words(pair, cn);
     if (note.type === 'toast') return {title: note.title || w(['Notice', '提醒']), sub: note.reason || (note.status === 'notice' ? '' : w(['Did not finish', '没有完成']))};
     if (note.type === 'agent') return {title: note.title || w(['Assistant task', '助手任务']), sub: note.reason || w(['See why', '查看原因'])};
     if (note.type === 'install') {
-        return note.status === 'done' ? {title: w([`${note.label} is installed`, `${note.label} 已安装`]), sub: w(['Ready to use', '可以使用了'])}
-            : {title: w([`${note.label} did not install`, `${note.label} 安装失败`]), sub: note.reason || w(['Open Images to try again', '打开图像视图重试'])};
+        return note.status === 'done' ? {title: w(['{name} is installed', '{name} 已安装', { name: note.label }]), sub: w(['Ready to use', '可以使用了'])}
+            : {title: w(['{name} did not install', '{name} 安装失败', { name: note.label }]), sub: note.reason || w(['Open Images to try again', '打开图像视图重试'])};
     }
     const kind = w(KIND[note.view === 'editor' ? 'video' : note.kind] || KIND.video);
-    const head = note.status === 'done' ? w([`${kind} finished`, `${kind}生成完成`]) : note.status === 'failed' ? w([`${kind} failed`, `${kind}生成失败`]) : w([`${kind} stopped`, `${kind}生成中断`]);
+    const head = note.status === 'done' ? w(['{kind} finished', '{kind}生成完成', { kind }]) : note.status === 'failed' ? w(['{kind} failed', '{kind}生成失败', { kind }])
+        : w(['{kind} stopped', '{kind}生成中断', { kind }]);
     return {title: note.prompt || head, sub: note.prompt ? head : note.status === 'done' ? w(['In Creations', '已放进作品库']) : note.reason || w(['See why', '查看原因'])};
 }
 const ICON = {done: 'check', failed: 'alert', interrupted: 'alert', notice: 'alert'};
@@ -162,7 +167,7 @@ function syncBells() {
         bell.dataset.unread = String(count);
         bell.dataset.live = String(liveRows.length > 0);
         const name = t('Notifications', '通知');
-        bell.setAttribute('aria-label', count ? t(`${name}, ${count} unread`, `${name}，${count} 条未读`) : name);
+        bell.setAttribute('aria-label', count ? t('{name}, {count} unread', '{name}，{count} 条未读', { name, count }) : name);
     }
 }
 
@@ -222,7 +227,7 @@ function liveItems() {
     for (const [id, item] of Object.entries(installs)) {
         if (item.state !== 'running') continue;
         const gb = bytes => (bytes / 1e9).toFixed(1);
-        items.push({type: 'install', id, title: t(`Installing ${item.label}`, `正在安装 ${item.label}`), fraction: item.total ? Math.min(1, item.done / item.total) : null,
+        items.push({type: 'install', id, title: t('Installing {label}', '正在安装 {label}', { label: item.label }), fraction: item.total ? Math.min(1, item.done / item.total) : null,
             state: item.paused ? t('Paused while a video generates', '视频生成中，已暂停') : item.total ? `${gb(item.done)} / ${gb(item.total)} GB` : t('Downloading', '正在下载')});
     }
     return items;
@@ -517,7 +522,7 @@ function buildToast(item, more) {
         act.onclick = () => { queue.close(item); try { spec.action.run(); } catch (error) { console.warn('FreeVideo notice action:', error); } };
         box.append(act);
     }
-    if (more > 0) { const chip = document.createElement('span'); chip.className = 'fv-toast-more'; chip.textContent = `+${more}`; setTip(chip, {name: t(`${more} more after this`, `后面还有 ${more} 条`)}); box.append(chip); }
+    if (more > 0) { const chip = document.createElement('span'); chip.className = 'fv-toast-more'; chip.textContent = `+${more}`; setTip(chip, {name: t('{more} more after this', '后面还有 {more} 条', { more })}); box.append(chip); }
     if (!spec.sticky) { const ring = lifeRing(); ring.style.setProperty('--life', `${spec.ms}ms`); box.append(ring); }
     const close = document.createElement('button'); close.type = 'button'; close.className = 'fv-toast-x'; close.innerHTML = glyph('close', 14);
     close.setAttribute('aria-label', t('Close', '关闭'));

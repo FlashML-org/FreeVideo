@@ -32,9 +32,9 @@ export function imageGenerationSupported() {
     return true;
 }
 // On a Mac the GPU's memory is the machine's: the same notes without the graphics card.
-function memoryWords([en, zh], unified) {
+function memoryWords([en, zh, values], unified) {
     return unified ? [en.replace('GPU memory', 'memory').replace(' using the GPU', ''),
-        zh.replace('显存', '内存').replace('占用显卡的程序', '程序')] : [en, zh];
+        zh.replace('显存', '内存').replace('占用显卡的程序', '程序'), values] : [en, zh, values];
 }
 // The preset a canvas of this size has exactly, or null.
 export function presetRatio(width, height) {
@@ -194,7 +194,7 @@ export function imagePackMessage(info, t) {
     // A non-breaking space keeps the number and its unit on one line.
     const size = (info?.pack_size || (bytes > 0 ? (bytes / 2 ** 30).toFixed(1) + ' GiB' : '17.3 GB'))
         .replace(/ (?=[KMGT]i?B$)/, '\u00a0');
-    return t(`Download "${name}" in the launcher first, ${size}.`, `先在启动器里下载“${name}”，${size}。`);
+    return t('Download "{name}" in the launcher first, {size}.', '先在启动器里下载“{name}”，{size}。', { name, size });
 }
 // What the page offers while the image models are missing: one button, one muted line, and the bar once loading.
 export function packView(info, t) {
@@ -213,10 +213,10 @@ export function packView(info, t) {
         // While a setup, update or cleanup holds the installation the download cannot go on at the user's request: no button, only the note.
         return {loading: true, waiting, noButton: waiting && install.reason === 'busy_setup', button: waiting ? t('Continue download', '继续下载') : t('Pause', '暂停'), fraction: total > 0 ? Math.min(1, (install.done || 0) / total) : 0,
             note: waiting ? (install.reason === 'busy_video' ? t('Paused while a video generates', '视频生成中，已暂停')
-                : install.reason === 'busy_picture' ? t('Paused while a picture is made', '正在出图，已暂停')
+                : install.reason === 'busy_picture' ? t('Paused while an image is made', '正在出图，已暂停')
                 : install.reason === 'busy_setup' ? t('Paused while FreeVideo installs, updates or cleans up', 'FreeVideo 正在安装、更新或清理，已暂停')
                 : t('Paused while FreeVideo uses the graphics card for another task', 'FreeVideo 正在用显卡做别的任务，已暂停'))
-                : t(`Downloading · ${gb(install.done || 0)}\u00a0GB / ${size}${time}`, `正在下载 · ${gb(install.done || 0)}\u00a0GB / ${size}${time}`)};
+                : t('Downloading · {done}\u00a0GB / {size}{time}', '正在下载 · {done}\u00a0GB / {size}{time}', { done: gb(install.done || 0), size, time })};
     }
     const resume = install.state === 'failed' || install.state === 'cancelled' || install.done > 0;
     const reason = install.state === 'failed' ? t(install.message_en, install.message_zh) : '';
@@ -224,21 +224,54 @@ export function packView(info, t) {
     // (named in the note) is the way on, so no button is offered here.
     if (install.state === 'failed' && install.reason === 'shared_mismatch' && reason) return {loading: false, fraction: null, reason: true, button: '', note: reason};
     return {loading: false, fraction: null, reason: !!reason, button: resume ? t('Resume download', '继续下载') : t('Download image generation models', '下载图像生成模型'),
-        note: reason || (resume ? t(`${gb(install.done || 0)}\u00a0GB / ${size}${time}`, `${gb(install.done || 0)}\u00a0GB / ${size}${time}`) : size + time)};
+        note: reason || (resume ? t('{done}\u00a0GB / {size}{time}', '{done}\u00a0GB / {size}{time}', { done: gb(install.done || 0), size, time }) : size + time)};
 }
+// FreeVideo went away while a picture was being made (#1121): why, as far as the launcher saw it end, and what next. The
+// page's cause (task_store, engine_exit.js exitCause) picks the row; a restart without a record reads as quitting
+// unexpectedly. Lane, review/engine-closed-reason copy_lane.
+const LOST_ENGINE = {
+    engine_restarted: {
+        memory: [["The system closed FreeVideo, most likely because the computer ran out of memory. FreeVideo has restarted.", "FreeVideo 被系统关闭，很可能是因为电脑内存不足。FreeVideo 已重新启动。"], ["Use a smaller size, or close other programs that use memory, then generate again.", "请缩小尺寸，或关闭其他占用内存的程序后重新生成。"]],
+        // Lane 11-25 (copy_lane_memory_maybe_0613).
+        memory_maybe: [["The system ended FreeVideo, possibly because the computer ran out of memory. FreeVideo has restarted.", "FreeVideo 被系统结束，可能是因为电脑内存不足。FreeVideo 已重新启动。"], ["Use a smaller size, or close other programs that use memory, then generate again.", "请缩小尺寸，或关闭其他占用内存的程序后重新生成。"]],
+        ended: [["The system or another program ended FreeVideo. It has restarted.", "FreeVideo 被系统或其他程序结束，已重新启动。"], ["Generate again.", "请重新生成。"]],
+        crashed: [["FreeVideo crashed. It has restarted.", "FreeVideo 意外崩溃，已重新启动。"], ["Generate again. If it happens again, choose \"Report a problem\".", "请重新生成。再次出现时，请点击“提交问题”。"]],
+        unknown: [["FreeVideo quit unexpectedly. It has restarted.", "FreeVideo 意外退出，已重新启动。"], ["Generate again. If it happens again, choose \"Report a problem\".", "请重新生成。再次出现时，请点击“提交问题”。"]],
+    },
+    engine_closed: {
+        unreachable: [["The connection to FreeVideo was lost and did not come back within 2 minutes.", "与 FreeVideo 的连接中断，2 分钟内没有恢复。"], ["Open the launcher, make sure FreeVideo is running, then generate again.", "请打开启动器，确认 FreeVideo 正在运行后重新生成。"]],
+        stopped_waiting: [["Stopped waiting for FreeVideo to reconnect.", "已停止等待 FreeVideo 恢复连接。"], ["Open the launcher, make sure FreeVideo is running, then generate again.", "请打开启动器，确认 FreeVideo 正在运行后重新生成。"]],
+    },
+};
+const LOST_DEFAULT = {engine_restarted: 'unknown', engine_closed: 'unreachable'};
+/** [cause, next step] of a picture that FreeVideo's going away ended, or null for any other code. */
+export function lostEngineText(code, cause, t) {
+    if (typeof code !== 'string' || !Object.hasOwn(LOST_ENGINE, code)) return null;
+    const rows = LOST_ENGINE[code];
+    const [said, next] = rows[typeof cause === 'string' && Object.hasOwn(rows, cause) ? cause : LOST_DEFAULT[code]];
+    return [t(...said), t(...next)];
+}
+/** While the page waits for FreeVideo to come back: the line and the button that stops waiting. */
+export const WAITING_TEXT = {status: ["Lost the connection to FreeVideo. Waiting for it to come back…", "与 FreeVideo 的连接中断，正在等待恢复…"], stop: ["Stop waiting", "停止等待"],
+    short: ["Reconnecting…", "等待恢复连接…"]};
+
 export function imageGenError(code, info, t) {
+    const lost = lostEngineText(code, info?.cause, t);
+    if (lost) return lost.join(t(' ', ''));
     const reasons = {
         invalid_loras: ['The LoRA selection is invalid. Choose the files again.', 'LoRA 设置有误，请重新选择文件。'],
         invalid_lora_strength: ['LoRA strength must be between -2 and 2.', 'LoRA 强度必须在 -2 到 2 之间。'],
         duplicate_lora: ['Select each LoRA only once. Remove the duplicate.', '同一个 LoRA 只能选择一次，请移除重复项。'],
-        too_many_loras: ['Use at most eight LoRAs per picture.', '一张图片最多使用 8 个 LoRA，请减少数量。'],
+        too_many_loras: ['Use at most eight LoRAs per image.', '一张图片最多使用 8 个 LoRA，请减少数量。'],
         lora_not_found: ['The LoRA file could not be found. Choose it again.', 'LoRA 文件找不到，请重新选择。'],
-        invalid_lora_model: ['This LoRA cannot be used for pictures. Choose another one.', '此 LoRA 不适用于图片生成，请换一个。'],
+        invalid_lora_model: ['This LoRA cannot be used for images. Choose another one.', '此 LoRA 不适用于图片生成，请换一个。'],
         no_memory: ['Not enough GPU memory, even at the smallest size. Close other apps using the GPU, then try again.',
             '显存不足，最小尺寸也无法生成。请关闭其他占用显卡的程序后重试。'],
         busy_video: ['A video is generating. Try again when it finishes.', '视频正在生成，完成后再试。'],
-        busy: ['An image is already being generated. Try again when it finishes.', '已有一张图在生成，完成后再试。'],
-        model_unavailable: ['This computer does not support the chosen picture model. Use Qwen-Image 2.1.', '这台电脑不支持所选的图片模型。请改用 Qwen-Image 2.1。'],
+        busy: ['The image queue is full. Wait for the earlier images to finish, then try again.', '等待生成的图片已满，请等前面的图片完成后再试。'],
+        model_unavailable: ['This computer does not support the chosen image model. Use Qwen-Image 2.1.', '这台电脑不支持所选的图片模型。请改用 Qwen-Image 2.1。'],
+        // Lane 11-25 (image-prompt-read-failure-reason copy_lane_gpu_kernels).
+        gpu_kernels_failed: ["The graphics card's computation check did not pass. Update the graphics card driver, then restart FreeVideo. If the check still does not pass, download the report and report the problem.", "\u663e\u5361\u7684\u8ba1\u7b97\u68c0\u67e5\u672a\u901a\u8fc7\u3002\u8bf7\u66f4\u65b0\u663e\u5361\u9a71\u52a8\u540e\u91cd\u65b0\u542f\u52a8 FreeVideo\uff1b\u5982\u4ecd\u672a\u901a\u8fc7\uff0c\u8bf7\u4e0b\u8f7d\u62a5\u544a\u5e76\u63d0\u4ea4\u95ee\u9898\u3002"],
         model_unreadable: ['The image generation model files could not be read. Repair them in the launcher and try again.',
             '图像生成模型的文件读不出来。在启动器里修复后再试。'],
         device_unavailable: ['The graphics card is not available right now. Try again later.', '显卡暂时用不了，稍后再试。'],
@@ -247,28 +280,29 @@ export function imageGenError(code, info, t) {
         disk_full: ['Saving the image failed: the disk is full. Free some space, then generate again.', '保存图片时出错：磁盘空间不够，空出空间后再生成。'],
         cancelled: ['Image generation was cancelled.', '已取消图像生成。'],
         invalid_request: ['The image settings are invalid. Adjust them and try again.', '图片设置有误，请调整后重试。'],
-        invalid_prompt: ['The prompt is empty, or longer than 2,000 characters once the picture references are counted. Shorten it and try again.',
+        invalid_prompt: ['The prompt is empty, or longer than 2,000 characters once the image references are counted. Shorten it and try again.',
             '提示词为空，或加上图片引用后超过 2000 字。请缩短提示词后重试。'],
         invalid_dimensions: ['The image size is outside what the chosen model supports. Change the size and try again.', '图片尺寸超出所选模型支持的范围。请调整尺寸后重试。'],
         invalid_seed: ['The seed is not valid. Clear it or use a smaller whole number, then try again.', '随机种子无效。请清空种子或改用较小的整数后重试。'],
         too_many_images: ['There are more reference images than the chosen model supports. Remove some and try again.', '参考图超过所选模型支持的数量。请减少参考图后重试。'],
-        output_unwritable: ['The folder that keeps the pictures cannot be written (freevideo-image in the ComfyUI input folder). Check that it exists, is writable and has no file of the same name, then try again.',
+        output_unwritable: ['The folder that keeps the images cannot be written (freevideo-image in the ComfyUI input folder). Check that it exists, is writable and has no file of the same name, then try again.',
             '无法写入保存图片的文件夹（ComfyUI 的 input 目录下的 freevideo-image）。请确认该目录存在、可写，且没有同名文件，然后重试。'],
         invalid_layout: ['A layout box cannot be used. Draw it larger or change its words, then generate again.', '有一个布局框用不了。请把它画大一些或改一下文字，再生成。'],
         too_many_boxes: ['A layout takes at most 8 boxes. Delete one, then generate again.', '布局最多 8 个框。请删掉一个，再生成。'],
         layout_too_long: ['The words in the layout are too long. Shorten the lines in the boxes, then generate again.', '布局里的文字太长。请把框里的话写短一些，再生成。'],
-        invalid_media: ['The reference image cannot be read. Choose another image.', '参考图读不出来，请换一张图。'],
+        invalid_media: ['This image cannot be read or is larger than 4096×4096 pixels. Choose another image.', '这张图片读不出来，或超过 4096×4096 像素。请换一张图片。'],
+        invalid_points: ['Choose 1 to 16 points inside the image, with at least one to select (1 selects, 0 excludes).',
+            '请在图片内选 1 到 16 个点，其中至少一个是选中点（1 表示选中，0 表示排除）。'],
+        segment_not_installed: ['The click-select model is not installed. Download it first.', '点选模型尚未安装，请先下载点选模型。'],
         reload: ['Image generation was interrupted. Try again.', '图片生成中途被打断，请重试。'],
         engine_error: ['The image engine returned an unreadable answer. Try again; if it keeps failing, report the problem.', '图像引擎返回了无法读取的结果。请重试；仍然失败请提交问题。'],
         connection_lost: ['Lost the connection to FreeVideo. Try again once it is back.', '与 FreeVideo 的连接已断开，恢复后请重试。'],
-        engine_closed: ['FreeVideo stopped answering while this picture was being made. Start FreeVideo again, then generate again.', '生成过程中 FreeVideo 停止了响应。重新启动 FreeVideo 后再生成一次。'],
-        engine_restarted: ['FreeVideo restarted while this picture was being made, so it did not finish. Generate it again.', 'FreeVideo 在生成过程中重新启动，这张图没有完成。请再生成一次。'],
         generation_failed: ['Image generation ran into an error. Try again.', '图像生成出错了，请再试一次。'],
-        small_memory: ['This Mac has less than 16 GB of memory and cannot generate pictures.',
+        small_memory: ['This Mac has less than 16 GB of memory and cannot generate images.',
             '这台 Mac 的内存不足 16 GB，无法生成图片。'],
     };
     const fact = ['no_memory', 'small_memory'].includes(code) ? otherUsageText(info?.other_usage, t, true) : '';
-    const say = (en, zh) => t(...memoryWords([en, zh], info?.unified)) + (fact ? t(' ', '') + fact : '');
+    const say = (en, zh, values) => t(...memoryWords([en, zh, values], info?.unified)) + (fact ? t(' ', '') + fact : '');
     if (code === 'pack_missing') return imagePackUnavailableMessage(info, t);
     if (code === 'no_memory' && info?.memory === 'host')
         return t('Not enough virtual memory to load the image model. Close other apps, or increase virtual memory in system settings, then try again.',
@@ -284,15 +318,14 @@ export function imageGenError(code, info, t) {
             return say('Not enough GPU memory to load the model. Close other apps using the GPU, then try again.',
                 '显存不足，无法载入模型。请关闭其他占用显卡的程序后重试。');
         if (size?.width && size?.height)
-            return say(`Not enough GPU memory, even at ${size.width}\u00a0×\u00a0${size.height}. Close other apps using the GPU, then try again.`,
-                `显存不足，${size.width}\u00a0×\u00a0${size.height} 也无法生成。请关闭其他占用显卡的程序后重试。`);
+            return say('Not enough GPU memory, even at {width}\u00a0×\u00a0{height}. Close other apps using the GPU, then try again.',
+                '显存不足，{width}\u00a0×\u00a0{height} 也无法生成。请关闭其他占用显卡的程序后重试。', { width: size.width, height: size.height });
     }
     const known = Object.hasOwn(reasons, code) ? code : 'generation_failed';
     // An unnamed error still says which step it stopped at; a page with its own
     // Retry button does not repeat "try again" in the sentence.
     if (known === 'generation_failed' && Object.hasOwn(FAILED_AT, info?.stage)) {
-        const [en, zh] = FAILED_AT[info.stage];
-        return info?.retried ? say(en, zh) : say(`${en} Try again.`, `${zh}请再试一次。`);
+        return info?.retried ? say(...FAILED_AT[info.stage]) : say('{failure} Try again.', '{failure}请再试一次。', { failure: t(...FAILED_AT[info.stage]) });
     }
     return say(...(info?.retried && Object.hasOwn(RETRIED, known) ? RETRIED[known] : reasons[known]));
 }
@@ -319,8 +352,8 @@ export const QUEUE_LABELS = Object.freeze({
     image: ['Added to the queue. It starts when the previous one finishes.', '已加入队列，前面的完成后自动开始。'],
     video: ['Queued. It starts when the video finishes.', '已排队，视频生成完后自动开始。'],
 });
-export const fittedNote = (size, t, unified = false) => t(...memoryWords([`Not enough GPU memory. Made at ${size.width}\u00a0×\u00a0${size.height} instead.`,
-    `显存不足，已改为 ${size.width}\u00a0×\u00a0${size.height} 生成。`], unified));
+export const fittedNote = (size, t, unified = false) => t(...memoryWords(['Not enough GPU memory. Made at {width}\u00a0×\u00a0{height} instead.',
+    '显存不足，已改为 {width}\u00a0×\u00a0{height} 生成。', { width: size.width, height: size.height }], unified));
 export const REPORT_LABELS = Object.freeze({
     download: ['Download report', '下载报告'],
     description: ['Diagnostic report: hardware, settings and timings', '诊断报告：硬件、设置和耗时'],
@@ -374,7 +407,16 @@ export function imageReportBar(card, report_id, t, {productVersion = () => null,
 
 // Shared by the editor and the other image entry points. Only the opaque report
 // ID goes in the request; raw service messages are never shown in the page.
-export function renderImageFailure(host, {error, report_id, stage, step, fitted, info, memory, other_usage} = {}, t,
+// The failures the person fixes by changing a setting or making room (image_gen/failure.py NO_REPORT; a test keeps the two
+// equal): the engine makes no report for them and the card offers no "Report a problem".
+export const NO_REPORT = new Set([
+    'busy', 'cancelled', 'disk_full', 'duplicate_lora', 'invalid_dimensions', 'invalid_lora_model',
+    'invalid_lora_strength', 'invalid_loras', 'invalid_media', 'invalid_points', 'invalid_prompt', 'invalid_request',
+    'invalid_seed', 'lora_not_found', 'output_unwritable', 'segment_not_installed', 'small_memory',
+    'too_many_images', 'too_many_loras'
+]);
+
+export function renderImageFailure(host, {error, report_id, stage, step, fitted, info, memory, other_usage, cause, misses} = {}, t,
     {productVersion = () => null, fetchApi = globalThis.fetch.bind(globalThis), retry = null, retried = Boolean(retry)} = {}) {
     // `retry` ({label: [en, zh], onClick}) puts the page's Retry first in the card's own action row;
     // `retried` alone says the caller shows a Retry of its own elsewhere.
@@ -387,7 +429,7 @@ export function renderImageFailure(host, {error, report_id, stage, step, fitted,
     }
     const card = doc.createElement('div'); card.className = 'fv-result-links';
     const reason = doc.createElement('div'); reason.className = 'fv-image-failure-reason';
-    reason.setAttribute('role', 'status'); reason.textContent = imageGenError(error, {stage, fitted, memory, unified: info?.unified_memory, other_usage, retried}, t);
+    reason.setAttribute('role', 'status'); reason.textContent = imageGenError(error, {stage, fitted, memory, unified: info?.unified_memory, other_usage, retried, cause}, t);
     card.append(reason); host.append(card);
     let again = null;
     if (retry) {
@@ -395,17 +437,22 @@ export function renderImageFailure(host, {error, report_id, stage, step, fitted,
         again.className = 'fv-action fv-action-primary fv-image-retry'; again.textContent = t(...retry.label);
         again.onclick = () => retry.onClick();
     }
-    // The card always has a way to report: the diagnostic report (with its own technical details) when the engine made one,
-    // else a form that carries the code and stage, and the same facts under a details fold.
+    // A failure the engine reports has a way to report it: the diagnostic report (with its own technical details) when the
+    // engine made one, else a form that carries the code and stage. The same facts stay under a details fold either way.
     let bar;
     if (report_id) ({bar} = imageReportBar(card, report_id, t, {productVersion, fetchApi}));
     else {
-        const facts = [[['Error code', '错误码'], error], [['Stage', '阶段'], stage], [['Step', '步骤'], step || (stage ? '' : 'unreported')], [['Memory', '内存'], memory]].filter(([, v]) => v);
+        // A picture FreeVideo's going away ended (#1121) names why (fixed words) and the last asks that failed.
+        const facts = [[['Error code', '错误码'], error], [['Stage', '阶段'], stage], [['Step', '步骤'], step || (stage || cause ? '' : 'unreported')],
+            [['Cause', '原因'], cause], [['Last attempts', '最后几次请求'], Array.isArray(misses) ? misses.slice(-3).map(miss => typeof miss === 'string' && /^[a-z][a-z0-9_]{0,31}$/.test(miss) ? miss : 'other').join(', ') : ''], [['Memory', '内存'], memory]].filter(([, v]) => v);
         bar = doc.createElement('div'); bar.className = 'fv-actions';
         // Drawn as the card's other actions (Retry, Download report): their border, focus ring and press.
-        bar.append(issueButton(t, () => ({where: ['Image generation', '图像生成'], message: facts.map(([[en, zh], v]) => `${t(en, zh)}: ${v}`).join('\n')}), {className: 'fv-action'}));
+        const reportable = !NO_REPORT.has(error);
+        if (reportable)
+            bar.append(issueButton(t, () => ({where: ['Image generation', '图像生成'], message: facts.map(([[en, zh], v]) => `${t(en, zh)}: ${v}`).join('\n')}), {className: 'fv-action'}));
         if (again) bar.prepend(again);
-        card.append(bar);
+        // The row is shown when it holds Retry or the report button (decided from them, not by counting its children).
+        if (again || reportable) card.append(bar);
         const details = doc.createElement('details'); details.className = 'fv-image-failure-details';
         const summary = doc.createElement('summary'); summary.textContent = t('Technical details', '技术详情'); details.append(summary);
         for (const [[en, zh], v] of facts) { const row = doc.createElement('div'); row.textContent = `${t(en, zh)}: ${v}`; details.append(row); }
@@ -576,7 +623,7 @@ export function imageGenProgress(stage, fraction, withImages = false, overall = 
 // Seconds left as the service predicts them, in the video's words; null while there is none.
 export function imageRemainingText(seconds, t) {
     if (!Number.isFinite(seconds)) return '';
-    return seconds >= 60 ? t(`About ${Math.ceil(seconds / 60)}\u00a0min left`, `预计还需约 ${Math.ceil(seconds / 60)}\u00a0分钟`)
+    return seconds >= 60 ? t('About {minutes}\u00a0min left', '预计还需约 {minutes}\u00a0分钟', { minutes: Math.ceil(seconds / 60) })
         : t('Less than a minute left', '预计还需不到 1\u00a0分钟');
 }
 
@@ -994,9 +1041,9 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
     // on the canvas, or used as a reference of this edit; deleting, choosing several and the folder are in the picker too.
     function worksButton() {
         const open = el('button', null, 'fv-ie-button fv-ie-gen-works'); open.type = 'button';
-        open.innerHTML = icon('image', 16); open.append(el('span', t('Works', '作品库')));
-        open.dataset.fvTipName = t('Works', '作品库');
-        open.dataset.fvTipUse = t('Place a picture from the works, or use it as a reference', '从作品库放入一张图，或用作参考图');
+        open.innerHTML = icon('image', 16); open.append(el('span', t('Creations', '作品库')));
+        open.dataset.fvTipName = t('Creations', '作品库');
+        open.dataset.fvTipUse = t('Place an image from the creations, or use it as a reference', '从作品库放入一张图，或用作参考图');
         open.setAttribute('aria-haspopup', 'dialog'); open.setAttribute('aria-expanded', 'false');
         let picker = null;
         open.onclick = async () => {
@@ -1047,7 +1094,7 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
         if (wantFocus && !disabled) { wantFocus = false; input.focus({preventScroll: true}); }
         if (loras) { if (state.running) loras.element.setAttribute('inert', ''); else loras.element.removeAttribute('inert'); }
         renderReferences(refs, disabled);
-        input.placeholder = mode === 'edit' ? getSelection() ? t('What to change in the selection', '要改选区里的什么') : t('What to change', '要改什么') : t('Describe the picture', '描述画面');
+        input.placeholder = mode === 'edit' ? getSelection() ? t('What to change in the selection', '要改选区里的什么') : t('What to change', '要改什么') : t('Describe the image', '描述画面');
         input.setAttribute('aria-label', input.placeholder);
         const pack = missing ? packView(state.info, t) : null;
         action.textContent = pack ? pack.button : state.running ? state.stopping ? t('Stopping', '正在停止') : t('Stop', '停止') : t('Generate', '生成');
@@ -1068,11 +1115,11 @@ export function createImageGeneration({client, renderer, t, getDoc, getSelection
                 : missing ? imagePackUnavailableMessage(state.info, t)
                 // A trigger word a LoRA adds in front can take the prompt past what the engine accepts.
                 : promptRequired ? (prompt.length > 2000
-                    ? t(`The prompt is over 2,000 characters. Shorten it by ${prompt.length - 2000} and try again.`, `提示词超过 2000 字。请缩短 ${prompt.length - 2000} 字后重试。`)
+                    ? t('The prompt is over 2,000 characters. Shorten it by {count} and try again.', '提示词超过 2000 字。请缩短 {count} 字后重试。', { count: prompt.length - 2000 })
                     : t('Enter a prompt first.', '请先填写提示词。'))
                 : state.running && state.waiting ? t(...(QUEUE_LABELS[state.waiting] || QUEUE_LABELS.image))
-                : state.running && state.fitted ? t(...memoryWords([`Not enough GPU memory. Retrying at ${state.fitted.width}\u00a0×\u00a0${state.fitted.height}`,
-                    `显存不足，改用 ${state.fitted.width}\u00a0×\u00a0${state.fitted.height} 重试`], state.info?.unified_memory)) + ' · ' + percent
+                : state.running && state.fitted ? t(...memoryWords(['Not enough GPU memory. Retrying at {width}\u00a0×\u00a0{height}',
+                    '显存不足，改用 {width}\u00a0×\u00a0{height} 重试', { width: state.fitted.width, height: state.fitted.height }], state.info?.unified_memory)) + ' · ' + percent
                 : state.running && state.stage === 'upload' ? t('Uploading reference images', '正在上传参考图')
                 : state.running ? (state.stage === 'load' ? t('Loading the model', '加载模型') + ' '
                     : state.stage === 'encode' ? t('Reading reference images', '读取参考图') + ' ' : '') + percent

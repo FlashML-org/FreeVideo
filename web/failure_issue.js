@@ -1,5 +1,6 @@
 // What a failure card sends to GitHub: the redacted report's summary, never the report file,
 // paths or typed text (the report was already cleaned). feedback.js turns it into the address.
+import { translatorFor } from './i18n.js';
 const PHASES = [
     [/download|dependenc/i, ['downloading files', '下载文件']],
     [/load/i, ['loading the model', '载入模型']],
@@ -43,7 +44,7 @@ function cause(report) {
 
 /** Title, text and summary for the prefilled issue. `lora` marks a LoRA the check judged wrongly; `engineExit` is the
  *  record of the engine's last unexpected stop, when the launcher saw one. */
-export function failureIssue(report, kind, {lora = false, t = en => en, engineExit = null, loopStalls = []} = {}) {
+export function failureIssue(report, kind, {lora = false, t = translatorFor(null, false), engineExit = null, loopStalls = []} = {}) {
     const stage = failureStage(report);
     const lines = String(report?.message || '').split(/\r?\n/).filter(line => line.trim());
     // A traceback ends with the line that names the error; any other message starts with it.

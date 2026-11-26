@@ -8,13 +8,17 @@
 // Nothing here runs at import under Node, so the unit tests load it as it is.
 
 import { isolateDialogKeys, listenDialogKey } from './dialog_keys.js';
-import { isChinese, translator } from './i18n.js';
+import { isChinese, translator, translatorFor } from './i18n.js';
 
 const browser = typeof document !== 'undefined';
 export const CN = isChinese();
 export const t = translator(CN);
-// [en, zh] pairs, plain strings and functions returning either all read the same way.
-export const words = (value, cn = CN) => typeof value === 'function' ? words(value(), cn) : Array.isArray(value) ? String(value[cn ? 1 : 0] ?? value[0] ?? '') : String(value ?? '');
+// [en, zh] pairs (or [en, zh, values] for {name} placeholders), plain strings and functions returning either all read
+// the same way. A pair in the page's language goes through t, so a language file reaches it; asked for the other of
+// English and Chinese (a search that matches both), it is that text as written.
+export const words = (value, cn = CN) => typeof value === 'function' ? words(value(), cn)
+    : Array.isArray(value) ? String((cn === CN ? t : translatorFor(null, cn))(value[0] ?? '', value[1] ?? value[0] ?? '', value[2]) ?? '')
+    : String(value ?? '');
 export const MAC = /Mac|iPhone|iPad/.test(globalThis.navigator?.platform || globalThis.navigator?.userAgent || '');
 // The compatibility view (Settings → 兼容界面, stored as freevideo.glass = solid): solid panels, fewer animations,
 // and nothing plays until asked. It counts as reduced motion everywhere.
@@ -41,7 +45,7 @@ const GESTURES = {click: ['Click', '点击'], drag: ['Drag', '拖动'], wheel: [
 export function keyParts(combo, mac = MAC, cn = CN) {
     return String(combo || '').split('+').map(part => part.trim()).filter(Boolean).map(part => {
         const low = part.toLowerCase();
-        if (GESTURES[low]) return GESTURES[low][cn ? 1 : 0];
+        if (GESTURES[low]) return words(GESTURES[low], cn);
         return (mac ? MAC_KEYS : PC_KEYS)[low] ?? COMMON[low] ?? (part.length === 1 ? part.toUpperCase() : part);
     });
 }
@@ -181,12 +185,12 @@ export function placeMenu(at, size, view, margin = 8) {
 // show their name and key only. Unavailable rows show their `disabled` text, which says why and how to undo it. ──
 const USE = {
     open: ['View it large', '打开大图查看'], download: ['Save the file to this computer', '把文件存到这台电脑'],
-    reuse: ['Fill in its prompt and settings', '填入它的提示词和设置'], reference: ['Use it as a reference picture', '作为参考图放进当前视图'],
+    reuse: ['Fill in its prompt and settings', '填入它的提示词和设置'], reference: ['Use it as a reference image', '作为参考图放进当前视图'],
     'copy-prompt': ['Copy its prompt to paste elsewhere', '复制提示词，可粘贴到别处'], favorite: ['Keep it under Favorites', '加入收藏，方便再找'],
     tags: ['Group it with a tag', '用标签给它分组'], compare: ['Compare it with another one', '和另一个并排或滑块对比'],
     folder: ['Show the file in its folder', '在文件夹里找到这个文件'], trash: ['Move it to Recently deleted', '移到最近删除，可恢复'],
     restore: ['Put it back where it was', '放回原来的位置'], purge: ['Delete it for good; asks first', '永久删除，会先确认'],
-    'new-tag': ['Make a new tag for it', '新建一个标签'], extend: ['Continue it into a longer video', '接着生成更长的视频'],
+    'new-tag': ['Make a new tag for it', '新建一个标签'], extend: ['Extend it into a longer video', '接着生成更长的视频'],
     rename: ['Give it another name', '换一个名字'], duplicate: ['Make a copy next to it', '在旁边复制一份'],
     read: ['Clear its unread dot', '去掉未读标记'], remove: ['Take it off this list', '从列表里移除'],
 };

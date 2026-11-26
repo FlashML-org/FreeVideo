@@ -18,6 +18,8 @@ function editorPanel(node) {
         get passMode() { return node.freevideoPassMode || null; },
         // The creative panel's quality control (levels and steps), shared the same way; null without an open panel.
         get effort() { return node.freevideoEffort || null; },
+        // Whether the planner lists the Fast level on this machine.
+        get fastOffered() { return node.freevideoFastOffered?.() === true; },
         // What a two-pass choice leaves in the panel's sampling settings now.
         sampling() {
             const now = read();
@@ -58,7 +60,7 @@ export function openEditorView(node, {studio, work = null, extend = false, onPro
                 return element && !element.hidden && element.getClientRects().length ? element.textContent.replace(/\s+/g, ' ').trim() : '';
             };
             // The block already shows the overall percentage; the bar keeps only the stage sentence.
-            const stage = words('.fv-generation-label').replace(/（本步 \d+%）$| \(\d+% of this step\)$/, '');
+            const stage = words('.fv-generation-label');
             const eta = progressElement.querySelector('.fv-generation-eta');
             const shown = eta && !eta.hidden ? eta.dataset : null, left = shown?.seconds != null ? Number(shown.seconds) : null;
             return {stage, time: words('.fv-generation-status'), stall: words('.fv-generation-stall'),

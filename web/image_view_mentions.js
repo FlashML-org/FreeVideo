@@ -4,9 +4,17 @@
 // and is marked until it is chosen again. The marks are drawn over the box (the text stays the box's own).
 import { listenDialogKey } from './dialog_keys.js';
 import { el, t, icon } from './image_view_ui.js';
+import { keywordSource } from './i18n.js';
 
-const TOKEN = /@(?:图|Image) ?(\d+|\?)/g;
-export const mentionText = n => t(`@Image${n}`, `@图${n}`);
+// The words a picture is named by in text, from the language's file and the built-in ones ("Image", "图", "圖"), and the
+// ones a rewrite names a subject by ("Subject", "主体", "主體"): read before a number, with a space where the word is
+// written in letters. Built with the `u` flag: a word of the language's own is bounded by what stands before and after it
+// (web/i18n.js keywordSource).
+const SEPARATORS = {latin: '\\s', cjk: '\\s?'};
+export const PICTURE_WORDS = new RegExp(keywordSource('image', undefined, SEPARATORS) + '(\\d+)', 'gu');
+export const SUBJECT_WORDS = new RegExp(keywordSource('subject', undefined, SEPARATORS) + '(\\d+)', 'gu');
+const TOKEN = new RegExp('@' + keywordSource('image') + ' ?(\\d+|\\?)', 'gu');
+export const mentionText = n => t('@Image{n}', '@图{n}', { n });
 
 // The text with each mention renumbered from `before` (the pictures as they were) to `after` (as they are now).
 // `caret` is moved by the change in length of the mentions in front of it.
@@ -128,7 +136,7 @@ export function posePrompt(text, n, words, seed) {
     return `${desc ? desc + close : ''}${who ? who + (who.endsWith('.') ? ' ' : '') : ''}${lead ? lead + '。' : ''}${place ? `场景是${place}。` : ''}${POSE_SKETCH(n)}${words?.arms ? words.arms + '。' : ''}${desc && STYLE_WORDS.test(desc) ? POSE_STYLED : POSE_REAL}`;
 }
 export const brokenMentions = (text, count) => [...text.matchAll(TOKEN)].filter(([, n]) => n === '?' || Number(n) < 1 || Number(n) > count).length;
-export const hasMentions = text => new RegExp(TOKEN.source).test(text);
+export const hasMentions = text => new RegExp(TOKEN.source, 'u').test(text);
 
 // The marks over the box and the "@" list. pictures(): [{url, label}] in order; onAdd(anchor): the way to add one.
 export function promptMentions({prompt, host, pictures, onAdd, onPick = () => {}}) {
@@ -136,7 +144,7 @@ export function promptMentions({prompt, host, pictures, onAdd, onPick = () => {}
     marks.setAttribute('aria-hidden', 'true'); marks.append(sheet);
     prompt.after(marks);
     const list = el('div', 'fv-iv-at fv-glass fv-g3'); list.setAttribute('role', 'listbox'); list.hidden = true;
-    list.setAttribute('aria-label', t('Reference pictures', '参考图'));
+    list.setAttribute('aria-label', t('Reference images', '参考图'));
     host.append(list);
     let open = null; // {start, active, items}
     const COPY = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing', 'lineHeight', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'textIndent', 'wordSpacing', 'tabSize'];
@@ -183,7 +191,7 @@ export function promptMentions({prompt, host, pictures, onAdd, onPick = () => {}
 
     function items(query) {
         const all = pictures().map((p, at) => ({n: at + 1, ...p}));
-        const q = query.replace(/^(图|image)/i, '').trim();
+        const q = query.replace(new RegExp('^' + keywordSource('image'), 'iu'), '').trim();
         return q ? all.filter(p => String(p.n).startsWith(q)) : all;
     }
     function draw() {
@@ -197,9 +205,9 @@ export function promptMentions({prompt, host, pictures, onAdd, onPick = () => {}
             return b;
         });
         if (!rows.length) {
-            const empty = el('p', 'fv-iv-at-empty', pictures().length ? t('No picture with that number', '没有这个编号的参考图') : t('No reference pictures yet', '还没有参考图'));
+            const empty = el('p', 'fv-iv-at-empty', pictures().length ? t('No image with that number', '没有这个编号的参考图') : t('No reference images yet', '还没有参考图'));
             const add = el('button', 'fv-iv-at-item fv-iv-at-add'); add.type = 'button'; add.setAttribute('role', 'option'); add.tabIndex = -1;
-            add.append(icon('plus'), el('span', 'fv-iv-at-name', t('Add a reference picture', '添加参考图')));
+            add.append(icon('plus'), el('span', 'fv-iv-at-name', t('Add a reference image', '添加参考图')));
             add.setAttribute('aria-selected', 'true');
             add.addEventListener('pointerdown', event => event.preventDefault());
             add.addEventListener('click', () => { const at = open?.start; close(); if (at != null) removeAt(at); onAdd(prompt); });

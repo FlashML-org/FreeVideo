@@ -1,6 +1,7 @@
 // A one-time bubble on the "Separate tracks" button, shown when a clip with sound is first selected.
 // It is seen once the button is used, the chapter is opened, the bubble is closed or any click lands; a bubble that only
 // fades out is shown one more time.
+import { translator } from './i18n.js';
 if (typeof document !== 'undefined' && !document.head.querySelector('link[href$="sound_bubble.css"]')) {
     const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = new URL('./sound_bubble.css', import.meta.url).href;
     document.head.append(link);
@@ -15,7 +16,7 @@ const NO_BUBBLE = () => {};
 /** Show the bubble under `button` when it is due. Returns a function that removes it. */
 export const isBubbleRemover = remove => remove !== NO_BUBBLE;
 export function showSoundBubble(button, {cn = false} = {}) {
-    const t = pair => pair[cn ? 1 : 0], state = read();
+    const say = translator(cn), t = pair => say(...pair), state = read();
     if (state.seen || state.faded > 1 || document.querySelector('.fv-sound-bubble') || document.querySelector(OTHER_CARD) || button.hidden) return NO_BUBBLE;
     const bubble = document.createElement('div'); bubble.className = 'fv-sound-bubble'; bubble.setAttribute('role', 'status');
     const line = document.createElement('p'); line.textContent = t(TEXT.line);

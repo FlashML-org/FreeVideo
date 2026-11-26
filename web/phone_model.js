@@ -1,6 +1,9 @@
 import {chainPosition} from './studio_chain.js';
 // Data shaping only. Backend identifiers are never guessed from the current job.
-export const phoneText = (language = '') => String(language).toLowerCase().startsWith('zh') ? (en, zh) => zh : en => en;
+// The phone page's own t: English and Chinese, with {name} placeholders filled (web/i18n.js is not among the files the
+// phone page is served).
+const fillText = (text, values) => values ? String(text).replace(/\{(\w+)\}/g, (whole, name) => Object.prototype.hasOwnProperty.call(values, name) ? String(values[name]) : whole) : text;
+export const phoneText = (language = '') => String(language).toLowerCase().startsWith('zh') ? (en, zh, values) => fillText(zh, values) : (en, zh, values) => fillText(en, values);
 export const activeJob = job => ['running', 'cancelling'].includes(job.status);
 export const queuedJob = job => ['waiting', 'queued'].includes(job.status);
 export function jobGroups(jobs) {
@@ -25,8 +28,8 @@ export function mergePhoneJobs(previous, chat, activity, snapshots = []) {
 }
 export function retryWords(seconds, t) {
     const count = Math.ceil(Math.max(0, seconds));
-    return count > 90 ? t(`Too many attempts. Try again in ${Math.ceil(count / 60)} min.`, `尝试次数过多，请 ${Math.ceil(count / 60)} 分钟后再试。`)
-        : t(`Too many attempts. Try again in ${count} s.`, `尝试次数过多，请 ${count} 秒后再试。`);
+    return count > 90 ? t('Too many attempts. Try again in {minutes} min.', '尝试次数过多，请 {minutes} 分钟后再试。', { minutes: Math.ceil(count / 60) })
+        : t('Too many attempts. Try again in {count} s.', '尝试次数过多，请 {count} 秒后再试。', { count });
 }
 export function queueWords(index, t) {
     const n = index + 1, mod = n % 100;
@@ -35,7 +38,7 @@ export function queueWords(index, t) {
 }
 export function remainingWords(seconds, t) {
     if (!(seconds > 0)) return '';
-    return seconds >= 60 ? t(`About ${Math.ceil(seconds / 60)} min left`, `还要约 ${Math.ceil(seconds / 60)} 分钟`) : t('Under 1 min', '不到 1 分钟');
+    return seconds >= 60 ? t('About {minutes} min left', '还要约 {minutes} 分钟', { minutes: Math.ceil(seconds / 60) }) : t('Under 1 min', '不到 1 分钟');
 }
 export function mediaPath(value, kind = 'video') {
     if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//')) return '';
@@ -68,8 +71,8 @@ export function applyPhoneChain(job, chain) {
 export function phonePartWords(job, t) {
     const b = job.progress?.block;
     if (!(b?.total > 1)) return '';
-    return job.progress.waiting ? t(`Waiting in queue · Part ${b.index} of ${b.total}`, `正在排队 · 第 ${b.index} 段，共 ${b.total} 段`)
-        : t(`Part ${b.index} of ${b.total}`, `第 ${b.index} 段，共 ${b.total} 段`);
+    return job.progress.waiting ? t('Waiting in queue · Part {index} of {total}', '正在排队 · 第 {index} 段，共 {total} 段', { index: b.index, total: b.total })
+        : t('Part {index} of {total}', '第 {index} 段，共 {total} 段', { index: b.index, total: b.total });
 }
 
 // Ignore heartbeat-only fields when deciding whether a card needs repainting.
@@ -91,16 +94,17 @@ export function longGeneration(value) {
 // FreeVideo on it returned an error (its own sentence when it wrote one, otherwise the HTTP status).
 // `what` is the action as [English, Chinese], e.g. ['send', '发送'].
 const RAW_REPLY = /^(?:HTTP\s*)?\d{3}\b|^[a-z][a-z0-9]*(?:[_.:-][a-z0-9]+)+$|Error\b|Traceback|Unexpected token|JSON/;
-export function phoneFailure(error, t, [en, zh]) {
+export function phoneFailure(error, t, what) {
+    const action = t(...what);
     const status = Number(error?.status);
     if (!(Number.isInteger(status) && status >= 100 && status < 600)) {
         if (error?.name === 'TypeError' || error?.unreachable)
-            return t(`Could not ${en}: the phone cannot reach FreeVideo on the computer. Check that the computer is on and connected to the same Wi-Fi.`,
-                `没能${zh}：手机连不上电脑上的 FreeVideo。请确认电脑已开机，并与手机连接同一个 Wi-Fi。`);
-        return t(`Could not ${en}. Try again.`, `没能${zh}，请重试。`);
+            return t('Could not {action}: the phone cannot reach FreeVideo on the computer. Check that the computer is on and connected to the same Wi-Fi.',
+                '没能{action}：手机连不上电脑上的 FreeVideo。请确认电脑已开机，并与手机连接同一个 Wi-Fi。', { action });
+        return t('Could not {action}. Try again.', '没能{action}，请重试。', { action });
     }
     const said = error?.data?.error?.message ?? error?.data?.message ?? (typeof error?.data?.error === 'string' ? error.data.error : '');
     if (typeof said === 'string' && said.trim() && !RAW_REPLY.test(said.trim())) return said.trim();
-    return t(`Could not ${en}: FreeVideo on the computer returned an error (HTTP ${status}). Try again.`,
-        `没能${zh}：电脑上的 FreeVideo 返回了错误（HTTP ${status}）。请重试。`);
+    return t('Could not {action}: FreeVideo on the computer returned an error (HTTP {status}). Try again.',
+        '没能{action}：电脑上的 FreeVideo 返回了错误（HTTP {status}）。请重试。', { action, status });
 }

@@ -7,6 +7,7 @@ import {createImageGenClient, imageGenProgress, imagePackUnavailableMessage, ren
     IMAGE_GEN_POLL_MS, IMAGE_GEN_INFO_POLL_MS} from './image_generation.js';
 import {createImageLoras} from './image_lora.js';
 import {createOtherUsageNotice} from './other_usage.js';
+import { translatorFor } from './i18n.js';
 
 export {imageGenerationSupported as castGenerateSupported} from './image_generation.js';
 
@@ -487,7 +488,7 @@ export function createCastGenerator({client, kind = 'character', views = null, f
 
 export function mountCastGenerate({container, api, text, t = text, viewURL, onState = () => {}, onPick = () => {}, fetchApi, client, loras, kind = 'character'}) {
     const scene = kind === 'setting' || kind === 'prop', names = scene ? SCENE_CANDIDATES : CAST_VIEWS;
-    const tr = t || ((en) => en);
+    const tr = t || translatorFor(null, false);
     const fetcher = fetchApi || (api ? api.fetchApi.bind(api) : globalThis.fetch.bind(globalThis));
     client = client || createImageGenClient(fetcher);
     const url = viewURL || (file => {
@@ -523,7 +524,7 @@ export function mountCastGenerate({container, api, text, t = text, viewURL, onSt
     const grid = el('div', 'fv-cg-views');
     const cells = names.map((view, index) => {
         const cell = el('div', 'fv-cg-view');
-        const title = scene ? tr(`Option ${index + 1}`, `方案 ${index + 1}`) : tr(...VIEW_TITLES[view]);
+        const title = scene ? tr('Option {number}', '方案 {number}', { number: index + 1 }) : tr(...VIEW_TITLES[view]);
         setTip(cell, {name: title}); cell.setAttribute('aria-label', title); cell.setAttribute('role', scene ? 'button' : 'img');
         if (scene) {
             cell.tabIndex = 0;

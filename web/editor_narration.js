@@ -11,8 +11,11 @@ import {tip} from './editor_tips.js';
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const NBSP = ' ';
 const SVG = 'http://www.w3.org/2000/svg';
-// A take the recording bar saved: "Recording 2026-11-08 101500.wav" in either language.
-const RECORDING = /^(Recording|录音) \d{4}-\d{2}-\d{2} \d{6}\.wav$/;
+// A take the recording bar saved (takeName): "Recording 2026-11-08 101500.wav" on an English page, "录音 …" on a Chinese
+// one, and the page's own word in any other language. Takes of English and Chinese pages, in either script, are known
+// on every page.
+const escaped = word => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+export const takeNames = t => new RegExp(`^(?:${[...new Set(['Recording', '录音', '錄音', t('Recording', '录音')])].map(escaped).join('|')}) \\d{4}-\\d{2}-\\d{2} \\d{6}\\.wav$`);
 const clock = seconds => { const whole = Math.max(0, Math.round(seconds)); return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`; };
 // The bar's pace for this machine: seconds of work per second of line, from the last line made.
 const PACE_KEY = 'fv-editor-say-pace';
@@ -23,25 +26,25 @@ export function narrationBarStatus(job, t) {
     if (!job || !['queued', 'running', 'waiting'].includes(job.status)) return null;
     const stage = job.status !== 'running' ? t('Queued', '排队中')
         : job.phase === 'recognizing' ? t('Finding the lines', '正在识别台词')
-        : job.phase === 'dubbing' ? t('Generating the voice', '正在生成配音') : t('Preparing', '正在准备');
+        : job.phase === 'dubbing' ? t('Generating the voice', '正在生成旁白') : t('Preparing', '正在准备');
     return {state: 'running', blocks: [], music: true, words: {stage}};
 }
 // A failed line's sentence on the bar's failure line.
 export function narrationFailureText(reason, t) {
     return {
-        out_of_memory: t('Not enough memory to generate the voice. Close other programs that use the graphics card, then generate again.', '生成配音时内存不足，请关闭其他占用显卡的程序后重新生成。'),
+        out_of_memory: t('Not enough memory to generate the voice. Close other programs that use the graphics card, then generate again.', '生成旁白时内存不足，请关闭其他占用显卡的程序后重新生成。'),
         storage_unavailable: t('The disk is full. Free some space, then generate again.', '磁盘空间不足，请清理出空间后再生成。'),
         no_speech: t('No speech was heard in this voice. Choose another voice.', '这个音色里没有听到说话声，请换一个音色。'),
-        no_speech_model: t('The speech model could not be used, so the voice could not be generated.', '语音识别模型无法使用，未能生成配音。'),
+        no_speech_model: t('The speech model could not be used, so the voice could not be generated.', '语音识别模型无法使用，未能生成旁白。'),
         voice_model_missing: t('The dubbing model is not fully installed. Generate again to download it.', '配音模型没有装全，重新生成会再下载。'),
         missing: t('Generation stopped. Generate again.', '生成已中断，请重新生成。'),
-    }[reason] || t('The voice could not be generated. Generate again; if it keeps failing, report the problem.', '无法生成配音。请重新生成；仍然失败时，请提交问题。');
+    }[reason] || t('The voice could not be generated. Generate again; if it keeps failing, report the problem.', '无法生成旁白。请重新生成；仍然失败时，请提交问题。');
 }
 // How much longer than the stretch a line came out, as the bar says it: one decimal, a no-break space before the unit.
-const longer = (seconds, t) => { const value = (Math.round(seconds * 10) / 10).toFixed(1); return t(`${value}${NBSP}s`, `${value}${NBSP}秒`); };
-export const placedLongerText = (seconds, t) => t(`${longer(seconds, t)} longer than the selection. Placed at full length.`, `比选区长 ${longer(seconds, t)}，已按完整长度放入。`);
-export const blockedLongerText = (seconds, t) => t(`${longer(seconds, t)} longer than the selection and would cover the next clip. Shorten the line or extend the selection.`,
-    `比选区长 ${longer(seconds, t)}，会盖住后面的片段。请缩短这句或拉长选区。`);
+const longer = (seconds, t) => { const value = (Math.round(seconds * 10) / 10).toFixed(1); return t('{value}{NBSP}s', '{value}{NBSP}秒', { value, NBSP }); };
+export const placedLongerText = (seconds, t) => t('{length} longer than the selection. Placed at full length.', '比选区长 {length}，已按完整长度放入。', { length: longer(seconds, t) });
+export const blockedLongerText = (seconds, t) => t('{length} longer than the selection and would cover the next clip. Shorten the line or extend the selection.',
+    '比选区长 {length}，会盖住后面的片段。请缩短这句或拉长选区。', { length: longer(seconds, t) });
 
 /**
  * state, t: the editor's. store: the dubbing calls (editor_voice_store). sources(): the source metadata map.
@@ -98,9 +101,10 @@ export function createEditorNarration({state, store, t, sources = () => new Map(
     function voices(found = target()) {
         if (!found) return {speakers: [], clips: [], finding: false};
         const entry = hear(found);
-        const speakers = entry?.phase === 'done' ? said.speakerVoices(entry.lines).map(voice => ({...voice, label: t(`Speaker ${voice.number}`, `说话人 ${voice.number}`)})) : [];
+        const speakers = entry?.phase === 'done' ? said.speakerVoices(entry.lines).map(voice => ({...voice, label: t('Speaker {number}', '说话人 {number}', { number: voice.number })})) : [];
         const list = [];
         let takes = 0;
+        const RECORDING = takeNames(t);
         for (const {clip, track} of clips().sort((a, b) => a.clip.start - b.clip.start)) {
             if (track.kind !== 'audio' || !clip.source || clip.pending || clip.speed || clip.reverse || track.stem) continue;
             // The sound of a picture, music and lines made here are not voices to choose.
@@ -108,14 +112,14 @@ export function createEditorNarration({state, store, t, sources = () => new Map(
             const name = metaOf(clip)?.name;
             if (clip.source.kind !== 'import' || typeof name !== 'string' || !name) continue;
             const take = RECORDING.test(name) ? ++takes : 0;
-            const label = take ? t(`Recording ${take}`, `录音 ${take}`) : name;
+            const label = take ? t('Recording {take}', '录音 {take}', { take }) : name;
             list.push({key: `clip:${clip.id}`, kind: 'clip', recording: Boolean(take), label, reference: {clip_id: clip.id},
                 listen: {clip: clip.id, start: 0, end: Math.min(clip.frames / FPS, 10)}});
         }
         const picked = pickedClip && state.record.tracks.some(track => track.clips.some(clip => clip.id === pickedClip.id && clip.source)) ? pickedClip : null;
         if (picked && !list.some(voice => voice.key === `clip:${picked.id}`)) {
             const clip = clips().find(item => item.clip.id === picked.id).clip;
-            list.push({key: `clip:${clip.id}`, kind: 'clip', label: metaOf(clip)?.name || t(`Sound at ${clock(clip.start / FPS)}`, `${clock(clip.start / FPS)} 处的声音`),
+            list.push({key: `clip:${clip.id}`, kind: 'clip', label: metaOf(clip)?.name || t('Sound at {time}', '{time} 处的声音', { time: clock(clip.start / FPS) }),
                 reference: {clip_id: clip.id}, listen: {clip: clip.id, start: 0, end: Math.min(clip.frames / FPS, 10)}});
         }
         return {speakers, clips: list, finding: entry?.phase === 'finding', lines: entry?.lines || []};
@@ -248,7 +252,7 @@ export function createEditorNarration({state, store, t, sources = () => new Map(
         describe(id, text) {
             const found = target({kind: 'clip', ids: [id]});
             if (!found?.clip || api.running({kind: 'clip', ids: [id]}) || found.clip.text === text || !text.trim()) return false;
-            state.apply(t('Edit description', '修改说明'), record => said.remakeNarration(record, id, text));
+            state.apply(t('Edit prompt', '修改提示词'), record => said.remakeNarration(record, id, text));
             return true;
         },
         failure(selection = state.selection) {
@@ -280,7 +284,7 @@ export function createEditorNarration({state, store, t, sources = () => new Map(
                 // The same plan made on the same record names the same clip: the undo entry chooses it.
                 const plan = record => said.planNarration(record, {track: found.track, start: found.start, frames: found.frames, text: words});
                 if (!id) id = plan(state.record).id;
-                state.apply(t('Narration', '配音'), record => found.id ? said.remakeNarration(record, id, words) : plan(record).record,
+                state.apply(t('Narration', '旁白'), record => found.id ? said.remakeNarration(record, id, words) : plan(record).record,
                     {selectionAfter: {kind: 'clip', ids: [id]}});
                 if (!found.id && Number.isFinite(state.step)) planned.set(id, state.step);
                 stopListen();
@@ -317,13 +321,13 @@ export function createEditorNarration({state, store, t, sources = () => new Map(
     };
     // The menu entry on an empty spot of the sound tracks: the recording track (added when missing), or the separated
     // voice track, is chosen there from the spot clicked.
-    const unregister = registerMenuItem({where: 'empty', group: 'sound', label: context => context.t('Narration', '配音'),
+    const unregister = registerMenuItem({where: 'empty', group: 'sound', label: context => context.t('Narration', '旁白'),
         visible: context => available() && (!context.track || ['a1', 'a2', 'a3', said.narrationTrack(state.record)].includes(context.track)),
         enabled: context => !!said.narrationStretch(context.record, Math.max(0, context.frame | 0)),
         run: context => {
             const stretch = said.narrationStretch(state.record, Math.max(0, context.frame | 0));
             if (!stretch) return;
-            if (!state.record.tracks.some(track => track.id === stretch.track)) state.apply(t('Narration', '配音'), said.withRecordingTrack);
+            if (!state.record.tracks.some(track => track.id === stretch.track)) state.apply(t('Narration', '旁白'), said.withRecordingTrack);
             state.select({kind: 'range', tracks: [stretch.track], start: stretch.start, frames: stretch.frames});
         }});
     return api;

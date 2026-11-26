@@ -113,8 +113,8 @@ export function createDurationField({state, t, actions}) {
             if (!plan) { input.value = shown(); return; }
             clearTimeout(hintTimer); hint.hidden = true;
             if (plan.error) throw plan.error;
-            if (plan.hint?.least != null) say(t(`At least ${plan.hint.least} s`, `至少 ${plan.hint.least} 秒`));
-            else if (plan.hint?.most != null) say(t(`Max ${plan.hint.most} s`, `最长 ${plan.hint.most} 秒`));
+            if (plan.hint?.least != null) say(t('At least {least} s', '至少 {least} 秒', { least: plan.hint.least }));
+            else if (plan.hint?.most != null) say(t('Max {most} s', '最长 {most} 秒', { most: plan.hint.most }));
             if (plan.change) state.apply(t('Extend', '拉长'), plan.change, {selectionAfter: plan.selectionAfter});
             else if (plan.selection) state.select(plan.selection, {history: true});
         } catch (error) {

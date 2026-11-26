@@ -791,7 +791,9 @@ def _public(value):
         from ..diagnostics import ABSOLUTE_PATH
         # Keep prose slashes, URLs and bare roots. Once a path starts, use
         # the shared matcher, which includes spaces through the full filename.
-        starts = re.compile(r'''(?<!\w)(?:[A-Za-z]:[\\/](?=[^\s"'<>|])|\\\\[^\\/\s"'<>]+[\\/])'''
+        # A file URL (file:///home/..., file://localhost/C:/...) starts one too; the shared matcher reads it whole.
+        starts = re.compile(r'''(?<![\w/])(?i:file):(?://[^/\s"'<>]*)?(?:/+|(?=[A-Za-z]:[\\/]))'''
+                            r'''|(?<!\w)(?:[A-Za-z]:[\\/](?=[^\s"'<>|])|\\\\[^\\/\s"'<>]+[\\/])'''
                             r'''|(?<![^\W_])(?<![:/])/(?![/\s])[^/"'<>;|\r\n]+/(?![/\s])''')
         parts, cursor = [], 0
         for start in starts.finditer(value):

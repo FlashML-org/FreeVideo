@@ -76,7 +76,7 @@ export function agentConfirmSettings(t, api) {
     startBox.onchange = () => save(confirmPatch('start', startBox.checked));
     longBox.onchange = () => save(confirmPatch('long', {on: longBox.checked, seconds: shown.seconds}));
     minutesField.onchange = () => {
-        if (!validMinutes(minutesField.value)) { render(); status.textContent = t(`Enter a number from 0 to ${MAX_MINUTES}.`, `请输入 0 到 ${MAX_MINUTES} 之间的数。`); return; }
+        if (!validMinutes(minutesField.value)) { render(); status.textContent = t('Enter a number from 0 to {MAX_MINUTES}.', '请输入 0 到 {MAX_MINUTES} 之间的数。', { MAX_MINUTES }); return; }
         const seconds = Math.round(Number(minutesField.value) * 60);
         return save(confirmPatch('long', {on: true, seconds}));
     };

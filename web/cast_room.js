@@ -2,6 +2,7 @@
 // one large on the right with its pictures, its voice and what can be done with it. The data and the edit dialog are
 // the cast library's (cast_library.js); this file only lays them out in the room.
 import { createCastLibrary } from './cast_library.js';
+import { pageLanguage } from './i18n.js';
 import { agentInterfaceState } from './agent_connect.js';
 import { agentSend } from './agent_session.js';
 import { uploadMedia } from './media_upload.js';
@@ -77,7 +78,7 @@ export function createCastRoom({api, t, viewURL: outputURL}) {
     searchBox.append(line('search'), search);
     const create = button('', () => { const kind = KINDS.includes(place) ? place : 'character'; libraries[kind].openNew(); }, 'fv-library-tool fv-cast-new');
     create.append(line('plus'), el('span', t('New', '新建'), 'fv-library-tool-label'));
-    tip(create, t('New', '新建'), t('Add a character, scene or prop from pictures', '用图片新建角色、场景或道具'));
+    tip(create, t('New', '新建'), t('Add a character, scene or prop from images', '用图片新建角色、场景或道具'));
     const sortButton = button('', () => { sort = sort === 'new' ? 'name' : 'new'; syncSort(); render(); }, 'fv-library-tool fv-cast-sort');
     sortButton.append(line('sort'), el('span', '', 'fv-library-tool-label'));
     const syncSort = () => {
@@ -101,7 +102,7 @@ export function createCastRoom({api, t, viewURL: outputURL}) {
     const actions = el('div', null, 'fv-actions fv-cast-actions');
     const use = button('', () => copyMention(), 'fv-action fv-action-primary'); use.append(line('at'), el('span'));
     const edit = button('', () => card && libraries[card.kind]?.openEdit(card.id), 'fv-action fv-action-secondary'); edit.append(line('edit'), el('span', t('Edit', '编辑')));
-    tip(edit, t('Edit', '编辑'), t('Change the name or pictures', '修改名字或图片'));
+    tip(edit, t('Edit', '编辑'), t('Change the name or images', '修改名字或图片'));
     let arm = 0;
     const remove = button('', () => removeCard(), 'fv-action fv-action-secondary fv-cast-remove-card'); remove.append(line('trash'), el('span', t('Delete', '删除')));
     tip(remove, t('Delete', '删除'), t('Delete it from the library', '从角色库里删除'));
@@ -126,7 +127,7 @@ export function createCastRoom({api, t, viewURL: outputURL}) {
         voices.hidden = !rows.some(row => row.voice);
         shelf.replaceChildren();
         const shown = rows.filter(matchesPlace).filter(row => !query || String(row.name || '').toLowerCase().includes(query));
-        const ordered = sort === 'name' ? [...shown].sort((a, b) => String(a.name).localeCompare(String(b.name), t('en', 'zh-CN'))) : shown;
+        const ordered = sort === 'name' ? [...shown].sort((a, b) => String(a.name).localeCompare(String(b.name), pageLanguage())) : shown;
         for (const kind of KINDS) {
             const group = ordered.filter(row => row.kind === kind);
             if (!group.length) continue;
@@ -141,7 +142,7 @@ export function createCastRoom({api, t, viewURL: outputURL}) {
         else if (state === 'error') { message.textContent = t('The character library could not be read. Try Refresh.', '角色库暂时无法读取，请点击刷新。'); message.append(issueButton(t, () => ({where: ['Character library', '角色库'], message: message.firstChild?.textContent || ''}))); }
         else if (state === 'loading' && !rows.length) message.textContent = t('Loading…', '正在读取…');
         else if (!ordered.length) message.textContent = query ? t('No name matches this search.', '没有符合搜索的名称。')
-            : t('Saved characters, scenes and props appear here. Press New to add one from pictures.', '保存的角色、场景和道具会出现在这里。点“新建”用图片添加。');
+            : t('Saved characters, scenes and props appear here. Press New to add one from images.', '保存的角色、场景和道具会出现在这里。点“新建”用图片添加。');
         create.disabled = state === 'off';
         if (selected && !rows.some(row => row.id === selected)) clearDetail();
         else if (!selected && ordered.length && !matchMedia('(max-width: 1180px)').matches) choose(ordered[0], false);
@@ -181,15 +182,15 @@ export function createCastRoom({api, t, viewURL: outputURL}) {
         if (images.length > 1) images.forEach((picture, index) => {
             const thumb = button('', () => { view = index; paint(); }, 'fv-cast-view-thumb'); thumb.setAttribute('aria-pressed', String(index === view));
             const image = el('img'); image.alt = ''; image.src = inputURL(fileOf(picture.media)); thumb.append(image);
-            const label = picture.label === 'front' ? t('Front', '正面') : t(`Picture ${index + 1}`, `图片 ${index + 1}`);
-            thumb.setAttribute('aria-label', label); tip(thumb, label, t('Show this picture large', '放大显示这张图片'));
+            const label = picture.label === 'front' ? t('Front', '正面') : t('Image {number}', '图片 {number}', { number: index + 1 });
+            thumb.setAttribute('aria-label', label); tip(thumb, label, t('Show this image large', '放大显示这张图片'));
             viewsRow.append(thumb);
         });
         nameLine.textContent = card.name || ONE[card.kind];
-        metaLine.textContent = [ONE[card.kind], images.length ? t(`${images.length} ${images.length === 1 ? 'picture' : 'pictures'}`, `${images.length} 张图`) : ''].filter(Boolean).join(' · ');
-        use.lastElementChild.textContent = t(`Copy @${card.name}`, `复制 @${card.name}`);
+        metaLine.textContent = [ONE[card.kind], !images.length ? '' : images.length === 1 ? t('1 image', '1 张图') : t('{count} images', '{count} 张图', { count: images.length })].filter(Boolean).join(' · ');
+        use.lastElementChild.textContent = t('Copy @{name}', '复制 @{name}', { name: card.name });
         tip(use, t('Copy mention', '复制引用'), t('Paste it in a prompt to use this one', '粘贴到提示词里即可引用'));
-        hint.textContent = t(`Type @${card.name} in a prompt to use it in a shot.`, `在提示词中输入 @${card.name} 即可在镜头里使用。`);
+        hint.textContent = t('Type @{name} in a prompt to use it in a shot.', '在提示词中输入 @{name} 即可在镜头里使用。', { name: card.name });
         voiceBox.replaceChildren();
         if (card.voice?.clip?.file || card.voice?.clip?.url) {
             voiceBox.append(el('div', t('Voice', '声音'), 'fv-cast-voice-label'));
@@ -202,7 +203,7 @@ export function createCastRoom({api, t, viewURL: outputURL}) {
         if (!card) return;
         const text = '@' + card.name + ' ';
         const ok = await copyText(text);
-        notice.textContent = ok ? t(`Copied @${card.name}. Paste it in a prompt.`, `已复制 @${card.name}，粘贴到提示词里使用。`) : t('Could not copy. Type the name after @ in a prompt.', '没能复制。可在提示词中输入 @ 加名字。');
+        notice.textContent = ok ? t('Copied @{name}. Paste it in a prompt.', '已复制 @{name}，粘贴到提示词里使用。', { name: card.name }) : t('Could not copy. Type the name after @ in a prompt.', '没能复制。可在提示词中输入 @ 加名字。');
     }
     function resetRemove() { clearTimeout(arm); arm = 0; remove.classList.remove('fv-library-arming'); remove.lastElementChild.textContent = t('Delete', '删除'); }
     async function removeCard() {

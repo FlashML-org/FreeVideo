@@ -109,7 +109,7 @@ export function createSpeedPanel(host, {state, t, onError = () => {}, context}) 
         const busy = clips.some(clip => !clip.source || clip.pending), locked = state.record.tracks.some(track => track.locked && track.clips.some(clip => clips.includes(clip)));
         const disabled = !primary || busy || locked, sounds = clips.filter(clip => clip.volume !== undefined);
         for (const control of [input, ...buttons, reverse, follows, mute, reset]) control.title = '';
-        hint.textContent = groups.length > 1 ? t(`${groups.length} parts selected`, `已选 ${groups.length} 段`) : '';
+        hint.textContent = groups.length > 1 ? t('{count} parts selected', '已选 {count} 段', { count: groups.length }) : '';
         hint.hidden = !hint.textContent;
         const sameSpeed = !primary || clips.every(clip => percent(clip) === percent(primary));
         speedNumber.value = percent(primary || {}) / 100; if (!sameSpeed) input.value = ''; input.placeholder = sameSpeed ? '' : t('Mixed', '不同'); input.disabled = disabled;
@@ -117,7 +117,7 @@ export function createSpeedPanel(host, {state, t, onError = () => {}, context}) 
         const single = groups.length <= 1;
         reverse.checked = !!primary?.reverse; reverse.disabled = disabled || !single;
         reverse.title = t('Reverse', '倒放');
-        length.textContent = primary && single ? t(`Length ${(sourceFrames(primary) / 24).toFixed(1)} s → ${(primary.frames / 24).toFixed(1)} s`, `时长 ${(sourceFrames(primary) / 24).toFixed(1)} 秒 → ${(primary.frames / 24).toFixed(1)} 秒`) : '';
+        length.textContent = primary && single ? t('Length {before} s → {after} s', '时长 {before} 秒 → {after} 秒', { before: (sourceFrames(primary) / 24).toFixed(1), after: (primary.frames / 24).toFixed(1) }) : '';
         length.hidden = !length.textContent;
         for (const button of [follows, mute]) {
             button.disabled = disabled || !single || !sounds.length;

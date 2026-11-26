@@ -16,7 +16,7 @@ export const VIEW_ORDER = Object.freeze(['global', 'studio', 'image', 'editor', 
 const G = {
     layer: ['Command layer', '命令与搜索'], views: ['Views', '视图'], general: ['General', '通用'],
     prompt: ['Prompt', '提示词'], generate: ['Generate', '生成'], result: ['Result', '结果'],
-    history: ['History', '历史'], compare: ['Compare', '对比'], picture: ['Picture editing', '图像编辑'],
+    history: ['History', '历史'], compare: ['Compare', '对比'], picture: ['Image editing', '图像编辑'],
     playback: ['Playback', '播放'], timeline: ['Timeline', '时间线'], clips: ['Clips', '片段'], edit: ['Editing', '编辑'],
     chat: ['Conversation', '对话'], tasks: ['Running tasks', '进行中的任务'], library: ['Creations', '作品库'],
 };
@@ -39,15 +39,15 @@ export const BUILTIN_SHORTCUTS = Object.freeze({
     ],
     studio: [
         {keys: 'Mod+Enter', title: ['Generate video', '生成视频'], group: G.generate},
-        {keys: '@', title: ['Mention a picture or character', '提及图片或角色'], group: G.prompt},
+        {keys: '@', title: ['Mention an image or character', '提及图片或角色'], group: G.prompt},
         {keys: 'Up / Down', title: ['Choose a suggestion', '选择候选项'], group: G.prompt},
         {keys: 'Enter / Tab', title: ['Insert the chosen item', '插入选中的项'], group: G.prompt},
         {keys: 'Esc', title: ['Close a panel, then Create', '先关浮层，再关创作面板'], group: G.general},
     ],
     image: [
         {keys: 'Mod+Enter', title: ['Generate image', '生成图片'], group: G.generate},
-        {keys: 'Mod+V', title: ['Paste a picture as reference', '粘贴图片作为参考图'], group: G.prompt},
-        {keys: 'Shift+Click / Mod+Click', title: ['Select several pictures', '多选图片'], group: G.history},
+        {keys: 'Mod+V', title: ['Paste an image as reference', '粘贴图片作为参考图'], group: G.prompt},
+        {keys: 'Shift+Click / Mod+Click', title: ['Select several images', '多选图片'], group: G.history},
         {keys: 'Left / Right', title: ['Move the compare line', '移动对比分界线'], group: G.compare},
         {keys: 'Esc', title: ['Close a menu, then the view', '先关菜单，再关视图'], group: G.general},
         {keys: 'Mod+Z / Mod+Shift+Z', title: ['Undo / redo', '撤销 / 重做'], group: G.picture},
@@ -91,7 +91,7 @@ export const BUILTIN_SHORTCUTS = Object.freeze({
     autopilot: [
         {keys: 'Enter', title: ['Send', '发送'], group: G.chat},
         {keys: 'Shift+Enter', title: ['New line', '换行'], group: G.chat},
-        {keys: 'Mod+V', title: ['Attach pasted pictures', '粘贴图片作为附件'], group: G.chat},
+        {keys: 'Mod+V', title: ['Attach pasted images', '粘贴图片作为附件'], group: G.chat},
         {keys: 'Esc', title: ['Close a list or drawer, then Autopilot', '先关列表或抽屉，再关 AI 全自动'], group: G.general},
     ],
     library: [

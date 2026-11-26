@@ -72,12 +72,76 @@ def log_tail(log, lines=LOG_LINES):
     return rows[-lines:]
 
 
-def build(code, log=None, *, now=None, system=None):
+def oom_kills(path='/proc/vmstat', name='oom_kill'):
+    """How many processes the Linux kernel has ended for want of memory since it started (oom_kill), or None elsewhere."""
+    try:
+        with open(path, encoding='ascii') as stream:
+            for line in stream:
+                key, _, value = line.partition(' ')
+                if key == name:
+                    return int(value)
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def cgroup_events(pid, *, proc='/proc', root='/sys/fs/cgroup'):
+    """The memory.events file of the Linux cgroup (v2) a process runs in, or None (another system, cgroup v1, unreadable)."""
+    try:
+        with open(f'{proc}/{int(pid)}/cgroup', encoding='utf-8') as stream:
+            lines = stream.read().splitlines()
+    except (OSError, TypeError, ValueError):
+        return None
+    for line in lines:
+        if line.startswith('0::/'):
+            relative = line[3:].strip().lstrip('/')
+            if '..' in relative.split('/'):
+                return None
+            return str(Path(root) / relative / 'memory.events') if relative else str(Path(root) / 'memory.events')
+    return None
+
+
+def cgroup_oom_kills(events):
+    """How many processes of this cgroup and those under it the kernel ended for want of memory (memory.events oom_kill)."""
+    return oom_kills(events, name='oom_kill') if events else None
+
+
+def oom_baseline(pid, *, proc='/proc', root='/sys/fs/cgroup', vmstat='/proc/vmstat'):
+    """The kernel's out-of-memory counts when ComfyUI started: its own cgroup's, which counts only that group of
+    processes, and the whole computer's, for when the cgroup cannot be read at the exit."""
+    events = cgroup_events(pid, proc=proc, root=root)
+    return dict(cgroup=events, cgroup_count=cgroup_oom_kills(events), system=oom_kills(vmstat))
+
+
+def oom_since(before, *, vmstat='/proc/vmstat', system_now=None):
+    """(count, 'cgroup' | 'system') of out-of-memory kills since the baseline, or (None, None) when neither can be read.
+    The cgroup count is preferred: the whole computer's also counts other programs the kernel ended."""
+    if isinstance(before, dict):
+        events, start = before.get('cgroup'), before.get('cgroup_count')
+        now = cgroup_oom_kills(events) if type(start) is int else None
+        if type(now) is int:
+            return max(0, now - start), 'cgroup'
+        before = before.get('system')
+    after = oom_kills(vmstat) if system_now is None else system_now
+    if type(before) is int and type(after) is int:
+        return max(0, after - before), 'system'
+    return None, None
+
+
+def build(code, log=None, *, now=None, system=None, oom_before=None, oom_now=None):
     record = dict(at=time.time() if now is None else now, code_text=code_text(code, system))
     record.update(exit_reading(code, system=system))
     # The computer's memory when the exit was seen; the readings of this process are not the engine's.
     record['memory'] = {key: value for key, value in memory_sample().items() if not key.startswith('process_')}
     record['log_tail'] = log_tail(log) if log else []
+    # The kernel's count of processes it ended for want of memory, against its count when this ComfyUI started: ComfyUI's
+    # own cgroup's when it can be read (only that group of processes), else the whole computer's. A rise with SIGKILL
+    # means the kernel most likely ended it for memory; with SIGTERM, systemd stopping the rest of the group after the
+    # kernel ended one of its processes. The memory sample above was taken after the exit, when the memory was free again.
+    count, scope = oom_since(oom_before, system_now=oom_now)
+    if type(count) is int:
+        record['oom_kills_since_start'] = count
+        record['oom_scope'] = scope
     # What the engine's last lines complained about, as fixed words: the lines stay on this computer, the words may leave it.
     kinds = stderr_kinds('\n'.join(record['log_tail']))
     if kinds:
@@ -85,9 +149,9 @@ def build(code, log=None, *, now=None, system=None):
     return record
 
 
-def record(engine, code, log=None, *, now=None, system=None):
+def record(engine, code, log=None, *, now=None, system=None, oom_before=None):
     """Write the record of an exit and return it. A failed write loses the file, never the notice."""
-    value = build(code, log, now=now, system=system)
+    value = build(code, log, now=now, system=system, oom_before=oom_before)
     try:
         save(location(engine), value, plain_paths=False)
     except Exception:
@@ -116,7 +180,35 @@ def public(value):
     if isinstance(text, str) and _CODE_TEXT.match(text):
         result['code_text'] = text
     result.update(clean_reading(value))
+    count = value.get('oom_kills_since_start')
+    if type(count) is int and 0 <= count < 2**31:
+        result['oom_kills_since_start'] = count
+        if value.get('oom_scope') in ('cgroup', 'system'):
+            result['oom_scope'] = value['oom_scope']
     return result
+
+
+def out_of_memory(value):
+    """The system ended it for want of memory: a Windows memory status, or SIGKILL while the kernel's out-of-memory count rose."""
+    if not isinstance(value, dict):
+        return False
+    kind = value.get('exit_class')
+    if kind in ('system_commit_limit', 'system_no_memory'):
+        return True
+    count = value.get('oom_kills_since_start')
+    return kind == 'killed_by_signal' and value.get('code_text') == 'SIGKILL' and type(count) is int and count > 0
+
+
+def maybe_out_of_memory(value):
+    """SIGTERM while the kernel's out-of-memory count rose: under systemd, the rest of a group is stopped this way after
+    the kernel ended one of its processes for memory. Said as "possibly", with the same next step."""
+    if not isinstance(value, dict):
+        return False
+    count = value.get('oom_kills_since_start')
+    # Only ComfyUI's own group's count: the whole computer's also rises for other programs, and a SIGTERM the user sent
+    # after one of those must stay "ended" (dataroot-5x review, 11-25).
+    return (value.get('exit_class') == 'killed_by_signal' and value.get('code_text') == 'SIGTERM'
+            and value.get('oom_scope') == 'cgroup' and type(count) is int and count > 0)
 
 
 def describe(value, zh):
@@ -126,12 +218,15 @@ def describe(value, zh):
     """
     clock = time.strftime('%H:%M', time.localtime(value['at']))
     kind = value.get('exit_class')
-    memory = kind in ('system_commit_limit', 'system_no_memory')
+    memory = out_of_memory(value)
+    maybe = not memory and maybe_out_of_memory(value)
     ended = kind in ('killed_by_signal', 'terminated_externally')
     crashed = kind in ('native_crash', 'abort', 'system_stack_overflow')
     if zh:
-        cause = ('，原因是电脑内存不足' if memory else '，被系统或其他程序结束' if ended else '，程序自身崩溃' if crashed else '')
+        cause = ('，原因是电脑内存不足' if memory else '，可能是因为电脑内存不足' if maybe
+                 else '，被系统或其他程序结束' if ended else '，程序自身崩溃' if crashed else '')
         return ('FreeVideo 于 %s 意外停止%s。请点击“重新连接”重新启动；如再次停止，请导出报告，再点击“提交问题”并附上报告。' % (clock, cause))
-    cause = (': the computer ran out of memory' if memory else ': the system or another program ended it' if ended
+    cause = (': the computer ran out of memory' if memory else ', possibly because the computer ran out of memory' if maybe
+             else ': the system or another program ended it' if ended
              else ': it crashed' if crashed else '')
     return 'FreeVideo stopped unexpectedly at %s%s. Click "Connect again" to restart it; if it stops again, export the report and use "Report a problem".' % (clock, cause)
