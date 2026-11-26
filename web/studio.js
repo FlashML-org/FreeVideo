@@ -33,7 +33,7 @@ import { problem as timedProblem, timedText, parse as timedParse } from './timed
 import { castInRows, expandCast, mentionHandle, mentionState, mentionedIds, restoreCast, withCharacter, MAX_PICTURES_EACH } from './cast_mention.js';
 import { attachMentionOverlay } from './cast_overlay.js';
 import { openCastLibrary } from './cast_source.js';
-import { mediaName, uploadMedia } from './media_upload.js';
+import { uploadMedia } from './media_upload.js';
 import { reconcileLoraTriggers, promptLines } from './lora_triggers.js';
 import { createVerdicts, describeVerdict, feedbackDraft } from './lora_check.js';
 import { FAST_EFFORT, FAST_OPTION_TEXT, continuationUpscale, createSamplingEffort, effortFor, effortsFrom, fastOfferOf, passSwitch, stepCacheOf, upscaleOf, withFastLevel } from './sampling_effort.js';
@@ -3735,6 +3735,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     promptTools.prepend(promptLibrary.button);
     // Prompt from a picture or video: the key left of the history key; the file only feeds the description (it is not added to the media).
     // A video is read, then shaped into the model's own format (the Original tab keeps the readable description).
+    // The prompt model reads the stored upload (its `file`), never the name the user's file had.
     reverseKey = el('button', null, 'fvs-library-button fv-prompt-reverse'); reverseKey.type = 'button';
     reversePick = el('input'); reversePick.type = 'file'; reversePick.accept = 'image/*,video/*'; reversePick.hidden = true;
     const reverseIcon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 5.5v-1a2 2 0 0 1 2-2h1M10.5 2.5h1a2 2 0 0 1 2 2v1M13.5 10.5v1a2 2 0 0 1-2 2h-1M5.5 13.5h-1a2 2 0 0 1-2-2v-1"/><path d="M5.5 6.5h5M5.5 9h3.2"/></svg>';
@@ -3742,7 +3743,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const reverseQueueWhy = () => queueState?.running || queueState?.pending?.length ? t('Finish the current queue before writing a prompt from media.', '请等待当前队列完成后再生成提示词。') : '';
     function startReverse(file) {
         const kind = file.type?.startsWith('video/') ? 'video' : file.type?.startsWith('image/') ? 'image' : 'other';
-        enhancer.reverse({kind, upload: async () => { if (kind === 'other') throw new Error('unsupported_media'); return mediaName(await uploadMedia(api, file)); }}, {shapeVideo: true}).catch(() => {});
+        enhancer.reverse({kind, upload: async () => { if (kind === 'other') throw new Error('unsupported_media'); return (await uploadMedia(api, file)).file; }}, {shapeVideo: true}).catch(() => {});
     }
     function paintReverse() {
         if (!reverseKey) return;
