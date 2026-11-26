@@ -94,8 +94,18 @@ function failureReason(value, t) {
 
 // A failed job's one reason line. The engine's classified sentence (both languages) is for people; anything else is
 // program text and goes to the technical details, so the card then says only that the generation did not finish.
+// An unexpected failure carries the program's own text: a cause the panel knows from it (memory, a missing file...), said
+// with its next step, or null. Such a cause is the user's to handle, so its card offers no problem report.
+export function knownFailure(value, t) {
+    const error = value?.error;
+    if (!UNEXPECTED_FAILURES.includes(error?.code) || typeof error?.message !== 'string' || !error.message) return null;
+    const known = failureAdvice([error.code, error.message].join('\n'), t);
+    return known && known.kind !== 'unknown' && known.title ? [known.title, known.summary || known.action].filter(Boolean).join(t('. ', '。')) : null;
+}
 export function failureCardReason(value, t) {
     const error = value.error, zh = error?.error_zh || value.error_zh, en = error?.error_en || value.error_en;
+    const known = knownFailure(value, t);
+    if (known) return known;
     const said = zh && en && !GENERIC_FAILURES_ZH.includes(zh) && en !== 'Did not finish';
     if (said || error?.code === 'session_full') return failureReason(value, t);
     // Unclassified: the creation panel's reading of the original text (memory, a missing file, a component that
@@ -1472,17 +1482,19 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
                     const fold = failureFold(t);
                     if (retry) actions.append(...again());
                     // An unexpected failure says to report it if it happens again: the card carries that button.
-                    const issue = issueButton(t, () => ({where: CHAT_ISSUE, message: [reason.textContent, fold.querySelector('p').textContent].filter(Boolean).join('\n')}));
+                    const issue = issueButton(t, () => ({where: CHAT_ISSUE, message: [reason.textContent, fold.querySelector('p').textContent].filter(Boolean).join('\n'),
+                        kind: current.error?.code || null}));
                     actions.append(diagnostic.report, issue);
                     links.append(actions); item.replaceChildren(failHead, reason, fold, links);
                     tip(diagnostic.report, 'report', t);
                     apply = next => { current = next; put(reason, failureCardReason(next, t));
-                        issue.hidden = !UNEXPECTED_FAILURES.includes(next.error?.code);
+                        issue.hidden = !UNEXPECTED_FAILURES.includes(next.error?.code) || !!knownFailure(next, t);
                         put(failName, jobName(next, t)); put(failChip, statusText(next, t)); failChip.dataset.state = statusKey(next);
                         put(failWhen, localTime(next.finished_at || next.created_at, t)); failWhen.hidden = !failWhen.textContent;
                         const raw = [next.error?.code, next.error?.message, next.error?.request_id].filter(Boolean).join('\n');
                         fold.querySelector('p').textContent = raw; fold.hidden = !raw;
-                        diagnostic.updateReport({report_id: next.report_id}); };
+                        // The job's report is named under its error (jobs.py view); older rows had it at the top.
+                        diagnostic.updateReport({report_id: next.error?.report_id || next.report_id}); };
                 } else { item.replaceChildren(); apply = null; }
             }
             apply?.(job, latest);

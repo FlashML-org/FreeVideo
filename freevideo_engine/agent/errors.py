@@ -537,10 +537,10 @@ FAILURE_REASONS_ZH = {code: pair[1] for code, pair in FAILURE_REASONS.items()}
 # What a person can do next, for the reasons above whose remedy is not just running the task again. Shown after the
 # reason only while the reason itself is the code's sentence (a more specific message keeps its own meaning).
 FAILURE_NEXT = {
-    'generation_failed': ('If it happens again, use "Report a problem"',
-                          '再次出现时，请点击“提交问题”'),
-    'internal_error': ('If it happens again, use "Report a problem"',
-                       '再次出现时，请点击“提交问题”'),
+    'generation_failed': ('If it happens again, choose "Report a problem".',
+                          '再次出现时，请点击“提交问题”。'),
+    'internal_error': ('If it happens again, choose "Report a problem".',
+                       '再次出现时，请点击“提交问题”。'),
     'unreachable': ('Make sure FreeVideo is running, then try again',
                     '确认 FreeVideo 已经启动后再试'),
     'session_full': ('Click "New chat" to continue',

@@ -2319,6 +2319,15 @@ class Jobs:
         failure = dict(chain_error(code, errors.ERRORS[code][2], next_action, details=[detail],
                            retryable=code != 'insufficient_memory').view(),
                     **errors.reasons(dict(code=code, message=message)))
+        # The program's own text (paths and prompts already taken out, then the shared redaction) stays with the job:
+        # the page shows it under the reason and a problem report carries it, never only "Generation failed".
+        from ..diagnostics import Redactor
+        redactor = Redactor()
+        redactor.prompts.update(value for value in (prompt, ((block or {}).get('inputs') or {}).get('text'))
+                                if isinstance(value, str) and value)
+        cause = redactor.text(message).strip()[:2000]
+        if cause and cause != errors.ERRORS[code][2]:
+            failure['message'] = cause
         if isinstance(report_id, str) and re.fullmatch(r'[a-f0-9]{32}', report_id):
             failure['report_id'] = report_id
         return failure

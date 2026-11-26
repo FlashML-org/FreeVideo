@@ -2504,7 +2504,7 @@
 "If FreeVideo does not open completely, a card with the cause and the next step appears on its own.": "如果 FreeVideo 沒有完整開啟，會自動出現一張說明原因和下一步的卡片。",
 "If it fails again, select \"Export report\", then select \"Report a problem\" and attach the report.": "仍然失敗時，請先點選「匯出報告」，再點選「提交問題」並附上報告。",
 "If it happens again, choose \"Report a problem\" to send us the report.": "再次出現時，請點選「提交問題」，把報告發給我們。",
-"If it happens again, use \"Report a problem\"": "再次出現時，請點選「提交問題」",
+"If it happens again, choose \"Report a problem\".": "再次出現時，請點選「提交問題」。",
 "If it still fails, choose \"Export report\" to save the diagnostic information.": "仍然失敗時，點一下「匯出報告」儲存診斷資訊。",
 "If it still fails, use Download report in the preview and send it to us.": "仍然失敗時，可點預覽區的「下載報告」，發給我們。",
 "If the LoRA asks for trigger words, enter them in \"Trigger words\". They are added to the prompt, and removed again with the LoRA.": "模型要求觸發詞時，填在「觸發詞」一欄，它會自動加進提示詞；移除這個 LoRA 時一併去掉。",
