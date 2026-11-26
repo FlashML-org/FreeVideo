@@ -9,7 +9,7 @@
 import {TIPS} from '../tooltip_copy.js';
 import {randomSeed} from '../studio_queue.js';
 import './tray_pop.js';
-import { translator } from '../i18n.js';
+import { LANGUAGE, translator } from '../i18n.js';
 
 const make = (tag, cls, text) => { const element = document.createElement(tag); if (cls) element.className = cls; if (text != null) element.textContent = text; return element; };
 const say = (tray, en, zh, values) => translator(tray.fvAtChinese)(en, zh, values);
@@ -213,10 +213,10 @@ function paintLength(tray, dialog) {
     const refusal = dialog.querySelector('.fv-length-plan:not([hidden])'), said = refusal ? (refusal.firstChild?.textContent || refusal.textContent || '').trim() : '';
     const problem = section.querySelector('.fv-at-problem');
     if (problem) { if (problem.textContent !== said) problem.textContent = said; toggle(problem, 'fv-at-gone', !said); }
-    // Which rows the refusal is about: the part length, or the single run (in Chinese also the one that says what one run allows).
+    // Which row the refusal is about, by its code and the same in every language: the part length, or the single run.
     const code = said ? refusal.dataset.fvLengthError || '' : '';
     toggle(part, 'fv-at-bad', code.startsWith('block_'));
-    toggle(section.querySelector('.fv-at-segments[data-at=length]'), 'fv-at-bad', code === 'single_unavailable' || code === 'block_too_long' && Boolean(tray.fvAtChinese));
+    toggle(section.querySelector('.fv-at-segments[data-at=length]'), 'fv-at-bad', code === 'single_unavailable');
 }
 
 // ── Reset to defaults: shown only while something differs; it presses the panel's own controls. ──
@@ -269,7 +269,7 @@ function resetAll(tray, dialog) {
 function mark(tray) {
     const dialog = tray.closest('dialog') || document;
     const body = tray.querySelector(':scope > .fv-expand'); if (!body) return;
-    tray.fvAtChinese ??= /[一-鿿]/.test(tray.querySelector('.fvs-tray-title')?.textContent || '');
+    tray.fvAtChinese ??= LANGUAGE.startsWith('zh');
     tray.classList.add('fv-at');
     body.classList.add('fv-at-body');
     const length = body.querySelector(':scope > .fv-length-controls');
