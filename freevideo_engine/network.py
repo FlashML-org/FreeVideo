@@ -1125,13 +1125,103 @@ def move_file(source, destination):
         source.unlink()
 
 
+# How long one attempt at another process's download lease waits before checking for cancellation again.
+DOWNLOAD_LEASE_POLL_SECONDS = 1.
+
+
+def download_lease(path, network=None, category='download'):
+    """One process at a time fetches a given file.
+
+    Two processes fetching the same file (two GPUs of one installation sampling the same new schedule, or two
+    installations sharing a folder) wrote the same resumable .partial and its source record: one renamed it away
+    under the other, or published over it. The second now waits for the first and then finds the file there, checked,
+    or resumes what the first left. The lease is an advisory lock on a small file beside the target
+    (.<name>.download-lock), released by the operating system when its holder exits or is killed. The holder removes
+    the file when it is done; one a killed holder left is taken and removed by the next download.
+    A launcher update is left out: one launcher fetches it, and its folder must hold the launcher alone
+    (version_cleanup). Where the lock file cannot be made, the download goes ahead as before.
+    """
+    from contextlib import contextmanager, nullcontext
+
+    @contextmanager
+    def lease():
+        from .locking import runtime_lock
+        folder = io_path(Path(path).parent)
+        held, waited, mismatched = None, False, 0
+        lock = folder / ('.' + Path(path).name + '.download-lock')
+        while held is None:
+            try:
+                folder.mkdir(parents=True, exist_ok=True)
+                attempt = runtime_lock(lock, inherit=False, wait_seconds=DOWNLOAD_LEASE_POLL_SECONDS)
+                descriptor = attempt.__enter__()
+                try:
+                    mine = os.fstat(descriptor)
+                    there = os.stat(lock)
+                except OSError:
+                    mine = there = None
+                if mine is None or there is None or mine.st_nlink == 0:
+                    # The previous holder removed the file this lock was taken on (POSIX removes it while held): a
+                    # normal handover, so take the one at the path now, however often it happens.
+                    attempt.__exit__(None, None, None)
+                elif windows() or os.path.samestat(mine, there):
+                    # Windows never hands out a removed file, and its file numbers need not compare (ReFS, SMB).
+                    held = attempt
+                else:
+                    # Still linked, yet another file at the path: NFS renames a removed open file (.nfsXXXX) while a
+                    # newcomer creates the path again, or the disk's inode numbers are not stable (SMB mounted with
+                    # noserverino, some FUSE). Take the new file again, but no more than three times, so such a
+                    # disk does not wait until someone cancels.
+                    mismatched += 1
+                    if mismatched >= 3:
+                        held = attempt
+                    else:
+                        attempt.__exit__(None, None, None)
+            except BlockingIOError:
+                pass
+            except OSError:
+                break  # no lock file here (read-only or unusual folder): download as before
+            if held is None:
+                if not waited:
+                    waited = True
+                    event(network or {}, category=category, file=Path(path).name, action='waiting-for-same-download')
+                check = (network or {}).get('resource_check')
+                if check:
+                    check()  # a cancellation stops the wait like any other step
+        try:
+            yield
+        finally:
+            if held is not None:
+                # The lock file goes with the lease, so no folder keeps one. While it is held (POSIX) a waiter still on
+                # the old file sees the path changed and takes the new one; Windows cannot remove an open file, so it
+                # goes after the close, and stays for whoever still has it open to remove in turn.
+                if not windows():
+                    try:
+                        lock.unlink(missing_ok=True)
+                    except OSError:
+                        pass
+                held.__exit__(None, None, None)
+                if windows():
+                    try:
+                        lock.unlink(missing_ok=True)
+                    except OSError:
+                        pass
+
+    return nullcontext() if category == 'launcher-update' else lease()
+
+
 def download(candidates, path, expected, *args, **options):
     """Fetch into `path`; where curl cannot name it (Windows, beyond 259 characters), in a short folder.
 
     The file and what resumes it (partial bytes, source record) go to the short
     folder first, and whatever is left there comes back, also after a failure.
+    One process at a time fetches a given path (download_lease).
     """
     path = Path(path)
+    with download_lease(path, options.get('network'), options.get('category', 'download')):
+        return _download(candidates, path, expected, *args, **options)
+
+
+def _download(candidates, path, expected, *args, **options):
     scratch = None
     if is_windows() and path_chars(plain(path)) + DOWNLOAD_SIBLING_CHARS > GIT_PATH_LIMIT:
         scratch = git_scratch_folder()
@@ -1212,7 +1302,15 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
         if updating and check:
             check()
         from .file_ops import publish as move
-        move(candidate, path)
+        try:
+            move(candidate, path)
+        except FileExistsError:
+            # Another process published the same file first (a download that predates the lease, or a folder the
+            # lease could not cover). The same bytes there are this download's result; other bytes still fail.
+            if not path.is_file() or not matches(path):
+                raise
+            candidate.unlink(missing_ok=True)
+            return
         if updating and progress:
             progress(path.stat().st_size, size or 0, last_rate)
 
