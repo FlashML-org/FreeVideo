@@ -277,6 +277,35 @@ export function createTracks(host, {state, sources = {}, t = translatorFor(null,
     }
     // On a wider touch screen the sound and text rows are finger height (48 px); the picture row keeps its size.
     const touchRows = typeof matchMedia === 'function' ? matchMedia('(pointer:coarse) and (min-width:1024px)') : null;
+    // A track name never ends in "…": in the wide heads (from 521 px) the column grows by what the longest name, or
+    // the Audio 2 key's words, needs beyond its share, measured on the words themselves and so for any language. Measured
+    // again when the names change, the heads switch layout or the fonts arrive; nothing is measured while nothing changed.
+    const wideHeads = typeof matchMedia === 'function' ? matchMedia('(min-width:521px)') : null;
+    let fittedHeads = '';
+    function fitHeads(force = false) {
+        if (!wideHeads) return;
+        const names = [...heads.querySelectorAll('.fv-ed-track-head>span:first-of-type')];
+        const key = `${wideHeads?.matches}|${names.map(name => name.textContent).join('|')}|${addAudio.dataset.label || ''}`;
+        if (!force && key === fittedHeads) return;
+        element.style.removeProperty('--fv-ed-head-width-extra');
+        // Not yet on the page: nothing to measure, so the next change (or the heads' first size) measures again.
+        if (wideHeads?.matches && (!element.isConnected || !heads.clientWidth)) { fittedHeads = ''; return; }
+        fittedHeads = key;
+        if (!wideHeads?.matches) return;
+        let over = Math.max(0, ...names.map(name => name.scrollWidth - name.clientWidth));
+        // The key draws its words in ::after, which has no box of its own to read: their width comes from its font.
+        const words = getComputedStyle(addAudio, '::after'), sign = getComputedStyle(addAudio, '::before'), own = getComputedStyle(addAudio);
+        const room = addAudio.clientWidth - (parseFloat(own.paddingLeft) || 0) - (parseFloat(own.paddingRight) || 0)
+            - (parseFloat(sign.width) || 0) - (parseFloat(sign.marginRight) || 0);
+        const pen = typeof document.createElement === 'function' ? document.createElement('canvas').getContext?.('2d') : null;
+        // As the remove key (Audio 2 present) it is a 28 px sign with no words (::after display none): nothing to fit.
+        if (pen && addAudio.dataset.label && addAudio.clientWidth && words.display !== 'none') { pen.font = words.font; over = Math.max(over, pen.measureText(addAudio.dataset.label).width - room); }
+        if (over > .5) element.style.setProperty('--fv-ed-head-width-extra', `${Math.ceil(over)}px`);
+    }
+    if (wideHeads) on(wideHeads, 'change', () => fitHeads(true));
+    const headsSize = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { if (!disposed) fitHeads(); }) : null;
+    headsSize?.observe(heads);
+    document.fonts?.ready?.then(() => { if (!disposed) fitHeads(true); });
     const laneHeight = () => touchRows?.matches ? 48 : 40;
     const locate = id => clips.get(id);
     const pairIds = id => {
@@ -777,7 +806,7 @@ export function createTracks(host, {state, sources = {}, t = translatorFor(null,
         addAudio.setAttribute('aria-label', addAudio.textContent);
         // Without Audio 2 the guide points at the button that adds it.
         if (twoAudio) delete addAudio.dataset.tourId; else addAudio.dataset.tourId = 'audio-a2-track';
-        layout();
+        fitHeads(); layout();
         // The parts of a fresh split appear under the sound they came from: show them from the top.
         if (parted) scroll.scrollTop = 0;
         const failure = openFailure && clips.get(openFailure);
@@ -1579,7 +1608,7 @@ export function createTracks(host, {state, sources = {}, t = translatorFor(null,
             if (gesture) stopPointer(null, true);
             selectGestures.dispose();
             menu.dispose();
-            disposed = true; clearTimeout(blockedTimer); unsubscribe(); observer.disconnect(); headObserver?.disconnect(); listeners.forEach(remove => remove());
+            disposed = true; clearTimeout(blockedTimer); unsubscribe(); observer.disconnect(); headObserver?.disconnect(); headsSize?.disconnect(); listeners.forEach(remove => remove());
             audioControls.dispose();
             addAudio.onkeydown = null;
             cancelAnimationFrame(pointerFrame); stopAutoScroll(); clearTimeout(estimateTimer); estimateToken++;
