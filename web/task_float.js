@@ -33,13 +33,19 @@ export function startJobSources() {
     imageSource(jobs, {client: createImageGenClient(), storage, connection: api, lastExit: async () => exitCause(await newEngineExit(api))});
     // The request the engine runs on each node now, from its own events: a plain (one graphics card) run's progress
     // names no request, so this keeps every queued video a row of its own (task_store.js progressSource).
+    // ComfyUI's page gives `executing` only the node (display_node || node, or null at the end), so the request comes from
+    // execution_start, which carries it; an `executing` with an object (older pages, other clients) names it itself.
     const runningOn = new Map();
+    let current = null;
+    const ended = prompt => { for (const [node, id] of [...runningOn]) if (id === prompt) runningOn.delete(node); if (current === prompt) current = null; };
+    api.addEventListener('execution_start', event => { const prompt = event.detail?.prompt_id; if (prompt) current = String(prompt); });
     api.addEventListener('executing', event => {
-        const detail = event.detail, prompt = detail && typeof detail === 'object' ? detail.prompt_id : null;
+        const detail = event.detail, object = detail !== null && typeof detail === 'object';
+        const prompt = object ? detail.prompt_id : current, node = object ? detail.node : detail;
         if (!prompt) return;
-        if (detail.node != null) runningOn.set(String(detail.node), prompt);
-        else for (const [node, id] of [...runningOn]) if (id === prompt) runningOn.delete(node);
+        if (node != null) runningOn.set(String(node), prompt); else ended(prompt);
     });
+    for (const type of ['execution_success', 'execution_interrupted', 'execution_error']) api.addEventListener(type, event => { const prompt = event.detail?.prompt_id; if (prompt) ended(String(prompt)); });
     let queue = null;
     const video = progressSource(jobs, {target: window, promptOf: node => runningOn.get(String(node)) || queue?.runningOn(node) || null,
         cancel: row => api.fetchApi('/freevideo/cancel', post({prompt_id: row.prompt_id, node_id: String(row.node)})).then(sent)});

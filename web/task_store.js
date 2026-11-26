@@ -333,6 +333,17 @@ const pick = value => value && typeof value === 'object' ? Object.fromEntries(['
     .filter(key => value[key] !== undefined).map(key => [key, value[key]])) : {};
 
 // ---------- Videos: the progress stream the page already receives (freevideo.js turns it into window events) ----------
+// A video first heard of before its request id was known stands as video:node:<node> (the engine's first progress names
+// only the node). Once the id is known that row is the same video under its own key: it is taken off and what it had
+// (when it started, how far it got) goes to video:<id>, so one Generate is one row.
+function adoptNodeRow(store, id, node) {
+    if (node == null || !id.startsWith('video:') || id.startsWith('video:node:')) return {};
+    const orphan = store.get('video:node:' + node);
+    if (!orphan || !ACTIVE.has(orphan.status)) return {};
+    store.drop(orphan.id);
+    return Object.fromEntries(['started_at', 'percent', 'eta_seconds', 'phase'].filter(key => orphan[key] != null).map(key => [key, orphan[key]]));
+}
+const fillFrom = (patch, kept, existing) => { for (const [key, value] of Object.entries(kept)) if (patch[key] === undefined && existing?.[key] == null) patch[key] = value; return patch; };
 // A part of a long video reports under its chain; the chain itself ends in chainSource.
 export function progressSource(store, {target = globalThis, now = store.now, cancel = null, framePath = id => `/freevideo/frame-preview/${id}`,
     promptOf = () => null} = {}) {
@@ -371,6 +382,7 @@ export function progressSource(store, {target = globalThis, now = store.now, can
         if (terminal === 'failed') patch.failure = {code: message.error_code || message.error || 'generation_failed', message: message.message || message.error || '', report_id: reportId};
         // A new run on the same key, as the progress panel reads it (generation_progress.js).
         const fresh = message.new_request === true || message.overall?.reset === true || (message.reset === true && !message.phase);
+        if (!chain) fillFrom(patch, adoptNodeRow(store, id, message.node), store.get(id));
         store.upsert(patch, {revive: fresh && !terminal});
     }
     const listener = event => receive(event.detail);
@@ -420,10 +432,17 @@ export function queueSource(store, {fetchJson, clientId = () => null, interval =
         const pending = (queue?.queue_pending || []).filter(ours).sort((a, b) => a[0] - b[0]);
         const now = new Map();
         for (const row of running) {
-            const id = 'video:' + row[1], previous = store.get(id); now.set(id, {promptId: row[1], status: 'running', node: String(generateOf(row)[0])});
-            if (previous && !['queued', 'submitting'].includes(previous.status)) continue;
-            store.upsert({id, kind: 'video', source: 'video', status: 'running', prompt_id: row[1], node: generateOf(row)[0], cancellable: true,
-                position: 0, prompt: previous?.prompt || text(row)}, {revive: Boolean(previous)});
+            const id = 'video:' + row[1], node = generateOf(row)[0], kept = adoptNodeRow(store, id, node), previous = store.get(id);
+            now.set(id, {promptId: row[1], status: 'running', node: String(node)});
+            if (previous && !['queued', 'submitting'].includes(previous.status)) {
+                // Already running (its progress came first): it still gets its words, which only this queue knows.
+                const missing = fillFrom({id}, kept, previous);
+                if (!previous.prompt && text(row)) missing.prompt = text(row);
+                if (Object.keys(missing).length > 1) store.upsert(missing);
+                continue;
+            }
+            store.upsert(fillFrom({id, kind: 'video', source: 'video', status: 'running', prompt_id: row[1], node, cancellable: true,
+                position: 0, prompt: previous?.prompt || text(row)}, kept, previous), {revive: Boolean(previous)});
         }
         pending.forEach((row, index) => {
             const id = 'video:' + row[1], previous = store.get(id); now.set(id, {promptId: row[1], status: 'queued'});
