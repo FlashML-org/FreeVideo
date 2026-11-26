@@ -111,6 +111,9 @@
 .fv-body[data-cols="3"] .fv-sc-foot .fv-runbar{position:static;padding:0;background:none}
 .fv-body[data-cols="3"] .fv-sc-foot .fv-runrow{display:flex;gap:2px;align-items:stretch;position:relative}
 .fv-body[data-cols="3"] .fv-sc-foot .fv-runrow>.fv-primary{flex:1;min-width:0;height:var(--fv-h-lg,44px);min-height:var(--fv-h-lg,44px);padding:0 12px;border:0;border-radius:var(--fv-rad-ctl,12px) 6px 6px var(--fv-rad-ctl,12px);background:var(--fv-accent-fill);color:#fff;font-size:var(--fv-fs-3,16px);font-weight:600;background-image:none;box-shadow:inset 0 1px 0 rgb(255 255 255 / .25),inset 0 -1px 0 rgb(0 0 0 / .12),0 10px 24px -10px rgb(15 116 214 / .75);white-space:nowrap;overflow:hidden}
+/* The time goes beside the label when both fit, else under it (two lines fit the key's height): it is never cut short. */
+.fv-body[data-cols="3"] .fv-sc-foot .fv-runrow>.fv-primary{flex-wrap:wrap;align-content:center;row-gap:0}
+.fv-body[data-cols="3"] .fv-sc-foot .fv-runrow>.fv-primary>:is(.fvs-key-label,.fvs-key-eta){flex:none;max-width:100%}
 .fv-body[data-cols="3"] .fv-sc-foot .fv-runrow>.fv-primary::before,.fv-body[data-cols="3"] .fv-sc-foot .fv-runrow>.fv-primary::after{background:none!important;width:0!important}
 .fv-body[data-cols="3"] .fv-sc-foot .fv-runrow>.fv-primary:disabled{opacity:.5}
 .fv-body[data-cols="3"] .fv-sc-foot .fv-runrow>:is(.fv-key-more,.fv-run-options){flex:none;width:40px;height:var(--fv-h-lg,44px)}
