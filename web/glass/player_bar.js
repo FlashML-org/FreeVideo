@@ -95,7 +95,9 @@ export function attach(video, host, {compact = false, t = words} = {}) {
     const playing = () => { sync(); cancelAnimationFrame(frame); frame = requestAnimationFrame(draw); };
     const changed = () => { sync(); draw(); };
     track.addEventListener('pointerdown', down); track.addEventListener('pointerup', up); track.addEventListener('pointercancel', up); track.addEventListener('keydown', key);
-    video.addEventListener('play', playing);
+    // The frame loop starts on play; playing (after a stall) and timeupdate (a few times a second while it plays) draw too
+    // and start the loop again, so the bar follows the video even where frames are held back (a hidden or covered window).
+    video.addEventListener('play', playing); video.addEventListener('playing', playing); video.addEventListener('timeupdate', draw);
     for (const name of ['pause', 'volumechange', 'loadedmetadata', 'seeked', 'durationchange']) video.addEventListener(name, changed);
     sync(); draw();
     host.append(bar);
@@ -103,7 +105,7 @@ export function attach(video, host, {compact = false, t = words} = {}) {
         element: bar, sync: changed,
         detach() {
             cancelAnimationFrame(frame);
-            video.removeEventListener('play', playing);
+            video.removeEventListener('play', playing); video.removeEventListener('playing', playing); video.removeEventListener('timeupdate', draw);
             for (const name of ['pause', 'volumechange', 'loadedmetadata', 'seeked', 'durationchange']) video.removeEventListener(name, changed);
             bar.remove(); if (hadControls) video.controls = true;
             if (bars.get(video) === handle) bars.delete(video);
