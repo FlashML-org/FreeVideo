@@ -103,9 +103,59 @@ def source_root():
     return None
 
 
+# Set by the ComfyUI custom-node entry (__init__.py) in the ComfyUI process only.
+_COMFY_NODE = False
+
+
+def comfy_node_process():
+    """Mark this process as ComfyUI with FreeVideo loaded as a node; see install_root."""
+    global _COMFY_NODE
+    _COMFY_NODE = True
+
+
+def _node_folder():
+    return Path(__file__).resolve().parents[1]
+
+
+# (node folder, comfyui.json identity) -> installation; the file is read again only once it changes.
+_SELECTED = [None, None]
+
+
+def _comfyui_installation():
+    """The installation comfyui.json beside this package selects, as comfy_bridge.installation_root reads it; None
+    without that file, with a damaged one, or when the folder it names is not there (the default applies then)."""
+    import stat
+    node = _node_folder()
+    try:
+        info = (node / 'comfyui.json').stat()
+    except OSError:
+        return None
+    if not stat.S_ISREG(info.st_mode):
+        return None
+    key = (node, info.st_mtime_ns, info.st_size, info.st_ino)
+    if _SELECTED[0] == key:
+        selected = _SELECTED[1]
+    else:
+        from .comfy_bridge import installation_root
+        try:
+            selected = installation_root(node, environ={})
+        except (OSError, ValueError, AttributeError, TypeError):
+            selected = None
+        _SELECTED[:] = [key, selected]
+    # Checked on every call, outside the cache: a folder removed or not yet made does not stay selected.
+    return selected if selected is not None and selected.is_dir() else None
+
+
 def install_root():
     if os.environ.get('FREEVIDEO_HOME'):
         return Path(os.environ['FREEVIDEO_HOME']).expanduser()
+    # ComfyUI started without the FreeVideo launcher has no FREEVIDEO_HOME. Its routes then read and write the installation
+    # the engine uses (the one comfyui.json names, read on each call so a folder bound in the setup panel applies at once),
+    # not the default folder below. Engine processes always receive FREEVIDEO_HOME.
+    if _COMFY_NODE:
+        selected = _comfyui_installation()
+        if selected is not None:
+            return selected
     source = source_root()
     if source is not None:
         return source

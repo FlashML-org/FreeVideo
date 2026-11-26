@@ -1,7 +1,9 @@
 """Optional ComfyUI custom-node entry point; the engine also runs standalone."""
+from .freevideo_engine.system import comfy_node_process
 from .freevideo_engine.comfy_logging import configure_managed_logging
 from .freevideo_engine.comfy_privacy import configure_managed_privacy
 
+comfy_node_process()  # before anything reads the installation folder
 configure_managed_logging()
 configure_managed_privacy()
 
