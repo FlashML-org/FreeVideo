@@ -197,7 +197,7 @@ export async function openShare(record,t){
         }}
         finally{clearInterval(watch);busy=false;if(!disposed){save.disabled=false;keep.input.disabled=false;cancel.hidden=true;delete dialog.dataset.busy;tabs.querySelectorAll('button').forEach(b=>b.disabled=false);}}
     }
-    dialog.addEventListener('cancel',event=>{event.preventDefault();closeDialog(dialog);});
+    dialog.addEventListener('cancel',event=>{if(event.target!==dialog)return;event.preventDefault();closeDialog(dialog);});
     dialog.onclose=()=>{disposed=true;clearInterval(watch);abort.abort();exportRequest?.abort();player.pause();playBar.destroy();player.removeAttribute('src');player.load();dialog.remove();if(opened===dialog)opened=null;};
     // Start focus on the dialog itself, not with a focus ring on the first tab.
     document.body.append(dialog);dialog.showModal();dialog.focus();slide();message.textContent=t('Preparing preview…','正在准备预览…');

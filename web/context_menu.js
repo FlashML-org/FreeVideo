@@ -401,7 +401,7 @@ export function createLayer({className, label, onKey = () => false, onClose = ()
     };
     // Without a view that gates keys, this dialog listens for itself.
     dialog.addEventListener('keydown', event => { if (!release) keys(event); });
-    dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
+    dialog.addEventListener('cancel', event => { if (event.target !== dialog) return; event.preventDefault(); close(); });
     // A click on the dim backdrop (outside the panel box) closes.
     dialog.addEventListener('pointerdown', event => {
         if (event.target !== dialog) return;

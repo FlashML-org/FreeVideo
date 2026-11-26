@@ -399,7 +399,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         // A click anywhere else in the dialog takes the second step back.
         dialog.addEventListener('keydown', () => { moved = true; }); dialog.addEventListener('pointerdown', () => { moved = true; });
         dialog.onpointerdown = event => { if (confirming && event.target !== remove) resetDelete(); };
-        dialog.oncancel = event => { event.preventDefault(); close(); };
+        dialog.oncancel = event => { if (event.target !== dialog) return; event.preventDefault(); close(); };
         dialog.onclose = close;
         current = {element: dialog, message, close};
         name.value = ''; select('upload'); document.body.append(dialog); dialog.showModal(); name.focus();

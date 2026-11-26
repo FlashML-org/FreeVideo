@@ -1680,7 +1680,9 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     const strayKeys = event => { if (event.target === document.body && dialog.open && topDialog() === dialog) onKeys(event); };
     document.addEventListener('keydown', strayKeys);
     // Escape steps back one layer at a time; the view itself closes last.
+    // Only the dialog's own cancel is Escape: a file picker dismissed inside it fires a cancel at its input that bubbles here.
     dialog.addEventListener('cancel', event => {
+        if (event.target !== dialog) return;
         event.preventDefault();
         if (layout.tookEscape() || layout.escape()) return;
         if (!more.hidden) more.hidden = true;

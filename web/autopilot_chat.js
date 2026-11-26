@@ -287,7 +287,7 @@ function imageViewer(t, src, name, opener, failed) {
         disposed = true; observer.disconnect(); stopKeys(); pointers.clear(); image.onload = image.onerror = null;
         dialog.remove(); if (opener.isConnected && !opener.disabled) opener.focus({preventScroll: true});
     };
-    dialog.addEventListener('cancel', event => { event.preventDefault(); closeDialog(dialog); });
+    dialog.addEventListener('cancel', event => { if (event.target !== dialog) return; event.preventDefault(); closeDialog(dialog); });
     dialog.addEventListener('close', cleanup, {once: true});
     image.onload = () => { image.style.width = `${image.naturalWidth}px`; image.style.height = `${image.naturalHeight}px`; resize(); };
     image.onerror = () => { failed(); closeDialog(dialog); };

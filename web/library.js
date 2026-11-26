@@ -2532,7 +2532,7 @@ export function openLibrary(t, options = {}) {
         render();
     };
     window.addEventListener('freevideo-pictures-deleted', picturesGone);
-    dialog.addEventListener('cancel', event => { event.preventDefault(); cancelStep(); });
+    dialog.addEventListener('cancel', event => { if (event.target !== dialog) return; event.preventDefault(); cancelStep(); });
     function cancelStep() {
         if (tab === 'cast' && castRoom?.cancel()) { /* handled inside the cast shelf */ }
         else if (viewing === 'compare' || isFull() || (viewing != null && layout !== 'stage')) closeViewer();

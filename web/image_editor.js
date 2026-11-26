@@ -1890,7 +1890,9 @@ async function openImageEditorNow({source = null, name = source || '', target = 
     const unlistenKeys = [listenDialogKey(dialog, 'keydown', keys), listenDialogKey(dialog, 'keyup', keyup)];
     window.addEventListener('keydown', stray, true);
     window.addEventListener('keyup', stray, true);
+    // Only the dialog's own cancel is Escape: a file picker dismissed inside it fires a cancel at its input that bubbles here.
     dialog.addEventListener('cancel', event => {
+        if (event.target !== dialog) return;
         event.preventDefault();
         if (gesture?.cancel) { gesture.cancel(); gesture = null; draw(); return; }
         if (tool === 'pose' && pose?.escape()) return;

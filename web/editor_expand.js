@@ -176,7 +176,7 @@ export function createExpandButton({t = translatorFor(null, false), textarea, on
             }
         }));
         cleanups.push(isolateDialogKeys(dialog, event => routeDialogKey(event, dialog)));
-        dialog.oncancel = event => { event.preventDefault(); event.stopPropagation(); close(); };
+        dialog.oncancel = event => { if (event.target !== dialog) return; event.preventDefault(); event.stopPropagation(); close(); };
         dialog.onclose = () => { if (dialog && !dialog.open) close(); };
         const parent = textarea.closest('dialog') || document.body;
         parent.addEventListener('close', close); cleanups.push(() => parent.removeEventListener('close', close));

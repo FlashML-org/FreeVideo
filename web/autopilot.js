@@ -151,7 +151,8 @@ export function openAutopilotView(node, {studio = null, initialPrompt = '', init
     card.state.then(value => { on = value; show(); if (value === 'on') chat.sync(); });
     show();
     dialog.append(header, body);
-    dialog.addEventListener('cancel', event => { event.preventDefault(); closeDialog(dialog); });
+    // Only the dialog's own cancel is Escape: a file picker dismissed inside it (attachments) fires a cancel that bubbles here.
+    dialog.addEventListener('cancel', event => { if (event.target !== dialog) return; event.preventDefault(); closeDialog(dialog); });
     const goBack = next;
     // Closing hides the view and keeps it: reading stops by itself while it is out of sight, playback pauses.
     function hidden() {

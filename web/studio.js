@@ -3285,7 +3285,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
         if (!open) return false;
         open.open = false; open.querySelector(':scope>summary')?.focus({preventScroll: true}); return true;
     };
-    dialog.addEventListener('cancel', e => { e.preventDefault(); if (!closeMenu() && !compare.close() && !promptLibrary?.hide() && !consoleUI?.dismiss() && !closeWorksDrawer()) closeDialog(dialog); });
+    // Only the dialog's own cancel is Escape: a file picker dismissed inside it fires a cancel at its input that bubbles here.
+    dialog.addEventListener('cancel', e => { if (e.target !== dialog) return; e.preventDefault(); if (!closeMenu() && !compare.close() && !promptLibrary?.hide() && !consoleUI?.dismiss() && !closeWorksDrawer()) closeDialog(dialog); });
     const dispose = () => { if (disposed) return; disposed = true; borrowed?.release({disposing: true}); blockOriginal('extend', false); blockOriginal('preview', false); blockOriginal('fast', false); for (const f of cleanup) f(); stage.querySelector('video')?.pause(); dialog.remove(); if (current?.dialog === dialog) { current = null; viewChanged('nodes', node); } };
     const onClose = () => {
         // The browser's own close event of a switch comes with the next frame; if the panel was opened again before it

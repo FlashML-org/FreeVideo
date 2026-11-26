@@ -316,7 +316,7 @@ export async function openSetup(options) {
     const recheck = button(t('Check again', '重新检查'), {kind: 'primary'}); recheck.hidden = true;
     sheetFoot.append(blocked, sheetCancel, recheck, install);
     sheet.append(sheetHead, sheetBody, sheetFoot);
-    sheet.addEventListener('cancel', event => { event.preventDefault(); sheet.close(); });
+    sheet.addEventListener('cancel', event => { if (event.target !== sheet) return; event.preventDefault(); sheet.close(); });
     listenDialogKey(sheet, 'keydown', event => { if (event.key === 'Escape') { event.stopPropagation(); event.preventDefault(); sheet.close(); } });
     sheet.addEventListener('close', () => { if (dialog.open) (reviewPlan.hidden ? inspect : reviewPlan).focus?.({preventScroll: true}); });
     sheetClose.onclick = sheetCancel.onclick = () => sheet.close();
@@ -881,7 +881,7 @@ export async function openSetup(options) {
         return closing;
     }
     closeButton.onclick = phoneClose.onclick = () => close();
-    dialog.addEventListener('cancel', event => { event.preventDefault(); if (!sheet.open && pickerMenu.hidden) close(); });
+    dialog.addEventListener('cancel', event => { if (event.target !== dialog) return; event.preventDefault(); if (!sheet.open && pickerMenu.hidden) close(); });
     // Escape closes Settings also while the view underneath routes keys for its own shortcuts (dialog_keys.js);
     // an open menu inside (the page picker, the how-to list, a top-bar menu) takes it first.
     const onKey = event => {
