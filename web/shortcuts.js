@@ -2,7 +2,7 @@
 // palette). Views list their own with registerShortcuts(viewId, rows); the shortcuts themselves stay with the views,
 // this module only shows them. The built-in rows below are the shortcuts the views have today.
 // A row is {keys: 'Mod+Z / Mod+Shift+Z', title: [en, zh], group?: [en, zh]}; Mod is Ctrl, or ⌘ on a Mac.
-import { t, words, CN, glyph, keyChips, formatKeys, createLayer, addSheet } from './context_menu.js';
+import { t, words, CN, glyph, keyChips, formatKeys, createLayer, addSheet, fadeEnds } from './context_menu.js';
 
 const browser = typeof document !== 'undefined';
 addSheet('shortcuts.css', import.meta.url);
@@ -199,6 +199,7 @@ function build() {
       <div class="fv-ks-body" role="tabpanel" tabindex="-1"></div>`;
     d.setAttribute('aria-labelledby', 'fv-ks-title');
     parts = {title: d.querySelector('.fv-ks-title'), input: d.querySelector('input'), close: d.querySelector('.fv-ks-close'), tabs: d.querySelector('.fv-ks-tabs'), body: d.querySelector('.fv-ks-body')};
+    parts.fade = fadeEnds(parts.tabs);
     parts.title.textContent = t('Keyboard shortcuts', '快捷键');
     parts.input.placeholder = t('Find a shortcut', '查找快捷键');
     parts.input.setAttribute('aria-label', t('Find a shortcut', '查找快捷键'));
@@ -230,6 +231,7 @@ function draw() {
         tab.dataset.fvTipUse = view === 'all' ? t('Shortcuts of every view', '所有视图的快捷键') : view === 'global' ? t('Keys that work in every view', '在任何视图都能用的按键') : t('This view and the keys of every view', '这个视图加全局按键');
         return tab;
     }));
+    parts.fade();
     const list = sections({filter: state.filter, query: state.query});
     if (!list.length) {
         const empty = document.createElement('p'); empty.className = 'fv-ks-empty';

@@ -8,7 +8,7 @@
 //   icon?, key?: 'Mod+Enter', when?: () => bool (hidden when false), why?: () => '' | [en, zh] (shown greyed with the
 //   reason), confirm?: [en, zh] (asks first), anyView?: true (offered from every view), run: ctx => any}.
 // This module also loads the rest of the command layer: shortcuts, notifications, search and the right-click menu.
-import { t, words, CN, MAC, glyph, keyChips, formatKeys, createLayer, addSheet } from './context_menu.js';
+import { t, words, CN, MAC, glyph, keyChips, formatKeys, createLayer, addSheet, fadeEnds } from './context_menu.js';
 import { openShortcuts, shortcutsOpen, closeShortcuts, VIEW_NAMES } from './shortcuts.js';
 import { searchEverything, searchSettled, warmSearch, fillPrompt } from './global_search.js';
 import { openNotifications, latestFinished, toast, visitJob, openWork } from './notifications.js';
@@ -341,6 +341,7 @@ function build() {
         chip.onclick = () => { setScope(item.id); ui.input.focus({preventScroll: true}); };
         ui.scopes.append(chip);
     }
+    ui.fade = fadeEnds(ui.scopes);
     ui.input.addEventListener('input', () => { active = 0; confirming = null; refresh(); });
     ui.list.addEventListener('pointermove', event => {
         const option = event.target.closest('[role=option]'); if (!option) return;
@@ -394,7 +395,7 @@ function gridStep(direction) {
 function setScope(next) {
     scope = next; active = 0;
     for (const chip of ui.scopes.children) { const on = chip.dataset.scope === scope; chip.setAttribute('aria-selected', String(on)); chip.classList.toggle('is-on', on); }
-    ui.scopes.querySelector('.is-on')?.scrollIntoView?.({inline: 'nearest', block: 'nearest'});
+    ui.fade();
     refresh();
 }
 

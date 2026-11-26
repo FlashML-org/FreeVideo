@@ -52,6 +52,29 @@ export function keyParts(combo, mac = MAC, cn = CN) {
 export function formatKeys(keys, mac = MAC) {
     return String(keys || '').split(/\s*\/\s*/).filter(Boolean).map(combo => keyParts(combo, mac).join(mac ? '' : '+')).join(' / ');
 }
+// A row of tabs that scrolls sideways: each end with more of the row past it fades out over FADE px (data-fv-fade,
+// context_menu.css), so a row cut exactly between two tabs still shows it goes on. The chosen tab (aria-selected) is
+// scrolled clear of both fades. Call the returned function after the tabs or the choice change; scrolling and size
+// changes (the layer opening, the window) are followed by themselves.
+export const FADE = 32;
+export function fadeEnds(row) {
+    const fades = () => {
+        const start = row.scrollLeft > 1, end = row.scrollWidth - row.clientWidth - row.scrollLeft > 1;
+        if (start || end) row.dataset.fvFade = start && end ? 'both' : start ? 'start' : 'end'; else delete row.dataset.fvFade;
+    };
+    const reveal = () => {
+        const tab = row.querySelector('[aria-selected=true]');
+        if (!tab || !row.clientWidth) return;
+        const box = row.getBoundingClientRect(), own = tab.getBoundingClientRect();
+        if (own.left < box.left + FADE) row.scrollLeft -= box.left + FADE - own.left;
+        else if (own.right > box.right - FADE) row.scrollLeft += own.right - (box.right - FADE);
+    };
+    const update = () => { reveal(); fades(); };
+    row.addEventListener('scroll', fades, {passive: true});
+    if (typeof ResizeObserver === 'function') new ResizeObserver(update).observe(row);
+    update();
+    return update;
+}
 // The <kbd> chips for a shortcut; several combinations get a thin slash between them.
 export function keyChips(keys, mac = MAC) {
     const box = document.createElement('span'); box.className = 'fv-keys';
