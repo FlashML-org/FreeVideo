@@ -684,13 +684,16 @@ def plan(args, *, local_progress=None, stage=None):
         # An unreadable version is left to the later checks instead of blocking setup.
         major = re.match(r'\d+', driver)
         cuda_api = snapshot.get('cuda_driver_api_version')
-        if cuda_api < 13000 if cuda_api is not None else (major and int(major.group()) < 580):
+        compatibility = hardware.cuda_compatibility()
+        # A card below the hardware floor is the reason, and a driver update cannot help it: only that is said (its own line
+        # names the driver too). An unknown capability keeps the driver line, as an old driver can be why it is unknown.
+        below_floor = compatibility['status'] == 'CUDA_ARCH_UNSUPPORTED'
+        if not below_floor and (cuda_api < 13000 if cuda_api is not None else (major and int(major.group()) < 580)):
             # The card names the graphics card too; brackets would end its pattern early.
             model = re.sub(r'[()\r\n]', '', str(snapshot['selected_gpu'].get('name') or '')).strip()
             # The CUDA fallback reads no driver version; leave it out instead of printing a gap.
             errors.append('NVIDIA driver%s%s is older than 580, the minimum for the CUDA 13 encoder; update the driver first.'
                           % (' ' + driver if driver else '', ' (%s)' % model if model else ''))
-        compatibility = hardware.cuda_compatibility()
         if compatibility['error']:
             errors.append(compatibility['error'])
         snapshot['cuda_compatibility'] = compatibility
