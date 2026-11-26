@@ -211,6 +211,7 @@ ApplicationWindow {
     // A card whose way out is the user's own step (open a newer launcher, move a file) marks itself manual:
     // retrying first cannot help, so it is not the primary action.
     readonly property bool manualFailure: !!s.retry_kind && s.failure.manual === true
+    readonly property bool updateStartRefused: s.failure.kind === "update-start-blocked" && ["threat", "policy", "smart-app-control"].indexOf(s.failure.reason) >= 0
     readonly property bool updateFirst: s.page === "launcher" && s.update.engine && !s.update.phase && !s.busy && s.status !== "open" && s.status !== "restart-required" && !s.needs_consent && !s.repair_offered
     function percent(row) { return row && row.total ? Math.floor(100 * row.done / row.total) + "%" : "" }
     readonly property var upgrade: s.model_upgrade || ({})
@@ -608,7 +609,13 @@ ApplicationWindow {
                             FButton { objectName: "repairCardButton"; primary: true; visible: !!s.repair_offered; text: t("Repair", "修复"); onClicked: backend.action("repair", false) }
                             FButton { objectName: "openInstallFolder"; visible: s.failure.kind === "missing-file"; primary: true
                                       text: t("Open install folder", "打开安装目录"); onClicked: backend.openInstallFolder() }
-                            FButton { objectName: "latestLauncherLink"; visible: s.failure.kind === "older-launcher"; flat: true
+                            // A threat report, a policy or Smart App Control stops the same file again from that folder; a browser
+                            // download shows the security software's own way to allow it, so the releases page leads there.
+                            FButton { objectName: "latestLauncherPrimary"; visible: updateStartRefused; primary: true
+                                      text: t("Download the latest ↗", "下载最新版 ↗"); onClicked: backend.link("https://github.com/FlashML-org/FreeVideo/releases/latest") }
+                            FButton { objectName: "openUpdateFolder"; visible: s.failure.kind === "update-start-blocked" && !!s.failure.path; primary: !updateStartRefused
+                                      text: t("Open download location", "打开下载位置"); onClicked: backend.openUpdateFolder() }
+                            FButton { objectName: "latestLauncherLink"; visible: s.failure.kind === "older-launcher" || (s.failure.kind === "update-start-blocked" && !updateStartRefused); flat: true
                                       text: t("Download the latest ↗", "下载最新版 ↗"); onClicked: backend.link("https://github.com/FlashML-org/FreeVideo/releases/latest") }
                             // A missing Visual C++ runtime: Microsoft's page, not the installer file itself; the person can fix it, so no report.
                             FButton { objectName: "vcRuntimeLink"; visible: s.failure.kind === "vc-runtime"

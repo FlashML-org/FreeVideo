@@ -810,6 +810,16 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
                    'Open FreeVideo from its desktop shortcut, or download the latest launcher.')
         return dict(title='启动器比已安装的 FreeVideo 旧' if zh else 'This launcher is older than the installed FreeVideo',
                     detail=detail, action='', kind='older-launcher', manual=True)
+    blocked = re.search(r'\[UPDATE_START_BLOCKED ([\w-]+)\]', summary)
+    if blocked:
+        # launcher_update.LauncherStartBlocked: the update is downloaded and this launcher keeps working; a folder
+        # someone can write to has nothing to do with it. The session adds the folder of the downloaded launcher.
+        cause = UPDATE_START_BLOCKED.get(blocked[1], UPDATE_START_BLOCKED['denied'])
+        # reason: the card leads with the releases page when waiting or starting the same file again will not help.
+        then = UPDATE_START_BLOCKED_NEXT_RELEASE_FIRST if blocked[1] in UPDATE_START_REFUSED else UPDATE_START_BLOCKED_NEXT
+        return dict(title=UPDATE_START_BLOCKED_TITLE[zh], detail=cause[zh] + '\n' + then[zh],
+                    action='', kind='update-start-blocked', manual=True,
+                    reason=blocked[1] if blocked[1] in UPDATE_START_BLOCKED else 'denied')
     from .model_repair import MISMATCH, MISMATCH_PATH, FAILURE_TITLE, FAILURE, CHANGED_TITLE, CHANGED_REPAIR
     mismatches = re.findall(MISMATCH + r': ([^\r\n]+)', text)
     bundled_models = re.findall(r'Bundled (?:file failed verification|model file has incorrect size): (models/[^\r\n]+)', summary)
@@ -1287,6 +1297,28 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
 # comfy_setup.inspection_failed: the first line of a failed check.
 INSPECTION_SUMMARY = r'Setup inspection failed(?: \([^()\r\n]*(?:\([^()\r\n]*\)[^()\r\n]*)*\))?'
 CHECK_UNFINISHED = ('The check did not finish.', '这次检查未完成。')
+# Windows did not let the downloaded launcher start (launcher_update.START_BLOCKED), by its reason.
+UPDATE_START_BLOCKED_TITLE = ('The new version could not start', '新版本未能启动')
+UPDATE_START_BLOCKED = {
+    'denied': ('Windows or security software stopped the downloaded launcher from starting. This version of FreeVideo keeps working.',
+               'Windows 或安全软件阻止了下载的启动器启动。当前版本的 FreeVideo 照常可用。'),
+    'in-use': ('Another program kept the downloaded launcher open, so it could not start. This version of FreeVideo keeps working.',
+               '下载的启动器被其他程序占用，未能启动。当前版本的 FreeVideo 照常可用。'),
+    'threat': ('Security software reported the downloaded launcher as a threat and stopped it. This version of FreeVideo keeps working.',
+               '安全软件把下载的启动器报为威胁并阻止了它。当前版本的 FreeVideo 照常可用。'),
+    'policy': ('A policy on this computer does not allow the downloaded launcher to start. This version of FreeVideo keeps working.',
+               '这台电脑上的策略不允许下载的启动器启动。当前版本的 FreeVideo 照常可用。'),
+    'smart-app-control': ('Smart App Control in Windows stopped the downloaded launcher. This version of FreeVideo keeps working.',
+                          'Windows 的“智能应用控制”阻止了下载的启动器。当前版本的 FreeVideo 照常可用。'),
+}
+UPDATE_START_BLOCKED_NEXT = ('Open the download location and start the new launcher by hand, or download the latest version from the releases page.',
+                             '请打开下载位置手动启动新启动器，或到发布页下载最新版本。')
+# A threat report, a policy or Smart App Control stops the same file again from that folder: the releases page comes first,
+# in the order of the card's buttons (Main.qml updateStartRefused).
+UPDATE_START_REFUSED = ('threat', 'policy', 'smart-app-control')
+UPDATE_START_BLOCKED_NEXT_RELEASE_FIRST = (
+    'Download the latest version from the releases page, or open the download location and start the new launcher by hand.',
+    '请到发布页下载最新版本，或打开下载位置手动启动新启动器。')
 # The way to send a failure to us, by the launcher's own button names (Main.qml: "Export report", "Report a problem").
 REPORT_STEP = ('If it fails again, select "Export report", then select "Report a problem" and attach the report.',
                '仍然失败时，请先点击“导出报告”，再点击“提交问题”并附上报告。')

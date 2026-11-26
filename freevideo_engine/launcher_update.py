@@ -831,6 +831,26 @@ class DownloadedLauncherUnavailable(ValueError):
     """The cached executable needs downloading again before it can be started."""
 
 
+# What Windows answers when the downloaded launcher may not start. 5 (access denied) and 32 (in use) are often
+# security software still examining the new file, so the launcher tries again after these waits (seconds); the
+# others are a decision on this computer that waiting does not change.
+START_BLOCKED = {5: 'denied', 32: 'in-use', 225: 'threat', 1260: 'policy', 4551: 'smart-app-control'}
+START_RETRY_WAITS = (3, 10)
+# The marker failure_details reads: the reason in brackets, then the downloaded file (local only; reports redact it).
+START_BLOCKED_MARKER = 'UPDATE_START_BLOCKED'
+
+
+class LauncherStartBlocked(RuntimeError):
+    """Windows did not let the downloaded launcher start; the running launcher keeps working."""
+
+    def __init__(self, code, path):
+        self.code, self.path = code, Path(path)
+        self.reason = START_BLOCKED[code]
+        self.retryable = code in (5, 32)
+        super().__init__('The downloaded launcher could not start [%s %s] (Windows error %d): %s'
+                         % (START_BLOCKED_MARKER, self.reason, code, path))
+
+
 @plain_errors
 def launch_download(candidate, root, *, token='', popen=None):
     candidate = manifest(candidate)
@@ -860,7 +880,12 @@ def launch_download(candidate, root, *, token='', popen=None):
         kwargs['creationflags'] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
     else:
         kwargs['start_new_session'] = True
-    process = (popen or execution_paths.popen)([str(path)], **kwargs)
+    try:
+        process = (popen or execution_paths.popen)([str(path)], **kwargs)
+    except OSError as error:
+        if windows() and getattr(error, 'winerror', None) in START_BLOCKED:
+            raise LauncherStartBlocked(error.winerror, path) from error
+        raise
     # Start first: a spawn error must not replace the approved startup receipt.
     save(Path(root) / 'updates' / 'active.json', dict(approved=True, candidate=candidate))
     return process
@@ -881,8 +906,8 @@ def forward_approved(current, root):
             return False  # A bad release identity must never recursively launch itself.
         launch_download(candidate, root)
         return True
-    except (OSError, ValueError, TypeError, AttributeError):
-        return False  # A missing/corrupt cached update leaves the original app usable.
+    except (OSError, ValueError, TypeError, AttributeError, LauncherStartBlocked):
+        return False  # A missing/corrupt or blocked cached update leaves the original app usable.
 
 
 def handoff(candidate, root, source, *, pages=False):

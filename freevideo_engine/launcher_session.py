@@ -148,6 +148,8 @@ class Session:
     update_intent = None
     update_source = 'launcher'
     update_waiting = update_restarting = False
+    # Windows refused to start the downloaded launcher: how many times so far, when to try again, and the file.
+    update_start_failures, update_start_retry_at, update_blocked_path = 0, 0., ''
     engine_updating = engine_autoinstall = reload_expected = resume_pages = False
     browser_wait = queue_state = queue_thread = bridge = None
     # Setup that stopped for a running job and continues by itself once the queue is empty.
@@ -1862,7 +1864,10 @@ class Session:
         self.update_waiting = bool(busy)
         if busy is not False:
             return
-        from .launcher_update import DownloadedLauncherUnavailable, handoff, launch_download
+        from .launcher_update import (DownloadedLauncherUnavailable, LauncherStartBlocked, START_RETRY_WAITS, handoff,
+                                      launch_download)
+        if time.monotonic() < self.update_start_retry_at:
+            return  # Security software may still be examining the new file: tick tries again after the wait.
         self.persist()
         try:
             handoff(row['candidate'], self.updater.root, self.update_source,
@@ -1872,9 +1877,20 @@ class Session:
             self.error = ''
             self.updater.run('download', row['candidate'])
             return
+        except LauncherStartBlocked as error:
+            if error.retryable and self.update_start_failures < len(START_RETRY_WAITS):
+                self.update_start_retry_at = time.monotonic() + START_RETRY_WAITS[self.update_start_failures]
+                self.update_start_failures += 1
+                self.update_intent = 'launcher'  # tick comes back here once the wait is over
+                return
+            self.update_start_failures, self.update_start_retry_at = 0, 0.
+            self.update_blocked_path = str(error.path)
+            self.update_intent = None
+            raise
         except Exception:
             self.update_intent = None
             raise
+        self.update_start_failures, self.update_start_retry_at, self.update_blocked_path = 0, 0., ''
         self.update_restarting = True
         self._write_bridge_status(force=True)
         self.closing = True
@@ -2939,6 +2955,9 @@ class Session:
                 if line.startswith(MISMATCH_PATH + ': ') and line[len(MISMATCH_PATH) + 2:]:
                     failure['path'] = line[len(MISMATCH_PATH) + 2:]
                     break
+        if failure.get('kind') == 'update-start-blocked' and self.update_blocked_path:
+            # The card names the folder the user can start the new launcher from; copied details stay redacted.
+            failure['path'] = str(Path(self.update_blocked_path).parent)
         if failure.get('kind') in ('permission', 'engine-folder-denied') and row.get('error') and row.get('denied'):
             from .denied_access import card_text
             # The card shows the detail instead of the action, so the action goes under the location.

@@ -503,6 +503,17 @@ def create_ui(session, *, show=True, instance=None):
             self.invoke(QDesktopServices.openUrl, QUrl.fromLocalFile(str(folder.resolve())))
 
         @Slot()
+        def openUpdateFolder(self):
+            """The folder of a downloaded launcher Windows did not let start, so the user can start it there."""
+            from PySide6.QtGui import QDesktopServices
+            folder = Path(session.update_blocked_path).parent if session.update_blocked_path else None
+            if folder is None or not folder.is_dir():
+                session.action_notice = 'folder_open_failed'
+                self.refresh()
+                return
+            self.invoke(QDesktopServices.openUrl, QUrl.fromLocalFile(str(folder.resolve())))
+
+        @Slot()
         def openDownloadFolder(self):
             from PySide6.QtGui import QDesktopServices
             folder = session.download_export
