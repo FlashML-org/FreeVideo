@@ -315,9 +315,9 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
                     next = value.next;
                 }
                 succeeded = true; if (!append) keepList(rows); render();
-                store.getSources(items.filter(row => row.video).map(row => `work:${row.id}`)).then(render).catch(value => { if (!disposed) actions.error(value); });
+                store.getSources(items.filter(row => row.video).map(row => `work:${row.id}`)).then(render).catch(value => { if (!disposed) actions.error(value, null, undefined, 'library-sources'); });
                 return value;
-            } catch (error) { if (!disposed) actions.error(error); return null; }
+            } catch (error) { if (!disposed) actions.error(error, null, undefined, 'library'); return null; }
             finally { loading = false; if (!listed) { listed = true; if (!succeeded && !disposed) render(); } if (succeeded) scheduleMore(); }
         });
         listRead = read; return read;

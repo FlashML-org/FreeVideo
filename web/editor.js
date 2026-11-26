@@ -59,6 +59,7 @@ import {CN} from './topbar_state.js';
 import {setDisabled} from './dom_quiet.js';
 import {randomUUID} from './random_id.js';
 import {translator, translatorFor} from './i18n.js';
+import {fileFailureText} from './file_failure.js';
 const editorStyles = Promise.all(['result_actions.css', 'editor.css', 'editor_expand.css', 'editor_tracks.css', 'editor_frame.css', 'editor_adjust.css', 'editor_adjust_picture.css', 'editor_preview_picture.css', 'editor_select.css', 'editor_menu.css', 'editor_text.css', 'editor_notes.css', 'editor_transport.css', 'glass/editor.css', 'editor_touch.css'].map(name => {
     const style = document.createElement('link'); style.rel = 'stylesheet'; style.href = new URL(name, import.meta.url).href;
     const ready = 'sheet' in style ? new Promise(resolve => { style.onload = style.onerror = resolve; }) : Promise.resolve();
@@ -513,14 +514,15 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         // Any other message may hold a path or the user's words, so it is never copied.
         const named = value?.name === 'Error' && /^[a-z][a-z0-9_]{2,39}$/.test(value?.message) ? value.message : value?.name;
         // A failed export names the exception class (a type name, never a message), so the report says what broke.
-        const code = (value?.reason === 'failed' && value?.class) || value?.reason || value?.code || named;
+        const code = (value?.reason === 'failed' && value?.class) || value?.reason || value?.code || value?.server?.reason || named;
         return site + ':' + (String(code || '').replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 40) || 'unknown');
     }
     // `where` marks a failure: the notice then carries the "Report a problem" button and stays longer to be reached.
     // Notices stack (newest last, at most three) instead of a new one wiping out the one being read; each can be closed.
     const noticeTimers = new Set();
     // `report: false` keeps a problem's 20 s and its name but leaves out "Report a problem", for a cause that is not a fault.
-    function notify(text, where = null, kind = null, action = null, {report = true} = {}) {
+    // `facts` (what the server said about a failed request) go with "Report a problem" into the report's details.
+    function notify(text, where = null, kind = null, action = null, {report = true, facts = null} = {}) {
         if (disposed) return;
         if (!text) { for (const timer of noticeTimers) clearTimeout(timer); noticeTimers.clear(); notices.replaceChildren(); return; }
         const last = notices.lastElementChild;
@@ -530,7 +532,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         const words = el('span', 'fv-ed-notice-text'); words.append(el('span', 'fv-ed-notice-line', text));
         // Its hover says it whole wherever it stands.
         words.setAttribute('data-fv-tip-name', where ? t('Problem', '问题') : t('Notice', '提示')); words.setAttribute('data-fv-tip-use', text);
-        if (where && report) { words.classList.add('fv-copyable'); words.append(issueButton(t, () => ({where, message: text, kind}))); }
+        if (where && report) { words.classList.add('fv-copyable'); words.append(issueButton(t, () => ({where, message: text, kind, ...(facts ? {facts} : {})}))); }
         const close = button('', () => { clearTimeout(timer); noticeTimers.delete(timer); card.remove(); }, 'fv-ed-notice-close');
         close.append(icon('m4 4 8 8M12 4l-8 8')); close.setAttribute('aria-label', t('Close', '关闭'));
         tip(close, {name: t('Close', '关闭'), use: t('Dismiss this notice', '关掉这条提示')});
@@ -542,6 +544,47 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         const timer = setTimeout(() => { noticeTimers.delete(timer); card.remove(); }, where ? 20000 : 9000); noticeTimers.add(timer);
     }
     const EDITOR_ISSUE = ['Editor', '编辑器'], EXPORT_ISSUE = ['Export', '导出'];
+    // The step a failure belongs to, named for the user: "{what could not be done}. Try again; if it still fails, ...", so the
+    // user knows what went wrong. A step without its own words keeps the general line.
+    function stepFailureText(site) {
+        switch (site) {
+            case 'library': return t('Creations could not be loaded. Try again; if it still fails, choose "Report a problem".', '作品库未能加载。请重试；仍然失败时，请点击“提交问题”。');
+            case 'library-sources': return t('Thumbnails and durations could not be loaded. Try again; if it still fails, choose "Report a problem".', '作品的缩略图和时长未能加载。请重试；仍然失败时，请点击“提交问题”。');
+            case 'media': return t('Media details could not be loaded. Try again; if it still fails, choose "Report a problem".', '素材的信息未能加载。请重试；仍然失败时，请点击“提交问题”。');
+            case 'cancel': return t('Generation could not be stopped. Try again; if it still fails, choose "Report a problem".', '未能停止生成。请重试；仍然失败时，请点击“提交问题”。');
+            case 'references-upload': return t('The reference image could not be uploaded. Try again; if it still fails, choose "Report a problem".', '参考图未能上传。请重试；仍然失败时，请点击“提交问题”。');
+            case 'references-new': return t('The reference image could not be created. Try again; if it still fails, choose "Report a problem".', '未能新建参考图。请重试；仍然失败时，请点击“提交问题”。');
+            case 'open-load': case 'open-session': return t('This edit could not be opened. Try again; if it still fails, choose "Report a problem".', '未能打开这个剪辑。请重试；仍然失败时，请点击“提交问题”。');
+            case 'sources': return t('Details of the media on the timeline could not be loaded. Try again; if it still fails, choose "Report a problem".', '时间线上素材的信息未能加载。请重试；仍然失败时，请点击“提交问题”。');
+            case 'projects': return t('The list of edits could not be loaded. Try again; if it still fails, choose "Report a problem".', '剪辑列表未能加载。请重试；仍然失败时，请点击“提交问题”。');
+            case 'init': return t('The editor could not finish starting. Try again; if it still fails, choose "Report a problem".', '剪辑页未能完成启动。请重试；仍然失败时，请点击“提交问题”。');
+            case 'components': return t('Some editor features could not be loaded. Try again; if it still fails, choose "Report a problem".', '剪辑页的部分功能未能加载。请重试；仍然失败时，请点击“提交问题”。');
+            case 'cancel-export': return t('The export could not be cancelled. Try again; if it still fails, choose "Report a problem".', '未能取消导出。请重试；仍然失败时，请点击“提交问题”。');
+            case 'frame': return t('The current frame could not be saved. Try again; if it still fails, choose "Report a problem".', '未能保存当前画面。请重试；仍然失败时，请点击“提交问题”。');
+            case 'stems': return t('The voice and music could not be separated. Try again; if it still fails, choose "Report a problem".', '未能分离人声和伴奏。请重试；仍然失败时，请点击“提交问题”。');
+            case 'insert': return t('The clip could not be inserted. Try again; if it still fails, choose "Report a problem".', '未能插入片段。请重试；仍然失败时，请点击“提交问题”。');
+            case 'fill': return t('The result could not be placed on the timeline. Try again; if it still fails, choose "Report a problem".', '生成结果未能放到时间线上。请重试；仍然失败时，请点击“提交问题”。');
+            case 'restore': return t('The previous version could not be restored. Try again; if it still fails, choose "Report a problem".', '未能切回上一版。请重试；仍然失败时，请点击“提交问题”。');
+            default: return t('This step did not finish. Try again; if it keeps failing, report the problem.', '这一步未完成。请重试；仍然失败请提交问题。');
+        }
+    }
+    // One failed request is one notice: while a route's failure is on screen a second failure of it adds nothing, except that
+    // the library and the timeline reading media details from the same failed route share one line.
+    const requestNotices = new Map();
+    function sharedRequestNotice(value, site) {
+        const route = value?.route, shown = route ? requestNotices.get(route) : null;
+        // A notice that has gone (closed, timed out or pushed out) leaves no entry behind.
+        if (shown && shown.card.parentNode !== notices) requestNotices.delete(route);
+        if (!shown || shown.card.parentNode !== notices) return {route, show: true};
+        const pair = new Set([shown.site, site]);
+        if (pair.size === 2 && pair.has('sources') && pair.has('library-sources')) { shown.card.remove(); return {route, show: true, site: 'media'}; }
+        return {route, show: false, text: shown.text};
+    }
+    // What a failed request's report carries: its HTTP status and what the server said (editor_store requestFailure).
+    function requestFacts(value) {
+        const facts = {...(Number.isInteger(value?.status) ? {status: value.status} : {}), ...(value?.server || {})};
+        return Object.keys(facts).length ? facts : null;
+    }
     // `step` names what was being done, so a failure there says which step went wrong; `out` is where the line is said (the bar's own line for a reference picture).
     function error(value, step = null, out = notify, site = step || 'editor') {
         const code = value?.reason || value?.code || value?.message;
@@ -577,8 +620,22 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             if (said) out(said);
             return {ok: false, reason: code};
         }
-        const text = step === 'generate' ? editorErrorText(value, t) : step === 'export' ? exportErrorText(value, t) : isNetworkTypeError(value) ? connectionLostText(t) : t('This step did not finish. Try again; if it keeps failing, report the problem.', '这一步未完成。请重试；仍然失败请提交问题。');
-        out(text, step === 'export' ? EXPORT_ISSUE : EDITOR_ISSUE, failureKind(site, value)); return {ok: false, reason: code, say: text};
+        // What the server said about a failed request (editor_store requestFailure). A file cause is said as on the library's
+        // pages and is the user's to fix, so it carries no "Report a problem"; any other failure names the step that could not be
+        // done, and its report carries the server's facts (status, reason, exception type, request number) so it can be traced.
+        const server = value?.server, fileText = server?.reason && step !== 'generate' && step !== 'export' ? fileFailureText(server.reason, t) : '';
+        if (fileText) {
+            if (out === notify) notify(fileText, EDITOR_ISSUE, failureKind(site, value), null, {report: false}); else out(fileText);
+            return {ok: false, reason: server.reason, say: fileText};
+        }
+        const shared = out === notify && !step ? sharedRequestNotice(value, site) : {show: true};
+        if (!shared.show) return {ok: false, reason: code, say: shared.text};
+        const named = shared.site || site;
+        const text = step === 'generate' ? editorErrorText(value, t) : step === 'export' ? exportErrorText(value, t) : isNetworkTypeError(value) ? connectionLostText(t) : stepFailureText(named);
+        const facts = requestFacts(value);
+        out(text, step === 'export' ? EXPORT_ISSUE : EDITOR_ISSUE, failureKind(named, value), null, facts ? {facts} : {});
+        if (shared.route) requestNotices.set(shared.route, {site: named, text, card: notices.lastElementChild});
+        return {ok: false, reason: code, say: text};
     }
     const store = createEditorStore(api, {t, notify, standIn: given?.generationStandIn, onGenerationChecking: () => { if (!disposed) settleService(); }, onGenerationReady: ready => {
         if (disposed) return;
@@ -2038,14 +2095,20 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             else if (!inspector) { delete notices.dataset.hxSpill; if (notices.parentNode !== element) element.append(notices); }
             fitNotices();
         };
-        // A sentence the project row cannot hold whole is not cut: the notices take a line of their own at the top of the
-        // picture, as on a phone, where they wrap. The newest sentence is measured in the row each time something changes.
+        // In the project row a sentence wraps to two lines and ends in … past that. Only when the row leaves the newest notice
+        // too little room for its keys or for a readable sentence (a long name in a narrow window) do the notices take a line
+        // of their own at the top of the picture, as on a phone, where they wrap whole. Measured each time something changes.
         function fitNotices() {
             if (disposed || element.dataset.trayPlace !== 'inspector') return;
             if (notices.parentNode !== projectRow) projectRow.insertBefore(notices, exportBox);
             delete notices.dataset.hxSpill;
-            const line = notices.lastElementChild?.querySelector('.fv-ed-notice-line');
-            if (line && line.scrollWidth > line.clientWidth + 1) { notices.dataset.hxSpill = 'true'; element.append(notices); }
+            const card = notices.lastElementChild, line = card?.querySelector('.fv-ed-notice-line');
+            // The keys themselves are compared, not the card's scroll width: a touch screen's wider tap area around × reaches
+            // past the card without anything being cut.
+            const right = card?.getBoundingClientRect().right;
+            const keysOut = card && [...card.querySelectorAll('.fv-issue-button, .fv-ed-notice-action, .fv-ed-notice-close')].some(key => key.getBoundingClientRect().right > right + 1);
+            const squeezed = line && line.scrollHeight > line.clientHeight + 1 && line.clientWidth < 96;
+            if (keysOut || squeezed) { notices.dataset.hxSpill = 'true'; element.append(notices); }
         }
         if (typeof MutationObserver === 'function') {
             const changed = new MutationObserver(fitNotices);

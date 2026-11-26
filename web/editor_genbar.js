@@ -222,7 +222,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         if (disposed) return;
         say(text || '', false, where);
     };
-    const references = actions.references ? createEditorReferences({t, source: actions.references.source, size: actions.references.size, seconds: actions.references.seconds, error: value => actions.error(value, null, sayAtRefs), notify: sayAtRefs}) : null;
+    const references = actions.references ? createEditorReferences({t, source: actions.references.source, size: actions.references.size, seconds: actions.references.seconds, error: (value, step = 'upload') => actions.error(value, null, sayAtRefs, 'references-' + step), notify: sayAtRefs}) : null;
     if (references) { description.before(references.element); tray.append(refNotice); }
     // A field that comes or goes beside the description (the reference pictures before it, the duration after it) grows
     // or shrinks over 150 ms, together with its gap, so the description box narrows or widens smoothly instead of
@@ -638,7 +638,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
             if (!previewSelection && actions.selectionHeld?.()) { await actions.unhold(); render(); return; }
             if (actions.confirmStop && !await actions.confirmStop(cancel)) return;
             await actions.cancel();
-        } catch (value) { actions.error(value); }
+        } catch (value) { actions.error(value, null, undefined, 'cancel'); }
     };
     resume.onclick = () => actions.resume().catch(value => actions.error(value, 'generate'));
     // Words written for the picture are not words for the music, and the other way round: moving between the two

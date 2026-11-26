@@ -487,16 +487,18 @@
 /* Under the press: what downloads first (its hover names it and its size). */
 .fv-ed-generate-time.fv-ed-generate-download::before{content:"↓ "}
 .fv-ed-generate-time{opacity:1}
-/* Notices in the project row: the newest one, one line; older ones wait behind it. */
+/* Notices in the project row: the newest one; older ones wait behind it. */
 .fv-ed-project-row>.fv-ed-notice-stack{position:static;inset:auto;flex:1 1 auto;min-width:0;width:auto;display:flex;flex-direction:row;justify-content:flex-end;align-items:center;margin:0;pointer-events:auto}
-.fv-ed-project-row>.fv-ed-notice-stack .fv-ed-notice{max-width:100%;min-width:0;height:32px;padding:0 4px 0 12px;align-items:center;box-shadow:none;border-radius:var(--fv-r-md)}
+.fv-ed-project-row>.fv-ed-notice-stack .fv-ed-notice{max-width:100%;min-width:0;min-height:32px;max-height:var(--fv-ed-project-h);padding:2px 4px 2px 12px;align-items:center;box-shadow:none;border-radius:var(--fv-r-md)}
 .fv-ed-project-row>.fv-ed-notice-stack .fv-ed-notice:not(:last-child){display:none}
-.fv-ed-project-row>.fv-ed-notice-stack .fv-ed-notice-text{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:8px}
+.fv-ed-project-row>.fv-ed-notice-stack .fv-ed-notice-text{min-width:0;display:flex;align-items:center;gap:8px}
 .fv-ed-project-row>.fv-ed-notice-stack .fv-issue-button{flex:none}
-/* The sentence is measured here (editor.js fitNotices): one the row cannot hold whole moves the notices out, so it is
-   never shown cut; Report a problem keeps its whole width beside the close key. */
-.fv-ed-project-row>.fv-ed-notice-stack .fv-ed-notice-line{flex:0 1 auto;min-width:0;overflow:hidden}
-/* Out of the row: a line of their own at the top of the picture, as on a phone, where the sentence wraps whole. */
+/* A sentence the row cannot hold on one line wraps to two, which the row's height holds without moving anything; one
+   longer than two lines ends in … on the second, and its hover, screen reader and copy still give it whole (the text is all
+   there, only drawn shorter). Report a problem and the close key keep their whole width beside it. */
+.fv-ed-project-row>.fv-ed-notice-stack .fv-ed-notice-line{flex:0 1 auto;min-width:0;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;font-size:12px;line-height:1.3;overflow-wrap:anywhere}
+/* Out of the row (editor.js fitNotices: too little room for the keys): a line of their own at the top of the picture, as on
+   a phone, where the sentence wraps whole. */
 @media(min-width:681px){.fv-editor>.fv-ed-notice-stack[data-hx-spill]{position:relative;inset:auto;grid-column:2;grid-row:3;align-self:start;justify-self:stretch;width:auto;margin:8px 12px 0;pointer-events:none}}
 /* The notice takes only the room the title and Export leave: a long sentence no longer squeezes them. */
 .fv-ed-project-row>.fv-ed-notice-stack{flex-basis:0}
