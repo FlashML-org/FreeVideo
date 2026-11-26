@@ -71,6 +71,25 @@ def _digest(path):
     return digest.hexdigest()
 
 
+def _upscaler_digest(path):
+    """The upscaler's content digest, from the verified-models ledger when it covers this copy.
+
+    Each two-pass request names the upscaler in two retained identities (the
+    second pass's input and the final latents). Hashing the whole checkpoint
+    for each kept the GPU idle between the passes and before decoding. The
+    ledger knows a copy only while its size and times are unchanged since its
+    content was hashed; any other copy, or an unreadable ledger, is hashed here.
+    """
+    from .two_pass import UPSCALER, verified_checkpoint
+    path = Path(path)
+    try:
+        if verified_checkpoint(path):
+            return UPSCALER['sha256']
+    except (OSError, ValueError):
+        pass
+    return _digest(path)
+
+
 def _plan_without_staged(plan):
     return {k: v for k, v in plan.items() if k != 'staged'} if isinstance(plan, dict) else plan
 
@@ -133,7 +152,7 @@ def sampling_provenance(request):
         steps(request['sampling_plan'])
         result.update(version=2, sampling_plan=request['sampling_plan'])
         if request['sampling_plan'].get('upscaler_sha256'):
-            result['upscaler_sha256'] = _digest(request['upscaler_checkpoint'])
+            result['upscaler_sha256'] = _upscaler_digest(request['upscaler_checkpoint'])
             if result['upscaler_sha256'] != request['sampling_plan']['upscaler_sha256']:
                 raise ValueError('Latent upscaler differs from the planned checkpoint')
     if request.get('hide_tail_frames'):
