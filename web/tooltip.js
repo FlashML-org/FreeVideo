@@ -217,6 +217,7 @@ function placeAt(target, size, view, {prefer, avoid, edge}) {
 
 // ── The tip itself ─────────────────────────────────────────────────────────────────────────────
 let tip = null, shown = null, pending = null, showTimer = 0, hideTimer = 0, warmUntil = 0, pressTimer = 0, pressPoint = null, swallowClick = false, watch = 0, watcher = null;
+let placedSize = '';
 const reduced = () => globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
 
 function ensureTip() {
@@ -224,6 +225,15 @@ function ensureTip() {
     tip = document.createElement('div'); tip.className = 'fv-tip'; tip.id = 'fv-tip'; tip.setAttribute('role', 'tooltip');
     if (tip.showPopover) tip.popover = 'manual';
     document.body.append(tip);
+    // A tip placed while a page rule kept it hidden (a window still closing as focus comes back to its key) was measured
+    // as nothing and put beside the control's middle; once it can be drawn, it is placed again at its real size.
+    if (globalThis.ResizeObserver) new ResizeObserver(() => {
+        if (!shown || !tip?.isConnected || !tip.dataset.open) return;
+        const size = tip.getBoundingClientRect();
+        // Still hidden: nothing to place yet. Placing it now would only change the layout inside this callback.
+        if (!size.width && !size.height) return;
+        if (`${size.width}x${size.height}` !== placedSize) position(shown);
+    }).observe(tip);
     return tip;
 }
 
@@ -310,6 +320,7 @@ function position(element) {
     box.style.maxWidth = `${Math.min(MAX_WIDTH, innerWidth - 2 * MARGIN)}px`;
     box.dataset.open = 'true';
     const size = box.getBoundingClientRect();
+    placedSize = `${size.width}x${size.height}`;
     const place = placeTip(rect, {width: size.width, height: size.height}, {width: innerWidth, height: innerHeight}, surroundings(element));
     box.style.left = `${place.left}px`; box.style.top = `${place.top}px`; box.dataset.side = place.side;
     box.style.visibility = '';
