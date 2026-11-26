@@ -1167,6 +1167,10 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const fastLeft = () => { if (fastOn()) set(node, 'fast_mode', 'none'); };
     // A video made in parts is sampled at Light in two passes, whatever is chosen (the request says so at submission).
     const fastParts = () => fastOn() && lengthControl?.plan?.count > 1;
+    const fastPartsWords = () => t('Each part of a video made in parts uses the Light level.', '分段生成时，每段使用轻量档。');
+    // The Quality section of the three-column panel holds the levels (studio_columns.js), not the Quality window. Declared,
+    // not assigned: the estimate asks while the panel is still being built.
+    function levelsInColumn() { return !!effort?.element?.closest?.('.fv-sc-section'); }
     const chooseEffort = tier => {
         if (tier.fast) { chooseFast(); return; }
         const back = fastOn() ? fastBack : null;
@@ -1615,7 +1619,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
             // Its time where the planner has one; a video made in parts is sampled at Light.
             const cell = fastCell();
             effort.setEstimate(cell?.fits ? cell.estimate : '');
-            if (lengthControl.plan?.count > 1) effort.setWarning(t('Each part of a video made in parts uses the Light level.', '分段生成时，每段使用轻量档。'));
+            // In the three-column Quality section this sentence is the level's own line, under the levels (sayLevel), so the
+            // levels do not move; the Quality window keeps it above them.
+            if (lengthControl.plan?.count > 1) { if (!levelsInColumn()) effort.setWarning(fastPartsWords()); }
             else if (cell && !cell.fits) { effort.setWarning(fastShortfallWords(cell)); effort.setWays(fastWays(cell)); }
             else if (!cell && fastUnknown()) effort.setWarning(fastUnknownWords(fastUnknown()));
             if (runButtonReady) updateRunButton();
@@ -3515,7 +3521,12 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // The panel widens for the level names when they need more room than its own width (sampling_effort.js fitNames).
     effort.growInto(qualityChip.pop, () => qualityChip.place());
     const qualityLevel = () => fastOn() ? effort.levels().find(tier => tier.fast) || FAST_EFFORT : effortFor(Number(baseSteps.value), twoPass.checked, Number(refineSteps.value), stepCacheNow(), effort.levels(), upscaleNow());
-    const sayLevel = tier => { const said = tier?.fast && fastParts() ? '' : tier?.fast && fastPack.needs() ? fastPack.needs() : tier?.name === 'Light' && effort.levels().some(level => level.fast) ? t('Quick, for trying ideas', '速度较快，适合试效果') : tier ? t(...(LEVEL_WORDS[tier.name] || ['', ''])) : t('Custom steps', '自定义步数'); if (levelUse.textContent !== said) levelUse.textContent = said; };
+    const sayLevel = tier => {
+        const parts = !!tier?.fast && fastParts() && levelsInColumn();
+        if (parts) levelUse.dataset.tone = 'warning'; else delete levelUse.dataset.tone;
+        const said = parts ? fastPartsWords() : tier?.fast && fastParts() ? '' : tier?.fast && fastPack.needs() ? fastPack.needs() : tier?.name === 'Light' && effort.levels().some(level => level.fast) ? t('Quick, for trying ideas', '速度较快，适合试效果') : tier ? t(...(LEVEL_WORDS[tier.name] || ['', ''])) : t('Custom steps', '自定义步数');
+        if (levelUse.textContent !== said) levelUse.textContent = said;
+    };
     effortPointed = tier => sayLevel(tier || qualityLevel());
     const paintQuality = () => {
         const level = qualityLevel();
@@ -3578,6 +3589,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // The two panels repaint whenever the console's row does.
     { const sync = consoleUI.sync; consoleUI.sync = () => { sync(); paintDuration(); paintQuality(); }; }
     paintDuration(); paintQuality();
+    // A saved Fast setting in parts was told before the column stood: its sentence moves under the levels now.
+    if (fastParts() && levelsInColumn()) showEffortEstimate();
     // Space plays or pauses the stage video and M turns its sound on or off, unless a field or a control has the key.
     cleanup.push(listenDialogKey(dialog, 'keydown', event => {
         if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing || event.repeat) return;
