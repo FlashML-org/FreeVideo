@@ -107,7 +107,11 @@ class Features:
         self.grid, self.count, self.hidden, self.value = grid, 0, None, None
 
     def keep_hidden(self, _module, _args, output):
-        self.hidden = output
+        # With residual offload the block hands back its ResidualState; the model
+        # takes the stream out of it and closes it before after_forward runs, so
+        # keep the device tensor it holds now.
+        from .residual import ResidualState
+        self.hidden = output.tensor if isinstance(output, ResidualState) else output
 
     def after_forward(self, _module, _args, kwargs, _output):
         self.count += 1
