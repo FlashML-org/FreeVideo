@@ -475,7 +475,7 @@ def setup_command_failure(label, log, exit_code, report=None):
             probes = report.get('kernel_probes', [])
             probes = [row for row in probes if isinstance(row, dict)] if isinstance(probes, list) else []
             linear_ok = any(row.get('backend') == 'linear' and row.get('status') == 'complete' for row in probes)
-            attention_ok = any(row.get('backend') not in (None, 'linear') and row.get('status') == 'complete' for row in probes)
+            attention_ok = any(row.get('backend') not in (None, 'linear', 'linear-int8') and row.get('status') == 'complete' for row in probes)
             if probes and not linear_ok:
                 lines.append('Required linear kernel did not pass.')
             if probes and not attention_ok:
