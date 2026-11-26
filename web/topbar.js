@@ -18,6 +18,7 @@ import { wordmark } from './wordmark.js';
 import { jobs, ACTIVE } from './task_store.js';
 import { createAgentTasks } from './agent_tasks.js';
 import { title as agentTitle, failureReason } from './agent_activity.js';
+import { titleLine, fullTip } from './prompt_sections.js';
 import { isNetworkTypeError, connectionLostText } from './browser_extension.js';
 import { onNotices, mountNotices, markNoticesRead, noteFromAgent, addAgentNote } from './notifications.js';
 import { CN, t0, words, capsuleState, capsuleWords, machineLine, machineFigures, isFailure, FIGURES_KEY, figuresShown } from './topbar_state.js';
@@ -264,11 +265,13 @@ function statusCapsule(t) {
 // read while the panel is open (every 2 s), the assistant's state once per opening.
 let activity = null;
 const SECONDS = (t, value) => { const s = Math.max(1, Math.round(value)); return s < 120 ? t('about {s} s', '约 {s} 秒', { s }) : t('about {minutes} min', '约 {minutes} 分钟', { minutes: Math.round(s / 60) }); };
+const jobText = row => String(row.meta?.text ?? row.prompt ?? '').replace(/\s+/g, ' ').trim();
 function jobTitle(row, t) {
     if (row.source === 'agent') return agentTitle(row.job, t);
-    const text = String(row.meta?.text ?? row.prompt ?? '').replace(/\s+/g, ' ').trim();
-    return text || ({image: t('Image', '图片'), video: t('Video', '视频'), chain: t('Long video', '长视频')}[row.kind] || t('Task', '任务'));
+    return titleLine(jobText(row)) || ({image: t('Image', '图片'), video: t('Video', '视频'), chain: t('Long video', '长视频')}[row.kind] || t('Task', '任务'));
 }
+// The row's tip: the whole text when the line left the first shot's label out, else the line's start, as before.
+const jobTip = (row, t) => row.source !== 'agent' && fullTip(jobText(row)) || jobTitle(row, t).slice(0, 40);
 function jobLine(row, t) {
     if (row.status === 'queued' || row.status === 'submitting') return row.position > 0 ? t('Waiting, {position} ahead', '排队中，前面 {position} 个', { position: row.position }) : t('Waiting', '排队中');
     if (row.status === 'cancelling') return t('Stopping', '正在停止');
@@ -336,7 +339,7 @@ function buildActivity(t) {
         sub.append(el('span', `fv-tb-job-t2${lost ? ' is-warn' : ''}`, lost ? connectionLostText(t) : view), el('span', `fv-tb-job-n${isFailure(row) ? ' is-warn' : ''}`, jobFigures(row, t)));
         text.append(el('span', 'fv-tb-job-t1', jobTitle(row, t)), sub);
         go.append(thumb, text);
-        tip(go, jobTitle(row, t).slice(0, 40), t('Go back to its picture', '回到它的生成画面'));
+        tip(go, jobTip(row, t), t('Go back to its picture', '回到它的生成画面'));
         go.onclick = () => visit(row);
         line.append(go);
         if (row.status === 'running') { const bar = el('span', 'fv-tb-job-bar'); bar.style.setProperty('--p', String(Math.max(0, Math.min(1, Number(row.percent) || 0)))); line.append(bar); }

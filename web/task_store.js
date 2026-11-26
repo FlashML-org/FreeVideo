@@ -47,9 +47,10 @@ export function createJobStore({now = () => Date.now(), storage = null} = {}) {
     prune();
     const saveLocal = () => { prune(); writeJSON(storage, LOCAL_KEY, local); };
     if (JSON.stringify(local) !== loaded && Object.keys(local).length + loaded.length > 2) saveLocal();
-    // Text of a job (its prompt) lives in memory only, and only until the job ends; listeners of done and failed still
-    // receive it once (the library files the prompt with the work), then the row keeps no text.
-    const withoutText = row => { const {prompt, ...rest} = row; const {text, ...meta} = row.meta || {}; return {...rest, prompt: '', meta}; };
+    // Text of a job lives in this page's memory only, never in the browser's storage: a reload starts without it. A finished
+    // row keeps its title (the prompt as the box reads it) so the list still says which video it was; the
+    // full text the page kept beside it (meta.text) goes once the job ends, as the library files the prompt with the work.
+    const withoutText = row => { const {text, ...meta} = row.meta || {}; return {...row, meta}; };
 
     // Running first, then submitting and queued (oldest first, as they will run), then the latest finished.
     const order = (a, b) => {
@@ -402,12 +403,19 @@ export function progressSource(store, {target = globalThis, now = store.now, can
 // stream (progressSource, keyed by the same request id) then owns its percent and its end. A waiting row that leaves the
 // queue without having run (removed here or elsewhere) is dropped; a running one that leaves without an ending is
 // closed from its history (stopped, or not finished).
-export function queueSource(store, {fetchJson, clientId = () => null, interval = 3000, setTimer = setTimeout, clearTimer = clearTimeout} = {}) {
+// display: the words a row shows for the text the request sends, as the prompt box shows them (task_float.js passes
+// prompt_sections.js shownRewrite: a rewrite in H3's sections reads as "Shot 1 (0:00): ...", not as its section names).
+export function queueSource(store, {fetchJson, clientId = () => null, interval = 3000, setTimer = setTimeout, clearTimer = clearTimeout,
+    display = text => text} = {}) {
     let known = new Map(), reading = null, again = false, timer = 0, disposed = false;
     const generateOf = row => Object.entries(row?.[2] || {}).find(([, node]) => node?.class_type === 'FreeVideoGenerate');
     // A long video's parts are the chain's own (chainSource lists the chain once): they are left out here.
     const ours = row => Boolean(generateOf(row)) && !row?.[3]?.freevideo_chain && (!clientId() || row?.[3]?.client_id === clientId());
-    const text = row => String(generateOf(row)?.[1]?.inputs?.text ?? '').replace(/\s+/g, ' ').trim();
+    const text = row => {
+        const sent = String(generateOf(row)?.[1]?.inputs?.text ?? '');
+        let shown = sent; try { shown = display(sent) ?? sent; } catch { /* the text as sent */ }
+        return String(shown).replace(/\s+/g, ' ').trim();
+    };
     async function close(id, promptId) {
         let entry = null;
         try { entry = (await fetchJson('/history/' + encodeURIComponent(promptId)))?.[promptId] || null; } catch { return; }

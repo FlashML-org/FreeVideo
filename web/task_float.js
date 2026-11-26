@@ -11,6 +11,7 @@ import { createImageGenClient, imageGenError, imageReportBar, lostEngineText, WA
 import { exitCause, newEngineExit, watchEngineExit } from './engine_exit.js';
 import { saveGeneratedImage } from './image_library.js';
 import { isChinese, translator } from './i18n.js';
+import { shownRewrite } from './prompt_sections.js';
 
 const cn = isChinese();
 const t = translator(cn);
@@ -51,7 +52,7 @@ export function startJobSources() {
         cancel: row => api.fetchApi('/freevideo/cancel', post({prompt_id: row.prompt_id, node_id: String(row.node)})).then(sent)});
     // Videos waiting in the engine's queue (this page's own requests): listed with their place; read again whenever the
     // engine says its queue changed, and every 3 s while one waits or runs.
-    queue = queueSource(jobs, {clientId: () => api.clientId || api.initialClientId || null,
+    queue = queueSource(jobs, {clientId: () => api.clientId || api.initialClientId || null, display: text => shownRewrite(text, cn ? 'zh' : 'en'),
         fetchJson: async path => { const response = await api.fetchApi(path, {cache: 'no-store'}); if (!response.ok) throw new Error('queue'); return response.json(); }});
     for (const type of ['status', 'promptQueued', 'execution_start', 'execution_success', 'execution_interrupted', 'execution_error']) api.addEventListener(type, () => { void queue.refresh(); });
     // The page's own progress connection may have read the snapshot before this module loaded; read it once more here,

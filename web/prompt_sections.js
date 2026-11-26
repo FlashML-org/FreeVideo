@@ -29,6 +29,22 @@ function ownHead(written, start) {
 const OWN_SHOT = ownHead(translator(false)('Shot {number} ({time}): {text}', '镜头 {number}（{time}）：{text}'), '^');
 const OWN_SOUND = ownHead(translator(false)('Sound: {text}', '声音：{text}'), '');
 const ownShot = OWN_SHOT && new RegExp(OWN_SHOT), shotHead = paragraph => SHOT_HEAD.exec(paragraph) || (ownShot ? ownShot.exec(paragraph) : null);
+// A job's one-line title (task list, notices): a prompt of several shots opens with the first shot's own words, not its
+// label, since the line holds about 30 characters and a video is known by what it shows. The whole text,
+// label and all, is the row's tip. One shot, or text written without shots, stays as it is.
+const headPattern = source => source.replace(/^\^/, '').replace(/\?<[ms]>/g, '');
+const ANY_SHOT = new RegExp(`(?:^|\\s)(?:${headPattern(SHOT_HEAD.source)}${OWN_SHOT ? '|' + headPattern(OWN_SHOT) : ''})`, 'g');
+export function titleLine(text) {
+    const value = String(text ?? '').trim(), head = shotHead(value);
+    if (!head || (value.match(ANY_SHOT) || []).length < 2) return value;
+    return value.slice(head[0].length).trim() || value;
+}
+// The tip for such a line: the whole text, up to 140 characters; '' when the line already is the whole text.
+export function fullTip(text) {
+    const value = String(text ?? '').replace(/\s+/g, ' ').trim();
+    if (!value || titleLine(value) === value) return '';
+    return value.length > 140 ? value.slice(0, 139).replace(/[\s.,;:!?。，；：！？、]+$/u, '') + '…' : value;
+}
 const SOUND_HEAD = new RegExp(`(?:^|\\n\\n+)(?:(?:Sound:|声音：|聲音：)[ \\t]*${OWN_SOUND ? `|${OWN_SOUND}` : ''})`, 'g');
 
 // [[name, body]] when the text is exactly H3's sections in order (subject definitions may be absent), else null.
