@@ -31,11 +31,21 @@ PLAN_NAMES = {'-1': 'refused', '0': 'normal', '1': 'slower_streaming',
 FAST2_STEPS = 2
 
 
+# A Mac is offered the fastest mode from this much unified memory: on 8 GB its admission left 0.12 GiB, so a request
+# would run out of memory first and then start over with the slowest partitions.
+MAC_FAST_RAM_FLOOR = 16 * GiB
+
+
 def _fast_mode_listing(machine):
-    """Whether this machine is offered the fastest mode at all, and why not: the adapter replaces int8 layers and runs
-    on NVIDIA's CUDA build only."""
+    """Whether this machine is offered the fastest mode at all, and why not: the adapter replaces int8 layers, so the
+    int8 model is needed, on NVIDIA's CUDA build or on a Mac (M5 and newer run those layers as int8, earlier Apple chips
+    read them as BF16) with at least MAC_FAST_RAM_FLOOR of unified memory."""
     if machine['mac']:
-        return dict(listed=False, unlisted_reason='mac')
+        if machine['precision'] != 'int8':
+            return dict(listed=False, unlisted_reason='engine')
+        if machine['ram'] < MAC_FAST_RAM_FLOOR:
+            return dict(listed=False, unlisted_reason='memory')
+        return dict(listed=True, unlisted_reason=None)
     # Setup's vendor first, then the torch build (a ROCm build passes the capability check but saves no CUDA version);
     # a record without either is told by the card's name. Older NVIDIA drivers name a card without the vendor
     # ("GeForce RTX 3090"), so the name rules out AMD's words rather than asking for NVIDIA's.
@@ -330,10 +340,11 @@ def _admit(machine, width, height, frames, steps, two_pass, task='t2va', refine=
             from .macos_compute import request_admission, plan as mac_plan
             resource = mac_policy(SimpleNamespace(), dict(total_bytes=machine['ram'],
                                                          available_bytes=machine['ram']))
-            admission = request_admission(resource, sampling, working_set_bytes=machine['metal'])
+            admission = request_admission(resource, sampling, working_set_bytes=machine['metal'], fast_mode=fast_mode)
             if admission['state'] == 'refuse':
                 return None, -1, 'memory'
-            plans = [mac_plan(min(resource['allocator_bytes'], machine['metal'] or resource['allocator_bytes']),
+            from .macos_compute import fast_budget
+            plans = [mac_plan(fast_budget(min(resource['allocator_bytes'], machine['metal'] or resource['allocator_bytes']), fast_mode),
                               geometry(**g)['video_tokens'] + 1024 + rows['video'] + rows['audio'],
                               frames=geometry(**g)['latent_frames'], allow_bounded=True)
                      for g in (sampling['first'], sampling['second'] or sampling['first'])]

@@ -16,7 +16,6 @@ import argparse
 import json
 from pathlib import Path
 import stat
-import sys
 
 from .long_paths import io_path
 
@@ -70,8 +69,6 @@ def request(args):
         return None
     if mode not in MODES:
         raise ValueError('Fast mode must be one of ' + ', '.join(MODES))
-    if sys.platform == 'darwin':
-        raise ValueError('The fastest mode is not available on Mac')
     for name, label in (('continue_from', 'a continued part'), ('continue_anchor', 'a continued part'),
                         ('preview', 'a preview'), ('refine_from', 'finishing a preview'),
                         ('upscale_from', 'an upscale'), ('redo_sound', 'redoing the sound'),

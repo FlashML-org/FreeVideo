@@ -141,7 +141,7 @@ class Engine:
                  weight_decoder='cpu', budget_ceiling_bytes=None, attention_chunk=None, task='t2va', canvas=None,
                  head_chunk=4, window_batch=1, attention_impl='torch', fast_kernels=False,
                  resident_bytes=0, attention_batch_bytes=1 << 29, plan_compute=False, memory_retry=False,
-                 step_cache=None, adaln_task=None):
+                 step_cache=None, adaln_task=None, fast_tier=None):
         if step_cache not in (None, 'easycache-av'):
             raise ValueError('MPS supports the easycache-av step cache only')
         self.step_cache = step_cache
@@ -217,6 +217,18 @@ class Engine:
             int8_compute = mps_int8.available()
         self.linear_compute = 'int8' if int8_compute else {'fp8': 'bf16-weight-only', 'int8': 'bf16-weight-only'}.get(
             precision, 'bf16')
+        # The fastest mode: the adapter's own modulation, output heads and last-step features, as on CUDA
+        # (runtime.Engine). M5 and newer run the base's int8 layers as int8, earlier Macs read them as BF16; the
+        # adapter's whole matrices are BF16 either way.
+        fast, FAST_REPLACED = None, ()
+        self.raw_grid = None
+        if fast_tier is not None:
+            from .fast_tier import RAW_GRID, STEPS
+            from .fast_tier_runtime import REPLACED as FAST_REPLACED, Runtime
+            if precision != 'int8' or steps != STEPS or step_cache is not None:
+                raise ValueError('The fastest mode runs two steps on the int8 model')
+            fast, self.raw_grid = Runtime('mps'), RAW_GRID
+        self.fast = fast
         self.backend.prepare_linears(None, manifest, self.linear_compute, 'auto')
         groups = {row['group']: row for row in manifest['groups']}
         if len(groups) != len(manifest['groups']):
@@ -259,18 +271,36 @@ class Engine:
                 load_group(model, root, self.linears,
                     exclude=('transformer_blocks.', 'token_refiner.refiner_blocks.', 'rope.'),
                     decoder=self.weight_decoder)
+                if fast is not None:
+                    # After the root weights, which the adapter's output heads and final norm replace.
+                    fast.install_root(model)
+                    fast.install_features(model, steps)
                 model.rope.to('mps')
                 times = schedule_timesteps(steps, device='mps', task=schedule_task)
                 self.cursor = ScheduleCursor(times)
-                tables = TableCache(self.cache, manifest['source_id'], steps, manifest=manifest,
-                    timesteps=times, channels=model.config.hidden_size, device='cpu', task=schedule_task)
+                tables = None if fast is not None else TableCache(self.cache, manifest['source_id'], steps,
+                    manifest=manifest, timesteps=times, channels=model.config.hidden_size, device='cpu', task=schedule_task)
                 embeddings = None
                 delivery_checked = False
                 for index, layer in enumerate(model.token_refiner.refiner_blocks):
                     files = [root, root_lora] if root_lora is not None else root
                     self.specs.append((layer, files, f'token_refiner.refiner_blocks.{index}.', ()))
+                fast_replaced = 0
                 for index, layer in enumerate(model.transformer_blocks):
                     self._block_originals.append((layer, layer.forward))
+                    if fast is not None:
+                        # No schedule table: the adapter's modulation, and its whole matrices in blocks 46-49. Those
+                        # matrices stay on the GPU (unified memory) and are left out of the streamed block weights.
+                        layer.adaln_proj = fast.modulation(index)
+                        replaced = fast.replace_matrices(index, layer, True)
+                        fast_replaced += replaced
+                        factors = attach_lora(layer, index, self.cache, manifest)
+                        files = [path(f'blocks/{index:02d}'), factors] if factors is not None else path(f'blocks/{index:02d}')
+                        excluded = ('adaln_proj.',) + (tuple(module + '.' for _, module in FAST_REPLACED) if replaced else ())
+                        self.specs.append((layer, files, f'transformer_blocks.{index}.', excluded))
+                        self._ff_originals.append((layer.ff, layer.ff.forward))
+                        self.backend.install_chunked_ff(layer.ff, ff_chunk)
+                        continue
                     table = tables.load(index, steps)
                     if (table is None and not delivery_checked and manifest.get('format') in SLIM_FORMATS
                             and f'adaln/{index:02d}' not in groups):
@@ -334,6 +364,8 @@ class Engine:
                     self.kernels['int8_linears'] = int8_info['implementation']
                 self._bind_attention(head_chunk=head_chunk, row_chunk=attention_chunk, ff_chunk=ff_chunk)
                 self.kernels['attention'] = attention_impl
+                if fast is not None:
+                    self.kernels['fast_tier'] = dict(mode=fast_tier, replaced_matrices=fast_replaced)
                 model.eval().requires_grad_(False)
                 self.backend.synchronize()
             self.load_seconds = time.monotonic() - started
@@ -449,10 +481,11 @@ class Engine:
         """
         if not getattr(self, 'plan_compute', False):
             return
-        from .macos_compute import plan, sequence_tokens
+        from .macos_compute import fast_budget, plan, sequence_tokens
         from .backends.mps_linear import install as install_linear
         rows = sequence_tokens(canvas, prompt_rows)
-        computed = plan(self.policy['effective_allocator_limit_bytes'], rows['total'],
+        fast_mode = 'fast2' if vars(self).get('fast') is not None else None
+        computed = plan(fast_budget(self.policy['effective_allocator_limit_bytes'], fast_mode), rows['total'],
                         frames=canvas['latent_frames'], layers=len(self.model.transformer_blocks),
                         allow_bounded=True, force_bounded=getattr(self, 'memory_retry', False))
         computed.update(tokens=rows['total'], packed_rows=rows, frames=canvas['latent_frames'],
@@ -493,7 +526,13 @@ class Engine:
 
     def sample(self, *args, **kwargs):
         from .refine_schedule import modulation
-        with modulation(self, kwargs.get('refine_schedule')) as prepared:
+        from .step_grid import using
+        if vars(self).get('fast') is not None:
+            from .geometry import geometry
+            canvas = geometry(kwargs['width'], kwargs['height'], frames=kwargs['frames'])
+            # The token grid of the video rows the pixel head reads: latent frames, height and width / 32.
+            self.fast.features.begin((canvas['latent_frames'], canvas['height'] // 32, canvas['width'] // 32))
+        with using(vars(self).get('raw_grid')), modulation(self, kwargs.get('refine_schedule')) as prepared:
             result = self._sample(*args, **kwargs)
             if prepared is not None:
                 result[2]['refinement_schedule_preparation'] = prepared

@@ -159,6 +159,9 @@ def run(args):
     from .support_report import write as write_debug, code_identity
     from .two_pass import plan
     require_native()
+    from . import fast_tier
+    # The fastest mode: one pass of its two steps; refused with a preview, a continuation and the like (as on CUDA).
+    fast_spec = fast_tier.request(args)
     from .preview import validate_flags, source as preview_source
     preview = getattr(args, 'preview', False) is True
     validate_flags(preview, getattr(args, 'refine_from', None), args.two_pass, getattr(args, 'base_steps', None))
@@ -228,6 +231,12 @@ def run(args):
         base = str(Path(args.base or base_path()).resolve())
         adapters = [row for row in media.get('loras', []) if row['strength'] != 0]
         prepared_cache = Path(args.cache).resolve()
+        if fast_spec is not None:
+            if json.loads((prepared_cache / 'manifest.json').read_text(encoding='utf-8')).get('precision') != 'int8':
+                raise ValueError('The fastest mode needs the int8 model')
+            # First, so its branch order does not depend on which user LoRAs are on.
+            adapters = [fast_tier.adapter_row(fast_spec), *adapters]
+            report['fast_tier'] = dict(mode=fast_spec['mode'], adapter_sha256=fast_spec['adapter_sha256'])
         if output_size:
             report['output_size'] = output_size
         report.update(geometry=canvas, sampling_plan=sampling, profile=dict(policy=resource,
@@ -243,7 +252,8 @@ def run(args):
                             + conditioning_info.get('reference_audio_tokens', 0))
         admission = report['memory_admission'] = request_admission(resource, sampling, preview=preview,
                                                                   working_set_bytes=working_set,
-                                                                  reference_tokens=reference_tokens, continuation=continuation)
+                                                                  reference_tokens=reference_tokens, continuation=continuation,
+                                                                  fast_mode=fast_spec and fast_spec['mode'])
         _check_admission(admission, sampling)
         if preview:
             report['preview'] = dict(geometry=dict(sampling['first'], fps=canvas['fps']))
@@ -268,7 +278,8 @@ def run(args):
                 result_path = artifacts / 'lora-result.json'
                 print(json.dumps(dict(event='lora_prepare_start')), flush=True)
                 report['lora_resources'] = execute(dict(cache=str(prepared_cache), adapters=adapters,
-                    result=str(result_path), mode='online'), 'lora', module='freevideo_engine.lora_cache')
+                    result=str(result_path), mode='online'), 'lora',
+                    module='freevideo_engine.fast_tier' if fast_spec is not None else 'freevideo_engine.lora_cache')
                 prepared = json.loads(result_path.read_text(encoding='utf-8'))
                 prepared_cache = Path(prepared['cache']).resolve()
                 report['lora'] = prepared['report']
@@ -278,7 +289,8 @@ def run(args):
                 if 'tail' in continuation:
                     report['continuation']['context'] = 'encoded'
                     refreshed = request_admission(resource, sampling, working_set_bytes=working_set,
-                        reference_tokens=reference_tokens, continuation=continuation)
+                        reference_tokens=reference_tokens, continuation=continuation,
+                        fast_mode=fast_spec and fast_spec['mode'])
                     if refreshed['needed_bytes'] > admission['needed_bytes']:
                         admission = report['memory_admission'] = refreshed
                         _check_admission(admission, sampling)
@@ -367,7 +379,7 @@ def run(args):
                 report['memory_admission_before_encoding'] = admission
                 admission = report['memory_admission'] = request_admission(resource, sampling, preview=preview,
                     working_set_bytes=working_set, reference_tokens=reference_tokens, text_tokens=text_tokens,
-                    continuation=continuation)
+                    continuation=continuation, fast_mode=fast_spec and fast_spec['mode'])
                 _check_admission(admission, sampling)
             report['phase'] = 'engine'
             save(output.with_suffix('.request.json'), report)
@@ -381,6 +393,8 @@ def run(args):
                 engine['continuation'] = continuation
             if hide_tail_frames:
                 engine['hide_tail_frames'] = hide_tail_frames
+            if fast_spec is not None:
+                engine['fast_tier'] = fast_spec['mode']
             if getattr(args, 'step_cache', None) == 'easycache-av':
                 engine['step_cache'] = report['step_cache'] = args.step_cache
             if output_size:

@@ -329,7 +329,7 @@ def run(value):
         save(path, result)
 
 
-def stage_compute(resource, canvas, retry=False, avoid_mlx=False):
+def stage_compute(resource, canvas, retry=False, avoid_mlx=False, fast_mode=None):
     """Partitions for this sampling stage from its live unified-memory allowance.
 
     The supervisor's policy fixes the reserve and allocator ceiling; the stage
@@ -340,10 +340,10 @@ def stage_compute(resource, canvas, retry=False, avoid_mlx=False):
     if resource.get('compute_plan') is False:
         return {}
     from .geometry import geometry
-    from .macos_compute import plan
+    from .macos_compute import fast_budget, plan
     from .system import system_memory
     available = system_memory()['available_bytes'] - resource['reserve_bytes']
-    budget = int(max(0, min(resource['allocator_capacity_bytes'], available)))
+    budget = fast_budget(int(max(0, min(resource['allocator_capacity_bytes'], available))), fast_mode)
     shape = geometry(canvas['width'], canvas['height'], frames=canvas['frames'])
     tokens, frames = shape['video_tokens'] + 1024, shape['latent_frames']
     result = plan(budget, tokens, frames=frames, allow_bounded=True, force_bounded=retry)
@@ -430,7 +430,7 @@ def worker(value):
             print(json.dumps(dict(event='model_load_phase', phase='Loading native MPS model')), flush=True)
             retry = value.get('memory_retry') is True
             compute = stage_compute(resource, sampling['second' if refining else 'first'], retry=retry,
-                                    avoid_mlx=value.get('avoid_mlx') is True)
+                                    avoid_mlx=value.get('avoid_mlx') is True, fast_mode=value.get('fast_tier'))
             result['compute'] = compute
             if retry:
                 result['memory_retry'] = True
@@ -450,6 +450,7 @@ def worker(value):
                         plan_compute=bool(compute), memory_retry=retry and bool(compute),
                         task=value.get('task', 't2va'), canvas=value['canvas'],
                         step_cache=None if refining else value.get('step_cache'),
+                        **(dict(fast_tier=value['fast_tier']) if value.get('fast_tier') is not None else {}),
                         **(dict(adaln_task=chain.ANCHOR_ADALN_TASK if continuation.get('anchor') else chain.ADALN_TASK)
                            if continuation is not None else {})) as engine:
                 result['load_seconds'] = engine.load_seconds
@@ -511,6 +512,15 @@ def worker(value):
                     if measured.get('compute') is not None:
                         result.update(initial_compute=compute, compute=measured['compute'])
                     result.update(sampling=measured, work_seconds=time.monotonic() - tick)
+                if value.get('fast_tier') is not None:
+                    # The fastest mode's last-step features, already on the CPU, for the pixel head in the decode
+                    # stage (another process: the transformer is released before the head loads).
+                    features, grid = engine.fast.features.take()
+                    tick = time.monotonic()
+                    torch.save(dict(features=features, grid=list(grid), adapter=str(engine.fast.adapter)),
+                               artifacts / 'pixel-features.pt')
+                    result['feature_save_seconds'] = time.monotonic() - tick
+                    del features
             if refining:
                 first_tail = initial.get('continuation_first')
             elif not result.get('joined_sampling'):
@@ -531,6 +541,19 @@ def worker(value):
             first_tail = initial.get('continuation_first')
             result.update(upscale=stats, work_seconds=stats['stage_seconds'])
             name = 'upscaled.pt'
+        elif phase == 'decode' and value.get('fast_tier') is not None:
+            # The fastest mode draws its pixels with the adapter's head; the video VAE is never read. No
+            # continuation, preview or hidden tail reaches this mode (fast_tier.request refuses them).
+            from .dwd_decode import pixels_to_file
+            initial = torch.load(artifacts / 'latents.pt', map_location='cpu', weights_only=True)
+            kept = torch.load(artifacts / 'pixel-features.pt', map_location='cpu', weights_only=True)
+            tick = time.monotonic()
+            result['decode'] = pixels_to_file(kept['features'], tuple(kept['grid']), initial['audio'], value['output'],
+                base=value['base'], adapter=kept['adapter'], artifacts_dir=artifacts,
+                output_size=value.get('output_size'), device='mps')
+            del kept
+            result.update(work_seconds=time.monotonic() - tick, success=True)
+            return
         elif phase == 'decode':
             from .macos_decode import decode_to_file
             # A preview decodes its first pass; the upscale input stays for later.

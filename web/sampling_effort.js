@@ -18,12 +18,17 @@ export const SAMPLING_EFFORTS = frozen([
 // `fast_mode` input, so it is never matched from step counts. Its one line of description is here.
 export const FAST_EFFORT = Object.freeze({name: 'Fast', zh: '极速', fast: true, steps: 2, twoPass: false, stepCache: null, upscale: 2, color: '#35d0e6'});
 export const FAST_OPTION_TEXT = Object.freeze(['Faster; fine detail may flicker', '更快，画面细节可能闪烁']);
-// What a capability grid offers of it (capabilities.fast_mode, listed by the planner); never on a Mac, where the engine
-// refuses it.
-export const fastOfferOf = grid => grid?.machine?.system !== 'Darwin' && grid?.fast_mode?.listed === true ? grid.fast_mode : null;
-export const withFastLevel = (levels, offer) => offer ? frozen([FAST_EFFORT, ...levels]) : levels;
+// What a capability grid offers of it (capabilities.fast_mode, listed by the planner, a Mac included).
+export const fastOfferOf = grid => grid?.fast_mode?.listed === true ? grid.fast_mode : null;
 // Mac runs the same plans; retain platform identity for its legacy High alias.
 const macLevels = new WeakSet();
+// A Mac's levels with Fast in front keep that identity.
+export const withFastLevel = (levels, offer) => {
+    if (!offer) return levels;
+    const listed = frozen([FAST_EFFORT, ...levels]);
+    if (macLevels.has(levels)) macLevels.add(listed);
+    return listed;
+};
 export const SAMPLING_EFFORTS_MAC = frozen(SAMPLING_EFFORTS);
 macLevels.add(SAMPLING_EFFORTS_MAC);
 // Earlier Max sampled 20 plain steps, on every platform.

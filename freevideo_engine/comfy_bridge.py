@@ -1488,8 +1488,6 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                               allow_empty_prompt=allow_empty_prompt)
     source = Path(source or source_root()).resolve()
     root, machine = installation(source, environ)
-    if fast_mode is not None and machine.get('device_backend') == 'mps':
-        raise ValueError('The fastest mode is not available on Mac')
     continuation = None
 
     def check_ending():
