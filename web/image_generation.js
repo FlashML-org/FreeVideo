@@ -355,8 +355,8 @@ const FAILED_AT = Object.freeze({
 });
 // The page's own steps: [with "try again", with the page's own Retry]. The rest (task_row, status, cast,
 // agent_job) are the engine's answer without a reason: the general sentence, with the step under the technical details.
-const SENT_PICTURE = [['The picture to send could not be prepared. Try again; if it keeps failing, download the report and report the problem.', '未能准备要发送的图片。请重试；仍然失败请下载报告并提交问题。'],
-        ['The picture to send could not be prepared. If it keeps failing, download the report and report the problem.', '未能准备要发送的图片。仍然失败请下载报告并提交问题。']];
+const SENT_PICTURE = [['The image to send could not be prepared. Try again; if it keeps failing, download the report and report the problem.', '未能准备要发送的图片。请重试；仍然失败请下载报告并提交问题。'],
+        ['The image to send could not be prepared. If it keeps failing, download the report and report the problem.', '未能准备要发送的图片。仍然失败请下载报告并提交问题。']];
 const FAILED_IN = Object.freeze({
     upload: [['The reference images were not uploaded. Try again; if it keeps failing, download the report and report the problem.', '参考图未能上传。请重试；仍然失败请下载报告并提交问题。'],
         ['The reference images were not uploaded. If it keeps failing, download the report and report the problem.', '参考图未能上传。仍然失败请下载报告并提交问题。']],
@@ -365,8 +365,8 @@ const FAILED_IN = Object.freeze({
     submit: [['An error occurred while sending the request. Try again; if it keeps failing, download the report and report the problem.', '发送生成请求时出错。请重试；仍然失败请下载报告并提交问题。'],
         ['An error occurred while sending the request. If it keeps failing, download the report and report the problem.', '发送生成请求时出错。仍然失败请下载报告并提交问题。']],
     encode_reference: SENT_PICTURE, encode_mask: SENT_PICTURE, encode_editor: SENT_PICTURE,
-    result_missing: [['Generation finished, but no picture was returned. Try again; if it keeps failing, download the report and report the problem.', '生成已结束，但未返回图片。请重试；仍然失败请下载报告并提交问题。'],
-        ['Generation finished, but no picture was returned. If it keeps failing, download the report and report the problem.', '生成已结束，但未返回图片。仍然失败请下载报告并提交问题。']],
+    result_missing: [['Generation finished, but no image was returned. Try again; if it keeps failing, download the report and report the problem.', '生成已结束，但未返回图片。请重试；仍然失败请下载报告并提交问题。'],
+        ['Generation finished, but no image was returned. If it keeps failing, download the report and report the problem.', '生成已结束，但未返回图片。仍然失败请下载报告并提交问题。']],
 });
 
 // Keep image failure copy here for editorial review. The submit card and its
