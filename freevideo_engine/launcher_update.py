@@ -26,7 +26,7 @@ from . import execution_paths
 from .top_level_modules import load
 from .monitoring import save
 from .long_paths import io_path, resolved, plain, plain_errors
-from . import disk_space, network
+from . import disk_space, network, windows_blocked
 from .launcher_settings import default_language
 from .system import windows
 
@@ -831,11 +831,11 @@ class DownloadedLauncherUnavailable(ValueError):
     """The cached executable needs downloading again before it can be started."""
 
 
-# What Windows answers when the downloaded launcher may not start. 5 (access denied) and 32 (in use) are often
-# security software still examining the new file, so the launcher tries again after these waits (seconds); the
-# others are a decision on this computer that waiting does not change.
-START_BLOCKED = {5: 'denied', 32: 'in-use', 225: 'threat', 1260: 'policy', 4551: 'smart-app-control'}
-START_RETRY_WAITS = (3, 10)
+# What Windows answers when the downloaded launcher may not start (windows_blocked.json, shared with setup). 5 (access
+# denied) and 32 (in use) are often security software still examining the new file, so the launcher tries again after
+# these waits (seconds); the others are a decision on this computer that waiting does not change.
+START_BLOCKED = windows_blocked.REASONS
+START_RETRY_WAITS = windows_blocked.RETRY_WAITS
 # The marker failure_details reads: the reason in brackets, then the downloaded file (local only; reports redact it).
 START_BLOCKED_MARKER = 'UPDATE_START_BLOCKED'
 
@@ -846,7 +846,7 @@ class LauncherStartBlocked(RuntimeError):
     def __init__(self, code, path):
         self.code, self.path = code, Path(path)
         self.reason = START_BLOCKED[code]
-        self.retryable = code in (5, 32)
+        self.retryable = code in windows_blocked.RETRYABLE
         super().__init__('The downloaded launcher could not start [%s %s] (Windows error %d): %s'
                          % (START_BLOCKED_MARKER, self.reason, code, path))
 

@@ -820,6 +820,14 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
         return dict(title=UPDATE_START_BLOCKED_TITLE[zh], detail=cause[zh] + '\n' + then[zh],
                     action='', kind='update-start-blocked', manual=True,
                     reason=blocked[1] if blocked[1] in UPDATE_START_BLOCKED else 'denied')
+    python_blocked = re.search(r'\[PYTHON_FILE_BLOCKED ([\w-]+)\]', text)
+    if python_blocked:
+        # windows_blocked.python_file_message (setup) and freevideo.ps1: Windows did not let setup write a Python file,
+        # already tried again after short waits. Leads before the step's other lines (a timed-out source, a 403).
+        reason = python_blocked[1] if python_blocked[1] in PYTHON_FILE_BLOCKED else 'denied'
+        title = PYTHON_FILE_BLOCKED_TITLE.get(reason, PYTHON_FILE_BLOCKED_TITLE['default'])
+        return dict(title=title[zh], detail=PYTHON_FILE_BLOCKED[reason][zh] + '\n' + PYTHON_FILE_BLOCKED_NEXT[reason][zh],
+                    action='', kind='python-file-blocked', reason=reason)
     from .model_repair import MISMATCH, MISMATCH_PATH, FAILURE_TITLE, FAILURE, CHANGED_TITLE, CHANGED_REPAIR
     mismatches = re.findall(MISMATCH + r': ([^\r\n]+)', text)
     bundled_models = re.findall(r'Bundled (?:file failed verification|model file has incorrect size): (models/[^\r\n]+)', summary)
@@ -1319,6 +1327,46 @@ UPDATE_START_REFUSED = ('threat', 'policy', 'smart-app-control')
 UPDATE_START_BLOCKED_NEXT_RELEASE_FIRST = (
     'Download the latest version from the releases page, or open the download location and start the new launcher by hand.',
     '请到发布页下载最新版本，或打开下载位置手动启动新启动器。')
+# Windows did not let setup write a Python file (windows_blocked.PYTHON_FILE_MARKER), by its reason. Each reason has its
+# own next step: allowing the folder does not help a file in use, a policy or Smart App Control.
+PYTHON_FILE_BLOCKED_TITLE = {
+    'default': ('A Python file was blocked during setup', '安装中的 Python 文件被拦截'),
+    'in-use': ('A Python file was in use during setup', '安装中的 Python 文件被其他程序占用'),
+}
+PYTHON_FILE_BLOCKED = {
+    'denied': ('Security software or a Windows protection feature did not let setup write a Python file into the FreeVideo folder.',
+               '安全软件或 Windows 的保护功能不允许安装程序把 Python 文件写入 FreeVideo 所在的文件夹。'),
+    'in-use': ('Another program kept a Python file in the FreeVideo folder open, so setup could not write it.',
+               '其他程序占用了 FreeVideo 文件夹中的 Python 文件，安装程序无法写入。'),
+    'threat': ('Security software reported a Python file as a threat and stopped setup from writing it.',
+               '安全软件把一个 Python 文件报为威胁，阻止了安装程序写入。'),
+    'policy': ('A policy on this computer does not allow setup to write a Python file.',
+               '这台电脑上的策略不允许安装程序写入 Python 文件。'),
+    'smart-app-control': ('Smart App Control in Windows stopped setup from writing a Python file.',
+                          'Windows 的“智能应用控制”阻止了安装程序写入 Python 文件。'),
+}
+# Windows Security's menu names as Microsoft's support pages give them (zh-CN: 病毒和威胁防护, 保护历史记录).
+PYTHON_FILE_BLOCKED_NEXT = {
+    'denied': ('Allow the FreeVideo folder in the security software (for Windows Security: Virus & threat protection → Manage '
+               'ransomware protection → Controlled folder access, and the exclusions list), then choose "Retry installation". '
+               'You can also install FreeVideo in another folder.',
+               '请在安全软件中允许 FreeVideo 所在的文件夹（Windows 安全中心：病毒和威胁防护 → 管理勒索软件防护 → 受控文件夹访问，'
+               '以及排除项），然后点击“重试安装”。也可以把 FreeVideo 安装到其他文件夹。'),
+    'threat': ('Allow the file in the security software (for Windows Security: Virus & threat protection → Protection history, '
+               'select the entry and allow it) and add the FreeVideo folder to the exclusions, then choose "Retry installation".',
+               '请在安全软件中允许这个文件（Windows 安全中心：病毒和威胁防护 → 保护历史记录，选中这条记录后允许），'
+               '并把 FreeVideo 所在的文件夹加入排除项，然后点击“重试安装”。'),
+    'in-use': ('Close the programs that may be using files in the FreeVideo folder, or restart the computer, then choose '
+               '"Retry installation".',
+               '请关闭可能正在使用 FreeVideo 文件夹中文件的程序，或重新启动电脑，然后点击“重试安装”。'),
+    'policy': ('Ask the administrator of this computer to allow the FreeVideo folder, or install FreeVideo in another folder, '
+               'then choose "Retry installation".',
+               '请联系这台电脑的管理员允许 FreeVideo 所在的文件夹，或把 FreeVideo 安装到其他文件夹，然后点击“重试安装”。'),
+    'smart-app-control': ('Search Windows for "Smart App Control", or open Windows Security → App & browser control → Smart '
+                          'App Control settings, then choose "Retry installation".',
+                          '在 Windows 中搜索“智能应用控制”，或打开“Windows 安全中心 → 应用和浏览器控制 → 智能应用控制设置”，'
+                          '然后点击“重试安装”。'),
+}
 # The way to send a failure to us, by the launcher's own button names (Main.qml: "Export report", "Report a problem").
 REPORT_STEP = ('If it fails again, select "Export report", then select "Report a problem" and attach the report.',
                '仍然失败时，请先点击“导出报告”，再点击“提交问题”并附上报告。')

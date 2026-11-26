@@ -243,3 +243,31 @@ function Test-FreeVideoCertificateFailure {
     # Match network._certificate_failure and slow_download_failure certificate keywords.
     return ($Detail -match 'certificate verify failed|certificate_verify_failed|invalid peer certificate|unknown issuer')
 }
+
+function Get-FreeVideoBlockedTable {
+    param([string]$Path)
+    # windows_blocked.json: what Windows answers when security software, a policy or another program
+    # stops a file. The launcher and setup in Python read the same table (windows_blocked.py).
+    $table = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
+    $codes = @{}
+    foreach ($row in $table.codes.PSObject.Properties) { $codes[[int]$row.Name] = [string]$row.Value }
+    return @{Codes = $codes; Retry = @($table.retry | ForEach-Object { [int]$_ }); Waits = @($table.retry_waits | ForEach-Object { [int]$_ })}
+}
+
+function Get-FreeVideoUnpackBlocked {
+    param([string]$Detail, [hashtable]$Table)
+    # Match windows_blocked.unpack_blocked: uv could not unpack a Python file and Windows answered
+    # with a code in the table (the words around it are in the system language). $null otherwise.
+    $unpack = [regex]::Match([string]$Detail, 'failed to unpack `([^`\r\n]+)`', 'IgnoreCase')
+    if (-not $unpack.Success) { return $null }
+    # The line with "into" names the file as the archive has it; the line before it names the full path being written.
+    $named = [regex]::Match([string]$Detail, 'failed to unpack `([^`\r\n]+)` into `', 'IgnoreCase')
+    if ($named.Success) { $file = $named.Groups[1].Value } else { $file = $unpack.Groups[1].Value }
+    foreach ($found in [regex]::Matches($Detail.Substring($unpack.Index + $unpack.Length), '\(os error (\d+)\)|\[WinError (\d+)\]')) {
+        if ($found.Groups[1].Success) { $code = [int]$found.Groups[1].Value } else { $code = [int]$found.Groups[2].Value }
+        if ($Table.Codes.ContainsKey($code)) {
+            return @{Code = $code; Reason = $Table.Codes[$code]; File = $file}
+        }
+    }
+    return $null
+}

@@ -2086,10 +2086,12 @@ class Installer:
                     raise
 
     def python_sources(self, names):
-        """The GitHub mirror refuses the Python runtime files, so it is tried after a mirror that serves them."""
+        """The GitHub mirror (ghfast) refuses the Python runtime files (403), so it is not a Python source: GitHub,
+        then the public mirror that serves them (freevideo.ps1 keeps the same order)."""
+        names = [n for n in names if n != 'ghfast']
         if self.network.get('mode') == 'official':
             return names
-        return [*[n for n in names if n != 'ghfast'], *network.PYTHON_MIRRORS, *[n for n in names if n == 'ghfast']]
+        return [*names, *network.PYTHON_MIRRORS]
 
     def python_request(self):
         """What uv is asked for: the version, or on Windows on Arm the aarch64 build of it."""
@@ -2133,16 +2135,35 @@ class Installer:
                                                network.source_url('github', source, self.env) + '/astral-sh/python-build-standalone/releases/download')
             return self.command('python-' + source + '-' + route,
                                 [uv, 'python', 'install', *isolation, self.python_request()], env=env)
-        try:
-            with self.download_notice('download-patient-python') as notice:
-                return network.download_command(self.network, 'github', attempt, self.env, category='python',
-                                                extra_sources=['user-python'] if custom else [], notice=notice,
-                                                reorder=self.python_sources)
-        except network.PackageSourcesError as error:
-            failure = RuntimeError('Python download failed on every route; see retained logs'
-                                   + network.sources_text(error.attempts))
-            failure.package_attempts = error.attempts
-            raise failure from error
+        from . import windows_blocked
+        for wait in (*windows_blocked.RETRY_WAITS, None):
+            try:
+                with self.download_notice('download-patient-python') as notice:
+                    return network.download_command(self.network, 'github', attempt, self.env, category='python',
+                                                    extra_sources=['user-python'] if custom else [], notice=notice,
+                                                    reorder=self.python_sources)
+            except network.PackageSourcesError as error:
+                # A file Windows blocked leads, whichever source it came from.
+                blocked = next(filter(None, (windows_blocked.unpack_blocked(str(row.get('detail', '')))
+                                             for row in error.attempts)), None)
+                failure = RuntimeError((windows_blocked.python_file_message(*blocked) + '\n' if blocked else '')
+                                       + 'Python download failed on every route; see retained logs'
+                                       + network.sources_text(error.attempts))
+                failure.package_attempts = error.attempts
+                raise failure from error
+            except RuntimeError as error:
+                # The download arrived but Windows did not let uv write one of its files: security software
+                # still examining it, or another program holding it, may let go shortly. Another source brings
+                # the same file to the same folder, so the same download is tried again (as freevideo.ps1 does).
+                blocked = windows_blocked.unpack_blocked(str(error))
+                if not blocked:
+                    raise
+                if wait is None or blocked[0] not in windows_blocked.RETRYABLE or self.cancel.is_set():
+                    raise RuntimeError(windows_blocked.python_file_message(*blocked) + '\n' + str(error)) from error
+                self.ui.write('Windows did not let setup write %s (Windows error %d). Trying again in %d s.\n'
+                              % (blocked[1], blocked[0], wait))
+                if self.cancel.wait(wait):
+                    raise
 
     def install_sage_optional(self, uv, python):
         """Sage2 is an optional speed-up: where FreeVideo's own compiler builds it, a failure leaves it out."""

@@ -1,0 +1,6 @@
+{
+  "note": "What Windows answers when security software, a policy or another program stops a file from being written or started. Read by windows_blocked.py (the launcher update, setup in Python) and freevideo.ps1 (the first Python download). Codes 'retry' are often security software still examining a new file: the same step is tried again after each wait in 'retry_waits' (seconds).",
+  "codes": {"5": "denied", "32": "in-use", "225": "threat", "1260": "policy", "4551": "smart-app-control"},
+  "retry": [5, 32],
+  "retry_waits": [3, 10]
+}
