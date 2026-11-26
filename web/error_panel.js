@@ -125,10 +125,11 @@ function knownError(text) {
                 && Number.isSafeInteger(d.missing_bytes) && d.missing_bytes > 0 && typeof d.decimal_sizes === 'boolean'
                 && Array.isArray(d.available) && d.available.every(i => Number.isInteger(i) && i >= 0 && i <= 3)
                 && (d.step_cache === undefined || STEP_CACHES.includes(d.step_cache))
-                && (d.scale === undefined || UPSCALE_FACTORS.includes(d.scale)))
+                && (d.scale === undefined || UPSCALE_FACTORS.includes(d.scale)) && (d.upscale === undefined || d.upscale === true))
                 return {kind: 'sampling-table', base_steps: d.base_steps, two_pass: d.two_pass, refine_steps: d.refine_steps,
                     missing_bytes: d.missing_bytes, decimal_sizes: d.decimal_sizes, available: [...new Set(d.available)].sort(),
-                    ...(d.step_cache ? {step_cache: d.step_cache} : {}), ...(d.scale && d.scale !== 2 ? {scale: d.scale} : {})};
+                    ...(d.step_cache ? {step_cache: d.step_cache} : {}), ...(d.scale && d.scale !== 2 ? {scale: d.scale} : {}),
+                    ...(d.upscale ? {upscale: true} : {})};
         } catch { /* Malformed metadata stays in technical details. */ }
     }
     return PLAIN_ERRORS.find(error => line === error.message || error.aliases?.includes(line)
@@ -465,6 +466,9 @@ export function failureAdvice(value, t, known = knownError(value)) {
             const unit = [[1e12, 'TB', 2], [1e9, 'GB', 2], [1e6, 'MB', 1]].find(([scale]) => bytes >= scale);
             size = unit ? Number((bytes / unit[0]).toFixed(unit[2])) + ' ' + unit[1] : Math.round(bytes / 1e3) + ' KB';
         }
+        // An upscale of a finished video is no quality level, and no other level would do instead.
+        if (known.upscale) return {...row('sampling-table', ['Sampling caches for upscaling are not downloaded yet', '放大所需的采样缓存尚未下载'], ['', ''], ['', '']),
+            summary: t('The first upscale needs to download sampling caches (about {size}), and the download did not finish this time. Check the network connection, then upscale again.', '第一次放大需要先下载采样缓存（约 {size}），这次未能完成。请检查网络后再放大一次。', { size }), plain: true};
         // A custom step count is not a quality level: no "档" / "quality level" for it.
         const title = custom
             ? ['Custom ({steps} steps) is not downloaded yet', '“自定义（{steps} 步）”还没下载', { steps: known.base_steps }]

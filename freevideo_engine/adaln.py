@@ -178,6 +178,12 @@ class TableCache:
             save(marker, self.identity)
         if manifest is not None:
             self.optional_asset = assets.optional_table(self.identity, manifest)
+            # An installation with the original projections computed the upscale clock's table from them, offline, before
+            # that table was published; it keeps doing so rather than now needing the network for it.
+            from .sampling_assets import UPSCALE_PREFIX
+            if (self.optional_asset is not None and self.optional_asset['download']['prefix'].startswith(UPSCALE_PREFIX)
+                    and assets.sources_present(root, manifest)):
+                self.optional_asset = None
 
     def load(self, index, steps):
         from . import adaln_assets as assets

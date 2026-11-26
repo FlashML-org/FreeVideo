@@ -82,6 +82,16 @@ def projection_groups(manifest):
     return sorted(rows, key=lambda r: r['group'])
 
 
+def sources_present(cache, manifest):
+    """Whether the original projections are in this cache (a full installation, or a slim one that fetched them):
+    every listed file at its size. Size only, no hashing; computing from them checks them as before."""
+    rows = projection_groups(manifest)
+    try:
+        return bool(rows) and all(asset_path(Path(cache), row['file']).stat().st_size == row['bytes'] for row in rows)
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+
+
 def weight_identity(manifest):
     roots = [r for r in manifest['groups'] if r['group'] == 'root']
     if len(roots) != 1:

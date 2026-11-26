@@ -155,10 +155,11 @@ def sampling_table_details(value):
                     and type(details['missing_bytes']) is int and details['missing_bytes'] > 0
                     and type(details['decimal_sizes']) is bool and isinstance(details['available'], list)
                     and all(type(i) is int and 0 <= i <= 3 for i in details['available'])
-                    and details.get('step_cache') in STEP_CACHES and details.get('scale', 2) in SCALES):
+                    and details.get('step_cache') in STEP_CACHES and details.get('scale', 2) in SCALES
+                    and details.get('upscale', True) is True):
                 return {key: details[key] for key in
                         ('base_steps', 'two_pass', 'refine_steps', 'missing_bytes', 'available', 'decimal_sizes', 'step_cache',
-                         'scale')
+                         'scale', 'upscale')
                         if key in details}
         except (ValueError, KeyError, TypeError):
             pass
@@ -171,6 +172,15 @@ def sampling_table_failure(value, *, zh=False):
         return None
     from .launcher_copy import size_text
     language = 1 if zh else 0
+    if details.get('upscale'):
+        # An upscale of a finished video: not a quality level, and no other level would do instead.
+        size = size_text(details['missing_bytes'], details['decimal_sizes'])
+        if zh:
+            return dict(kind='sampling-table', title='放大所需的采样缓存尚未下载',
+                        detail='第一次放大需要先下载采样缓存（约 %s），这次未能完成。请检查网络后再放大一次。' % size, action='')
+        return dict(kind='sampling-table', title='Sampling caches for upscaling are not downloaded yet',
+                    detail='The first upscale needs to download sampling caches (about %s), and the download did not finish this '
+                           'time. Check the network connection, then upscale again.' % size, action='')
     # Tables follow the step count: 16 steps is high, 20 steps is max.
     level = table_level(details['base_steps'], details['two_pass'], details['refine_steps'],
                         details.get('step_cache'), on_mac(), details.get('scale', 2))
