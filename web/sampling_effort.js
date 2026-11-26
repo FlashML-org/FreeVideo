@@ -155,12 +155,14 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}, levels 
             b.dataset.fvTipName = effortName(t, tier);
             b.dataset.fvTipUse = nameUse(tier);
             b.onclick = () => { if (!disabled && pointer === null) commit(i); };
+            b.onkeydown = nameKey;
             names.append(b); return b;
         });
         rail.setAttribute('aria-valuemax', String(last()));
+        markKeys();
     }
     element.append(header, warning, ways, rail, names);
-    let selected = 0, disabled = false, pointer = null, draft = 0, previewed = -1, currentSteps = 8, currentRefine = 3, twoPass = true, stepCache = null, upscale = 2, reason = '', fastNow = false;
+    let selected = 0, disabled = false, pointer = null, draft = 0, previewed = -1, currentSteps = 8, currentRefine = 3, twoPass = true, stepCache = null, upscale = 2, reason = '', fastNow = false, namesAsKeys = false, marked = false;
     buildScale();
     function paint(position) {
         element.style.setProperty('--fv-position', position / last());
@@ -169,6 +171,26 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}, levels 
         stops.forEach((stop, i) => stop.toggleAttribute('data-filled', i <= position + .01));
         rail.setAttribute('aria-valuenow', String(index));
         rail.setAttribute('aria-valuetext', tier.fast ? effortName(t, tier) : `${effortName(t, tier)}, ${stepsWords(t, tier.steps, tier.twoPass, 3)}`);
+        markKeys();
+    }
+    // Where the three-column layout shows the four names as the control (useNames), they are the control for the keyboard and
+    // for assistive technology too: a radio group with one tab stop, on the level in use, and the rail (which is not seen
+    // there) stays out of the tab order and the accessibility tree. Anywhere else the rail is the slider and the names are
+    // only its labels, out of the tab order.
+    function markKeys() {
+        rail.tabIndex = disabled || namesAsKeys ? -1 : 0;
+        if (!namesAsKeys) {
+            if (!marked) return;
+            marked = false;
+            rail.removeAttribute('aria-hidden'); names.removeAttribute('role'); names.removeAttribute('aria-label');
+            for (const b of nameButtons) { b.removeAttribute('role'); b.removeAttribute('aria-checked'); delete b.dataset.fvTipFocus; b.tabIndex = -1; }
+            return;
+        }
+        marked = true;
+        rail.setAttribute('aria-hidden', 'true'); names.setAttribute('role', 'radiogroup'); names.setAttribute('aria-label', label.textContent);
+        const inUse = element.dataset.custom !== 'true';
+        // The arrows move through the group: a card at every press would cover the estimate, so the tip is for the pointer only.
+        nameButtons.forEach((b, i) => { b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', String(inUse && i === selected)); b.dataset.fvTipFocus = 'off'; b.tabIndex = i === selected ? 0 : -1; });
     }
     function position(event) {
         const box = rail.getBoundingClientRect();
@@ -214,14 +236,31 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}, levels 
         rail.dataset.keyboard = 'true';
         if (event.key === 'Escape' && pointer !== null) { event.preventDefault(); event.stopPropagation(); cancel(); return; }
         if (disabled || pointer !== null) return;
-        const next = {ArrowRight: selected + 1, ArrowUp: selected + 1, ArrowLeft: selected - 1, ArrowDown: selected - 1, Home: 0, End: last()}[event.key];
+        const next = levelKey(event.key);
         if (next === undefined) return;
-        event.preventDefault(); commit(Math.max(0, Math.min(last(), next)));
+        event.preventDefault(); commit(next);
     };
+    // The level a key moves to (undefined for any other key). The slider: Right and Up one level up, Left and Down one down,
+    // stopping at the ends. The radio group of names: Right and Down the next, Left and Up the previous, round the ends (as a
+    // radio group does, and as the second-pass choice beside it). Home and End go to the ends in both.
+    function levelKey(key, radio = false) {
+        if (key === 'Home') return 0;
+        if (key === 'End') return last();
+        const step = (radio ? {ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1} : {ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1})[key];
+        if (step === undefined) return undefined;
+        const next = selected + step;
+        return radio ? (next + efforts.length) % efforts.length : Math.max(0, Math.min(last(), next));
+    }
+    function nameKey(event) {
+        if (!namesAsKeys || disabled || pointer !== null || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+        const next = levelKey(event.key, true);
+        if (next === undefined) return;
+        event.preventDefault(); commit(next); nameButtons[selected]?.focus();
+    }
     function update(state) {
         currentSteps = Number(state.baseSteps); currentRefine = Number(state.refineSteps);
         twoPass = state.twoPass; stepCache = stepCacheOf(state.stepCache); upscale = upscaleOf(state.upscale); disabled = state.disabled; reason = state.reason || ''; fastNow = Boolean(state.fast);
-        rail.tabIndex = disabled ? -1 : 0; rail.setAttribute('aria-disabled', String(disabled));
+        markKeys(); rail.setAttribute('aria-disabled', String(disabled));
         element.dataset.disabled = String(disabled);
         if (pointer !== null) return;
         const level = (fastNow && efforts.find(tier => tier.fast)) || effortFor(currentSteps, twoPass, currentRefine, stepCache, efforts, upscale);
@@ -251,7 +290,7 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}, levels 
     }
     // What the Fast level's option says: its download while the files are missing.
     function setFastUse(text) { fastUse = text || ''; efforts.forEach((tier, i) => { if (tier.fast) nameButtons[i].dataset.fvTipUse = nameUse(tier); }); }
-    return {element, update, setLevels, setFastUse, levels: () => efforts, setWarning(text) { warning.textContent = text; warning.hidden = !text; },
+    return {element, update, setLevels, setFastUse, levels: () => efforts, useNames(on) { namesAsKeys = Boolean(on); markKeys(); }, setWarning(text) { warning.textContent = text; warning.hidden = !text; },
         setWays(list = []) {
             ways.replaceChildren(...list.map(way => { const b = el('button', 'fv-effort-way', way.label); b.type = 'button'; b.dataset.way = way.id; b.onclick = way.run; return b; }));
             ways.hidden = !list.length;

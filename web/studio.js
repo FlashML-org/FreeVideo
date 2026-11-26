@@ -3304,6 +3304,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     current.borrow = ({mount, submit, label = null, previews = null, disabled = null, onSeconds = null, onFirstFrame = null, initial = {}, locked = []}) => {
         if (borrowed || disposed) return null;
         columns?.restore(); // the editor shows the console bar, not the column
+        if (columns) effort.useNames(false);
         const outer = mount.closest('dialog') || document.body;
         const home = {parent: controls.parentNode, next: controls.nextSibling};
         // The pop-ups travel inside one display:contents holder, so a switch moves one node instead of every pop-up.
@@ -3337,6 +3338,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
                     if (home.next?.parentNode === home.parent) home.parent.insertBefore(controls, home.next); else home.parent.append(controls);
                     dialog.append(popHolder);
                     columns?.apply();
+                    if (columns) effort.useNames(true);
                 }
                 updateRunButton();
             }};
@@ -3566,6 +3568,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             duration: stepper.element, quality: effort.element, pass: passMode, runbar,
             // The level's line and the Fast level's download row stand under the levels, as in the Quality window (the column has no such window).
             qualityMore: [levelUse, fastPack.element]}});
+        effort.useNames(true);  // the column shows the four levels, not the slider: they are the keyboard's and the reader's control
     }
     // The two panels repaint whenever the console's row does.
     { const sync = consoleUI.sync; consoleUI.sync = () => { sync(); paintDuration(); paintQuality(); }; }

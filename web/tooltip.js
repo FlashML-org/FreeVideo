@@ -1,6 +1,7 @@
 // One hover tip for every FreeVideo control: a name, one line on what it does and what you get, and its shortcut.
 // - About 500 ms on a control, then at once on its neighbours while one has just shown; gone ~100 ms after leaving.
-// - Keyboard focus shows it too; a long press shows it on touch (and that press does not also tap the control).
+// - Keyboard focus shows it too (a control marked data-fv-tip-focus="off" shows it for the pointer only: a group the arrow keys
+//   move through would show a card at every press); a long press shows it on touch (and that press does not also tap the control).
 // - It never covers the control, the menu the control sits in, another open layer, or the picture when there is room
 //   elsewhere: below, above, then beside, measured at its real size and always kept inside the window.
 // - It floats in the top layer, so it never changes the layout; it fades only, and not at all under reduced motion.
@@ -434,7 +435,7 @@ function onPointerOver(event) {
 }
 function onFocusIn(event) {
     const control = controlAt(event.target);
-    if (control && control.matches(':focus-visible')) schedule(control, timing.show, {keyboard: true});
+    if (control && control.dataset.fvTipFocus !== 'off' && control.matches(':focus-visible')) schedule(control, timing.show, {keyboard: true});
 }
 function onPointerDown(event) {
     buttonsDown = event.buttons || 1;

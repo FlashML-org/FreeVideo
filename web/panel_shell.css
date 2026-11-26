@@ -88,10 +88,9 @@
 /* quality: the four names as one segmented row, in place of the slider */
 .fv-body[data-cols="3"] .fv-effort-heading>span:first-child{display:none}
 .fv-body[data-cols="3"] .fv-effort-heading{justify-content:flex-end;margin:0 0 6px}
-/* the slider rail stays the keyboard target (arrows, Home, End), seen as a ring round the four names while it has focus */
+/* the slider rail is not seen here (sampling_effort.js also takes it out of the tab order and the reader's tree): the four names are the control, a radio group the arrows move through */
 .fv-body[data-cols="3"] .fv-effort{position:relative}
 .fv-body[data-cols="3"] .fv-effort-rail{position:absolute;left:0;top:0;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none}
-.fv-body[data-cols="3"] .fv-effort[data-hx-rail] .fv-effort-names{outline:2px solid var(--fv-accent,#1a8cff);outline-offset:2px}
 .fv-body[data-cols="3"] .fv-effort-names{height:auto;margin:0;display:grid;grid-template-columns:repeat(4,1fr);gap:2px;padding:2px;border-radius:var(--fv-r-md,10px);background:var(--fv-ctl-bg,rgb(var(--fv-tint) / .06))}
 /* With the Fast level listed (sampling_effort.js data-fast) the strip has five levels, one row of five. */
 .fv-body[data-cols="3"] .fv-effort-names[data-fast]{grid-template-columns:repeat(5,1fr)}
