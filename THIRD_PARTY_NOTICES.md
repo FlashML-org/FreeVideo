@@ -42,6 +42,11 @@ FreeVideo code uses [Apache-2.0](LICENSE). Its dependencies and models retain th
 | [Noto Sans CJK SC and Noto Sans Mono CJK SC](https://github.com/notofonts/noto-cjk) 2.004, © 2014-2021 Adobe: subsets renamed FreeVideo Sans SC and FreeVideo Mono SC (image editor text, editor text and subtitles / 剪辑视图的文字和字幕, share card, Linux launcher) | [SIL OFL 1.1](freevideo_engine/licenses/Noto-CJK-Sans-OFL.txt) |
 | [Noto Serif CJK SC](https://github.com/notofonts/noto-cjk) 2.003, © 2017-2024 Adobe: subset renamed FreeVideo Serif SC (image editor text, editor text and subtitles / 剪辑视图的文字和字幕) | [SIL OFL 1.1](freevideo_engine/licenses/Noto-CJK-Serif-OFL.txt) |
 | [LXGW WenKai](https://github.com/lxgw/LxgwWenKai) v1.522, © 2021-2026 LXGW, © 2020 The Klee Project Authors: subset renamed FreeVideo Kai SC (image editor text, editor text and subtitles / 剪辑视图的文字和字幕) | [SIL OFL 1.1](freevideo_engine/licenses/LXGW-WenKai-OFL.txt) |
+| [Noto Sans CJK TC and Noto Sans CJK KR](https://github.com/notofonts/noto-cjk) 2.004, © 2014-2021 Adobe: subsets renamed FreeVideo Sans TC and FreeVideo Sans KR (image editor text, share card) | [SIL OFL 1.1](freevideo_engine/licenses/Noto-CJK-Sans-OFL.txt) |
+| [Noto Sans](https://github.com/notofonts/latin-greek-cyrillic) 2.015, © 2022 The Noto Project Authors: subset renamed FreeVideo Sans Vietnamese (image editor text, share card) | [SIL OFL 1.1](freevideo_engine/licenses/Noto-Sans-OFL.txt) |
+| [Noto Sans Arabic](https://github.com/notofonts/arabic) 2.013, © 2022 The Noto Project Authors: subset renamed FreeVideo Sans Arabic (image editor text, share card) | [SIL OFL 1.1](freevideo_engine/licenses/Noto-Sans-Arabic-OFL.txt) |
+| [Noto Sans Thai](https://github.com/notofonts/thai) 2.002, © 2022 The Noto Project Authors: subset renamed FreeVideo Sans Thai (image editor text, share card) | [SIL OFL 1.1](freevideo_engine/licenses/Noto-Sans-Thai-OFL.txt) |
+| [Noto Sans Devanagari](https://github.com/notofonts/devanagari) 2.007, © 2022 The Noto Project Authors: subset renamed FreeVideo Sans Devanagari (image editor text, share card) | [SIL OFL 1.1](freevideo_engine/licenses/Noto-Sans-Devanagari-OFL.txt) |
 
 Original launcher license texts are included in Windows packages. Other runtime dependencies are listed in [constraints](constraints), with their license information in the installed packages.
 

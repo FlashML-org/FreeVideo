@@ -7,10 +7,12 @@ Pixels follow the browser's canvas maths (premultiplied colour, bilinear
 sampling, the same adjustment formulas and noise sequence), so a document looks
 the same saved from either side; text uses the editor's bundled fonts.
 """
+import functools
 import itertools
 import math
 from pathlib import Path
 import time
+import unicodedata
 
 import numpy as np
 from PIL import Image, ImageColor, ImageDraw, ImageFilter, ImageFont, ImageOps
@@ -28,6 +30,9 @@ FONTS = {
     'kai': {400: 'FreeVideoKaiSC-Regular.woff2', 700: 'FreeVideoKaiSC-Medium.woff2'},
     'mono': {400: 'FreeVideoMonoSC-Regular.woff2', 700: 'FreeVideoMonoSC-Bold.woff2'},
 }
+# Regular faces for the scripts the Chinese faces lack, between the sans and the box (web/fonts.js EXTRA).
+FONT_EXTRA = ('FreeVideoSansTC-Regular.woff2', 'FreeVideoSansKR-Regular.woff2', 'FreeVideoSansVietnamese-Regular.woff2',
+              'FreeVideoSansArabic-Regular.woff2', 'FreeVideoSansThai-Regular.woff2', 'FreeVideoSansDevanagari-Regular.woff2')
 FONT_BOX = 'FreeVideoBox.woff2'
 # Canvas textBaseline 'top' puts the em box's top on y: the typographic ascender
 # over ascender + descender. Every bundled face has 880 / -120 units in its OS/2
@@ -799,38 +804,114 @@ def _gradient(h, w, op, path):
 # ---------------------------------------------------------------------------
 # Fonts: web/fonts.js picks the family, then the sans for what it lacks, then the box.
 
+def _ink(font, ch):
+    image = Image.new('L', (96, 96))
+    ImageDraw.Draw(image).text((16, 16), ch, font=font, fill=255)
+    return image.tobytes()
+
+
 def _covers(font, text):
     """Whether the font has every character: a missing one draws .notdef."""
-    def ink(ch):
-        image = Image.new('L', (96, 96))
-        ImageDraw.Draw(image).text((16, 16), ch, font=font, fill=255)
-        return image.tobytes()
-    missing = ink('\U0010FFFD')
-    return all(ch.isspace() or ink(ch) != missing for ch in set(text))
+    missing = _ink(font, '\U0010FFFD')
+    return all(ch.isspace() or _ink(font, ch) != missing for ch in set(text))
 
 
 _CHOSEN = {}
 
 
+# Arabic letters take their joined forms and Devanagari puts its vowel signs and joining marks in place only when the
+# text is shaped (Pillow with raqm: libraqm and FriBiDi). Basic layout draws Arabic as separate letters left to right
+# and Devanagari with its marks out of order, which reads wrong: without raqm these two faces are left out of the
+# stack, and a line in these scripts keeps showing the box, as it did before the faces existed.
+SHAPED_EXTRA = ('FreeVideoSansArabic-Regular.woff2', 'FreeVideoSansDevanagari-Regular.woff2')
+
+
+@functools.lru_cache(maxsize=1)
+def _raqm():
+    from PIL import features
+    return bool(features.check('raqm'))
+
+
 def font_stack(key, weight):
-    """The font files of fontStack(): the family, the sans fallback, the box."""
+    """The font files of fontStack(): the family, the sans fallback, the other scripts, the box."""
     key = key if key in FONTS else 'sans'
     weight = 700 if (weight or 400) >= 550 else 400   # fontWeight() of web/fonts.js
-    files = [FONTS[key][weight]] + ([FONTS['sans'][weight]] if key != 'sans' else []) + [FONT_BOX]
+    extra = [name for name in FONT_EXTRA if name not in SHAPED_EXTRA or _raqm()]
+    files = [FONTS[key][weight]] + ([FONTS['sans'][weight]] if key != 'sans' else []) + extra + [FONT_BOX]
     return [str(FONT_DIR / name) for name in files]
+
+
+class _Runs:
+    """A text no single file covers: browsers fall back per character, so each run of
+    characters is drawn with the first file of the stack that has them."""
+
+    def __init__(self, fonts):
+        self.fonts = fonts   # character -> font
+
+    def runs(self, line):
+        out = []
+        for ch in line:
+            font = self.fonts.get(ch) or self.fonts[None]
+            if out and out[-1][1] is font:
+                out[-1][0].append(ch)
+            else:
+                out.append(([ch], font))
+        return [(''.join(chars), font) for chars, font in out]
+
+    def getlength(self, line):
+        return sum(font.getlength(run) for run, font in self.runs(line))
+
+    def draw(self, draw, xy, line, anchor, **options):
+        x, y = xy
+        width = self.getlength(line)
+        x -= width / 2 if anchor[0] == 'm' else width if anchor[0] == 'r' else 0
+        for run, font in self.runs(line):
+            draw.text((x, y), run, font=font, anchor='l' + anchor[1], **options)
+            x += font.getlength(run)
+
+
+def _line_length(font, line):
+    return font.getlength(line)
+
+
+def _draw_line(draw, xy, line, font, anchor, **options):
+    if isinstance(font, _Runs):
+        font.draw(draw, xy, line, anchor, **options)
+    else:
+        draw.text(xy, line, font=font, anchor=anchor, **options)
 
 
 def font_for(key, weight, size, text=''):
     """The bundled font that draws this text, and its file.
 
-    Browsers fall back per character; here the first file of the stack that has
-    every character draws the whole text, and the box font draws what none has."""
+    Browsers fall back per character. The first file of the stack that has every character
+    draws the whole text; when none has them all, each run of characters takes the first file
+    that has it; when some character is in none of them, or the line has a letter written right to left and no
+    single file has the whole line, the box font draws the whole text (runs would come out in the wrong order)."""
     stack = font_stack(key, weight)
     if (tuple(stack), text) not in _CHOSEN:
-        _CHOSEN[(tuple(stack), text)] = next(
-            (path for path in stack[:-1] if _covers(ImageFont.truetype(path, 32), text)), stack[-1])
+        whole = next((path for path in stack[:-1] if _covers(ImageFont.truetype(path, 32), text)), None)
+        if whole is None:
+            probes = [(path, ImageFont.truetype(path, 32)) for path in stack[:-1]]
+            owners = {}
+            for ch in set(text):
+                if ch != '\n':
+                    owners[ch] = next((path for path, probe in probes if _covers(probe, ch)), stack[-1])
+            # A character no file has keeps the old result: the box draws the whole text. So does a line with a letter
+            # written right to left: its runs would be put in order from the left.
+            right_to_left = any(unicodedata.bidirectional(ch) in ('R', 'AL') for ch in text)
+            whole = stack[-1] if right_to_left or stack[-1] in owners.values() else tuple(sorted(owners.items()))
+        _CHOSEN[(tuple(stack), text)] = whole
     chosen = _CHOSEN[(tuple(stack), text)]
-    return ImageFont.truetype(chosen, max(1, round(size))), chosen
+    pixels = max(1, round(size))
+    if isinstance(chosen, tuple):
+        faces = {}
+        for path in set(owner for _, owner in chosen) | {stack[-1]}:
+            faces[path] = ImageFont.truetype(path, pixels)
+        fonts = {ch: faces[owner] for ch, owner in chosen}
+        fonts[None] = faces[stack[-1]]
+        return _Runs(fonts), stack[0]
+    return ImageFont.truetype(chosen, pixels), chosen
 
 
 def _top_ascent(size):
@@ -841,7 +922,7 @@ def measure_text(text):
     """measureText of the editor: the native size of a text block."""
     lines = str(text.get('content') or ' ').split('\n')
     font, _ = font_for(text.get('font'), text.get('weight'), text['size'], str(text.get('content') or ''))
-    width = max(font.getlength(line or ' ') for line in lines)
+    width = max(_line_length(font, line or ' ') for line in lines)
     size, height = text['size'], text.get('lineHeight') or 1.25
     return dict(nw=math.ceil(width + size * .4), nh=math.ceil(size * (.4 + (len(lines) - 1) * height + 1.1)))
 
@@ -865,11 +946,11 @@ def _text_raster(layer, path):
         shapes = []
         if outline:
             mask = Image.new('L', (w, h))
-            ImageDraw.Draw(mask).text((x, y), line, font=font, fill=255, anchor=anchor,
-                                      stroke_width=max(1, round(stroke / 2)), stroke_fill=255)
+            _draw_line(ImageDraw.Draw(mask), (x, y), line, font, anchor, fill=255,
+                       stroke_width=max(1, round(stroke / 2)), stroke_fill=255)
             shapes.append((np.asarray(mask, np.float32) / 255, _color(outline, path + '/text/outline')))
         mask = Image.new('L', (w, h))
-        ImageDraw.Draw(mask).text((x, y), line, font=font, fill=255, anchor=anchor)
+        _draw_line(ImageDraw.Draw(mask), (x, y), line, font, anchor, fill=255)
         shapes.append((np.asarray(mask, np.float32) / 255, fill))
         for alpha, color in shapes:
             if t.get('shadow'):
