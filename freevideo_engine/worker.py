@@ -388,8 +388,8 @@ def generate(request, resident=None):
             decode_read_ahead = DecoderReadAhead(engine.base, ram_budget_bytes=request.get('ram_budget_bytes'),
                                                  budget_is_estimate=request.get('ram_budget_is_estimate') is True)
             decoder_cached = resident is not None and 'video_vae' in resident.entries
-            # Set only by a real Engine in the fastest mode (stand-ins and other engines have none of their own).
-            pixel_head = type(vars(engine).get('fast')).__name__ == 'Runtime' if hasattr(engine, '__dict__') else False
+            # Set only by a real Engine in the fastest mode (stand-ins and other engines have no such flag).
+            pixel_head = getattr(engine, 'pixel_head', False) is True
             if pixel_head:
                 # The fastest mode draws its pixels with its own head; the video VAE is never read.
                 decoder_cached = True

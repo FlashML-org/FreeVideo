@@ -392,7 +392,7 @@ RESIDUAL_ACTIVATION_RESERVE = int(6.4 * GiB)
 RESIDUAL_ADMISSION_FLOOR = int(6.25 * GiB)
 
 # The int8 staging path -- four heads, the residual stream staged, no resident
-# blocks -- measured with the allocator capped on an RTX PRO 6000 (2026-10-07):
+# blocks -- measured with the allocator capped on an RTX PRO 6000:
 #
 #   1344x768x243, 72576 tokens   outputs on the GPU    5.14 GiB reserved  20.6 s/step
 #                                outputs in host RAM   3.15 GiB           42.0 s/step
@@ -915,11 +915,11 @@ def decoder_workspace(canvas=None):
 # The fast mode ('fast2': two steps, no VAE) decodes with the adapter's pixel head instead of the video VAE. Like the
 # VAE it runs after sampling has released the transformer, and the head's weights load only then; the VAE is not read.
 # Reserved peaks of the memory-saving head, its BF16 weights (1.1 GiB) included, by latent frames and pixel area. They were
-# measured with the four-step adapter's head, whose tensors have the same names and shapes as the two-step one's
-# (pih3-5x, 11-25), on the product path (INT8 adapter, RTX PRO 6000 with 8-24 GB caps; torch.cuda.max_memory_reserved over the whole
-# pixel-head stage, after empty_cache). 1344x768 and 768x1344: 5 s 5.24-5.54, 10 s 8.94-9.56, 15 s 12.72 GiB (c4 stages 1
-# and 2), 20 s 16.47 GiB (24 GB cap). 960x544: 5 s 3.15-3.37, 10 s 5.14-5.30, 15 s 7.02-7.43, 20 s 9.37-9.38 GiB (c4
-# stage 2). 480x288 15 s measured 2.78 GiB, under the line. The reserve is not proportional to the area (the
+# measured with the four-step adapter's head, whose tensors have the same names and shapes as the two-step one's,
+# on the product path (INT8 adapter, RTX PRO 6000 with 8-24 GB caps; torch.cuda.max_memory_reserved over the whole
+# pixel-head stage, after empty_cache). 1344x768 and 768x1344: 5 s 5.24-5.54, 10 s 8.94-9.56, 15 s 12.72 GiB (the 8-24 GB
+# cap matrix), 20 s 16.47 GiB (24 GB cap). 960x544: 5 s 3.15-3.37, 10 s 5.14-5.30, 15 s 7.02-7.43, 20 s 9.37-9.38 GiB (the
+# same matrix). 480x288 15 s measured 2.78 GiB, under the line. The reserve is not proportional to the area (the
 # allocator keeps relatively more at the smaller size: reserved/allocated 1.19 against 1.14 at 15 s), so at each length the
 # planner draws the line through the two sizes' largest reserved peaks, by pixel area, and keeps that plus
 # PIXEL_HEAD_MARGIN; smaller sizes follow the line (never below the weights), larger ones the line or the large size scaled
@@ -947,7 +947,7 @@ def _pixel_head_points(area):
 
 PIXEL_HEAD_RESERVED = _pixel_head_points(1.)
 # In the fast mode blocks 46-49 swap twelve int8 matrices for the adapter's BF16 ones (2.16 GB): about 1.08 GB more
-# weight than the int8 layers they replace (pih3-5x; inferred, not measured). They go with their blocks during sampling.
+# weight than the int8 layers they replace (inferred, not measured). They go with their blocks during sampling.
 FAST2_EXTRA_WEIGHT_BYTES = 2_160_000_000 // 2
 # Those twelve BF16 matrices are not module parameters (c2 d3c873ecb): a resident block keeps them on the GPU (counted
 # above), a streamed one keeps all 2.16 GB pinned in host memory and lends one (about 180 MB) to the GPU per call. So a
@@ -956,7 +956,8 @@ FAST2_EXTRA_WEIGHT_BYTES = 2_160_000_000 // 2
 FAST2_PINNED_BYTES = 2_160_000_000
 # At the end of the last step the pixel head's features (the final block's video rows, 5376 BF16 channels each) are
 # copied to host memory, while the weight cache is still held, so the transformer can be released before the head runs
-# (fast_tier_runtime.Features). c4 stage 2: 1344x768 15 s at a 16 GiB budget crossed the RAM guard by 0.34 GiB there.
+# (fast_tier_runtime.Features). In the 8-24 GB cap matrix, 1344x768 15 s at a 16 GiB budget crossed the RAM guard by
+# 0.34 GiB there.
 FAST2_FEATURE_BYTES_PER_TOKEN = 5376 * 2
 # With both counted, the peak working PSS (PSS less clean file pages) under a RAM cap, on the second RTX PRO 6000
 # machine: 1344x768 15 s, 16 GiB RAM and 16 GB VRAM, 14.04-14.32 GiB against a 14.97 GiB budget; 960x544 15 s, 12 GiB

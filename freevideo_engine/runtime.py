@@ -283,6 +283,8 @@ class Engine:
             fast.install_root(model)
             fast.install_features(model, steps)
         self.fast = fast
+        # Read by the worker: this engine draws its pixels with the fastest mode's head, not the video VAE.
+        self.pixel_head = fast is not None
         if online_lora:
             from .lora_online import attach_block
             attach_block(model, 'root', self.cache, manifest, _load_safetensors,
