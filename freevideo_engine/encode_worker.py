@@ -99,6 +99,11 @@ def main():
     args = parser.parse_args()
     if not args.check_library and not args.request:
         parser.error('--request is required for encoding')
+    if args.check_library:
+        # The setup check is the first import of torch on this computer: a missing Visual C++ runtime says so here.
+        # (In a child process: this one imports torch next and must find the libraries exactly where torch would.)
+        from .vc_runtime import require_in_child
+        require_in_child()
     request = json.loads(args.request.read_text(encoding='utf-8')) if args.request else {}
     started = time.perf_counter()
     if request.get('metrics'):

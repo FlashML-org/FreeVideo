@@ -610,8 +610,11 @@ ApplicationWindow {
                                       text: t("Open install folder", "打开安装目录"); onClicked: backend.openInstallFolder() }
                             FButton { objectName: "latestLauncherLink"; visible: s.failure.kind === "older-launcher"; flat: true
                                       text: t("Download the latest ↗", "下载最新版 ↗"); onClicked: backend.link("https://github.com/FlashML-org/FreeVideo/releases/latest") }
+                            // A missing Visual C++ runtime: Microsoft's page, not the installer file itself; the person can fix it, so no report.
+                            FButton { objectName: "vcRuntimeLink"; visible: s.failure.kind === "vc-runtime"
+                                      text: t("Download runtime ↗", "下载运行库 ↗"); onClicked: backend.link("https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist") }
                             FButton { objectName: "exportError"; visible: !diskFailure && !notAFault; text: t("Export report", "导出报告"); enabled: s.report.status !== "running"; onClicked: backend.exportReport() }
-                            FButton { objectName: "reportProblem"; visible: !diskFailure && !notAFault && s.failure.kind !== "port-taken" && s.failure.kind !== "comfy-restart" && s.failure.kind !== "comfy-folder" && s.failure.kind !== "engine-folder-denied"; text: reportOpened(s.error, s.failure.title || "") ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(s.error, s.failure.title || ""); onClicked: backend.reportProblem(plainText(s.error), plainText(s.failure.title || "")) }
+                            FButton { objectName: "reportProblem"; visible: !diskFailure && !notAFault && s.failure.kind !== "port-taken" && s.failure.kind !== "comfy-restart" && s.failure.kind !== "comfy-folder" && s.failure.kind !== "engine-folder-denied" && s.failure.kind !== "vc-runtime"; text: reportOpened(s.error, s.failure.title || "") ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(s.error, s.failure.title || ""); onClicked: backend.reportProblem(plainText(s.error), plainText(s.failure.title || "")) }
                         }
                         FButton {
                             objectName: "showError"; visible: !notAFault; text: t("Technical details", "技术详情"); flat: true
@@ -1696,7 +1699,7 @@ ApplicationWindow {
                                 Layout.fillWidth: true; spacing: 8
                                 FButton { text: t("Copy details", "复制详情"); implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1; onClicked: backend.copy(s.error) }
                                 FButton { text: t("Export report", "导出报告"); implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1; enabled: s.report.status !== "running"; onClicked: backend.exportReport() }
-                                FButton { objectName: "settingsReportProblem"; visible: s.failure.kind !== "comfy-folder" && s.failure.kind !== "engine-folder-denied"; text: reportOpened(s.error, s.failure.title || "") ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(s.error, s.failure.title || ""); implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1; onClicked: backend.reportProblem(plainText(s.error), plainText(s.failure.title || "")) }
+                                FButton { objectName: "settingsReportProblem"; visible: s.failure.kind !== "comfy-folder" && s.failure.kind !== "engine-folder-denied" && s.failure.kind !== "vc-runtime"; text: reportOpened(s.error, s.failure.title || "") ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(s.error, s.failure.title || ""); implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1; onClicked: backend.reportProblem(plainText(s.error), plainText(s.failure.title || "")) }
                             }
                             FText {
                                 visible: s.report.status !== "idle"; Layout.fillWidth: true; font.pixelSize: theme.micro; color: theme.muted

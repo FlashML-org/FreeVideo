@@ -1935,6 +1935,7 @@ class Installer:
              (encoder_after, 'encoder-source'), ('environment:unified' if self.layout == 'unified' else 'environment:encoder',))
         if self.system == 'Windows':
             task('windows-check', lambda: self.command('windows-runtime-check', [python, '-c',
+                'from freevideo_engine.vc_runtime import require_in_child; require_in_child(); '
                 'import torch,triton,safetensors,comfy_kitchen,comfy_aimdo; '
                 'assert torch.cuda.is_available(), "CUDA unavailable; check NVIDIA driver and Windows DLL errors above"; '
                 'print("Windows runtime imports passed; GPU kernel probes follow")']), ('runtime',), ('environment:' + name,))

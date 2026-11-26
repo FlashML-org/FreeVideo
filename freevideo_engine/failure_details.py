@@ -514,6 +514,39 @@ ENVIRONMENT_FILES = 'Files are missing or changed in these ComfyUI environment p
 # Windows refused to load a file (Smart App Control or another application control policy).
 APPLICATION_CONTROL = r'WinError 4551|Application Control policy has blocked'
 
+# vc_runtime.require() before the first import of torch, or torch's own error when c10.dll (which needs only the
+# Visual C++ runtime beside Windows' own libraries) could not be loaded or did not initialize (Windows error 126 or 1114).
+# The codes are matched, not the text, which Windows writes in the system language.
+VC_RUNTIME = (r'\[VC_RUNTIME_UNAVAILABLE (?:x64|ARM64)\]'
+              r'|\[WinError (?:126|1114)\][^"]{0,400}?Error loading "[^"\r\n]*[\\/]c10\.dll"')
+VC_RUNTIME_TITLE = ('The Microsoft Visual C++ runtime is missing or not working', 'Microsoft Visual C++ 运行库缺失或无法使用')
+# The card's "Download runtime" key opens Microsoft's page (Main.qml, vcRuntimeLink); the person installs it there.
+VC_RUNTIME_NEXT = ('Choose "Download runtime", download and install the {arch} version from the Microsoft page, then choose "Retry installation".',
+                   '请点击“下载运行库”，在微软页面下载并安装 {arch} 版本，然后点击“重试安装”。')
+VC_RUNTIME_FILES = ('Not loaded: %s', '未能加载：%s')
+VC_RUNTIME_FILE = ('%s (Windows error %s)', '%s（Windows 错误 %s）')
+VC_RUNTIME_JOIN = ('; ', '；')
+# The one package that fits every FreeVideo computer. Microsoft's page: "The X64
+# Redistributable package contains both ARM64 and X64 binaries. This package makes it easy to install required Visual C++
+# ARM64 binaries when the X64 Redistributable is installed on an ARM64 device." So on Windows on Arm it serves a native ARM64
+# Python and an x64 one alike, and the card never has to guess which one failed; the ARM64 package has no x64 files.
+VC_RUNTIME_PACKAGE = 'x64'
+
+
+def vc_runtime_failure(text, zh=False):
+    """The card for a Visual C++ runtime that did not load, or None. Its detail names the files and Windows' codes."""
+    marked = re.search(r'\[VC_RUNTIME_UNAVAILABLE (x64|ARM64)\]: ([^\r\n]+)', text)
+    if marked:
+        rows = re.findall(r'([\w.-]+\.dll) \(Windows error (\w+)\)', marked.group(2))
+    else:
+        found = re.search(r'\[WinError (126|1114)\][^"]{0,400}?Error loading "[^"\r\n]*[\\/](c10\.dll)"', text)
+        if not found:
+            return None
+        rows = [(found.group(2), found.group(1))]
+    files = VC_RUNTIME_JOIN[zh].join(VC_RUNTIME_FILE[zh] % row for row in rows)
+    return dict(title=VC_RUNTIME_TITLE[zh], detail=VC_RUNTIME_FILES[zh] % files + '\n' + VC_RUNTIME_NEXT[zh].format(arch=VC_RUNTIME_PACKAGE),
+                action='', kind='vc-runtime')
+
 
 # Error lines ComfyUI may end on, as a sentence for the card; any other line stays in the technical details.
 STARTUP_ERRORS = (
@@ -857,7 +890,7 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
                     detail=_startup_cause(summary, zh) + '\n' + action, action='', kind='comfy-startup')
     # A file Windows refused to load is no GPU result: the app-control guidance below applies, and the
     # code the engine adds to the message makes it recognisable in any system language.
-    if ('Failed step: kernels (' in summary and not re.search(APPLICATION_CONTROL, summary)
+    if ('Failed step: kernels (' in summary and not re.search(APPLICATION_CONTROL, summary) and not re.search(VC_RUNTIME, text)
             and not re.search(ORPHANED_PYTHON, summary)):
         detail = summary[summary.index('Failed step: kernels ('):]
         detail = detail.partition('\nRetained step log:')[0]
@@ -1144,6 +1177,9 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
             or re.search(r'\[CUDA_CAPABILITY_UNKNOWN\] Could not determine the CUDA architecture of (.+?) \(SM', text)
         if named and named.group(1) and BELOW_COMPUTE_FLOOR.search(named.group(1)):
             text += '\n[CUDA_ARCH_UNSUPPORTED] %s (SMunknown; compute capability unknown; driver unknown)' % named.group(1)
+    vc_runtime = vc_runtime_failure(text, zh)
+    if vc_runtime:
+        return vc_runtime
     for pattern, kind, title, action in rules:
         if re.search(pattern, text, re.I):
             if kind in WITHOUT_REPAIR and not can_repair:
