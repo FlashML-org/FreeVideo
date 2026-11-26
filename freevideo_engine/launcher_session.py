@@ -1278,7 +1278,7 @@ class Session:
                        'verify_failed': self.t('The download stopped: a downloaded file did not pass the check. Resume to download it again.',
                                                '下载中断：下载的文件没有通过校验。请点击“继续”重新下载。'),
                        'busy': self.t('Another download of this model is running.', '这个模型正在被另一处下载。')}.get(
-                active.get('reason'), self.t('The download stopped. Resume to continue; if it stops again, export the report and use "Report a problem".',
+                active.get('reason'), self.t('The download stopped. Choose "Resume" to continue; if it stops again, export the report and choose "Report a problem".',
                                              '下载中断。请点击“继续”；如再次中断，请导出报告，再点击“提交问题”并附上报告。'))
         return dict(ready=ready, checking=checking, total_bytes=total, enough_disk=enough, busy=busy, install=active, failure=failure,
                     downloaded_bytes=active.get('done', 0), title=self.t(*NAMES['text']),

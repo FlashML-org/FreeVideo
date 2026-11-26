@@ -229,4 +229,4 @@ def describe(value, zh):
     cause = (': the computer ran out of memory' if memory else ', possibly because the computer ran out of memory' if maybe
              else ': the system or another program ended it' if ended
              else ': it crashed' if crashed else '')
-    return 'FreeVideo stopped unexpectedly at %s%s. Click "Connect again" to restart it; if it stops again, export the report and use "Report a problem".' % (clock, cause)
+    return 'FreeVideo stopped unexpectedly at %s%s. Choose "Connect again" to restart it; if it stops again, export the report and choose "Report a problem".' % (clock, cause)
