@@ -493,6 +493,14 @@
 .fv-ed-project-row>.fv-ed-notice-stack .fv-ed-notice:not(:last-child){display:none}
 .fv-ed-project-row>.fv-ed-notice-stack .fv-ed-notice-text{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:8px}
 .fv-ed-project-row>.fv-ed-notice-stack .fv-issue-button{flex:none}
+/* The sentence is measured here (editor.js fitNotices): one the row cannot hold whole moves the notices out, so it is
+   never shown cut; Report a problem keeps its whole width beside the close key. */
+.fv-ed-project-row>.fv-ed-notice-stack .fv-ed-notice-line{flex:0 1 auto;min-width:0;overflow:hidden}
+/* Out of the row: a line of their own at the top of the picture, as on a phone, where the sentence wraps whole. */
+@media(min-width:681px){.fv-editor>.fv-ed-notice-stack[data-hx-spill]{position:relative;inset:auto;grid-column:2;grid-row:3;align-self:start;justify-self:stretch;width:auto;margin:8px 12px 0;pointer-events:none}}
+/* The notice takes only the room the title and Export leave: a long sentence no longer squeezes them. */
+.fv-ed-project-row>.fv-ed-notice-stack{flex-basis:0}
+.fv-ed-project-row .fv-ed-export-box{flex:none}
 .fv-ed-genbar-gone{grid-column:1/-1;grid-row:5;display:flex;align-items:center;justify-content:center;margin:4px 12px;border:1px dashed var(--fv-border);border-radius:var(--fv-r-lg);color:var(--fv-muted);font-size:13px}
 .fv-ed-genbar-gone[hidden]{display:none}
 @media(max-width:680px){.fv-ed-genbar-gone{grid-column:1;margin:4px 8px;padding:0 12px;text-align:center}}

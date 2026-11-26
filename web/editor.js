@@ -526,8 +526,9 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         const last = notices.lastElementChild;
         if (last?.dataset.text === text) last.remove();
         const card = el('div', 'fv-ed-notice'); card.setAttribute('role', 'status'); card.dataset.text = text;
-        const words = el('span', 'fv-ed-notice-text', text);
-        // In the project row the line is cut to one row; its hover says it whole.
+        // The sentence in a span of its own: it is what is measured to see whether the project row holds it whole.
+        const words = el('span', 'fv-ed-notice-text'); words.append(el('span', 'fv-ed-notice-line', text));
+        // Its hover says it whole wherever it stands.
         words.setAttribute('data-fv-tip-name', where ? t('Problem', '问题') : t('Notice', '提示')); words.setAttribute('data-fv-tip-use', text);
         if (where && report) { words.classList.add('fv-copyable'); words.append(issueButton(t, () => ({where, message: text, kind}))); }
         const close = button('', () => { clearTimeout(timer); noticeTimers.delete(timer); card.remove(); }, 'fv-ed-notice-close');
@@ -2033,9 +2034,31 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             else if (!inspector && tray.parentNode !== genHost) genHost.append(tray);
             element.dataset.trayPlace = inspector ? 'inspector' : 'bar';
             // Notices take the free middle of the project row (a slot of fixed height) from 681 px up; on a phone, the top of the picture.
-            if (inspector && notices.parentNode !== projectRow) projectRow.insertBefore(notices, exportBox);
-            else if (!inspector && notices.parentNode !== element) element.append(notices);
+            if (inspector && notices.parentNode !== projectRow && !notices.dataset.hxSpill) projectRow.insertBefore(notices, exportBox);
+            else if (!inspector) { delete notices.dataset.hxSpill; if (notices.parentNode !== element) element.append(notices); }
+            fitNotices();
         };
+        // A sentence the project row cannot hold whole is not cut: the notices take a line of their own at the top of the
+        // picture, as on a phone, where they wrap. The newest sentence is measured in the row each time something changes.
+        function fitNotices() {
+            if (disposed || element.dataset.trayPlace !== 'inspector') return;
+            if (notices.parentNode !== projectRow) projectRow.insertBefore(notices, exportBox);
+            delete notices.dataset.hxSpill;
+            const line = notices.lastElementChild?.querySelector('.fv-ed-notice-line');
+            if (line && line.scrollWidth > line.clientWidth + 1) { notices.dataset.hxSpill = 'true'; element.append(notices); }
+        }
+        if (typeof MutationObserver === 'function') {
+            const changed = new MutationObserver(fitNotices);
+            changed.observe(notices, {childList: true});
+            listeners.push(() => changed.disconnect());
+        }
+        if (typeof ResizeObserver === 'function') {
+            const resized = new ResizeObserver(fitNotices);
+            // The row keeps its size when what is beside the notices grows (a longer name, the save state): the notices'
+            // own box shrinks then, so it is watched too.
+            resized.observe(projectRow); resized.observe(notices);
+            listeners.push(() => resized.disconnect());
+        }
         const passive = node => node.classList.contains('fv-request-assets') || node.classList.contains('fv-ed-ref-notice');
         const follow = () => {
             if (disposed || element.dataset.trayPlace !== 'inspector' || !adjust.narrow) return;
