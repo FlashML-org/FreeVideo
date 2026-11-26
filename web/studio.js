@@ -36,7 +36,7 @@ import { openCastLibrary } from './cast_source.js';
 import { uploadMedia } from './media_upload.js';
 import { reconcileLoraTriggers, promptLines } from './lora_triggers.js';
 import { createVerdicts, describeVerdict, feedbackDraft } from './lora_check.js';
-import { FAST_EFFORT, FAST_OPTION_TEXT, continuationUpscale, createSamplingEffort, effortFor, effortsFrom, fastOfferOf, passSwitch, stepCacheOf, upscaleOf, withFastLevel } from './sampling_effort.js';
+import { FAST_EFFORT, FAST_OPTION_TEXT, continuationUpscale, createSamplingEffort, effortFor, effortsFrom, fastAnswered, fastOfferOf, passSwitch, stepCacheOf, upscaleOf, withFastLevel } from './sampling_effort.js';
 import { fastPackControl } from './fast_pack.js';
 import { createPanelShell } from './panel_shell.js';
 import { layoutColumns } from './studio_columns.js';
@@ -1220,10 +1220,10 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const fastLevels = () => withFastLevel(effortsFrom(fastGrid), fastOffer && fastPack.published === true ? fastOffer : null);
     function applyFastOffer(grid) {
         fastGrid = grid;
-        if (grid?.status === 'ready') fastOffer = widget(node, 'fast_mode') ? fastOfferOf(grid) : null;
+        if (fastAnswered(grid)) fastOffer = widget(node, 'fast_mode') ? fastOfferOf(grid) : null;
         effort.setLevels(fastLevels());
         if (fastOffer) fastPack.refresh();
-        if (grid?.status !== 'ready' || !fastOn()) return;
+        if (!fastAnswered(grid) || !fastOn()) return;
         if (!fastOffer) chooseEffort(effort.levels().find(tier => tier.name === 'Light'));
     }
     // What the quality control shows now; the editor's generation bar shows the same control from this.
@@ -1571,8 +1571,10 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // Where the page cannot tell yet: 'checking' (the planner's grid is not in) holds the key; 'linked' (the size comes from
     // another node, so it never can) lets it go, and a refusal then comes back as the failure card (Lane 11-24).
     function fastUnknown() {
-        // Not listed (no answer from the planner either): it is sent at Light, so nothing waits.
-        if (!fastOn() || !fastOffer || lengthControl?.plan?.count > 1 || fastCell()) return null;
+        // Not listed (no answer from the planner either): it is sent at Light, so nothing waits. A Mac's answer is the
+        // listing alone (fast_only, no sizes), as for every level there: nothing waits, and the Mac's own admission
+        // refuses a size that does not fit, with its failure card.
+        if (!fastOn() || !fastOffer || lengthControl?.plan?.count > 1 || fastCell() || fastGrid?.fast_only === true) return null;
         return linked(node, 'width') || linked(node, 'height') ? 'linked' : 'checking';
     }
     function fastUnknownWords(kind) {

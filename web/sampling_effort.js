@@ -23,6 +23,9 @@ export const FAST_NAME = Object.freeze(['Fast', '极速']);
 export const FAST_OPTION_TEXT = Object.freeze(['Faster; fine detail may flicker', '更快，画面细节可能闪烁']);
 // What a capability grid offers of it (capabilities.fast_mode, listed by the planner, a Mac included).
 export const fastOfferOf = grid => grid?.fast_mode?.listed === true ? grid.fast_mode : null;
+// Whether a capabilities answer says anything about the Fast level: a ready grid, or a Mac's fast_only answer (no grid,
+// only the listing; its status stays unavailable for every other reader).
+export const fastAnswered = grid => grid?.version === 1 && (grid.status === 'ready' || grid.fast_only === true);
 // Mac runs the same plans; retain platform identity for its legacy High alias.
 const macLevels = new WeakSet();
 // A Mac's levels with Fast in front keep that identity.

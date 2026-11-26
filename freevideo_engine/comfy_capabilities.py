@@ -64,6 +64,27 @@ def _context(output_directory):
     return machine, rows
 
 
+def mac_fast_grid():
+    """What a Mac's page gets from the capabilities route: no grid (status stays unavailable, so the length,
+    size and estimate readers keep their own Mac behavior), only whether the fastest mode is listed and why not,
+    marked fast_only. A machine that cannot be read gets the plain unavailable answer."""
+    from .capabilities import _fast_mode_listing, _machine
+    try:
+        context = _machine_context()
+        # This route asks only on Apple silicon: an installation whose setup run (and its plan's system) is gone is
+        # still a Mac.
+        if not context.get('system') and not (context.get('hardware') or {}).get('system'):
+            context['system'] = 'Darwin'
+        machine = _machine(context)
+    except Exception:
+        logging.debug('[FreeVideo] The fastest mode listing could not be read on this Mac.', exc_info=True)
+        machine = None
+    if machine is None or not machine['mac']:
+        return dict(UNAVAILABLE)
+    return dict(UNAVAILABLE, fast_only=True, machine=dict(system=machine['system']),
+                fast_mode=_fast_mode_listing(machine))
+
+
 def _apple_silicon():
     return platform.system() == 'Darwin' and platform.machine().lower() in ('arm64', 'aarch64')
 
@@ -351,7 +372,7 @@ def register():
     @server.routes.get('/freevideo/capabilities')
     async def capabilities(request):
         if mac:
-            return web.json_response(dict(UNAVAILABLE), headers={'Cache-Control': 'no-store'})
+            return web.json_response(await asyncio.to_thread(mac_fast_grid), headers={'Cache-Control': 'no-store'})
         try:
             key = _query(request.query)
         except (ValueError, TypeError, OverflowError, RecursionError) as error:
