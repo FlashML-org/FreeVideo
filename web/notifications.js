@@ -166,7 +166,7 @@ const ago = (at, cn = CN) => {
 };
 export function noteWords(note, cn = CN) {
     const w = pair => words(pair, cn);
-    if (note.type === 'toast') return {title: note.title || w(['Notice', '提醒']), sub: note.reason || (note.status === 'notice' ? '' : w(['Did not finish', '没有完成']))};
+    if (note.type === 'toast') return {title: note.title || w(['Notice', '提醒']), sub: note.reason || (note.status === 'notice' ? '' : w(['Did not finish', '未完成']))};
     if (note.type === 'agent') return {title: note.title || w(['Assistant task', '助手任务']), sub: note.reason || w(['See why', '查看原因'])};
     if (note.type === 'install') {
         return note.status === 'done' ? {title: w(['{name} is installed', '{name} 已安装', { name: note.label }]), sub: w(['Ready to use', '可以使用了'])}

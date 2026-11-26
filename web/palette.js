@@ -623,7 +623,7 @@ export function commandFailure(command, error, report = openIssue) {
     const server = /\bHTTP\s*\d{3}\b/.test(String(error?.message ?? error ?? '')) || Number.isInteger(error?.status);
     if (reason && !server) return [reason, {tone: 'fail'}];
     // The pill holds one short line beside the button; the server's sentence goes in the detail (the bell keeps both).
-    return [t('Failed: “{name}”', '“{name}”没有完成', { name }), {tone: 'fail', ...(reason ? {detail: reason} : {}), action: {
+    return [t('Failed: “{name}”', '“{name}”未完成', { name }), {tone: 'fail', ...(reason ? {detail: reason} : {}), action: {
         label: t('Report', '提交问题'), use: t('Open the feedback form with this error filled in', '打开反馈表，已填好这条错误'),
         run: () => report(t, {where: ['Command palette', '命令面板'], message: `${name}: ${String(error?.message ?? error ?? '')}`, kind: 'command', facts: {command: command.id}})}}];
 }

@@ -40,7 +40,7 @@ export function statusKey(job) {
     return job.status === 'cancelled' ? 'stopped' : 'failed';
 }
 const STATUS = {running: ['Making', '生成中'], queued: ['Queued', '排队中'], stopping: ['Stopping', '正在停止'],
-    done: ['Done', '已完成'], failed: ['Did not finish', '没有完成'], stopped: ['Stopped', '已停止']};
+    done: ['Done', '已完成'], failed: ['Did not finish', '未完成'], stopped: ['Stopped', '已停止']};
 export function statusText(job, t, fraction = null) {
     const key = statusKey(job), word = t(...STATUS[key]);
     return key === 'running' && fraction >= .01 ? `${word} ${Math.floor(fraction * 100)}%` : word;
@@ -253,7 +253,7 @@ export function createSideRail(t, handlers = {}) {
         dPreview.style.setProperty('--p', String((fraction || 0) * 100));
         put(dPrompt, row.prompt || ''); dPrompt.hidden = !row.prompt;
         dPrompt.dataset.source = row.promptSource || 'request';
-        setTip(dPrompt, {name: row.promptSource === 'job' ? t('Prompt', '提示词') : t('What you asked for', '你提出的要求')});
+        setTip(dPrompt, {name: row.promptSource === 'job' ? t('Prompt', '提示词') : t('What you asked for', '您提出的要求')});
         dFacts.replaceChildren(...fact(t('Kind', '类型'), job.kind === 'image' ? t('Image', '图片') : job.kind === 'production' ? t('Film', '成片') : t('Video', '视频')),
             ...fact(t('Size', '尺寸'), job.width > 0 && job.height > 0 ? `${job.width} × ${job.height}` : ''),
             ...fact(t('Length', '时长'), job.seconds > 0 ? t('{seconds} s', '{seconds} 秒', { seconds: job.seconds }) : ''),

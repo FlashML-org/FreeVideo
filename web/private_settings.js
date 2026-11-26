@@ -53,7 +53,7 @@ export function privacySettings(t, api) {
         try {
             const value = await json('/freevideo/private/clean', {tokens});
             size.textContent = t('Removed {removed} files, {size}', '已删除 {removed} 个文件，共 {size}', { removed: value.removed, size: amount(value.freed_bytes || 0) });
-        } catch { size.textContent = t('The clean up did not finish. Try again.', '清理没有完成，请再试一次。'); }
+        } catch { size.textContent = t('The clean up did not finish. Try again.', '清理未完成，请重试。'); }
         await new Promise(done => setTimeout(done, 1500)); await review();
     });
 

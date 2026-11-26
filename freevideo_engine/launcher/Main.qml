@@ -243,9 +243,9 @@ ApplicationWindow {
     function upgradeCause(code, step) {
         if (code === "disk") return t("There is not enough free disk space for the model files. Free some space first.", "磁盘可用空间不足，放不下模型文件。请先腾出空间。")
         if (code === "network") return t("The model download lost its connection. Check the network first.", "模型下载时网络连接中断。请先检查网络。")
-        if (step === "switch") return t("The switch to the faster model did not finish.", "切换到更快的模型没有完成。")
+        if (step === "switch") return t("The switch to the faster model did not finish.", "切换到更快的模型未完成。")
         if (step === "release") return t("The old model could not be removed.", "旧模型未能删除。")
-        return t("The model download did not finish.", "模型下载没有完成。")
+        return t("The model download did not finish.", "模型下载未完成。")
     }
     function upgradeReportText() {
         // A failed upgrade reports the whole failure, including the step log, not only the first line shown on the card.

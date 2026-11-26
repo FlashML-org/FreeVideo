@@ -82,7 +82,7 @@ export const failureText = value => {
             : t('The settings, GPU or free disk space changed after you confirmed, so installation stopped. Click Check installation, then Install.',
                 '确认之后设置、显卡或磁盘空间有变化，已停止。请先点“检查安装”，再点“安装”。');
     }
-    if (text === SPEED_TEST_FAILED) return t('The speed test did not finish. Click "Test again".', '测速没有完成，请点“重新测速”。');
+    if (text === SPEED_TEST_FAILED) return t('The speed test did not finish. Click "Test again".', '测速未完成，请点击“重新测速”。');
     if (!matches.length) return text;
     const file = matches.at(-1)[1];
     return t('{file} differs from the tested version and was left unchanged. Click Check installation, then Install. After you confirm, the original is renamed and kept, and the tested version is downloaded.',

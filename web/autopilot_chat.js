@@ -73,13 +73,15 @@ const WHITEBOX = {
     play: ['Play', '播放'], pause: ['Pause', '暂停'], seconds: ['s', '秒'],
     failure: ['Could not start: ', '无法开始生成：'],
 };
-const GENERIC_FAILURE_ZH = '没有完成';
+const GENERIC_FAILURE_ZH = '未完成';
+// The generic Chinese an older engine or a saved session may still carry: the same "did not finish", not a reason of its own.
+const GENERIC_FAILURES_ZH = [GENERIC_FAILURE_ZH, '没有完成', '生成没有完成'];
 // The failures whose next step is the problem report (agent/errors.py FAILURE_NEXT_*).
 const UNEXPECTED_FAILURES = ['internal_error', 'generation_failed'];
 // Sends and failure cards use the same public reason, including the engine's Chinese mapping.
 function failureReason(value, t) {
     const error = value.error, reason = error?.error_zh || value.error_zh, reasonEn = error?.error_en || value.error_en;
-    if (error?.code === 'session_full' && (!reason || reason === GENERIC_FAILURE_ZH))
+    if (error?.code === 'session_full' && (!reason || GENERIC_FAILURES_ZH.includes(reason)))
         return t('This chat is full. Click "New chat".', '这个对话已满，请点“新对话”。');
     // The next step belongs to the same object as the reason it follows.
     const own = error?.error_zh ? error : value;
@@ -94,7 +96,7 @@ function failureReason(value, t) {
 // program text and goes to the technical details, so the card then says only that the generation did not finish.
 export function failureCardReason(value, t) {
     const error = value.error, zh = error?.error_zh || value.error_zh, en = error?.error_en || value.error_en;
-    const said = zh && en && zh !== GENERIC_FAILURE_ZH && en !== 'Did not finish' && zh !== '生成没有完成';
+    const said = zh && en && !GENERIC_FAILURES_ZH.includes(zh) && en !== 'Did not finish';
     if (said || error?.code === 'session_full') return failureReason(value, t);
     // Unclassified: the creation panel's reading of the original text (memory, a missing file, a component that
     // did not load...) says the cause and the next step; only what it cannot place stays "did not finish".
@@ -1807,7 +1809,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         chatSummary = !state.session || !tasks.length ? null
             : running ? {text: running.title + ((running.fraction?.() ?? 0) >= .01 ? ` · ${Math.floor(running.fraction() * 100)}%` : ''), state: 'running'}
             : queued ? {text: t('{queued} queued', '{queued} 项排队中', { queued }), state: 'queued'}
-            : failed ? {text: t('{failed} did not finish', '{failed} 项没有完成', { failed }), state: 'failed'}
+            : failed ? {text: t('{failed} did not finish', '{failed} 项未完成', { failed }), state: 'failed'}
             : {text: t('{done} done', '{done} 项已完成', { done }), state: 'done'};
         shotWords = tasks.flatMap(row => [row.title, row.prompt].filter(Boolean));
         const node = listNodes.get(state.session);

@@ -158,7 +158,7 @@ export function openWorksPicker({anchor, t: tr = t, host = anchor.closest('dialo
         if (closed) return;
         const {worksThumbnailURL} = cached;
         count.textContent = rows.length ? String(rows.length) : '';
-        empty.textContent = cached.failed ? tr('The creations could not be read. Try again.', '没能读取作品，请再试一次。') : tr('No images yet', '还没有图片');
+        empty.textContent = cached.failed ? tr('The creations could not be read. Try again.', '未能读取作品，请重试。') : tr('No images yet', '还没有图片');
         empty.hidden = !!rows.length || !cached.loaded;
         const reference = !selecting && canReference();
         const keep = new Set(rows.map(row => row.file));

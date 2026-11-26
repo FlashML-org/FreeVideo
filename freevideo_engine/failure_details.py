@@ -936,7 +936,7 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
           '安装已停止，以免打断正在生成的视频。视频生成完成后，请点击“重试安装”，并再次确认安装。已完成的步骤会保留。')),
         # Moving the engine's editable install to the new source failed and was undone (engine_binding).
         (r'Editable install failed for|Editable verification failed for|The engine.s uv is missing', 'update-unfinished',
-         ('The update did not finish', '这次更新没有完成'),
+         ('The update did not finish', '这次更新未完成'),
          ('FreeVideo is back on the previous version and works as before. Click Repair to reinstall the engine environment and update again; the details give the reason.',
           'FreeVideo 已退回原来的版本，可以照常使用。点“修复”可以再次更新，原因在详情里。')),
         (r'Git \d+\.\d+ is too old to download the pinned sources', 'git-version',
@@ -958,7 +958,7 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
           '请只导入模型包并继续安装，FreeVideo 会自动下载 Mac 的运行环境。')),
         # Both carry ComfyUI's log, whose unrelated lines must not pick the card.
         (r'ComfyUI is still starting or could not load FreeVideo', 'comfy-nodes',
-         ('ComfyUI did not load FreeVideo', 'ComfyUI 没有加载 FreeVideo'),
+         ('ComfyUI did not load FreeVideo', 'ComfyUI 未加载 FreeVideo'),
          ('Click Retry. If it stops here again, the ComfyUI log in the details shows why the FreeVideo nodes did not load; export the report to send it.',
           '请点“重试”。仍然停在这里时，可以导出报告。')),
         (r'ComfyUI is already running\. Restart it once', 'comfy-restart',
@@ -1051,7 +1051,7 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
          ('Switching the download source or connection mode gives the same result. Choose "Export report", then "Report a problem", and attach the report.',
           '更换下载源或连接方式后结果相同。请先点击“导出报告”，再点击“提交问题”并附上报告。')),
         (r'Model download paused|unexpected-transfer-size|ConnectionError|ConnectTimeout|ReadTimeout|HTTP probe failed|Could not resolve host|SSL certificate|Every download source failed|All Git sources failed|All package sources failed|Python download failed on every route', 'download',
-         ('Download interrupted', '下载中断了'),
+         ('Download interrupted', '下载已中断'),
          ('Check your network or change the source or connection mode in Settings → Downloads, then retry.', '检查网络，或在“设置 → 下载”中切换下载源、连接模式后重试。')),
         (r'FreeVideo cannot read its program files', 'unreadable-files',
          ('FreeVideo cannot read its own files', 'FreeVideo 读不到自己的程序文件'),
@@ -1208,7 +1208,7 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
         # The internal step id never reaches the card; the exit code stays in the technical details.
         name = _step_name(step.group(1), zh)
         if name:
-            title = ('“%s”这一步没有完成' if zh else 'The step "%s" did not finish') % name
+            title = ('“%s”这一步未完成' if zh else 'The step "%s" did not finish') % name
         # The step's own line is internal. The last other error line is raw text, so it shows only
         # when it has a known sentence in this language; otherwise it stays in the technical details.
         other = [line for line in causes if not line.startswith(('Failed step:', 'Setup failed:'))]
@@ -1240,7 +1240,7 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
 
 # comfy_setup.inspection_failed: the first line of a failed check.
 INSPECTION_SUMMARY = r'Setup inspection failed(?: \([^()\r\n]*(?:\([^()\r\n]*\)[^()\r\n]*)*\))?'
-CHECK_UNFINISHED = ('The check did not finish.', '这次检查没有完成。')
+CHECK_UNFINISHED = ('The check did not finish.', '这次检查未完成。')
 # The way to send a failure to us, by the launcher's own button names (Main.qml: "Export report", "Report a problem").
 REPORT_STEP = ('If it fails again, select "Export report", then select "Report a problem" and attach the report.',
                '仍然失败时，请先点击“导出报告”，再点击“提交问题”并附上报告。')

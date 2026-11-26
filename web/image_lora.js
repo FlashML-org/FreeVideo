@@ -80,7 +80,7 @@ export function createImageLoras({t, fetchApi, el = domEl, getPrompt = () => '',
             result = await response.json();
             if (!response.ok || typeof result?.words !== 'string') result = null;
         } catch { /* same sentence below */ }
-        if (!result) throw new Error(t('Could not save. Try again.', '没有保存，请再试一次。'));
+        if (!result) throw new Error(t('Could not save. Try again.', '未能保存，请重试。'));
         words.set(name, result.words);
     }
 

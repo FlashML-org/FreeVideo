@@ -1139,7 +1139,7 @@ app.registerExtension({
                 else {
                     const studio = showStudio(node), status = studio?.querySelector?.('.fv-status');
                     if (status) {
-                        const message = text('Could not complete. Try again.', '没有完成，请重试');
+                        const message = text('Could not complete. Try again.', '未完成，请重试');
                         status.dataset.error = 'true'; status.textContent = message;
                         status.append(issueButton(text, () => ({where: ['Open editor', '打开剪辑'], message})));
                     }

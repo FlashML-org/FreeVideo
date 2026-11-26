@@ -481,7 +481,7 @@ export async function openSetup(options) {
             applyPreviewStyle(saved.style, saved.chosen === true);
         } catch (error) {
             const known = failureText(error.message);
-            previewStatus.textContent = known === String(error.message || '') ? userMessage(error, t, t('Could not save. Try again.', '没能保存，请重试。')) : known; previewStatus.className = 'st-slot is-warn';
+            previewStatus.textContent = known === String(error.message || '') ? userMessage(error, t, t('Could not save. Try again.', '未能保存，请重试。')) : known; previewStatus.className = 'st-slot is-warn';
         } finally { loopSwitch.disabled = false; choices.removeAttribute('aria-busy'); paintPreview(); }
     };
     previewStatus.textContent = t('Applies at once to the preview on screen, also on the phone page.', '立即应用到屏幕上的预览，手机页面也一样。');
@@ -1150,7 +1150,7 @@ export async function openSetup(options) {
             loading: t('Reading installation settings…', '正在读取安装设置…'),
             busy: lastTask.action === 'calibrate' ? t('Measuring performance', '正在测量性能') : lastTask.action === 'plan' || lastTask.action === 'inspect' ? t('Checking the installation', '正在检查安装') : t('Installing', '正在安装'),
             readerr: t('Installation settings could not be read', '无法读取安装设置'),
-            failed: t('The last step did not finish', '上一步没有完成'),
+            failed: t('The last step did not finish', '上一步未完成'),
             problem: t('Fix these before installing', '安装前需要先处理'),
             plan: t('The installation plan is ready', '安装计划已就绪'),
             stale: t('Settings changed', '设置已更改'),
@@ -1249,7 +1249,7 @@ export async function openSetup(options) {
             // As on the compatibility card: a known refusal is already a sentence, a server's own words follow "Save
             // failed", and a lost connection or browser wording becomes a plain sentence; the report keeps what was said.
             reserveFailure.className = 'st-slot is-warn';
-            fault(reserveFailure, error.message, error, t('Could not save. Try again.', '没能保存，请重试。'));
+            fault(reserveFailure, error.message, error, t('Could not save. Try again.', '未能保存，请重试。'));
             const said = String(error.message || '').trim(), shown = reserveFailure.firstChild;
             if (said && setupError(said) === undefined && shown?.nodeType === Node.TEXT_NODE && shown.data === said) {
                 shown.data = t('Save failed: ', '保存失败：') + said;

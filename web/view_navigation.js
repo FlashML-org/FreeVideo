@@ -335,7 +335,7 @@ export function installNavigation(openStudio, agent = false, {openWorkflow = nul
                 } catch (error) {
                     console.warn('FreeVideo edit project:', error);
                     app.extensionManager?.toast?.add({severity: 'error', summary: 'FreeVideo',
-                        detail: t('Could not complete. Try again.', '没有完成，请重试'), life: 9000});
+                        detail: t('Could not complete. Try again.', '未完成，请重试'), life: 9000});
                     return null;
                 }
             })();

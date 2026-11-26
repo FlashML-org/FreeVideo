@@ -123,7 +123,7 @@ export function editorErrorText(value, t = translatorFor(null, false)) {
     if (['model_missing', 'missing_model', 'model_not_found'].includes(code) || /(?:model|checkpoint|模型).*(?:not found|missing|不存在|缺失)/i.test(raw))
         return t('Loading the model failed: {reason}', '加载模型时出错：{reason}', { reason: raw || code });
     if (['timeout', 'timed_out', 'generation_timeout'].includes(code) || /timed?\s*out|timeout|超时/i.test(raw))
-        return t('{stage} timed out. Try again.', '{stage}时等待超时，请再试一次。', { stage });
+        return t('{stage} timed out. Try again.', '{stage}时等待超时，请重试。', { stage });
     const received = raw || (/^[a-z_]+$/.test(code) ? '' : code);
     if (received) return t('{generating} failed: {received}', '{generating}时出错：{received}', { generating, received });
     // No readable text: say what the code names, and where the details are.
@@ -139,7 +139,7 @@ function exportErrorText(value, t) {
     const message = [value?.response?.error?.message, value?.response?.error, value?.response?.message, value?.message]
         .find(text => typeof text === 'string' && text.trim() && text !== 'editor_request')?.trim().split(/[\r\n]+/)[0];
     // A bare status code means nothing to the user; the server's own words do.
-    return message ? t('Export failed: {message}', '导出时出错：{message}', { message }) : t('Export failed. Try again.', '导出时出错，请再试一次。');
+    return message ? t('Export failed: {message}', '导出时出错：{message}', { message }) : t('Export failed. Try again.', '导出时出错，请重试。');
 }
 // The save route's own messages are internal English, so only a full disk is named.
 function saveErrorText(value, t) {
@@ -500,7 +500,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             if (said) out(said);
             return {ok: false, reason: code};
         }
-        const text = step === 'generate' ? editorErrorText(value, t) : step === 'export' ? exportErrorText(value, t) : isNetworkTypeError(value) ? connectionLostText(t) : t('This step did not finish. Try again; if it keeps failing, report the problem.', '这一步没有完成。请重试；仍然失败时，请提交问题。');
+        const text = step === 'generate' ? editorErrorText(value, t) : step === 'export' ? exportErrorText(value, t) : isNetworkTypeError(value) ? connectionLostText(t) : t('This step did not finish. Try again; if it keeps failing, report the problem.', '这一步未完成。请重试；仍然失败请提交问题。');
         out(text, step === 'export' ? EXPORT_ISSUE : EDITOR_ISSUE, failureKind(site, value)); return {ok: false, reason: code, say: text};
     }
     const store = createEditorStore(api, {t, notify, standIn: given?.generationStandIn, onGenerationChecking: () => { if (!disposed) settleService(); }, onGenerationReady: ready => {
@@ -711,7 +711,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 if (!clips.length) { held.shift(); markHeld(entry.ids, false); rememberView(); continue; }
                 const selection = {kind: 'clip', ids: clips.map(clip => clip.id)}, before = partBefore(Math.min(...clips.map(clip => clip.start)));
                 held.shift(); markHeld(entry.ids, false); rememberView();
-                if (before && !before.source && before.pending && !before.job) { genbar?.say(t('The part before did not finish, so this one did not start.', '上一段没有完成，这一段没有开始。')); continue; }
+                if (before && !before.source && before.pending && !before.job) { genbar?.say(t('The part before did not finish, so this one did not start.', '上一段未完成，这一段未开始。')); continue; }
                 // Each part goes with its own description, as written while it waited.
                 const texts = Object.fromEntries(clips.map(clip => [clip.id, clip.text.trim() || entry.text]));
                 try { await actions.generate({text: texts[clips[0].id], texts, selection, allowEmpty: entry.allowEmpty === true}); }
@@ -1800,7 +1800,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                     : value.reason === 'interp_download' ? t('Export failed: the model needed for 48/60 fps could not be downloaded. Check the connection and export again, or set the frame rate to 24.', '导出时出错：48/60 帧率需要的模型没能下载。请检查网络后重新导出，或把帧率改为 24。')
                     : value.reason === 'interp_memory' ? t('Export failed: the graphics card did not have enough free memory for 48/60 fps. Export again after the current generation finishes, or set the frame rate to 24.', '导出时出错：显卡空闲显存不足，无法导出 48/60 帧率。请等当前生成结束后重新导出，或把帧率改为 24。')
                     : value.reason === 'unreadable' ? t('Export failed: a source file cannot be read. Import it again from the library.', '导出时出错：有素材读不出来，请在素材库重新导入。')
-                    : t('Export failed. Try again.', '导出时出错，请再试一次。'), EXPORT_ISSUE, failureKind('export', value));
+                    : t('Export failed. Try again.', '导出时出错，请重试。'), EXPORT_ISSUE, failureKind('export', value));
             }
             if (value.state === 'cancelled') notify(t('Export cancelled. No unfinished file is kept.', '已取消导出，没有留下不完整的文件。'));
             window.FreeVideoNotifyTaskDone?.({kind: 'export', id: value.id, ok: value.state === 'done'});

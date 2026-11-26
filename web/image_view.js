@@ -89,7 +89,7 @@ export function createFakeImageClient({delay = 600, ready = {'minimax-h3-image':
     for (const id of Object.keys(install)) { if (install[id] !== 'ready') state[id] = false; if (install[id] === 'downloading') loading.set(id, Date.now() - bytes / rate * .4); }
     const models = () => IMAGE_MODELS.map(m => ({id: m.id, label: m.name, ready: !!state[m.id], downloading: loading.has(m.id), max_images: references[m.id] ?? 0,
         bytes_total: bytes, bytes_done: loading.has(m.id) ? Math.min(bytes, (Date.now() - loading.get(m.id)) * rate) : failed.has(m.id) ? bytes * .31 : 0,
-        install: failed.has(m.id) ? {state: 'failed', done: bytes * .31, total: bytes, reason: 'network', message_en: 'The connection dropped.', message_zh: '网络连接中断了。'}
+        install: failed.has(m.id) ? {state: 'failed', done: bytes * .31, total: bytes, reason: 'network', message_en: 'The connection dropped.', message_zh: '网络连接已中断。'}
             : paused.has(m.id) ? {state: 'paused_for_generation', done: bytes * .2, total: bytes, bytes_per_second: 0, reason: paused.get(m.id)}
             : loading.has(m.id) ? {state: 'running', done: Math.min(bytes, (Date.now() - loading.get(m.id)) * rate), total: bytes} : null}));
     return {

@@ -1501,7 +1501,7 @@ async function openImageEditorNow({source = null, name = source || '', target = 
                 addPart({shape: 'mask', layer: src.id, file, upto: src.ops.length}, how);
             }).catch(error => {
                 message(error?.code === 'busy_video' ? t('A video is generating. Try again when it finishes.', '视频正在生成，完成后再试。')
-                    : t('Could not find an object here. Try again.', '没能在这里找出物体，请再试一次。'), error?.code === 'busy_video' ? null : ['Image object selection', '图片智能抠图']);
+                    : t('Could not find an object here. Try again.', '未能在这里找出物体，请重试。'), error?.code === 'busy_video' ? null : ['Image object selection', '图片智能抠图']);
             }).finally(() => { pointBusy = false; });
             return null;
         }

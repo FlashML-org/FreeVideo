@@ -316,7 +316,7 @@ function triggerEntry(name) {
 }
 // The server's own wording is technical; the panel always says the same plain sentence.
 const triggerReadError = () => new Error(t('Could not read trigger words.', '无法读取触发词。'));
-const triggerSaveError = () => new Error(t('Could not save. Try again.', '没有保存，请再试一次。'));
+const triggerSaveError = () => new Error(t('Could not save. Try again.', '未能保存，请重试。'));
 async function triggerResponse(response, fail) {
     let result = null;
     try { result = await response.json(); } catch { /* not JSON: same sentence */ }
@@ -850,7 +850,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             unavailable: ['The current model cannot use this example\'s settings.', '当前模型用不了这个示例的设置'],
             asset: missing ? ['An example file is missing from this installation. Select "Repair" under Settings > Environment, then try again.', '示例素材不在本机安装里，在“设置 → 环境”里点“修复”后重试']
                 : ['The example files could not be read from FreeVideo. Check that FreeVideo is still running, then try again.', '没能从 FreeVideo 读取示例素材，确认 FreeVideo 仍在运行后再试'],
-            write: ['The example files could not be added to this panel\'s media list. Try again.', '示例素材没能加入这个面板的素材列表，请再试一次'],
+            write: ['The example files could not be added to this panel\'s media list. Try again.', '示例素材未能加入这个面板的素材列表，请重试。'],
             workspace_changed: ['Another view was opened, so the example was not filled in. Go back to the creation panel and try again.', '已切到别的视图，示例没有填入，回到创作面板再试'],
             no_editor: ['The editor did not open, so the start clip was not placed. Open the editor, then select the example again.', '剪辑视图没有打开，起始片段没有放上去；打开剪辑视图后再点一次示例'],
             'pending-assets': ['This example is not available yet.', '这个示例暂时不能用'],
@@ -1149,7 +1149,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const passControl = createPassMode({t, onChoose: mode => choosePassMode(mode), listen: listenDialogKey});
     const passMode = passControl.element;
     cleanup.push(passControl.dispose);
-    const fastRowWords = () => fastParts() ? t('Each part runs a second pass', '每段使用二采') : t('Fast uses one pass', '极速档一次生成');
+    const fastRowWords = () => fastParts() ? t('Each part runs a second pass', '每段使用二采') : t('Fast uses one pass', '极⁠速⁠档一次生成');
     const previewPassHint = t('Stops at a lower-resolution preview. Choose "Run second pass" in the result when it looks right; the video matches a direct run.',
         '先出低分辨率预览，满意后在结果里点“继续二采”，成片与直接生成一致。');
     twoPassLabel.append(el('span', t('Second pass', '二采')), twoPassStatus, passMode);
@@ -1279,7 +1279,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     }
     function passState() {
         if (fastOn()) return {mode: fastParts() ? 'on' : 'off', disabled: {off: true, on: true, preview: true}, hidden: {preview: !widget(node, 'preview')}, hint: '',
-            why: fastParts() ? fastRowWords() : t('Fast makes the full size in one pass. Choose another level to use it.', '极速档一次生成全分辨率。选其他档位后可用。')};
+            why: fastParts() ? fastRowWords() : t('Fast makes the full size in one pass. Choose another level to use it.', '极⁠速⁠档一次生成全分辨率。选其他档位后可用。')};
         const passLinked = linked(node, 'two_pass'), previewLinked = linked(node, 'preview');
         return {mode: !twoPass.checked ? 'off' : previewFirst.checked ? 'preview' : 'on',
             disabled: {off: Boolean(extension.source) || passLinked || !widget(node, 'two_pass'), on: twoPass.disabled,

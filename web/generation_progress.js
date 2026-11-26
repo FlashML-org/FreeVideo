@@ -258,7 +258,7 @@ function baseActivityLabel(message, t, plan = {}, secondPass = false, references
 function retryText(retry, t) {
     const reason = {gpu_oom: ['Out of GPU memory', '显存不足'], ram_pressure: ['Out of RAM', '内存不足'],
         unified_memory: ['Out of RAM', '内存不足']}[retry.kind]
-        || ['Previous attempt did not finish', '上一次尝试没有完成'];
+        || ['Previous attempt did not finish', '上一次尝试未完成'];
     const values = { reason: t(...reason) };
     if (retry.reuse_sampling === true) return t('{reason}; the generated result is kept, and a retry is in progress.', '{reason}，已保留生成结果，正在重试。', values);
     const fallback = !['gpu_oom', 'ram_pressure', 'unified_memory'].includes(retry.kind);

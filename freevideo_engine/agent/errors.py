@@ -366,7 +366,7 @@ FAILURE_REASONS = {
     'context_length': ('The prompt and reference images are too long',
                        '提示词和参考图太长'),
     'dependency_failed': ('A task this one depends on did not finish',
-                          '前面依赖的任务没有完成'),
+                          '前面依赖的任务未完成'),
     'lost': ('The generation service no longer has the result of this task',
              '生成服务没有保留这次任务的结果'),
     'unknown_job': ('The image generation service cannot find this task',
@@ -779,7 +779,7 @@ def failure_reason(error):
         return FAILURE_MESSAGES_ZH[line]
     if line.startswith(('CUDA out of memory', 'MPS backend out of memory')):
         return FAILURE_REASONS_ZH['out_of_memory']
-    return FAILURE_REASONS_ZH.get(error.get('code'), '没有完成')
+    return FAILURE_REASONS_ZH.get(error.get('code'), '未完成')
 
 
 # The same lookup in English for the page: the specific sentences are already written for people.

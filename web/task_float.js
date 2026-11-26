@@ -196,8 +196,8 @@ function reasonLong(row) {
     // A picture: why FreeVideo went away, as far as the launcher saw it end, and what next (#1121).
     if (row.kind === 'image' && (code === 'engine_closed' || code === 'engine_restarted')) return lostEngineText(code, row.failure?.cause, t).join(t(' ', ''));
     if (code === 'engine_closed') return lostEngineText(code, row.failure?.cause, t).join(t(' ', ''));
-    if (code === 'engine_restarted' || row.status === 'interrupted') return t('FreeVideo restarted while this was being made, so it did not finish. Finished parts are in your creations.', 'FreeVideo 在生成过程中重新启动，这次没有完成。已经完成的部分在作品里。');
-    if (row.kind === 'image') return imageGenError(code, row.failure, t) || t('The image did not finish.', '这张图没有完成。');
+    if (code === 'engine_restarted' || row.status === 'interrupted') return t('FreeVideo restarted while this was being made, so it did not finish. Finished parts are in your creations.', 'FreeVideo 在生成过程中重新启动，这次未完成。已经完成的部分在作品里。');
+    if (row.kind === 'image') return imageGenError(code, row.failure, t) || t('The image did not finish.', '这张图片未完成。');
     // The engine's own text is raw; it goes through the same advice as the create panel, and an unknown cause says so.
     const told = row.failure?.message ? failureAdvice(String(row.failure.message), t) : null;
     if (told?.summary) return told.summary + t(' ', '') + told.action;
@@ -635,7 +635,7 @@ export function installTaskFloat() {
             const row = rows.find(r => r.id === failCard);
             const box = el('div', 'sgf-fail'); box.setAttribute('role', 'dialog'); box.setAttribute('aria-label', t('What happened', '发生了什么'));
             const title = el('b'), text = el('p', 'fv-selectable'), acts = el('div', 'sgf-acts');
-            title.textContent = row.kind === 'image' ? t("The image didn't finish", '这张图没有完成') : t("The video didn't finish", '这段视频没有完成');
+            title.textContent = row.kind === 'image' ? t("The image didn't finish", '这张图片未完成') : t("The video didn't finish", '这段视频未完成');
             text.textContent = reasonLong(row);
             const report = row.failure?.report_id || row.meta?.report_id;
             if (report && row.kind === 'image') {

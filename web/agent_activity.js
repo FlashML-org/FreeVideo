@@ -50,7 +50,7 @@ function failureLine(error, t) {
     const advice = message && failureAdvice(message, t);
     if (advice && advice.kind !== 'unknown') return [advice.title, advice.action].filter(Boolean).join(t('. ', '，'));
     const line = message.split(/\r?\n/).find(text => text.trim() && !/^Traceback/.test(text))?.trim().slice(0, 160);
-    return line ? t('Did not finish: {line}', '没有完成：{line}', { line }) : t('Did not finish', '没有完成');
+    return line ? t('Did not finish: {line}', '未完成：{line}', { line }) : t('Did not finish', '未完成');
 }
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 function glyph(path) {
