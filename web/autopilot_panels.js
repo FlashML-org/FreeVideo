@@ -138,7 +138,8 @@ export function createSideRail(t, handlers = {}) {
     head.append(title, count, collapse);
     const running = el('div', 'fv-chat-side-running');
     const searchRow = el('label', 'fv-chat-search'), search = el('input');
-    search.type = 'search'; search.placeholder = t('Search prompts', '搜索提示词'); search.setAttribute('aria-label', t('Search tasks', '搜索任务'));
+    // It finds tasks, by their name or prompt (draw: matches(query, row.title, row.prompt)), so it says so.
+    search.type = 'search'; search.placeholder = t('Search tasks', '搜索任务'); search.setAttribute('aria-label', t('Search tasks', '搜索任务'));
     search.autocomplete = 'off'; search.spellcheck = false; tip(search, 'taskSearch', t, {title: false});
     searchRow.append(glyph(ICON.search), search);
     // Filters by state, each with its count: all, under way, done, did not finish.
