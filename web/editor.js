@@ -2243,6 +2243,9 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         // FreeVideo's shared menus (a text box's Cut/Copy/Paste, and any menu opened over the editor) live inside this
         // dialog and listen through dialog_keys: their arrows, Enter, Esc and Tab are theirs, with no editor shortcut.
         if (inside && event.target.closest?.('.fv-cm[role=menu]')) { routeDialogKey(event, element); return; }
+        // The drop-down lists of the lent creation bar (the Advanced window's) are theirs the same way: their rows' keys, and the
+        // arrow keys, Enter and Space that open one from its button; Escape shuts the list and nothing else.
+        if (inside && (event.target.closest?.('.fv-select-menu') || (event.target.closest?.('.fv-select') && ['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(event.key)))) { routeDialogKey(event, element); return; }
         if (guide?.handleKey(event)) return;
         if (event.type === 'keyup') {
             // The Space that played from a media card does not also press the card.
