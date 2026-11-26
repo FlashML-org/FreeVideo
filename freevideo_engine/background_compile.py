@@ -95,10 +95,12 @@ class BackgroundCompile:
             self.thread.start()
             return True
 
-    def stop(self, *, final=False):
+    def stop(self, *, final=False, lease_held=None):
         """Stop a running compile and return once its processes, GPU memory and lease are gone.
 
-        `final` when a generation starts: the session compiles nothing more.
+        `final` when a generation starts: the session compiles nothing more. `lease_held`, when given, says whether
+        other work of this process holds the lease (the video warm-up): the compile then cannot hold it, and a wait
+        for it would be a wait for the very work the starting video stops next, up to RELEASE_SECONDS.
         """
         if final:
             self.closed.set()
@@ -132,24 +134,38 @@ class BackgroundCompile:
                     return dict(row)
             elif gave_way(process):
                 return None
+            if held_here(lease_held):
+                row.update(released=None, release_seconds=time.monotonic() - tick, lease='warm_up')
+                if not row.get('stopped'):
+                    return None
+                logging.info('[FreeVideo] Background compile stopped in %.1f s; the warm-up holds the GPU lease.',
+                             row['release_seconds'])
+                return dict(row)
             # Every process of the tree holds the lease; once it is free the
             # tree is gone, even when the top process had already exited. On a
             # timeout the request reports the busy lease. One deadline for all.
-            row['released'] = self._released(tick + RELEASE_SECONDS)
+            row['released'] = self._released(tick + RELEASE_SECONDS, lease_held)
             row['release_seconds'] = time.monotonic() - tick
+            if row['released'] is None:
+                # The warm-up took the lease while this waited (BackgroundCompile.stop's lease_held).
+                row['lease'] = 'warm_up'
             if not row.get('stopped'):
                 return None
-            logging.info('[FreeVideo] Background compile stopped in %.1f s; the GPU lease is %s.',
-                         row['release_seconds'], 'free' if row['released'] else 'still held')
+            logging.info('[FreeVideo] Background compile stopped in %.1f s; the GPU lease is %s.', row['release_seconds'],
+                         'free' if row['released'] else 'held by the warm-up' if row['released'] is None else 'still held')
             return dict(row)
 
-    def _released(self, deadline):
+    def _released(self, deadline, lease_held=None):
+        """True once the lease is free, False at the deadline, None as soon as `lease_held` says this process's warm-up
+        holds it (asked again after every busy try: the warm-up may take it only while this waits)."""
         from .locking import runtime_lock
         while True:
             try:
                 with runtime_lock(io_path(self.lock), inherit=False):
                     return True
             except BlockingIOError:
+                if held_here(lease_held):
+                    return None
                 if time.monotonic() >= deadline:
                     return False
                 time.sleep(.1)
@@ -237,6 +253,17 @@ class BackgroundCompile:
                 # The child normally wrote the resource reason. Keep it even
                 # if the child exited before publishing diagnostic status.
                 record(self.root, 'not_started')
+
+
+def held_here(lease_held):
+    """True when `lease_held` (BackgroundCompile.stop) says this process's own work holds the lease; a failing check
+    counts as no, so the stop waits for the lease as before."""
+    if lease_held is None:
+        return False
+    try:
+        return lease_held() is True
+    except Exception:
+        return False
 
 
 def gave_way(process):

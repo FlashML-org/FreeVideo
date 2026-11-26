@@ -46,6 +46,8 @@ class VideoWarmer:
         self.halt = threading.Event()
         self.level = None
         self.last = None
+        # True while the warm-up holds the installation lease (lease_held).
+        self.leased = False
 
     def alive(self):
         return self.thread is not None and self.thread.is_alive()
@@ -107,6 +109,7 @@ class VideoWarmer:
         try:
             lease = runtime_lock(Path(root) / 'engine.lock', inherit=False)
             descriptor = lease.__enter__()
+            self.leased = True
         except (BlockingIOError, OSError):
             # The image worker keeps a picture model: nothing is taken from it.
             endpoint = owner.endpoint if owner.process is not None and owner.process.poll() is None else None
@@ -129,6 +132,7 @@ class VideoWarmer:
             if not halt.is_set():
                 placed = dict(placed, video_model=self.place_engine(endpoint, environment, descriptor, halt))
         finally:
+            self.leased = False
             lease.__exit__(None, None, None)
         if halt.is_set():
             return dict(placed, state='cancelled')
@@ -235,6 +239,12 @@ class VideoWarmer:
 
 
 WARMER = None
+
+
+def lease_held():
+    """True while this engine's video warm-up holds the installation lease: a starting video stops it next
+    (background_compile.BackgroundCompile.stop)."""
+    return WARMER is not None and WARMER.leased
 
 
 def warmer(installation=None, busy=None):
