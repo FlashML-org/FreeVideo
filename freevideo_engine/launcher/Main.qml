@@ -221,8 +221,10 @@ ApplicationWindow {
         if (u.status === "low-disk") return t("Not enough disk space for the faster model", "磁盘空间不够，暂时无法升级到更快的模型")
         if (u.status === "downloading") return t("Downloading the faster model", "正在下载更快的模型")
         if (u.status === "downloaded" && u.waiting === "comfy") return t("Switching after FreeVideo is closed", "关闭 FreeVideo 后切换")
-        if (u.status === "downloaded" || (u.status === "switching" && !s.busy)) return t("Switching after the current video", "当前视频完成后切换")
-        if (u.status === "switching") return t("Switching to the faster model", "正在切换到更快的模型")
+        // "After the current video" only while a video is running; otherwise the switch starts now, and the card says what
+        // it says while switching.
+        if (u.status === "downloaded" && u.video_running) return t("Switching after the current video", "当前视频完成后切换")
+        if (u.status === "downloaded" || u.status === "switching") return t("Switching to the faster model", "正在切换到更快的模型")
         if (u.status === "releasing") return u.waiting ? t("Removing the old model after the current video", "当前视频完成后删除旧模型") : t("Removing the old model", "正在删除旧模型")
         if (u.status === "releasable") return u.in_use === "int8_convrot" ? t("The old model is still on disk", "旧模型还占着磁盘空间")
                                                                            : t("Some model files are not in use", "有没在使用的模型文件")

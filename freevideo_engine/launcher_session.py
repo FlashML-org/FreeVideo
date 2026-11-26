@@ -2969,7 +2969,8 @@ class Session:
             cleanup['error'] = self.both(lambda zh: display_launcher_error(cleanup['error'], zh=zh))
         elif cleanup.get('status') == 'error':
             cleanup['message'] = self.t(*CLEANUP_FAILURES.get(cleanup.get('reason'), CLEANUP_FAILURES['failed']))
-        model_upgrade = dict(self.upgrade.state, busy=self.upgrade.busy)
+        # A video running now (the last queue reading of our ComfyUI): the switch waits for it, and the page says so only then.
+        model_upgrade = dict(self.upgrade.state, busy=self.upgrade.busy, video_running=self.queue_state is True)
         if alias_failure(model_upgrade.get('error', '')):
             model_upgrade['error'] = self.both(lambda zh: display_launcher_error(model_upgrade['error'], zh=zh))
         archive_offer = (self.archives_deleting_offer if self.archives_busy else
