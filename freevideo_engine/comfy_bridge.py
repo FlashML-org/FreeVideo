@@ -1297,6 +1297,16 @@ def argument(arguments, flag, default=None):
     return arguments[arguments.index(flag) + 1] if flag in arguments else default
 
 
+def work_upscale_media(run, video):
+    """The media of a finished video's 1.5x upscale (its own sound, work_upscale.media) and the generate arguments
+    that carry it: media.json holds the rows as a request gives them, which the engine reads back and checks
+    against the row it computes itself, as on the command line."""
+    from .work_upscale import media, request, source
+    value = media(None, source(video))
+    save(Path(run) / 'media.json', request(value))
+    return value, ['--media', str(Path(run) / 'media.json'), '--upscale-from', str(video)]
+
+
 def upscale_frames(upscale_from, output_directory, *, source=None, environ=None, progress=None, interrupted=None,
                    release_models=None, comfy_metadata=None):
     """A finished 24 fps video made a new work at the 4K size by frame_upscale: its own description, seed and length,
@@ -1480,14 +1490,14 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
         # its frames as the first pass and its own sound used as is (work_upscale).
         if upscale or preview or continue_from is not None:
             raise ValueError('An upscale of a finished video is a request of its own')
-        from .work_upscale import FACTOR, size as upscaled_size, work_request
+        from .work_upscale import PLAN, size as upscaled_size, work_request
         work = work_request(output_directory, upscale_from)
         saved = work[0].parent / 'prompt.txt'
         prompt = saved.read_text(encoding='utf-8') if saved.is_file() else ''
         allow_empty_prompt = allow_empty_prompt or not prompt.strip()
         width, height = upscaled_size(work[1]['geometry']['width'], work[1]['geometry']['height'])
         seconds, seed = work[1]['geometry']['seconds'], work[1]['seed']
-        two_pass, upscale_factor, base_steps, refine_steps, step_cache = True, FACTOR, 8, 3, None
+        two_pass, upscale_factor, base_steps, refine_steps, step_cache = (PLAN[k] for k in ('two_pass', 'upscale_factor', 'base_steps', 'refine_steps', 'step_cache'))
         frames, first_frame_reference, voice_reference, hide_tail = None, False, False, False
     staged = bool(preview or upscale or work)
     from .refine_schedule import UPSCALE
@@ -1690,10 +1700,8 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                 extra['conditioning'] = argument(arguments, '--conditioning')
         elif work:
             # The video's own sound, used as is: it sets the length and is copied into the result.
-            from .work_upscale import media as work_media, source as work_source
-            extra['media'] = work_media(None, work_source(work[0]))
-            save(run / 'media.json', extra['media'])
-            command += ['--media', str(run / 'media.json'), '--upscale-from', str(work[0])]
+            extra['media'], arguments = work_upscale_media(run, work[0])
+            command += arguments
             state['command'] = command
         elif export_inputs:
             send_progress({'label': 'Retaining and checking input media', 'timing_phase': 'encoding'})

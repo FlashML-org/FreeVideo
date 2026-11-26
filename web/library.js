@@ -19,8 +19,7 @@ import { createMetaStore, promptOfRow } from './image_view_history.js';
 import { attach as attachPlayerBar } from './glass/player_bar.js';
 import { hasPictureThumbnail, mediaQueue, pictureThumbnailURL, watchCards } from './work_media.js';
 import { zoomable } from './picture_zoom.js';
-import { createUpscaleOffer, upscaleChoices, UPSCALE_USE, UPSCALE_QUEUED, UPSCALE_FAILED } from './upscale_offer.js';
-import { capabilityPoints } from './chain_support.js';
+import { createUpscaleOffer, upscaleChoices, admittedFrames as admittedUpscaleFrames, UPSCALE_USE, UPSCALE_QUEUED, UPSCALE_FAILED } from './upscale_offer.js';
 import { LANGUAGE } from './i18n.js';
 
 const style = document.createElement('link');
@@ -401,17 +400,10 @@ export function setDefaultUpscale(run) { defaultUpscale = typeof run === 'functi
 // ``upscaleWork`` makes a larger copy of a finished video; registered by the studio like the second pass.
 let defaultUpscaleWork = null;
 export function setDefaultUpscaleWork(run) { defaultUpscaleWork = typeof run === 'function' ? run : null; }
-// The longest single request at a size, as the planner admits it now; null when it cannot be told. The studio asks the
-// same for the result's "⋯".
-export async function admittedFrames(width, height) {
-    for (let tries = 0; tries < 5; tries++) {
-        const response = await api.fetchApi('/freevideo/capabilities?' + new URLSearchParams({width, height}));
-        if (!response.ok) return null;
-        const reply = await response.json();
-        if (reply?.status === 'computing') { await new Promise(done => setTimeout(done, 1000)); continue; }
-        return reply && (!reply.status || reply.status === 'ready') ? capabilityPoints(reply, {width, height}).maxRequestFrames : null;
-    }
-    return null;
+// The longest single upscale request at a size, as the planner admits it now (upscale_offer.admittedFrames); null when
+// it cannot be told. The studio asks the same for the result's "⋯".
+export function admittedFrames(width, height) {
+    return admittedUpscaleFrames(path => api.fetchApi(path), width, height);
 }
 // ``reuse`` is the creation panel's {now, apply}: given, Reuse settings fills that panel from a creation.
 export function openLibrary(t, options = {}) {
