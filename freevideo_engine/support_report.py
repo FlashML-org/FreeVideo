@@ -194,6 +194,14 @@ def summarize(report, engine, encoding):
             shared['other_mean_percent'], OtherPrograms.share_percent, round(100 * shared['share'])),
             message_zh='这次请求计算期间，其他程序占用了约 %d%% 的显卡，其中 %d%% 的时间里不低于 %d%%，所以比独占显卡时慢。' % (
             shared['other_mean_percent'], round(100 * shared['share']), OtherPrograms.share_percent)))
+    helpers = shared_gpu(gpu, who='helpers')
+    if helpers:
+        # The same thresholds for FreeVideo's own other work (prompt model, pictures, music): ours to fix, not the user's.
+        hints.append(dict(kind='measured', message="FreeVideo's other work used about %d%% of the GPU while this request was "
+            'computing, and at least %d%% of it for %d%% of that time, so it ran slower than with the GPU to itself.' % (
+            helpers['helpers_mean_percent'], OtherPrograms.share_percent, round(100 * helpers['share'])),
+            message_zh='这次请求计算期间，FreeVideo 的其他任务占用了约 %d%% 的显卡，其中 %d%% 的时间里不低于 %d%%，所以比独占显卡时慢。' % (
+            helpers['helpers_mean_percent'], round(100 * helpers['share']), OtherPrograms.share_percent)))
     attempts = report.get('resource_attempts', [])
     failures = [dict(state=r.get('state'), failure=r.get('failure')) for r in attempts
                 if isinstance(r, dict) and r.get('failure')] if isinstance(attempts, list) else []

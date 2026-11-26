@@ -299,14 +299,17 @@ export function thermalText(thermal, t) {
             '生成这段视频时，显卡大部分时间因过热降频，所以比平时慢很多。请改善散热；笔记本请接通电源并选择高性能模式。');
 }
 
-// Other programs held a substantial share of the GPU during this run (summary.shared_gpu).
-// The share is rounded to 5% and written as at most 95%; without a usable number there is no note.
+// Other programs, or FreeVideo's own other work, held a substantial share of the GPU during this run
+// (summary.shared_gpu: other_mean_percent, helpers_mean_percent, either or both). Each is said apart, so the
+// note never asks a user to close FreeVideo's own work. A share is rounded to 5% and written as at most 95%;
+// without a usable number there is no sentence for it.
 export function sharedGpuText(shared, t) {
-    const mean = shared?.other_mean_percent;
-    if (typeof mean !== 'number' || !Number.isFinite(mean)) return '';
-    const percent = Math.min(95, Math.round(mean / 5) * 5);
-    return t('Other programs were using about {percent}% of the GPU.',
-        '其他程序占用了约 {percent}% 的显卡。', { percent });
+    const percentOf = mean => typeof mean === 'number' && Number.isFinite(mean) ? Math.min(95, Math.round(mean / 5) * 5) : null;
+    const other = percentOf(shared?.other_mean_percent), helpers = percentOf(shared?.helpers_mean_percent);
+    return [
+        other !== null ? t('Other programs were using about {percent}% of the GPU.', '其他程序占用了约 {percent}% 的显卡。', { percent: other }) : '',
+        helpers !== null ? t('Other FreeVideo tasks were using about {percent}% of the GPU.', 'FreeVideo 的其他任务占用了约 {percent}% 的显卡。', { percent: helpers }) : '',
+    ].filter(Boolean).join(t(' ', ''));
 }
 
 // Replace person: the source video's sound was asked for and could not be put into the video.

@@ -159,9 +159,11 @@ def parents():
     return found
 
 
-def family(root):
-    """`root` and every process descended from it; OSError when processes cannot be listed."""
-    table = parents()
+def family(root, table=None):
+    """`root` and every process descended from it; OSError when processes cannot be listed.
+
+    `table`, a parents() reading, lets several families come from one listing."""
+    table = parents() if table is None else table
     pids, frontier = {root}, {root}
     while frontier:
         frontier = {pid for pid, parent in table.items() if parent in frontier} - pids

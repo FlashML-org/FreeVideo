@@ -571,8 +571,9 @@ def resources(value):
         result['gpu'][key] = clean
     if isinstance(gpu.get('other_programs'), dict):
         result['gpu']['other_programs'] = numbers(gpu['other_programs'], ('checks', 'shared_checks', 'check_seconds',
-            'share_percent', 'other_mean_percent', 'other_peak_percent', 'own_mean_percent'))
-        for key in ('supported', 'own_reported'):
+            'share_percent', 'other_mean_percent', 'other_peak_percent', 'own_mean_percent',
+            'helpers_shared_checks', 'helpers_mean_percent', 'helpers_peak_percent'))
+        for key in ('supported', 'own_reported', 'helpers_counted'):
             if type(gpu['other_programs'].get(key)) is bool:
                 result['gpu']['other_programs'][key] = gpu['other_programs'][key]
     return result
@@ -583,7 +584,8 @@ WINDOWS_BUDGET = ('peak_usage_bytes', 'minimum_budget_bytes', 'maximum_budget_by
 # Whole-device NVML samples inside one sampling step (monitoring.step_activity).
 STEP_ACTIVITY = ('samples', 'busy_samples', 'gpu_util_mean_percent', 'sm_clock_mean_mhz', 'power_mean_mw',
                  'device_used_peak_bytes', 'device_used_minimum_bytes', 'device_total_bytes',
-                 'other_programs_checks', 'other_programs_percent_mean', 'other_programs_percent_peak')
+                 'other_programs_checks', 'other_programs_percent_mean', 'other_programs_percent_peak',
+                 'freevideo_helpers_checks', 'freevideo_helpers_percent_mean', 'freevideo_helpers_percent_peak')
 
 
 def dynamic_budget(value):

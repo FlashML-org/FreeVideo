@@ -67,6 +67,20 @@ class FailureReceipt:
         return self.found
 
 
+# The FreeVideo process that started this request (the ComfyUI bridge sets it): the rest of its process tree is
+# FreeVideo's own other work, which the GPU monitor counts apart from other programs.
+HOST_PID_ENV = 'FREEVIDEO_HOST_PID'
+
+
+def host_pid(env):
+    """The starting FreeVideo process from the request's environment, or None when it is not one of ours."""
+    try:
+        value = int((env or {}).get(HOST_PID_ENV) or os.environ.get(HOST_PID_ENV) or 0)
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 and value != os.getpid() else None
+
+
 def child(command, env, descriptor, log, *, ram_budget_bytes=None, gpu=None, on_start=None,
           minimum_available_bytes=None, ram_budget_is_estimate=False):
     from .ram import ProcessMemory
@@ -99,7 +113,7 @@ def child(command, env, descriptor, log, *, ram_budget_bytes=None, gpu=None, on_
                 on_start(process.pid)
             if gpu:
                 from .monitoring import Monitor
-                monitor = Monitor(log.with_suffix('.gpu.csv'), device=gpu, pid=process.pid).start()
+                monitor = Monitor(log.with_suffix('.gpu.csv'), device=gpu, pid=process.pid, host=host_pid(env)).start()
             while process.poll() is None:
                 if memory:
                     sample = memory.sample(process.pid)

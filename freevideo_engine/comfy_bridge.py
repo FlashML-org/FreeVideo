@@ -1560,6 +1560,8 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
     environment = engine_environment(root, source, environ)
     environment.update(FREEVIDEO_HOME=str(root), PYTHONPATH=str(source), PYTHONUNBUFFERED='1',
                        PYTHONUTF8='1', PYTHONIOENCODING='utf-8', NO_COLOR='1', FREEVIDEO_UI_EVENTS='1')
+    # The GPU monitor counts this process's other children (prompt model, pictures, music) as FreeVideo's own work.
+    environment['FREEVIDEO_HOST_PID'] = str(os.getpid())
     for key in ('FREEVIDEO_RUNTIME_LOCK_FD', 'FREEVIDEO_RUNTIME_LOCK_HANDLE'):
         environment.pop(key, None)
     # No attention, placement or capacity override: managed CLI uses the
