@@ -716,7 +716,7 @@
 "Check existing model folders": "尋找已有模型",
 "Check files": "檢查檔案",
 "Check first: models already on this computer are used as they are.": "先檢查一遍，電腦上已有的模型會直接使用。",
-"Check folder permissions and Windows Security protection history, then retry. Export the report for the Windows error code.": "請檢查安裝資料夾的權限，並檢視 Windows 安全中心的保護歷史記錄，然後重試。",
+"Check folder permissions and Windows Security protection history, then retry. Export the report for the Windows error code.": "請檢查安裝資料夾的權限，並檢視 Windows 安全性的保護歷程記錄，然後重試。",
 "Check for updates␟检查更新": "檢查更新",
 "Check for updates␟立即检查": "立即檢查",
 "Check generation settings": "檢查生成設定",
