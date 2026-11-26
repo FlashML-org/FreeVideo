@@ -146,15 +146,14 @@
 .fv-studio.fv-create .fvs-tray{margin:0;padding:0;border:0}
 .fv-studio.fv-create .fvs-tray:not([open]){display:none}
 .fv-studio.fv-create .fvs-tray[open]{display:block;position:absolute;left:0;bottom:100%;z-index:6;width:100%;max-height:min(400px,35vh);overflow:auto;overscroll-behavior:contain;padding:0 var(--fv-sp-20) var(--fv-sp-20);border-radius:var(--fv-rad-dock);
-  background:rgb(var(--fv-tint) / var(--fv-a2));border:1px solid var(--fv-edge);box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh2);
-  -webkit-backdrop-filter:blur(var(--fv-glass-blur2)) saturate(165%);backdrop-filter:blur(var(--fv-glass-blur2)) saturate(165%);
+  background:rgb(var(--fv-solid3));border:1px solid var(--fv-edge);box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh2);
   scrollbar-width:thin;animation:fvs-tray-in var(--fv-dur-2) var(--fv-ease-out)}
 .fv-studio.fv-create .fvs-tray>summary{display:none}
 .fv-studio.fv-create .fvs-tray>.fv-expand{padding-top:0}
 .fv-studio.fv-create .fvs-tray>section.fv-section,.fv-studio.fv-create .fvs-tray .fv-sampling-settings{margin:0}
 .fv-studio.fv-create .fvs-tray>section.fv-section>.fv-label{display:none}
 .fvs-tray-head{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:var(--fv-sp-8);min-height:52px;margin:0 calc(-1 * var(--fv-sp-20)) var(--fv-sp-4);padding:0 var(--fv-sp-12) 0 var(--fv-sp-20);
-  background:linear-gradient(rgb(var(--fv-tint) / var(--fv-a2)) 70%,transparent)}
+  background:linear-gradient(rgb(var(--fv-solid3)) 70%,transparent)}
 .fvs-tray-title{flex:1;display:flex;align-items:center;gap:var(--fv-sp-8);font-size:var(--fv-fs-3);font-weight:600;color:var(--fv-fg)}
 .fv-studio.fv-create .fvs-tray-close{display:inline-grid;place-items:center;width:var(--fv-ctl);height:var(--fv-ctl);min-height:var(--fv-ctl);padding:0;border:0;border-radius:var(--fv-rad-pill);background:transparent;color:var(--fv-fg3)}
 .fv-studio.fv-create .fvs-tray-close:hover{background:var(--fv-ctl-hover);color:var(--fv-fg)}
@@ -176,9 +175,6 @@
   overflow:hidden;font-size:var(--fv-fs-1);line-height:20px;color:var(--fv-fg3);pointer-events:none}
 .fvs-console-status>*{pointer-events:auto;min-width:0;margin:0!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .fvs-console-status>[hidden]{display:none!important}
-/* A tray or a small window over the line: its glass would let the words show through faintly, so the line goes clear
-   under it (studio.js coverBand); it stays in the page and is still read out. */
-.fv-studio.fv-create .fv-controls[data-status-covered=true] .fvs-console-status{opacity:0}
 /* The run's status takes no room in the line while it says nothing, so a note beside it (a rewrite's failure and its
    report key) reads whole. */
 .fvs-console-status>.fv-status:empty{display:none!important}

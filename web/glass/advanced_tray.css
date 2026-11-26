@@ -118,7 +118,10 @@ html .fv-studio.fv-create .fvs-tray.fv-at .fv-at-seed>input:is(:focus,:focus-vis
 /* As in Frame & size, the sections' own titles name what is in the window: no window title above them. Reset to
    defaults (only while something differs) sits at the right end of the first titles' line. */
 .fv-studio.fv-create .fvs-tray.fv-at[data-fv-pop]>.fvs-tray-head{position:absolute;top:var(--fv-sp-8);right:var(--fv-sp-8);min-height:0;margin:0}
-.fv-studio.fv-create .fvs-tray.fv-at[data-fv-pop]>.fvs-tray-head>.fvs-tray-title{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+/* Read only by a screen reader. Pinned to the top left of whatever holds it: the tray is no longer glass, so in the
+   column it is the column that holds it, and left where it stood the title reached past the column's bottom and gave
+   the column a scroll that focus and scrollIntoView then used. */
+.fv-studio.fv-create .fvs-tray.fv-at[data-fv-pop]>.fvs-tray-head>.fvs-tray-title{position:absolute;top:0;left:0;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .fv-studio.fv-create .fvs-tray.fv-at[data-fv-pop]>.fvs-tray-head>.fv-at-reset{height:32px!important;margin:0!important}
 
 /* One prompt per line: a switch at the row's right edge, like the settings switches. */

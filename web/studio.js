@@ -3616,30 +3616,11 @@ export function openStudio(node, {extendFrom = null} = {}) {
         fitPreview();
     };
     placeStatus(); phone?.addEventListener?.('change', placeStatus); cleanup.push(() => phone?.removeEventListener?.('change', placeStatus));
-    // A tray or a small window opened over the band (their glass lets 6% through) would show its line as a faint second
-    // copy under the window: while one covers a shown note, the line goes clear (still read out: glass/studio.css).
-    let coverFrame = 0;
-    const coverBand = () => {
-        coverFrame = 0;
-        const notes = [...consoleUI.slot.children].filter(item => !item.hidden && item.textContent.trim()).map(item => item.getBoundingClientRect()).filter(r => r.width && r.height);
-        // Only what floats is a window: in three columns a tray is a part of the column, and one scrolled out of sight still has its place.
-        const windows = [...dialog.querySelectorAll('.fvs-tray[open], .fvp-pop:not([hidden])')].filter(item => /^(fixed|absolute)$/.test(getComputedStyle(item).position))
-            .map(item => item.getBoundingClientRect()).filter(r => r.width && r.height);
-        const covered = notes.some(n => windows.some(w => w.left < n.right && w.right > n.left && w.top < n.bottom && w.bottom > n.top));
-        if (controls.dataset.statusCovered !== String(covered)) controls.dataset.statusCovered = String(covered);
-    };
-    const queueCover = () => { if (!coverFrame) coverFrame = requestAnimationFrame(() => { coverFrame = requestAnimationFrame(coverBand); }); };
-    const coverWatch = new MutationObserver(queueCover);
-    coverWatch.observe(dialog, {subtree: true, attributes: true, attributeFilter: ['open', 'hidden', 'data-open', 'data-closing']});
-    // A tray rises 8 px into place as it opens: look again once it has settled.
-    globalThis.addEventListener('resize', queueCover); dialog.addEventListener('animationend', queueCover);
-    cleanup.push(() => { coverWatch.disconnect(); globalThis.removeEventListener('resize', queueCover); cancelAnimationFrame(coverFrame); });
     // The band above the console is kept only while its line has something to say (glass/studio.css), so an empty band
     // never sits between the picture and the console.
     const syncBand = () => {
         const said = [...consoleUI.slot.children].some(item => !item.hidden && item.textContent.trim() && getComputedStyle(item).display !== 'none');
         if (controls.dataset.status !== String(said)) controls.dataset.status = String(said);
-        queueCover();
     };
     const bandWatch = new MutationObserver(syncBand);
     bandWatch.observe(consoleUI.slot, {childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['hidden', 'data-state']});
@@ -3649,7 +3630,6 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const bandSize = typeof ResizeObserver === 'function' ? new ResizeObserver(() => {
         const height = `${Math.ceil(consoleUI.slot.getBoundingClientRect().height)}px`;
         if (controls.style.getPropertyValue('--fvs-band') !== height) controls.style.setProperty('--fvs-band', height);
-        queueCover();
     }) : null;
     bandSize?.observe(consoleUI.slot); cleanup.push(() => bandSize?.disconnect());
     // Receipts (filled in, preset applied or saved) go to the shared toast in the top bar's right column (a bottom strip

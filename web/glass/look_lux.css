@@ -14,14 +14,14 @@
 html[data-fv-lux]:root :is(dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot),dialog.fv-set),
 html[data-fv-lux]:root :is(.fvp.fvp-pop,.fv-select-menu){
   --lx-l0:#06080c;
-  --lx-g1:rgb(22 25 33 / .60); --lx-g2:rgb(27 30 39 / .94); --lx-l3:#1c1f27;
+  --lx-g1:rgb(22 25 33 / .60); --lx-g2:rgb(27 30 39); --lx-l3:#1c1f27;
   --lx-s1:#12141a; --lx-s2:#191c23;                    /* the same layers when glass is off */
   --lx-edge:rgb(255 255 255 / .08); --lx-hi:rgb(255 255 255 / .13);
   --lx-chip:rgb(255 255 255 / .055); --lx-chip-edge:rgb(255 255 255 / .06); --lx-chip-hover:rgb(255 255 255 / .1);
   --lx-a:27 148 252; --lx-b:29 95 224;                 /* the two blues of the light (hue 207 and 220) */
   --lx-a1:.16; --lx-a2:.26;                            /* their strength behind the glass */
   --lx-in:.13;                                         /* and inside it */
-  --lx-blur1:blur(28px) saturate(160%); --lx-blur2:blur(36px) saturate(160%);
+  --lx-blur1:blur(28px) saturate(160%);
   --lx-key:linear-gradient(135deg,#2aa0ff 0%,#1274dc 24%,#0d6dcc 55%,#1450d8 100%);
   --lx-key-wide:linear-gradient(100deg,#1274dc 0%,#0d6dcc 50%,#1450d8 100%);
   --lx-key-glow:0 10px 28px -12px rgb(27 148 252 / .55);
@@ -30,7 +30,7 @@ html[data-fv-lux]:root :is(.fvp.fvp-pop,.fv-select-menu){
 html[data-fv-lux][data-theme=light]:root :is(dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot),dialog.fv-set),
 html[data-fv-lux][data-theme=light]:root :is(.fvp.fvp-pop,.fv-select-menu){
   --lx-l0:#eef1f5;
-  --lx-g1:rgb(255 255 255 / .62); --lx-g2:rgb(255 255 255 / .94); --lx-l3:#ffffff;
+  --lx-g1:rgb(255 255 255 / .62); --lx-g2:#ffffff; --lx-l3:#ffffff;
   --lx-s1:#f7f8fa; --lx-s2:#ffffff;
   --lx-edge:rgb(20 24 32 / .06); --lx-hi:rgb(255 255 255 / .9);
   --lx-chip:rgb(20 24 32 / .045); --lx-chip-edge:rgb(20 24 32 / .06); --lx-chip-hover:rgb(20 24 32 / .08);
@@ -185,15 +185,16 @@ html[data-fv-lux]:root .fvs-console>.fv-lux-flow::after{
    so pointing and typing cost what they cost without the layer. */
 html[data-fv-lux][data-fv-lux-run=on][data-fv-lux-flow=on]{--lx-in-play:running}
 
-/* Every small window (Frame & size, Length, Quality, Media, LoRA, Advanced) and tray: a 94 % ground with the blur
-   behind it, so it reads as glass and nothing under it can be read through it. */
-/* ── 7. Trays and small attached panels: L2 glass ───────────────────────────────────────────────────────────── */
+/* Every small window (Frame & size, Length, Quality, Media, LoRA, Advanced) and tray: an opaque ground, so nothing
+   under it shows through and nothing behind it is blurred. In the three-column panel a tray is a part of the column and
+   has no ground (panel_shell.css). */
+/* ── 7. Trays and small attached panels: opaque ───────────────────────────────────────────────────────────── */
 html[data-fv-lux]:root dialog.fv-studio.fv-create .fvs-tray[open],
 html[data-fv-lux]:root .fvp.fvp-pop,
 html[data-fv-lux]:root dialog.fv-studio.fv-create .fvs-info-panel{
   background:var(--lx-g2)!important;border-color:var(--lx-edge)!important;
   box-shadow:inset 0 1px 0 var(--lx-hi),var(--fv-sh2)!important;
-  -webkit-backdrop-filter:var(--lx-blur2)!important;backdrop-filter:var(--lx-blur2)!important;
+  -webkit-backdrop-filter:none!important;backdrop-filter:none!important;
 }
 /* Controls inside a tray: the same quiet chip face. */
 html[data-fv-lux]:root dialog.fv-studio.fv-create .fvs-tray :is(textarea,select,input[type=number],input[type=text]){background:var(--lx-chip);box-shadow:inset 0 0 0 1px var(--lx-chip-edge)}
@@ -238,6 +239,10 @@ html[data-fv-lux][data-theme=light]:root dialog.fv-studio.fv-create .fv-stage{bo
 :is(html[data-glass=solid],html.lite)[data-fv-lux]:root :is(dialog.fv-studio .fvs-tray[open],dialog.fv-studio .fvs-info-panel,.fvp.fvp-pop){
   -webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:var(--lx-s2)!important;
 }
+/* The editor's library is coloured by a longer rule (section 8), so its opaque form is as long. */
+:is(html[data-glass=solid],html.lite)[data-fv-lux]:root dialog.fv-studio.fv-editor .fv-ed-library{
+  -webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:var(--lx-s1)!important;
+}
 /* The top bar's two pieces are coloured by a longer rule (section 3), so their opaque form is one as long. In light the pill
    sits a step below the chosen tab's white, so the tab still shows which it is. */
 html[data-fv-lux]:root dialog.fv-studio{--lx-s0:var(--lx-s1)}
@@ -251,6 +256,7 @@ html[data-fv-lux][data-theme=light]:root dialog.fv-studio{--lx-s0:#e4e8ee}
 @media (prefers-reduced-transparency:reduce){
   html[data-fv-lux]:not([data-glass=solid],.lite):root body dialog.fv-set .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch,html[data-fv-lux]:not([data-glass=solid],.lite):root body dialog.fv-set .fv-topbar .fv-tb-cap{-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:rgb(var(--fv-solid1))!important}
   html[data-fv-lux]:root dialog.fv-studio :is(.fvs-console,.fv-recent,.fvs-rail,.fv-iv-panel,.fv-view-switch,.fv-tb-cap,.fv-ed-library,.fv-ed-adjust-host,.fv-ed-genbar,.fv-chat-rail,.fv-chat-side){-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:var(--lx-s1)!important}
+  html[data-fv-lux]:root dialog.fv-studio.fv-editor .fv-ed-library.fv-ed-library{-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:var(--lx-s1)!important}
   html[data-fv-lux]:root :is(dialog.fv-studio .fvs-tray[open],dialog.fv-studio .fvs-info-panel,.fvp.fvp-pop){-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:var(--lx-s2)!important}
   html[data-fv-lux]:root body dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot) .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch,html[data-fv-lux]:root body dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot) .fv-topbar .fv-tb-cap{-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:var(--lx-s0)!important}
 }
