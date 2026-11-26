@@ -239,7 +239,9 @@ html[data-fv-lux][data-theme=light]:root dialog.fv-studio.fv-create .fv-stage{bo
 :is(html[data-glass=solid],html.lite)[data-fv-lux]:root :is(dialog.fv-studio .fvs-tray[open],dialog.fv-studio .fvs-info-panel,.fvp.fvp-pop){
   -webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:var(--lx-s2)!important;
 }
-/* The editor's library is coloured by a longer rule (section 8), so its opaque form is as long. */
+/* The creation panel's two columns and the editor's library are coloured by longer rules (section 8), so their opaque forms
+   are as long. */
+:is(html[data-glass=solid],html.lite)[data-fv-lux]:root dialog.fv-studio.fv-create .fv-body[data-cols="3"]>:is(.fv-controls,.fv-work-column),
 :is(html[data-glass=solid],html.lite)[data-fv-lux]:root dialog.fv-studio.fv-editor .fv-ed-library{
   -webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:var(--lx-s1)!important;
 }
@@ -256,7 +258,10 @@ html[data-fv-lux][data-theme=light]:root dialog.fv-studio{--lx-s0:#e4e8ee}
 @media (prefers-reduced-transparency:reduce){
   html[data-fv-lux]:not([data-glass=solid],.lite):root body dialog.fv-set .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch,html[data-fv-lux]:not([data-glass=solid],.lite):root body dialog.fv-set .fv-topbar .fv-tb-cap{-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:rgb(var(--fv-solid1))!important}
   html[data-fv-lux]:root dialog.fv-studio :is(.fvs-console,.fv-recent,.fvs-rail,.fv-iv-panel,.fv-view-switch,.fv-tb-cap,.fv-ed-library,.fv-ed-adjust-host,.fv-ed-genbar,.fv-chat-rail,.fv-chat-side){-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:var(--lx-s1)!important}
-  html[data-fv-lux]:root dialog.fv-studio.fv-editor .fv-ed-library.fv-ed-library{-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:var(--lx-s1)!important}
+  html[data-fv-lux]:root dialog.fv-studio.fv-editor .fv-ed-library.fv-ed-library,
+  html[data-fv-lux]:root dialog.fv-studio.fv-create .fv-body[data-cols="3"]>:is(.fv-controls,.fv-work-column),
+  html[data-fv-lux]:root dialog.fv-studio.fv-image .fv-iv-panel,
+  html[data-fv-lux]:root dialog.fv-studio.fv-editor .fv-ed-adjust-host{-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:var(--lx-s1)!important}
   html[data-fv-lux]:root :is(dialog.fv-studio .fvs-tray[open],dialog.fv-studio .fvs-info-panel,.fvp.fvp-pop){-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:var(--lx-s2)!important}
   html[data-fv-lux]:root body dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot) .fv-topbar.fv-topbar.fv-topbar>.fv-view-switch,html[data-fv-lux]:root body dialog.fv-studio:is(.fv-create,.fv-image,.fv-editor,.fv-autopilot) .fv-topbar .fv-tb-cap{-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:var(--lx-s0)!important}
 }
