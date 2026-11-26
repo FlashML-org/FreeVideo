@@ -316,9 +316,13 @@ function position(element) {
     return true;
 }
 
+// A drop-down list that is open is what is being worked with: nothing else says anything over it (its own rows would otherwise
+// show the words of the control that opened it). The tip is the control's again once the list is shut.
+const listOpen = () => !!document.querySelector('.fv-select-menu:not([hidden])');
+
 function show(element) {
     const content = tipContent(element);
-    if (!content || !element.isConnected) return;
+    if (!content || !element.isConnected || listOpen()) return;
     clearTimeout(hideTimer);
     if (shown && shown !== element) release(shown);
     shown = element;
