@@ -2069,19 +2069,37 @@ class Installer:
 
     def packages(self, label, args, family='pypi', *, wait_busy=True):
         from .failure_details import file_in_use
-        for wait in (*ENVIRONMENT_BUSY_WAITS, None):
+        from . import windows_blocked
+        tries = 0
+        while True:
             try:
                 with self.download_notice('download-patient-' + label) as notice:
                     return network.package_command(self.network, family,
                         lambda env, source: self.command(label if source == 'official' else label + '-' + source, args, env=env),
                         self.env, notice=notice)
             except RuntimeError as error:
-                # Security software or an indexer can hold a file uv has just
-                # written or is about to run (the build environment's Python).
-                # No other download source helps; the file is free again shortly.
-                if wait is None or not wait_busy or not file_in_use(error) or self.cancel.is_set():
+                if not wait_busy:
                     raise
-                self.ui.write('A file is in use by another program; trying again in %d s.\n' % wait)
+                # Security software or an indexer can hold a file uv has just
+                # written or is about to run (the build environment's Python),
+                # or still be examining a file it refused uv.
+                # No other download source helps; the file is free again shortly.
+                blocked = windows_blocked.package_blocked(str(error)) if self.system == 'Windows' else None
+                waits = (ENVIRONMENT_BUSY_WAITS if file_in_use(error) else
+                         windows_blocked.RETRY_WAITS if blocked and blocked[0] in windows_blocked.RETRYABLE else ())
+                if tries >= len(waits) or self.cancel.is_set():
+                    if blocked:
+                        # The launcher shows the blocked-file card, not "choose a folder you can write to":
+                        # the folder is FreeVideo's own, and uv has just written to it.
+                        raise windows_blocked.blocked_failure(blocked, error) from error
+                    raise
+                wait = waits[tries]
+                tries += 1
+                if file_in_use(error):
+                    self.ui.write('A file is in use by another program; trying again in %d s.\n' % wait)
+                else:
+                    self.ui.write('Windows did not let setup write a file of %s (Windows error %d). Trying again in %d s.\n'
+                                  % (blocked[1] or 'a package', blocked[0], wait))
                 if self.cancel.wait(wait):
                     raise
 

@@ -1329,21 +1329,23 @@ UPDATE_START_BLOCKED_NEXT_RELEASE_FIRST = (
     '请到发布页下载最新版本，或打开下载位置手动启动新启动器。')
 # Windows did not let setup write a Python file (windows_blocked.PYTHON_FILE_MARKER), by its reason. Each reason has its
 # own next step: allowing the folder does not help a file in use, a policy or Smart App Control.
+# One card for a Python file and a package file such as a PyTorch DLL: it says "file", which is what the
+# security software's records name.
 PYTHON_FILE_BLOCKED_TITLE = {
-    'default': ('A Python file was blocked during setup', '安装中的 Python 文件被拦截'),
-    'in-use': ('A Python file was in use during setup', '安装中的 Python 文件被其他程序占用'),
+    'default': ('A file was blocked during setup', '安装中的文件被拦截'),
+    'in-use': ('A file was in use during setup', '安装中的文件被其他程序占用'),
 }
 PYTHON_FILE_BLOCKED = {
-    'denied': ('Security software or a Windows protection feature did not let setup write a Python file into the FreeVideo folder.',
-               '安全软件或 Windows 的保护功能不允许安装程序把 Python 文件写入 FreeVideo 所在的文件夹。'),
-    'in-use': ('Another program kept a Python file in the FreeVideo folder open, so setup could not write it.',
-               '其他程序占用了 FreeVideo 文件夹中的 Python 文件，安装程序无法写入。'),
-    'threat': ('Security software reported a Python file as a threat and stopped setup from writing it.',
-               '安全软件把一个 Python 文件报为威胁，阻止了安装程序写入。'),
-    'policy': ('A policy on this computer does not allow setup to write a Python file.',
-               '这台电脑上的策略不允许安装程序写入 Python 文件。'),
-    'smart-app-control': ('Smart App Control in Windows stopped setup from writing a Python file.',
-                          'Windows 的“智能应用控制”阻止了安装程序写入 Python 文件。'),
+    'denied': ('Security software or a Windows protection feature did not let setup write a file into the FreeVideo folder.',
+               '安全软件或 Windows 的保护功能不允许安装程序把文件写入 FreeVideo 所在的文件夹。'),
+    'in-use': ('Another program kept a file in the FreeVideo folder open, so setup could not write it.',
+               '其他程序占用了 FreeVideo 文件夹中的文件，安装程序无法写入。'),
+    'threat': ('Security software reported a file as a threat and stopped setup from writing it.',
+               '安全软件把一个文件报为威胁，阻止了安装程序写入。'),
+    'policy': ('A policy on this computer does not allow setup to write files into the FreeVideo folder.',
+               '这台电脑上的策略不允许安装程序把文件写入 FreeVideo 所在的文件夹。'),
+    'smart-app-control': ('Smart App Control in Windows stopped setup from writing a file.',
+                          'Windows 的“智能应用控制”阻止了安装程序写入文件。'),
 }
 # Windows Security's menu names as Microsoft's support pages give them (zh-CN: 病毒和威胁防护, 保护历史记录).
 PYTHON_FILE_BLOCKED_NEXT = {

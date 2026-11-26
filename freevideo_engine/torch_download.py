@@ -3,8 +3,9 @@ import importlib.metadata
 import json
 import os
 from pathlib import Path
+import time
 
-from . import network
+from . import network, windows_blocked
 from .environments import uv_build_environment
 from .long_paths import io_path, plain_errors
 
@@ -114,8 +115,16 @@ def install(uv, python, pins, cuda, *, root, networking, env, ui, run, constrain
         command = [uv, 'pip', 'install', '--python', python, *reinstall_arguments(fresh), *requirements, *constraints]
         # The large CUDA wheels are now local. Small ordinary dependencies use the
         # measured PyPI mirrors, without accidentally selecting a different torch.
-        network.package_command(networking, 'pypi',
-            lambda attempt_env, _: run(command, uv_build_environment(command, root, attempt_env)), env)
+        # Security software still examining a wheel's files can refuse uv the rename into its own cache:
+        # the same install is tried again after short waits, and the launcher then shows the blocked-file card.
+        def pause(seconds):
+            for _ in range(seconds):
+                check()
+                time.sleep(1)
+            return False
+        windows_blocked.retry_package(lambda: network.package_command(networking, 'pypi',
+            lambda attempt_env, _: run(command, uv_build_environment(command, root, attempt_env)), env),
+            write=getattr(ui, 'write', lambda text: None), wait=pause)
 
     install_packages(installed, broken)
     if not broken:
