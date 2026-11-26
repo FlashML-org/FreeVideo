@@ -7,7 +7,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 import math
 from .hardware import Hardware, GiB
-from .system import HOST_WEIGHT_HEADROOM, weight_cache_headroom, residual_host_headroom
+from .system import HOST_WEIGHT_HEADROOM, weight_cache_headroom, residual_host_headroom, host_staging_growth
 
 # One prepared FP8 transformer block, as reserved on the host allocator.
 BLOCK_BYTES = 432_500_000
@@ -639,6 +639,11 @@ class ResourceBudgetError(ValueError):
                          'and the encoder is not loaded at all.'
                          % (self.details['ram_minimum_bytes'] / GiB,
                             self.details['ram_budget_bytes'] / GiB))
+        if ram_requirement == 'host_staging':
+            lines.append('At this size the video is made with its attention outputs and residuals held in host memory, '
+                         'which needs about %.2f GiB of RAM, and this machine offers %.2f GiB. With less, the run '
+                         'would stop part-way, after most of its time was spent. A smaller size or a shorter length '
+                         'needs less.' % (self.details['ram_minimum_bytes'] / GiB, self.details['ram_budget_bytes'] / GiB))
         if gpu_requirement == 'estimated_working_set':
             lines.append('The smallest-profile VRAM estimate includes activations, fixed weights and '
                          'transfer/work buffers, with CPU residual staging and no resident transformer blocks. '
@@ -1964,6 +1969,14 @@ def _choose(hardware: Hardware, *, vram_gib=None, ram_gib=None, attention='auto'
                         + 2 * GiB > retention_budget)
     fast_floor = ((FAST2_HOST_FLOOR_BYTES if fast_measured else ram_minimum) + fast_host
                   if fast_host and resident < 50 else 0)
+    # The placement with attention outputs and the residual in host memory holds locked buffers that grow with the request.
+    staging_growth = host_staging_growth(canvas) if canvas is not None and cpu_outputs and residual_offload and stage == 'generation' else 0
+    staging_floor = ram_minimum + staging_growth if staging_growth else 0
+    if ram_budget < staging_floor:
+        raise ResourceBudgetError(hardware, gpu_total, ram_total, free_gpu, free_ram, reserve_gpu, reserve_ram,
+                                  gpu_minimum_bytes=gpu_minimum + placement_workspace,
+                                  ram_minimum_bytes=max(ram_minimum, staging_floor), canvas=canvas,
+                                  ram_requirement='host_staging', gpu_reserve_explicit=gpu_reserve_gib is not None)
     if ram_budget < fast_floor:
         # A fast plan that offloads blocks holds the adapter's matrices and the features beside its measured working set.
         raise ResourceBudgetError(hardware, gpu_total, ram_total, free_gpu, free_ram, reserve_gpu, reserve_ram,
