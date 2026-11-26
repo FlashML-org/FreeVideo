@@ -1102,7 +1102,7 @@ class Session:
 
     def image_pack_view(self, model='image'):
         from .image_gen import image_pack
-        from .failure_details import image_pack_failure
+        from .failure_details import image_pack_failure, image_pack_write_known
         group = self.h3_group() if model == 'h3-image' else 'image'
         title = ('MiniMax H3 Image', 'MiniMax H3 Image') if model == 'h3-image' else NAMES['image']
         try:
@@ -1113,7 +1113,7 @@ class Session:
             return dict(installable=False, ready=False, state='missing', visible=False, busy=False,
                         downloaded_bytes=0, verified_bytes=0, total_bytes=total, bytes=total,
                         title=self.t(*title), detail=self.t('Not installed', '未安装'),
-                        install={}, can_act=False, removable_bytes=0, repairable=False, failure={}, report_id=None, report_line='',
+                        install={}, can_act=False, removable_bytes=0, repairable=False, failure={}, report_id=None, report_line='', report_offered=True,
                         engine_state='unknown', engine_note='', engine_clicked=False)
         root, engine = self._image_location()
         try:
@@ -1162,7 +1162,7 @@ class Session:
         elif active.get('state') == 'cancelled':
             detail = self.t('Paused', '已暂停')
         elif active.get('state') == 'failed':
-            failure = self.both(lambda zh: image_pack_failure(active.get('reason'), zh=zh))
+            failure = self.both(lambda zh: image_pack_failure(active.get('reason'), zh=zh, write=active.get('write')))
             detail = failure['detail']
             repairable = repairable or active.get('reason') in ('needs_repair', 'integrity_failed')
         blocked = (self.controller.busy or self.importer.busy or self.cleaner.busy or self.archives_busy
@@ -1176,6 +1176,8 @@ class Session:
                     detail=detail, busy=busy, install=active, can_act=not (blocked or busy or value.get('checking')),
                     removable_bytes=removable,
                     repairable=repairable, failure=failure, report_id=active.get('report_id'),
+                    # A write that failed for a known reason has its own next step: the export stays, "Report a problem" goes.
+                    report_offered=not (active.get('reason') == 'write_failed' and image_pack_write_known(active.get('write'))),
                     report_line=self._image_pack_report_line(),
                     engine_state=engine_state,
                     engine_note=self.both(lambda zh: image_pack_failure('busy_engine', zh=zh))['detail'] if running else '',
@@ -1188,6 +1190,11 @@ class Session:
             return ''
         error = report.get('error') or {}
         parts = [str(report.get('stage_at_failure') or ''), str(error.get('code') or ''), str(error.get('class') or '')]
+        # A write that failed: its step and the codes the system gave (no file: the card above names it).
+        write = (error.get('details') or {}).get('write') or {}
+        parts += [str(write.get('step') or '')] + [('curl %d' % write['curl']) if type(write.get('curl')) is int else '',
+                                                   str(write.get('errno') or ''),
+                                                   ('WinError %d' % write['winerror']) if type(write.get('winerror')) is int else '']
         return 'Image pack: ' + ', '.join(part for part in parts if part)
 
     def image_pack_report(self):

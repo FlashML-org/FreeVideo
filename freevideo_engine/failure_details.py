@@ -133,12 +133,177 @@ def shared_mismatch_text(*, zh=False, portable=None):
     return (SHARED_MISMATCH_PORTABLE if portable else SHARED_MISMATCH_ELSEWHERE)[bool(zh)]
 
 
-def image_pack_failure(code, *, zh=False, file=None):
+# A write that failed (write_failed), by the step it failed in (image_pack._step).
+IMAGE_PACK_WRITE_STEPS = {
+    'folder': ('FreeVideo could not write to the image model folder', 'FreeVideo 未能写入图像模型文件夹'),
+    'check': ('FreeVideo could not read or record an image model file while checking it', 'FreeVideo 检查图像模型文件时未能读取或记录该文件'),
+    'download': ('The image model download could not be saved', '图像模型的下载内容未能保存'),
+    'replace': ('The old model file could not be renamed, so the new file could not be put in place', '旧模型文件未能改名，新文件因此未能放入'),
+    'record': ('FreeVideo could not save a record file', 'FreeVideo 未能保存记录文件'),
+    'remove': ('An image model file could not be deleted', '一个图像模型文件未能删除'),
+    None: ('An image model file could not be written', '一个图像模型文件未能写入'),
+}
+# What the system answered, in words of our own: the system's text is in its own language.
+IMAGE_PACK_WRITE_ANSWERS = {
+    'denied': ('access denied', '拒绝访问'),
+    'permission': ('permission denied', '权限不足'),
+    'read-only': ('the disk is read-only', '磁盘为只读'),
+    'in-use': ('the file is in use by another program', '文件被其他程序占用'),
+    'threat': ('security software reported the file as a threat', '安全软件将文件报为威胁'),
+    'policy': ('a policy on this computer does not allow it', '这台电脑上的策略不允许'),
+    'smart-app-control': ('Smart App Control in Windows stopped it', 'Windows 的“智能应用控制”阻止了写入'),
+}
+IMAGE_PACK_WRITE_ERRNOS = {'EACCES': 'permission', 'EPERM': 'permission', 'EROFS': 'read-only', 'EBUSY': 'in-use', 'ETXTBSY': 'in-use'}
+# The next step by what the system answered; the Windows reasons are windows_blocked's ('permission' is the errno of
+# Linux and macOS, where no security software is the usual cause).
+IMAGE_PACK_WRITE_NEXT = {
+    'denied': ('Check that this account can write to the model folder, or allow the FreeVideo folder in the security software '
+               '(for Windows Security: Virus & threat protection → Manage ransomware protection → Controlled folder access), then try again.',
+               '请确认当前账户可以写入模型文件夹，或在安全软件中允许 FreeVideo 所在的文件夹（Windows 安全中心：病毒和威胁防护 → '
+               '管理勒索软件防护 → 受控文件夹访问），然后重试。'),
+    'permission': ('Check that this account can write to the model folder (its owner and permissions), then try again.',
+                   '请确认当前账户可以写入模型文件夹（检查文件夹的所有者和权限）后重试。'),
+    'read-only': ('Make the disk or folder writable, or connect it again if it is a removable or network drive, then try again.',
+                  '请把磁盘或文件夹改为可写入；如果是移动硬盘或网络盘，请重新连接后重试。'),
+    'in-use': ('Close the programs that may be using it (for example an antivirus scan), or restart the computer, then try again.',
+               '请关闭可能正在使用它的程序（例如杀毒软件扫描），或重新启动电脑，然后重试。'),
+    'threat': ('Allow the file in the security software (for Windows Security: Virus & threat protection → Protection history, '
+               'select the entry and allow it) and add the FreeVideo folder to the exclusions, then try again.',
+               '请在安全软件中允许这个文件（Windows 安全中心：病毒和威胁防护 → 保护历史记录，选中这条记录后允许），'
+               '并把 FreeVideo 所在的文件夹加入排除项，然后重试。'),
+    'policy': ('Ask the administrator of this computer to allow the FreeVideo folder, then try again.',
+               '请联系这台电脑的管理员允许 FreeVideo 所在的文件夹，然后重试。'),
+    'smart-app-control': ('Search Windows for "Smart App Control", or open Windows Security → App & browser control → Smart App '
+                          'Control settings, then try again.',
+                          '在 Windows 中搜索“智能应用控制”，或打开“Windows 安全中心 → 应用和浏览器控制 → 智能应用控制设置”，然后重试。'),
+    None: ('Close programs that may be using the model files (for example an antivirus scan), check that the model folder can be '
+           'written to, then try again.',
+           '请关闭可能正在使用模型文件的程序（例如杀毒软件扫描），确认模型文件夹可以写入，然后重试。'),
+}
+# FreeVideo's own check after curl 23 made a file it could not delete again (image_pack._write_answer).
+IMAGE_PACK_WRITE_CHECK_LEFT = ('While checking, FreeVideo left an empty file, {file}; you can delete it.',
+                               'FreeVideo 检查时留下了一个空文件 {file}，可以删除。')
+# What is kept, where a retry continues from it.
+IMAGE_PACK_WRITE_KEPT = {
+    'download': ('The downloaded part is kept, and the download resumes from it when you try again.',
+                 '已下载的部分会保留，重试时从中断处继续下载。'),
+    'kept_new': ('The original file is unchanged and the new file is kept beside it, so trying again only renames it; '
+                 'nothing is downloaded again.',
+                 '原文件没有改动，新文件保留在旁边；重试时只需完成改名，无需重新下载。'),
+}
+
+
+def _write_chain(error):
+    seen = set()
+    while error is not None and id(error) not in seen:
+        seen.add(id(error))
+        yield error
+        error = error.__cause__ or (None if error.__suppress_context__ else error.__context__)
+
+
+def image_pack_write_details(error, folders=()):
+    """What a write_failed carries for the card and the report line: the step (image_pack._step or the PackError's
+    own), the file and what the system answered (errno name, Windows error, curl's exit). The file is named from the
+    first of folders it lies in (fixed names only: image_gen/..., text_encoders/...), else with its folders removed as
+    every report removes them. Nothing else of the error is kept."""
+    step = path = curl = kept_new = check_left = None
+    answer = None
+    for item in _write_chain(error):
+        details = getattr(item, 'details', None) or {}
+        step = step or details.get('step') or getattr(item, 'pack_step', None)
+        path = path or details.get('path')
+        curl = curl or details.get('curl')
+        kept_new = kept_new or details.get('kept_new')
+        check_left = check_left or details.get('check_left')
+        if answer is None and isinstance(item, OSError) and (item.errno is not None or getattr(item, 'winerror', None)):
+            answer = item
+    if answer is not None:
+        path = path or answer.filename
+    value = {}
+    if step in IMAGE_PACK_WRITE_STEPS:
+        value['step'] = step
+    if path:
+        value['file'] = _pack_file_name(str(path), folders)
+    winerror = getattr(answer, 'winerror', None)
+    if type(winerror) is int:
+        value['winerror'] = winerror    # Windows' own code; the errno Python maps it to says less (5 and 32 are both EACCES)
+    elif answer is not None and answer.errno in errno.errorcode:
+        value['errno'] = errno.errorcode[answer.errno]
+    if type(curl) is int:
+        value['curl'] = curl
+    if kept_new:
+        value['kept_new'] = True
+    if check_left:
+        value['check_left'] = _pack_file_name(str(check_left), folders)
+    return value
+
+
+def _pack_file_name(path, folders):
+    from .long_paths import plain
+    # monitoring.save writes <name>.<8 random characters>.tmp and renames it: the file it was saving is the one named.
+    path = re.sub(r'\.[a-z0-9_]{8}\.tmp$', '', path)
+    for folder in folders:
+        try:
+            inside = Path(plain(path)).relative_to(Path(plain(str(folder))))
+        except (ValueError, TypeError, OSError):
+            continue
+        if inside.parts and '..' not in inside.parts:
+            return inside.as_posix()
+    return redacted_launcher_error(path)
+
+
+def _write_answer_kind(write):
+    from . import windows_blocked
+    if write.get('winerror') in windows_blocked.REASONS:
+        return windows_blocked.REASONS[write['winerror']]
+    return IMAGE_PACK_WRITE_ERRNOS.get(write.get('errno'))
+
+
+def image_pack_write_known(write):
+    """The system's answer names a cause with a next step of its own (access, a read-only disk, a file in use, the
+    Windows reasons): the card then offers the report export only, not "Report a problem"."""
+    return bool(write) and _write_answer_kind(write) is not None
+
+
+def image_pack_write_text(write, *, zh=False):
+    """The card for a write_failed that knows its step, file or answer; None leaves the general sentence."""
+    if not write:
+        return None
+    language = 1 if zh else 0
+    kind = _write_answer_kind(write)
+    said = []
+    if write.get('file'):
+        said.append(('文件：' if zh else 'file: ') + write['file'])
+    answer = []
+    if kind:
+        answer.append(IMAGE_PACK_WRITE_ANSWERS[kind][language])
+    if write.get('errno'):
+        answer.append(write['errno'])
+    if write.get('winerror') is not None:
+        answer.append(('Windows 错误 %d' if zh else 'Windows error %d') % write['winerror'])
+    if not answer and write.get('curl'):
+        answer.append(('curl 错误 %d' if zh else 'curl error %d') % write['curl'])
+    if answer:
+        said.append(('原因：' if zh else 'reason: ') + (('，' if zh else ', ').join(answer)))
+    text = IMAGE_PACK_WRITE_STEPS[write.get('step')][language]
+    if said:
+        text += ('（%s）' % '；'.join(said)) if zh else ' (%s)' % '; '.join(said)
+    text += '。' if zh else '.'
+    kept = IMAGE_PACK_WRITE_KEPT['kept_new' if write.get('kept_new') else write.get('step')] \
+        if write.get('kept_new') or write.get('step') in IMAGE_PACK_WRITE_KEPT else None
+    parts = [text, IMAGE_PACK_WRITE_NEXT[kind][language]] + ([kept[language]] if kept else [])
+    if write.get('check_left'):
+        parts.append(IMAGE_PACK_WRITE_CHECK_LEFT[language].replace('{file}', write['check_left']))
+    return ('' if zh else ' ').join(parts)
+
+
+def image_pack_failure(code, *, zh=False, file=None, write=None):
     if code == 'shared_mismatch':
         return dict(kind='image-pack', title=('图像模型操作未完成' if zh else 'Image model operation stopped'),
                     detail=shared_mismatch_text(zh=zh), action='')
+    detail = image_pack_write_text(write, zh=zh) if code == 'write_failed' else None
     return dict(kind='image-pack', title=('图像模型操作未完成' if zh else 'Image model operation stopped'),
-                detail=IMAGE_PACK_FAILURES.get(code, IMAGE_PACK_FAILURES['failed'])[bool(zh)], action='')
+                detail=detail or IMAGE_PACK_FAILURES.get(code, IMAGE_PACK_FAILURES['failed'])[bool(zh)], action='')
 
 
 def sampling_table_details(value):

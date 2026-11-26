@@ -1196,12 +1196,12 @@ ApplicationWindow {
                         }
                         FText { objectName: "imagePackEngineNote"; wrapMode: Text.WordWrap; visible: s.image_pack.engine_state === "running"; text: s.image_pack.engine_note; color: s.image_pack.engine_clicked ? theme.danger : theme.muted; Layout.fillWidth: true }
                         FText { objectName: "imagePackFailureReason"; visible: s.image_pack.install.state === "failed"; text: s.image_pack.detail; color: theme.danger; Layout.fillWidth: true }
-                        FButton { objectName: "imagePackReport"; visible: s.image_pack.install.state === "failed"; text: reportOpened((s.image_pack.detail || "") + (s.image_pack.report_line ? "\n" + s.image_pack.report_line : ""), t("Image pack", "图像模型包")) ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened((s.image_pack.detail || "") + (s.image_pack.report_line ? "\n" + s.image_pack.report_line : ""), t("Image pack", "图像模型包")); onClicked: backend.reportProblem(plainText((s.image_pack.detail || "") + (s.image_pack.report_line ? "\n" + s.image_pack.report_line : "")), plainText(t("Image pack", "图像模型包"))) }
                         Flow {
                             visible: s.image_pack.install.state === "failed" && !!s.image_pack.report_id
                             Layout.fillWidth: true; spacing: 8
                             FButton { objectName: "imagePackExport"; text: t("Export report", "导出报告"); enabled: s.report.status !== "running"; onClicked: backend.exportReport() }
                         }
+                        FButton { objectName: "imagePackReport"; visible: s.image_pack.install.state === "failed" && s.image_pack.report_offered !== false; text: reportOpened((s.image_pack.detail || "") + (s.image_pack.report_line ? "\n" + s.image_pack.report_line : ""), t("Image pack", "图像模型包")) ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened((s.image_pack.detail || "") + (s.image_pack.report_line ? "\n" + s.image_pack.report_line : ""), t("Image pack", "图像模型包")); onClicked: backend.reportProblem(plainText((s.image_pack.detail || "") + (s.image_pack.report_line ? "\n" + s.image_pack.report_line : "")), plainText(t("Image pack", "图像模型包"))) }
                         FMeter {
                             objectName: "imagePackProgress"; visible: s.image_pack.busy; Layout.fillWidth: true; active: visible
                             fraction: s.image_pack.install.total > 0 ? s.image_pack.install.done / s.image_pack.install.total : -1
