@@ -4,7 +4,6 @@
 @media (pointer:coarse) and (min-width:481px){
  /* Rows: play row 48, tool row 52. */
  .fv-studio.fv-editor,.fv-studio.fv-editor[data-hx-voice]{grid-template-rows:auto var(--fv-ed-project-h) minmax(96px,1fr) 48px var(--fv-ed-generation-row) 52px var(--fv-ed-timeline-h)}
- .fv-ed-notice-stack{bottom:calc(var(--fv-ed-timeline-h) + 52px + var(--fv-ed-generation-row) + 56px)}
  .fv-ed-gen-tray{bottom:calc(100% + 56px)}
 
  /* Tool row: undo, redo, split, delete, snapping and zoom stay; editor_toolbar_more.js moves the rest behind ⋯. */
@@ -40,6 +39,9 @@
 @media (pointer:coarse) and (min-width:681px){
  .fv-studio.fv-editor .fv-ed-transport{grid-template-columns:minmax(max-content,1fr) auto minmax(max-content,1fr);padding:0 8px}
  .fv-studio.fv-editor .fv-ed-transport-center{translate:none}
+ /* The notice stack floats above the taller rows only here: up to 680 px it sits in the grid under the picture
+    (editor.css), where this lift would push it off the page. */
+ .fv-ed-notice-stack{bottom:calc(var(--fv-ed-timeline-h) + 52px + var(--fv-ed-generation-row) + 56px)}
 }
 @media (pointer:coarse) and (min-width:481px){
 
