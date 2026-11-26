@@ -42,6 +42,12 @@
 .fv-editor .fv-ed-adjust-close{position:absolute;top:0;right:0;width:28px;height:28px;min-height:28px;padding:0;border:0;background:transparent;color:var(--fv-muted);z-index:1}
 .fv-editor .fv-ed-adjust-close[hidden]{display:none}
 @media(max-width:1279px){.fv-ed-adjust>.fv-ed-tabs{padding-right:32px}}
+/* Tab names longer than their row (editor_adjust.js fitTabs measures): the tabs keep 3px of side padding instead of 8, and
+   only when that is still too little does the row scroll sideways, its scrollbar hidden; a name is never cut or wrapped. */
+.fv-ed-adjust>.fv-ed-tabs[data-fv-fit] button{padding-left:3px;padding-right:3px}
+.fv-ed-adjust>.fv-ed-tabs[data-fv-fit=scroll]{overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+.fv-ed-adjust>.fv-ed-tabs[data-fv-fit=scroll]::-webkit-scrollbar{display:none}
+.fv-ed-adjust>.fv-ed-tabs[data-fv-fit=scroll] button{flex:none}
 /* Nothing chosen: the inspector shows one quiet line, left-aligned at the top of the column, on the same baseline as the
    header line beside it (the edit's name, the library's tabs); the controls appear again, with a short fade, once a part
    is chosen (no greyed column). */

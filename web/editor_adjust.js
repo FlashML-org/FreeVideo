@@ -83,6 +83,30 @@ export function createAdjustPanel(host, {state, t, actions}) {
     const media = window.matchMedia?.('(min-width: 1280px)');
     let narrow = media ? !media.matches : false, overlay = false, active = 'video', disposed = false;
     let context = selectedContext(state, t, actions);
+    // A tab row short of room for its names (a long word in a narrow drawer): the tabs first give up most of their side
+    // padding, and when the names still do not fit, the row scrolls sideways with the chosen tab in view. A name is never
+    // cut or wrapped. Measured each time from the full padding, so the row never stays tight once it has room again; paint
+    // measures only when the shown tabs change, the observer when the row's width does.
+    let fitted = '';
+    const shownTabs = () => [...buttons.values()].map(tab => tab.hidden ? 0 : 1).join('');
+    function fitTabs() {
+        fitted = shownTabs();
+        delete tabs.dataset.fvFit;
+        if (tabs.hidden || !tabs.clientWidth) return;
+        const over = () => tabs.scrollWidth > tabs.clientWidth + 1;
+        if (!over()) return;
+        tabs.dataset.fvFit = 'tight';
+        if (over()) { tabs.dataset.fvFit = 'scroll'; showActiveTab(); }
+    }
+    function showActiveTab() {
+        const tab = buttons.get(active);
+        if (tabs.dataset.fvFit !== 'scroll' || !tab || tab.hidden) return;
+        const row = tabs.getBoundingClientRect(), box = tab.getBoundingClientRect();
+        const left = box.left - row.left - tabs.clientLeft + tabs.scrollLeft, right = left + box.width;
+        tabs.scrollLeft = Math.min(left, Math.max(tabs.scrollLeft, right - tabs.clientWidth));
+    }
+    const tabsObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { if (!disposed) fitTabs(); }) : null;
+    tabsObserver?.observe(tabs); document.fonts?.ready?.then(() => { if (!disposed) fitTabs(); });
     function renderActive() {
         if (host.hidden) return;
         const entry = entries.get(active);
@@ -118,6 +142,7 @@ export function createAdjustPanel(host, {state, t, actions}) {
         }
         reasonLine.textContent = shownReason; reasonLine.hidden = !shownReason;
         host.dataset.empty = String(empty); element.dataset.empty = String(empty); tabs.hidden = empty;
+        if (fitted !== shownTabs()) fitTabs(); else showActiveTab();
         renderActive();
     }
     function activate(kind) { if (!disposed && entries.has(kind)) { if (active !== kind) entries.get(active)?.component.deactivate?.(); active = kind; paint(); } }
@@ -195,7 +220,7 @@ export function createAdjustPanel(host, {state, t, actions}) {
     paint();
     function dispose() {
         if (disposed) return;
-        disposed = true; unsubscribe();
+        disposed = true; unsubscribe(); tabsObserver?.disconnect();
         document.removeEventListener('pointerdown', outside, true); stopEscape();
         media?.removeEventListener('change', resize);
         tabs.onkeydown = null; for (const tab of buttons.values()) tab.dispose(); toggleButton.dispose();
