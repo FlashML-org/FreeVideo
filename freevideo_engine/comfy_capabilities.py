@@ -52,6 +52,14 @@ def _machine_context():
     machine['hardware'] = observed
     # Receipt read only: tells the page the first run still compiles.
     machine['compile_owed'] = compile_owed(root)
+    if machine.get('device_backend') != 'mps' and not str(machine.get('prepared_format', 'int8')).startswith('int8'):
+        # An FP8 installation: whether the launcher offers the int8 model, and its download (the Fast level needs it).
+        try:
+            from .model_upgrade import offer
+            offered = offer(root)
+            machine['model_switch'] = {k: offered.get(k) for k in ('status', 'purpose', 'download_bytes')}
+        except Exception:
+            logging.debug('[FreeVideo] The model switch could not be read for the capability grid.', exc_info=True)
     return machine
 
 

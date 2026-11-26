@@ -54,8 +54,24 @@ def _fast_mode_listing(machine):
             or any(word in name for word in ('amd', 'radeon', 'instinct'))):
         return dict(listed=False, unlisted_reason='gpu')
     if machine['precision'] != 'int8':
+        # An FP8 installation: where the launcher offers the int8 model (model_upgrade.offer, read by the page's server
+        # as model_switch), the page shows the fastest mode as unavailable and points there, with the launcher's own
+        # download size and, on cards where FP8 is the faster arithmetic (purpose 'fast-level'), that cost too.
+        switch = machine.get('model_switch')
+        if switch:
+            return dict(listed=False, unlisted_reason='engine', needs='int8_model', download_bytes=switch['download_bytes'],
+                        int8_slower=switch['purpose'] == 'fast-level')
         return dict(listed=False, unlisted_reason='engine')
     return dict(listed=True, unlisted_reason=None)
+
+
+def _model_switch(value):
+    """The launcher's offer of the int8 model as the page's server read it, or None when nothing is offered."""
+    if (not isinstance(value, dict) or value.get('status') not in ('available', 'low-disk')
+            or value.get('purpose') not in ('faster', 'fast-level') or type(value.get('download_bytes')) is not int
+            or value['download_bytes'] < 0):
+        return None
+    return dict(status=value['status'], purpose=value['purpose'], download_bytes=value['download_bytes'])
 # WholeVideoProgress.for_request starts an ordinary new-prompt request with
 # these flags. Unobserved encoder/model residency stays cold; compilation is
 # unknown (the prior's half-cold default), even later in the same session.
@@ -294,7 +310,8 @@ def _machine(machine, in_use=None):
                 # Setup's vendor, and whether the saved torch build is a CUDA one: a ROCm build saves no CUDA version.
                 # A record from before either was saved has neither, and is judged by the card's name as before.
                 vendor=str(machine['gpu_vendor']).casefold() if machine.get('gpu_vendor') else None,
-                cuda_missing='cuda_version' in observed and not observed['cuda_version'])
+                cuda_missing='cuda_version' in observed and not observed['cuda_version'],
+                model_switch=None if mac or precision == 'int8' else _model_switch(machine.get('model_switch')))
 
 
 def _request(width, height, frames, steps, two_pass, task='t2va', refine=3,

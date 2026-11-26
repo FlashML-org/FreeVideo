@@ -41,6 +41,10 @@
 .fv-effort-custom[hidden]{display:none}
 .fv-effort[data-disabled=true]{opacity:.5}
 .fv-effort[data-disabled=true] .fv-effort-rail,.fv-effort[data-disabled=true] .fv-effort-name{cursor:default}
+/* A level this installation cannot use (its model is missing): greyed, never active; its tooltip says why. */
+.fv-studio .fv-effort .fv-effort-name[data-unavailable],.fv-effort .fv-effort-name[data-unavailable]{opacity:.45;cursor:not-allowed}
+.fv-studio .fv-effort .fv-effort-name[data-unavailable]:hover,.fv-effort .fv-effort-name[data-unavailable]:hover{color:var(--fv-muted,#969a9f)}
+.fv-effort-stop[data-unavailable]{opacity:.4}
 @media(prefers-reduced-motion:reduce){.fv-effort *{transition:none!important;animation:none!important}}
 
 .fv-two-pass-status{margin-left:auto;color:var(--fv-muted);font-size:11px;transition:opacity .2s}

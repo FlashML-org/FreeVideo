@@ -36,7 +36,7 @@ import { openCastLibrary } from './cast_source.js';
 import { uploadMedia } from './media_upload.js';
 import { reconcileLoraTriggers, promptLines } from './lora_triggers.js';
 import { createVerdicts, describeVerdict, feedbackDraft } from './lora_check.js';
-import { FAST_EFFORT, FAST_OPTION_TEXT, continuationUpscale, createSamplingEffort, effortFor, effortsFrom, fastAnswered, fastOfferOf, passSwitch, stepCacheOf, upscaleOf, withFastLevel } from './sampling_effort.js';
+import { FAST_EFFORT, FAST_OPTION_TEXT, continuationUpscale, createSamplingEffort, effortFor, effortsFrom, fastAnswered, fastOfferOf, fastUnavailableText, passSwitch, stepCacheOf, upscaleOf, withFastLevel } from './sampling_effort.js';
 import { fastPackControl } from './fast_pack.js';
 import { createPanelShell } from './panel_shell.js';
 import { layoutColumns } from './studio_columns.js';
@@ -1216,8 +1216,10 @@ export function openStudio(node, {extendFrom = null} = {}) {
         syncSamplingSteps(); updateRunButton();
     }
     // The planner's answer for this machine (capabilities.fast_mode): no answer lists no Fast level.
-    // Listed only once the files are known to be published; until then the four levels.
-    const fastLevels = () => withFastLevel(effortsFrom(fastGrid), fastOffer && fastPack.published === true ? fastOffer : null);
+    // Listed only once the files are known to be published; until then the four levels. An installation whose model does
+    // not run it sees it greyed, with the model it needs (fastUnavailableText).
+    const fastLevels = () => withFastLevel(effortsFrom(fastGrid), fastOffer && fastPack.published === true ? fastOffer : null,
+                                           !fastOffer && widget(node, 'fast_mode') ? fastUnavailableText(t, fastGrid) : '');
     function applyFastOffer(grid) {
         fastGrid = grid;
         if (fastAnswered(grid)) fastOffer = widget(node, 'fast_mode') ? fastOfferOf(grid) : null;
@@ -1252,6 +1254,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     }
     // A level chosen on the control.
     function chooseLevel(tier) {
+        if (tier.unavailable) return;  // a greyed level only says why (sampling_effort.js)
         if (!tier.fast) fastPack.forget();
         chooseEffort(tier);
         if (tier.twoPass) returnHeldPreview(); else holdPreview(false);

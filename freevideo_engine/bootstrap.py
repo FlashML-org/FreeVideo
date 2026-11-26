@@ -2718,7 +2718,7 @@ class Prefetcher:
 
     def run(self):
         out = self.run_dir / 'prefetch.json'
-        self.ui.phase('Download the faster model', 1, 2)
+        self.ui.phase('Download the new model', 1, 2)
         self.command('models', [self.pythons['engine'], '-m', 'freevideo_engine.provision',
                                 '--plan', self.run_dir / 'plan.json', '--prefetch', '--out', out])
         result = json.loads(out.read_text(encoding='utf-8'))

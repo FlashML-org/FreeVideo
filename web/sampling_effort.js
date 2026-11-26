@@ -23,15 +23,42 @@ export const FAST_NAME = Object.freeze(['Fast', '极速']);
 export const FAST_OPTION_TEXT = Object.freeze(['Faster; fine detail may flicker', '更快，画面细节可能闪烁']);
 // What a capability grid offers of it (capabilities.fast_mode, listed by the planner, a Mac included).
 export const fastOfferOf = grid => grid?.fast_mode?.listed === true ? grid.fast_mode : null;
+// The reason the Fast level is not offered here, in the page's words, or '' (it is simply not listed): an installation whose
+// model does not run it is told which model it needs and where to get it.
+// A level's name and the 档 after it never break across lines. The catalog keeps plain words; when the sentence is shown, the
+// level's own name in this language (and a 档 / 檔 right after it) is joined with word joiners, as error_panel.js does.
+export function keepLevelName(text, name) {
+    if (!text || !name || !/[\u3400-\u9fff]/.test(name)) return text;
+    const pattern = new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[档檔]?', 'g');
+    return text.replace(pattern, found => [...found].join('\u2060'));
+}
+export function fastUnavailableText(t, grid) {
+    return keepLevelName(fastUnavailableWords(t, grid), effortName(t, FAST_EFFORT));
+}
+function fastUnavailableWords(t, grid) {
+    const fast = grid?.fast_mode;  // a Mac is never told to switch models: its listing carries no `needs`
+    if (!fast || fast.listed || fast.needs !== 'int8_model') return '';
+    // The launcher's own count and rounding (Main.qml bytes()), so the page and the launcher show the same number.
+    const size = Number.isFinite(fast.download_bytes) && fast.download_bytes > 0 ? `${(fast.download_bytes / 2 ** 30).toFixed(1)}\u00a0GiB` : '';
+    if (fast.int8_slower) return size
+        ? t('Needs the model that supports Fast: choose "Switch model" in the launcher (about {size} to download). On this GPU, the other levels are about 5% slower with it.',
+            '需要支持极速档的模型：请在启动器中点“更换模型”（下载约 {size}）。在这张显卡上，换用后其他档位约慢 5%。', { size })
+        : t('Needs the model that supports Fast: choose "Switch model" in the launcher. On this GPU, the other levels are about 5% slower with it.',
+            '需要支持极速档的模型：请在启动器中点“更换模型”。在这张显卡上，换用后其他档位约慢 5%。');
+    return size ? t('Needs the faster model: choose "Upgrade" in the launcher (about {size} to download).', '需要更快的模型：请在启动器中点“升级”（下载约 {size}）。', { size })
+        : t('Needs the faster model: choose "Upgrade" in the launcher.', '需要更快的模型：请在启动器中点“升级”。');
+}
 // Whether a capabilities answer says anything about the Fast level: a ready grid, or a Mac's fast_only answer (no grid,
 // only the listing; its status stays unavailable for every other reader).
 export const fastAnswered = grid => grid?.version === 1 && (grid.status === 'ready' || grid.fast_only === true);
 // Mac runs the same plans; retain platform identity for its legacy High alias.
 const macLevels = new WeakSet();
-// A Mac's levels with Fast in front keep that identity.
-export const withFastLevel = (levels, offer) => {
-    if (!offer) return levels;
-    const listed = frozen([FAST_EFFORT, ...levels]);
+// A Mac's levels with Fast in front keep that identity. unavailable: why the Fast level cannot be chosen on this
+// installation (capabilities.fast_mode.needs, for example its model is not installed); it is then shown greyed, its
+// tooltip says why, and choosing it shows the reason instead.
+export const withFastLevel = (levels, offer, unavailable = '') => {
+    if (!offer && !unavailable) return levels;
+    const listed = frozen([offer ? FAST_EFFORT : Object.freeze({...FAST_EFFORT, unavailable}), ...levels]);
     if (macLevels.has(levels)) macLevels.add(listed);
     return listed;
 };
@@ -124,7 +151,7 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}, levels 
     const custom = el('span', 'fv-effort-custom', t('Custom', '自定义')); custom.hidden = true;
     const label = el('span', '', t('Quality', '质量'));
     const estimate = el('span', 'fv-effort-estimate');
-    const warning = el('div', 'fv-effort-warning'); warning.hidden = true;
+    const warning = el('div', 'fv-effort-warning'); warning.hidden = true; warning.setAttribute('aria-live', 'polite');
     // Ways out of what the warning says (the Fast level where a length does not fit): buttons under it.
     const ways = el('div', 'fv-effort-ways'); ways.hidden = true;
     // The names under the track show the level; the heading does not repeat it.
@@ -160,6 +187,10 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}, levels 
             b.dataset.level = tier.name;  // the tooltip's words are found by level, whichever position it has
             b.dataset.fvTipName = effortName(t, tier);
             b.dataset.fvTipUse = nameUse(tier);
+            if (tier.unavailable) {
+                b.dataset.unavailable = 'true'; b.setAttribute('aria-disabled', 'true'); b.dataset.fvTipWhy = tier.unavailable;
+                stops[i].dataset.unavailable = 'true';
+            }
             b.onclick = () => { if (!disabled && pointer === null) commit(i); };
             b.onkeydown = nameKey;
             names.append(b); return b;
@@ -238,6 +269,7 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}, levels 
     namesObserver?.observe(names); document.fonts?.ready?.then(fitNames);
     element.append(header, warning, ways, rail, names);
     let selected = 0, disabled = false, pointer = null, draft = 0, previewed = -1, currentSteps = 8, currentRefine = 3, twoPass = true, stepCache = null, upscale = 2, reason = '', fastNow = false, namesAsKeys = false, marked = false;
+    let unavailableShown = '';  // the warning line holds a greyed level's reason (cleared when a level is chosen)
     buildScale();
     function paint(position) {
         element.style.setProperty('--fv-position', position / last());
@@ -252,13 +284,16 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}, levels 
     // for assistive technology too: a radio group with one tab stop, on the level in use, and the rail (which is not seen
     // there) stays out of the tab order and the accessibility tree. Anywhere else the rail is the slider and the names are
     // only its labels, out of the tab order.
+    // A greyed level keeps its own reason in the tooltip's why line (withFastLevel's unavailable); a closed control's
+    // reason, when there is one, stands for every level.
+    const ownWhy = (b, i, why = '') => { const own = why || efforts[i]?.unavailable || ''; if (own) b.dataset.fvTipWhy = own; else delete b.dataset.fvTipWhy; };
     function markKeys() {
         rail.tabIndex = disabled || namesAsKeys ? -1 : 0;
         if (!namesAsKeys) {
             if (!marked) return;
             marked = false;
             rail.removeAttribute('aria-hidden'); names.removeAttribute('role'); names.removeAttribute('aria-label'); names.removeAttribute('aria-description');
-            for (const b of nameButtons) { b.removeAttribute('role'); b.removeAttribute('aria-checked'); delete b.dataset.fvTipFocus; delete b.dataset.fvTipWhy; b.tabIndex = -1; }
+            nameButtons.forEach((b, i) => { b.removeAttribute('role'); b.removeAttribute('aria-checked'); delete b.dataset.fvTipFocus; ownWhy(b, i); b.tabIndex = -1; });
             return;
         }
         marked = true;
@@ -266,7 +301,7 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}, levels 
         // The slider that says why the control is closed is not there for the pointer or the reader: the levels and the group say it.
         const why = disabled ? reason || t('Controlled by connected nodes.', '由连接的节点控制。') : '';
         if (why) names.setAttribute('aria-description', why); else names.removeAttribute('aria-description');
-        for (const b of nameButtons) { if (why) b.dataset.fvTipWhy = why; else delete b.dataset.fvTipWhy; }
+        nameButtons.forEach((b, i) => ownWhy(b, i, why));
         const inUse = element.dataset.custom !== 'true';
         // The arrows move through the group: a card at every press would cover the estimate, so the tip is for the pointer only.
         nameButtons.forEach((b, i) => { b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', String(inUse && i === selected)); b.dataset.fvTipFocus = 'off'; b.tabIndex = i === selected ? 0 : -1; });
@@ -282,6 +317,16 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}, levels 
         if (index !== previewed) { previewed = index; onPreview(efforts[index]); }
     }
     function commit(index) {
+        if (efforts[index]?.unavailable) {
+            // A greyed level is not chosen: the knob stays and the warning line says why (read out by screen readers).
+            onPreview(null);  // a drag that pointed at it put the estimate away; the caller shows the current one again
+            unavailableShown = efforts[index].unavailable;
+            warning.textContent = unavailableShown; warning.hidden = false;
+            paint(selected);
+            return;
+        }
+        if (unavailableShown && warning.textContent === unavailableShown) { warning.textContent = ''; warning.hidden = true; }
+        unavailableShown = '';
         selected = index; custom.hidden = true; delete element.dataset.custom;
         paint(index); onChange(efforts[index]);
         knob.classList.remove('fv-effort-pop'); void knob.offsetWidth; knob.classList.add('fv-effort-pop');
@@ -342,7 +387,7 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}, levels 
         markKeys(); rail.setAttribute('aria-disabled', String(disabled));
         element.dataset.disabled = String(disabled);
         if (pointer !== null) return;
-        const level = (fastNow && efforts.find(tier => tier.fast)) || effortFor(currentSteps, twoPass, currentRefine, stepCache, efforts, upscale);
+        const level = (fastNow && efforts.find(tier => tier.fast && !tier.unavailable)) || effortFor(currentSteps, twoPass, currentRefine, stepCache, efforts, upscale);
         // Custom steps sit at the nearest level, preferring one with the same pass count.
         const distance = v => Math.abs(v.steps - currentSteps) * 2 + (v.twoPass !== twoPass);
         const plain = efforts.filter(tier => !tier.fast);
@@ -359,10 +404,11 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}, levels 
     }
     // The machine's own table (effortsFrom); the names stay, the plans follow the machine.
     function setLevels(next) {
-        const same = (a, b) => a.steps === b.steps && a.twoPass === b.twoPass && a.stepCache === b.stepCache && a.upscale === b.upscale;
+        const same = (a, b) => a.steps === b.steps && a.twoPass === b.twoPass && a.stepCache === b.stepCache && a.upscale === b.upscale
+            && (a.unavailable || '') === (b.unavailable || '');
         if (!next || (next.length === efforts.length && macLevels.has(next) === macLevels.has(efforts)
             && next.every((tier, i) => same(tier, efforts[i])))) return;
-        const rebuilt = next.length !== efforts.length;
+        const rebuilt = next.length !== efforts.length || next.some((tier, i) => (tier.unavailable || '') !== (efforts[i]?.unavailable || ''));
         efforts = next;
         if (rebuilt) buildScale();
         update({baseSteps: currentSteps, refineSteps: currentRefine, twoPass, stepCache, upscale, disabled, reason, fast: fastNow});

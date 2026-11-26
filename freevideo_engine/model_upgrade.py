@@ -80,8 +80,10 @@ def offer(root):
         int8_ready = bool(readiness(rows).get('int8_ready'))
     except (KeyError, TypeError, AttributeError):
         checked = int8_ready = False
-    reason = ('fp8-is-faster' if preferred_format(hardware) != TARGET
-              else 'int8-kernels' if checked and not int8_ready else None)
+    # Where FP8 is the faster arithmetic (workstation and datacenter Ada and Blackwell) the move is still offered, because
+    # only the int8 model runs the fastest mode; the card then says what it costs on this GPU (purpose 'fast-level').
+    purpose = 'faster' if preferred_format(hardware) == TARGET else 'fast-level'
+    reason = 'int8-kernels' if checked and not int8_ready else None
     if reason:
         # For example an int8 download this GPU then failed to run.
         return unused(root, catalog, current) or dict(status='unavailable', reason=reason, receipt=stamp)
@@ -90,7 +92,7 @@ def offer(root):
     fused = variant_cleanup.fused_lora_variants(root, catalog, current)
     release = 0 if fused else variant_cleanup.retire(root, catalog, current)['bytes']
     free = disk_space.free_bytes(root)
-    return dict(status='available' if free >= download + MARGIN else 'low-disk',
+    return dict(status='available' if free >= download + MARGIN else 'low-disk', purpose=purpose,
                 architecture=hardware.architecture, gpu=hardware.gpu_name, current=current,
                 download_bytes=download, release_bytes=release, free_bytes=free,
                 required_bytes=download + MARGIN, lora_variants=fused, int8_checked=checked)

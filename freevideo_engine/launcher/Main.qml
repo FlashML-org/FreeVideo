@@ -215,36 +215,46 @@ ApplicationWindow {
     readonly property bool updateFirst: s.page === "launcher" && s.update.engine && !s.update.phase && !s.busy && s.status !== "open" && s.status !== "restart-required" && !s.needs_consent && !s.repair_offered
     function percent(row) { return row && row.total ? Math.floor(100 * row.done / row.total) + "%" : "" }
     readonly property var upgrade: s.model_upgrade || ({})
+    // On a GPU where FP8 is the faster arithmetic the move is offered for the Fast level only, and other levels get about 5%
+    // slower: the card never calls that model faster, and its button switches rather than upgrades.
+    readonly property bool upgradeForFast: upgrade.purpose === "fast-level"
     readonly property bool upgradeShown: !upgrade.dismissed && ["available", "low-disk", "downloading", "downloaded", "switching", "releasing", "releasable", "complete", "failed"].indexOf(upgrade.status) >= 0
     function upgradeHeadline() {
         var u = upgrade
-        if (u.status === "available") return t("A faster model is available for your GPU", "有适合这张显卡的更快模型")
-        if (u.status === "low-disk") return t("Not enough disk space for the faster model", "磁盘空间不够，暂时无法升级到更快的模型")
-        if (u.status === "downloading") return t("Downloading the faster model", "正在下载更快的模型")
+        if (u.status === "available") return upgradeForFast ? t("The Fast level needs a different model", "极速档需要更换模型")
+                                                            : t("A faster model is available for your GPU", "有适合这张显卡的更快模型")
+        if (u.status === "low-disk") return upgradeForFast ? t("Not enough disk space to switch models", "磁盘空间不够，暂时无法更换模型")
+                                                           : t("Not enough disk space for the faster model", "磁盘空间不够，暂时无法升级到更快的模型")
+        if (u.status === "downloading") return upgradeForFast ? t("Downloading the new model", "正在下载新模型") : t("Downloading the faster model", "正在下载更快的模型")
         if (u.status === "downloaded" && u.waiting === "comfy") return t("Switching after FreeVideo is closed", "关闭 FreeVideo 后切换")
         // "After the current video" only while a video is running; otherwise the switch starts now, and the card says what
         // it says while switching.
         if (u.status === "downloaded" && u.video_running) return t("Switching after the current video", "当前视频完成后切换")
-        if (u.status === "downloaded" || u.status === "switching") return t("Switching to the faster model", "正在切换到更快的模型")
+        if (u.status === "downloaded" || u.status === "switching") return upgradeForFast ? t("Switching models", "正在切换模型")
+                                                                                         : t("Switching to the faster model", "正在切换到更快的模型")
         if (u.status === "releasing") return u.waiting ? t("Removing the old model after the current video", "当前视频完成后删除旧模型") : t("Removing the old model", "正在删除旧模型")
         if (u.status === "releasable") return u.in_use === "int8_convrot" ? t("The old model is still on disk", "旧模型还占着磁盘空间")
                                                                            : t("Some model files are not in use", "有没在使用的模型文件")
         if (u.status === "complete" && u.in_use) return u.in_use === "int8_convrot" ? t("The old model was removed", "旧模型已删除")
                                                                              : t("Unused model files were removed", "没在使用的模型文件已删除")
-        if (u.status === "complete") return t("Upgraded to the faster model", "已升级到更快的模型")
-        if (u.status === "failed") return u.step === "release" ? t("The old model was not removed", "旧模型没有删除") : t("The upgrade stopped", "升级未完成")
+        if (u.status === "complete") return upgradeForFast ? t("Switched to the new model", "已换用新模型") : t("Upgraded to the faster model", "已升级到更快的模型")
+        if (u.status === "failed") return u.step === "release" ? t("The old model was not removed", "旧模型没有删除")
+                                          : upgradeForFast ? t("The model switch stopped", "更换模型未完成") : t("The upgrade stopped", "升级未完成")
         return ""
     }
     function upgradeBlocker(code) {
         if (code === "prepared-folder-redirected") return t("The model folder is linked to another location, and FreeVideo never deletes through a link.", "模型文件夹被链接到了别的位置，FreeVideo 不会通过链接删除文件。")
-        if (code === "unexpected-active-variant") return t("The faster model is not in use, so the old model is kept.", "没有在用更快的模型，旧模型保留。")
-        if (code === "active-variant-incomplete") return t("The faster model's files are incomplete, so the old model is kept.", "更快的模型文件不完整，旧模型保留。")
+        if (code === "unexpected-active-variant") return upgradeForFast ? t("The new model is not in use, so the old model is kept.", "没有在用新模型，旧模型保留。")
+                                                                        : t("The faster model is not in use, so the old model is kept.", "没有在用更快的模型，旧模型保留。")
+        if (code === "active-variant-incomplete") return upgradeForFast ? t("The new model's files are incomplete, so the old model is kept.", "新模型文件不完整，旧模型保留。")
+                                                                        : t("The faster model's files are incomplete, so the old model is kept.", "更快的模型文件不完整，旧模型保留。")
         return t("The model in use is not a standard FreeVideo model, so nothing was deleted.", "当前使用的模型不是标准安装的模型，为安全起见没有删除任何文件。")
     }
     function upgradeCause(code, step) {
         if (code === "disk") return t("There is not enough free disk space for the model files. Free some space first.", "磁盘可用空间不足，放不下模型文件。请先腾出空间。")
         if (code === "network") return t("The model download lost its connection. Check the network first.", "模型下载时网络连接中断。请先检查网络。")
-        if (step === "switch") return t("The switch to the faster model did not finish.", "切换到更快的模型未完成。")
+        if (step === "switch") return upgradeForFast ? t("The switch to the new model did not finish.", "切换到新模型未完成。")
+                                                     : t("The switch to the faster model did not finish.", "切换到更快的模型未完成。")
         if (step === "release") return t("The old model could not be removed.", "旧模型未能删除。")
         return t("The model download did not finish.", "模型下载未完成。")
     }
@@ -257,6 +267,13 @@ ApplicationWindow {
         var lora = u.lora_variants && u.lora_variants.length
         var speed = u.architecture === "ampere" ? t("about twice as fast on this GPU", "在这张显卡上预计快约 2 倍")
                                                  : t("about 10–30% faster on this GPU", "在这张显卡上预计快约 10–30%")
+        if (u.status === "available" && upgradeForFast)
+            return (u.resized ? t("Download size updated. ", "下载量已更新。") : "")
+                + t("With the model that supports Fast, you can use the Fast level; on this GPU, the other levels are about 5% slower. It downloads about {size}",
+                    "换用支持极速档的模型后，就可以使用极速档；在这张显卡上，其他档位约慢 5%。需要下载约 {size}", {size: bytes(u.download_bytes)})
+                + (lora ? t("; the old model stays so your LoRAs keep working, and no space is freed.", "；为了继续使用已有的 LoRA，旧模型会保留，空间不会释放。")
+                        : t(", then removes the old model to free about {size}.", "，完成后删除旧模型，释放约 {size}。", {size: bytes(u.release_bytes)}))
+                + t(" You can keep generating while it downloads.", "下载期间可以继续生成。")
         if (u.status === "available")
             return (u.resized ? t("Download size updated. ", "下载量已更新。") : "")
                 + t("The faster model is {speed} and closer to the original quality. It downloads {size}", "更快的模型{speed}，画质也更接近原版。需要下载约 {size}",
@@ -266,7 +283,7 @@ ApplicationWindow {
                 + t(" You can keep generating while it downloads.", "下载期间可以继续生成。")
         if (u.status === "low-disk")
             return t("It needs about {required} free; {free} is free. Clean the download cache in Settings → Storage or free some space, then reopen FreeVideo.",
-                     "需要约 {required} 可用空间，目前剩 {free}。可以在 设置 → 存储 清理下载缓存，或者腾出空间后重新打开 FreeVideo。",
+                     "需要约 {required} 可用空间，当前仅剩 {free}。可在“设置 → 存储”中清理下载缓存，或释放空间后重新打开 FreeVideo。",
                      {required: bytes(u.required_bytes), free: bytes(u.free_bytes)})
         if (u.status === "downloading")
             return u.progress && u.progress.unit === "bytes" && u.progress.total ? t("{done} / {total} · you can keep generating", "{done} / {total} · 可以继续生成", {done: bytes(u.progress.done), total: bytes(u.progress.total)})
@@ -277,8 +294,10 @@ ApplicationWindow {
         if (u.status === "downloaded" || u.status === "switching")
             return t("Generation pauses for about 2 minutes during the switch; settings and videos are kept.", "切换期间暂停生成约 2 分钟，设置和视频会保留。")
         if (u.status === "releasable" && u.in_use === "int8_convrot")
-            return t("FreeVideo now uses the faster model. Removing the old model frees about {size}; only its own files are removed.",
-                     "已在用更快的模型，删除旧模型可释放约 {size}，只删除旧模型自己的文件。", {size: bytes(u.release_bytes)})
+            return upgradeForFast ? t("FreeVideo now uses the new model. Removing the old model frees about {size}; only its own files are removed.",
+                                      "FreeVideo 已在使用新模型。删除旧模型可释放约 {size}，只删除旧模型自己的文件。", {size: bytes(u.release_bytes)})
+                                  : t("FreeVideo now uses the faster model. Removing the old model frees about {size}; only its own files are removed.",
+                                      "FreeVideo 已在使用更快的模型。删除旧模型可释放约 {size}，只删除旧模型自己的文件。", {size: bytes(u.release_bytes)})
         if (u.status === "releasable")
             return t("Removing unused model files frees about {size}; the model in use is not touched.", "删除未使用的模型文件可释放约 {size}，正在使用的模型不受影响。",
                      {size: bytes(u.release_bytes)})
@@ -288,8 +307,9 @@ ApplicationWindow {
                 + (lora ? t(" The old model stays for your fused LoRAs.", "旧模型为需要合并的 LoRA 保留。") : "")
         if (u.status === "failed")
             return (u.blockers && u.blockers.length ? upgradeBlocker(u.blockers[0]) + t(" ", "") : upgradeCause(u.cause, u.step) + "\n")
-                + (u.step === "release" ? t("The faster model is in use; the old model files are kept for now.", "已在用更快的模型，旧模型文件暂时保留。")
-                   : u.step === "switch" && !u.kept ? t("The previous model's files are all kept. Select \"Retry\" on the setup page to restore it.", "原来的模型文件都还在，在安装页点“重试”可恢复。")
+                + (u.step === "release" ? (upgradeForFast ? t("The new model is in use; the old model files are kept for now.", "FreeVideo 已在使用新模型，旧模型文件暂时保留。")
+                                                          : t("The faster model is in use; the old model files are kept for now.", "FreeVideo 已在使用更快的模型，旧模型文件暂时保留。"))
+                   : u.step === "switch" && !u.kept ? t("The previous model's files are all kept. Choose \"Retry\" on the setup page to restore it.", "原来的模型文件均已保留，可在安装页点“重试”恢复。")
                    : t("Your previous model is unchanged and still works. Select \"Try again\", or report a problem.", "原来的模型没有变化，可以继续使用。可以点“重试”，或提交问题。"))
         return ""
     }
@@ -1053,14 +1073,28 @@ ApplicationWindow {
                         reveal: true; Layout.fillWidth: true; padding: 18; spacing: 10
                         color: upgrade.status === "failed" || upgrade.status === "low-disk" ? theme.surface : theme.accentSubtle
                         border.color: upgrade.status === "failed" || upgrade.status === "low-disk" ? theme.border : theme.accentDim
-                        RowLayout {
-                            Layout.fillWidth: true; spacing: 14
-                            FIcon { kind: upgrade.status === "releasable" ? "folder" : "download"; ink: upgrade.status === "failed" ? theme.muted : theme.accent; Layout.preferredWidth: 22; Layout.preferredHeight: 22 }
+                        GridLayout {
+                            // A narrow window puts the buttons under the words, so the words keep the card's width.
+                            Layout.fillWidth: true; columnSpacing: 14; rowSpacing: 10; columns: win.narrow ? 2 : 3
+                            FIcon { Layout.row: 0; Layout.column: 0; kind: upgrade.status === "releasable" ? "folder" : "download"; ink: upgrade.status === "failed" ? theme.muted : theme.accent; Layout.preferredWidth: 22; Layout.preferredHeight: 22 }
                             ColumnLayout {
-                                Layout.fillWidth: true; spacing: 2
+                                Layout.row: 0; Layout.column: 1; Layout.fillWidth: true; spacing: 2
                                 FText { objectName: "modelUpgradeHeadline"; text: upgradeHeadline(); font.weight: Font.DemiBold; Layout.fillWidth: true }
                                 FText { objectName: "modelUpgradeText"; visible: text !== ""; text: upgradeExplanation(); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true; wrapMode: Text.WordWrap }
                             }
+                            Flow {
+                                // Under the words in a narrow window, wrapping inside the card's width (three buttons in a failed
+                                // state do not fit one line at 400 px); beside them, one line as wide as the visible buttons.
+                                objectName: "modelUpgradeActions"; spacing: 14
+                                readonly property real contentWidth: {
+                                    var width = 0, shown = 0
+                                    for (var i = 0; i < children.length; i++)
+                                        if (children[i].visible) { width += children[i].implicitWidth; shown++ }
+                                    return width + Math.max(0, shown - 1) * spacing
+                                }
+                                Layout.row: win.narrow ? 1 : 0; Layout.column: win.narrow ? 1 : 2
+                                Layout.fillWidth: win.narrow; Layout.preferredWidth: win.narrow ? 0 : contentWidth
+                                Layout.preferredHeight: implicitHeight; Layout.alignment: win.narrow ? Qt.AlignLeft : Qt.AlignVCenter
                             FButton { objectName: "modelUpgradeLater"; visible: ["available", "low-disk", "releasable", "complete", "failed"].indexOf(upgrade.status) >= 0; flat: true
                                       text: upgrade.status === "complete" || upgrade.status === "low-disk" ? t("Close", "关闭") : t("Later", "稍后"); onClicked: backend.dismissModelUpgrade() }
                             FButton { objectName: "modelUpgradeStop"; visible: upgrade.status === "downloading"; flat: true; text: t("Stop download", "停止下载"); onClicked: backend.cancelModelUpgrade() }
@@ -1070,8 +1104,10 @@ ApplicationWindow {
                                 visible: upgrade.status === "available" || upgrade.status === "releasable"
                                          || (upgrade.status === "failed" && (upgrade.step === "download" || upgrade.step === "release" || (upgrade.step === "switch" && upgrade.kept)))
                                 enabled: s.can_manage && !upgrade.busy
-                                text: upgrade.status === "failed" ? t("Try again", "重试") : upgrade.status === "releasable" ? t("Remove…", "删除…") : t("Download & upgrade", "下载并升级")
+                                text: upgrade.status === "failed" ? t("Try again", "重试") : upgrade.status === "releasable" ? t("Remove…", "删除…")
+                                      : upgradeForFast ? t("Switch model", "更换模型") : t("Download & upgrade", "下载并升级")
                                 onClicked: upgrade.status === "releasable" ? releaseConfirm = true : backend.upgradeModel()
+                            }
                             }
                         }
                         FMeter {
@@ -1620,7 +1656,10 @@ ApplicationWindow {
                                     FText { text: t("Video model", "视频模型"); Layout.fillWidth: true }
                                     FText {
                                         objectName: "modelStorageStatus"; Layout.fillWidth: true; font.pixelSize: theme.micro; color: theme.muted; wrapMode: Text.WordWrap
-                                        text: upgrade.status === "available" ? (upgrade.release_bytes
+                                        text: upgrade.status === "available" && upgradeForFast
+                                                    ? t("A model that supports the Fast level: about {size} to download; on this GPU, the other levels are about 5% slower with it.",
+                                                        "支持极速档的模型：下载约 {size}；在这张显卡上，换用后其他档位约慢 5%。", {size: bytes(upgrade.download_bytes)})
+                                            : upgrade.status === "available" ? (upgrade.release_bytes
                                                     ? t("A faster model is available: about {size} to download, about {freed} freed afterwards.", "有更快的模型：下载约 {size}，完成后删除旧模型，释放约 {freed}。",
                                                         {size: bytes(upgrade.download_bytes), freed: bytes(upgrade.release_bytes)})
                                                     : t("A faster model is available: about {size} to download.", "有更快的模型：下载约 {size}。", {size: bytes(upgrade.download_bytes)}))
@@ -1632,7 +1671,7 @@ ApplicationWindow {
                                 }
                                 FButton {
                                     objectName: "modelStorageButton"; visible: upgrade.status === "available" || upgrade.status === "releasable"
-                                    text: upgrade.status === "releasable" ? t("Remove…", "删除…") : t("Upgrade", "升级")
+                                    text: upgrade.status === "releasable" ? t("Remove…", "删除…") : upgradeForFast ? t("Switch model", "更换模型") : t("Upgrade", "升级")
                                     implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1
                                     enabled: s.can_manage && !upgrade.busy
                                     onClicked: upgrade.status === "releasable" ? releaseConfirm = true : backend.upgradeModel()
