@@ -6,7 +6,7 @@ export const scaleFromSlider = value => Math.abs(value) < .025 ? 1 : 10 ** value
 export const quarterTurn = (angle, delta) => ((angle + delta + 540) % 360) - 180;
 export function createAdjustPicture({state, sources, t, player, notes = null}) {
     const session = pictureSession(state, t), widgets = [], numbers = {}, tipped = [];
-    let visibilityObserver, inputError, invalidClip;
+    let visibilityObserver, keysObserver, inputError, invalidClip;
     let context, container, clip, scale, reset, crop, cropActions, flips, scaleDrag = null;
     const keep = node => { if (node.tagName === 'BUTTON') node.setAttribute('aria-label', node.textContent); widgets.push(node); return node; };
     const change = fields => { if (clip && !container.disabled) session.change(clip.id, fields); };
@@ -111,10 +111,10 @@ export function createAdjustPicture({state, sources, t, player, notes = null}) {
             };
             const scaleNumber = numeric('scale', t('Scale', '缩放'), 10, 1000, 100, ' %');
             const position = row(t('Position', '位置'), numeric('offset_x', 'X', -200, 200, 100, ' %'), numeric('offset_y', 'Y', -200, 200, 100, ' %'));
-            // (Their hover help comes from editor_tracks_tips.js below.)
-            const turns = row('', ...[-90, 90].map(delta => keep(button(delta < 0 ? t('Rotate left 90°', '左转 90°') : t('Rotate right 90°', '右转 90°'),
+            // Short names that fit two to a row in a 400 px drawer; the hover names the angle (editor_tracks_tips.js).
+            const turns = row('', ...[-90, 90].map(delta => keep(button(delta < 0 ? t('Rotate left', '左转 90°') : t('Rotate right', '右转 90°'),
                 {onClick: () => change({rotate: quarterTurn(clip?.rotate || 0, delta)})}))));
-            flips = [['flip_h', t('Flip horizontally', '水平翻转')], ['flip_v', t('Flip vertically', '垂直翻转')]].map(([key, label]) => {
+            flips = [['flip_h', t('Flip horizontal', '水平翻转')], ['flip_v', t('Flip vertical', '垂直翻转')]].map(([key, label]) => {
                 const b = keep(button(label, {onClick: () => change({[key]: !clip?.[key]})})); b.dataset.pictureField = key; b.setAttribute('aria-pressed', 'false'); return [key, b];
             });
             crop = keep(button(t('Crop', '裁剪'), {onClick: () => { if (clip) { player?.pause(); session.begin(clip.id, 'crop'); } }})); crop.classList.add('fv-ed-picture-crop');
@@ -126,13 +126,31 @@ export function createAdjustPicture({state, sources, t, player, notes = null}) {
             tipped.splice(0, tipped.length, [scale.input, 'scale'], [scaleNumber.input, 'scaleNumber'], [numbers.offset_x.control.input, 'offsetX'],
                 [numbers.offset_y.control.input, 'offsetY'], [left, 'rotateLeft'], [right, 'rotateRight'], [flips[0][1], 'flipH'], [flips[1][1], 'flipV'],
                 [crop, 'crop'], [done, 'cropDone'], [cancel, 'cropCancel'], [reset, 'pictureReset']);
+            const flipRow = row('', ...flips.map(([, b]) => b));
             host.append(row(t('Scale', '缩放'), scale, scaleNumber), position,
                 row(t('Rotation', '旋转'), numeric('rotate', t('Rotation', '旋转'), -180, 180, 1, ' °')), turns,
-                row('', ...flips.map(([, b]) => b)), crop, cropActions, inputError, reset);
+                flipRow, crop, cropActions, inputError, reset);
+            // Rotate and flip are one group of four: two equal columns while every name fits on one line in half
+            // the row, else one column for all four. Names are never cut or broken.
+            turns.classList.add('fv-ed-picture-keys'); flipRow.classList.add('fv-ed-picture-keys');
+            const keys = [left, right, ...flips.map(([, b]) => b)], keyRow = turns.querySelector('.fv-ed-adjust-row-controls');
+            const fitKeys = () => {
+                const width = keyRow?.clientWidth;
+                if (!width || typeof document.createRange !== 'function') return;
+                const gap = parseFloat(getComputedStyle(keyRow).columnGap) || 0, half = (width - gap) / 2;
+                const fits = keys.every(key => {
+                    const style = getComputedStyle(key), words = document.createRange(); words.selectNodeContents(key);
+                    const edges = ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].reduce((sum, name) => sum + (parseFloat(style[name]) || 0), 0);
+                    return words.getBoundingClientRect().width + edges <= half + .5;
+                });
+                if (fits) delete host.dataset.fvKeys; else host.dataset.fvKeys = 'column';
+            };
+            keysObserver = typeof ResizeObserver === 'function' && keyRow ? new ResizeObserver(fitKeys) : null;
+            keysObserver?.observe(keyRow); fitKeys(); document.fonts?.ready?.then(fitKeys);
             tipped.push([numbers.rotate.control.input, 'rotate']);
             for (const [node, id] of tipped) applyTip(node, id, t);
             visibility();
         }, update, deactivate: () => session.setPanelOpen(false),
-        dispose() { visibilityObserver?.disconnect(); session.setPanelOpen(false); unsubscribe(); window.removeEventListener('pointermove', dragScale, true); window.removeEventListener('pointerup', endScale, true); window.removeEventListener('pointercancel', endScale, true); if (scale) scale.input.onpointerdown = null; for (const w of widgets) { if(w.input) {w.input.onkeydown = null; w.input.onblur = null;} w.dispose(); } },
+        dispose() { visibilityObserver?.disconnect(); keysObserver?.disconnect(); session.setPanelOpen(false); unsubscribe(); window.removeEventListener('pointermove', dragScale, true); window.removeEventListener('pointerup', endScale, true); window.removeEventListener('pointercancel', endScale, true); if (scale) scale.input.onpointerdown = null; for (const w of widgets) { if(w.input) {w.input.onkeydown = null; w.input.onblur = null;} w.dispose(); } },
     };
 }

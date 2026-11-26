@@ -4,6 +4,11 @@
 .fv-ed-adjust-picture .fv-ed-adjust-row[data-hx-seg] .fv-ed-adjust-row-controls{width:100%}
 .fv-ed-adjust-picture .fv-ed-adjust-row[data-hx-btn] .fv-ed-adjust-row-controls{justify-content:stretch}
 .fv-ed-adjust-picture .fv-ed-adjust-row button{flex:1;font-size:11px;padding:0 4px;white-space:normal;line-height:1.15}
+/* Rotate and flip, one group of four (editor_adjust_picture.js fitKeys): two equal columns, or one column for all
+   four when a name does not fit in half the row. Names are never cut or broken. */
+.fv-ed-adjust-picture .fv-ed-picture-keys button{flex:1 1 0;min-width:0;white-space:nowrap}
+.fv-ed-adjust-picture[data-fv-keys=column] .fv-ed-picture-keys .fv-ed-adjust-row-controls{flex-direction:column;align-items:stretch}
+.fv-ed-adjust-picture[data-fv-keys=column] .fv-ed-picture-keys button{flex:none}
 .fv-ed-adjust-picture button[aria-pressed=true]{color:var(--fv-accent);border-color:var(--fv-accent)}
 .fv-ed-adjust-picture .fv-ed-adjust-row[hidden],.fv-ed-adjust-picture button[hidden]{display:none}
 /* Leave a visible picture and its handles alongside the drawer on phones. */
