@@ -182,12 +182,16 @@ export function createSamplingEffort(t, {onChange, onPreview = () => {}, levels 
         if (!namesAsKeys) {
             if (!marked) return;
             marked = false;
-            rail.removeAttribute('aria-hidden'); names.removeAttribute('role'); names.removeAttribute('aria-label');
-            for (const b of nameButtons) { b.removeAttribute('role'); b.removeAttribute('aria-checked'); delete b.dataset.fvTipFocus; b.tabIndex = -1; }
+            rail.removeAttribute('aria-hidden'); names.removeAttribute('role'); names.removeAttribute('aria-label'); names.removeAttribute('aria-description');
+            for (const b of nameButtons) { b.removeAttribute('role'); b.removeAttribute('aria-checked'); delete b.dataset.fvTipFocus; delete b.dataset.fvTipWhy; b.tabIndex = -1; }
             return;
         }
         marked = true;
         rail.setAttribute('aria-hidden', 'true'); names.setAttribute('role', 'radiogroup'); names.setAttribute('aria-label', label.textContent);
+        // The slider that says why the control is closed is not there for the pointer or the reader: the levels and the group say it.
+        const why = disabled ? reason || t('Controlled by connected nodes.', '由连接的节点控制。') : '';
+        if (why) names.setAttribute('aria-description', why); else names.removeAttribute('aria-description');
+        for (const b of nameButtons) { if (why) b.dataset.fvTipWhy = why; else delete b.dataset.fvTipWhy; }
         const inUse = element.dataset.custom !== 'true';
         // The arrows move through the group: a card at every press would cover the estimate, so the tip is for the pointer only.
         nameButtons.forEach((b, i) => { b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', String(inUse && i === selected)); b.dataset.fvTipFocus = 'off'; b.tabIndex = i === selected ? 0 : -1; });
