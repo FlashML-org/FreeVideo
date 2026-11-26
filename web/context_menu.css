@@ -55,7 +55,8 @@
 @media (prefers-reduced-motion: reduce) { :root .fv-cm .fv-cm-item { transition: none; } }
 @media (forced-colors: active) { :root .fv-cm .fv-cm-item.is-active { outline: 2px solid Highlight; } }
 
-/* A layer of the command layer (createLayer): a modal dialog above every view, glass g3, a light dim behind.
+/* A layer of the command layer (createLayer): a modal dialog above every view, g3's edge and shadow on an opaque ground
+   (below), a light dim behind.
    The browser's own dialog box (border, padding, centring, colours) is taken back first. */
 dialog.fv-layer {
   position: fixed; inset: auto; left: 50%; top: max(var(--fv-sp-64, 64px), 12vh); translate: -50% 0; margin: 0; padding: 0; box-sizing: border-box;
@@ -68,6 +69,9 @@ dialog.fv-layer {
 dialog.fv-layer:not([open]) { display: none; }
 dialog.fv-layer::backdrop { background: rgb(6 8 12 / .36); }
 :root[data-theme=light] dialog.fv-layer::backdrop { background: rgb(40 48 64 / .18); }
+/* A layer is long copy over whatever is playing: its glass let a bright video show through as a coloured glow. Opaque in
+   every look, the ground it already had with glass off; edge and shadow stay. */
+dialog.fv-layer.fv-glass.fv-glass { background: rgb(var(--fv-solid3)); -webkit-backdrop-filter: none; backdrop-filter: none; }
 dialog.fv-layer :is(input, textarea) { -webkit-user-select: text; user-select: text; }
 dialog.fv-layer :focus-visible { outline: 2px solid var(--fv-accent-ink, #66b6ff); outline-offset: 2px; }
 dialog.fv-layer input:focus-visible { outline: none; }
