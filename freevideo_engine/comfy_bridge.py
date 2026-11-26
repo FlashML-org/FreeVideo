@@ -884,6 +884,22 @@ def installation_root(source=None, environ=None):
     return Path(plain(resolved(root)))
 
 
+def engine_model_root(source=None, environ=None):
+    """The model folder the engine process reads (paths.installed_model_root under FREEVIDEO_HOME=installation_root).
+
+    ComfyUI started without the launcher has no FREEVIDEO_HOME, so the installation is the one comfyui.json names;
+    code in the ComfyUI process that reads or writes the engine's models resolves the folder here, not with paths.
+    """
+    environ = os.environ if environ is None else environ
+    if environ.get('FREEVIDEO_MODEL_ROOT'):
+        return Path(environ['FREEVIDEO_MODEL_ROOT']).expanduser()
+    root = installation_root(source, environ)
+    try:
+        return Path(json.loads((io_path(root) / 'machine.json').read_text(encoding='utf-8'))['model_root']).expanduser()
+    except (OSError, ValueError, KeyError, TypeError):
+        return root / 'models'
+
+
 @plain_errors
 def installation(source=None, environ=None):
     from .comfy_launcher_api import repair_hint
@@ -1559,8 +1575,9 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
     if step_cache is not None:
         command += ['--step-cache', step_cache]
     if fast_mode is not None:
-        # The folder the engine process resolves (paths.installed_model_root). Before queueing, so a missing file is named at once.
-        fast_tier.files(environment.get('FREEVIDEO_MODEL_ROOT') or machine['model_root'])
+        # The folder the engine process resolves, as the page's download does (fast_pack.model_folder). Before queueing, so a
+        # missing file is named at once.
+        fast_tier.files(engine_model_root(source, environment))
         command += ['--fast-mode', fast_mode]
     if two_pass and upscale_factor != 2:
         command += ['--upscale-factor', '%g' % upscale_factor]

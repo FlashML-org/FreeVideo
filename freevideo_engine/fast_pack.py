@@ -39,8 +39,19 @@ def rows(spec=None):
 
 
 def model_folder():
-    from .paths import installed_model_root
-    return installed_model_root()
+    """The model folder the queue check and the engine process read (comfy_bridge.engine_model_root).
+
+    ComfyUI started without the launcher has no FREEVIDEO_HOME, where paths would name the default installation folder
+    instead of the one comfyui.json selects: the files would land where the engine never looks.
+    """
+    from .comfy_bridge import engine_model_root
+    return engine_model_root()
+
+
+def engine_folder():
+    """The installation whose download settings, measured sources and lock the download uses."""
+    from .comfy_bridge import installation_root
+    return installation_root()
 
 
 def remote(spec, row):
@@ -319,7 +330,8 @@ class Installer:
         def progress(value):
             self._set(done=value.get('done', 0), total=value.get('total', 0))
         try:
-            install(self.root(), progress, check, engine_root=self.engine_root)
+            install(self.root(), progress, check,
+                    engine_root=self.engine_root if self.engine_root is not None else engine_folder())
             self._set(state='done', reason=None)
         except InterruptedError:
             self._set(state='cancelled', reason=None)
