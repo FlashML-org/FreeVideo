@@ -3,6 +3,7 @@
 // download (resumable, cancellable); this keeps the page's side of it: what to say, the progress and the one job.
 // The first half is pure (sentences, percent); the second half talks to the engine's /freevideo/dubbing routes.
 import {issueButton} from './issue_button.js';
+import {tip} from './editor_tips.js';
 
 const ROOT = '/freevideo/dubbing';
 const NBSP = ' ';
@@ -46,7 +47,7 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 export function createVoiceInstall({api, available = () => true, later = () => false, target = () => true, onChange = () => {}, onReady = async () => false,
     storage = globalThis.localStorage, delay = wait, interval = 1000} = {}) {
     const view = {phase: 'loading', percent: null, cancelling: false, error: null, bytes: 0};
-    let token = '', job = readJob(storage), disposed = false, polling = false, initial = null;
+    let token = '', job = readJob(storage), disposed = false, polling = false, initial = null, closed = false;
     const set = patch => { Object.assign(view, patch); if (!disposed) onChange(); };
     const read = async response => { try { return await response.json(); } catch { return null; } };
     const info = async () => {
@@ -123,10 +124,12 @@ export function createVoiceInstall({api, available = () => true, later = () => f
         init() { return initial || (initial = load()); },
         // Whether the engine offers the download at all (the panel exists only then).
         offered() { return !disposed && (later() || available() && ['idle', 'downloading', 'failed'].includes(view.phase)); },
-        // Windows on Arm: a sentence in the download's place, nothing to click.
+        // Windows on Arm: a sentence in the download's place, nothing to click but its close button.
         later: () => !disposed && later(),
+        // Closed once, the sentence stays away until the editor opens again: on a narrow window it covers the picture.
+        close() { if (closed) return; closed = true; if (!disposed) onChange(); },
         // Whether the bar offers the download for this selection: the engine offers it and a stretch of speech is chosen.
-        visible(selection) { return !disposed && (later() || available() && ['idle', 'downloading', 'failed'].includes(view.phase)) && !!target(selection); },
+        visible(selection) { return !disposed && (later() && !closed || available() && ['idle', 'downloading', 'failed'].includes(view.phase)) && !!target(selection); },
         async start() {
             if (view.phase === 'downloading') return;
             set({phase: 'downloading', percent: 0, cancelling: false, error: null});
@@ -155,6 +158,8 @@ export function createVoiceInstall({api, available = () => true, later = () => f
 }
 
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const cross = () => { const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('viewBox', '0 0 16 16'); svg.setAttribute('aria-hidden', 'true'); svg.classList.add('fv-ed-glyph');
+    const line = document.createElementNS(svg.namespaceURI, 'path'); line.setAttribute('d', 'm4 4 8 8M12 4l-8 8'); svg.append(line); return svg; };
 
 // The panel in the generation bar, where the lines would be: a sentence, and one button; or the progress and Cancel.
 export function createInstallPanel(host, install, {t, selection}) {
@@ -163,8 +168,12 @@ export function createInstallPanel(host, install, {t, selection}) {
     const make = (label, onclick, cls = '') => { const b = el('button', `fv-action ${cls}`.trim(), label); b.type = 'button'; b.onclick = onclick; return b; };
     const download = make(t('Download', '下载'), () => install.start(), 'fv-primary'), retry = make(t('Retry', '重试'), () => install.start(), 'fv-primary');
     const cancel = make(t('Cancel', '取消'), () => install.cancel());
+    // The same close button as the editor's notices; only the Windows on Arm sentence has it.
+    const close = el('button', 'fv-ed-notice-close'); close.type = 'button'; close.onclick = () => install.close();
+    close.setAttribute('aria-label', t('Close', '关闭')); close.append(cross());
+    tip(close, {name: t('Close', '关闭'), use: t('Dismiss this notice', '关掉这条提示')});
     note.setAttribute('role', 'status'); bar.setAttribute('role', 'progressbar'); bar.setAttribute('aria-valuemin', '0'); bar.setAttribute('aria-valuemax', '100');
-    bar.append(fill); actions.append(download, retry, cancel); element.append(note, bar, actions); element.hidden = true; host.append(element);
+    bar.append(fill); actions.append(download, retry, cancel, close); element.append(note, bar, actions); element.hidden = true; host.append(element);
     let shownText = null;
     return {element, shown: () => !element.hidden, update() {
         const view = install.view, shown = install.visible(selection());
@@ -182,7 +191,7 @@ export function createInstallPanel(host, install, {t, selection}) {
         if (state === 'downloading') {
             if (view.percent == null) { bar.removeAttribute('aria-valuenow'); bar.dataset.indeterminate = 'true'; fill.style.width = ''; } else { bar.setAttribute('aria-valuenow', String(view.percent)); delete bar.dataset.indeterminate; fill.style.width = view.percent + '%'; }
         }
-        download.hidden = state !== 'offer'; retry.hidden = state !== 'failed';
+        download.hidden = state !== 'offer'; retry.hidden = state !== 'failed'; close.hidden = state !== 'later';
         // Without the job (a download another page started) there is nothing to stop from here.
         cancel.hidden = state !== 'downloading' || !install.hasJob?.(); cancel.disabled = view.cancelling;
     }, dispose() { element.remove(); }};

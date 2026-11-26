@@ -49,6 +49,10 @@
 .fv-ed-voice-install .fv-ed-voice-install-note[hidden]{display:none}
 .fv-ed-voice-install .fv-actions{flex:none}
 .fv-ed-voice-install .fv-actions [hidden]{display:none}
+/* Windows on Arm: the sentence and its close button on one line, the button no taller than the line. */
+.fv-ed-voice-install[data-state=later]{flex-wrap:nowrap;align-items:flex-start}
+.fv-ed-voice-install[data-state=later] .fv-ed-voice-install-note{flex:1 1 0}
+.fv-ed-voice-install[data-state=later] .fv-ed-notice-close{margin:-3px -6px -3px 0}
 .fv-ed-voice-bar{order:3;flex:1 1 100%;height:4px;border-radius:var(--fv-r-xs);background:var(--fv-border);overflow:hidden}
 .fv-ed-voice-bar[hidden]{display:none}
 .fv-ed-voice-bar>span{display:block;height:100%;width:0;border-radius:var(--fv-r-xs);background:var(--fv-accent,#6db8fa);transition:width .3s}
