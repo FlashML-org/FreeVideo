@@ -587,7 +587,8 @@
  .fv-ed-genbar .fv-ed-pass-options{margin-left:-8px}
 }
 /* QA round 11: the library pane's last, partly hidden row fades over 24 px instead of being cut; no fade at the end. */
-.fv-editor .fv-ed-library:not([data-at-end=true]){-webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 24px),transparent);mask-image:linear-gradient(to bottom,#000 calc(100% - 24px),transparent)}
+/* Docked only: as a drawer it stands over the picture, and what is under it would show in the fade. */
+@media(min-width:1280px){.fv-editor .fv-ed-library:not([data-at-end=true]){-webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 24px),transparent);mask-image:linear-gradient(to bottom,#000 calc(100% - 24px),transparent)}}
 /* On a phone the sound clips are finger-sized (44 px; the row's 6 px gap holds the extra 4 px). */
 @media(max-width:680px){.fv-editor .fv-ed-track-row[data-track^=a] .fv-ed-clip{min-height:44px}}
 
