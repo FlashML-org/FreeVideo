@@ -1626,9 +1626,9 @@ def register():
     @guarded
     async def connect(request):
         # For the Autopilot view: how to connect an agent on this computer. The token itself stays in its file.
-        from ..comfy_bridge import installation_root, source_root
+        from ..comfy_bridge import installation_root
         from .guide import page_language
-        from .mcp import client_config, linux_wrapper_supported, python_shell_command, shell_quote
+        from .mcp import cli_command, client_config
         page_language(request[query_key].get('lang'))
         try:
             root = installation_root()
@@ -1637,13 +1637,8 @@ def register():
             note_connect_refusal('not_ready', request)
             return problem('not_ready', str(error), 503)
         config = await asyncio.to_thread(client_config, root)
-        if os.name != 'nt' and not linux_wrapper_supported():
-            cli = python_shell_command(config, 'freevideo_engine.agent.cli') + ' status'
-        else:
-            script = next((folder / name for folder in (root, source_root())
-                           for name in (('freevideo.cmd',) if os.name == 'nt' else ('freevideo',))
-                           if (folder / name).is_file()), None)
-            cli = shell_quote(str(script), windows=os.name == 'nt') + ' agent status' if script else None
+        # The same entry as the MCP server: the installation's Python, which follows every update.
+        cli = cli_command(config, 'status', windows=os.name == 'nt')
         seen = {}
         for row in jobs.rows():
             if row.get('client'):

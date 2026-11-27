@@ -2,8 +2,10 @@ import { plainText } from './i18n.js';
 import {issueButton} from './issue_button.js';
 import {LANGUAGE} from './i18n.js';
 import {tip} from './autopilot_tips.js';
-// 0.6.11 only (remove in 0.6.12): the note on updated steps stays away once this card's Copy was used on this computer.
-const NOTE_SEEN = 'freevideo.agentConnectNote.0611';
+// The connection method changed: an assistant connected before has to connect again once. The note shows where an
+// assistant has worked on this computer, until this card's Copy is used. Its own key: whoever used Copy for an older
+// note is exactly who has to see this one.
+const NOTE_SEEN = 'freevideo.agentConnectNote.stable-entry';
 function noteSeen() { try { return localStorage.getItem(NOTE_SEEN) === '1'; } catch { return false; } }
 function markNoteSeen() { try { localStorage.setItem(NOTE_SEEN, '1'); } catch {} }
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
@@ -213,10 +215,10 @@ export function agentConnectCard(t, api, shown = () => true, changed = () => {})
     const mark = el('span', 'fv-agent-connect-icon'); mark.append(icon('plug'));
     const title = el('h2', null, t('Connect an assistant', '连接助手'));
     const intro = el('p', 'fv-agent-connect-intro', t('Once connected, describe the video you want. It generates and edits it for you.', '连上后，说想做什么视频，它来生成和剪辑。'));
-    // Whether an assistant was connected before cannot be told here, so everyone sees it until Copy is used.
-    const note = el('p', 'fv-agent-connect-note', t('The connection steps have been updated. If you connected an assistant before, copy them and paste them to it again.',
-        '连接说明已更新。以前连接过的助手，请重新复制并粘贴给它。'));
-    note.hidden = noteSeen();
+    // Shown once the server says an assistant has worked here (the connect answer's agents), until Copy is used.
+    const note = el('p', 'fv-agent-connect-note', t('The connection method has changed. An assistant connected before needs to connect again once: choose "Copy", then paste the text to the assistant. Later updates will not require this.',
+        '连接方式已更新。以前连接过的助手需要重新连接一次：请点击“复制”，粘贴给助手。之后更新版本时无需再次连接。'));
+    note.hidden = true;
     const actions = el('div', 'fv-agent-connect-actions');
     const button = el('button', 'fv-primary'); button.type = 'button'; button.disabled = true;
     // The button's picture follows what it does: copy, or retry once the lookup has failed.
@@ -295,6 +297,7 @@ export function agentConnectCard(t, api, shown = () => true, changed = () => {})
                 throw new Error('Missing address');
             }
             text = connectionSentence(connect.address, t);
+            note.hidden = noteSeen() || !(Array.isArray(connect.agents) && connect.agents.length > 0);
             failures = 0; refusal = null; noAnswer = null; render();
             if (await state === 'unknown') { state = agentInterfaceState(api); changed(await state); }
         } catch { if (current === generation) { noAnswer = refusal ? null : lacked; failures++; render(); } }

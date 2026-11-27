@@ -5220,7 +5220,6 @@
  "The connection dropped.": "Bağlantı kesildi.",
  "The connection dropped; resuming the download and keeping what was already downloaded": "Bağlantı kesildi; indirme sürdürülüyor ve indirilmiş kısım korunuyor",
  "The connection is unstable. Click \"Retry\".": "Bağlantı kararsız. “Yeniden dene” düğmesine tıklayın.",
- "The connection steps have been updated. If you connected an assistant before, copy them and paste them to it again.": "Bağlantı adımları güncellendi. Daha önce bir asistan bağladıysanız adımları kopyalayıp asistana yeniden yapıştırın.",
  "The connection to FreeVideo was lost and did not come back within 2 minutes.": "FreeVideo ile bağlantı kesildi ve 2 dakika içinde geri gelmedi.",
  "The creations could not be loaded.": "Eserler yüklenemedi.",
  "The creations could not be read. Try again.": "Eserler okunamadı. Yeniden deneyin.",
