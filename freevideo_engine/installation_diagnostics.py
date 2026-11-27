@@ -41,7 +41,7 @@ def collect(root, since):
         # Python and Git downloads in the setup run, and ComfyUI dependency
         # preparation in launcher/host-runs. The command output remains in the
         # local manual bundle.
-        package_attempts, native_tls_sources, revocation_sources, reinstalls = [], [], [], []
+        package_attempts, native_tls_sources, revocation_sources, reinstalls, foreign = [], [], [], [], []
         folders = [run]
         host_root = root / 'launcher' / 'host-runs'
         if host_root.is_dir():
@@ -55,12 +55,14 @@ def collect(root, since):
                 native_tls_sources += native_tls_fallbacks(folder / 'network.jsonl')
                 revocation_sources += revocation_best_effort(folder / 'network.jsonl')
                 reinstalls += python_reinstalls(folder / 'network.jsonl')
+                foreign += foreign_checkouts(folder / 'network.jsonl')
             except OSError:
                 continue
         return plain_data(dict(state=state, samples=rows, package_attempts=package_attempts[-16:],
                                native_tls_fallback=list(dict.fromkeys(native_tls_sources))[-8:],
                                revocation_best_effort=list(dict.fromkeys(revocation_sources))[-8:],
-                               python_reinstall=list(dict.fromkeys(reinstalls))[-4:]))
+                               python_reinstall=list(dict.fromkeys(reinstalls))[-4:],
+                               foreign_checkout=[list(row) for row in dict.fromkeys(foreign)][-4:]))
     except (OSError, ValueError, KeyError, TypeError):
         return {}
 
@@ -107,6 +109,30 @@ def python_reinstalls(path):
         if item.get('action') == 'python-reinstall' and item.get('reason') in REINSTALL_KINDS:
             kinds.append(item['reason'])
     return kinds
+
+
+FOREIGN_KINDS = ('other-origin', 'worktree', 'sparse')  # network.FOREIGN_KINDS
+
+
+def foreign_checkouts(path):
+    """(folder, kind) for each dependency folder setup left alone because FreeVideo did not download it.
+
+    Only the folder's own name (a short word) and the kind are read, never an address."""
+    with io_path(path).open('rb') as stream:
+        size = stream.seek(0, 2)
+        stream.seek(max(0, size - 256 * 1024))
+        lines = stream.read(256 * 1024).splitlines()
+    rows = []
+    for line in lines:
+        try:
+            item = d.mapping(json.loads(line))
+        except (ValueError, UnicodeError):
+            continue
+        folder, kind = item.get('file'), item.get('reason')
+        if (item.get('action') == 'foreign-checkout' and kind in FOREIGN_KINDS
+                and isinstance(folder, str) and re.fullmatch(r'[A-Za-z0-9_.-]{1,40}', folder)):
+            rows.append((folder, kind))
+    return rows
 
 
 def native_tls_fallbacks(path):
@@ -229,6 +255,10 @@ def enrich(result, value):
               if isinstance(name, str) and re.fullmatch(r'[a-z0-9_.-]{1,40}', name)]
     notes += [dict(note='isolated python installed again', reason=kind)
               for kind in d.sequence(value.get('python_reinstall'))[:4] if kind in REINSTALL_KINDS]
+    notes += [dict(note='dependency folder not from FreeVideo', folder=row[0], reason=row[1])
+              for row in d.sequence(value.get('foreign_checkout'))[:4]
+              if isinstance(row, (list, tuple)) and len(row) == 2 and row[1] in FOREIGN_KINDS
+              and isinstance(row[0], str) and re.fullmatch(r'[A-Za-z0-9_.-]{1,40}', row[0])]
     if notes:
         result['notes'] = notes
     result['diagnostic_revision'] = 6

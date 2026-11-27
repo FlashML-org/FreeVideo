@@ -2042,30 +2042,50 @@ def same_source(first, second):
     return normal(first) == normal(second)
 
 
-def owned_checkout(target, url, sparse, git, env):
-    """Whether `target` is a checkout FreeVideo made itself and may set aside.
+# Why a folder in `vendor` is not a checkout clone() made: it came from another address (its own origin), it is a Git
+# worktree or submodule of another repository (.git is a file), or its sparse checkout is not the one clone() sets.
+# Only the kind reaches the report, never the address, which can name a private repository or carry a token.
+FOREIGN_KINDS = ('other-origin', 'worktree', 'sparse')
 
-    Only dependency folders directly in a FreeVideo `vendor` folder qualify, and
-    only when the checkout is set up as clone() leaves it: the same sparse
-    patterns, or (without them) no origin or the same origin. A ComfyUI the user
-    works in is never replaced: its custom nodes and models live inside it.
+
+def foreign_checkout(target, url, sparse, git, env):
+    """None when `target` is a checkout FreeVideo made itself and may set aside; otherwise why not.
+
+    Only dependency folders directly in a FreeVideo `vendor` folder qualify ('outside-vendor' otherwise), and
+    only when the checkout is set up as clone() leaves it: the same sparse patterns, or (without them) no origin or
+    the same origin (FOREIGN_KINDS otherwise). A ComfyUI the user works in is never replaced: its custom nodes and
+    models live inside it.
     """
     target = Path(target)
-    if target.parent.name != 'vendor' or not io_path(target / '.git').is_dir():
-        return False
+    if target.parent.name != 'vendor':
+        return 'outside-vendor'
+    if not io_path(target / '.git').is_dir():
+        return 'worktree'
     enabled = sparse_enabled(target, git, env)
     if sparse:
         try:
             patterns = io_path(target / '.git' / 'info' / 'sparse-checkout').read_text(encoding='utf-8').split()
         except OSError:
-            return False
-        return enabled and patterns == [p.strip() for p in sparse]
+            return 'sparse'
+        return None if enabled and patterns == [p.strip() for p in sparse] else 'sparse'
+    if enabled:
+        return 'sparse'
     origin = config_value(target, 'remote.origin.url', git, env)
-    return not enabled and (origin is None or same_source(origin, url))
+    return None if origin is None or same_source(origin, url) else 'other-origin'
 
 
-def mismatch_message(target, git, env, head, commit, dirty):
-    """A specific description of how an existing checkout differs, naming only its folder and files."""
+def owned_checkout(target, url, sparse, git, env):
+    """Whether `target` is a checkout FreeVideo made itself and may set aside (see foreign_checkout)."""
+    return foreign_checkout(target, url, sparse, git, env) is None
+
+
+def mismatch_message(target, git, env, head, commit, dirty, foreign=None):
+    """A specific description of how an existing checkout differs, naming only its folder and files.
+
+    foreign: why foreign_checkout did not take the folder for FreeVideo's own. A folder in `vendor` that FreeVideo did
+    not download is said to be one, and named as vendor\\<name> too: reports keep only the last part of a path, and
+    the models folder can hold a folder of the same name."""
+    target = Path(target)
     details = []
     if head is None:
         details.append('Its version could not be read.')
@@ -2086,9 +2106,14 @@ def mismatch_message(target, git, env, head, commit, dirty):
             details.append('1 other file differs only in permissions, which does not block installation.'
                            if len(modes) == 1 else
                            '%d other files differ only in permissions, which do not block installation.' % len(modes))
+    if foreign in FOREIGN_KINDS:
+        details.append('FreeVideo did not download this folder and has not changed it.')
+    shown = target
+    if target.parent.name == 'vendor':
+        shown = '%s (the %s folder inside the FreeVideo folder)' % (target, os.path.join('vendor', target.name))
     return ('A dependency folder differs from the version FreeVideo needs: %s. %s '
-            'Rename or move this folder, then retry installation. FreeVideo will download a fresh copy.'
-            % (target, ' '.join(details)))
+            'Rename or move this folder, then choose "Retry installation". FreeVideo will then download a new copy.'
+            % (shown, ' '.join(details)))
 
 
 # Git reads a checkout's settings from .git\config by its ordinary path, even in
@@ -2207,8 +2232,11 @@ def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None)
             return target
         if target.parent.name == 'vendor' and git_settings_out_of_reach(target):
             raise ValueError(path_too_long_message(target))
-        if not owned_checkout(target, url, sparse, git, env):
-            raise ValueError(mismatch_message(target, git, env, head, commit, dirty))
+        foreign = foreign_checkout(target, url, sparse, git, env)
+        if foreign:
+            if foreign in FOREIGN_KINDS:
+                event(network, category='git', file=target.name, action='foreign-checkout', reason=foreign)
+            raise ValueError(mismatch_message(target, git, env, head, commit, dirty, foreign))
         replacing = True
         event(network, category='git', file=target.name, action='replace-planned', commit=commit,
               reason='unreadable' if head is None else 'other-version' if head != commit else 'changed-content',
