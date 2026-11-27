@@ -11,9 +11,9 @@
       "Updates and Settings: after an update reloads the page, the workflow in front and a prompt not yet sent are kept (held briefly in the local FreeVideo service's memory only). Image models can be deleted in Settings without closing FreeVideo; a model that is in use or queued cannot be deleted, and the files a stopped download left behind can be.",
       "Creations and the editor: deleting a creation that an edit uses names the edit and offers to open it at that part. In the editor, Escape belongs to the text on the picture and the delete-import question, coming back from another view shows the edit as it was left, the library is read again on return, and the opening zoom fits the time area beside the track heads.",
       "Windows setup: when the isolated Python's python.exe is missing or does not answer, it is installed again once; on some networks where Windows cannot check a certificate's revocation, downloads and Git downloads try again automatically and still verify the certificate; FreeVideo's own Git downloads are no longer sent to an unreachable mirror by this computer's Git address rewrite rules; when a dependency folder was not downloaded by FreeVideo, the error says so and names the folder.",
-      "Launcher: on a computer FreeVideo cannot run on, the card no longer offers \"Report a problem\"; the setup step names say what each step does, and the step names, the status title and the address fit a narrow window.",
+      "Launcher: on a computer FreeVideo cannot run on, the card no longer offers \"Report a problem\"; the setup step names say what each step does, and the step names, the status title and the address fit a narrow window. When a download through the proxy set on this computer fails, the message says where that proxy setting comes from; when that proxy does not respond, the card first asks you to start the program that provides it and then retry.",
       "Mac: a second pass that hits the GPU watchdog is tried again instead of failing, and the prompt model runs on the Apple GPU when its memory fits.",
-      "Memory: on graphics cards with less memory, generating an image with reference images is no longer refused before it starts; the memory already held by the text encoder on the card is now counted.",
+      "Memory: when FreeVideo already holds the text encoder on the graphics card, generating an image with reference images counts that memory, so on cards with less memory it is no longer refused before it starts.",
       "Interface text: names in quotes and level names are kept on one line where they are shown; more Chinese messages use formal written wording; several English sentences were made consistent; failure messages without a \"Report a problem\" button name the next step; the image view shows the whole message of a failed model download, and layout limits no longer offer a report.",
       "Other fixes: the compatibility notice says plainly when a reply cannot be read and keeps only the latest failure line; a Windows crash card names the module Windows recorded; the offline package guide names each package by its file name in every language."
     ]
@@ -28,7 +28,7 @@
       "更新与设置：更新后页面重新加载时，当前的工作流和尚未发出的提示词会保留（只在本机 FreeVideo 服务的内存里短暂存放）。可以在设置里删除图片模型，不用关闭 FreeVideo；正在使用或排队的模型不能删除，停止的下载留下的文件也可以删除。",
       "作品库与剪辑页：删除被剪辑使用的作品时，会写明是哪个剪辑，并可以打开并定位到那一段。剪辑页里，画面上的文字和“删除导入”的询问会正确响应 Esc；从其他视图回来时保持离开时的样子；回来时重新读取素材库；打开时的缩放按轨道头旁的时间区计算。",
       "Windows 安装：独立 Python 的 python.exe 不见了或运行无响应时，会重新安装一次；部分网络下 Windows 查不到证书吊销状态时，下载和 Git 下载会自动重试，证书照样校验；FreeVideo 下载自己的 Git 源时，不再被这台电脑的地址改写规则带到连不上的镜像；依赖文件夹不是 FreeVideo 下载的时，报错会写明这一点和文件夹位置。",
-      "启动器：FreeVideo 无法运行的电脑上，提示卡不再提供“提交问题”；安装步骤名写明这一步在做什么；步骤名、状态标题和地址在窄窗口里也能完整显示。",
+      "启动器：FreeVideo 无法运行的电脑上，提示卡不再提供“提交问题”；安装步骤名写明这一步在做什么；步骤名、状态标题和地址在窄窗口里也能完整显示。经本机设置的代理下载失败时，提示会说明代理设置来自哪里；本机代理没有响应时，提示卡会先请你启动提供代理的程序，再重试。",
       "Mac：第二遍碰到 GPU 看门狗时会再试一次，不再直接失败；提示词模型在内存足够时使用 Apple GPU。",
       "显存：显存较小的显卡带参考图生成图片时，不再因为未计入已在显卡上的文本编码器而在开始前被拒绝。",
       "界面文字：引号里的名称和档位名在显示时不再被拆到两行；更多中文提示改用书面用语；统一了几处英文说法；没有“提交问题”键的失败提示会写明下一步；图像视图里模型下载失败的提示会完整显示，布局限制类的报错不再提供报告。",
