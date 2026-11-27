@@ -4,7 +4,7 @@
   "en": {
     "summary": "0.6.15 adds a quick 1.5x upscale with how long it takes on this computer, keeps the workflow across the reload after an update, lets you delete image models in Settings and save an image as a character, counts prompt rewriting in the time beside Generate, makes Windows setup recover from a broken Python and from some download failures, and fixes many editor and interface details.",
     "changes": [
-      "Upscaling: the Creations upscale menu offers a quick 1.5x upscale by the small frame-wise model next to the detailed one, and says about how long each takes on this computer.",
+      "Upscaling: the Creations upscale menu offers a quick 1.5x upscale by the small frame-wise model next to the detailed one, and says about how long each takes on this computer. Finished 4K and quick upscales, including those made with earlier versions, are listed in Creations and the Edit view again.",
       "Time estimates: the time beside Generate now counts prompt rewriting when enhancement is on (only for the first task of a queued batch), estimates the second pass of a 1.5x plan from its own size, and corrects the decoding part from this computer's earlier runs at the same frame size.",
       "Prompt enhancement: while a task runs, the Rewrite key waits and says which task it waits for and about when; a queued video that asked for a rewrite is rewritten when its turn comes.",
       "Create panel: while a video is being made, a creation picked in the right column stays on the stage with its actions, so several previews can be sent to the second pass one after another; the Generating item at the top of the column returns to the progress. With the assistant interface on, an image in the image view or Creations can be saved as a character and then mentioned with @ in the prompt.",
@@ -21,7 +21,7 @@
   "zh": {
     "summary": "0.6.15 新增快速 1.5 倍放大并写明在这台电脑上大约要多久；更新后页面重新加载时保留当前工作流；可以在设置里删除图片模型，也可以把图片存为角色；生成键旁的预计用时会算进提示词改写；Windows 安装在 Python 文件丢失或无响应、部分下载失败时能自动恢复；并修复了剪辑页和界面的多处细节。",
     "changes": [
-      "放大：作品库的放大菜单在精细放大之外提供快速 1.5 倍放大（小模型逐帧），并写明这台电脑上大约各要多久。",
+      "放大：作品库的放大菜单在精细放大之外提供快速 1.5 倍放大（小模型逐帧），并写明这台电脑上大约各要多久。完成的 4K 放大和快速放大（包括旧版本做的）会重新出现在作品库和剪辑视图里。",
       "预计用时：打开增强时，生成键旁的预计用时会算进改写提示词的时间（排队时只算在一批的第一个任务上）；1.5 倍方案的第二遍按自身尺寸估算；解码那一段按这台电脑同画幅的历史实测校正。",
       "提示词增强：有任务在运行时，“改写”键会等待，并说明在等哪个任务；排队的视频如果要求改写，轮到它时再改写。",
       "创作面板：有视频在生成时，在右栏点开的作品会停在画面上，并保留操作按钮，可以接连把多个预览加入第二遍；点击右栏最前面的“正在生成”项可回到进度。助手接口打开时，在图像视图或作品库里可以把图片存为角色，之后在提示词里用 @名字 引用。",
