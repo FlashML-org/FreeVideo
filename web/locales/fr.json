@@ -127,7 +127,7 @@
  " · {minutes} min": " · {minutes} min",
  " · {minutes} min {seconds} s": " · {minutes} min {seconds} s",
  " · {s} s": " · {s} s",
- " · ⁠includes first-time setup": " · ⁠inclut la préparation initiale",
+ " · includes first-time setup": " · inclut la préparation initiale",
  "\"Click select\" needs a selection model downloaded once; the panel shows the progress.": "« Sélection au clic » nécessite de télécharger une fois un modèle de sélection ; le panneau en affiche la progression.",
  "\"Edit this\" changes the current image and does not show the shape list.": "« Modifier celle-ci » modifie l’image actuelle et n’affiche pas la liste des formats.",
  "\"Generate with AI\" and \"Click select\" appear only when image generation is available.": "« Générer avec l’IA » et « Sélection au clic » ne s’affichent que lorsque la génération d’images est disponible.",

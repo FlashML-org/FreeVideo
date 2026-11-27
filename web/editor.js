@@ -2768,7 +2768,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 if (closing || disposed || !element.open) return;
                 const others = Array.isArray(rows) && rows.some(row => row.id !== state.record.id);
                 notify(t('The last edit could not be found, so a blank edit is open.', '找不到上次的剪辑，已打开空白剪辑。')
-                    + (others ? t(' Click the edit name at the top to open another edit.', '点击顶部的剪⁠辑⁠名可打开其他剪辑。') : ''));
+                    + (others ? t(' Click the edit name at the top to open another edit.', '点击顶部的剪辑名可打开其他剪辑。') : ''));
                 notices.lastElementChild?.setAttribute('data-lost-last', '');
             });
         }

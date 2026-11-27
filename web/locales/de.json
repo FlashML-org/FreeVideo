@@ -59,7 +59,7 @@
  " · {minutes} min": " · {minutes} min",
  " · {minutes} min {seconds} s": " · {minutes} min {seconds} s",
  " · {s} s": " · {s} s",
- " · ⁠includes first-time setup": " · ⁠inklusive Ersteinrichtung",
+ " · includes first-time setup": " · inklusive Ersteinrichtung",
  "\"Click select\" needs a selection model downloaded once; the panel shows the progress.": "„Klickauswahl“ erfordert, dass einmalig ein Auswahlmodell heruntergeladen wird; das Bedienfeld zeigt den Fortschritt an.",
  "\"Edit this\" changes the current image and does not show the shape list.": "„Dieses bearbeiten“ ändert das aktuelle Bild und zeigt die Liste der Seitenverhältnisse nicht an.",
  "\"Generate with AI\" and \"Click select\" appear only when image generation is available.": "„Mit KI generieren“ und „Klickauswahl“ erscheinen nur, wenn die Bildgenerierung verfügbar ist.",

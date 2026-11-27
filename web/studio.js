@@ -1150,7 +1150,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const passControl = createPassMode({t, onChoose: mode => choosePassMode(mode), listen: listenDialogKey});
     const passMode = passControl.element;
     cleanup.push(passControl.dispose);
-    const fastRowWords = () => fastParts() ? t('Each part runs a second pass', '每段使用二采') : t('Fast uses one pass', '极⁠速⁠档一次生成');
+    const fastRowWords = () => fastParts() ? t('Each part runs a second pass', '每段使用二采') : t('Fast uses one pass', '极速档一次生成');
     const previewPassHint = t('Stops at a lower-resolution preview. Choose "Run second pass" in the result when it looks right; the video matches a direct run.',
         '先出低分辨率预览，满意后在结果里点“继续二采”，成片与直接生成一致。');
     twoPassLabel.append(el('span', t('Second pass', '二采')), twoPassStatus, passMode);
@@ -1287,7 +1287,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     }
     function passState() {
         if (fastOn()) return {mode: fastParts() ? 'on' : 'off', disabled: {off: true, on: true, preview: true}, hidden: {preview: !widget(node, 'preview')}, hint: '',
-            why: fastParts() ? fastRowWords() : t('Fast makes the full size in one pass. Choose another level to use it.', '极⁠速⁠档一次生成全分辨率。选其他档位后可用。')};
+            why: fastParts() ? fastRowWords() : t('Fast makes the full size in one pass. Choose another level to use it.', '极速档一次生成全分辨率。选其他档位后可用。')};
         const passLinked = linked(node, 'two_pass'), previewLinked = linked(node, 'preview');
         return {mode: !twoPass.checked ? 'off' : previewFirst.checked ? 'preview' : 'on',
             disabled: {off: Boolean(extension.source) || passLinked || !widget(node, 'two_pass'), on: twoPass.disabled,
@@ -1583,8 +1583,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     }
     function fastUnknownWords(kind) {
         return kind === 'linked'
-            ? t('The size comes from a connected node, so the Fast level is checked when you generate.', '宽高来自连接的节点，生成时再确认极\u2060速\u2060档能否生成。')
-            : t('Checking whether the Fast level can make this video…', '正在检查极\u2060速\u2060档能否生成这个视频…');
+            ? t('The size comes from a connected node, so the Fast level is checked when you generate.', '宽高来自连接的节点，生成时再确认极速档能否生成。')
+            : t('Checking whether the Fast level can make this video…', '正在检查极速档能否生成这个视频…');
     }
     function fastWays(cell) {
         const ways = [];
@@ -1605,17 +1605,17 @@ export function openStudio(node, {extendFrom = null} = {}) {
         // Whole sentences for each shortage, so a language whose words change with the noun can say each its own way.
         if (fastWays(cell)[0].id === 'size') return {
             vram: () => t('This computer does not have enough graphics memory for the Fast or Light level at this size. Use a smaller size, then generate again.',
-                '这台电脑的显存不足以用极\u2060速\u2060档或轻\u2060量\u2060档生成这个尺寸的视频。请缩小尺寸后重新生成。'),
+                '这台电脑的显存不足以用极速档或轻量档生成这个尺寸的视频。请缩小尺寸后重新生成。'),
             ram: () => t('This computer does not have enough memory for the Fast or Light level at this size. Use a smaller size, then generate again.',
-                '这台电脑的内存不足以用极\u2060速\u2060档或轻\u2060量\u2060档生成这个尺寸的视频。请缩小尺寸后重新生成。'),
+                '这台电脑的内存不足以用极速档或轻量档生成这个尺寸的视频。请缩小尺寸后重新生成。'),
             either: () => t('This computer does not have enough graphics memory or memory for the Fast or Light level at this size. Use a smaller size, then generate again.',
-                '这台电脑的显存或内存不足以用极\u2060速\u2060档或轻\u2060量\u2060档生成这个尺寸的视频。请缩小尺寸后重新生成。'),
+                '这台电脑的显存或内存不足以用极速档或轻量档生成这个尺寸的视频。请缩小尺寸后重新生成。'),
         }[kind]();
         const s = Number(seconds.value);
         return {
-            vram: () => t('This computer does not have enough graphics memory for the Fast level at {seconds} s.', '这台电脑的显存不足以用极\u2060速\u2060档生成 {seconds} 秒视频。', { seconds: s }),
-            ram: () => t('This computer does not have enough memory for the Fast level at {seconds} s.', '这台电脑的内存不足以用极\u2060速\u2060档生成 {seconds} 秒视频。', { seconds: s }),
-            either: () => t('This computer does not have enough graphics memory or memory for the Fast level at {seconds} s.', '这台电脑的显存或内存不足以用极\u2060速\u2060档生成 {seconds} 秒视频。', { seconds: s }),
+            vram: () => t('This computer does not have enough graphics memory for the Fast level at {seconds} s.', '这台电脑的显存不足以用极速档生成 {seconds} 秒视频。', { seconds: s }),
+            ram: () => t('This computer does not have enough memory for the Fast level at {seconds} s.', '这台电脑的内存不足以用极速档生成 {seconds} 秒视频。', { seconds: s }),
+            either: () => t('This computer does not have enough graphics memory or memory for the Fast level at {seconds} s.', '这台电脑的显存或内存不足以用极速档生成 {seconds} 秒视频。', { seconds: s }),
         }[kind]();
     }
     function refreshFast() { showEffortEstimate(); if (qualityChip.element.isConnected) qualityChip.place(); }
@@ -2505,7 +2505,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const plainWords = text => text.replace(/\u2060/g, '').replace(/\u00a0/g, ' ').replace(/^ · /, '').trim(), setupWords = plainWords(setupNote(t));
     const setupPart = part => plainWords(part) === setupWords;
     const paintEta = () => {
-        const parts = (effort?.element?.querySelector('.fv-effort-estimate')?.textContent || '').trim().split(' · ').filter(Boolean);
+        const parts = (effort?.element?.querySelector('.fv-effort-estimate')?.textContent || '').trim().split(/ ·[ \u00a0]/).filter(Boolean);  // the setup phrase keeps its dot with a no-break space
         keySetup = parts.some(setupPart);
         // A preview has no estimate of its own (the figures are for the whole two-pass run), so the line stays empty rather than show the wrong time.
         const estimate = keyShowsEta && !(previewFirst.checked && !previewFirst.disabled) ? parts.filter(part => !setupPart(part)).join(' · ') : '';

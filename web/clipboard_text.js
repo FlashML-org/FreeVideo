@@ -1,7 +1,10 @@
 // Writes text to the clipboard; resolves false when neither the clipboard API nor the old copy command is allowed.
 // navigator.clipboard exists only in a secure context: a page opened from another device by its LAN address over http
 // has none, so the selection copy below is what works there.
-export async function copyText(text) {
+import { plainText } from './i18n.js';
+
+export async function copyText(value) {
+    const text = plainText(value);  // the marks that hold names on screen stay on the screen
     try { await navigator.clipboard.writeText(text); return true; } catch { /* fall through to the selection copy */ }
     const before = document.activeElement;
     const area = document.createElement('textarea'); area.value = text; area.setAttribute('readonly', '');

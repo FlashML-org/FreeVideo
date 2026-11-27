@@ -1,4 +1,5 @@
 // Shared by the Studio and graph view. Text only; never render exception HTML.
+import { holdNames, plainText } from './i18n.js';
 import {readOtherUsage, otherUsageText} from './other_usage.js';
 import {pageRepair, repairAction, repairButton} from './repair_hint.js';
 import {detectBrowserExtension, browserExtensionAdvice, extensionSteps, isNetworkTypeError, connectionLostText, engineNotRunning, engineNotRunningText, engineNotResponding, engineNotRespondingText, isRequestTimeout, requestTimeoutText, requestTimeoutAction} from './browser_extension.js';
@@ -468,10 +469,8 @@ export function failureAdvice(value, t, known = knownError(value)) {
         const custom = index < 0;
         // Tables follow the step count: a level with the same steps and passes (Light and Medium) needs the same download.
         const available = known.available.filter(i => SAMPLING_EFFORTS[i]?.steps !== known.base_steps || SAMPLING_EFFORTS[i].twoPass !== known.two_pass);
-        // A level name and its 档 never break apart. The summary is set as text,
-        // so word joiners (U+2060) keep each group on one line instead of markup.
-        const keep = value => /[\u4e00-\u9fff]/.test(value) ? [...value].join('\u2060') : value;
-        const also = available.map((i, at) => keep(at === available.length - 1 ? t('{level}', '“{level}”档', { level: t(...levels[i]) }) : t('{level}', '“{level}”', { level: t(...levels[i]) })));
+        // A level's name stays on one line: the quoted name is held where the page shows it (i18n.js holdNames).
+        const also = available.map((i, at) => at === available.length - 1 ? t('{level}', '“{level}”档', { level: t(...levels[i]) }) : t('{level}', '“{level}”', { level: t(...levels[i]) }));
         const list = also.length < 2 ? also[0] || '' : also.slice(0, -1).join(t(', ', '、')) + t(' or ', '或') + also.at(-1);
         const bytes = known.missing_bytes;
         // As launcher_copy.size_text: one decimal for GiB, whole MiB; decimal units on macOS.
@@ -486,7 +485,7 @@ export function failureAdvice(value, t, known = knownError(value)) {
         // A custom step count is not a quality level: no "档" / "quality level" for it.
         const title = custom
             ? ['Custom ({steps} steps) is not downloaded yet', '“自定义（{steps} 步）”还没下载', { steps: known.base_steps }]
-            : ['The {level} quality level is not downloaded yet', '“\u2060{level}\u2060”\u2060档还没下载', { level: keep(t(...levels[index])) }];
+            : ['The {level} quality level is not downloaded yet', '“{level}”档还没下载', { level: t(...levels[index]) }];
         const summary = custom
             ? t('This step count needs a download (about {size}) that did not finish this time. Generate again when online and it downloads automatically.', '这个步数要先下载（约 {size}），这次没能下载。联网后再生成一次，会自动下载。', { size })
             : t('This level needs a download (about {size}) that did not finish this time. Generate again when online and it downloads automatically.', '这一档要先下载（约 {size}），这次没能下载。联网后再生成一次，会自动下载。', { size });
@@ -664,8 +663,8 @@ export function failureAdvice(value, t, known = knownError(value)) {
     // Only here, after every more specific card: memory, disk or an output folder are not solved by another level.
     if (!killed && /^FreeVideo generation failed(?: \(exit -?\d+\))?$/m.test(text)
         && /^FAST_MODE_FAILED: The fastest mode could not run\.$/m.test(text))
-        return row('fast-mode-failed', ['The Fast level did not finish', '极\u2060速\u2060档未能完成生成'],
-            ['Switch to the Light level and generate again.', '请改用轻\u2060量\u2060档后重新生成。'],
+        return row('fast-mode-failed', ['The Fast level did not finish', '极速档未能完成生成'],
+            ['Switch to the Light level and generate again.', '请改用轻量档后重新生成。'],
             ['If it happens again, choose "Report a problem" to send us the report.', '再次出现时，请点击“提交问题”，把报告发给我们。']);
     if (exit) {
         return row('process-exit', ['Generation stopped unexpectedly', '生成意外中断'],
@@ -841,7 +840,7 @@ export function createErrorPanel(t, route = null) {
     details.setAttribute('aria-label', t('Error details', '错误详情')); details.spellcheck = false;
     const copyDetails = async button => {
         let copied = false;
-        try { await navigator.clipboard.writeText(details.value); copied = true; } catch {
+        try { await navigator.clipboard.writeText(plainText(details.value)); copied = true; } catch {
             // Remote ComfyUI commonly uses plain HTTP, where Clipboard API is
             // unavailable. Keep selectable text even if the browser denies copy.
             disclosure.open = true; details.focus(); details.select();
@@ -957,7 +956,7 @@ export function createErrorPanel(t, route = null) {
         else if (download.hidden) {
             // Advice that ends with "export the report" points at the report this card does offer.
             for (const [from, to] of EXPORT_TO_DOWNLOAD)
-                if (action.textContent.includes(from)) action.textContent = action.textContent.replace(from, to);
+                if (action.textContent.includes(from)) action.textContent = action.textContent.replace(from, holdNames(to));  // set as shown, as t() would
         }
         action.hidden = !action.textContent;
         repair.hidden = !pageRepair(action.textContent);

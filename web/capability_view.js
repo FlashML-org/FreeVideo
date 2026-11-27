@@ -1,5 +1,6 @@
 import { referenceItems } from './prompt_references.js';
 import { effortFor, effortsFrom, stepCacheOf, upscaleOf } from './sampling_effort.js';
+import { holdPhrase } from './i18n.js';
 
 const PRESETS = [.5, .75, .98, 1.5, 2];
 const COLUMN_SPACING = 'equal'; // 'equal' or 'width'
@@ -190,7 +191,9 @@ export function surfacePixels(surface, width, height) {
 
 let serial = 0;
 // What the estimate adds while the first build is still owed.
-export const setupNote = t => t(' · \u2060includes\u00a0first-time\u00a0setup', ' · \u2060含\u2060首\u2060次\u2060准\u2060备');
+// The separator and the phrase after it move to the next line together, never split inside: the line breaks only at the
+// space before the dot (the language files keep plain text).
+export const setupNote = t => t(' · includes\u00a0first-time\u00a0setup', ' · 含首次准备').replace(/^ · (.+)$/, (whole, phrase) => ' ·\u00a0' + holdPhrase(phrase));
 
 export function createCapabilityView({node, api, t, getState, onPick, onEstimate, onGrid}) {
     if (!document.querySelector('link[data-fv-capability]')) {

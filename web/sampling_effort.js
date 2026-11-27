@@ -26,7 +26,8 @@ export const fastOfferOf = grid => grid?.fast_mode?.listed === true ? grid.fast_
 // The reason the Fast level is not offered here, in the page's words, or '' (it is simply not listed): an installation whose
 // model does not run it is told which model it needs and where to get it.
 // A level's name and the 档 after it never break across lines. The catalog keeps plain words; when the sentence is shown, the
-// level's own name in this language (and a 档 / 檔 right after it) is joined with word joiners, as error_panel.js does.
+// level's own name in this language (and a 档 / 檔 right after it) is joined with word joiners, as i18n.js holdNames does for the
+// page's other text; a sentence that came through t() is already held, and is left as it is.
 export function keepLevelName(text, name) {
     if (!text || !name || !/[\u3400-\u9fff]/.test(name)) return text;
     const pattern = new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[档檔]?', 'g');

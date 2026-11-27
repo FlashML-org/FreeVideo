@@ -8,6 +8,7 @@
 // typing a letter, Esc to close. Shift+F10 and the menu key open it at the focused part. Only FreeVideo's own parts
 // are covered: the node view's canvas and ComfyUI's own panels keep theirs.
 import {openContextMenu, floatingHost, MAC} from './context_menu.js';
+import { plainText } from './i18n.js';
 
 const root = document.documentElement;
 const TEXT_INPUTS = new Set(['text', 'search', 'url', 'tel', 'email', 'password', 'number']);
@@ -52,7 +53,8 @@ function announce(field, inputType, data = null) {
     field.dispatchEvent(new InputEvent('input', {bubbles: true, inputType, data}));
 }
 
-async function writeText(text) {
+async function writeText(value) {
+    const text = plainText(value);
     try { if (globalThis.isSecureContext && navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return true; } } catch { /* The older way below. */ }
     // Without the clipboard interface (a page opened by address on the network): copied through a hidden box, inside
     // the dialog in front so it can take the selection.

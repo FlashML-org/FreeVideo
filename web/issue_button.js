@@ -3,7 +3,7 @@
 // and typed text never travel (the message goes through the same redaction as the failure card's report).
 import {createErrorReport} from './error_panel.js';
 import {focusReportTip, reportIssue, showReportTip} from './report_issue.js';
-import { translatorFor } from './i18n.js';
+import { translatorFor, plainText } from './i18n.js';
 
 const MESSAGE = 300, TAIL = 1500;
 const ISSUE_FORM = 'https://github.com/FlashML-org/FreeVideo/issues/new';
@@ -15,14 +15,15 @@ const ISSUE_FORM = 'https://github.com/FlashML-org/FreeVideo/issues/new';
  */
 export function issueDraft({where, message, kind = null, facts = null}, t = translatorFor(null, false)) {
     const place = Array.isArray(where) ? where : [String(where || 'FreeVideo'), String(where || 'FreeVideo')];
-    const clean = createErrorReport({exception_message: String(message || '')}).message;
+    // A report carries plain text: the marks that hold names on one line on screen stay on the screen.
+    const clean = createErrorReport({exception_message: plainText(message || '')}).message;
     const lines = clean.split(/\r?\n/).filter(line => line.trim());
     // A traceback ends with the line that names the error; any other message starts with it.
     const first = (/^Traceback/.test(lines[0] || '') ? lines[lines.length - 1] : lines[0]) || '';
     const text = [t('FreeVideo showed an error.', 'FreeVideo 显示了一个错误。'),
         `Where: ${place[0]}`, `Error: ${first.trim().slice(0, MESSAGE)}`, ...(kind ? [`Kind: ${kind}`] : [])].join('\n');
     const tail = clean.length <= TAIL ? clean : clean.slice(0, 500) + '\n...\n' + clean.slice(-(TAIL - 505));
-    return {title: `[Feedback] ${t(place[0], place[1])}`, text, summary: JSON.stringify(facts && Object.keys(facts).length ? {where: place[0], kind, tail, facts} : {where: place[0], kind, tail})};
+    return {title: plainText(`[Feedback] ${t(place[0], place[1])}`), text: plainText(text), summary: JSON.stringify(facts && Object.keys(facts).length ? {where: place[0], kind, tail, facts} : {where: place[0], kind, tail})};
 }
 
 // Browser-only modules, loaded as the button appears so the click opens the page at once

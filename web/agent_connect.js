@@ -1,3 +1,4 @@
+import { plainText } from './i18n.js';
 import {issueButton} from './issue_button.js';
 import {LANGUAGE} from './i18n.js';
 import {tip} from './autopilot_tips.js';
@@ -257,7 +258,7 @@ export function agentConnectCard(t, api, shown = () => true, changed = () => {})
 
     button.onclick = async () => {
         if (!text) { failures = 0; render(); await load(); return; }
-        try { await navigator.clipboard.writeText(text); sentence.hidden = true; }
+        try { await navigator.clipboard.writeText(plainText(text)); sentence.hidden = true; }
         catch {
             sentence.textContent = text; sentence.hidden = false;
             const range = document.createRange(); range.selectNodeContents(sentence);

@@ -9,6 +9,7 @@ import { isolateDialogKeys, routeDialogKey } from './dialog_keys.js';
 import { productVersion } from './updates.js';
 import { skin } from './glass/library.js';
 import { copyText as copySelected } from './clipboard_text.js';
+import { plainText } from './i18n.js';
 
 const ISSUE_FORM = 'https://github.com/FlashML-org/FreeVideo/issues/new';
 const DRAFT_KEY = 'freevideo.feedback-draft';
@@ -109,7 +110,8 @@ function openPage(address) {
     return true;
 }
 
-async function copyText(text, clipboard = navigator.clipboard) {
+async function copyText(value, clipboard = navigator.clipboard) {
+    const text = plainText(value);
     // No clipboard API at all (a LAN address over http): the selection copy; one that refuses stays refused.
     try { await clipboard.writeText(text); return true; } catch { return clipboard ? false : copySelected(text); }
 }

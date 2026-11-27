@@ -47,7 +47,7 @@
  " · {minutes} min": " · {minutes} min",
  " · {minutes} min {seconds} s": " · {minutes} min {seconds} s",
  " · {s} s": " · {s} s",
- " · ⁠includes first-time setup": " · ⁠incluye la configuración inicial",
+ " · includes first-time setup": " · incluye la configuración inicial",
  "\"Click select\" needs a selection model downloaded once; the panel shows the progress.": "\"Selección por clic\" necesita descargar una vez un modelo de selección; el panel muestra el progreso.",
  "\"Edit this\" changes the current image and does not show the shape list.": "\"Editar esta imagen\" modifica la imagen actual y no muestra la lista de proporciones.",
  "\"Generate with AI\" and \"Click select\" appear only when image generation is available.": "\"Generar con IA\" y \"Selección por clic\" solo aparecen cuando la generación de imágenes está disponible.",

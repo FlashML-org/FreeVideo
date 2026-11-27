@@ -1741,7 +1741,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         const error = await sendError(response);
         if (!stopped) void poll();
         // Another sentence came first: the page reads it, and this one stays in the box.
-        if (error?.code === 'invalid_request') return t('A newer message was sent first. This one was not sent.', '已有更新的消息，此⁠条⁠未⁠发⁠送⁠。');
+        if (error?.code === 'invalid_request') return t('A newer message was sent first. This one was not sent.', '已有更新的消息，此条未发送。');
         if (WAIT_FOR_AGENT.includes(error?.code) || error?.code === 'session_full') return t('Not sent: ', '没发出去：') + failureReason({error}, t);
         return t('Could not stop. Click again; if it keeps failing, report the problem.', '未能停止。请再点一次；仍然失败时，请提交问题。');
     }
