@@ -1581,8 +1581,8 @@ class Session:
                     return t("Couldn't open the browser. Click Copy address and open it in your browser.",
                              '未能自动打开浏览器。请点击“复制地址”，在浏览器中打开。')
                 return str(error)
-            self.browser_error = self.phrase(lambda t: t('ComfyUI is ready. Open the browser again or copy its address.\n',
-                                                         'ComfyUI 已就绪，请重试打开浏览器，或复制地址手动打开。\n') + cause(t))
+            self.browser_error = self.phrase(lambda t: t('FreeVideo is ready. Open the browser again, or copy the address and open it by hand.\n',
+                                                         'FreeVideo 已就绪。请重新打开浏览器，或复制地址手动打开。\n') + cause(t))
 
     def select_source(self, name):
         self.probe.select(self.engine_root(), name)

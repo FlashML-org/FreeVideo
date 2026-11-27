@@ -1101,7 +1101,6 @@
  "ComfyUI did not load FreeVideo": "ComfyUI no cargó FreeVideo",
  "ComfyUI folder": "Carpeta de ComfyUI",
  "ComfyUI frontend: ": "Interfaz de ComfyUI: ",
- "ComfyUI is ready. Open the browser again or copy its address.\n": "ComfyUI está listo. Vuelva a abrir el navegador o copie su dirección.\n",
  "ComfyUI ready": "ComfyUI listo",
  "ComfyUI sent the file with the wrong type, so the browser refused it. Restart ComfyUI. If it persists, use Report a problem.": "ComfyUI envió el archivo con un tipo incorrecto, por lo que el navegador lo rechazó. Reinicie ComfyUI. Si el problema persiste, use Informar de un problema.",
  "Command layer": "Capa de comandos",

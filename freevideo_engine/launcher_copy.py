@@ -79,20 +79,23 @@ ZH = dict([
     ('Install acceleration and download models', '安装加速组件和下载模型'),
     ('Verify installation on your GPU', '检查 GPU 加速'), ('Finish setup', '完成安装'),
     ('Setup complete', '安装完成'), ('Setup interrupted', '安装已暂停'), ('Setup failed', '安装未完成'),
-    ('Download ComfyUI', '下载 ComfyUI'), ('Create ComfyUI Python environment', '创建 ComfyUI 环境'),
-    ('Prepare ComfyUI GPU packages', '准备 ComfyUI 加速组件'),
-    ('Install ComfyUI packages', '安装 ComfyUI 组件'), ('Check ComfyUI dependencies', '检查 ComfyUI 环境'),
-    ('Finish ComfyUI setup', '完成 ComfyUI 安装'), ('ComfyUI ready', 'ComfyUI 已就绪'),
-    ('Prepare ComfyUI', '准备 ComfyUI'), ('Update ComfyUI packages', '更新 ComfyUI 组件'),
+    # The steps below prepare FreeVideo's own runtime environment, so they say so; only the one that
+    # downloads the ComfyUI software itself keeps its name.
+    ('Download ComfyUI', '下载 ComfyUI'), ('Create ComfyUI Python environment', '创建运行环境'),
+    ('Prepare ComfyUI GPU packages', '准备加速组件'),
+    ('Install ComfyUI packages', '安装运行组件'), ('Check ComfyUI dependencies', '检查运行环境'),
+    ('Finish ComfyUI setup', '完成运行环境安装'), ('ComfyUI ready', '运行环境已就绪'),
+    ('Prepare ComfyUI', '准备运行环境'), ('Update ComfyUI packages', '更新运行组件'),
+    ('Prepare ComfyUI environment', '准备运行环境'),
     ('Install FreeVideo workflow', '安装 FreeVideo 工作流'), ('Connecting workflow nodes', '正在连接工作流节点'),
-    ('Open ComfyUI', '打开 ComfyUI'), ('Starting ComfyUI', '启动 ComfyUI'),
+    ('Open ComfyUI', '打开 FreeVideo'), ('Starting ComfyUI', '启动 FreeVideo'),
     ('Loading nodes and the web interface', '正在加载界面'),
     ('Still loading. This may take a few more minutes.', '仍在加载，可能还需要几分钟'),
     ('Checking configuration', '检查配置'), ('Check installation', '检查安装'),
     ('Verify bundled files', '校验离线包'), ('Check local files', '检查本地文件'),
     ('All bundled files verified', '离线包校验完成'),
     ('Detecting the GPU', '正在检测显卡'), ('Testing acceleration', '正在测试加速组件'),
-    ('Start ComfyUI', '启动 ComfyUI'), ('Open FreeVideo workflow', '打开 FreeVideo 工作流'),
+    ('Start ComfyUI', '启动 FreeVideo'), ('Open FreeVideo workflow', '打开 FreeVideo 工作流'),
     ('Ready', '已就绪'), ('Verified and ready', '已就绪'),
     ('Stopped; files retained', '已暂停，下载进度已保留'),
     ('Local verification stopped; files retained', '校验已暂停，文件已保留'),
@@ -388,7 +391,19 @@ def display(value, zh=False):
                 'Encoder ready': 'Prompt model ready',
                 'Install components in parallel': 'Install components and models',
                 'Install with space saver': 'Install components and models (space saver)',
-                'Optimize model storage': 'Prepare models'}.get(value, value)
+                'Optimize model storage': 'Prepare models',
+                # The internal step names keep ComfyUI; what the user reads says what the step does, short enough for a
+                # 400-pixel window on Windows, where the longer names did not fit.
+                'Open ComfyUI': 'Open FreeVideo', 'Start ComfyUI': 'Start FreeVideo',
+                'Starting ComfyUI': 'Starting FreeVideo', 'Prepare ComfyUI': 'Prepare runtime',
+                'Prepare ComfyUI environment': 'Prepare runtime',
+                'Create ComfyUI Python environment': 'Create runtime',
+                'Prepare ComfyUI GPU packages': 'Prepare GPU packages',
+                'Install ComfyUI packages': 'Install packages',
+                'Check ComfyUI dependencies': 'Check runtime',
+                'Finish ComfyUI setup': 'Finish runtime setup',
+                'ComfyUI ready': 'Runtime ready',
+                'Update ComfyUI packages': 'Update packages'}.get(value, value)
         for prefix in ('Download ', 'Prepare '):
             if value.startswith(prefix):
                 return prefix + display(value[len(prefix):])
