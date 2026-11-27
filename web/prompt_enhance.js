@@ -45,7 +45,8 @@ export class PromptVersions {
 }
 
 // Best-effort imports have no UI state and never hold up enhancement or video.
-export function promptPrestart(api, nodeId, enabled, alive = () => true) {
+// onState receives the server's prestart state ({phase: starting, importing, ready, ...}) after each request.
+export function promptPrestart(api, nodeId, enabled, alive = () => true, onState = () => {}) {
     let pending = null, completed = false;
     // Enhancement can be turned off, or the panel closed, while the token is fetched.
     const ready = () => alive() && enabled();
@@ -57,8 +58,9 @@ export function promptPrestart(api, nodeId, enabled, alive = () => true) {
             if (!reply.ok || !ready()) return;
             const info = await reply.json();
             if (!ready()) return;
-            await api.fetchApi('/freevideo/prompt-vlm/prestart', {method: 'POST',
+            const started = await api.fetchApi('/freevideo/prompt-vlm/prestart', {method: 'POST',
                 headers: {'Content-Type': 'application/json', 'X-FreeVideo-Prompt': info.token}, body: '{}'});
+            if (started?.ok) onState((await started.json())?.state || null);
         })().catch(() => {}).finally(() => { pending = null; });
         return pending;
     }
@@ -205,7 +207,8 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     // busyReason(true) is the status line's sentence, busyReason() the key card's.
     const blockedWhy = (line = false) => String(busyReason(line) || '') || (Date.now() < serverBusyUntil ? errorText({message: 'busy'}) : '');
     let downloadOnly = false, pausing = false, modelReading = null;
-    const modelState = {info: null, text: '', busy: false}, modelListeners = new Set();
+    // prestart: the server's prestart phase, which decides how long a rewrite takes (timing.py: cold or prestarted).
+    const modelState = {info: null, text: '', busy: false, prestart: null}, modelListeners = new Set();
     function publishModel(change) {
         Object.assign(modelState, change);
         if (!disposed) for (const listener of modelListeners) listener(modelState);
@@ -219,12 +222,15 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
             if (!reply.ok) throw new Error(info.error || 'request_failed');
             token = info.token;
             if (info.ram_bytes) ramBytes = info.ram_bytes;
-            publishModel({info});
+            publishModel({info, ...(info.prestart ? {prestart: info.prestart} : {})});
             return info;
         })().catch(error => { publishModel({info: null}); throw error; }).finally(() => { modelReading = null; });
         return modelReading;
     }
-    const prestart = promptPrestart(api, node.id, () => versions.value.enabled, () => !disposed && !input.disabled);
+    const prestart = promptPrestart(api, node.id, () => versions.value.enabled, () => !disposed && !input.disabled,
+        state => { if (state?.phase && !disposed) publishModel({prestart: state.phase}); });
+    // The time beside Generate counts a rewrite only from what the server says it takes here: read it once now.
+    if (versions.value.enabled) void readModel().catch(() => {});
     const onFocus = () => { if (versions.value.enabled) void prestart.request(); };
     input.addEventListener('focus', onFocus);
     if (versions.value.enabled) void prestart.request();
@@ -456,7 +462,11 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
                     node.graph?.change();
                     onReport(row);
                 }
-                if (row.phase === 'complete') return row;
+                if (row.phase === 'complete') {
+                    // This rewrite is now one of this computer's own: the next estimate reads it (and a new prestart).
+                    void readModel().catch(() => {});
+                    return row;
+                }
                 if (row.phase === 'failed') {
                     const check = row.error === 'invalid_output' ? checkOf(row) : null;
                     const context = row.error === 'context_length' ? contextOf(row) : null;
@@ -751,6 +761,16 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         modelListeners.add(listener); listener(modelState);
         return () => modelListeners.delete(listener);
     }},
+    // Seconds the next Generate spends rewriting first (timing.py on the server), 0 when it will not rewrite: enhancement
+    // off, the original chosen, an empty prompt, a rewrite still current, the model not installed, or no estimate.
+    // queued: the rewrite is made later by the queue's own worker, which the page's prestart does not warm.
+    rewriteSeconds({queued = false} = {}) {
+        if (!versions.value.enabled || versions.value.useOriginal || !versions.value.original.trim()) return 0;
+        if (versions.fresh(context()) || modelState.info?.ready !== true) return 0;
+        const times = modelState.info?.rewrite_seconds;
+        const seconds = !queued && modelState.prestart === 'ready' ? times?.prestarted : times?.cold;
+        return Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
+    },
     // While a task runs, a request with enhancement on is not rewritten now: it carries what the rewrite reads (the prompt
     // as it is now, and the scene) and the control process rewrites it when its turn comes (queued_rewrite.py).
     // null when the rewrite is not needed or not possible that way; the request then goes as before.

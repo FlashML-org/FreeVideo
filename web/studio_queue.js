@@ -175,13 +175,15 @@ export function createStudioQueue(api, nodeId, {random = randomSeed, pollMs = 20
         return row[2]?.[nodeId]?.class_type === 'FreeVideoGenerate'
             && (!api.clientId || row[3]?.client_id === api.clientId);
     }
+    const isObject = value => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
     const entry = row => {
         // An older snapshot never moves a task's progress backwards.
         const snapshot = row[3]?.freevideo_progress?.[nodeId], known = runningAll.find(item => item.id === row[1])?.progress;
         const progress = snapshot && !isStaleProgress(known, snapshot) ? snapshot : known || snapshot;
-        // A queued rewrite's request stays with the control process; the row says only where its rewrite is.
-        const inputs = clone(row[2][nodeId].inputs); delete inputs.freevideo_enhance;
-        return {id: row[1], inputs, ...(row[3]?.freevideo_enhance ? {enhance: clone(row[3].freevideo_enhance)} : {}),
+        // A queued rewrite's request stays with the control process; the row says only where its rewrite is, and
+        // (rewrite) that one is still to be made: the request leaves the inputs once it is rewritten.
+        const inputs = clone(row[2][nodeId].inputs), rewrite = isObject(inputs.freevideo_enhance); delete inputs.freevideo_enhance;
+        return {id: row[1], inputs, ...(rewrite ? {rewrite: true} : {}), ...(row[3]?.freevideo_enhance ? {enhance: clone(row[3].freevideo_enhance)} : {}),
             ...(row[3]?.freevideo_dispatch ? {executor: row[3].freevideo_dispatch, ...(progress ? {progress} : {})} : {})};
     };
     async function cancel(id) {

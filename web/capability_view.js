@@ -408,7 +408,8 @@ export function createCapabilityView({node, api, t, getState, onPick, onEstimate
     api.addEventListener('freevideo_capabilities', changed);
     const outside = event => { if (!plot.contains(event.target)) hideHover(); };
     node && window.addEventListener('pointerdown', outside);
-    return {element, update, estimate(steps, twoPass, refine, stepCache = null, upscale = 2) {
+    // extra: seconds spent before the video starts (a prompt rewrite), counted in the time shown.
+    return {element, update, estimate(steps, twoPass, refine, stepCache = null, upscale = 2, extra = 0) {
         if (!grid || !surface) return '';
         const tier = gridTier(grid, steps, twoPass, refine, stepCache, upscale);
         const i = grid.sizes.findIndex(s => s.width === Number(value(node, 'width')) && s.height === Number(value(node, 'height')));
@@ -416,8 +417,8 @@ export function createCapabilityView({node, api, t, getState, onPick, onEstimate
         const seconds = tier?.estimate_seconds?.[i]?.[j];
         if (!positive(seconds)) return '';
         // The suffix stays in one piece so a narrow line moves it whole to the next line.
-        return aboutTime(seconds, t) + (grid.machine?.compile_owed === true ? setupNote(t) : '');
-    }, fast() {
+        return aboutTime(seconds + (positive(extra) ? extra : 0), t) + (grid.machine?.compile_owed === true ? setupNote(t) : '');
+    }, fast(extra = 0) {
         // The fastest mode at the chosen size and length (capabilities.fast_mode): whether it fits, its time, and where it
         // does not, why (the limit past this size's longest length) and the planner's ways out.
         const fast = grid?.fast_mode;
@@ -441,7 +442,7 @@ export function createCapabilityView({node, api, t, getState, onPick, onEstimate
         return {fits, limit: fast.limit?.[i] ?? null, actions: Array.isArray(fast.actions?.[i]) ? fast.actions[i] : [],
             shorten: positive(fast.shorten_seconds?.[i]) ? fast.shorten_seconds[i] : null,
             lightFits: admits(grid.tiers?.light) === true,
-            estimate: fits && positive(seconds) ? aboutTime(seconds, t) + (grid.machine?.compile_owed === true
+            estimate: fits && positive(seconds) ? aboutTime(seconds + (positive(extra) ? extra : 0), t) + (grid.machine?.compile_owed === true
                 ? setupNote(t) : '') : ''};
     }, warning(steps, twoPass, refine, stepCache = null, upscale = 2) {
         if (!grid || !surface) return '';

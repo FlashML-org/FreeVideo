@@ -267,7 +267,22 @@ class Service:
             return dict(ready=False, model='', license='', bytes=0, busy=self.busy(), ram_bytes=self.ram_bytes(machine))
         return dict(ready=assets.settle(root) if wait else assets.ready(root), model=spec['repo'], license=spec['license'],
                     bytes=sum(row['bytes'] for row in spec['files']), busy=self.busy(),
-                    ram_bytes=self.ram_bytes(machine))
+                    ram_bytes=self.ram_bytes(machine), rewrite_seconds=self.rewrite_seconds(root, machine),
+                    prestart=self.prewarm_state.get('phase'))
+
+    @staticmethod
+    def rewrite_seconds(root, machine):
+        """About how long a rewrite takes here, cold and after the prestart (timing.py), for the time beside Generate."""
+        from . import timing
+        try:
+            # The card's name as the time beside Generate reads it: an installation's machine.json names only the
+            # device (gpu_uuid); the installer's inventory names the card.
+            from ..comfy_bridge import WholeVideoProgress
+            from ..effort_forecast import inventory_hardware
+            hardware = WholeVideoProgress._hardware(inventory_hardware(machine), machine)
+            return timing.estimate(root, hardware)
+        except Exception:
+            return None
 
     def ram_bytes(self, machine):
         """Available RAM the model usually needs on this computer, for the download card.

@@ -1017,6 +1017,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     openCastLibrary({api, text: t, viewURL: view, uploadOne: castUpload, kind: 'prop', onChange: () => { references.refresh(); }})
         .then(library => { if (disposed) library?.destroy?.(); else propLibrary = library; });
     let requestAssets = null, rewriteSubjects = [];
+    // Set once the panel is built: changes from the enhancer redraw the time beside Generate from then on.
+    let estimateLive = false, queueRewriteCase = 'now';
     // Why the Rewrite key waits: set once the queue state below exists.
     let enhanceBusy = () => '';
     const enhancer = createPromptEnhancer({node, input: prompt, editor: promptEditor, api, t, starter, issueButton, busyReason: line => enhanceBusy(line),
@@ -1025,7 +1027,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
         restore: text => restoreCast(text, rewriteSubjects), display: text => shownRewrite(text, t('en', 'zh')) ?? text,
         // The rewrite has its own report; the video's report entry is not touched.
         onReport: row => { node.freevideoPromptReportId = row.rewrite_report_id || row.report_id; },
-        onChange: () => { rememberPromptDraft(api, node); requestAssets?.refresh(); },
+        // Enhancement on or off, the original chosen, a new rewrite: the time beside Generate counts the rewrite or not.
+        onChange: () => { rememberPromptDraft(api, node); requestAssets?.refresh(); if (estimateLive) refreshEffortEstimate(); },
         setText: text => { set(node, 'text', text || (untouched() ? starter : '')); placeholder(); castOverlay.refresh(); announceCast(); }, context: () => {
         const media = enhancementMedia(referenceItems(node), linked(node, 'conditioning'));
         return {seconds: Number(value(node, 'seconds')), media};
@@ -1590,7 +1593,30 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // The Fast level where the chosen size and length do not fit (capabilities.fast_mode): why, and the ways out. A video
     // made in parts is sampled at Light, so this is about one run only.
     // Declared, not assigned: a saved Fast setting asks for the estimate while the panel is still being built.
-    function fastCell() { return fastOn() && !(lengthControl?.plan?.count > 1) ? capabilityView?.fast?.() ?? null : null; }
+    function fastCell() { return fastOn() && !(lengthControl?.plan?.count > 1) ? capabilityView?.fast?.(rewriteExtra()) ?? null : null; }
+    // Seconds the next Generate spends rewriting the prompt first (prompt_vlm/timing.py), counted in the time beside it.
+    // While a task runs the rewrite waits for this request's turn, and the tasks waiting for one are rewritten together
+    // (queued_rewrite.py): one already waiting means this request joins its batch, so only the first of a batch counts
+    // it, cold (the page's prestart is not that worker's).
+    // A waiting row that still carries its rewrite request (or is marked waiting in a batch) is rewritten in the same batch
+    // as the next one, so only the first queued task counts the rewrite.
+    function rewriteJoins(state) { return (state?.pending || []).some(row => row?.rewrite || row?.enhance?.state === 'waiting'); }
+    function rewriteExtra() {
+        let running = false;
+        try { running = busy; } catch { /* asked while the panel is still being built: nothing runs yet */ }
+        if (!running) return enhancer?.rewriteSeconds?.() || 0;
+        if (rewriteJoins(queueState)) return 0;
+        return enhancer?.rewriteSeconds?.({queued: true}) || 0;
+    }
+    // The time's tip says how much of it is the rewrite: "{seconds} s" to the nearest 5 under a minute, else whole minutes.
+    // joined: after " · " in Generate's hover card, where English goes on in lower case.
+    function rewriteTip(seconds, joined = false) {
+        if (!(seconds > 0)) return '';
+        const time = seconds < 60 ? t('{seconds} s', '{seconds} 秒', { seconds: Math.max(5, Math.round(seconds / 5) * 5) })
+            : t('{minutes} min', '{minutes} 分钟', { minutes: Math.round(seconds / 60) });
+        return joined ? t('includes about {time} to rewrite the prompt', '含改写提示词约 {time}', { time })
+            : t('Includes about {time} to rewrite the prompt', '含改写提示词约 {time}', { time });
+    }
     function fastShortfall() { const cell = fastCell(); return cell && !cell.fits ? cell : null; }
     // Where the page cannot tell yet: 'checking' (the planner's grid is not in) holds the key; 'linked' (the size comes from
     // another node, so it never can) lets it go, and a refusal then comes back as the failure card.
@@ -1644,7 +1670,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         if (!arguments.length && fastOn()) {
             // Its time where the planner has one; a video made in parts is sampled at Light.
             const cell = fastCell();
-            effort.setEstimate(cell?.fits ? cell.estimate : '');
+            effort.setEstimate(cell?.fits ? cell.estimate : '', cell?.fits && cell.estimate ? rewriteTip(rewriteExtra()) : '');
             // In the three-column Quality section this sentence is the level's own line, under the levels (sayLevel), so the
             // levels do not move; the Quality window keeps it above them.
             if (lengthControl.plan?.count > 1) { if (!levelsInColumn()) effort.setWarning(fastPartsWords()); }
@@ -1674,9 +1700,10 @@ export function openStudio(node, {extendFrom = null} = {}) {
                 : t('{count} parts', '分 {count} 段', { count: plan.count }), '', plan.count);
             return;
         }
-        const rangeEstimate = capabilityView?.estimate(steps, twoPassPlan, arguments.length ? 3 : Number(refineSteps.value), cache, factor);
+        const rewriting = rewriteExtra();
+        const rangeEstimate = capabilityView?.estimate(steps, twoPassPlan, arguments.length ? 3 : Number(refineSteps.value), cache, factor, rewriting);
         if (rangeEstimate) {
-            effort.setEstimate(rangeEstimate);
+            effort.setEstimate(rangeEstimate, rewriteTip(rewriting));
             effort.setWarning(capabilityView.warning(steps, twoPassPlan, arguments.length ? 3 : Number(refineSteps.value), cache, factor));
             return;
         }
@@ -1688,12 +1715,12 @@ export function openStudio(node, {extendFrom = null} = {}) {
             effort.setEstimate('', t('No estimate is available for these settings.', '当前设置暂无预计用时。'));
             return;
         }
-        const minutes = estimate.high_seconds >= 90, scale = minutes ? 60 : 1;
-        const low = Math.max(1, Math.floor(estimate.low_seconds / scale));
-        const high = Math.max(low + 1, Math.ceil(estimate.high_seconds / scale));
+        const minutes = estimate.high_seconds + rewriting >= 90, scale = minutes ? 60 : 1;
+        const low = Math.max(1, Math.floor((estimate.low_seconds + rewriting) / scale));
+        const high = Math.max(low + 1, Math.ceil((estimate.high_seconds + rewriting) / scale));
         const unit = minutes ? t('min', '分钟') : t('s', '秒');
         const extra = estimate.includes_text_encoding ? '' : t(' + prompt', ' + 提示词准备');
-        effort.setEstimate(`${t('~', '约 ')}${low}–${high} ${unit}${extra}`);
+        effort.setEstimate(`${t('~', '约 ')}${low}–${high} ${unit}${extra}`, rewriteTip(rewriting));
     }
     function refreshEffortEstimate(force = false) {
         capabilityView?.update();
@@ -2536,13 +2563,16 @@ export function openStudio(node, {extendFrom = null} = {}) {
     generate.dataset.fvGuide = 'generate'; generate.dataset.tourId = 'generate-btn';
     // Generate reads as one key: what it does, and under it about how long the video takes (the quality's estimate).
     const keyLabel = el('span', null, 'fvs-key-label'), keyEta = el('span', null, 'fvs-key-eta');
-    let keyShowsEta = false, keySetup = false;
+    // keyRewrite: the estimate's own tip when it counts a prompt rewrite ("Includes about … to rewrite the prompt").
+    let keyShowsEta = false, keySetup = false, keyRewrite = '';
     // A one-time note (the first build) is not a standing line: it goes to the key's hover card instead.
     const plainWords = text => text.replace(/\u2060/g, '').replace(/\u00a0/g, ' ').replace(/^ · /, '').trim(), setupWords = plainWords(setupNote(t));
     const setupPart = part => plainWords(part) === setupWords;
     const paintEta = () => {
         const parts = (effort?.element?.querySelector('.fv-effort-estimate')?.textContent || '').trim().split(/ ·[ \u00a0]/).filter(Boolean);  // the setup phrase keeps its dot with a no-break space
         keySetup = parts.some(setupPart);
+        const rewriting = rewriteExtra();
+        keyRewrite = rewriting > 0 ? rewriteTip(rewriting, true) : '';
         // A preview has no estimate of its own (the figures are for the whole two-pass run), so the line stays empty rather than show the wrong time.
         const estimate = keyShowsEta && !(previewFirst.checked && !previewFirst.disabled) ? parts.filter(part => !setupPart(part)).join(' · ') : '';
         if (keyEta.textContent !== estimate) keyEta.textContent = estimate;
@@ -2761,7 +2791,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
             : fastWait ? fastUnknownWords(fastWait) : '';
         if (lengthWhy.textContent !== lengthSaid) lengthWhy.textContent = lengthSaid;
         if (lengthWhy.hidden !== !lengthSaid) lengthWhy.hidden = !lengthSaid;
-        const words = {fvTipName: keyLabel.textContent.replace(/…$/, ''), fvTipUse: use && keySetup && keyShowsEta ? `${use} · ${t('Includes first-time setup', '含首次准备')}` : use, fvTipKey: TIPS['studio.generate'].key, fvTipWhy: why};
+        const notes = keyShowsEta ? [keySetup ? t('Includes first-time setup', '含首次准备') : '', keyRewrite].filter(Boolean) : [];
+        const words = {fvTipName: keyLabel.textContent.replace(/…$/, ''), fvTipUse: use && notes.length ? [use, ...notes].join(' · ') : use, fvTipKey: TIPS['studio.generate'].key, fvTipWhy: why};
         for (const [field, value] of Object.entries(words)) {
             if (value) { if (generate.dataset[field] !== value) generate.dataset[field] = value; } else delete generate.dataset[field];
         }
@@ -2834,6 +2865,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
         busy = Boolean(active) || progressLive(); queued = !state.running && Boolean(state.pending.length);
         // A finished, failed or cancelled video may have downloaded what the line above Generate still lists.
         if (wasBusy && !busy) { requestAssets?.refresh(true); }
+        // Whether the next Generate rewrites first, and whether that counts here, follows the queue (rewriteExtra).
+        const rewriteCase = busy ? (rewriteJoins(state) ? 'joins' : 'first') : 'now';
+        if (rewriteCase !== queueRewriteCase) { queueRewriteCase = rewriteCase; if (estimateLive) refreshEffortEstimate(); }
         const g = active?.inputs;
         runningSummary = Number.isFinite(g?.width) && Number.isFinite(g?.height)
             ? [t('Generating', '正在生成'), `${g.width} × ${g.height}`, Number(g.seconds) > 0 ? t('{seconds} s', '{seconds} 秒', { seconds: g.seconds }) : ''].filter(Boolean).join(' · ') : '';
@@ -3948,6 +3982,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
     cleanup.push(() => firstStart.dispose());
     const tourContext = {dialog, api, cn, onError: error => tourFault('', error), onTry: tryTourExample, onStartClip: tryStartClip, canTry: canTryTour, isBusy: () => busy || queued || capturing};
     cleanup.push(registerTourWorkspace(tourContext));
+    // How long a rewrite takes here (and whether its imports are already done) arrives after the panel opens.
+    estimateLive = true;
+    cleanup.push(enhancer.model.subscribe(() => refreshEffortEstimate()));
     const tourTimer = setTimeout(async () => { const state = await firstStart.ready; if (!closed && !state?.firstRun && !tourContext.isBusy()) offerVersionTour(tourContext); }, 1400);
     cleanup.push(() => clearTimeout(tourTimer));
     const recentLoad = worksColumn.refresh();

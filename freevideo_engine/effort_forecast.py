@@ -399,6 +399,37 @@ def _context_key(output_directory, machine):
     return (str(output_directory), json.dumps(device, sort_keys=True), system, machine.get('setup_run')), device, system
 
 
+_INVENTORY = {}
+
+
+def inventory_hardware(machine):
+    """The installer's hardware inventory for this machine's device (gpu_name, capability, ram/vram totals, system), from
+    its setup run's plan.json; {} when there is none or it describes another device. Read again only when the file
+    changes, so callers that ask often (the prompt model's info) stay cheap."""
+    _, device, _ = _context_key('', machine)
+    try:
+        path = Path(machine['setup_run']) / 'plan.json'
+        stamp = path.stat().st_mtime_ns
+    except (KeyError, TypeError, OSError):
+        return {}
+    key = (str(path), json.dumps(device, sort_keys=True))
+    cached = _INVENTORY.get(key)
+    if cached and cached[0] == stamp:
+        return dict(cached[1])
+    hardware = {}
+    try:
+        with path.open('rb') as stream:
+            raw = stream.read(1024 * 1024 + 1)
+        if len(raw) <= 1024 * 1024:
+            found = json.loads(raw).get('inventory', {}).get('hardware', {})
+            if same_device(found, device):
+                hardware = {k: found[k] for k in ('gpu_name', 'capability', 'ram_total', 'vram_total', 'system') if k in found}
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass
+    _INVENTORY[key] = (stamp, hardware)
+    return dict(hardware)
+
+
 def start_context(output_directory, machine, *, timeout=.035):
     """Bound foreground IO to ~35 ms, even on slow/unavailable output disks.
 
@@ -423,17 +454,8 @@ def start_context(output_directory, machine, *, timeout=.035):
     if start:
         def read():
             hardware, records = dict(entry['hardware']), list(entry['records'])
-            try:
-                if machine.get('setup_run'):
-                    with (Path(machine['setup_run']) / 'plan.json').open('rb') as stream:
-                        raw = stream.read(1024 * 1024 + 1)
-                    if len(raw) <= 1024 * 1024:
-                        found = json.loads(raw).get('inventory', {}).get('hardware', {})
-                        if same_device(found, device):
-                            hardware = {k: found[k] for k in
-                                ('gpu_name', 'capability', 'ram_total', 'vram_total', 'system') if k in found}
-            except (OSError, ValueError, TypeError, AttributeError):
-                pass
+            if machine.get('setup_run'):
+                hardware = inventory_hardware(machine) or hardware
             try:
                 records = local_records(output_directory, device, system=system, stage_details=True)
             except (OSError, ValueError, TypeError, AttributeError):
