@@ -2232,6 +2232,21 @@ def windows_store_retry(error):
             and not any(word in text for word in ('schannel', 'sec_e_', 'crypt_e_')))
 
 
+# Git on Windows with Schannel refuses a server whose certificate it could not check for revocation, as curl does
+# (REVOCATION_UNKNOWN): only these two errors, on Git's own "unable to access '<address>': schannel:" line.
+GIT_REVOCATION_UNKNOWN = re.compile(r"^fatal: unable to access '[^'\n]*': schannel: [^\n]*?(?:\bCRYPT_E_NO_REVOCATION_CHECK\b|"
+                                    r"\bCRYPT_E_REVOCATION_OFFLINE\b|\(0x8009201[23]\))", re.M)
+# Git for Windows (2.26 and later) then goes on when the revocation status cannot be learned; the certificate, its chain
+# and the host name are still checked, and a certificate known to be revoked still fails. Its default is the same unless
+# a setting asks for the strict check. Never `false`, which turns the check off.
+GIT_REVOKE_BEST_EFFORT = 'http.schannelCheckRevoke=best-effort'
+
+
+def git_revocation_retry(error):
+    """Whether a failed Git fetch is worth one more try with the revocation check done on a best-effort basis."""
+    return is_windows() and bool(GIT_REVOCATION_UNKNOWN.search(str(error)))
+
+
 def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None):
     """Fetch only the pinned commit, atomically; never reset existing checkouts.
 
@@ -2298,6 +2313,7 @@ def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None)
     rewritten = False
     for name, endpoint, route in queue:
         env = route_environment(network, 'git', name, configured_env, route)
+        revocation_retried = False
         temporary = target.with_name(target.name + '.partial-' + str(time.time_ns()))
         event(network, category='git', source=name, route=route, file=target.name, action='attempt', commit=commit)
         scratch = git_scratch_folder() if git_folder_too_deep(temporary) else None
@@ -2364,18 +2380,31 @@ def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None)
                 try:
                     execute(target.name + '-fetch-' + name, fetch)
                 except RuntimeError as first:
-                    if not windows_store_retry(first):
+                    if git_revocation_retry(first):
+                        # Once per source and route, as for curl; the report says so.
+                        revocation_retried = True
+                        event(network, category='git', source=name, route=route, file=target.name,
+                              action='revocation-best-effort', reason='revocation-status-unavailable')
+                        try:
+                            execute(target.name + '-fetch-revocation-' + name, fetch[:3] + ['-c', GIT_REVOKE_BEST_EFFORT] + fetch[3:])
+                        except RuntimeError as second:
+                            # A Git older than that value reads it as a yes/no setting and refuses it, in words that say
+                            # nothing about the download: the first error stays the one reported then.
+                            unsupported = re.search(r"bad (?:boolean|numeric) config value 'best-effort'", str(second), re.I)
+                            raise first if unsupported else second from None
+                    elif windows_store_retry(first):
+                        event(network, category='git', source=name, route=route, file=target.name, action='certificate-store-retry',
+                              reason='windows-certificate-store')
+                        try:
+                            execute(target.name + '-fetch-windows-store-' + name,
+                                    fetch[:3] + ['-c', 'http.sslBackend=schannel'] + fetch[3:])
+                        except RuntimeError as second:
+                            # A Git without that backend says so in words that say nothing about the
+                            # download; the first error stays the one reported then.
+                            unsupported = 'unsupported ssl backend' in str(second).lower()
+                            raise second if failure_reason(second)[0] == 'tls' and not unsupported else first from None
+                    else:
                         raise
-                    event(network, category='git', source=name, route=route, file=target.name, action='certificate-store-retry',
-                          reason='windows-certificate-store')
-                    try:
-                        execute(target.name + '-fetch-windows-store-' + name,
-                                fetch[:3] + ['-c', 'http.sslBackend=schannel'] + fetch[3:])
-                    except RuntimeError as second:
-                        # A Git without that backend says so in words that say nothing about the
-                        # download; the first error stays the one reported then.
-                        unsupported = 'unsupported ssl backend' in str(second).lower()
-                        raise second if failure_reason(second)[0] == 'tls' and not unsupported else first from None
             finally:
                 env = original
             execute(target.name + '-checkout', ['git', '-C', work, 'checkout', '--detach', commit])
@@ -2423,7 +2452,8 @@ def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None)
             if name == GIT_SETTINGS_SOURCE:
                 message = ''
             attempt = _source_row(name, route, host, error_class, message, time.monotonic() - started,
-                                  returncode=exit_code(error))
+                                  returncode=exit_code(error),
+                                  **(dict(revocation_check='best-effort') if revocation_retried else {}))
             attempts.append(attempt)
             event(network, category='git', source=name, route=route, file=target.name, action='fallback',
                   reason='network-fetch-failed', host=attempt['host'], error_class=error_class, message=message,
