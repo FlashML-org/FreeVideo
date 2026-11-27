@@ -764,9 +764,13 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     // Seconds the next Generate spends rewriting first (timing.py on the server), 0 when it will not rewrite: enhancement
     // off, the original chosen, an empty prompt, a rewrite still current, the model not installed, or no estimate.
     // queued: the rewrite is made later by the queue's own worker, which the page's prestart does not warm.
+    // A scene the rewrite cannot read (audio only, or a prompt encoded elsewhere: context() says so by throwing) is generated
+    // from the original, as beforeGenerate does, so nothing is added.
     rewriteSeconds({queued = false} = {}) {
         if (!versions.value.enabled || versions.value.useOriginal || !versions.value.original.trim()) return 0;
-        if (versions.fresh(context()) || modelState.info?.ready !== true) return 0;
+        let scene;
+        try { scene = context(); } catch { return 0; }
+        if (versions.fresh(scene) || modelState.info?.ready !== true) return 0;
         const times = modelState.info?.rewrite_seconds;
         const seconds = !queued && modelState.prestart === 'ready' ? times?.prestarted : times?.cold;
         return Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
@@ -777,10 +781,13 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     async queuedRewrite() {
         if (running || !blockedWhy() || !versions.value.enabled || versions.value.useOriginal) return null;
         const original = versions.value.original;
-        if (!original.trim() || versions.fresh(context())) return null;
+        // A scene the rewrite cannot read: the request goes as before, and beforeGenerate says why it uses the original.
+        let scene;
+        try { scene = context(); } catch { return null; }
+        if (!original.trim() || versions.fresh(scene)) return null;
         const text = prepare(original);
         if ([...text].length > PROMPT_LIMIT) return null;
-        const body = {text, ...await resolve(context())};
+        const body = {text, ...await resolve(scene)};
         return {body, original};
     },
     noteQueued() {
