@@ -814,6 +814,8 @@ def sources_text(rows, item=''):
             parts.append('exit %s' % row['returncode'])
         if row.get('revocation_check') == 'best-effort':
             parts.append('retried without revocation status')
+        if row.get('proxy_from') in PROXY_FROM:
+            parts.append(PROXY_FROM[row['proxy_from']])
         # The time stays last: the launcher's source card reads it from there.
         parts.append('%.1f s' % float(row.get('elapsed_seconds') or 0))
         message = str(row.get('message') or '')
@@ -821,6 +823,56 @@ def sources_text(rows, item=''):
     if not lines:
         return ''
     return (SOURCES_TRIED[:-1] + (' for %s:' % item if item else ':')) + '\n' + '\n'.join(lines)
+
+
+# What a failed source line says about the proxy of the route ("current connection"): where it came from, by kind.
+PROXY_FROM = {'environment': 'proxy from environment variables', 'system': 'proxy from system settings',
+              'git-config': 'proxy from Git settings'}
+# A failure the client reports as a connection to the proxy itself: curl's "... via <proxy> after" and
+# "connect to <proxy> port <its port>". Matched against the route's own proxies, never by a word in a host name.
+_PROXY_VIA = r'\bvia \[?%s\]?(?![\w.-])|\bconnect to \[?%s\]? port %s\b'
+
+
+def _proxies(env, git=False):
+    """(host, port) of each proxy the route uses, for matching only; nothing of it is reported."""
+    values = [v for k, v in env.items() if k.lower() in ('http_proxy', 'https_proxy', 'all_proxy') and v]
+    if git:
+        for key in ('http.proxy', 'https.proxy'):
+            try:
+                found = subprocess_output.run_external(['git', 'config', '--get', key], env=env, capture_output=True,
+                                                       timeout=10)
+            except (OSError, ValueError, subprocess.SubprocessError):
+                continue
+            if found.returncode == 0 and (found.stdout or '').strip():
+                values.append(found.stdout.strip())
+    out = set()
+    for value in values:
+        try:
+            parts = urlsplit(value if '://' in value else 'http://' + value)
+            if parts.hostname:
+                # Without a port, curl (and Git through it) uses 1080 for every proxy except an https:// one, 443.
+                out.add((parts.hostname, str(parts.port or (443 if parts.scheme == 'https' else 1080))))
+        except ValueError:
+            continue
+    return out
+
+
+def proxy_row(row, base_env, route, *, git=False):
+    """A failed source row of the route through the inherited connection, with where its proxy came from (a kind only),
+    and the proxy class when the failure was reaching that proxy. Other rows are returned as they are."""
+    if route != 'inherited':
+        return row
+    kind = proxy.origin(base_env, git=git)
+    if not kind:
+        return row
+    row['proxy_from'] = kind
+    message = str(row.get('message') or '')
+    route_env = proxy.environment(base_env, 'inherited', git=git)
+    for host, port in _proxies(route_env, git):
+        if re.search(_PROXY_VIA % (re.escape(host), re.escape(host), re.escape(port)), message, re.I):
+            row['error_class'] = 'proxy'
+            break
+    return row
 
 
 def _package_attempt(error, source, route, host='', seconds=0.):
@@ -977,8 +1029,8 @@ def download_command(network, family, run, env=None, *, category=None, extra_sou
                             return result
                         except (RuntimeError, subprocess.CalledProcessError):
                             pass
-                    attempt = dict(_package_attempt(error, name, route, source_host(family, name, env), elapsed),
-                                   retry_mode=retry_mode)
+                    attempt = dict(proxy_row(_package_attempt(error, name, route, source_host(family, name, env), elapsed),
+                                             env, route), retry_mode=retry_mode)
                     if native_retry:
                         attempt['system_certificates_tried'] = True
                     attempts.append(attempt)
@@ -986,6 +1038,7 @@ def download_command(network, family, run, env=None, *, category=None, extra_sou
                           error_type=attempt['error_type'], returncode=attempt['returncode'],
                           detail=attempt['detail'], summary=attempt['summary'], host=attempt['host'],
                           error_class=attempt['error_class'], message=attempt['message'],
+                          **({'proxy_from': attempt['proxy_from']} if attempt.get('proxy_from') else {}),
                           elapsed_seconds=attempt['elapsed_seconds'], **retry_details)
                     detail = attempt['detail']
                     if (not retryable(detail)
@@ -1321,11 +1374,12 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
         error_class = (_REASON_CLASSES.get(reason) or ('http' if http and code == 22 else _CURL_CLASSES.get(code))
                        or (failure_reason(message)[0] if message else 'exit'))
         failures.pop((source, route), None)
-        failures[source, route] = _source_row(source, route, _host(address), error_class,
+        failures[source, route] = proxy_row(_source_row(source, route, _host(address), error_class,
                                               failure_reason(message)[1] if message else '',
                                               spent.get((source, route), 0.), attempts[source, route],
                                               returncode=code, http_status=status if http else '',
-                                              **(dict(revocation_check='best-effort') if (source, route) in revocation_best_effort else {}))
+                                              **(dict(revocation_check='best-effort') if (source, route) in revocation_best_effort else {})),
+                                            env, route)
 
     failed_sources = set()
     transferred, high_water, last_rate = 0, 0, 0.
@@ -2451,13 +2505,15 @@ def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None)
             host = '' if name == GIT_SETTINGS_SOURCE else _host(endpoint)
             if name == GIT_SETTINGS_SOURCE:
                 message = ''
-            attempt = _source_row(name, route, host, error_class, message, time.monotonic() - started,
-                                  returncode=exit_code(error),
-                                  **(dict(revocation_check='best-effort') if revocation_retried else {}))
+            attempt = proxy_row(_source_row(name, route, host, error_class, message, time.monotonic() - started,
+                                            returncode=exit_code(error),
+                                            **(dict(revocation_check='best-effort') if revocation_retried else {})),
+                                configured_env, route, git=True)
             attempts.append(attempt)
             event(network, category='git', source=name, route=route, file=target.name, action='fallback',
-                  reason='network-fetch-failed', host=attempt['host'], error_class=error_class, message=message,
-                  returncode=attempt['returncode'], elapsed_seconds=attempt['elapsed_seconds'])
+                  reason='network-fetch-failed', host=attempt['host'], error_class=attempt['error_class'], message=message,
+                  returncode=attempt['returncode'], elapsed_seconds=attempt['elapsed_seconds'],
+                  **({'proxy_from': attempt['proxy_from']} if attempt.get('proxy_from') else {}))
         finally:
             # Best effort: a file still held by antivirus or git.exe must not replace the
             # error being handled or stop the fallback to the next source.

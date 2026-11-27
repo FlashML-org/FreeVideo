@@ -875,6 +875,15 @@ SOURCE_REASONS = {
     'other': ('Other error', '其他错误'),
 }
 SOURCE_ROUTES = {'direct': ('direct', '直连'), 'inherited': ('current connection', '当前连接')}
+# network.PROXY_FROM: where the current connection's proxy came from, shown beside the route.
+SOURCE_PROXY_FROM = {'proxy from environment variables': ('proxy environment variables', '代理环境变量'),
+                     'proxy from system settings': ('system proxy', '系统代理'),
+                     'proxy from Git settings': ('Git proxy setting', 'Git 代理设置')}
+# Every try through the current connection failed reaching a proxy on this computer itself: nothing listens there.
+PROXY_NOT_RUNNING = ('The proxy set on this computer does not respond and may not be running. Start the program that provides it, '
+                     'then try again.',
+                     '这台电脑设置的代理没有响应，可能未在运行。请先启动提供这个代理的程序，然后重试。')
+_LOCAL_PROXY = re.compile(r'\b(?:via|connect to) \[?(?:127(?:\.\d{1,3}){3}|localhost|::1)\]?(?![\w.-])', re.I)
 SOURCE_CUSTOM = ('custom source', '自定义源')
 SOURCE_CARD_LINES = 6
 _SOURCE_LINE = re.compile(r'^\s*- (?P<source>[^/\s]+)/(?P<route>[^\s:(]+)(?: \((?P<host>[^)\s]*)\))?: '
@@ -913,6 +922,9 @@ def source_lines(lines, zh=False):
                                                  code=code and next(filter(None, code.groups()), ''))
         host = found['host'] or (SOURCE_CUSTOM[zh] if found['source'].startswith('user') else found['source'])
         route = SOURCE_ROUTES.get(found['route'], (found['route'],) * 2)[zh]
+        origin = next((names for text, names in SOURCE_PROXY_FROM.items() if ', ' + text + ',' in rest), None)
+        if origin:
+            route += ('（%s）' if zh else ' (%s)') % origin[zh]
         if seconds:
             value = float(seconds[1])
             value = ('%.1f' % value) if value < 10 else '%d' % round(value)
@@ -947,6 +959,9 @@ def launcher_failure(value, *, zh=False, **options):
     sources = source_lines(lines, zh)
     if sources:
         failure['sources'] = '\n'.join(sources)
+    found = [m for m in map(_SOURCE_LINE.match, lines) if m and m['route'] == 'inherited']
+    if found and all(m['cls'] == 'proxy' and _LOCAL_PROXY.search(m['rest']) for m in found):
+        failure['detail'] = PROXY_NOT_RUNNING[zh] + ('\n' + failure['detail'] if failure.get('detail') else '')
     return failure
 
 

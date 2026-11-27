@@ -95,6 +95,21 @@ def inherited(environ=None):
     return env
 
 
+def origin(environ=None, *, git=False):
+    """Where the inherited route's proxy comes from, as a kind only: 'git-config' (Git's own proxy settings, which Git
+    uses before the environment), 'environment' (HTTP_PROXY and the like), 'system' (the operating system's proxy, read
+    as inherited() reads it), or None without a proxy. The address itself is never returned: it can hold a password."""
+    from .linux_bundle import child_environment
+    env = child_environment(environ)
+    if git and git_proxy_keys(env):
+        return 'git-config'
+    if any(v for k, v in env.items() if k.lower() in ('http_proxy', 'https_proxy', 'all_proxy')):
+        return 'environment'
+    if any(v for k, v in inherited(env).items() if k.lower() in ('http_proxy', 'https_proxy', 'all_proxy')):
+        return 'system'
+    return None
+
+
 def configured(environ=None):
     env = os.environ if environ is None else environ
     return any(v for k, v in env.items() if k.lower() in ('http_proxy', 'https_proxy', 'all_proxy'))

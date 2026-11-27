@@ -71,7 +71,7 @@ def collect(root, since):
 
 
 SOURCE_KEYS = ('category', 'source', 'route', 'host', 'error_class', 'message', 'elapsed_seconds',
-               'error_type', 'returncode', 'summary')
+               'error_type', 'returncode', 'summary', 'proxy_from')
 
 
 def source_failures(path):
