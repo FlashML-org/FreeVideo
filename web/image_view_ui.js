@@ -9,6 +9,7 @@ export const el = (tag, cls, text) => { const e = document.createElement(tag); i
 
 // One stroke weight and one 24-unit box for every icon on the page.
 const PATHS = {
+    person: '<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/>',
     model: '<path d="M12 3.5l7.5 4.2v8.6L12 20.5l-7.5-4.2V7.7z"/><path d="M12 12l7.5-4.3M12 12v8.5M12 12L4.5 7.7"/>',
     prompt: '<path d="M5 18.5V7a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H8.5z"/><path d="M8.5 9.5h7M8.5 12.5h4"/>',
     layout: '<rect x="3.5" y="5" width="17" height="14" rx="2" stroke-dasharray="3 2.4"/><rect x="7" y="8.5" width="6" height="5" rx="1"/>',

@@ -34,6 +34,7 @@ import { PICTURE_WORDS, SUBJECT_WORDS, brokenMentions, mentionText, mentionsToEn
 import { HISTORY_KEY, forgetDeletedPrompts, promptLibrary, rememberPrompt } from './image_view_prompts.js';
 import { COMPARE_MAX, compareView } from './image_view_compare.js';
 import { queuePanel } from './image_view_queue.js';
+import { castAvailable, saveAsCharacter } from './cast_from_image.js';
 import { createWorkColumn } from './work_column.js';
 import { pictureURL } from './picture_url.js';
 import { isHeld, worksClient, saveToWorks } from './image_works.js';
@@ -480,7 +481,11 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         prompt.value = text; prompt.dispatchEvent(new Event('input', {bubbles: true})); promptGroup.open(true);
         if (boxes) { const moss = IMAGE_MODELS.find(m => m.id === MOSS); if (moss && model.id !== MOSS) chooseModel(moss); layout.set(boxes); }
     }
-    more.append(menuItem('folder', t('Open folder', '打开文件夹'), t('Show the images on this computer', '在电脑上打开保存图片的文件夹'), () => void openFolder()),
+    // Save as character: the character library's New character dialog with this image in it (only where the library is).
+    const castWords = [t('Save as character', '存为角色'), t('Make a character from this image, then use @name in the prompt', '用这张图新建角色，之后可以在提示词里用 @名字 引用')];
+    const saveCast = () => { if (shownFile && save.href) void saveAsCharacter({api, text: t, url: save.href, name: shownFile}); };
+    const castItem = menuItem('person', ...castWords, saveCast); castItem.hidden = true;
+    more.append(castItem, menuItem('folder', t('Open folder', '打开文件夹'), t('Show the images on this computer', '在电脑上打开保存图片的文件夹'), () => void openFolder()),
         menuItem('copy', t('Copy prompt', '复制提示词'), t('Copy the words this image was made from', '复制这张图的提示词'), copyPrompt), usePromptItem,
         menuItem('trash', t('Delete', '删除'), t('Move to recently deleted; can be undone', '移到最近删除，可以撤销'), () => deleteFiles([shownFile]), 'fv-iv-danger'));
     const moreHost = el('span', 'fv-image-more-host fv-iv-more-host'); moreHost.append(moreButton, more);
@@ -489,7 +494,13 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     const inlineBtn = (iconName, name, use, onClick, cls = '') => { const b = button('fv-iv-icon-btn ' + cls, {iconName, name, use}); b.addEventListener('click', onClick); return b; };
     const copyInline = inlineBtn('copy', t('Copy prompt', '复制提示词'), t('Copy the words this image was made from', '复制这张图的提示词'), copyPrompt);
     const useInline = inlineBtn('prompt', t('Use prompt', '使用提示词'), t('Put its prompt back in the box', '把它的提示词填回提示词框'), () => usePromptItem.click());
-    inline.append(copyInline, useInline,
+    const castInline = inlineBtn('person', ...castWords, saveCast); castInline.hidden = true;
+    void castAvailable(api).then(on => {
+        if (!on || !alive) return;
+        castInline.hidden = castItem.hidden = false;
+        tip(moreButton, t('More', '更多'), t('Save as character, folder, copy prompt, delete', '存为角色、打开文件夹、复制提示词、删除'));
+    });
+    inline.append(castInline, copyInline, useInline,
         inlineBtn('folder', t('Open folder', '打开文件夹'), t('Show the images on this computer', '在电脑上打开保存图片的文件夹'), () => void openFolder()),
         inlineBtn('trash', t('Delete', '删除'), t('Move to recently deleted; can be undone', '移到最近删除，可以撤销'), () => deleteFiles([shownFile]), 'fv-iv-danger'));
     const capActions = el('div', 'fv-iv-cap-actions'); capActions.append(editThis, asReference, el('i', 'fv-iv-sep'), favBtn, save, inline, moreHost);

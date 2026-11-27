@@ -138,7 +138,7 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
         face.ondragleave = () => { delete box.dataset.over; };
         face.ondrop = event => { event.preventDefault(); delete box.dataset.over; if (!generator.state().running) take(event.dataTransfer.files); };
         paint();
-        return {element: box, face, get: () => record, disable: value => { face.disabled = replace.disabled = remove.disabled = restore.disabled = value; },
+        return {element: box, face, get: () => record, take, disable: value => { face.disabled = replace.disabled = remove.disabled = restore.disabled = value; },
             dispose: () => { if (record) { URL.revokeObjectURL(record.url); if (record.original) URL.revokeObjectURL(record.original.url); } }};
     }
 
@@ -472,6 +472,8 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
         // The card keeps its own copy of the views it shows; the views stay in the library.
         markSaved() { cardSaved = true; generator.state().pictures.forEach((r, at) => { if (r.file && !edits[make[at]] && !own[make[at]]) saved.add(r.file); }); },
         isBusy: () => generator.state().running,
+        // A picture handed over from elsewhere (an image of the library), as if dropped on the source slot.
+        preset: file => { if (photoSlot && file && !generator.state().running) photoSlot.take([file]); },
         cancel: () => generator.stop(),
         destroy() {
             disposed = true; clearTimeout(infoTimer); otherUsage.dispose(); picker?.dispose(); window.removeEventListener('pagehide', leaving);

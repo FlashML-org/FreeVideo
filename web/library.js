@@ -21,6 +21,7 @@ import { hasPictureThumbnail, mediaQueue, pictureThumbnailURL, watchCards } from
 import { zoomable } from './picture_zoom.js';
 import { createUpscaleOffer, upscaleChoices, admittedFrames as admittedUpscaleFrames, upscaleTimes as readUpscaleTimes, UPSCALE_QUEUED, UPSCALE_FAILED } from './upscale_offer.js';
 import { LANGUAGE } from './i18n.js';
+import { castAvailable, saveAsCharacter } from './cast_from_image.js';
 import { editsText, keptSummary } from './library_kept.js';
 
 const style = document.createElement('link');
@@ -57,6 +58,7 @@ const LINE = {
     expand: '<path d="M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9"/>',
     left: '<path d="m10 3-5 5 5 5"/>', right: '<path d="m6 3 5 5-5 5"/>',
     restore: '<path d="M3 8a5 5 0 1 0 1.5-3.5M3 2.5v2.5h2.5"/>',
+    person: '<circle cx="8" cy="5.5" r="2.5"/><path d="M3 13.5a5 5 0 0 1 10 0"/>',
     spark: '<path d="M8 2v3M8 11v3M2 8h3M11 8h3M4 4l2 2M10 10l2 2M12 4l-2 2M6 10l-2 2"/>',
     check: '<path d="m3.5 8.5 3 3 6-7"/>',
     info: '<circle cx="8" cy="8" r="5.75"/><path d="M8 7.25v3.75M8 5h.01"/>',
@@ -435,6 +437,10 @@ export function openLibrary(t, options = {}) {
     });
     headerObserver.observe(header); headerObserver.observe(tools);
     const body = el('div', null, 'fv-library-body');
+    // Save as character is offered only where the character library is (the agent interface on); the menus read this flag.
+    let castOn = false; void castAvailable(api).then(on => { castOn = on; });
+    const castWords = [['Save as character', '存为角色'], ['Make a character from this image, then use @name in the prompt', '用这张图新建角色，之后可以在提示词里用 @名字 引用']];
+    const saveCast = row => void saveAsCharacter({api, text: t, url: pictureURL(row), name: row.name || row.file});
     // The room has two shelves: creations, and the characters, scenes and props (cast_room.js).
     title.className = 'fv-library-tabs'; title.setAttribute('role', 'tablist'); title.setAttribute('aria-label', t('Library', '资料库'));
     const tabWorks = button(t('Creations', '作品'), () => showTab('works'), 'fv-library-tab');
@@ -842,7 +848,12 @@ export function openLibrary(t, options = {}) {
         }, 'fv-action fv-action-secondary fv-library-picture-delete');
         remove.append(icon('trash'), el('span', t('Delete', '删除')));
         tip(remove, t('Delete', '删除'), t('Delete it; undo for 10 seconds', '删除这张图片，10 秒内可撤销'));
-        bar.append(heart, download, usePrompt, imageView, remove);
+        // Save as character: the character library's New character dialog with this picture in it (only where the library is).
+        const cast = button('', () => saveCast(row), 'fv-action fv-action-secondary fv-action-save-cast');
+        cast.append(line('person'), el('span', t(...castWords[0])));
+        tip(cast, t(...castWords[0]), t(...castWords[1]));
+        cast.hidden = !castOn; if (!castOn) void castAvailable(api).then(on => { cast.hidden = !on; });
+        bar.append(heart, download, usePrompt, cast, imageView, remove);
         return bar;
     }
     function select(key, reveal = true) {
@@ -1482,6 +1493,7 @@ export function openLibrary(t, options = {}) {
                     use: ['Put its prompt in the box of the image view', '把它的提示词填回图像视图的提示词框'], run: () => usePicturePrompt(text)});
                 items.push({id: 'image-view', icon: 'image', label: ['Open in Images', '在图像视图打开'],
                     use: ['Use it as a reference or make more like it there', '在那里用作参考图，或接着生成'], run: () => openInImageView(one)});
+                if (castOn) items.push({id: 'save-cast', icon: 'person', label: castWords[0], use: castWords[1], run: () => saveCast(one)});
             }
             const promptOf = one.kind === 'image' ? picturePrompt(one) : prompts.get(one.id);
             items.push({id: 'copy-prompt', icon: 'copy', label: ['Copy prompt', '复制提示词'],

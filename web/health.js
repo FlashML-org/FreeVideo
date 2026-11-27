@@ -33,7 +33,7 @@ export const MODULES = ['video_enlarge.js', 'audio_original.js', 'chat_data.js',
     'studio_console.js', 'studio_stage.js', 'prompt_library.js',
     'autopilot_panels.js', 'autopilot_tips.js', 'autopilot_history.js', 'a11y.js', 'topbar.js', 'view_switch_place.js', 'view_navigation_fit.js', 'editor_tips.js', 'editor_narration.js', 'editor_narration_model.js', 'editor_beats_model.js', 'empty_frame.js', 'studio_compare.js', 'image_library.js', 'fv_select.js', 'preview_style.js',
     'feature_tour_layer.js', 'settings_room.js', 'settings_kit.js', 'settings_words.js', 'language_picker.js',
-    'image_works.js', 'cast_photo.js', 'editor_opening.js', 'editor_poster.js', 'topbar_state.js', 'preload_setting.js', 'private_offers.js', 'cast_face_crop.js', 'context_fallback.js', 'studio_warm.js',
+    'image_works.js', 'cast_photo.js', 'editor_opening.js', 'editor_poster.js', 'topbar_state.js', 'preload_setting.js', 'private_offers.js', 'cast_face_crop.js', 'cast_from_image.js', 'context_fallback.js', 'studio_warm.js',
     'pose_body.js', 'pose_props.js', 'pose_stage.js', 'pose_tool.js', 'release_media.js', 'ui_speed.js',
     'lora_menu.js', 'upscale_offer.js', 'user_message.js', 'workflow_drafts.js', 'comfy_templates.js'];
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
