@@ -149,6 +149,8 @@ export function createStudioQueue(api, nodeId, {random = randomSeed, pollMs = 20
     nodeId = String(nodeId);
     let running = null, pending = [], submitting = false, loop = null, timer = null, batch = null;
     let runningAll = [], pooled = false;
+    // Tasks in the queue that are not this node's (another window or node): the prompt model waits for them too.
+    let others = 0;
     let refreshing = null, refreshAgain = false, lastError = null, disposed = false, outage = null, submitError = null;
     const listeners = new Set();
     const owned = new Set(), delivered = new Set();
@@ -158,7 +160,7 @@ export function createStudioQueue(api, nodeId, {random = randomSeed, pollMs = 20
         delivered.add(id); onResult(output, id);
     }
     const state = () => ({running, pending, submitting, batch, looping: Boolean(loop?.active),
-        loopCompleted: loop?.completed || 0, error: lastError, ...(pooled ? {running_all: runningAll} : {})});
+        loopCompleted: loop?.completed || 0, error: lastError, ...(others ? {others} : {}), ...(pooled ? {running_all: runningAll} : {})});
     const publish = () => { for (const listener of listeners) listener(state()); };
     function schedule() {
         clearTimeout(timer); timer = null;
@@ -251,6 +253,7 @@ export function createStudioQueue(api, nodeId, {random = randomSeed, pollMs = 20
         if (!response.ok) throw new Error('queue_unavailable');
         const queue = await readEngineJson(response);
         runningAll = (queue.queue_running || []).filter(matches).map(entry);
+        others = [...(queue.queue_running || []), ...(queue.queue_pending || [])].filter(row => !matches(row)).length;
         running = runningAll[0] || null;
         // Comfy returns its heap array; the queue number gives the real running order.
         pending = (queue.queue_pending || []).filter(matches).sort((a, b) => a[0] - b[0]).map(entry);

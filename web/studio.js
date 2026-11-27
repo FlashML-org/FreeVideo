@@ -50,7 +50,7 @@ import { attach as attachPlayer } from './glass/player_bar.js';
 import { enlarged, toggleEnlarge } from './video_enlarge.js';
 import { framesOf, savedPrompt, savedSettings } from './result_reuse.js';
 import { addVideoLabel, addVideoModel, missingVideoText, videoModelState } from './video_model.js';
-import { createPromptEnhancer } from './prompt_enhance.js';
+import { createPromptEnhancer, queueBusyWhy } from './prompt_enhance.js';
 import { requestText, shownRewrite } from './prompt_sections.js';
 import { createRequestAssets, enabledLoras, referenceFiles } from './request_assets.js';
 import { promptDraftTrouble, rememberPromptDraft, restorePromptDraft, savePromptDraft, trackPromptDraft, watchPromptDraftTrouble } from './prompt_draft.js';
@@ -1016,7 +1016,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
     openCastLibrary({api, text: t, viewURL: view, uploadOne: castUpload, kind: 'prop', onChange: () => { references.refresh(); }})
         .then(library => { if (disposed) library?.destroy?.(); else propLibrary = library; });
     let requestAssets = null, rewriteSubjects = [];
-    const enhancer = createPromptEnhancer({node, input: prompt, editor: promptEditor, api, t, starter, issueButton,
+    // Why the Rewrite key waits: set once the queue state below exists.
+    let enhanceBusy = () => '';
+    const enhancer = createPromptEnhancer({node, input: prompt, editor: promptEditor, api, t, starter, issueButton, busyReason: line => enhanceBusy(line),
         // One rewrite runs at a time, so the subjects of the text it was given are the ones its numbers refer to.
         prepare: text => { const out = expandCast(timedRun() ? timedText(text, Number(value(node, 'seconds'))) : text, mediaRows(node), {continued: Boolean(extension.source)}); rewriteSubjects = out.subjects; return out.text; },
         restore: text => restoreCast(text, rewriteSubjects), display: text => shownRewrite(text, t('en', 'zh')) ?? text,
@@ -2402,9 +2404,16 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // not fall back to "Generate video" between two reports, e.g. while decoding.
     const LIVE_PROGRESS_MS = 120000;
     let liveProgressAt = 0;
+    // The running video's own estimate of what is left, and when it came: counted down between progress messages.
+    let liveRemaining = null;
+    // Only the running task's own estimate counts: the one for the video before it says nothing about this one.
+    const remainingNow = () => liveRemaining && liveRemaining.task === queueState?.running?.id
+        ? Math.max(0, liveRemaining.seconds - (Date.now() - liveRemaining.at) / 1000)
+        : Number.isFinite(queueState?.running?.progress?.overall?.remaining_seconds) ? queueState.running.progress.overall.remaining_seconds : null;
     const progressLive = () => Date.now() - liveProgressAt < LIVE_PROGRESS_MS;
     let runMode = ['single', 'batch', 'loop'].includes(node.properties?.freevideo_run_mode)
         ? node.properties.freevideo_run_mode : 'single', queueState;
+    enhanceBusy = line => queueBusyWhy(t, queueState, remainingNow(), line);
     if (!studioQueues.has(node)) studioQueues.set(node, createStudioQueue(api, node.id, {
         formatError: (error, snapshot) => createErrorReport(error, {stage: 'submission', snapshot, node, graph: app.graph}),
         // Direct snapshot submission still feeds the same graph result panel.
@@ -2806,6 +2815,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     function renderQueue(state) {
         if (disposed) return;
         queueState = state;
+        if (!state.running) liveRemaining = null;
+        enhancer.refresh();
         if (chainController?.active && !state.running_all) { updateRunButton(); return; }
         const active = state.running || state.pending[0];
         activePrompt = active?.id || null;
@@ -3260,6 +3271,10 @@ export function openStudio(node, {extendFrom = null} = {}) {
             return;
         }
         liveProgressAt = Date.now(); busy = true; queued = false; updateRunButton(); status.dataset.error = 'false';
+        const left = e.detail.overall?.remaining_seconds;
+        const task = e.detail.task_id || activePrompt;
+        liveRemaining = Number.isFinite(left) ? {seconds: left, at: Date.now(), task} : liveRemaining?.task === task ? liveRemaining : null;
+        enhancer.refresh();
         if (cancelling) return;
         status.textContent = '';
         showProgress(e.detail);
@@ -3781,7 +3796,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     reversePick = el('input'); reversePick.type = 'file'; reversePick.accept = 'image/*,video/*'; reversePick.hidden = true;
     const reverseIcon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 5.5v-1a2 2 0 0 1 2-2h1M10.5 2.5h1a2 2 0 0 1 2 2v1M13.5 10.5v1a2 2 0 0 1-2 2h-1M5.5 13.5h-1a2 2 0 0 1-2-2v-1"/><path d="M5.5 6.5h5M5.5 9h3.2"/></svg>';
     const stopIcon = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" fill="currentColor"/></svg>';
-    const reverseQueueWhy = () => queueState?.running || queueState?.pending?.length ? t('Finish the current queue before writing a prompt from media.', '请等待当前队列完成后再生成提示词。') : '';
+    // The same sentences as the Rewrite key's.
+    const reverseQueueWhy = () => queueBusyWhy(t, queueState, remainingNow());
     function startReverse(file) {
         const kind = file.type?.startsWith('video/') ? 'video' : file.type?.startsWith('image/') ? 'image' : 'other';
         enhancer.reverse({kind, upload: async () => { if (kind === 'other') throw new Error('unsupported_media'); return (await uploadMedia(api, file)).file; }}, {shapeVideo: true}).catch(() => {});

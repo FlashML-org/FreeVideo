@@ -86,7 +86,48 @@ const PROMPT_LIMIT = 12000;
 // `prepare` turns the user's text into what the model reads (character mentions written out with their pictures);
 // `restore` turns the rewrite back into the user's terms (the mentions written as the user wrote them), and `display`
 // into what the box shows; the restored rewrite is kept for the request (see prompt_sections.js).
-export function createPromptEnhancer({node, input, editor, api, context, setText, t, starter = '', prepare = text => text, resolve = async scene => scene, restore = text => text, display = text => text, onReport = () => {}, onChange = () => {}, issueButton = null}) {
+// Why a rewrite cannot start now, from what the page already knows of its queue; '' when nothing is known to run.
+// One set of sentences for the Rewrite key and the key that writes a prompt from media. The size, length and time are
+// written as the queue list writes them; a number keeps to its unit on one line (no-break spaces added here, not in the
+// language files).
+const KEEP = text => String(text).replaceAll(' ', '\u00a0');
+const sizeText = (width, height) => KEEP(`${width} × ${height}`);
+export function queueBusyWhy(t, state, remainingSeconds = null, line = false) {
+    // The page's own tasks, and the ones of other windows or nodes in the same queue (counted only).
+    const others = Number.isInteger(state?.others) && state.others > 0 ? state.others : 0;
+    if (!state?.running && !state?.pending?.length && !others) return '';
+    const g = state.running?.inputs, more = (state.pending?.length || 0) + others;
+    const known = state.running && Number.isFinite(g?.width) && Number.isFinite(g?.height) && Number(g?.seconds) > 0;
+    // The key's card has the key's name as its title; the status line has none, so it says what becomes possible.
+    if (!known) return line ? t('Rewriting is available when the current queue finishes.', '当前队列中的任务完成后可以改写。')
+        : t('Available when the current queue finishes.', '当前队列中的任务完成后可用。');
+    const values = { size: sizeText(g.width, g.height), length: KEEP(t('{seconds} s', '{seconds} 秒', { seconds: g.seconds })), M: more };
+    if (more > 0) return line
+        ? t('Rewriting is available when the queue finishes: the {size} · {length} video and {M} more.', '正在生成 {size} · {length}的视频，之后还有 {M} 个任务排队，全部完成后可以改写。', values)
+        : t('Available when the queue finishes: the {size} · {length} video and {M} more.', '正在生成 {size} · {length}的视频，之后还有 {M} 个任务排队，全部完成后可用。', values);
+    if (!(Number.isFinite(remainingSeconds) && remainingSeconds >= 0)) return line
+        ? t('Rewriting is available when the {size} · {length} video finishes.', '正在生成 {size} · {length}的视频，完成后可以改写。', values)
+        : t('Available when the {size} · {length} video finishes.', '正在生成 {size} · {length}的视频，完成后可用。', values);
+    const minutes = remainingSeconds < 60 ? 1 : Math.ceil(remainingSeconds / 60);
+    const timed = { ...values, time: KEEP(t('{minutes} min', '{minutes} 分钟', { minutes })) };
+    if (remainingSeconds < 60) return line
+        ? t('Rewriting is available in less than a minute, when the {size} · {length} video finishes.', '正在生成 {size} · {length}的视频，不到 {time}后可以改写。', timed)
+        : t('Available in less than a minute, when the {size} · {length} video finishes.', '正在生成 {size} · {length}的视频，不到 {time}后可用。', timed);
+    return line
+        ? t('Rewriting is available in about {time}, when the {size} · {length} video finishes.', '正在生成 {size} · {length}的视频，约 {time}后可以改写。', timed)
+        : t('Available in about {time}, when the {size} · {length} video finishes.', '正在生成 {size} · {length}的视频，约 {time}后可用。', timed);
+}
+// The picture page's own generation.
+export function imageBusyWhy(t, size, line = false) {
+    if (!(Number.isFinite(size?.width) && Number.isFinite(size?.height))) return line
+        ? t('Rewriting is available when the current queue finishes.', '当前队列中的任务完成后可以改写。')
+        : t('Available when the current queue finishes.', '当前队列中的任务完成后可用。');
+    const values = { size: sizeText(size.width, size.height) };
+    return line ? t('Rewriting is available when the {size} image finishes.', '正在生成 {size} 的图片，完成后可以改写。', values)
+        : t('Available when the {size} image finishes.', '正在生成 {size} 的图片，完成后可用。', values);
+}
+
+export function createPromptEnhancer({node, input, editor, api, context, setText, t, starter = '', prepare = text => text, resolve = async scene => scene, restore = text => text, display = text => text, onReport = () => {}, onChange = () => {}, issueButton = null, busyReason = () => ''}) {
     const saved = node.properties?.freevideo_prompt_versions;
     // Drafts saved before the starter became a placeholder hold it as the original.
     const versions = new PromptVersions(starter && saved?.original === starter ? {...saved, original: ''} : saved, input.value);
@@ -158,6 +199,11 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     bar.append(label, tabs, redo, cancel); element.append(bar, editor || input, status, install);
     let disposed = false, token = '', job = '', running = null, consent = null, cancelling = false, waiting = false, replacing = false;
     let retryWait = null;
+    // A task the page cannot see (another workflow, another window) made the server answer busy: the key waits a while.
+    const SERVER_BUSY_MS = 15000, BLOCKED_NOTE_MS = 3000;
+    let serverBusyUntil = 0, busyTimer = 0, noteTimer = 0;
+    // busyReason(true) is the status line's sentence, busyReason() the key card's.
+    const blockedWhy = (line = false) => String(busyReason(line) || '') || (Date.now() < serverBusyUntil ? errorText({message: 'busy'}) : '');
     let downloadOnly = false, pausing = false, modelReading = null;
     const modelState = {info: null, text: '', busy: false}, modelListeners = new Set();
     function publishModel(change) {
@@ -225,7 +271,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     // The message says only how far over the limit the request is; the token counts go to the feedback form.
     const contextNumbers = error => ({ percent: String(Math.max(1, Math.ceil((error.context.input_tokens - error.context.input_limit) / error.context.input_limit * 100))) });
     // Errors whose cause is known and that the user can fix in the prompt offer no "Report a problem".
-    const ownFix = error => ['invalid_prompt', 'too_many_images'].includes(error?.message) || (error?.message === 'context_length' && Boolean(error?.context));
+    const ownFix = error => ['invalid_prompt', 'too_many_images', 'busy'].includes(error?.message) || (error?.message === 'context_length' && Boolean(error?.context));
     const gib = value => String(Math.round(value / 2 ** 30));
     // Mentions are counted as the character descriptions they expand to, so the count can exceed what the box shows.
     const tooLong = error => ({ number: error.characters.toLocaleString('en-US') });
@@ -240,7 +286,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         return found ? browserExtensionAdvice(found, t).summary : connectionLostText(t);
     };
     const errorText = error => isNetworkTypeError(error) ? networkText(error) : ({
-        busy: t('Finish the current queue before enhancing this prompt.', '请等待当前队列完成后再改写。'),
+        busy: t('A task is running. Enhancement is available when it finishes.', '当前有任务正在运行，完成后才能增强提示词。'),
         prompt_required: t('Type a prompt first; enhancement rewrites it before generating.', '请先输入提示词，生成前会自动改写。'),
         setup_required: t('Complete FreeVideo installation first.', '请先完成 FreeVideo 安装。'),
         model_missing: t('Download the optional model to enable enhancement.', '下载可选模型后可启用。'),
@@ -280,7 +326,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         : t('Could not enhance the prompt. Retry or switch enhancement off to use the original.', '暂时无法改写，请重试，或关闭增强使用原文。')));
     // After falling back the original is already in use, so only the reason and the next useful step are shown.
     const fallbackText = error => isNetworkTypeError(error) ? networkText(error) : ({
-        busy: t('The prompt cannot be rewritten while the queue is running.', '队列未完成时不能改写。'),
+        busy: t('A task is running, so the prompt cannot be rewritten.', '当前有任务正在运行，无法改写。'),
         setup_required: t('Rewriting is available after FreeVideo installation is complete.', 'FreeVideo 安装完成后才能改写。'),
         model_missing: t('Rewriting needs the optional model. Download it to enable rewriting.', '改写需要可选模型，下载后可用。'),
         download_failed: t('The optional model download paused. Retry to resume.', '可选模型下载已暂停，重试可继续下载。'),
@@ -327,6 +373,10 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         const rewriteLabel = versions.value.rewritten ? t('Rewrite again', '重新改写') : t('Rewrite', '改写');
         redo.title = input.disabled ? '' : rewriteLabel;
         redo.setAttribute('aria-label', rewriteLabel);
+        const why = blockedWhy();
+        redo.setAttribute('aria-disabled', String(Boolean(why)));
+        if (why) { redo.dataset.fvTipWhy = why; redo.setAttribute('aria-description', why); }
+        else { delete redo.dataset.fvTipWhy; redo.removeAttribute('aria-description'); }
         cancel.hidden = !running || install.hidden === false; cancel.disabled = cancelling;
         cancel.title = cancelling ? t('Cancelling…', '正在取消…') : '';
         element.dataset.busy = String(Boolean(running));
@@ -528,7 +578,9 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         };
         running = Promise.resolve().then(execute).catch(error => {
             // Only a failure the user can act on is said; a cancel or a rewrite outdated by an edit says nothing.
-            if (!disposed) show(['cancelled', 'stale'].includes(error?.message) ? '' : errorText(error), 'error', null,
+            // A running task is no failure: the line says when the rewrite is available, and the key waits until then.
+            if (error?.message === 'busy') { serverBusyUntil = Date.now() + SERVER_BUSY_MS; clearTimeout(busyTimer); busyTimer = setTimeout(render, SERVER_BUSY_MS); }
+            if (!disposed) show(['cancelled', 'stale'].includes(error?.message) ? '' : errorText(error), error?.message === 'busy' ? 'note' : 'error', null,
                 errorText({name: error?.name, message: error?.message, ramBytes: error?.ramBytes, characters: error?.characters, expanded: error?.expanded}), !ownFix(error));
             throw error;
         }).finally(() => { running = null; cancelling = false; install.hidden = true; render(); });
@@ -540,7 +592,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     // and where the view writes video prompts (shapeVideo) the existing rewrite action turns it into the model's format.
     const REVERSE_PICTURE = 'Describe this image so that a text-to-image model can recreate it as closely as possible. Cover the main subjects and their appearance, age, clothing, pose and expression; every object and where it is in the frame; the background and setting; lighting and time of day; colour palette; camera angle, shot size and lens feel; and the medium or art style (photo, illustration, 3D render, ink painting and so on). Copy any visible text exactly, inside double quotes. Write one flowing paragraph of plain description, with no lists and no preamble, about 120 to 200 words.';
     const reverseErrorText = error => isNetworkTypeError(error) ? networkText(error) : ({
-        busy: t('Finish the current queue before writing a prompt from media.', '请等待当前队列完成后再生成提示词。'),
+        busy: t('A task is running. Writing a prompt from media is available when it finishes.', '当前有任务正在运行，完成后才能生成提示词。'),
         unreadable_video: t('Could not read frames from this video. Choose another file.', '无法读取这个视频的画面，请换一个文件。'),
         unsupported_media: t('Only images and videos can be turned into a prompt.', '只能用图片或视频生成提示词。'),
         invalid_media: t('Could not read this image. Choose another file.', '无法读取这张图片，请换一个文件。'),
@@ -672,9 +724,20 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
     toggle.onchange = () => {
         versions.value.enabled = toggle.checked;
         if (!toggle.checked) { cancelJob().catch(() => {}); versions.select('original'); apply(); }
+        else if (blockedWhy()) {
+            // A setting: it turns on now, and the rewrite waits for the user once the queue is free.
+            versions.value.useOriginal = false; save(); render();
+            show(t('Enhancement is on; the prompt can be rewritten when the current queue finishes.', '增强已打开，当前队列完成后可以改写。'), 'note');
+        }
         else { void prestart.request(); versions.value.useOriginal = false; save(); render(); enhance().catch(() => {}); }
     };
-    redo.onclick = () => enhance().catch(() => {});
+    // Greyed while a task runs: a press sends nothing and says why on the line, which fades after a while.
+    redo.onclick = () => {
+        if (!blockedWhy()) return enhance().catch(() => {});
+        const why = blockedWhy(true);
+        show(why, 'note'); clearTimeout(noteTimer);
+        noteTimer = setTimeout(() => { if (statusText.textContent === why) show(''); }, BLOCKED_NOTE_MS);
+    };
     show(''); save(false); render();
     function useOriginal(error) {
         // A successful rewrite discarded after an edit is a draft notice, not a failure.
@@ -683,7 +746,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         versions.value.selected = 'original'; apply();
         show(t('Generated with the original prompt. {reason}', '已用原文生成。{reason}', { reason: stale ? errorText(error) : fallbackText(error) }), 'note');
     }
-    return {element, chip, bar, reverse, stop: () => cancelJob().catch(() => {}), get reversing() { return reverseState.state === 'running'; },
+    return {element, chip, bar, reverse, refresh: () => { if (!disposed) render(); }, stop: () => cancelJob().catch(() => {}), get reversing() { return reverseState.state === 'running'; },
         onReverse(listener) { reverseListeners.add(listener); listener(reverseState); return () => reverseListeners.delete(listener); }, model: {read: readModel, download: downloadModel, subscribe(listener) {
         modelListeners.add(listener); listener(modelState);
         return () => modelListeners.delete(listener);
@@ -720,7 +783,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         if (waiting) { waiting = false; show(''); }
         versions.adopt(input.value, model); replacing = false; save(); render();
     }, dispose() {
-        disposed = true; modelListeners.clear(); prestart.dispose(); cancelJob().catch(() => {}); input.removeEventListener('input', changed);
+        disposed = true; clearTimeout(busyTimer); clearTimeout(noteTimer); modelListeners.clear(); prestart.dispose(); cancelJob().catch(() => {}); input.removeEventListener('input', changed);
         input.removeEventListener('beforeinput', replace);
         input.removeEventListener('focus', onFocus);
     }};

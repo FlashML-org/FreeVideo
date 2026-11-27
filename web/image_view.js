@@ -11,7 +11,7 @@ import { listenDialogKey, topDialog } from './dialog_keys.js';
 import { openEditorView } from './editor_loader.js';
 import { openSetup } from './setup.js';
 import { feedbackButton, guideButton } from './feedback.js';
-import { createPromptEnhancer } from './prompt_enhance.js';
+import { createPromptEnhancer, imageBusyWhy } from './prompt_enhance.js';
 import { createExpandButton } from './editor_expand.js';
 import { issueButton } from './issue_button.js';
 import { openStudio, showNodes } from './studio.js';
@@ -277,7 +277,11 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     if (keptDraft?.prompt) prompt.value = keptDraft.prompt;
     // The rewrite and the original are put in the box by the helper: the mention marks are drawn again over the new text.
     let paintMentions = () => {};
-    const enhancer = createPromptEnhancer({node: enhancerNode, input: prompt, api, t, context: enhanceScene, setText: () => { render(); paintMentions(); }, issueButton,
+    // While this page's own picture is being made, rewriting waits; the keys say which picture.
+    const imageWhy = (line = false) => running ? imageBusyWhy(t, running.size, line) : '';
+    // render() may run while the helper below is still being made.
+    let refreshEnhancer = () => {};
+    const enhancer = createPromptEnhancer({node: enhancerNode, input: prompt, api, t, context: enhanceScene, setText: () => { render(); paintMentions(); }, issueButton, busyReason: imageWhy,
         resolve: async ({references: ids, ...scene}) => {
             const media = [];
             for (const id of ids) {
@@ -294,6 +298,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
                 .replace(SUBJECT_WORDS, (_, n) => `<Subject ${n}>`);
         },
         restore: text => text.replace(/<Picture (\d+)>/g, (_, n) => mentionText(n)).replace(/<Subject (\d+)>/g, (_, n) => subject(Number(n)))});
+    refreshEnhancer = () => enhancer.refresh();
     let enhancerReady = false;
     // A MOSS layout is sent as boxes the engine writes into the prompt: a rewrite would rewrite them as prose and drop
     // them (the official template keeps its rewrite off with boxes), so with boxes the words go as written.
@@ -930,7 +935,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     };
     // ───── Prompt from a picture or video ─────
     let reverseMenu = null;
-    const reverseWhy = () => running ? t('Finish the current queue before writing a prompt from media.', '请等待当前队列完成后再生成提示词。') : '';
+    const reverseWhy = () => imageWhy();
     function startReverse(file) {
         const kind = file.type?.startsWith('video/') ? 'video' : file.type?.startsWith('image/') ? 'image' : 'other';
         promptGroup.open(true);
@@ -1149,6 +1154,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     function render() {
         if (!alive) return;
         syncCompare();
+        refreshEnhancer();
         // Generate fills the draft frame in place; when the picture is done the stage shows it.
         if (running && !browsing) { draft = false; draftPreview = null; }
         enhancer.element.dataset.off = String(enhancerOff());
@@ -1399,7 +1405,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         };
         if (!fits()) { prompt.focus(); return; }
         layoutOn = false;
-        say(''); note.dataset.kind = ''; failure = null; const mine = running = {cancelled: false}, withImages = references.length > 0, sent = size(), tierNow = tier;
+        say(''); note.dataset.kind = ''; failure = null; const sent = size(), mine = running = {cancelled: false, size: sent}, withImages = references.length > 0, tierNow = tier;
         render(); drawWorks(); progressLine.textContent = progressSub.textContent = ''; runReport.replaceChildren(); runReport.dataset.id = ''; doneReport.replaceChildren(); lastReport = null;
         level.hidden = false; level.dataset.counted = 'false'; level.style.setProperty('--fv-progress', '0');
         clearStep();
@@ -1459,7 +1465,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     function showJob(row) {
         if (!alive) return;
         if (!row) { unwatch?.(); unwatch = null; if (running) { running = null; level.hidden = true; clearStep(); render(); drawWorks(); } return; }
-        if (!running || running.id !== row.id) running = {cancelled: false, id: row.id};
+        if (!running || running.id !== row.id) running = {cancelled: false, id: row.id, ...(row.meta?.width ? {size: {width: row.meta.width, height: row.meta.height}} : {})};
         canvas.dataset.fvTaskId = row.id;
         if (ACTIVE.has(row.status)) {
             const percent = Number.isFinite(row.percent) ? row.percent : 0;
@@ -1751,7 +1757,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         // ── run: tasks owns this block (job store) ──
         startJobSources();
         const live = jobs.active({kind: 'image', view: 'image'})[0];
-        if (live && !running) { running = {cancelled: false, id: live.id}; follow(live.id); }
+        if (live && !running) { running = {cancelled: false, id: live.id, ...(live.meta?.width ? {size: {width: live.meta.width, height: live.meta.height}} : {})}; follow(live.id); }
         // ── end run ──
         // Nothing is redrawn at the press (the view is as it was, and the page's events kept it current while away):
         // the works are read again once it is in front, after the switch has finished, and redrawn only from that answer.
