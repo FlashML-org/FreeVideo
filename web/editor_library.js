@@ -310,8 +310,11 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
                     // The returned prefix is authoritative, including removals after a
                     // joined result hides its inputs. Keep already loaded older pages.
                     const covered = value.next ? rows.reduce((end, row, i) => ids.has(row.id) ? i + 1 : end, 0) : rows.length;
+                    // Every row loaded so far is in the new first page: the server's cursor is where the list goes on (a list
+                    // that fitted in one page may not any more). Older pages kept below keep the cursor they came with.
+                    const whole = covered >= rows.length;
                     rows = [...items, ...rows.slice(covered).filter(row => !ids.has(row.id))];
-                    if (!value.next) next = null;
+                    if (!value.next) next = null; else if (whole) next = value.next;
                 } else {
                     rows = append ? [...rows, ...items.filter(row => !rows.some(old => old.id === row.id))] : items;
                     next = value.next;
@@ -433,6 +436,7 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
     render(); load();
     return {element: host, importFiles, refresh,
         suspend() { suspended = true; if (!waiting()) { stopImports?.(); stopImports = null; } },
-        resume() { suspended = false; watchImports(); },
+        // Coming back: what was made meanwhile elsewhere (another window, Autopilot) is read in once, as on opening.
+        resume() { suspended = false; watchImports(); void refresh(); },
         dispose() { disposed = true; pendingAdds.clear(); window.removeEventListener('freevideo-result', generated); window.removeEventListener('freevideo-library-deleted', deleted); window.removeEventListener('freevideo-library-restored', restored); host.removeEventListener('scroll', scheduleMore); resize.disconnect(); cancelAnimationFrame(moreFrame); stopImports?.(); stopImports = null; stopUsed?.(); clearTimeout(retryTimer); finishRetry?.(); }};
 }
