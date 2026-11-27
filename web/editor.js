@@ -561,6 +561,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         notices.append(card);
         while (notices.children.length > 3) notices.firstElementChild.remove();
         const timer = setTimeout(() => { noticeTimers.delete(timer); card.remove(); }, where ? 20000 : 9000); noticeTimers.add(timer);
+        return card;
     }
     const EDITOR_ISSUE = ['Editor', '编辑器'], EXPORT_ISSUE = ['Export', '导出'];
     // The step a failure belongs to, named for the user: "{what could not be done}. Try again; if it still fails, ...", so the
@@ -1321,10 +1322,15 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         }
         queue.reset(); forgetProject();
     }
+    // A delete held back by something the user can deal with (the edit open in another window, a part still generating)
+    // is not a fault, so its notice has no "Report a problem". A notice about a delete that did not happen goes once
+    // the same edit is deleted after all: it no longer holds.
+    const DELETE_HELD = new Set(['project_in_use', 'generation_active']);
+    const deleteNotices = new Map();
     async function deleteCurrentProject() {
         if (switching || closing) return;
         switching = true; element.inert = true; updateTop();
-        let step = 'flush';
+        let step = 'flush'; const id = state.record.id;
         try {
             const words = deleteEditText(t);
             if (jobActive()) throw {reason: 'generation_active'};
@@ -1341,10 +1347,13 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             if (!record) throw Object.assign(new Error(words.delete_failed), {code: 'no_replacement'});
             step = 'delete';
             await discardProject();
+            if (id) { deleteNotices.get(id)?.remove(); deleteNotices.delete(id); }
             step = 'open';
             await replaceProject(record); menu.hidden = true; title.setAttribute('aria-expanded', 'false'); title.focus();
         } catch (value) {
-            const words = deleteEditText(t); notify(words[value?.reason] || words.delete_failed, EDITOR_ISSUE, failureKind('delete', {reason: deleteReason(value, step)}));
+            const words = deleteEditText(t), held = DELETE_HELD.has(value?.reason);
+            const card = notify(held ? words[value.reason] : words.delete_failed, EDITOR_ISSUE, failureKind('delete', {reason: deleteReason(value, step)}), null, {report: !held});
+            if (id && card) deleteNotices.set(id, card);
         } finally { switching = false; element.inert = false; updateTop(); }
     }
     function confirmDelete() {
