@@ -157,6 +157,7 @@ def decode_to_file(latents, audio_latents, out_path, *, base, offload=False, pre
     offload_stats = None
     rgb_mapping = None
     streamed_timings = {}
+    chunks, chunk_reader = [], _ChunkReader()
     try:
         # Autocast follows the original renderer. The opt-in Linear cache stores
         # its existing FP16 compute values once; all other weights stay FP32.
@@ -164,6 +165,7 @@ def decode_to_file(latents, audio_latents, out_path, *, base, offload=False, pre
             def decoded(done, total, elapsed):
                 print(json.dumps(dict(event='decode_progress', done=done, total=total,
                                       elapsed_seconds=elapsed)), flush=True)
+                chunks.append(chunk_reader.read(done, elapsed))
             if stream_output:
                 from .decode_stream import render_rgb
                 directory = Path(artifacts_dir) if artifacts_dir else Path(out_path).with_suffix('.artifacts')
@@ -186,6 +188,7 @@ def decode_to_file(latents, audio_latents, out_path, *, base, offload=False, pre
             discard_store(None, wide_path)
         raise
     finally:
+        chunk_reader.close()
         if offloader is not None:
             offloader.close()
         if tile_decoder is not None:
@@ -366,7 +369,54 @@ def decode_to_file(latents, audio_latents, out_path, *, base, offload=False, pre
             'video_postprocess_seconds': streamed_timings.get('video_postprocess_seconds'),
             'vae_pinned_weight_bytes': pinned_bytes,
             'decode_save_seconds': time.perf_counter() - started,
+            'decode_chunks': chunks if len(chunks) <= CHUNK_RECORDS else chunks[:CHUNK_RECORDS // 2] + chunks[-(CHUNK_RECORDS // 2):],
             'vae_offload': offload_stats, 'frames': frame_count, 'output': str(destination)}
+
+
+CHUNK_RECORDS = 64
+
+
+class _ChunkReader:
+    """One decoded chunk for the report: frames done, seconds since the decode began, and the device's memory, clock,
+    power and clock-limit reasons at that moment, so a decode that slows part way can be told apart (memory running
+    short, or the clock held down). NVML is opened once, as the GPU monitor does; a reading the driver does not offer is
+    left out, and none of this may stop the decode."""
+    def __init__(self):
+        try:
+            from .monitoring import nvml_device
+            self.lib, self.handle, _ = nvml_device()
+        except Exception:
+            self.lib = self.handle = None
+
+    def read(self, done, elapsed):
+        import ctypes
+        import torch
+        row = dict(done=done, elapsed_seconds=round(float(elapsed), 3))
+        for name, read in (('allocated_bytes', torch.cuda.memory_allocated), ('reserved_bytes', torch.cuda.memory_reserved),
+                           ('device_free_bytes', lambda: torch.cuda.mem_get_info()[0])):
+            try:
+                row[name] = int(read())
+            except Exception:
+                pass
+        if self.lib is None:
+            return row
+        for name, call, extra in (('sm_clock_mhz', 'nvmlDeviceGetClockInfo', (1,)), ('power_mw', 'nvmlDeviceGetPowerUsage', ()),
+                                  ('clock_reasons', 'nvmlDeviceGetCurrentClocksEventReasons', ())):
+            value = ctypes.c_ulonglong() if name == 'clock_reasons' else ctypes.c_uint()
+            try:
+                if getattr(self.lib, call)(self.handle, *extra, ctypes.byref(value)) == 0:
+                    row[name] = int(value.value)
+            except Exception:
+                pass
+        return row
+
+    def close(self):
+        lib, self.lib = self.lib, None
+        if lib is not None:
+            try:
+                lib.nvmlShutdown()
+            except Exception:
+                pass
 
 
 def _write_10bit(wide, output_10bit, output_size, audio, rate, fps, phase):

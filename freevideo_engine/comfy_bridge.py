@@ -211,6 +211,8 @@ class WholeVideoProgress:
         self.typical = local['typical']
         self.local = local
         self.weights.update(local.get('stages', {}))
+        self.decode_scale = self._decode_scale(local)
+        self.weights['decode_save'] *= self.decode_scale
         self.completed = {k for k, v in self.weights.items() if v == 0}
         self.measured = {}
         self.spent = {}
@@ -235,7 +237,8 @@ class WholeVideoProgress:
         self.decode_parts = {}
         self.decode_part = None
         self.decode_rest = None
-        self.decode_tail = max(0., self.weights['decode_save'] - self.prior['stages']['video_decode']['seconds'])
+        self.decode_marks = []  # (frames decoded, seconds since the decode began) at each progress report
+        self.decode_tail = max(0., self.weights['decode_save'] - self.decode_scale * self.prior['stages']['video_decode']['seconds'])
         self.retry_decode_only = False
         self.retry_reuse_first = False
         self.history = None  # (output directory, machine, opened): read late by _late_history.
@@ -369,13 +372,26 @@ class WholeVideoProgress:
         weights.update(local.get('stages', {}))
         self.typical = local['typical']
         self.local = local
+        self.decode_scale = self._decode_scale(local)
+        weights['decode_save'] *= self.decode_scale
         if reset_source or self.remaining_source != 'measured':
             self.remaining_source = 'local' if local.get('stages') else 'similar'
         for key, value in weights.items():
             if key not in self.completed:
                 self.weights[key] = value
                 self.forecasts[key] = value
-        self.decode_tail = max(0., self.weights['decode_save'] - self.prior['stages']['video_decode']['seconds'])
+        self.decode_tail = max(0., self.weights['decode_save'] - self.decode_scale * self.prior['stages']['video_decode']['seconds'])
+
+    def _decode_scale(self, local):
+        """This machine's decode-and-save time relative to the model at this frame size (effort_forecast.decode_scale);
+        1 when a whole matching run already gives the stage, or without such history."""
+        if 'decode_save' in (local.get('stages') or {}):
+            return 1.
+        from .effort_forecast import decode_scale
+        try:
+            return decode_scale(self.records or [], self.request, self.hardware, self.params) or 1.
+        except Exception:
+            return 1.
 
     def forecast(self, value):
         """Consume older worker forecasts without closing or crediting a phase."""
@@ -501,6 +517,7 @@ class WholeVideoProgress:
         self.spent = {k: v for k, v in self.spent.items() if STAGES.index(k) < STAGES.index(start)}
         self.phase_counts = {}
         self.decode_part, self.decode_rest = None, None
+        self.decode_marks = []
         self.reused = set(STAGES[:STAGES.index(start)])
         self.completed = set(self.reused)
         if self.retry_reuse_first and not self.retry_decode_only:
@@ -567,7 +584,9 @@ class WholeVideoProgress:
             if type(done) is int and type(total) is int and 0 <= done <= total and total > 0:
                 self._set_count(done, total)
                 if elapsed and done > 0:
-                    self.decode_remaining = elapsed * (total - done) / done + self._after_frames(total)
+                    if not self.decode_marks or done > self.decode_marks[-1][0]:
+                        self.decode_marks.append((done, elapsed))
+                    self.decode_remaining = self._decode_rate(done, elapsed) * (total - done) + self._after_frames(total)
                     self.weights[phase] = now - self.phase_started + self.decode_remaining
                     self.remaining_source = 'measured'
         elif phase == 'decode_save' and (event.get('event') == 'decode_phase' or message.get('decode_part')):
@@ -618,7 +637,7 @@ class WholeVideoProgress:
                 if ratio is not None and key in history:
                     self.weights[key] = history[key] * (1. if key == 'decode_save' else ratio)
                     continue
-                remaining = live['stages'][key]['seconds']
+                remaining = live['stages'][key]['seconds'] * (self.decode_scale if key == 'decode_save' else 1.)
                 if key == phase:
                     if key == 'decode_save':
                         # decode/save prediction is a full duration until frames arrive.
@@ -627,8 +646,18 @@ class WholeVideoProgress:
                         self.weights[key] = now - self.phase_started + remaining
                 else:
                     self.weights[key] = remaining
-            self.decode_tail = max(0., live['stages']['decode_save']['seconds'] - live['stages']['video_decode']['seconds'])
+            self.decode_tail = self.decode_scale * max(0., live['stages']['decode_save']['seconds'] - live['stages']['video_decode']['seconds'])
             self.remaining_source = 'measured'
+
+    def _decode_rate(self, done, elapsed):
+        """Seconds per frame for the frames still to decode. From the third report on, the last two chunks: a decoder that
+        slows part way (memory or power running short on a large frame) shows it within two chunks, where the average
+        since the start would lag behind. Before that, the average, which also absorbs the first chunk's start-up."""
+        if len(self.decode_marks) >= 3:
+            before_done, before_elapsed = self.decode_marks[-3]
+            if done > before_done and elapsed > before_elapsed:
+                return (elapsed - before_elapsed) / (done - before_done)
+        return elapsed / done
 
     def _after_frames(self, frames):
         # Audio, MP4 and saving after the last decoded frame: about 2 s plus

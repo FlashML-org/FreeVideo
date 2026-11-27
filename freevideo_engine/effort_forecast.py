@@ -259,6 +259,44 @@ def _near(left, right):
     return left > 0 and abs(right / left - 1.) <= .1000001
 
 
+def decode_scale(records, request, hardware, params=None):
+    """This machine's decode-and-save time relative to the model, from its last runs at the same frame size.
+
+    Width x height must be within 10%; the frame count may differ, since the model scales with it. The median of up to
+    three ratios (measured / predicted for that run), kept within 1/3 to 3; None without such a run. A larger frame size
+    is not judged from a smaller one: a machine can be disproportionately slower there.
+    """
+    from .stage_estimate import canvases, predict_prior
+    target = canvases(request)[2]
+    area = target['width'] * target['height']
+    recent = records[:48]
+    if recent and all(positive(row.get('recorded_epoch')) for row in recent):
+        recent = sorted(recent, key=lambda row: row['recorded_epoch'], reverse=True)
+    ratios = []
+    for row in recent:
+        try:
+            if not _believable(row):
+                continue
+            measured = (row.get('stages') or {}).get('decode_save')
+            if not positive(measured):
+                continue
+            shape = dict(row['shape'], two_pass=row['two_pass'], sampling_geometry=row.get('sampling_geometry'),
+                         flow=row.get('flow', 'full'))
+            decoded = canvases(shape)[2]
+            if not _near(area, decoded['width'] * decoded['height']):
+                continue
+            then = dict(request, **{key: row['shape'][key] for key in ('width', 'height', 'frames')},
+                        two_pass=row['two_pass'], sampling_geometry=row.get('sampling_geometry'), flow=row.get('flow', 'full'))
+            predicted = predict_prior(hardware, then, {}, params)['stages']['decode_save']['seconds']
+            if positive(predicted):
+                ratios.append(measured / predicted)
+        except (LookupError, TypeError, ValueError, ArithmeticError, AttributeError):
+            continue
+        if len(ratios) == 3:
+            break
+    return min(3., max(1 / 3., median(ratios))) if ratios else None
+
+
 def stage_forecast(records, request, cold_flags, prior, version=None):
     """Prefer runs of this FreeVideo version; older runs stay in use until then.
 
