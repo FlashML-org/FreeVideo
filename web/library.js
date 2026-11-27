@@ -21,6 +21,7 @@ import { hasPictureThumbnail, mediaQueue, pictureThumbnailURL, watchCards } from
 import { zoomable } from './picture_zoom.js';
 import { createUpscaleOffer, upscaleChoices, admittedFrames as admittedUpscaleFrames, UPSCALE_USE, UPSCALE_QUEUED, UPSCALE_FAILED } from './upscale_offer.js';
 import { LANGUAGE } from './i18n.js';
+import { editsText, keptSummary } from './library_kept.js';
 
 const style = document.createElement('link');
 style.rel = 'stylesheet'; style.href = new URL('./library.css', import.meta.url).href; document.head.append(style);
@@ -1500,7 +1501,7 @@ export function openLibrary(t, options = {}) {
             use: ['Delete; undo for 10 seconds', '删除，10 秒内可撤销'], run: async () => {
                 const result = await removeKeys(keys);
                 if (disposed) return;
-                undoNote = result.skipped.length ? skippedText(result.skipped) : null;
+                undoNote = keptNote(keys.length, result.skipped);
                 undoFailure = result.failed ? t('Could not delete. Try again.', '没能删除，请重试。') : '';
                 for (const key of result.removed) picked.delete(key);
                 render(); showUndo();
@@ -1722,6 +1723,7 @@ export function openLibrary(t, options = {}) {
         await removeSelected();
     }
     let undoNote = null, undoFailure = '';
+    const NOTED = 'fv-library-undo-noted';
     // A short line in the dock (a favorite saved for many, a folder that could not open).
     let sayTimer = 0;
     function say(text, warn = false, hold = 4000) {
@@ -1737,9 +1739,14 @@ export function openLibrary(t, options = {}) {
         const live = offeredUndoRows(), held = pictureBin.list();
         const deletedCount = live.reduce((sum, row) => sum + row.count, 0) + held.reduce((sum, row) => sum + row.files.length, 0);
         const notes = [undoNote ? el('span', undoNote, 'fv-library-skipped') : null, undoFailure ? el('span', undoFailure, 'fv-library-skipped') : null].filter(Boolean);
+        if (undoNote && keptOpen?.text === undoNote) {
+            const target = keptOpen.open, open = button(t('Open edit', '打开剪辑'), () => openEdit(target), 'fv-quiet fv-library-open-edit');
+            notes.splice(1, 0, open);
+        }
         if (undoFailure) notes.push(issueButton(t, () => ({where: ['Delete or restore creations', '删除或恢复作品'], message: undoFailure})));
-        const settle = () => { if (undoRows().length || pictureBin.list().length) { showUndo(); return; } undoNote = null; undoFailure = ''; undoBar.replaceChildren(); undoBar.hidden = true; };
-        undoBar.replaceChildren(); undoBar.hidden = !deletedCount && !notes.length;
+        const settle = () => { if (undoRows().length || pictureBin.list().length) { showUndo(); return; } undoNote = null; undoFailure = ''; undoBar.replaceChildren(); undoBar.classList.remove(NOTED); undoBar.hidden = true; };
+        // A line that can run to a second line (why some were kept) gets the selection bar's corners (library.css).
+        undoBar.replaceChildren(); undoBar.classList.toggle(NOTED, notes.some(node => node.classList?.contains('fv-library-skipped'))); undoBar.hidden = !deletedCount && !notes.length;
         if (trash) drawTrash();
         syncCounts();
         if (!deletedCount) { undoBar.append(...notes); return; }
@@ -1782,13 +1789,14 @@ export function openLibrary(t, options = {}) {
         }
         undoFailure = '';
         undoBar.hidden = false;
+        undoBar.classList.remove(NOTED);
         undoBar.replaceChildren(el('span', expired ? t('The undo time has passed.', '已过了撤销时间。')
             : lost ? t('Restored, but {lost} could not be brought back.', '已恢复，其中 {lost} 个没能恢复。', { lost }) : t('Restored.', '已恢复。')));
         if (lost && !expired) {
             const text = undoBar.firstElementChild.textContent;
             undoBar.append(issueButton(t, () => ({where: ['Restore creations', '恢复作品'], message: text})));
         }
-        undoTimer = setTimeout(() => { if (!undoRows().length && !pictureBin.list().length) { undoBar.replaceChildren(); undoBar.hidden = true; } else showUndo(); }, 4000);
+        undoTimer = setTimeout(() => { if (!undoRows().length && !pictureBin.list().length) { undoBar.replaceChildren(); undoBar.classList.remove(NOTED); undoBar.hidden = true; } else showUndo(); }, 4000);
         if (trash) drawTrash();
         syncCounts();
         if (settled.length) load(false);
@@ -1831,15 +1839,29 @@ export function openLibrary(t, options = {}) {
         }
         trashTimer = setTimeout(drawTrash, 1000);
     }
-    const skippedText = skipped => {
-        const using = skipped.filter(row => row.reason !== 'foreign-files').length, other = skipped.length - using;
-        if (using && other) return other === 1
-            ? t('{kept} kept: {using} in use, 1 folder has other files.', '{kept} 个已保留：{using} 个正在使用，1 个文件夹里有别的文件。', { kept: using + other, using })
-            : t('{kept} kept: {using} in use, {other} folders have other files.', '{kept} 个已保留：{using} 个正在使用，{other} 个文件夹里有别的文件。', { kept: using + other, using, other });
-        if (using) return t('{using} in use, kept.', '{using} 个正在使用，已保留。', { using });
-        return other === 1 ? t('1 folder has other files, kept.', '1 个文件夹里有别的文件，已保留。')
-            : t('{other} folders have other files, kept.', '{other} 个文件夹里有别的文件，已保留。', { other });
-    };
+    // What a delete kept: one creation asked for alone says why in full (and which edit uses it, with Open edit);
+    // several say how many stayed and why (the line already says how many went), and those stay selected.
+    let keptOpen = null;
+    const stamp = value => videoTimestamp({created_at: value}, t);
+    function keptNote(asked, skipped) {
+        keptOpen = null;
+        if (!skipped.length) return null;
+        if (asked === 1) {
+            const row = skipped[0], said = row.reason === 'editor-in-use' ? editsText(t, row.edits, stamp) : null;
+            if (said) { keptOpen = said; return said.text; }
+            if (['foreign-files', 'editor-in-use', 'editor-unavailable', 'continuation-in-use', 'in-use'].includes(row.reason)) return refusal(row.reason, row.kept || []);
+        }
+        return keptSummary(t, skipped, {selecting});
+    }
+    async function openEdit(target) {
+        const isCurrent = () => !disposed && dialog.open && dialog.dataset.closing !== 'true';
+        player?.pause();
+        try {
+            const editor = await (await import('./studio.js')).openEditEditor(target, undefined, {isCurrent});
+            if (!editor && isCurrent()) throw new Error(t('Could not open the editor. Try again.', '无法打开剪辑，请重试。'));
+            if (editor && !disposed) { dialog.close(); editor.element?.focus({preventScroll: true}); }
+        } catch (error) { say(userMessage(error, t, t('Could not open the editor. Try again.', '无法打开剪辑，请重试。')), true); }
+    }
     function leaveShelf(key) {
         const row = works.get(key);
         if (cards.has(key)) originals.unobserve(cards.get(key));
@@ -1863,7 +1885,7 @@ export function openLibrary(t, options = {}) {
         // A held picture stays known (the shelf hides it while held), so Undo puts its card straight back; it leaves for
         // good only when the engine has deleted it (freevideo-pictures-deleted).
         const skipped = [];
-        let failed = false, unsaved = false, why = '';
+        let failed = false, why = '';
         if (!videoKeys.length) return {removed, skipped, failed, why};
         const idOf = new Map(videoKeys.map(key => [key, works.get(key)?.id])), ids = videoKeys.map(key => idOf.get(key)).filter(Boolean);
         // Windows keeps a streamed video open; release it before deleting.
@@ -1905,8 +1927,8 @@ export function openLibrary(t, options = {}) {
                     const gone = new Set(value.deleted || []);
                     // A creation that is already gone from disk only needs to leave the page.
                     for (const row of value.skipped || []) {
-                        // 'unsaved' and 'failed': the creation could not be noted or touched, so it stayed and is still selected.
-                        if (row.reason === 'unavailable') gone.add(row.id); else if (row.reason === 'unsaved' || row.reason === 'failed') unsaved = true; else skipped.push(row);
+                        // Any other reason keeps it, said in the note; 'unsaved' and 'failed' included (nothing was moved).
+                        if (row.reason === 'unavailable') gone.add(row.id); else skipped.push(row);
                     }
                     // The server's own undo time, kept at once so a later chunk that fails, or a closed dialog, cannot lose it.
                     if (value.batch && value.batch !== name) forgetUndo([name]);
@@ -1920,7 +1942,6 @@ export function openLibrary(t, options = {}) {
                 undoChangedHere();
             }
         } catch { failed = true; }
-        if (unsaved) failed = true;
         // However it ended, the earlier chunks get the normal undo time from now; the server is asked, and
         // this page's own estimate stands when it cannot answer.
         if (earlier.length) { setUndoDue(earlier, undoFor); await holdBatches(earlier, false); }
@@ -1938,9 +1959,7 @@ export function openLibrary(t, options = {}) {
         const {removed, skipped, failed, why} = await removeKeys(keys);
         deleting = false;
         if (disposed) return;
-        const kept = new Set(skipped.map(row => row.id));
-        for (const key of keys) if (kept.has(works.get(key)?.id)) picked.delete(key);
-        undoNote = skipped.length ? skippedText(skipped) : null;
+        undoNote = keptNote(keys.length, skipped);
         if (failed) {
             // What was deleted keeps its Undo; only the part that is still selected is tried again.
             for (const key of removed) picked.delete(key);
@@ -1949,7 +1968,11 @@ export function openLibrary(t, options = {}) {
                 ? t('{size} could not be deleted. Try again.', '还有 {size} 个没能删除，请重试。', { size: picked.size })
                 : why || t('Could not delete. Try again.', '没能删除，请重试。');
             if (!picked.size) setSelecting(false);
-        } else { undoFailure = ''; setSelecting(false); }
+        } else {
+            // What was kept stays selected, so it can be looked at or tried again; nothing kept ends selecting.
+            undoFailure = ''; for (const key of removed) picked.delete(key); confirming = false;
+            if (!picked.size) setSelecting(false); else syncSelection();
+        }
         render();
         showUndo();
         // The confirm button is gone; keep the keyboard inside the dialog, so Escape still walks back from here: on the

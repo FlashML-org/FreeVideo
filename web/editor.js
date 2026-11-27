@@ -309,6 +309,15 @@ function fitLentBar(host, t) {
 
 // `components` replaces the optional progress module (see loadEditorComponents); tests also pass their generation stand-in here.
 export function openEditor({api, app, from = null, panel = {}, components: given = undefined, onView = view => viewChanged(view)}) {
+    // A saved edit asked for by id (Creations names the edit that keeps a creation): whichever editor opens below then
+    // shows that edit with the clip selected. A fresh one starts on it directly, as on the last edit.
+    if (from?.edit) {
+        const {edit, clip = null} = from; from = null;
+        if (!opened) try { localStorage.setItem('fv-editor-last', edit); globalThis.sessionStorage?.removeItem('fv-editor-draft'); } catch {}
+        const handle = openEditor({api, app, from, panel, components: given, onView});
+        Promise.resolve(handle?.ready).then(() => handle.showClip(edit, clip)).catch(() => {});
+        return handle;
+    }
     // A kept view (hidden when the user went to another view) comes back as it was: no rebuild, no reload, whichever view
     // it comes back from. Opening a work or another node's panel builds a fresh one instead.
     if (opened?.kept) {
@@ -2519,6 +2528,15 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     const collapse = () => { void handle.close(); };
     window.addEventListener('freevideo-collapse', collapse);
     const handle = {element, state, actions, store, adjust, audio, music, notify,
+        // Open this saved edit (the current one is saved first, as the name menu does) and select the clip, with its pair.
+        async showClip(edit, clip = null) {
+            if (closing || disposed || !edit) return false;
+            if (state.record.id !== edit) await switchProject(edit);
+            if (state.record.id !== edit) return false;
+            const found = clip && model.find(state.record, clip);
+            if (found) { state.seek(found.start); state.select({kind: 'clip', ids: model.pair(state.record, found.id).map(member => member.id)}); }
+            return true;
+        },
         async switchView(view) {
             if (closing || disposed || view === 'editor') return;
             leaveTo = view;

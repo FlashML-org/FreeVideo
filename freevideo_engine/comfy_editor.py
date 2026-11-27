@@ -551,8 +551,12 @@ def references(record):
                              for source in [clip['source'], *clip['versions']] if source is not None))
 
 
-def reference_users(root, work):
-    """Compare actual file identities, including aliases and historical sources."""
+def reference_edits(root, work):
+    """Each saved edit that uses this creation, newest first: its id, name, last save, and where.
+
+    Compares actual file identities, including aliases and historical sources. ``where`` is 'timeline' when a
+    clip on a track shows it, 'version' when only a clip's earlier take keeps it (the timeline does not show
+    it), and 'regenerating' when only the part being made again holds it; ``clip`` is that clip's id."""
     folder = _video(root, work).parent
     def identity(path):
         info = path.stat()
@@ -560,21 +564,41 @@ def reference_users(root, work):
         return ('inode', info.st_dev, inode) if inode else ('path', os.path.normcase(os.path.realpath(path)))
     files = {identity(_safe(root, path.relative_to(Path(root).resolve()).as_posix()))
              for path in folder.rglob('*') if path.is_file()}
-    users = []
+    known = {}
+    def uses(source):
+        if source is None:
+            return False
+        key = source_key(source)
+        if key not in known:
+            kind, value = key.split(':', 1)
+            try:
+                paths = [_video(root, value)] if kind == 'work' else (
+                    [_safe(root, value)] if kind == 'generated' else
+                    [_import_path(root, value, file) for file in ('source.bin', 'preview.mp4', 'preview.m4a')])
+                known[key] = any(path.is_file() and identity(path) in files for path in paths)
+            except FileNotFoundError:
+                known[key] = False
+        return known[key]
+    def first(tracks, sources):
+        return next((clip['id'] for track in tracks for clip in track['clips'] if any(map(uses, sources(clip)))), None)
+    edits = []
     with _STATE:
-        for _, name, record, _ in _projects(root, strict=True):
-            for key in references(record):
-                kind, value = key.split(':', 1)
-                try:
-                    paths = [_video(root, value)] if kind == 'work' else (
-                        [_safe(root, value)] if kind == 'generated' else
-                        [_import_path(root, value, file) for file in ('source.bin', 'preview.mp4', 'preview.m4a')])
-                    if any(path.is_file() and identity(path) in files for path in paths):
-                        users.append(record['name'] or name)
-                        break
-                except FileNotFoundError:
-                    continue
-    return users
+        for modified, name, record, _ in _projects(root, strict=True):
+            pending = [t for r in record.get('replacements', []) for t in [*r['originals'], *r['clips']]]
+            for where, tracks, sources in (('timeline', record['tracks'], lambda clip: [clip['source']]),
+                                           ('version', record['tracks'], lambda clip: clip['versions']),
+                                           ('regenerating', pending, lambda clip: [clip['source'], *clip['versions']])):
+                clip = first(tracks, sources)
+                if clip is not None:
+                    edits.append(dict(id=name, name=record['name'] or name, where=where, clip=clip,
+                                      updated_at=datetime.fromtimestamp(modified / 1e9, timezone.utc).isoformat()))
+                    break
+    return edits
+
+
+def reference_users(root, work):
+    """The names of the saved edits that use this creation (see reference_edits)."""
+    return [edit['name'] for edit in reference_edits(root, work)]
 
 
 def cleanup_projects(root, now=None):

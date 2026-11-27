@@ -738,6 +738,23 @@ export async function openExtendEditor(record, node = current?.node || app.graph
     return handle;
 }
 
+// The edit view on a saved edit with one clip selected ({edit, clip}), from Creations: the same node as Extend uses.
+export async function openEditEditor(target, node = current?.node || app.graph?._nodes?.find(row => row.type === 'FreeVideoGenerate'),
+    {studio = current?.node === node ? current?.dialog : undefined, isCurrent} = {}) {
+    if (isCurrent?.() === false) return null;
+    if (!node || !app.graph?._nodes?.includes(node)) {
+        node = app.graph?._nodes?.find(row => row.type === 'FreeVideoGenerate');
+        if (!node) {
+            node = globalThis.LiteGraph?.createNode('FreeVideoGenerate');
+            if (!node || !app.graph) throw new Error(t('Could not open the creative panel. Try again.', '没能打开创作面板，请重试。'));
+            app.graph.add(node); app.graph.change?.();
+        }
+    }
+    const handle = await openEditorView(node, {studio, edit: target, isCurrent});
+    await handle?.ready;
+    return handle;
+}
+
 export function openStudio(node, {extendFrom = null} = {}) {
     // The page-wide task list (the top bar's status and its panel) follows this panel's videos, waiting ones included.
     try { startJobSources(); } catch (error) { console.warn('FreeVideo tasks:', error); }
