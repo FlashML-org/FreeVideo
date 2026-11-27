@@ -193,6 +193,9 @@ def run(value):
                     step_resume.discard(artifacts)
                 request = artifacts / (stage + '-request.json')
                 receipt = artifacts / (stage + '-result.json')
+                # Whether this pass itself has been run again after a failure. A second pass after a
+                # joined child that failed past its first pass is already that pass's retry.
+                pass_retried = stage == 'refinement' and bool(retained_joined)
                 while True:
                     retry_options = {'memory_retry': True} if retry and stage in ('first-pass', 'refinement') else {}
                     if retry_options and avoid_mlx:
@@ -218,10 +221,13 @@ def run(value):
                             raise
                         metal = METAL_FAILURE in str(failed.get('error_message', ''))
                         if retry:
-                            if not metal_retry or not metal or avoid_mlx:
+                            # The smallest partitions are already in use. A Metal failure
+                            # there gets one fresh process using Torch attention: a second
+                            # one in a row in this pass, or the first one of a later pass
+                            # (the first pass is saved, so only this pass runs again).
+                            # Never after Torch, and never after a memory stop in this pass.
+                            if not metal or avoid_mlx or (pass_retried and not metal_retry):
                                 raise
-                            # A second Metal failure at the smallest partitions
-                            # gets one fresh process using Torch attention.
                             avoid_mlx = True
                         # Unified memory taken by other applications can leave a
                         # sampling pass short of its plan, and Metal can fail a command
@@ -229,7 +235,7 @@ def run(value):
                         # process with the smallest grouped-projection partitions.
                         # Keeping a saved first pass avoids changing its latents
                         # with those new partitions.
-                        retry = True
+                        retry = pass_retried = True
                         metal_retry = metal
                         rows = failed.get('sampling_passes')
                         if (stage == 'first-pass' and failed.get('joined_sampling') is True
