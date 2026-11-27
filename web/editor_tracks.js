@@ -570,18 +570,21 @@ export function createTracks(host, {state, sources = {}, t = translatorFor(null,
         overlays.style.height = `${height}px`;
         syncVerticalScroll();
     }
+    function contentInset() { return typeof getComputedStyle === 'function' && content.isConnected ? parseFloat(getComputedStyle(content).marginLeft) || 0 : 0; }
+    // The width that shows time: the scrolled area less the content's lead in from the heads, whatever width the heads take.
+    function timeWidth() { return Math.max(0, scroll.clientWidth - contentInset()); }
     function layout() {
         if (rowOrder.length) fitRows();
         // Defer the initial 90-second view until a detached shell is mounted.
         if (!mountedStates.has(state) && scroll.clientWidth) {
             mountedStates.add(state);
-            if (state.zoom === 12) state.setZoom(model.openingZoom(scroll.clientWidth, state.record));
+            if (state.zoom === 12) state.setZoom(model.openingZoom(timeWidth(), state.record));
         }
         // The first layout with a real width has the opening zoom and every clip in its final place: the view may show now.
         if (scroll.clientWidth && mountedStates.has(state)) settleReady?.();
         const duration = Math.max(model.duration(state.record), state.selection?.kind === 'range' ? state.selection.start + state.selection.frames : 0);
         // The content may start a little in from the heads (CSS margin); it still fills the view without a scroll bar.
-        const inset = typeof getComputedStyle === 'function' && content.isConnected ? parseFloat(getComputedStyle(content).marginLeft) || 0 : 0;
+        const inset = contentInset();
         contentWidth = Math.max(scroll.clientWidth - inset, pixels(duration + 30 * model.FPS));
         content.style.width = `${contentWidth}px`;
         for (const row of rows.values()) row.empty.style.width = `${scroll.clientWidth - inset}px`;
@@ -1461,7 +1464,7 @@ export function createTracks(host, {state, sources = {}, t = translatorFor(null,
     function fitAll() {
         if (fit.disabled) return;
         const rangeEnd = state.selection?.kind === 'range' ? state.selection.start + state.selection.frames : 0;
-        zoom(scroll.clientWidth / Math.max(2, Math.max(model.duration(state.record), rangeEnd) / model.FPS)); scroll.scrollLeft = 0;
+        zoom(timeWidth() / Math.max(2, Math.max(model.duration(state.record), rangeEnd) / model.FPS)); scroll.scrollLeft = 0;
     }
     function wheel(event) {
         if (!event.ctrlKey && !event.metaKey) return;
@@ -1597,6 +1600,7 @@ export function createTracks(host, {state, sources = {}, t = translatorFor(null,
         refresh() { if (!disposed) { renderRecord(); audioControls.refresh(); } },
         cancelGesture() { if (selectGestures.finish(null, true)) return true; if (!gesture) return false; stopPointer(null, true); return true; },
         getScrollLeft() { return scroll.scrollLeft; },
+        timeWidth,
         setScrollLeft(value) { if (Number.isFinite(value) && value >= 0) { scroll.scrollLeft = value; renderRuler(); } },
         setProgress(clipId, value) {
             if (disposed) return;

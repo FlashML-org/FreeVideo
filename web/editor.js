@@ -1227,7 +1227,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         mostRecentJob = null; submissionFailure = null; music.reset(); narration.reset(); genbar?.update(null); queue.reset(record); stopExport?.(); stopExport = null; exportStatus = exportSnapshot = null; exportButton.textContent = t('Export', '导出');
         suppressSave = true; try { state.replace(record); savedContent = content(record); } finally { suppressSave = false; }
         panel.onProjectLoaded?.(record);
-        const width = tracksHost.clientWidth - 148; if (width > 0) state.setZoom(model.openingZoom(width, record));
+        const width = tracks?.timeWidth?.() || 0; if (width > 0) state.setZoom(model.openingZoom(width, record));
         tracks?.setScrollLeft(0);
         // An empty edit opens with one part's length selected at the start, ready to generate.
         const selectInitial = () => { if (!store.generationAvailable) return; initialSelection = state.select({kind: 'range', start: 0,
