@@ -355,6 +355,8 @@ export function createEditorText({element,state,t,actions,adjust,player,toolbar,
         Object.assign(input.style,{left:`${clamp(x/r.width*100,0,80)}%`,top:`${clamp(y/r.height*100,0,80)}%`,width:`${Math.max(20,Math.min(86,w/r.width*100+4))}%`,height:`${Math.max(18,h/r.height*100+8)}%`,fontFamily:textFontStack(s.font),fontSize:`${s.size*frame.getBoundingClientRect().height}px`,fontWeight:s.bold?'700':'400',textAlign:s.align,color:s.color});
         editing={id,input};boundsLayer.replaceChildren(input);
         input.oninput=()=>updateContent(c,input.value,true);
+        // A layer of the view (shell.js FLOATING): its own Escape ends the typing and keeps the text chosen, instead of the view's.
+        input.dataset.fvLayer='';
         input.onkeydown=e=>{e.stopPropagation();if(e.key==='Escape'){e.preventDefault();finishInline();} };input.onkeyup=e=>e.stopPropagation();
         input.onblur=e=>finishInline(e.relatedTarget);render();input.focus();if(selectAll)input.select();
     }

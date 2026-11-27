@@ -197,6 +197,8 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
         yes.onclick = event => { event.stopPropagation(); removeImport(row); };
         no.onclick = event => { event.stopPropagation(); cancel(); };
         // The editor hands a key to the control's own handler, as for the tabs above; Escape closes only the question.
+        // A layer of the view (shell.js FLOATING), so the shell leaves that Escape to it instead of the view.
+        strip.dataset.fvLayer = '';
         strip.onkeydown = event => { if (event.key === 'Escape' && !asking.busy) { event.preventDefault(); event.stopPropagation(); cancel(); } };
         buttons.append(no, yes);
         strip.append(el('strong', null, t('Delete this clip?', '删除这个素材？')), hint, buttons);
