@@ -41,7 +41,7 @@ def collect(root, since):
         # Python and Git downloads in the setup run, and ComfyUI dependency
         # preparation in launcher/host-runs. The command output remains in the
         # local manual bundle.
-        package_attempts, native_tls_sources = [], []
+        package_attempts, native_tls_sources, revocation_sources = [], [], []
         folders = [run]
         host_root = root / 'launcher' / 'host-runs'
         if host_root.is_dir():
@@ -53,10 +53,12 @@ def collect(root, since):
                     continue
                 package_attempts += source_failures(folder / 'network.jsonl')
                 native_tls_sources += native_tls_fallbacks(folder / 'network.jsonl')
+                revocation_sources += revocation_best_effort(folder / 'network.jsonl')
             except OSError:
                 continue
         return plain_data(dict(state=state, samples=rows, package_attempts=package_attempts[-16:],
-                               native_tls_fallback=list(dict.fromkeys(native_tls_sources))[-8:]))
+                               native_tls_fallback=list(dict.fromkeys(native_tls_sources))[-8:],
+                               revocation_best_effort=list(dict.fromkeys(revocation_sources))[-8:]))
     except (OSError, ValueError, KeyError, TypeError):
         return {}
 
@@ -89,6 +91,15 @@ def native_tls_fallbacks(path):
     """The names of the sources where setup retried a download with the system certificate store.
 
     Only the source name is read, and only as a short lowercase word: nothing else of the event is kept."""
+    return _event_sources(path, lambda action: action.endswith('-system-certificates'))
+
+
+def revocation_best_effort(path):
+    """The names of the sources where Windows curl was retried without a certificate revocation answer, read as above."""
+    return _event_sources(path, lambda action: action == 'revocation-best-effort')
+
+
+def _event_sources(path, wanted):
     with io_path(path).open('rb') as stream:
         size = stream.seek(0, 2)
         stream.seek(max(0, size - 256 * 1024))
@@ -102,7 +113,7 @@ def native_tls_fallbacks(path):
         except (ValueError, UnicodeError):
             continue
         action, source = item.get('action'), item.get('source')
-        if (isinstance(action, str) and action.endswith('-system-certificates')
+        if (isinstance(action, str) and wanted(action)
                 and isinstance(source, str) and re.fullmatch(r'[a-z0-9_.-]{1,40}', source)):
             names.append(source)
     return names
@@ -191,6 +202,9 @@ def enrich(result, value):
     notes = [dict(note='native-tls fallback used', source=name)
              for name in d.sequence(value.get('native_tls_fallback'))[:8]
              if isinstance(name, str) and re.fullmatch(r'[a-z0-9_.-]{1,40}', name)]
+    notes += [dict(note='revocation check best effort used', source=name)
+              for name in d.sequence(value.get('revocation_best_effort'))[:8]
+              if isinstance(name, str) and re.fullmatch(r'[a-z0-9_.-]{1,40}', name)]
     if notes:
         result['notes'] = notes
     result['diagnostic_revision'] = 6

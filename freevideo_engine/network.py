@@ -177,6 +177,27 @@ def curl_command(timeout, env=None):
     return command
 
 
+# Windows curl (Schannel) refuses a server whose certificate it could not check for revocation: the
+# network blocks the revocation list or the OCSP responder. Only these two errors, on curl's own
+# Schannel error line (no host name is in it), never another TLS error. A curl that has no name for
+# the code prints it alone in brackets, as "Unknown error (0x80092012)".
+REVOCATION_UNKNOWN = re.compile(r'^curl: \(35\) schannel: .*?(?:\bCRYPT_E_NO_REVOCATION_CHECK\b|'
+                                r'\bCRYPT_E_REVOCATION_OFFLINE\b|\(0x8009201[23]\))', re.M)
+# With this option Schannel goes on when the revocation status cannot be learned; the certificate,
+# its chain and the host name are still checked, and a certificate known to be revoked still fails.
+REVOKE_BEST_EFFORT = '--ssl-revoke-best-effort'
+REVOKE_BEST_EFFORT_SINCE = (7, 70)
+
+
+def revoke_best_effort_supported(executable, env=None):
+    """Whether this curl takes REVOKE_BEST_EFFORT: Windows curl from 7.70 on."""
+    if not windows():
+        return False
+    from .curl_windows import probe
+    found = re.match(r'(\d+)\.(\d+)', str(probe(Path(executable), dict(os.environ if env is None else env)).get('version') or ''))
+    return bool(found) and (int(found[1]), int(found[2])) >= REVOKE_BEST_EFFORT_SINCE
+
+
 def curl_process(command, **kwargs):
     # Match discovery's environment: the frozen GUI's DLL directory can break
     # otherwise healthy external curl binaries (including Git's copy).
@@ -788,6 +809,9 @@ def sources_text(rows, item=''):
             parts.append(str(row['code']))
         elif row.get('returncode') not in (None, 0):
             parts.append('exit %s' % row['returncode'])
+        if row.get('revocation_check') == 'best-effort':
+            parts.append('retried without revocation status')
+        # The time stays last: the launcher's source card reads it from there.
         parts.append('%.1f s' % float(row.get('elapsed_seconds') or 0))
         message = str(row.get('message') or '')
         lines.append('  - %s: %s' % (head, ', '.join(parts)) + (': ' + message if message else ''))
@@ -1282,6 +1306,8 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
     updating = category == 'launcher-update'
     integrity_failed = False
     attempts, failures, spent = {}, {}, {}
+    # Sources and routes retried once without a revocation answer (REVOCATION_UNKNOWN); later attempts keep it.
+    revocation_best_effort = set()
 
     def note_failure(source, route, reason, status='', address='', message=''):
         # The last reason each source and route gave, for the final error.
@@ -1295,7 +1321,8 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
         failures[source, route] = _source_row(source, route, _host(address), error_class,
                                               failure_reason(message)[1] if message else '',
                                               spent.get((source, route), 0.), attempts[source, route],
-                                              returncode=code, http_status=status if http else '')
+                                              returncode=code, http_status=status if http else '',
+                                              **(dict(revocation_check='best-effort') if (source, route) in revocation_best_effort else {}))
 
     failed_sources = set()
     transferred, high_water, last_rate = 0, 0, 0.
@@ -1435,7 +1462,9 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
             url, redirects, restart = original_url, 0, 0
             # Redirects are individual curl requests when a caller supplies a
             # policy. Never let curl contact an unchecked redirect destination.
-            for attempt in range(16 if validate_url else (3 if model else 2)):
+            tries, attempt = (16 if validate_url else (3 if model else 2)), 0
+            while attempt < tries:
+                attempt += 1
                 if updating and network.get('resource_check'):
                     network['resource_check']()
                 if validate_url:
@@ -1476,6 +1505,8 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
                     command += ['--max-time', str(max_seconds)]
                 if url.startswith('https://'):
                     command += ['--proto-redir', '=https']
+                if (name, route) in revocation_best_effort:
+                    command.append(REVOKE_BEST_EFFORT)
                 if size:
                     # curl also applies this cap to intermediate redirect
                     # bodies (e.g. HF Mirror's 307 for a 96-byte JSON file).
@@ -1584,6 +1615,15 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
                         continue
                 current_size = partial.stat().st_size if partial.exists() else 0
                 spent[name, route] = spent.get((name, route), 0.) + time.monotonic() - started
+                if (process.returncode == 35 and (name, route) not in revocation_best_effort
+                        and REVOCATION_UNKNOWN.search(stderr.decode('utf-8', errors='replace'))
+                        and revoke_best_effort_supported(command[0], attempt_env)):
+                    # Once per source and route, as a try of its own; the report says so.
+                    revocation_best_effort.add((name, route))
+                    tries += 1
+                    event(network, category=category, source=name, route=route, file=path.name,
+                          action='revocation-best-effort', reason='revocation-status-unavailable')
+                    continue
                 if slow_seconds is not None:
                     # A later failure at another address of the same source and
                     # route must not erase the rate it was measured at.
