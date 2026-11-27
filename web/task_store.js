@@ -174,7 +174,7 @@ export function createJobStore({now = () => Date.now(), storage = null} = {}) {
         localOf: id => local[id] || null,
         async refresh() { await Promise.all([...new Set(sources.values())].map(source => source.refresh?.().catch?.(() => {}))); },
         // For sources only.
-        // A job waiting for FreeVideo to come back (meta.reconnecting): its source stops waiting and ends it (#1121).
+        // A job waiting for FreeVideo to come back (meta.reconnecting): its source stops waiting and ends it.
         stopWaiting(id) { const row = rows.get(id), source = sourceOf(row); return Boolean(source?.stopWaiting?.(id)); },
         upsert, addSource(name, source) { sources.set(name, source); return () => { if (sources.get(name) === source) sources.delete(name); }; },
         now,
@@ -197,7 +197,7 @@ export function imageSource(store, {client, storage = null, poll = 500, now = st
     // The resume list holds the worker's job key, the model and the view: no prompt (old entries lose theirs on load).
     const keys = readJSON(storage, IMAGE_KEY), tracking = new Set(), missed = new Map(); // id → the last failed asks, for Stop waiting
     // The page's socket to ComfyUI closing (its 'reconnecting' event) wakes every poll at once: two failed asks in a row
-    // and the page says it is waiting, within seconds of FreeVideo going away instead of after the backoff (#1121).
+    // and the page says it is waiting, within seconds of FreeVideo going away instead of after the backoff.
     const wakers = new Set();
     const nap = ms => new Promise(done => { const wake = () => { wakers.delete(wake); done(); }; wakers.add(wake); void Promise.resolve(sleep(ms)).then(wake); });
     connection?.addEventListener?.('reconnecting', () => { for (const wake of [...wakers]) wake(); });
@@ -213,7 +213,7 @@ export function imageSource(store, {client, storage = null, poll = 500, now = st
     async function track(id) {
         if (tracking.has(id)) return; tracking.add(id);
         // misses: the kind of the last failed asks (connection_lost, engine_error, http_502...); lostSince: when the page
-        // began to wait for FreeVideo to come back (#1121: an engine_closed that said nothing of why).
+        // began to wait for FreeVideo to come back (so an engine_closed can say why).
         let serial = 0, outages = 0, preview = store.get(id)?.meta?.preview || '', misses = [], lostSince = null;
         try {
             for (;;) {
@@ -327,7 +327,7 @@ export function imageSource(store, {client, storage = null, poll = 500, now = st
     store.addSource('image', source);
     return source;
 }
-// What a failed ask was, for the problem report (#1121): a fixed word (connection_lost, engine_error, http_502...),
+// What a failed ask was, for the problem report: a fixed word (connection_lost, engine_error, http_502...),
 // never the server's text, a prompt or a file name; anything else is 'other'.
 export const missWord = value => typeof value === 'string' && /^[a-z][a-z0-9_]{0,31}$/.test(value) ? value : 'other';
 const pick = value => value && typeof value === 'object' ? Object.fromEntries(['report_id', 'stage', 'step', 'fitted', 'memory', 'other_usage', 'message_zh']

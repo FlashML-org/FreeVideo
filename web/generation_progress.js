@@ -14,7 +14,7 @@ export const duration = value => {
 };
 
 const progressFields = ['phase', 'stage', 'timing_phase', 'label', 'done', 'total', 'block'];
-// Iris's approved substage sentences. Unknown engine labels never reach the UI.
+// The approved substage sentences. Unknown engine labels never reach the UI.
 const SUBACTIVITY = {
     start: ['Starting generation', '正在启动生成'],
     libraries: ["Preparing the prompt model", '正在准备提示词模型'],
@@ -95,7 +95,7 @@ function announcementsFor(message, reset) {
     while (requestAnnouncements.size > 32) requestAnnouncements.delete(requestAnnouncements.keys().next().value);
     return record;
 }
-// Lane set these floors from 29 reports. A typical segment may need longer.
+// These floors were set from 29 reports. A typical segment may need longer.
 const STALL_SECONDS_BY_PHASE = Object.freeze({
     starting: 180, encoding: 180, load: 180, sampling: 180, refinement: 180,
     latent_upscale: 180, sample_finalize: 180, decode: 180, save: 180,

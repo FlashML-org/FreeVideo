@@ -124,7 +124,7 @@ export function isCropped(clip, sourceWidth, sourceHeight, width, height) {
  * Uses standard clip-path:inset + 2D matrix (Chromium and Safari); no
  * object-view-box. Apply all returned styles. The element keeps its natural
  * source dimensions, so inset distances are source pixels before transform.
- * This helper doesn't draw a background: Iris's contain preview has none.
+ * This helper doesn't draw a background: the contain preview has none.
  */
 export function cssTransform(p, boxWidth, boxHeight) {
     if (![boxWidth, boxHeight].every(v => Number.isFinite(v) && v > 0)) throw new RangeError('Invalid preview size');

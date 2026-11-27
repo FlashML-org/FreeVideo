@@ -20,7 +20,7 @@ from .model_status import FAMILIES, NAMES, family
 # The download list covers the install plan; the image pack has its own launcher controls.
 LIST_FAMILIES = tuple(name for name in FAMILIES if name != 'image')
 
-# Iris can replace the third-party download copy here, including export guidance.
+# The third-party download copy, including export guidance, can be changed here.
 DOWNLOAD_COPY = {
     'title': ('Download list', '下载清单'),
     'guide': ('The list is filtered for this GPU, so the whole model repository is not needed. '

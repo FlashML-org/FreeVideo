@@ -266,7 +266,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     modelBox.append(cards.element);
 
     // Prompt: the enhancer wraps the box, as on the video page.
-    // Every group is open as it is (CEO: nobody folds these); when the panel has no room it scrolls.
+    // Every group is open as it is (nobody folds these); when the panel has no room it scrolls.
     const promptGroup = section('prompt', {title: t('Prompt', '提示词'), iconName: 'prompt', fixed: true});
     const prompt = el('textarea', 'fv-image-prompt fv-iv-prompt'); prompt.rows = 3; prompt.maxLength = 2000;
     // Prompt help (the creation panel's own: switch, original and rewritten, rewrite again, back to the original,
@@ -413,7 +413,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     const clearStep = () => { stepURL = ''; stepPicture.removeAttribute('src'); stepFrame.hidden = true; block.classList.remove('fv-image-block-low'); };
     const block = el('div', 'fv-image-block'), progressText = el('p', 'fv-image-progress');
     const progressLine = el('b'), progressSub = el('span'), runReport = el('div', 'fv-image-run-report');
-    // While the page waits for FreeVideo to come back (#1121): a button that stops waiting, beside the waiting line.
+    // While the page waits for FreeVideo to come back: a button that stops waiting, beside the waiting line.
     const stopWaiting = el('button', 'fv-action fv-image-stop-waiting'); stopWaiting.type = 'button'; stopWaiting.hidden = true;
     stopWaiting.onclick = () => { if (running?.id) jobs.stopWaiting(running.id); };
     progressLine.setAttribute('role', 'status'); progressText.append(progressLine, progressSub, stopWaiting); block.append(progressText, runReport);
@@ -1210,7 +1210,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         picture.hidden = state !== 'done'; stepFrame.hidden = state !== 'running' || !stepURL; block.hidden = state !== 'running'; failHost.hidden = state !== 'failed'; grid.hidden = state !== 'blank';
         if (state !== 'draft') layoutOn = false;
         layout.show(state === 'draft' && layoutOn && isMoss()); stage.dataset.layout = String(layout.shown);
-        // With boxes on the frame its size and estimate would be crossed by their lines (Iris 11-19): they show without.
+        // With boxes on the frame its size and estimate would be crossed by their lines: they show without.
         sceneHost.hidden = state !== 'running'; draftNote.hidden = state !== 'draft' || (layout.shown && layout.count() > 0);
         // While running the caption keeps its room unseen, so a step picture and the finished one sit in the same place.
         // The caption row also waits for the picture's shape: it takes the frame's width, so it shows at its final one.
@@ -1401,7 +1401,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         level.hidden = false; level.dataset.counted = 'false'; level.style.setProperty('--fv-progress', '0');
         clearStep();
         const names = [];
-        // Where a failure without a reason of its own was caught (#1097: an upload that never left the page said "unreported").
+        // Where a failure without a reason of its own was caught (an upload that never left the page would say "unreported").
         let reached = 'upload';
         try {
             for (const r of references.slice(0, cap_(model))) names.push(await client.upload(r.file));
@@ -1509,7 +1509,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             label: failure.retryStandard ? ['Retry at Standard', '改用标准并重试'] : ['Retry', '重试'],
             onClick: () => { if (failure.noList) { failure = null; render(); go.onclick(); return; } if (failure.retryStandard) { area = RANGES[model.id].presets.standard; keepSize(); } void generate(); }}});
         const head = el('div', 'fv-iv-fail-head'), mark = el('i', 'fv-iv-fail-icon'); mark.append(icon('warn'));
-        // One title for every failure; why FreeVideo went away is in the sentence below it (Lane, engine-closed-reason).
+        // One title for every failure; why FreeVideo went away is in the sentence below it.
         head.append(mark, el('h3', '', t('The image was not made', '这张图片未能生成')));
         failHost.prepend(head);
         const stage_ = STAGE_WORDS[failure.stage];

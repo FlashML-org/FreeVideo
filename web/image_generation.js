@@ -228,13 +228,13 @@ export function packView(info, t) {
     return {loading: false, fraction: null, reason: !!reason, button: resume ? t('Resume download', '继续下载') : t('Download image generation models', '下载图像生成模型'),
         note: reason || (resume ? t('{done}\u00a0GB / {size}{time}', '{done}\u00a0GB / {size}{time}', { done: gb(install.done || 0), size, time }) : size + time)};
 }
-// FreeVideo went away while a picture was being made (#1121): why, as far as the launcher saw it end, and what next. The
+// FreeVideo went away while a picture was being made: why, as far as the launcher saw it end, and what next. The
 // page's cause (task_store, engine_exit.js exitCause) picks the row; a restart without a record reads as quitting
-// unexpectedly. Lane, review/engine-closed-reason copy_lane.
+// unexpectedly.
 const LOST_ENGINE = {
     engine_restarted: {
         memory: [["The system closed FreeVideo, most likely because the computer ran out of memory. FreeVideo has restarted.", "FreeVideo 被系统关闭，很可能是因为电脑内存不足。FreeVideo 已重新启动。"], ["Use a smaller size, or close other programs that use memory, then generate again.", "请缩小尺寸，或关闭其他占用内存的程序后重新生成。"]],
-        // Lane 11-25 (copy_lane_memory_maybe_0613).
+        // The count rose, but the system's reason is not known: "possibly".
         memory_maybe: [["The system ended FreeVideo, possibly because the computer ran out of memory. FreeVideo has restarted.", "FreeVideo 被系统结束，可能是因为电脑内存不足。FreeVideo 已重新启动。"], ["Use a smaller size, or close other programs that use memory, then generate again.", "请缩小尺寸，或关闭其他占用内存的程序后重新生成。"]],
         ended: [["The system or another program ended FreeVideo. It has restarted.", "FreeVideo 被系统或其他程序结束，已重新启动。"], ["Generate again.", "请重新生成。"]],
         crashed: [["FreeVideo crashed. It has restarted.", "FreeVideo 意外崩溃，已重新启动。"], ["Generate again. If it happens again, choose \"Report a problem\".", "请重新生成。再次出现时，请点击“提交问题”。"]],
@@ -272,7 +272,7 @@ export function imageGenError(code, info, t) {
         busy_video: ['A video is generating. Try again when it finishes.', '视频正在生成，完成后再试。'],
         busy: ['The image queue is full. Wait for the earlier images to finish, then try again.', '等待生成的图片已满，请等前面的图片完成后再试。'],
         model_unavailable: ['This computer does not support the chosen image model. Use Qwen-Image 2.1.', '这台电脑不支持所选的图片模型。请改用 Qwen-Image 2.1。'],
-        // Lane 11-25 (image-prompt-read-failure-reason copy_lane_gpu_kernels).
+        // The startup computation check failed: driver first, then the report.
         gpu_kernels_failed: ["The graphics card's computation check did not pass. Update the graphics card driver, then restart FreeVideo. If the check still does not pass, download the report and report the problem.", "\u663e\u5361\u7684\u8ba1\u7b97\u68c0\u67e5\u672a\u901a\u8fc7\u3002\u8bf7\u66f4\u65b0\u663e\u5361\u9a71\u52a8\u540e\u91cd\u65b0\u542f\u52a8 FreeVideo\uff1b\u5982\u4ecd\u672a\u901a\u8fc7\uff0c\u8bf7\u4e0b\u8f7d\u62a5\u544a\u5e76\u63d0\u4ea4\u95ee\u9898\u3002"],
         model_unreadable: ['The image generation model files could not be read. Repair them in the launcher and try again.',
             '图像生成模型的文件读不出来。在启动器里修复后再试。'],
@@ -481,7 +481,7 @@ export function renderImageFailure(host, {error, report_id, stage, step, fitted,
     let bar;
     if (report_id) ({bar} = imageReportBar(card, report_id, t, {productVersion, fetchApi}));
     else {
-        // A picture FreeVideo's going away ended (#1121) names why (fixed words) and the last asks that failed.
+        // A picture FreeVideo's going away ended names why (fixed words) and the last asks that failed.
         const facts = [[['Error code', '错误码'], error], [['Stage', '阶段'], stage], [['Step', '步骤'], step || (stage || cause ? '' : 'unreported')],
             [['Cause', '原因'], cause], [['Last attempts', '最后几次请求'], Array.isArray(misses) ? misses.slice(-3).map(miss => typeof miss === 'string' && /^[a-z][a-z0-9_]{0,31}$/.test(miss) ? miss : 'other').join(', ') : ''], [['Memory', '内存'], memory],
             [['Error type', '错误类型'], codeWord(error_type)]].filter(([, v]) => v);

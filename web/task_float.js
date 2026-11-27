@@ -29,7 +29,7 @@ const outputURL = file => api.apiURL('/view?' + new URLSearchParams({filename: f
 export function startJobSources() {
     if (sourcesStarted) return; sourcesStarted = true;
     let storage = null; try { storage = globalThis.localStorage; } catch { /* Private windows keep jobs in memory only. */ }
-    // Why FreeVideo went away while a picture was being made, as the launcher saw it end (#1121).
+    // Why FreeVideo went away while a picture was being made, as the launcher saw it end.
     void watchEngineExit(api);
     imageSource(jobs, {client: createImageGenClient(), storage, connection: api, lastExit: async () => exitCause(await newEngineExit(api))});
     // The request the engine runs on each node now, from its own events: a plain (one graphics card) run's progress
@@ -187,13 +187,13 @@ function stateWord(row) {
 function reasonShort(row) {
     const code = row.failure?.code;
     if (code === 'engine_closed') return t('Connection lost', '连接中断');
-    // Short enough for the card's line (Lane, copy_lane.float_short); the hover and the opened card say it whole.
+    // Short enough for the card's line; the hover and the opened card say it whole.
     if (code === 'engine_restarted' || row.status === 'interrupted') return t('Restarted', '已重新启动');
     return t('Open for the reason', '点开查看原因');
 }
 function reasonLong(row) {
     const code = row.failure?.code;
-    // A picture: why FreeVideo went away, as far as the launcher saw it end, and what next (#1121).
+    // A picture: why FreeVideo went away, as far as the launcher saw it end, and what next.
     if (row.kind === 'image' && (code === 'engine_closed' || code === 'engine_restarted')) return lostEngineText(code, row.failure?.cause, t).join(t(' ', ''));
     if (code === 'engine_closed') return lostEngineText(code, row.failure?.cause, t).join(t(' ', ''));
     if (code === 'engine_restarted' || row.status === 'interrupted') return t('FreeVideo restarted while this was being made, so it did not finish. Finished parts are in your creations.', 'FreeVideo 在生成过程中重新启动，这次未完成。已经完成的部分在作品里。');
@@ -210,7 +210,7 @@ function reasonLong(row) {
         'FreeVideo 没有给出这段视频失败的原因。请重试，仍然失败请提交问题。');
 }
 function line2(row) {
-    // Waiting for FreeVideo to come back (#1121): said, with the stop button turned into "Stop waiting".
+    // Waiting for FreeVideo to come back: said, with the stop button turned into "Stop waiting".
     if (row.meta?.reconnecting && ACTIVE.has(row.status)) return t(...WAITING_TEXT.short);
     if (row.status === 'running') return etaText(row.eta_seconds) || elapsedText(row);
     if (row.status === 'queued' || row.status === 'submitting') return t('Starts after the one before it', '等前一项完成后开始');
@@ -871,7 +871,7 @@ export function installTaskFloat() {
             drawSheet(); draw(); return;
         }
         if (button === close) {
-            // Waiting for FreeVideo: nothing can reach it to stop the job, so the button stops waiting (#1121).
+            // Waiting for FreeVideo: nothing can reach it to stop the job, so the button stops waiting.
             if (row.meta?.reconnecting && ACTIVE.has(row.status)) { jobs.stopWaiting(row.id); draw(); return; }
             if (ACTIVE.has(row.status)) { ask = row.id; stopError = ''; open = false; failCard = null; drawSheet(); setTimeout(() => sheet.querySelector('[data-k="keep"]')?.focus({preventScroll: true}), 0); }
             else { jobs.dismiss(row.id); }

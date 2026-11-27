@@ -35,7 +35,7 @@ export const startingText = (s, t) => {
         : r ? t('Starting · {minutes} min {seconds} s', '正在开始 · {minutes} 分 {seconds} 秒', { minutes: m, seconds: r })
         : t('Starting · {minutes} min', '正在开始 · {minutes} 分', { minutes: m });
 };
-// Provisional copy keys for Iris; decode/save sentences follow Studio's stage vocabulary.
+// Provisional copy keys; decode/save sentences follow Studio's stage vocabulary.
 export const CLIP_FINALIZATION_COPY = {
     prepareDecode: ['Preparing video output', '正在准备输出视频'],
     loadDecoder: ['Loading the video decoder', '正在载入视频解码器'],

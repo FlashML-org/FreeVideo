@@ -573,7 +573,7 @@ def image(folder, value, stats):
     emit(phase='complete', text=caption, diagnostics=dict(stats))
 
 
-# Peak graphics memory grew by about 0.04 GiB per 640 px frame (Qwen3-VL-4B, 8 to 32 frames, measured 11-19).
+# Peak graphics memory grew by about 0.04 GiB per 640 px frame (Qwen3-VL-4B, measured with 8 to 32 frames).
 VIDEO_FRAME_VRAM = 48 * 2**20
 VIDEO_SIDES = (640, 480, 384)
 

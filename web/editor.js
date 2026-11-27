@@ -857,7 +857,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         return store.getSources(model.references(state.record).map(sourceKey)).then(() => { player.refresh(); tracks?.refresh?.(); sayMissing(); });
     }
     // A picture whose file was moved or deleted stays on the timeline as a grey part; the notice bar says so once for each
-    // such file, however the edit was opened (Iris 11-20). Moving a file is not a fault, so there is no report button.
+    // such file, however the edit was opened. Moving a file is not a fault, so there is no report button.
     const toldMissing = new Set();
     function sayMissing() {
         if (disposed) return;

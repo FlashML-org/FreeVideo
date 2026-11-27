@@ -74,7 +74,7 @@ def load():
 
 
 def first_install_notice():
-    """Shown while the x64 environment of an earlier version is replaced (wording: Lane)."""
+    """Shown while the x64 environment of an earlier version is replaced."""
     from .launcher_copy import size_text
     text = 'This is the first installation of the native runtime for this computer, so the runtime components are downloaded again'
     try:

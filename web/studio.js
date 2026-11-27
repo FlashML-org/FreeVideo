@@ -1573,7 +1573,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     function fastCell() { return fastOn() && !(lengthControl?.plan?.count > 1) ? capabilityView?.fast?.() ?? null : null; }
     function fastShortfall() { const cell = fastCell(); return cell && !cell.fits ? cell : null; }
     // Where the page cannot tell yet: 'checking' (the planner's grid is not in) holds the key; 'linked' (the size comes from
-    // another node, so it never can) lets it go, and a refusal then comes back as the failure card (Lane 11-24).
+    // another node, so it never can) lets it go, and a refusal then comes back as the failure card.
     function fastUnknown() {
         // Not listed (no answer from the planner either): it is sent at Light, so nothing waits. A Mac's answer is the
         // listing alone (fast_only, no sizes), as for every level there: nothing waits, and the Mac's own admission

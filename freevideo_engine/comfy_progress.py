@@ -92,7 +92,7 @@ class ProgressState:
             old = self.rows.get(key)
             metadata_only = ('compatibility' in value and not value.get('new_request')
                              and not any(key in value for key in ('phase', 'stage', 'timing_phase', 'label', 'reset')))
-            # A heartbeat carries a newer estimate, not engine progress (Harper's
+            # A heartbeat carries a newer estimate, not engine progress (the
             # bridge repeats the last message's fields with a fresh overall).
             heartbeat = isinstance(value.get('overall'), dict) and value['overall'].get('heartbeat') is True
             overall_measured = now

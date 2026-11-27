@@ -1006,8 +1006,8 @@ export function openLibrary(t, options = {}) {
         const heads = applyTasks({cards: byVideo, rows, order, open: unfolded, selecting, selected: works.get(selected)?.video ?? null, t, label: video => cardLabel(rows.get(video))});
         for (const [video, card] of byVideo) {
             if (!card) continue;
-            // The count mark on a task's newest video is the one control for the fold: pressed while the task is unfolded
-            // (Iris), pressed again it folds. The others of an unfolded task carry none; while picking, every video shows.
+            // The count mark on a task's newest video is the one control for the fold: pressed while the task is unfolded,
+            // pressed again it folds. The others of an unfolded task carry none; while picking, every video shows.
             const head = heads.get(video), shownMark = head && !selecting, unfoldedNow = card.classList.contains('fv-task-open');
             let stack = card.querySelector('.fv-library-stack');
             if (shownMark && !stack) {

@@ -1,5 +1,5 @@
 // The interface language in Settings: a button with the globe and the language's own name, and a list of the languages
-// ready to offer (Lane-5x, review/i18n/language-switch.md, direction A). The choice is saved with the launcher's settings
+// ready to offer. The choice is saved with the launcher's settings
 // (/freevideo/language), so the launcher and the page show the same language; the page reloads to change it.
 import { el, icon, tip } from './settings_kit.js';
 import { listenDialogKey } from './dialog_keys.js';
@@ -112,9 +112,9 @@ export function languagePicker({api, t, state, onSaved, onError}) {
         const up = pop.offsetHeight > below && above > below;
         pop.classList.toggle('is-up', up);
         const chrome = pop.offsetHeight - list.offsetHeight, room = Math.max(96, Math.min(420, (up ? above : below) - chrome));
-        // When the list scrolls, its last visible row is cut in half, so it reads as more below (Lane 11-24).
-        // At most ten rows (Iris 11-24); when it scrolls, its bottom edge runs through the middle of a row, so the list
-        // reads as going on (Lane 11-24). Measured from the rows themselves: the line under Follow system adds its gap.
+        // When the list scrolls, its last visible row is cut in half, so it reads as more below.
+        // At most ten rows; when it scrolls, its bottom edge runs through the middle of a row, so the list
+        // reads as going on. Measured from the rows themselves: the line under Follow system adds its gap.
         // Positions from the boxes on screen (not offsetTop, which depends on which ancestor is positioned).
         const rows = [...list.children], origin = list.getBoundingClientRect().top - list.scrollTop;
         const top = node => node.getBoundingClientRect().top - origin;

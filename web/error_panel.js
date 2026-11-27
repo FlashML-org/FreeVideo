@@ -407,12 +407,12 @@ export function createErrorReport(detail, context = {}) {
 
 // Failures of turning a reference video into depth (freevideo_engine/depth_reference.py), most specific first.
 const RETRY_REPORT = ['Try again. If it happens again, choose "Report a problem" to send us the report.', '请重试。再次出现时，请点击“提交问题”，把报告发给我们。'];
-// The engine's refusal of a preview with other first-pass steps (preview.validate_flags; Lane, review/preview-steps-check-0610).
+// The engine's refusal of a preview with other first-pass steps (preview.validate_flags).
 const PREVIEW_STEPS = [/A preview uses two-pass generation, which runs only with 8 first-pass steps/,
     'preview-steps', ['Preview first needs 8 first-pass steps', '先出预览需一采 8 步'], ['', ''],
     ['Set the first-pass steps to 8, or turn off Preview first, then generate again.', '请将一采步数改为 8，或关闭“先出预览”，再重新生成。']];
 // A redo whose name was already used with other settings (chain_errors.py redo_request_changed): what happened and where
-// to look first, instead of a plain "try again" (Lane, review/chain-redo-lost-reply-duplicate copy_lane).
+// to look first, instead of a plain "try again".
 const REDO_CHANGED = [/This redo was already submitted with the earlier settings\./,
     'redo-request-changed', ['The redo did not start', '没有重新开始生成'],
     ['This redo was already submitted with the earlier settings.', '这次重新生成已按之前的设置提交过。'],
@@ -468,7 +468,7 @@ export function failureAdvice(value, t, known = knownError(value)) {
         const custom = index < 0;
         // Tables follow the step count: a level with the same steps and passes (Light and Medium) needs the same download.
         const available = known.available.filter(i => SAMPLING_EFFORTS[i]?.steps !== known.base_steps || SAMPLING_EFFORTS[i].twoPass !== known.two_pass);
-        // Iris: a level name and its 档 never break apart. The summary is set as text,
+        // A level name and its 档 never break apart. The summary is set as text,
         // so word joiners (U+2060) keep each group on one line instead of markup.
         const keep = value => /[\u4e00-\u9fff]/.test(value) ? [...value].join('\u2060') : value;
         const also = available.map((i, at) => keep(at === available.length - 1 ? t('{level}', '“{level}”档', { level: t(...levels[i]) }) : t('{level}', '“{level}”', { level: t(...levels[i]) })));

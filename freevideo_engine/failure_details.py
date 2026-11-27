@@ -105,7 +105,7 @@ def image_pack_error_code(error):
 
 
 # A file the video install shares differs from the tested version, shown where there is no Repair button (the picture
-# page): the file and how it is renamed are on the confirmation page, so this says only where to go (Lane-5x's wording).
+# page): the file and how it is renamed are on the confirmation page, so this says only where to go.
 SHARED_MISMATCH_ELSEWHERE = (
     'A model file differs from the tested version and was left unchanged. '
     'Select "Repair" in the launcher under Settings > Environment and confirm.',
@@ -355,7 +355,7 @@ def sampling_table_failure(value, *, zh=False):
     if names:
         available = names[0] if len(names) == 1 else ('、' if zh else ', ').join(names[:-1]) + ('或' if zh else ' or ') + names[-1]
     size = size_text(details['missing_bytes'], details['decimal_sizes'])
-    # A custom step count is not a quality level (Iris): no "档" / "quality level" for it.
+    # A custom step count is not a quality level: no "档" / "quality level" for it.
     if zh:
         if index is None:
             title = '“自定义（%d 步）”还没有下载' % details['base_steps']

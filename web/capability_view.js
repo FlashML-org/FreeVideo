@@ -154,7 +154,7 @@ export function capabilitySurface(grid, state) {
     return {sizes, xs, top, edge, snap, nearest, at: seconds => curve(available.map(i => xs[i]), available.map(i => curves[i](seconds)))};
 }
 
-// Iris's blue ramp in OKLab, interpolated in linear light; transparent beyond
+// The blue ramp in OKLab, interpolated in linear light; transparent beyond
 // the edge so the heatmap dissolves into whichever panel contains it.
 const stops = [[0, .845, .085, 240], [.30, .760, .115, 245], [.64, .605, .140, 252], [1, .440, .128, 261]];
 const lab = stops.map(([, l, c, h]) => [l, c * Math.cos(h * Math.PI / 180), c * Math.sin(h * Math.PI / 180)]);

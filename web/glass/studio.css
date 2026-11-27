@@ -843,7 +843,7 @@ html body .fv-studio.fv-create .fvs-console :is(.fvs-console-prompt,.fv-section,
 /* LoRA tray: an empty list is just a left-aligned Add; no standing note; the tray is as tall as what it holds. */
 .fv-studio.fv-create .fvs-tray .fv-lora-add{justify-content:flex-start}
 .fv-studio.fv-create .fvs-tray :is(.fv-lora-note,.fv-lora-list):empty{display:none}
-/* A row short of room folds its chips (web/studio_console.js fitRow; Iris 11-24): Media and LoRA keep their icon and
+/* A row short of room folds its chips (web/studio_console.js fitRow): Media and LoRA keep their icon and
    count, styled and placed as when open (no badge); without a count they are square (as wide as they are tall, like
    @). Then Enhance keeps its star, square, its on state unchanged. The words stay for screen readers. */
 .fv-studio.fv-create .fvs-chips[data-fold] :is(.fvs-chip[data-chip=media],.fvs-chip[data-chip=lora]) .fvs-chip-label,
@@ -851,7 +851,7 @@ html body .fv-studio.fv-create .fvs-console :is(.fvs-console-prompt,.fv-section,
 .fv-studio.fv-create .fvs-chips[data-fold] :is(.fvs-chip[data-chip=media],.fvs-chip[data-chip=lora]){padding:0 10px}
 .fv-studio.fv-create .fvs-chips[data-fold] :is(.fvs-chip[data-chip=media],.fvs-chip[data-chip=lora])[data-empty],
 .fv-studio.fv-create .fvs-chips:is([data-fold="2"],[data-fold="3"]) .fv-enhance-chip{width:auto;min-width:0;aspect-ratio:1;padding:0;justify-content:center}
-/* Third step (Lane 11-24): the phone's compact keys below (520 px): the duration shows its number (its name and hover
+/* Third step: the phone's compact keys below (520 px): the duration shows its number (its name and hover
    card keep the unit), the size and quality keys drop their drawings. */
 .fv-studio.fv-create .fvs-console .fvs-chips[data-fold="3"]>.fvs-stepper{padding:0 var(--fv-sp-2)}
 .fv-studio.fv-create .fvs-console .fvs-chips[data-fold="3"] .fvs-stepper .fvs-step{width:32px;min-width:32px}

@@ -38,7 +38,7 @@ VOICE_SECONDS = (2, 15)
 FINISHED = ('finished', 'cancelled')
 LIST_NEXT = 'GET /freevideo/agent/v1/cast to find an existing card ID.'
 
-# Reference pictures made by the server (POST /cast/{id}/generate). Remy's consistency tests set the
+# Reference pictures made by the server (POST /cast/{id}/generate). Consistency tests set the
 # defaults; the clip prompts live in reference_prompt and the labels follow its half turn.
 COUNT = 4
 PROMPT_VERSION = 2  # 2: the face close-up fills the picture with the head

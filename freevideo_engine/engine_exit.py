@@ -206,7 +206,7 @@ def maybe_out_of_memory(value):
         return False
     count = value.get('oom_kills_since_start')
     # Only ComfyUI's own group's count: the whole computer's also rises for other programs, and a SIGTERM the user sent
-    # after one of those must stay "ended" (dataroot-5x review, 11-25).
+    # after one of those must stay "ended".
     return (value.get('exit_class') == 'killed_by_signal' and value.get('code_text') == 'SIGTERM'
             and value.get('oom_scope') == 'cgroup' and type(count) is int and count > 0)
 

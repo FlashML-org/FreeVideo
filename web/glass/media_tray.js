@@ -351,7 +351,7 @@ function markNow(panel) {
     if (!panel.fvMtActions) {
         const line = panel.fvMtActions = make('div', 'fv-mt-actions');
         const browse = make('button', 'fv-mt-browse'); browse.type = 'button';
-        // Its shown name is short (Lane 11-25) so the line keeps the AI and audio keys in a 268 px column; the hover card says
+        // Its shown name is short so the line keeps the AI and audio keys in a 268 px column; the hover card says
         // the whole action.
         browse.append(make('span', 'fv-mt-browse-name', say(panel, 'From creations', '从作品库选择')));
         browse.dataset.fvTipName = say(panel, 'Choose from creations', '从作品库选择'); browse.dataset.fvTipUse = say(panel, 'Add a saved video or image', '加入作品库里的视频或图片');

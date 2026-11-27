@@ -2,7 +2,7 @@ import * as model from './editor_model.js';
 import {button, segmented} from './editor_adjust.js';
 import {isText} from './editor_text_model.js';
 import {tip as setTip} from './editor_tips.js';
-// A block's description (Iris 10-11): what the block shows and what 重新生成 uses.
+// A block's description: what the block shows and what 重新生成 uses.
 // The timeline shows its first line under the pictures; the Picture page edits it.
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 function glyph(d) {
@@ -18,7 +18,7 @@ export const stripText = clip => clip.note || firstLine(clip.text);
 // Only the picture track grows a description strip, and only once one block has something to show.
 export const describedTrack = track => track.kind === 'video' && track.clips.some(clip => !isText(clip) && stripText(clip));
 const agentWrote = record => record.tracks.some(track => track.clips.some(clip => clip.text_by === 'agent'));
-// Status words appear only in the hover tip and the panels (Iris 10-11).
+// Status words appear only in the hover tip and the panels.
 export function blockStatus(clip, t, fraction = 0, interrupted = false) {
     if (clip.pending === 'running') return t('Generating {percent}%', '生成中 {percent}%', { percent: Math.round(fraction * 100) });
     if (clip.pending === 'stopped') return interrupted ? t('Interrupted', '上次中断') : t('Stopped', '已停止');

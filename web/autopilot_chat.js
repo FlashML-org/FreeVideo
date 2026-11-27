@@ -40,7 +40,7 @@ function glyph(path, width = 2.2) {
     return svg;
 }
 const press = (cls, text, action) => { const b = el('button', cls, text); b.type = 'button'; b.onclick = action; return b; };
-// Frontend placeholder contract; Drew can rename the request field here, and Iris can replace the copy/icon here.
+// Frontend placeholder contract: the request field, the copy and the icon can be changed here.
 export const WHITEBOX_PREVIEW = Object.freeze({
     field: 'whitebox_preview', storageKey: 'freevideo.chat.whitebox-preview',
     label: ['Whitebox', '白模'], name: ['Preview a whitebox first', '先生成白模预览'],

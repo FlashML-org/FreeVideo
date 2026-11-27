@@ -314,7 +314,7 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
 .fv-iv .fv-iv-frame .fv-image-block-low .fv-image-progress{color:rgb(255 255 255 / .85);text-shadow:0 1px 3px rgb(7 10 16 / .9)}
 .fv-iv .fv-iv-frame .fv-image-block-low .fv-image-progress b{color:#fff}
 .fv-iv .fv-iv-frame .fv-image-run-report{position:relative}
-/* Waiting for FreeVideo to come back (#1121): the one button on the progress overlay, light on the dark frame. */
+/* Waiting for FreeVideo to come back: the one button on the progress overlay, light on the dark frame. */
 .fv-iv .fv-iv-frame .fv-image-progress .fv-image-stop-waiting{justify-self:center;margin-top:4px;min-height:var(--fv-h-sm,32px);padding:4px 16px;border:1px solid rgb(255 255 255 / .32);border-radius:var(--fv-r-sm,8px);background:rgb(255 255 255 / .08);color:#fff;font:inherit;font-weight:var(--fv-medium,500);text-shadow:none;cursor:pointer}
 .fv-iv .fv-iv-frame .fv-image-progress .fv-image-stop-waiting:hover{background:rgb(255 255 255 / .16)}
 .fv-iv .fv-iv-frame .fv-image-progress .fv-image-stop-waiting:focus-visible{outline:2px solid var(--fv-focus,#7ab8ff);outline-offset:2px}
@@ -750,7 +750,7 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
    so the boxes keep one set of colours; what sits on the page (the line's box, the phone bar, the limit hint) follows it. */
 .fv-iv .fv-iv-layout{position:absolute;inset:0;z-index:2;touch-action:none;cursor:crosshair;--lb-line:rgb(220 226 236 / .55);--lb-on:#fff;--lb-chip:#e8edf5;--lb-chip-ink:#101f30;
   --lb-text:#fff;--lb-text-shadow:0 1px 2px rgb(7 10 16 / .8);--lb-handle:#fff;--lb-handle-edge:#101f30}
-/* Light theme (Iris 11-19): the frame is light too, the boxes dark on it (the dark theme's colours reversed). */
+/* Light theme: the frame is light too, the boxes dark on it (the dark theme's colours reversed). */
 :root[data-theme=light] .fv-iv .fv-iv-frame[data-state=draft]{background:#dde2e9}
 :root[data-theme=light] .fv-iv .fv-iv-draft{color:var(--fv-fg2);text-shadow:none}
 :root[data-theme=light] .fv-iv .fv-iv-draft b{color:var(--fv-fg2)}

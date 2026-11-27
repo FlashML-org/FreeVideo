@@ -147,8 +147,8 @@ export function createConsole({t, body, controls, prompt, runbar, trays, chips, 
         }
         fitRow();
     }
-    // A row that cannot hold every chip on one line folds them (Iris 11-24, review/i18n/shots-widest/collapse-spec-iris.md):
-    // first Media and LoRA show their icon and count, then Enhance its star, then (Lane 11-24) the duration shows its number
+    // A row that cannot hold every chip on one line folds them:
+    // first Media and LoRA show their icon and count, then Enhance its star, then the duration shows its number
     // and the size and quality keys drop their drawings, as on a phone; the row never wraps. Judged by the row's own
     // width in every language, not by a set breakpoint; the words come back once the row is 16 px wider than where it
     // folded (no back and forth while a window is dragged). The narrow layout (760 px and less) wraps by design and does
@@ -156,7 +156,7 @@ export function createConsole({t, body, controls, prompt, runbar, trays, chips, 
     let fold = 0;
     // Where each step was taken: the row's width and what its chips showed. Without the 16 px margin a step is only undone
     // when that content has changed (a shorter level, fewer media); a resize back and forth or a refresh with the same
-    // content keeps it (c1-boot review 11-24).
+    // content keeps it.
     const foldedAt = [0, 0, 0, 0], shownAt = ['', '', '', ''];
     const shown = () => [...row.querySelectorAll('.fvs-chip-label,.fvs-chip-extra,.fvs-step-number,.fvp-chip-label,.fv-enhance-chip>span')]
         .map(node => node.hidden ? '' : node.textContent).join('\u241f');

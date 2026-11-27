@@ -954,7 +954,7 @@ PIXEL_HEAD_RESERVED = _pixel_head_points(1.)
 # In the fast mode blocks 46-49 swap twelve int8 matrices for the adapter's BF16 ones (2.16 GB): about 1.08 GB more
 # weight than the int8 layers they replace (inferred, not measured). They go with their blocks during sampling.
 FAST2_EXTRA_WEIGHT_BYTES = 2_160_000_000 // 2
-# Those twelve BF16 matrices are not module parameters (c2 d3c873ecb): a resident block keeps them on the GPU (counted
+# Those twelve BF16 matrices are not module parameters: a resident block keeps them on the GPU (counted
 # above), a streamed one keeps all 2.16 GB pinned in host memory and lends one (about 180 MB) to the GPU per call. So a
 # fast plan that streams any block holds them in RAM beside its weight cache (the int8 layers they replace are no longer
 # read, which this does not count back).
@@ -967,12 +967,12 @@ FAST2_FEATURE_BYTES_PER_TOKEN = 5376 * 2
 # With both counted, the peak working PSS (PSS less clean file pages) under a RAM cap, on the second RTX PRO 6000
 # machine: 1344x768 15 s, 16 GiB RAM and 16 GB VRAM, 14.04-14.32 GiB against a 14.97 GiB budget; 960x544 15 s, 12 GiB
 # RAM, 9.86-10.18 GiB against 10.95-10.97 GiB. The same request run twice on the same tree differed by 0.28 GiB (14.32
-# and 14.04), and two and four steps on one tree agreed within that (c3 planner measurements).
+# and 14.04), and two and four steps on one tree agreed within that (planner measurements).
 # A RAM margin set from such measurements covers at least that run-to-run spread.
 # The RAM floor of a fast plan that offloads blocks, beside those host bytes. Ten requests at --ram-gib 8 with nothing
 # pinned (Linux, same machine; 480x288 to 1920x1088, 5 to 20 s, 4 to 40 resident blocks, streamed or not) peaked at
 # 2.33-2.45 GiB of working PSS above the pinned matrices and the features, always when the features are copied at the
-# end of sampling (c3 planner measurements). The floor is the largest of them plus the
+# end of sampling (planner measurements). The floor is the largest of them plus the
 # 0.28 GiB run-to-run spread. All of them kept their outputs and residuals on the GPU (0.5 GiB of host activations); a
 # plan that puts them in host memory, and every other system, was not measured and keeps the video stage's floor.
 FAST2_HOST_FLOOR_BYTES = int((2.45 + .28) * GiB)

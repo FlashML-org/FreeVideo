@@ -1,6 +1,6 @@
 // A random version 4 UUID that works on every page FreeVideo serves. crypto.randomUUID exists only in a secure context
 // (https, localhost, 127.0.0.1); a page opened from another device by its LAN address over http has
-// crypto.getRandomValues but not randomUUID, and calling it there failed every upload (#1097).
+// crypto.getRandomValues but not randomUUID, and calling it there would fail every upload.
 // No imports and no DOM, so Node tests load it as it is.
 export function randomUUID() {
     const crypto = globalThis.crypto;

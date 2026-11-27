@@ -534,7 +534,7 @@ function mediaPanel(node, mount = null) {
             let showLength = () => {};
             if (kind === "video" && row.role === "reference") {
                 // Off by default: the video itself is the reference. Depth only: its depth picture is; composition only: a
-                // line drawing of it is, which carries its layout but not its motion (gap-08a A/B, 11-17). Either way its
+                // line drawing of it is, which carries its layout but not its motion (compared side by side). Either way its
                 // picture and colours are not asked for, and at most one is on.
                 const only = (key, other, words, title) => {
                     const label = el("label", undefined, `fv-${key}-only`), box = el("input");

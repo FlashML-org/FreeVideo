@@ -243,7 +243,7 @@
 .fv-editor .fv-ed-toolbar .fv-ed-more-panel button[aria-pressed=true]{color:var(--fv-ink);background:transparent}
 .fv-editor .fv-ed-toolbar .fv-ed-more-panel button[aria-pressed=true] svg{color:var(--fv-accent)}
 .fv-editor .fv-ed-toolbar .fv-ed-more-panel button:not(:disabled):hover,.fv-editor .fv-ed-toolbar .fv-ed-more-panel button:focus-visible{background:color-mix(in srgb,var(--fv-accent) 12%,transparent)}
-/* The tracks' basic fallback rises from the bottom; Blake supplies the waves. */
+/* The tracks' basic fallback rises from the bottom. */
 .fv-editor .fv-ed-progress-fill{width:100%;height:calc(var(--fv-ed-progress)*100%);inset:auto 0 0;box-shadow:inset 0 2px 0 var(--fv-accent)}
 .fv-ed-drawer-toggle{display:none!important}
 .fv-ed-name-menu{position:absolute;top:100%;left:0;width:300px;max-width:calc(100vw - 32px);padding:6px;background:var(--fv-card);border:1px solid var(--fv-border);border-radius:var(--fv-r-sm);z-index:8;display:flex;flex-direction:column;gap:0;font:13px var(--fv-font)}
@@ -335,7 +335,7 @@
  .fv-editor .fv-ed-preview{box-sizing:border-box;align-self:start;width:100%;aspect-ratio:var(--fv-ed-project-width,16)/var(--fv-ed-project-height,9);max-height:min(100%,max(136px,calc(100dvh - 362px - var(--fv-ed-generation-row))));padding-top:12px;padding-bottom:8px}
 }
 
-/* ── Layout that never moves (Iris E1, E8; CEO 11-14 "生成前会先下载……把下面的轨挤下去") ──
+/* ── Layout that never moves (a download before generating must not push the tracks below down) ──
    Every row below the header has one height: the project row, the bar (56 px plus what a long description adds,
    which only the picture gives up), the tool row and the timeline. What the bar says for a while floats in the tray
    above it; nothing is inserted into the flow. */
@@ -554,7 +554,7 @@
  .fv-editor .fv-ed-genbar .fv-ed-history-button{right:44px}
 }
 
-/* ── Visual alignment (Iris 11-15, C1–C3 and C8) ──
+/* ── Visual alignment ──
    One outer line 12 px from each window edge: the library's cards, the bar's frame, the tool row's first and last keys and
    the inspector's content all start at x = 12 and end 12 px from the right. */
 .fv-ed-toolbar{padding-left:12px;padding-right:12px}

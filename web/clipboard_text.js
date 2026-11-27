@@ -1,6 +1,6 @@
 // Writes text to the clipboard; resolves false when neither the clipboard API nor the old copy command is allowed.
 // navigator.clipboard exists only in a secure context: a page opened from another device by its LAN address over http
-// has none, so the selection copy below is what works there (#1097).
+// has none, so the selection copy below is what works there.
 export async function copyText(text) {
     try { await navigator.clipboard.writeText(text); return true; } catch { /* fall through to the selection copy */ }
     const before = document.activeElement;

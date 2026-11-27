@@ -81,7 +81,7 @@ export function exitCause(record) {
     if (kind === 'system_commit_limit' || kind === 'system_no_memory') return 'memory';
     if (kind === 'killed_by_signal' && record.code_text === 'SIGKILL' && record.oom_kills_since_start > 0) return 'memory';
     // SIGTERM while the count rose: systemd stopping the rest of a group after the kernel ended one of it for memory.
-    // Only ComfyUI's own group's count (oom_scope cgroup): the computer's also counts other programs (dataroot-5x, 11-25).
+    // Only ComfyUI's own group's count (oom_scope cgroup): the computer's also counts other programs.
     if (kind === 'killed_by_signal' && record.code_text === 'SIGTERM' && record.oom_scope === 'cgroup' && record.oom_kills_since_start > 0) return 'memory_maybe';
     if (kind === 'killed_by_signal' || kind === 'terminated_externally') return 'ended';
     if (kind === 'native_crash' || kind === 'abort' || kind === 'system_stack_overflow') return 'crashed';

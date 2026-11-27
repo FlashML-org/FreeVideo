@@ -1,7 +1,7 @@
 import { isLaunchVisit } from './launch_visit.js';
 import { isChinese, translator } from './i18n.js';
 // Small, eager startup surface: no editing-module or host imports to delay its first paint.
-// Provisional copy keys for Iris. Keep project names as text, never markup.
+// Provisional copy keys. Keep project names as text, never markup.
 export const WORKSPACE_OPENING_COPY = {
     opening: ['Opening', '正在打开'],
     openingNamed: ['Opening "{name}"', '正在打开“{name}”'],

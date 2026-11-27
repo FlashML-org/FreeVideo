@@ -29,7 +29,7 @@ NO_REPORT = frozenset(('small_memory', 'busy', 'invalid_request', 'invalid_promp
 STAGES = ('start', 'load', 'text', 'encode', 'denoise', 'decode')
 KINDS = ('generate', 'edit', 'cast', 'compose', 'download', 'install')
 # Each failure in English and Chinese. The image page writes the same sentences in imageGenError (a test keeps the
-# codes both have equal); these reach API and agent callers as message_en and message_zh. Wording: Lane, 11-25.
+# codes both have equal); these reach API and agent callers as message_en and message_zh.
 MESSAGES = {
     **LORA_MESSAGES,
     'no_memory': ('Not enough GPU memory, even at the smallest size. Close other apps using the GPU, then try again.',

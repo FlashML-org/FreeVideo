@@ -5,7 +5,7 @@ times larger; the result is scaled to the 4K size and written with the video's o
 model is a 4.9 MB optional download (frame_upscale_model.json). Torch lives only in a disposable worker, as for depth
 references: the bridge supervises it, passes its progress on and stops it on cancel.
 
-The 4K size (Iris, 11-18): the long side is 3840 and the other side follows the picture's shape on an 8-pixel grid;
+The 4K size: the long side is 3840 and the other side follows the picture's shape on an 8-pixel grid;
 a picture over 36864 16x16 macroblocks (the usual H.264 decoding limit, 4096 x 2304) is scaled down in proportion
 until it fits, so a square becomes 3072 x 3072 and 4:3 becomes 3544 x 2656.
 """
@@ -184,7 +184,7 @@ def _lock(path, check, *, inherit=False):
 
 
 def remote(spec, row):
-    """Every source for the weights, the ones reachable from China first (Parker 11-18). None of them is the
+    """Every source for the weights, the ones reachable from China first. None of them is the
     authors' own model hub: each copy is pinned and accepted only with the catalog's size and SHA-256."""
     from .network import source_url
     hf = '/%s/resolve/%s/%s' % (spec['repo'], spec['revision'], row['file'])
