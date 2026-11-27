@@ -287,6 +287,37 @@ def kv_bytes(stored, input_tokens, answer_tokens=None):
     return per_token * kv_positions(input_tokens, answer_tokens)
 
 
+# Apple GPU for the prompt model on a Mac. Unified memory: the weights are read on the CPU as before and
+# then moved to the Metal device, so the rewrite no longer runs at CPU speed (about 55 s to the first word
+# for a one-picture prompt and 14 tokens/s on an M5 Max). Any failure on the Apple GPU runs the request
+# again on the CPU (see run()), so the outcome is never worse than before, only slower by the failed try.
+APPLE_GPU_SPARE = 2**31   # left to the video model, the desktop and the allocator beyond the plan
+
+
+def apple_gpu_fits(torch, stats, weights, shapes):
+    """True when this Mac may run the prompt model on its GPU; the reason it may not goes to the report."""
+    if sys.platform != 'darwin':
+        return False
+    if stats.get('cpu_only') or os.environ.get('FREEVIDEO_PROMPT_VLM_DEVICE', '').strip().lower() == 'cpu':
+        stats['apple_gpu_skipped'] = 'cpu_only'
+        return False
+    try:
+        if not torch.backends.mps.is_available():
+            stats['apple_gpu_skipped'] = 'unavailable'
+            return False
+        limit = int(torch.mps.recommended_max_memory())
+    except (AttributeError, RuntimeError, TypeError, ValueError):
+        stats['apple_gpu_skipped'] = 'unavailable'
+        return False
+    answer = stats.get('answer_tokens', OUTPUT_TOKENS)
+    needed = weights + kv_bytes(shapes, reserved_tokens(stats), answer) + WORKING_VRAM + APPLE_GPU_SPARE
+    stats.update(apple_gpu_limit_bytes=limit, apple_gpu_needed_bytes=needed)
+    if needed > limit:
+        stats['apple_gpu_skipped'] = 'memory'
+        return False
+    return True
+
+
 def retry_allowed(tokens, stats):
     """A correction retry must fit the context limit and, on the GPU, the reserved cache."""
     if tokens + OUTPUT_TOKENS > stats.get('kv_positions', tokens + OUTPUT_TOKENS):
@@ -455,6 +486,12 @@ def load_model(folder, torch, stats, checkpoint):
             device_map='cpu', local_files_only=True, trust_remote_code=False, attn_implementation='sdpa').eval()
         core.prepare(model)
         mapping, device = {'': 'cpu'}, 'cpu'
+        if not torch.cuda.is_available() and apple_gpu_fits(torch, stats, weights, shapes):
+            model = model.to('mps')
+            mapping, device = {'': 'mps'}, 'mps'
+            # Grouped-query attention with an expanded key/value cache is served by every Metal SDPA kernel.
+            core.use_expanded_kv_heads()
+            stats['attention_kv_heads'] = 'expanded'
         if weight_budget > 2 * 2**30:
             from accelerate import dispatch_model, infer_auto_device_map
             mapping = infer_auto_device_map(model, max_memory={card: weight_budget,
@@ -492,6 +529,9 @@ def generate(torch, model, inputs, max_new_tokens, started, on_token, stop=None)
                 if inputs.input_ids.is_cuda:
                     torch.cuda.synchronize()
                     now = time.monotonic()
+                elif inputs.input_ids.device.type == 'mps':
+                    torch.mps.synchronize()
+                    now = time.monotonic()
                 self.first = now
                 timing['first_output_seconds'] = now - started
                 timing['first_output_epoch'] = time.time()
@@ -507,6 +547,32 @@ def generate(torch, model, inputs, max_new_tokens, started, on_token, stop=None)
 
 def run(folder, value, *, stats=None):
     stats = {} if stats is None else stats
+    failed = None
+    try:
+        return run_mode(folder, value, stats)
+    except Exception as error:
+        # Only a run that was on the Apple GPU is repeated, and only when the cause may be the device:
+        # a request that is too large or has no usable input fails the same way on the CPU.
+        if stats.get('execution_device') != 'mps' or str(error) in ('ram_space', 'image_size', 'context_length'):
+            raise
+        failed = type(error).__name__
+    # Outside the except block, so the failed attempt's model and cache are released before the CPU run.
+    import gc
+    gc.collect()
+    torch = sys.modules.get('torch')
+    if torch is not None:
+        try:
+            torch.mps.empty_cache()
+        except (AttributeError, RuntimeError):
+            pass
+    keep = {name: stats[name] for name in ('available_memory_at_start_bytes', 'prewarm_import_seconds', 'import_seconds',
+                                           'extra_vram_reserve_bytes') if name in stats}
+    stats.clear()
+    stats.update(keep, cpu_only=True, execution_fallback='apple_gpu', execution_fallback_exception=failed)
+    return run_mode(folder, value, stats)
+
+
+def run_mode(folder, value, stats):
     if value.get('mode') == 'ask':
         return ask(folder, value, stats)
     if value.get('mode') == 'split':
@@ -996,6 +1062,9 @@ def main():
             extra = value.pop('_extra_vram_reserve_bytes', 0)
             if type(extra) is int and extra > 0:
                 stats['extra_vram_reserve_bytes'] = extra
+            # Set by the service once a run on the Apple GPU had to be repeated on the CPU.
+            if value.pop('_cpu_only', False) is True:
+                stats['cpu_only'] = True
         run(Path(sys.argv[1]), value, stats=stats)
     except Cancelled:
         settle()

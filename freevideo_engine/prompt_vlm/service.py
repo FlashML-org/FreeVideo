@@ -127,6 +127,9 @@ class Service:
         self.request_epoch = None
         self.active_worker = None
         self.release_readings = None
+        # Set when a run on the Apple GPU had to be repeated on the CPU: later requests of this session
+        # go straight to the CPU instead of failing the same way first.
+        self.cpu_only = False
         atexit.register(self.close)
 
     def prestart(self, root, machine, *, generating=False):
@@ -757,6 +760,8 @@ class Service:
         def submit():
             try:
                 request = dict(value)
+                if self.cpu_only:
+                    request['_cpu_only'] = True
                 if prewarm != 'cold':
                     request['_prewarm'] = dict(sent_epoch=time.time())
                 child.stdin.write(json.dumps(request, ensure_ascii=True))
@@ -812,6 +817,9 @@ class Service:
             self.check()
             if session.reader.is_alive() or not result or child.returncode and result.get('phase') == 'complete':
                 raise RuntimeError('worker_exit')
+            # Whatever becomes of this answer (a failure, or text the checks below refuse), the Apple GPU already failed once.
+            if (result.get('diagnostics') or {}).get('execution_fallback') == 'apple_gpu':
+                self.cpu_only = True
             if result.get('phase') == 'complete':
                 if value.get('mode') == 'ask':
                     rules.validate_answers(result.get('answers'), value)
