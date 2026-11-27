@@ -2069,8 +2069,30 @@ export function openStudio(node, {extendFrom = null} = {}) {
     previewObserver.observe(output); cleanup.push(() => previewObserver.disconnect());
     // The queued-rewrite batch's line while the preview shows it.
     let rewriteShown = null;
+    // While a task runs, a work picked in the right column stays on the stage with its actions (Run second pass among
+    // them): the run's progress is kept (heldProgress) and comes back when the person returns to it (the column's
+    // Generating tile, or the preview the running second pass is made from), or generates again. A result that arrives
+    // meanwhile does not take the stage; picking a work with nothing running ends it too.
+    let browsing = false, heldProgress = null;
+    function leaveRun() {
+        if (browsing) return;
+        browsing = true; hideProgress();
+        window.dispatchEvent(new CustomEvent('freevideo-task-stage-leave', {detail: {view: 'studio', element: stage, id: activePrompt}}));
+    }
+    function endBrowsing() {
+        if (!browsing) return;
+        browsing = false;
+        window.dispatchEvent(new CustomEvent('freevideo-task-stage-return', {detail: {view: 'studio', element: stage, id: activePrompt}}));
+    }
+    function returnToRun() {
+        endBrowsing();
+        if (busy && heldProgress) showProgress(heldProgress);
+    }
     function showProgress(message) {
         phoneAccess.observe(message);
+        heldProgress = message;
+        worksColumn?.setRunning?.({fraction: message?.overall?.fraction ?? 0});
+        if (browsing) return;
         // The bar under the picture says nothing about the run (the top bar's task shows it and its place).
         summaryFor = null; stageBar.setSummary('');
         watchedRun = true; reportTipFor = null; clearTimeout(reportTipTimer);
@@ -2242,7 +2264,11 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // The right column of the three-column layout: the library's videos, the shown video's facts, the queue. The owner's
     // Creations button stands beside its search.
     worksColumn = mountStudioColumn({slot: body.querySelector('.fv-work-column'), shell: body.studioPanels, entry: worksButton,
-        onShow: row => { if (compare.active) compare.close(); showResult(row, {chosen: true}); }, named: row => savedPrompt(api, row),
+        onShow: row => {
+            if (busy && row?.video && row.video === queueState?.running?.inputs?.refine_from) { if (compare.active) compare.close(); returnToRun(); return; }
+            if (compare.active) compare.close(); showResult(row, {chosen: true});
+        }, named: row => savedPrompt(api, row),
+        onRun: () => { if (compare.active) compare.close(); returnToRun(); },
         onPick: rows => {
             if (rows.length === 2) { if (compare.active) compare.close(); compare.open(rows[0], rows[1]); }
             else { if (compare.active) compare.close(); if (rows[0]) showResult(rows[0], {chosen: true}); }
@@ -2316,6 +2342,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // chosen: a video picked from Recent videos. It only changes the picture; a run in progress keeps its progress.
     function showResult(r, {chosen = false} = {}) {
         if (!r?.video || disposed) return; result = r; leaveNext();
+        if (chosen && busy) leaveRun(); else if (chosen) endBrowsing();
         // A queued rewrite that could not be made: the result says so, the prompt box is left alone.
         // Either the queue said so, or the node generated with a rewrite still attached (r.enhance_fallback). Said once
         // per request, as the queue's reason is: reopening the panel on the same result does not say it again.
@@ -2501,10 +2528,11 @@ export function openStudio(node, {extendFrom = null} = {}) {
             syncResume();
             updateRunButton();
         },
-        onResult: (result, outcome) => { node.freevideoLastResult = result; showResult(result, {chosen: outcome.partial});
+        onResult: (result, outcome) => { node.freevideoLastResult = result; if (!browsing) showResult(result, {chosen: outcome.partial});
             if (!outcome.partial) firstStart?.complete(result);
-            // A part that failed keeps its sentence; the part list already marks which ones finished.
-            if (outcome.partial && !outcome.joined && status.dataset.error !== 'true') status.textContent = t('Showing the last completed part.', '正在显示最后完成的一段。'); },
+            // A part that failed keeps its sentence; the part list already marks which ones finished. While another work
+            // is on the stage (browsing) the line would name a part that is not shown, so it waits.
+            if (!browsing && outcome.partial && !outcome.joined && status.dataset.error !== 'true') status.textContent = t('Showing the last completed part.', '正在显示最后完成的一段。'); },
         onError: showPartError});
     cleanup.push(() => chainController.dispose());
     node.freevideoStudioChain = chainController;
@@ -2867,6 +2895,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
         activePrompt = active?.id || null;
         const wasBusy = busy;
         busy = Boolean(active) || progressLive(); queued = !state.running && Boolean(state.pending.length);
+        // The works column's Generating tile follows the run; once nothing runs, the kept progress is the last run's.
+        if (!busy) heldProgress = null;
+        worksColumn?.setRunning?.(busy ? {fraction: heldProgress?.overall?.fraction ?? 0} : null);
         // A finished, failed or cancelled video may have downloaded what the line above Generate still lists.
         if (wasBusy && !busy) { requestAssets?.refresh(true); }
         // Whether the next Generate rewrites first, and whether that counts here, follows the queue (rewriteExtra).
@@ -2982,6 +3013,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
         } catch (error) { cancelling = false; updateRunButton(); showQueueError(error); }
     }
     async function submitDraft(options) {
+        // Generating again shows the generation again, as going back to the run does.
+        returnToRun();
         // Borrowed by the editor: its Generate runs the editor's own submission (editor_bar.js), with this bar's values.
         if (borrowed) {
             // The enhancement and the replace-person check are this bar's; what is then made is the editor's.
@@ -3328,7 +3361,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const lorasChanged = e => { if (String(e.detail) === String(loraNode?.id)) refreshEffortEstimate(true); };
     window.addEventListener('freevideo-loras', lorasChanged);
     cleanup.push(() => window.removeEventListener('freevideo-loras', lorasChanged));
-    const resultChanged = e => { if (String(e.detail.node) === String(node.id)) { if (chainController.active || chainController.isBlockOutput(e.detail.value)) { node.freevideoLastResult = result; return; } failure.clear(); showResult(e.detail.value); firstStart?.complete(e.detail.value); cancelling = false; status.textContent = ''; syncQueue().catch(() => {}); } };
+    const resultChanged = e => { if (String(e.detail.node) === String(node.id)) { if (chainController.active || chainController.isBlockOutput(e.detail.value)) { node.freevideoLastResult = result; return; } failure.clear(); if (!browsing) showResult(e.detail.value); firstStart?.complete(e.detail.value); cancelling = false; status.textContent = ''; syncQueue().catch(() => {}); } };
     const prewarmChanged = e => { if (String(e.detail.node) === String(node.id)) prewarm.textContent = e.detail.label; };
     window.addEventListener('freevideo-prewarm', prewarmChanged);
     cleanup.push(() => window.removeEventListener('freevideo-prewarm', prewarmChanged));

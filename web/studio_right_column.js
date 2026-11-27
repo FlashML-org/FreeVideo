@@ -9,7 +9,7 @@ import { queuePanel } from './image_view_queue.js';
 import { jobs } from './task_store.js';
 import { confirmStop } from './task_float.js';
 import { pictureURL } from './picture_url.js';
-import { el, t, button } from './image_view_ui.js';
+import { el, t, button, tip } from './image_view_ui.js';
 
 // The column's parts are styled in image_view.css (for .fv-iv and .fv-work-column alike); the creation panel does not load
 // the image view, so it asks for the sheet itself, once (not in work_column.js: the image view's own order of sheets stays as it was).
@@ -41,13 +41,13 @@ async function saveFavorite(row, favorite) {
  * @param {HTMLElement} [o.entry]   the owner's button to the full library, put beside the search
  * @param {(row: object) => string} [o.errorOf]   what went wrong with this video's run, when something did (the info page says it)
  */
-export function mountStudioColumn({slot, shell, onShow, onPick, onChange, entry, named, onReuse, errorOf}) {
+export function mountStudioColumn({slot, shell, onShow, onPick, onChange, onRun, entry, named, onReuse, errorOf}) {
     // The videos on and near the screen load in the background after their covers, so the one chosen next plays at once.
     const watch = (root, rowOf) => watchCards(mediaQueue(), root, tile => {
         const hit = rowOf(tile);
         return hit ? {url: mediaURL(hit.row.video, 'output'), kind: 'video', bytes: hit.row.bytes} : null;
     });
-    const works = studioWorks({load: libraryPage, thumb: videoThumbnailURL, favorite: saveFavorite, onShow, onPick, onChange, entry, named, watch});
+    const works = studioWorks({load: libraryPage, thumb: videoThumbnailURL, favorite: saveFavorite, onShow, onPick, onChange, onRun, entry, named, watch});
     const info = el('div', 'fv-iv-info');
     let shown = null;
     async function paintInfo() {
@@ -71,7 +71,11 @@ export function mountStudioColumn({slot, shell, onShow, onPick, onChange, entry,
         onCollapse: () => shell.setPanel('right', false), onOpen: () => shell.setPanel('right', true),
         onTab: name => { if (name === 'info') void paintInfo(); }});
     slot.replaceChildren(); column.mount(slot); slot.hidden = false; column.setTab(column.tab);
-    const thumbs = () => column.railThumbs.replaceChildren(...works.rows().slice(0, RAIL_THUMBS).map(row => {
+    // While the panel's task runs, the folded column starts with its progress ring too, as the image view's does.
+    let running = null;
+    const runThumb = el('button', 'fv-iv-rail-thumb fv-iv-rail-run'); runThumb.type = 'button'; runThumb.append(el('i', 'fv-iv-ring'));
+    tip(runThumb, t('Generating', '正在生成'), t('Show its progress', '查看进度')); runThumb.addEventListener('click', () => onRun?.());
+    const thumbs = () => column.railThumbs.replaceChildren(...(running ? [runThumb] : []), ...works.rows().slice(0, running ? RAIL_THUMBS - 1 : RAIL_THUMBS).map(row => {
         const b = el('button', 'fv-iv-rail-thumb'); b.type = 'button'; const i = el('img'); i.alt = ''; i.draggable = false; i.src = videoThumbnailURL(row); b.append(i);
         b.classList.toggle('fv-iv-current', row.video === shown?.video); b.addEventListener('click', () => onShow(row)); return b;
     }));
@@ -79,6 +83,11 @@ export function mountStudioColumn({slot, shell, onShow, onPick, onChange, entry,
     return {
         refresh, setFavorite: (row, value) => works.setFavorite(row.video, value), rows: () => works.rows(), index: () => works.index(), picked: () => works.picked(), clearPicks: opts => works.clearPicks(opts),
         // The stage shows this video now.
+        setRunning(value) {
+            const was = Boolean(running); running = value || null; works.setRunning(value);
+            if (running) runThumb.style.setProperty('--p', String(Math.max(0, Math.min(1, Number(running.fraction) || 0))));
+            if (was !== Boolean(running)) thumbs();
+        },
         setShown(row) { shown = row || null; works.setSelected(row?.video); thumbs(); if (column.tab === 'info') void paintInfo(); },
         dispose() { works.dispose(); queue.dispose?.(); },
     };

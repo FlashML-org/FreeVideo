@@ -20,7 +20,7 @@ import { applyTasks, toggledTask } from './task_groups.js';
 
 const idle = () => ({observe() {}, unobserve() {}, disconnect() {}});
 
-export function studioWorks({load, thumb, favorite = async () => true, onShow, onPick = () => {}, onChange = () => {}, entry = null, named = () => Promise.resolve(''), watch = idle, limit = 48}) {
+export function studioWorks({load, thumb, favorite = async () => true, onShow, onPick = () => {}, onChange = () => {}, onRun = () => {}, entry = null, named = () => Promise.resolve(''), watch = idle, limit = 48}) {
     const root = el('div', 'fv-iv-works');
     const head = el('div', 'fv-iv-panel-head'), title = el('h2', 'fv-iv-panel-title', t('Creations', '作品')), count = el('span', 'fv-iv-count');
     head.append(title, count);
@@ -38,6 +38,13 @@ export function studioWorks({load, thumb, favorite = async () => true, onShow, o
     for (const b of [chipAll, chipFav]) b.setAttribute('role', 'tab');
     chips.append(chipAll, chipFav);
     const body = el('div', 'fv-iv-works-body'), grid = el('div', 'fv-iv-grid');
+    // While this panel's task runs, the first tile is its progress ring, as in the image view's works: pressing it shows
+    // the run on the stage again (onRun). setRunning({fraction}) shows or moves it, setRunning(null) takes it away.
+    let running = null;
+    const runTile = el('div', 'fv-iv-tile fv-iv-tile-run'); runTile.append(el('i', 'fv-iv-ring'));
+    tip(runTile, t('Generating', '正在生成'), t('Show its progress', '查看进度'));
+    runTile.setAttribute('role', 'button'); runTile.tabIndex = 0; runTile.addEventListener('click', () => onRun());
+    runTile.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onRun(); } });
     const empty = el('div', 'fv-iv-empty'); empty.hidden = true;
     body.append(grid, empty);
     // Foot, as the picture view's: a link on the left (the full library); the right stays empty (the picture view's Recently deleted has no
@@ -188,7 +195,7 @@ export function studioWorks({load, thumb, favorite = async () => true, onShow, o
         count.textContent = rows.length ? String(rows.length) : '';
         const keep = new Set(list.map(key));
         for (const [file, tile] of tiles) if (!keep.has(file)) { originals.unobserve(tile); tile.remove(); tiles.delete(file); }
-        grid.replaceChildren(...list.map(row => { const tile = tileFor(row); tile.classList.toggle('fv-iv-current', key(row) === selected); tile.classList.toggle('fv-iv-fav', !!row.favorite); return tile; }));
+        grid.replaceChildren(...(running ? [runTile] : []), ...list.map(row => { const tile = tileFor(row); tile.classList.toggle('fv-iv-current', key(row) === selected); tile.classList.toggle('fv-iv-fav', !!row.favorite); return tile; }));
         order = list.map(key);
         fold(); paintPicks(); paintSort();
         // No work at all: the page stays empty; a search or the star that hides every work says so.
@@ -247,6 +254,11 @@ export function studioWorks({load, thumb, favorite = async () => true, onShow, o
     window.addEventListener('freevideo-result', completed);
     window.addEventListener('freevideo-library-deleted', changed); window.addEventListener('freevideo-library-restored', changed);
     return {
+        setRunning(value) {
+            const was = Boolean(running); running = value || null;
+            if (running) runTile.style.setProperty('--p', String(Math.max(0, Math.min(1, Number(running.fraction) || 0))));
+            if (was !== Boolean(running)) paint();
+        },
         element: root, refresh, setFavorite, rows: () => ordered(), index: () => ordered().findIndex(row => key(row) === selected), focusSearch: () => query.focus(),
         picked: () => picks.map(video => byVideo.get(video)).filter(Boolean), clearPicks,
         setSelected(video) { selected = video || ''; for (const [file, tile] of tiles) tile.classList.toggle('fv-iv-current', file === selected); fold(); tiles.get(selected)?.scrollIntoView?.({block: 'nearest'}); onChange(); },
