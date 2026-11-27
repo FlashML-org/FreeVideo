@@ -363,6 +363,8 @@ def probe(family, name, spec, versions, timeout, env, *, measure_speed=False):
             import uuid
             remote = 'freevideo-probe-' + uuid.uuid4().hex
             settings = {'remote.' + remote + '.url': endpoint}
+            # The probe measures our source, not where a rewrite rule of this computer would send it.
+            settings.update([own_address(endpoint)])
             # remote.url is multivalued: reusing this checkout's origin can
             # select its existing SSH URL instead of the HTTPS URL being tested.
             # A private temporary name avoids that; carry origin's proxy policy
@@ -721,7 +723,8 @@ SOURCES_TRIED = '\nSources tried:'
 # Checked in order on each output line; the last line that names a cause wins.
 FAILURE_CLASSES = (
     ('disk-full', r'no space left on device|winerror 112\b|disk (?:is )?full|not enough space on the disk|errno 28\b'),
-    ('proxy', r'proxy|\b407\b'),
+    # A word of its own: a host name that holds it (a mirror named like ghproxy) says nothing about a proxy.
+    ('proxy', r'(?<![A-Za-z0-9.-])proxy|\b407\b'),
     ('dns', r'could not resolve|name or service not known|nodename nor servname|getaddrinfo|dns error|'
             r'failed to lookup address|name resolution|no such host|winerror 11001\b'),
     ('timeout', r'timed out|timeout|operation too slow'),
@@ -1782,6 +1785,34 @@ def git_parameter(value):
     return "'" + value.replace("'", "'\\''").replace('!', "'\\!'") + "'"
 
 
+# A url.<base>.insteadOf rule in this computer's Git settings rewrites every address that starts with <base>, our own
+# sources included (a GitHub mirror set up by hand, often one that no longer answers). Git takes the longest matching
+# rule, so a rule that maps the whole address onto itself keeps that one address as it is and leaves every other setting
+# (proxy, certificates, TLS backend) alone. Only a rule for the very same whole address can still win; setup checks.
+def own_address(endpoint):
+    """The Git setting that keeps `endpoint` from being rewritten."""
+    return 'url.%s.insteadOf' % endpoint, endpoint
+
+
+# The source name for one last try through this computer's own rewrite, after FreeVideo's sources failed. It starts with
+# "user" so the launcher names it a custom source; the address it leads to is never written to a report.
+GIT_SETTINGS_SOURCE = 'user-git-settings'
+GIT_REWRITE_MESSAGE = ("This computer's Git settings rewrite this exact address to another one (a url.<address>.insteadOf rule), "
+                       "so FreeVideo could not use the address it needs. To let FreeVideo use this source, remove that rule.")
+
+
+def git_url(git, work, address, env):
+    """The address Git will use for `address` (a remote name or a URL) after this computer's rewrite rules, or None.
+
+    Only an address counts (scheme://… or user@host:path); anything else Git printed is no answer."""
+    try:
+        value = subprocess_output.output_external([str(git), '-C', str(work), 'ls-remote', '--get-url', address], env=env,
+                                                  stderr=subprocess.DEVNULL, timeout=30, **hidden_console()).strip()
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+    return value if re.match(r'[A-Za-z][A-Za-z0-9+.-]*://|[^/\s@]+@[^:\s]+:', value) else None
+
+
 # Git for Windows cannot find a repository from a working folder deeper than
 # the ordinary path limit, with or without core.longpaths, and a junction does
 # not help: the folder it reports is the real one. Git therefore works in a short
@@ -2263,8 +2294,9 @@ def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None)
         except OSError:
             pass  # Held by another program; the download goes on and a later run tries again.
     attempts = []
-    for name, endpoint, route in [(name, endpoint, route) for name, endpoint in candidates
-                                 for route in route_order(network, 'git', name, configured_env)]:
+    queue = [(name, endpoint, route) for name, endpoint in candidates for route in route_order(network, 'git', name, configured_env)]
+    rewritten = False
+    for name, endpoint, route in queue:
         env = route_environment(network, 'git', name, configured_env, route)
         temporary = target.with_name(target.name + '.partial-' + str(time.time_ns()))
         event(network, category='git', source=name, route=route, file=target.name, action='attempt', commit=commit)
@@ -2312,8 +2344,21 @@ def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None)
             # children, in every Git version: never in process arguments, logs
             # or the repository's config, even if the fetch is killed.
             original = env
+            own = name != GIT_SETTINGS_SOURCE
+            if own and not rewritten and git_url(git, work, endpoint, env) not in (None, endpoint):
+                # This computer rewrites our address. Our sources go first as published; its own rewrite gets one
+                # try at the end, so a hand-made mirror that works there still helps. Only that it happened is logged.
+                rewritten = True
+                event(network, category='git', source=name, route=route, file=target.name, action='git-url-rewrite')
+                queue.append((GIT_SETTINGS_SOURCE, endpoint, route_order(network, 'git', name, configured_env)[0]))
             env = dict(env, GIT_CONFIG_PARAMETERS=' '.join(filter(None, (
-                env.get('GIT_CONFIG_PARAMETERS', '').strip(), git_parameter('remote.origin.url=' + endpoint)))))
+                env.get('GIT_CONFIG_PARAMETERS', '').strip(), git_parameter('remote.origin.url=' + endpoint),
+                *([git_parameter('%s=%s' % own_address(endpoint))] if own else ())))))
+            if own and git_url(git, work, 'origin', env) not in (None, endpoint):
+                # A rule for this very address wins over ours: say so instead of reaching another host.
+                failure = RuntimeError(GIT_REWRITE_MESSAGE)
+                failure.error_class = 'git-rewrite'
+                raise failure
             fetch = ['git', '-C', work, '-c', 'fetch.fsckObjects=true', 'fetch', '--depth=1', '--no-tags', 'origin', commit]
             try:
                 try:
@@ -2365,11 +2410,19 @@ def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None)
             event(network, category='git', source=name, route=route, file=target.name, action='verified', commit=commit)
             return target
         except RuntimeError as error:
-            if not retryable(error):
+            # The last try through this computer's own rewrite never ends the download with its own error.
+            if not retryable(error) and not getattr(error, 'error_class', None) and name != GIT_SETTINGS_SOURCE:
                 raise
             source_health(network, 'git', name, False)
             error_class, message = failure_reason(error)
-            attempt = _source_row(name, route, _host(endpoint), error_class, message, time.monotonic() - started,
+            if getattr(error, 'error_class', None):
+                error_class, message = error.error_class, str(error)
+            # Where this computer's rewrite leads stays out of the report: it can name a private mirror, an address, a path
+            # or an organisation. That row keeps only the kind of failure and its time, never Git's own words.
+            host = '' if name == GIT_SETTINGS_SOURCE else _host(endpoint)
+            if name == GIT_SETTINGS_SOURCE:
+                message = ''
+            attempt = _source_row(name, route, host, error_class, message, time.monotonic() - started,
                                   returncode=exit_code(error))
             attempts.append(attempt)
             event(network, category='git', source=name, route=route, file=target.name, action='fallback',

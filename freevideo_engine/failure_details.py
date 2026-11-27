@@ -869,6 +869,8 @@ SOURCE_REASONS = {
     'no-resume': ('Resume not supported', '不支持续传'),
     'faster-source': ('Dropped for a faster source', '速度较慢，已换用其他源'),
     'redirect': ('Redirect refused', '重定向被拒绝'),
+    # network.GIT_REWRITE_MESSAGE: a url.<address>.insteadOf rule of this computer took the address FreeVideo needs.
+    'git-rewrite': ("Address rewritten by this computer's Git settings", '地址被这台电脑的 Git 设置改写'),
     'exit': ('Exit code {code}', '退出代码 {code}'),
     'other': ('Other error', '其他错误'),
 }

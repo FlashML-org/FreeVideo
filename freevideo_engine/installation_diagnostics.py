@@ -42,6 +42,7 @@ def collect(root, since):
         # preparation in launcher/host-runs. The command output remains in the
         # local manual bundle.
         package_attempts, native_tls_sources, revocation_sources, reinstalls, foreign = [], [], [], [], []
+        git_rewrite = False
         folders = [run]
         host_root = root / 'launcher' / 'host-runs'
         if host_root.is_dir():
@@ -56,13 +57,15 @@ def collect(root, since):
                 revocation_sources += revocation_best_effort(folder / 'network.jsonl')
                 reinstalls += python_reinstalls(folder / 'network.jsonl')
                 foreign += foreign_checkouts(folder / 'network.jsonl')
+                git_rewrite = git_rewrite or git_url_rewritten(folder / 'network.jsonl')
             except OSError:
                 continue
         return plain_data(dict(state=state, samples=rows, package_attempts=package_attempts[-16:],
                                native_tls_fallback=list(dict.fromkeys(native_tls_sources))[-8:],
                                revocation_best_effort=list(dict.fromkeys(revocation_sources))[-8:],
                                python_reinstall=list(dict.fromkeys(reinstalls))[-4:],
-                               foreign_checkout=[list(row) for row in dict.fromkeys(foreign)][-4:]))
+                               foreign_checkout=[list(row) for row in dict.fromkeys(foreign)][-4:],
+                               git_url_rewrite=git_rewrite))
     except (OSError, ValueError, KeyError, TypeError):
         return {}
 
@@ -133,6 +136,21 @@ def foreign_checkouts(path):
                 and isinstance(folder, str) and re.fullmatch(r'[A-Za-z0-9_.-]{1,40}', folder)):
             rows.append((folder, kind))
     return rows
+
+
+def git_url_rewritten(path):
+    """Whether this computer's Git settings rewrote one of FreeVideo's Git addresses (network.clone); only that is read."""
+    with io_path(path).open('rb') as stream:
+        size = stream.seek(0, 2)
+        stream.seek(max(0, size - 256 * 1024))
+        lines = stream.read(256 * 1024).splitlines()
+    for line in lines:
+        try:
+            if d.mapping(json.loads(line)).get('action') == 'git-url-rewrite':
+                return True
+        except (ValueError, UnicodeError):
+            continue
+    return False
 
 
 def native_tls_fallbacks(path):
@@ -259,6 +277,8 @@ def enrich(result, value):
               for row in d.sequence(value.get('foreign_checkout'))[:4]
               if isinstance(row, (list, tuple)) and len(row) == 2 and row[1] in FOREIGN_KINDS
               and isinstance(row[0], str) and re.fullmatch(r'[A-Za-z0-9_.-]{1,40}', row[0])]
+    if value.get('git_url_rewrite') is True:
+        notes.append(dict(note="git addresses rewritten by this computer's settings"))
     if notes:
         result['notes'] = notes
     result['diagnostic_revision'] = 6
