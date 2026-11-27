@@ -309,11 +309,11 @@ function fitLentBar(host, t) {
 
 // `components` replaces the optional progress module (see loadEditorComponents); tests also pass their generation stand-in here.
 export function openEditor({api, app, from = null, panel = {}, components: given = undefined, onView = view => viewChanged(view)}) {
-    // A kept view (hidden when the user went to another view) comes back as it was: no rebuild, no reload. Opening a
-    // work, another node's panel or a new creation panel builds a fresh one instead.
+    // A kept view (hidden when the user went to another view) comes back as it was: no rebuild, no reload, whichever view
+    // it comes back from. Opening a work or another node's panel builds a fresh one instead.
     if (opened?.kept) {
-        if (from?.work || panel.onProjectLoaded || opened.panel.node !== panel.node || opened.panel.progressElement !== panel.progressElement) opened.dispose();
-        else return opened.reopen();
+        if (from?.work || panel.onProjectLoaded || opened.panel.node !== panel.node) opened.dispose();
+        else return opened.reopen(panel);
     }
     if (opened) {
         const dialog = opened.element;
@@ -467,6 +467,16 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     const failures = createEditorFailures({api, state, jobStatuses, reasonText: value => editorErrorText(value, t)});
     let submissionFailure = null;
     let blockStates = null, progressObserver = null, progressConnection = null;
+    // The bar repeats the creation panel's progress words while this view covers that panel; they change with it.
+    function watchProgress() {
+        progressObserver?.disconnect(); progressObserver = null;
+        if (!panel.progressElement || typeof MutationObserver === 'undefined') return;
+        progressObserver = new MutationObserver(() => {
+            for (const job of jobStatuses.values()) paintJob(job);
+            if (mostRecentJob && jobStatuses.has(mostRecentJob)) genbar?.update(barJob(jobStatuses.get(mostRecentJob)));
+        });
+        progressObserver.observe(panel.progressElement, {subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['aria-valuenow', 'hidden']});
+    }
     function barJob(job) {
         if (!job) return job;
         const latest = [...runProgress.values()].filter(message => message.chain.id === job.id)
@@ -1155,14 +1165,18 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             recordCache.set(entry.id, entry);
             try { const text = JSON.stringify(entry); if (text.length < RECORD_LIMIT) localStorage.setItem(RECORD_KEY, text); } catch {}
         }
-        const value = {selection: state.selection, text: genbar.getText(), playhead: state.playhead,
-            zoom: state.zoom, scrollLeft: tracks ? tracks.getScrollLeft() : editorViews.get(key)?.scrollLeft || 0};
+        // Whether a range held parts when it was left: one that did and is later wholly after a shortened edit's end goes.
+        const range = state.selection?.kind === 'range' ? state.selection : null;
+        const covered = !!range && state.record.tracks.some(track => track.clips.some(clip => clip.start < range.start + range.frames && clip.start + clip.frames > range.start));
+        const value = {selection: state.selection, covered, text: genbar.getText(), playhead: state.playhead,
+            // Out of sight the timeline is not laid out and reads 0: a kept view keeps where it was left.
+            zoom: state.zoom, scrollLeft: tracks && !handle.kept ? tracks.getScrollLeft() : editorViews.get(key)?.scrollLeft || 0};
         editorViews.set(key, value);
         try {
             // Queued parts stay queued across a reload; they are only planned drafts until sent.
             const waiting = held.map(entry => ({ids: entry.ids, text: entry.text, ...(entry.allowEmpty === true ? {allowEmpty: true} : {})}));
             value.held = waiting;
-            localStorage.setItem(viewPrefix + key, JSON.stringify({selection: value.selection, text: value.text, ...(waiting.length ? {held: waiting} : {})}));
+            localStorage.setItem(viewPrefix + key, JSON.stringify({selection: value.selection, ...(covered ? {covered} : {}), text: value.text, ...(waiting.length ? {held: waiting} : {})}));
             if (state.record.id) localStorage.setItem('fv-editor-last', key);
             localStorage.setItem('fv-editor-opening', JSON.stringify({id: key, name: state.record.name}));
         } catch {}
@@ -1184,6 +1198,22 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 : store.removeImport(id);
             Promise.resolve(sent).catch(() => {});
         }
+    }
+    // What changed in this saved edit elsewhere while the view was away (an agent's edit, say) arrives in place: a newer
+    // saved copy replaces it as an opening's does, the view kept as it was left. Changes not yet saved here are kept.
+    async function catchUp() {
+        const id = state.record.id, revision = state.record.revision, epoch = projectEpoch;
+        if (!id || queue.dirty) return;
+        const record = await store.load(id).catch(() => null);
+        if (!record || disposed || handle.kept || switching || closing || epoch !== projectEpoch || queue.dirty || state.record.id !== id || !(record.revision > revision)) return;
+        // As a switch between edits does: nothing can be changed here until the newer copy is in place.
+        switching = true; element.inert = true; updateTop();
+        try { await replaceProject(record, id); } catch (value) { error(value, null, undefined, 'open-session'); return; }
+        finally { switching = false; element.inert = false; updateTop(); }
+        if (disposed) return;
+        savedContent = content(state.record); player.refresh(); updateTop(); updateTransport();
+        // Never in silence: the undo steps taken before are gone with the copy they belonged to.
+        notify(t('This edit was saved elsewhere with newer changes, so the newer version is shown. Earlier undo steps are cleared.', '这个剪辑在别处保存过更新的版本，已换上；之前的撤销记录已清空。'));
     }
     async function replaceProject(record, key = null) {
         releaseTakes(); rememberView(); viewReady = false;
@@ -2537,8 +2567,15 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         // progress and the job watchers go on, so coming back needs nothing redrawn. The import list waits (it is
         // read again on coming back), unless an import it waits for is still on its way.
         kept: false, panel,
-        reopen() {
+        reopen(next = panel) {
             handle.kept = false;
+            // Back from another view: the progress words are read from the creation panel it came back by (none from a
+            // view without one), as a view opened from there would read them.
+            if (next !== panel && next.progressElement !== panel.progressElement) {
+                for (const key of ['progressElement', 'progressSnapshot', 'progressWords']) { if (next[key]) panel[key] = next[key]; else delete panel[key]; }
+                watchProgress();
+                if (mostRecentJob && jobStatuses.has(mostRecentJob)) genbar?.update(barJob(jobStatuses.get(mostRecentJob)));
+            }
             // A blank edit of this tab that nothing was done in follows the creation panel's quality as it is now: a level
             // chosen there while this view was away applies here too, as one chosen here goes there. An edit with parts,
             // a saved one, or one with a part queued or generating keeps its own settings. The blank edit stays unsaved.
@@ -2553,13 +2590,21 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             // What the last switch left on the dialog (its fade, the leaving mark) goes, so it shows as it was.
             element.getAnimations?.().forEach(animation => animation.cancel());
             delete element.dataset.closing; delete element.dataset.fvLeaving;
-            // Keys go to the last open dialog in page order: move it after one opened since (moving resets scrolling, so only then).
+            const scrolled = editorViews.get(state.record.id || viewKey)?.scrollLeft;
+            // Taking the bar back may first make the creation panel (parked, out of sight), which says another view came
+            // to the front while this one was still closed: the view is reachable again only after that.
+            attachBar?.(); library?.resume?.();
+            // Keys go to the last open dialog in page order: move it after one opened since, the parked panel still closing
+            // included, so it is in front at once and nothing moves it again (moving resets scrolling, so only then).
             const later = [...document.querySelectorAll('dialog[open]')].some(dialog => dialog !== element && element.compareDocumentPosition(dialog) & Node.DOCUMENT_POSITION_FOLLOWING);
             if (!element.isConnected || later) document.body.append(element);
             element.inert = false;
-            attachBar?.(); library?.resume?.();
             if (!element.open) element.showModal();
+            // The timeline shows where it was left (a moved or closed view can come back at its start).
+            if (tracks && Number.isFinite(scrolled) && tracks.getScrollLeft() !== scrolled) tracks.setScrollLeft(scrolled);
             viewChanged('editor'); globalThis.FreeVideoStageLight?.refresh();
+            // An edit still being read goes on loading; a loaded one is read again for what changed meanwhile.
+            if (loaded) handle.ready = catchUp();
             // The tab takes focus after the first frame: focusing now would lay the whole view out a second time before it shows.
             const given = document.activeElement;
             requestAnimationFrame(() => setTimeout(() => {
@@ -2664,13 +2709,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             api.addEventListener('execution_error', executionError);
             listeners.push(() => api.removeEventListener('execution_error', executionError));
         }
-        if (panel.progressElement && typeof MutationObserver !== 'undefined') {
-            progressObserver = new MutationObserver(() => {
-                for (const job of jobStatuses.values()) paintJob(job);
-                if (mostRecentJob && jobStatuses.has(mostRecentJob)) genbar?.update(barJob(jobStatuses.get(mostRecentJob)));
-            });
-            progressObserver.observe(panel.progressElement, {subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['aria-valuenow', 'hidden']});
-        }
+        watchProgress();
         const bar = tracks.element.querySelector('.fv-ed-track-zoom');
         if (bar) { zoomHost.append(bar); updateZoom(); }
         for (const [id, value] of progress) tracks.setProgress(id, value);

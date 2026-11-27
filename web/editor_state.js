@@ -112,6 +112,9 @@ export function createEditorState(record, {limit = 200} = {}) {
                         else planRange(current, next); // Validate an existing-content range without applying it.
                     }
                 }
+                // A range that held parts when it was left and now lies wholly after the edit's end (shortened elsewhere)
+                // is no longer what was chosen. One drawn after the end, or one still over part of the edit, stays.
+                if (next?.kind === 'range' && value?.covered === true && next.start >= duration(current)) next = null;
             } catch { next = null; }
             session.select(next);
             if (validFrame(value?.playhead)) session.seek(value.playhead);
