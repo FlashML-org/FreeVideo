@@ -78,7 +78,7 @@ function useOf(model, state) {
             : t('Not installed: Generate installs it first, {size}', '未安装：点生成会先安装，{size}', { size }),
         downloading: state.paused ? pausedText(state) : state.verifying ? (state.unknown ? t('Verifying the files; usable when done', '正在校验文件，完成后可以使用') : t('Verifying the files {percent}%; usable when done', '正在校验文件 {percent}%，完成后即可使用', { percent: Math.floor(state.fraction * 100) })) : t('Downloading {percent}%; usable when done', '正在下载 {percent}%，完成后即可使用', { percent: Math.floor((state.fraction || 0) * 100) }),
         // The engine's sentence ends with its own full stop; the other states have none, and the tips add one after it.
-        failed: state.reason ? String(state.reason).replace(/[.。]\s*$/, '') : t('The download stopped; press Retry', '下载已中断，请点击“重试”'),
+        failed: state.reason ? String(state.reason).replace(/[.。]\s*$/, '') : t('The download stopped; choose "Retry"', '下载已中断，请点击“重试”'),
         unavailable: model.id === 'moss-image-sft' ? t('MOSS-Image needs an NVIDIA graphics card, which this computer does not have. Choose another model', 'MOSS-Image 需要 NVIDIA 显卡，这台电脑没有。请选别的模型')
             : t('This model needs an NVIDIA graphics card, which this computer does not have. Choose another model', '这个模型需要 NVIDIA 显卡，这台电脑没有。请选别的模型'),
         checking: t('Asking the engine', '正在询问引擎'),
