@@ -769,15 +769,15 @@ export const TUTORIAL_CHAPTERS = [
         media: {
             type: 'image',
             src: {zh: 'upscale-1.webp', en: 'upscale-2.webp'},
-            alt: {zh: '作品库中一条视频的右键菜单：两项“放大到 宽 × 高”已用红框标出。', en: 'The right-click menu of a video in Creations, with the two "Upscale to W × H" rows outlined in red.'},
+            alt: {zh: '作品库中一条视频的右键菜单：三项“放大到 宽 × 高”已用红框标出，右侧是预计用时。', en: 'The right-click menu of a video in Creations, with the three "Upscale to W × H" rows outlined in red and the expected time on the right.'},
         },
         steps: {
-            zh: ['在作品库中右键一条生成好的视频；大图查看和创作页结果下方的“⋯”菜单中也有同样的选项。', '选“放大到 宽 × 高”：尺寸较小的一项放大 1.5 倍，按原来的提示词和种子重新生成细节；尺寸较大的一项放大到 4K 级别，逐帧放大。', '放大任务加入队列，完成后作为新作品出现在作品库中。'],
-            en: ['In Creations, right-click a finished video. The "⋯" menu in the large view and below a result in the creation panel has the same choices.', 'Choose "Upscale to W × H". The smaller size is 1.5 times larger and redraws detail from the original prompt and seed; the larger size is about 4K, upscaled frame by frame.', 'The upscale is queued and appears in Creations as a new creation when done.'],
+            zh: ['在作品库中右键一条生成好的视频；大图查看和创作页结果下方的“⋯”菜单中也有同样的选项。', '选一项“放大到 宽 × 高”，右侧是这台电脑上的预计用时。', '第一项放大 1.5 倍，很快，和原片最接近；带“（精细）”的一项也放大 1.5 倍，按原来的提示词和种子补出更多细节，较慢，小细节可能和原片不同；最后一项放大到 4K 级别，做法和第一项相同。', '放大任务加入队列，完成后作为新作品出现在作品库中。'],
+            en: ['In Creations, right-click a finished video. The "⋯" menu in the large view and below a result in the creation panel has the same choices.', 'Choose an "Upscale to W × H" row. The time on the right is the estimate for this computer.', 'The first row is 1.5 times larger, quick, and closest to the original. The row marked "(detailed)" is also 1.5 times larger and redraws more detail from the original prompt and seed; it takes longer, and small details may differ from the original. The last row is about 4K, made the same way as the first.', 'The upscale is queued and appears in Creations as a new creation when it is done.'],
         },
         limits: {
-            zh: ['生成完成的 24 fps 视频可以放大；预览请先继续二采，再放大。', '本机能生成该尺寸和时长时，才出现放大 1.5 倍的一项；合并或导入的视频可放大到 4K。', '放大后保留视频原有的声音。'],
-            en: ['Finished 24 fps videos can be upscaled. For a preview, run the second pass first.', 'The 1.5 times size appears when this computer can generate that size and length. A merged or imported video can be upscaled to 4K.', 'The upscaled video keeps the original sound.'],
+            zh: ['生成完成的 24 fps 视频可以放大；预览请先继续二采，再放大。', '“（精细）”一项只在本机能生成该尺寸和时长、并且作品保存了提示词和种子时出现；合并或导入的视频只有第一项和 4K 两项。', '放大后保留视频原有的声音。'],
+            en: ['Finished 24 fps videos can be upscaled. For a preview, run the second pass first.', 'The "(detailed)" row appears only when this computer can generate that size and length and the video has its prompt and seed saved. A merged or imported video has only the first row and 4K.', 'The upscaled video keeps the original sound.'],
         },
     },
     {

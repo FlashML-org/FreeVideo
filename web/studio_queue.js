@@ -99,11 +99,12 @@ export async function upscaleResult(api, nodeId, result, currentPrompt) {
 
 // Upscale a finished video by one step into a new creation. The bridge reads the source's own saved
 // description and length; the node's current settings only carry the request through the queue.
-// {to: '4k'} asks for the 4K size, made frame by frame by a small model instead of one 1.5× step.
+// {to: '4k'} asks for the 4K size and {to: 'fast'} for the quick 1.5× size, both made frame by frame by a small model
+// instead of the detailed 1.5× step (upscale_offer.upscaleChoices).
 export async function upscaleWork(api, nodeId, result, currentPrompt, {to = ''} = {}) {
     nodeId = String(nodeId);
     if (!result?.video || result.preview) throw new Error('not_finished');
-    if (to !== '' && to !== '4k') throw new Error('unknown_size');
+    if (!['', '4k', 'fast'].includes(to)) throw new Error('unknown_size');
     const snapshot = clone(await currentPrompt());
     if (!snapshot.output?.[nodeId]) throw new Error('missing_node');
     if ('fast_mode' in snapshot.output[nodeId].inputs) snapshot.output[nodeId].inputs.fast_mode = 'none';

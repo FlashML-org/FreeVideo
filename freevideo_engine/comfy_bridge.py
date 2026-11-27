@@ -1337,14 +1337,15 @@ def work_upscale_media(run, video):
 
 
 def upscale_frames(upscale_from, output_directory, *, source=None, environ=None, progress=None, interrupted=None,
-                   release_models=None, comfy_metadata=None):
-    """A finished 24 fps video made a new work at the 4K size by frame_upscale: its own description, seed and length,
-    every frame enlarged by the small model, its sound copied as is. Returns the new video's path."""
+                   release_models=None, comfy_metadata=None, kind='4k'):
+    """A finished 24 fps video made a new work by frame_upscale, at the 4K size or the quick 1.5x size (kind 'fast'): its
+    own description, seed and length, every frame enlarged by the small model, its sound copied as is. Returns the new
+    video's path."""
     from .comfy_continuation import optional_text
     from . import frame_upscale
     upscale_from = optional_text(upscale_from)
-    video, saved = frame_upscale.work_request(output_directory, upscale_from)
-    width, height = frame_upscale.size(saved['geometry']['width'], saved['geometry']['height'])
+    video, saved = frame_upscale.work_request(output_directory, upscale_from, kind)
+    width, height = frame_upscale.target_size(kind, saved['geometry']['width'], saved['geometry']['height'])
     source = Path(source or source_root()).resolve()
     root, machine = installation(source, environ)
     backend = machine.get('device_backend', 'cuda')
@@ -1363,7 +1364,7 @@ def upscale_frames(upscale_from, output_directory, *, source=None, environ=None,
                                     encoding='utf-8')
     canvas = dict(saved['geometry'], width=width, height=height)
     state = {'status': 'starting', 'geometry': canvas, 'seed': saved.get('seed'), 'installation': str(root),
-             'output': str(output), 'source': str(source), 'upscaled_work': str(video), 'upscale': '4k'}
+             'output': str(output), 'source': str(source), 'upscaled_work': str(video), 'upscale': kind}
     try:
         from server import PromptServer
         prompt_id = getattr(PromptServer.instance, 'last_prompt_id', None)
@@ -1407,13 +1408,17 @@ def upscale_frames(upscale_from, output_directory, *, source=None, environ=None,
     try:
         send({'label': label, 'done': 0, 'total': frames, 'unit': 'frames'})
         result = frame_upscale.upscale(video, output, root=root, device=backend, python=machine['python'],
-                                       environ=environment, progress=send, interrupted=interrupted, release_models=release)
+                                       environ=environment, progress=send, interrupted=interrupted, release_models=release,
+                                       kind=kind)
         if comfy_metadata:
             from .comfy_metadata import embed_comfy_metadata
             state['workflow_in_video'] = embed_comfy_metadata(output, **comfy_metadata)
         seconds = time.monotonic() - started
         canvas = dict(canvas, frames=result['frames'], seconds=result['frames'] / 24)
         state.update(status='complete', geometry=canvas, request_seconds=seconds, frame_upscale=result)
+        from .upscale_estimate import remember
+        remember(root, kind, _estimate_hardware(machine), (saved['geometry']['width'], saved['geometry']['height']),
+                 (width, height), result['frames'], seconds)
         save(output.with_suffix('.request.json'), dict(geometry=canvas, request_seconds=seconds, output_frames=result['frames'],
              upscaled_work=str(video), frame_upscale=result,
              video=dict(torch_peak_reserved_bytes=result.get('torch_peak_reserved_bytes'))))
@@ -1435,6 +1440,13 @@ def upscale_frames(upscale_from, output_directory, *, source=None, environ=None,
         write_debug(output, bridge=state)
 
 
+def _estimate_hardware(machine):
+    """The card as upscale_estimate looks it up (stage_estimate's hardware fields, its name as capabilities reads it)."""
+    from .upscale_estimate import card_name
+    observed = machine.get('hardware') if isinstance(machine.get('hardware'), dict) else {}
+    return dict(gpu_name=card_name(machine), os=observed.get('system') or machine.get('system'))
+
+
 def engine_environment(root, source, environ=None):
     if sys.platform == 'darwin':
         from .macos_bootstrap import environment
@@ -1454,12 +1466,13 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
     from .comfy_environment import control_process
     if control_process(environ):
         raise RuntimeError('Generation requires a dispatched executor')
-    if upscale_to not in (None, '', '4k'):
-        raise ValueError('Upscale size must be 4k')
+    if upscale_to not in (None, '', '4k', 'fast'):
+        raise ValueError('Upscale size must be 4k or fast')
     if upscale_to:
-        # The 4K size: a small frame-wise model, not a generation (frame_upscale).
+        # The 4K size and the quick 1.5x size: a small frame-wise model, not a generation (frame_upscale).
         return upscale_frames(upscale_from, output_directory, source=source, environ=environ, progress=progress,
-                              interrupted=interrupted, release_models=release_models, comfy_metadata=comfy_metadata)
+                              interrupted=interrupted, release_models=release_models, comfy_metadata=comfy_metadata,
+                              kind=upscale_to)
     from .tiers import STEP_CACHES
     from .two_pass import SCALES
     if upscale_factor not in SCALES:
@@ -1996,6 +2009,11 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
                 pass  # The video is complete; a later release only frees space.
         state.update(status='complete', request_seconds=report.get('request_seconds'),
                      engine_report=str(output.with_suffix('.engine.json')))
+        if work is not None:
+            # The detailed 1.5x step's own time, for the next estimate of the upscale menu (upscale_estimate).
+            from .upscale_estimate import remember
+            remember(root, 'detailed', _estimate_hardware(machine), (work[1]['geometry']['width'], work[1]['geometry']['height']),
+                     (width, height), canvas.get('frames'), report.get('request_seconds'))
         # Do not index a result against inputs/models that changed while it ran.
         # The resident session address is transport state, not compute config.
         if cache_key is not None:

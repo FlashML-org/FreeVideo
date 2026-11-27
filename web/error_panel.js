@@ -586,8 +586,9 @@ export function failureAdvice(value, t, known = knownError(value)) {
         return row('encoder-files', ['The text encoder is not fully installed', '文本编码器没有装全'],
             ['Some of the text encoder files FreeVideo needs are missing.', 'FreeVideo 需要的部分文本编码器文件缺失。'],
             repairAction());
-    // Upscaling to 4K (frame_upscale.py): its own small model, disk need and GPU memory.
-    if (/The 4K upscale model (?:could not be downloaded|failed its size\/SHA-256 check)/.test(text))
+    // Upscaling by the small frame-wise model (frame_upscale.py: 4K or the quick size): its download, disk need and GPU memory.
+    // Older versions said "4K" in these sentences.
+    if (/The (?:4K )?upscale model (?:could not be downloaded|failed its size\/SHA-256 check)/.test(text))
         return row('upscale-download', ['The upscale model could not be downloaded', '放大模型未能下载'],
             ['Upscaling uses a small model (about 5 MB), which could not be downloaded or verified this time.', '放大要用一个约 5 MB 的小模型，这次未能下载，或下载后校验未通过。'],
             ['Check the network connection or choose another download source in Settings, then try again. If it happens again, choose "Report a problem" to send us the report.',
@@ -617,14 +618,14 @@ export function failureAdvice(value, t, known = knownError(value)) {
             size_4k: ['', '']}[refused];
         return row('upscale-refused', ['This video cannot be upscaled', '这个视频不能放大'], why, next);
     }
-    if (/Not enough disk space to save the 4K video/.test(text)) {
+    if (/Not enough disk space to save the (?:4K|upscaled) video/.test(text)) {
         const megabytes = /about (\d+) MB is needed/.exec(text)?.[1];
         return row('upscale-disk', ['Not enough disk space for the upscaled video', '磁盘空间不足，放大后的视频未能保存'],
             megabytes ? ['The upscaled video needs about {megabytes} MB on the drive of the output folder.', '放大后的视频需要输出文件夹所在磁盘约 {megabytes} MB 空间。', { megabytes }]
                 : ['The upscaled video needs more space on the drive of the output folder.', '放大后的视频需要输出文件夹所在磁盘更多空间。'],
             ['Free some space on that drive, then try again.', '请在该磁盘上腾出空间后重试。']);
     }
-    if (/Not enough GPU memory to upscale to 4K/.test(text))
+    if (/Not enough GPU memory to upscale(?: to 4K)?\./.test(text))
         return row('upscale-memory', ['Not enough GPU memory to upscale', '显存不足，放大未能完成'],
             ['Upscaling needs about 1.5 GB of free GPU memory, and other programs were using it.', '放大需要约 1.5 GB 空闲显存，当时被其他程序占用。'],
             ['Close other programs that use the GPU, then try again.', '请关闭其他占用显卡的程序，然后重试。']);

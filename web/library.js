@@ -19,7 +19,7 @@ import { createMetaStore, promptOfRow } from './image_view_history.js';
 import { attach as attachPlayerBar } from './glass/player_bar.js';
 import { hasPictureThumbnail, mediaQueue, pictureThumbnailURL, watchCards } from './work_media.js';
 import { zoomable } from './picture_zoom.js';
-import { createUpscaleOffer, upscaleChoices, admittedFrames as admittedUpscaleFrames, UPSCALE_USE, UPSCALE_QUEUED, UPSCALE_FAILED } from './upscale_offer.js';
+import { createUpscaleOffer, upscaleChoices, admittedFrames as admittedUpscaleFrames, upscaleTimes as readUpscaleTimes, UPSCALE_QUEUED, UPSCALE_FAILED } from './upscale_offer.js';
 import { LANGUAGE } from './i18n.js';
 import { editsText, keptSummary } from './library_kept.js';
 
@@ -381,13 +381,17 @@ export function setDefaultUpscaleWork(run) { defaultUpscaleWork = typeof run ===
 export function admittedFrames(width, height) {
     return admittedUpscaleFrames(path => api.fetchApi(path), width, height);
 }
+// About how long each upscale row takes here for a source of this size and length (upscale_offer.upscaleTimes).
+export function upscaleTimes(width, height, frames) {
+    return readUpscaleTimes(path => api.fetchApi(path), width, height, frames);
+}
 // ``reuse`` is the creation panel's {now, apply}: given, Reuse settings fills that panel from a creation.
 export function openLibrary(t, options = {}) {
     if (parked?.dialog.isConnected !== false && parked && !parked.dialog.open) return parked.reopen(options);
     if (parked?.dialog.open) { parked.reopen(options); return; }
     let {upscale = null, selectedWork = null, extend = null, reuse = null, back: backLabel = null} = options;
     const secondPassRunner = () => upscale || defaultUpscale;
-    const upscaleOffer = createUpscaleOffer(admittedFrames);
+    const upscaleOffer = createUpscaleOffer(admittedFrames, upscaleTimes);
     const dialog = el('dialog', null, 'fv-studio fv-library'); opened = dialog;
     let host = libraryHost();
     const hostClosed = () => { if (dialog.open) dialog.close(); };
@@ -1459,10 +1463,10 @@ export function openLibrary(t, options = {}) {
                     use: ['Finish the full-resolution video', '从预览继续生成全分辨率视频'],
                     disabled: secondPassRunner() ? '' : ['Open the create view first, then run the second pass', '请先打开创作页，再继续二采'],
                     run: () => secondPass(one).then(() => say(t('Queued. It appears in "Creations" when done.', '已加入队列，完成后在“作品”里。')), error => say(t('Could not start the second pass: ', '无法继续二采：') + error.message, true))});
-                // One 1.5× step where this computer can generate it (gap-04a), and the 4K size by a small model (gap-04b):
-                // each shown on its own, the same rows as the result's "⋯" (upscaleChoices).
+                // The quick 1.5× size and the 4K size by a small model, and the detailed 1.5× step where this computer can
+                // generate it: each shown on its own with about how long it takes, the same rows as the result's "⋯" (upscaleChoices).
                 if (defaultUpscaleWork) for (const choice of upscaleChoices(one, upscaleOffer)) {
-                    items.push({id: choice.id, icon: 'upscale', label: choice.label, use: UPSCALE_USE,
+                    items.push({id: choice.id, icon: 'upscale', label: choice.label, use: choice.use, note: choice.note,
                         run: () => defaultUpscaleWork(one, choice.options).then(() => say(t(...UPSCALE_QUEUED)),
                             error => say(t(...UPSCALE_FAILED) + error.message, true))});
                 }

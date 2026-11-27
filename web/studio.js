@@ -22,7 +22,7 @@ import { skinSelect } from './fv_select.js';
 import { loraMenu } from './lora_menu.js';
 import { createPreviewScene } from './preview_scene.js?v=20261115-still';
 import { animateDetails, closeDialog } from './motion.js';
-import { openLibrary, setDefaultUpscale, setDefaultUpscaleWork, videoThumbnailURL, admittedFrames } from './library.js';
+import { openLibrary, setDefaultUpscale, setDefaultUpscaleWork, videoThumbnailURL, admittedFrames, upscaleTimes } from './library.js';
 import { createUpscaleOffer, upscaleChoices, UPSCALE_USE, UPSCALE_QUEUED, UPSCALE_FAILED } from './upscale_offer.js';
 import { createStudioQueue, randomSeed, turnNodeOn } from './studio_queue.js';
 import { isNetworkTypeError, connectionLostText, wrappedFetchOnly } from './browser_extension.js';
@@ -2131,7 +2131,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // The result's "⋯" offers the library's upscale rows (upscaleChoices, the same words and conditions): the 4K size at
     // once, the 1.5× step once this computer's answer for that size is known. Asked again for each new video, since free
     // memory may have changed; a row whose condition is not met is not shown.
-    const upscaleOffer = createUpscaleOffer(admittedFrames);
+    const upscaleOffer = createUpscaleOffer(admittedFrames, upscaleTimes);
     let upscaleAsked = null;
     function upscaleItems(r) {
         if (typeof node.freevideoUpscaleWork !== 'function') return [];
@@ -2139,7 +2139,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
             const item = el('button', null, 'fv-action fv-action-secondary fv-action-upscale fv-more-item');
             item.type = 'button'; item.dataset.upscale = choice.id;
             item.append(icon('upscale'), el('span', t(...choice.label)));
-            item.dataset.fvTipName = t(...choice.label); item.dataset.fvTipUse = t(...UPSCALE_USE);
+            // About how long, where a menu shows a key; what the row is like in its tip.
+            if (choice.note) item.append(el('span', t(...choice.note), 'fv-more-note'));
+            item.dataset.fvTipName = t(...choice.label); item.dataset.fvTipUse = t(...choice.use);
             item.onclick = async () => {
                 const menu = item.closest('details'); if (menu) menu.open = false;
                 try { await node.freevideoUpscaleWork(r, choice.options); notify(t(...UPSCALE_QUEUED)); await syncQueue(); }
@@ -2157,7 +2159,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
             const panel = links.querySelector('.fv-actions .fv-more-menu');
             if (disposed || result !== r || !panel) return;
             const shown = [...panel.querySelectorAll('.fv-action-upscale')], fresh = upscaleItems(r);
-            if (shown.map(e => e.dataset.upscale).join() === fresh.map(e => e.dataset.upscale).join()) return;
+            // Redrawn when a row comes or goes, or its time arrives.
+            const said = rows => rows.map(e => e.dataset.upscale + ':' + e.textContent).join();
+            if (said(shown) === said(fresh)) return;
             shown.forEach(e => e.remove());
             const copy = panel.querySelector('.fv-action-copy');
             if (copy) copy.after(...fresh); else panel.prepend(...fresh);

@@ -246,6 +246,8 @@ function itemRow(item, index, menuId) {
     row.append(mark, text);
     if (item.submenu) { row.setAttribute('aria-haspopup', 'menu'); row.setAttribute('aria-expanded', 'false'); const more = document.createElement('span'); more.className = 'fv-cm-more'; more.innerHTML = glyph('chevron'); row.append(more); }
     else if (item.key) { const key = document.createElement('span'); key.className = 'fv-cm-key'; key.textContent = formatKeys(item.key); row.append(key); }
+    // A short fact in the key's place and colour (about how long it takes), part of the row's name for a screen reader.
+    else if (item.note) { const note = document.createElement('span'); note.className = 'fv-cm-key fv-cm-note'; note.textContent = words(item.note); row.append(note); }
     return row;
 }
 
@@ -265,6 +267,8 @@ export function openContextMenu(at, rawItems, {label = '', returnFocus = null, o
     root.className = 'fv-cm fv-glass fv-g3'; root.id = menuId; root.setAttribute('role', 'menu');
     root.dataset.fvTipScope = ''; root.dataset.fvOwnTab = ''; root.tabIndex = -1; // Tab closes the menu (below); a11y.js stands aside
     if (label) root.setAttribute('aria-label', words(label));
+    // Rows with a note (about how long) are wider: the name and the note both stay whole.
+    if (items.some(item => !isSeparator(item) && item.note)) root.dataset.notes = 'true';
     if (root.showPopover) root.popover = 'manual';
     const rows = items.map((item, index) => itemRow(item, index, menuId));
     root.append(...rows);

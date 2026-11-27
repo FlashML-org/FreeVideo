@@ -220,6 +220,8 @@ function baseActivityLabel(message, t, plan = {}, secondPass = false, references
     if (phase === 'recovery') return message.retry?.reuse_sampling === true ? named('decode')
         : message.retry?.reuse_first_pass === true ? steps('pass2', 'pass2') : named('prepare');
     if (phase === 'sample_finalize') return named('decode');
+    // A finished video made larger frame by frame (frame_upscale.py: the quick size or 4K), not a generation's preparation.
+    if (phase === 'frame_upscale') return {key: 'upscale', text: t(...SUBACTIVITY.upscale)};
     if (message.stage === 'latent_upscale' || phase === 'latent_upscale')
         return {key: 'upscale', text: Number.isInteger(second?.width) && Number.isInteger(second?.height)
             ? t('Second pass · upscaling to {width} × {height}',

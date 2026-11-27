@@ -195,7 +195,7 @@ class FreeVideoGenerate(io.ComfyNode):
         refine_from = optional_text(refine_from)
         if optional_text(upscale_from):
             # The bridge reads the finished video's own request; the node's widgets do not apply.
-            return True if optional_text(upscale_to) in (None, '', '4k') else 'Upscale size must be empty or 4k'
+            return True if optional_text(upscale_to) in (None, '', '4k', 'fast') else 'Upscale size must be empty, 4k or fast'
         try:
             options = request_options(continue_from, node_frames(frames))
             if fast_mode_option(fast_mode):
@@ -252,8 +252,8 @@ class FreeVideoGenerate(io.ComfyNode):
         refine_from, continue_from = optional_text(refine_from), optional_text(continue_from)
         upscale_from = optional_text(upscale_from)
         upscale_to = optional_text(upscale_to) if upscale_from else None
-        # The 4K size is made by a small frame-wise model beside whatever else is loaded (frame_upscale).
-        frames_upscale = upscale_to == '4k'
+        # The 4K size and the quick 1.5x size are made by a small frame-wise model beside whatever else is loaded (frame_upscale).
+        frames_upscale = upscale_to in ('4k', 'fast')
         if upscale_from:
             # Upscaling a finished video is its own request: three refinement steps, no preview or continuation.
             two_pass, preview, base_steps, refine_steps, step_cache = True, False, 8, 3, 'none'
@@ -450,7 +450,7 @@ class FreeVideoGenerate(io.ComfyNode):
                 **({'hide_tail': True} if hide_tail is True else {}),
                 **({'allow_empty_prompt': True} if allow_empty_prompt is True else {}),
                 **({'upscale_from': upscale_from} if upscale_from else {}),
-                **({'upscale_to': '4k'} if frames_upscale else {}),
+                **({'upscale_to': upscale_to} if frames_upscale else {}),
                 **step_cache_option(step_cache),
                 **upscale_option(upscale_factor),
                 **fast_mode_option(fast_mode),

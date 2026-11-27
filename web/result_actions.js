@@ -67,6 +67,8 @@ export function liftMenu(details, panel, {align = 'end', gap = 8} = {}) {
     panel.popover = 'manual'; panel.classList.add('fv-lifted');
     const summary = details.querySelector(':scope>summary');
     const place = () => {
+        // Measured from the left edge: a fixed panel left where it was would shrink to the room on that side.
+        panel.style.left = '0px';
         const r = summary.getBoundingClientRect(), w = panel.offsetWidth, h = panel.offsetHeight;
         const left = Math.max(8, Math.min(align === 'end' ? r.right - w : r.left, window.innerWidth - w - 8));
         const top = r.top - h - gap >= 8 ? r.top - h - gap : Math.min(r.bottom + gap, window.innerHeight - h - 8);

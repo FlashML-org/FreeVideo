@@ -85,6 +85,28 @@ def size(width, height):
     return target if max(target) > longest else None
 
 
+def fast_size(width, height):
+    """The quick 1.5x size (the menu's first row): 1.5 times each side on the 8-pixel grid, the same size as the
+    detailed 1.5x step wherever that one is offered (sides that are multiples of 64). None when not larger, or past
+    the 4K size's limit of MAX_MACROBLOCKS."""
+    if any(type(n) is not int or n <= 0 for n in (width, height)):
+        return None
+    target = _grid(width * 3 / 2), _grid(height * 3 / 2)
+    if math.ceil(target[0] / 16) * math.ceil(target[1] / 16) > MAX_MACROBLOCKS:
+        return None  # past the 4K size's picture limit: the 4K row is the largest
+    return target if min(target) >= 8 and max(target) > max(width, height) else None
+
+
+KINDS = {'4k': size, 'fast': fast_size}
+
+
+def target_size(kind, width, height):
+    """The size this kind of frame-wise upscale makes: '4k' or 'fast' (1.5x)."""
+    if kind not in KINDS:
+        raise ValueError('Upscale size must be 4k or fast')
+    return KINDS[kind](width, height)
+
+
 def _saved_request(video):
     """The video's saved request, or, for a video made without one (the editor's merged export), the completion
     summary the library lists it by. None when neither describes a finished video."""
@@ -101,7 +123,7 @@ def _saved_request(video):
     return dict(status='complete', output=str(video), geometry=report.get('geometry'), preview=bool(report.get('preview')))
 
 
-def work_request(output_directory, relative):
+def work_request(output_directory, relative, kind='4k'):
     """A finished, non-preview 24 fps video in this output folder that the 4K size makes larger: (video, saved
     state). A video the library lists without a saved request, such as a merged one, qualifies by its summary."""
     if not isinstance(relative, str) or not relative.strip():
@@ -124,12 +146,12 @@ def work_request(output_directory, relative):
         raise NotUpscalable('preview')
     if geometry.get('fps') != 24:
         raise NotUpscalable('fps')
-    if size(geometry.get('width'), geometry.get('height')) is None:
+    if target_size(kind, geometry.get('width'), geometry.get('height')) is None:
         raise NotUpscalable('size_4k')
     return video, state
 
 
-def inspect(path):
+def inspect(path, kind='4k'):
     """One 24 fps picture stream (and any sound, copied as is): its size and frame count."""
     import av
     try:
@@ -147,7 +169,7 @@ def inspect(path):
         raise NotUpscalable('missing')
     if rate is None or Fraction(rate) != 24:
         raise NotUpscalable('fps')
-    if size(width, height) is None:
+    if target_size(kind, width, height) is None:
         raise NotUpscalable('size_4k')
     return dict(width=width, height=height, frames=frames, sound=sound)
 
@@ -231,11 +253,11 @@ def ensure_weights(root, emit, check):
             if _cancel_or_disk(error):
                 raise
             check()
-            raise UpscaleError('upscale_download', 'The 4K upscale model could not be downloaded. Check the connection or '
+            raise UpscaleError('upscale_download', 'The upscale model could not be downloaded. Check the connection or '
                                'choose another download source in Settings, then try again. Or put the official '
                                'realesr-general-x4v3.pth (%d bytes, SHA-256 %s) in %s' % (row['bytes'], row['sha256'], folder)) from error
         if path.stat().st_size != row['bytes'] or _digest(path, check) != row['sha256']:
-            raise UpscaleError('upscale_download', 'The 4K upscale model failed its size/SHA-256 check: ' + str(path))
+            raise UpscaleError('upscale_download', 'The upscale model failed its size/SHA-256 check: ' + str(path))
         return path
 
 
@@ -292,12 +314,12 @@ def enlarge(model, picture, scale=SCALE, tile=TILE, pad=PAD):
     return out
 
 
-def write(source, target, video, frame, emit, check):
+def write(source, target, video, frame, emit, check, kind='4k'):
     """Read the 24 fps source frame by frame, write frame(rgb) at the 4K size with libx264, copy its sound packets
     unchanged and interleaved. Memory: one source and one output frame."""
     import av
     import numpy as np
-    width, height = size(video['width'], video['height'])
+    width, height = target_size(kind, video['width'], video['height'])
     with av.open(str(source)) as reader, av.open(str(source)) as sound_reader:
         stream = reader.streams.video[0]
         sound = sound_reader.streams.audio[0] if sound_reader.streams.audio else None
@@ -366,7 +388,7 @@ def model_frame(weights, device):
                                             align_corners=False)
             return fitted.clamp_(0, 1).mul_(255).round_().to(torch.uint8)[0].permute(1, 2, 0).contiguous().cpu().numpy()
         except torch.OutOfMemoryError as error:
-            raise UpscaleError('upscale_memory', 'Not enough GPU memory to upscale to 4K. Close other programs that use '
+            raise UpscaleError('upscale_memory', 'Not enough GPU memory to upscale. Close other programs that use '
                                'the GPU, then try again') from error
     return frame
 
@@ -375,9 +397,12 @@ def _convert(request, emit, check):
     from .disk_space import free_bytes
     source, root, work, target = Path(request['source']), Path(request['root']), Path(request['work']), Path(request['target'])
     device = request.get('device', 'cuda')
-    video = inspect(source)
+    kind = request.get('kind', '4k')
+    video = inspect(source, kind)
+    width, height = target_size(kind, video['width'], video['height'])
+    label = 'Upscaling to 4K' if kind == '4k' else 'Upscaling to %d × %d' % (width, height)
     if free_bytes(target.parent) < needed_bytes(video['frames']):
-        raise UpscaleError('upscale_disk', 'Not enough disk space to save the 4K video (about %d MB is needed). Free some '
+        raise UpscaleError('upscale_disk', 'Not enough disk space to save the upscaled video (about %d MB is needed). Free some '
                            'space on the drive that holds the output folder, then try again'
                            % (needed_bytes(video['frames']) // 10**6))
     weights = ensure_weights(root, emit, check)
@@ -387,20 +412,20 @@ def _convert(request, emit, check):
             raise RuntimeError('CUDA is unavailable for the 4K upscale')
         # Models other requests keep in the GPU stay unless this small one does not fit beside them.
         if torch.cuda.mem_get_info()[0] < NEEDED_GPU_BYTES:
-            emit(stage=STAGE, label='Upscaling to 4K', waiting_for_device=True)
+            emit(stage=STAGE, label=label, waiting_for_device=True)
             while not (work / 'device-ready').is_file():
                 check()
                 time.sleep(.05)
     elif device == 'mps' and not torch.backends.mps.is_available():
         raise RuntimeError('Metal is unavailable for the 4K upscale')
     torch.set_num_threads(min(8, os.cpu_count() or 1))
-    emit(stage=STAGE, label='Upscaling to 4K', done=0, total=video['frames'], unit='frames', waiting_for_device=False)
+    emit(stage=STAGE, label=label, done=0, total=video['frames'], unit='frames', waiting_for_device=False)
     frame = model_frame(weights, device)
     started = time.monotonic()
     if device == 'cuda':
         torch.cuda.reset_peak_memory_stats()
-    frames = write(source, target, video, frame, emit, check)
-    return dict(frames=frames, width=size(video['width'], video['height'])[0], height=size(video['width'], video['height'])[1],
+    frames = write(source, target, video, frame, emit, check, kind)
+    return dict(frames=frames, width=width, height=height, kind=kind,
                 seconds=round(time.monotonic() - started, 2), device=device, model='realesr-general-x4v3',
                 weights_sha256=catalog()['files'][0]['sha256'], tile=TILE, sound=video['sound'],
                 torch_peak_reserved_bytes=torch.cuda.max_memory_reserved() if device == 'cuda' else None,
@@ -408,7 +433,7 @@ def _convert(request, emit, check):
 
 
 def upscale(source, target, *, root, device='cuda', python=None, environ=None, progress=None, interrupted=None,
-            release_models=None):
+            release_models=None, kind='4k'):
     """Upscale in a supervised child, writing target; returns the child's summary.
 
     progress receives {stage, label, done, total, unit}: bytes while the model downloads, then frames. Cancelling
@@ -422,7 +447,8 @@ def upscale(source, target, *, root, device='cuda', python=None, environ=None, p
     check()
     with tempfile.TemporaryDirectory(prefix='.frame-upscale-', dir=target.parent) as directory:
         work = Path(directory)
-        request = dict(source=str(Path(source).resolve()), root=str(root), work=str(work), target=str(target), device=device)
+        request = dict(source=str(Path(source).resolve()), root=str(root), work=str(work), target=str(target), device=device,
+                       kind=kind)
         (work / 'request.json').write_text(json.dumps(request), encoding='utf-8')
         command = processes.module_command('freevideo_engine.frame_upscale', '--request', work / 'request.json')
         if python is not None:
@@ -484,8 +510,10 @@ def main():
 
     def check():
         if (work / 'cancelled').exists():
-            raise InterruptedError('4K upscale cancelled')
-    state = dict(stage=STAGE, phase=STAGE, label='Upscaling to 4K', done=0, total=None, unit='frames')
+            raise InterruptedError('Upscale cancelled')
+    # Its first label already names the size it makes (no "4K" before a quick upscale's own label).
+    state = dict(stage=STAGE, phase=STAGE, label='Upscaling to 4K' if request.get('kind', '4k') == '4k' else 'Upscaling',
+                 done=0, total=None, unit='frames')
 
     def emit(**values):
         state.update(values)
