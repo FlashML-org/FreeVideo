@@ -24,7 +24,7 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from urllib.parse import unquote, urlencode, urlsplit
 
 from .origin_scheme import effective_scheme
-from .comfy_library import _ID, _plain, _video
+from .comfy_library import _ID, _plain, _video, finished
 from .system import windows
 from .editor_frames import frame_not_after, last_frame_end
 from .editor_limits import PROJECT_BYTES
@@ -551,8 +551,12 @@ def references(record):
                              for source in [clip['source'], *clip['versions']] if source is not None))
 
 
-def reference_users(root, work):
-    """Compare actual file identities, including aliases and historical sources."""
+def reference_edits(root, work):
+    """Each saved edit that uses this creation, newest first: its id, name, last save, and where.
+
+    Compares actual file identities, including aliases and historical sources. ``where`` is 'timeline' when a
+    clip on a track shows it, 'version' when only a clip's earlier take keeps it (the timeline does not show
+    it), and 'regenerating' when only the part being made again holds it; ``clip`` is that clip's id."""
     folder = _video(root, work).parent
     def identity(path):
         info = path.stat()
@@ -560,21 +564,41 @@ def reference_users(root, work):
         return ('inode', info.st_dev, inode) if inode else ('path', os.path.normcase(os.path.realpath(path)))
     files = {identity(_safe(root, path.relative_to(Path(root).resolve()).as_posix()))
              for path in folder.rglob('*') if path.is_file()}
-    users = []
+    known = {}
+    def uses(source):
+        if source is None:
+            return False
+        key = source_key(source)
+        if key not in known:
+            kind, value = key.split(':', 1)
+            try:
+                paths = [_video(root, value)] if kind == 'work' else (
+                    [_safe(root, value)] if kind == 'generated' else
+                    [_import_path(root, value, file) for file in ('source.bin', 'preview.mp4', 'preview.m4a')])
+                known[key] = any(path.is_file() and identity(path) in files for path in paths)
+            except FileNotFoundError:
+                known[key] = False
+        return known[key]
+    def first(tracks, sources):
+        return next((clip['id'] for track in tracks for clip in track['clips'] if any(map(uses, sources(clip)))), None)
+    edits = []
     with _STATE:
-        for _, name, record, _ in _projects(root, strict=True):
-            for key in references(record):
-                kind, value = key.split(':', 1)
-                try:
-                    paths = [_video(root, value)] if kind == 'work' else (
-                        [_safe(root, value)] if kind == 'generated' else
-                        [_import_path(root, value, file) for file in ('source.bin', 'preview.mp4', 'preview.m4a')])
-                    if any(path.is_file() and identity(path) in files for path in paths):
-                        users.append(record['name'] or name)
-                        break
-                except FileNotFoundError:
-                    continue
-    return users
+        for modified, name, record, _ in _projects(root, strict=True):
+            pending = [t for r in record.get('replacements', []) for t in [*r['originals'], *r['clips']]]
+            for where, tracks, sources in (('timeline', record['tracks'], lambda clip: [clip['source']]),
+                                           ('version', record['tracks'], lambda clip: clip['versions']),
+                                           ('regenerating', pending, lambda clip: [clip['source'], *clip['versions']])):
+                clip = first(tracks, sources)
+                if clip is not None:
+                    edits.append(dict(id=name, name=record['name'] or name, where=where, clip=clip,
+                                      updated_at=datetime.fromtimestamp(modified / 1e9, timezone.utc).isoformat()))
+                    break
+    return edits
+
+
+def reference_users(root, work):
+    """The names of the saved edits that use this creation (see reference_edits)."""
+    return [edit['name'] for edit in reference_edits(root, work)]
 
 
 def cleanup_projects(root, now=None):
@@ -979,7 +1003,7 @@ def sources(root, keys):
                 raise ValueError('Empty media')
             if source['kind'] == 'work':
                 report = _safe(root, Path(relative).with_suffix('.request.json').as_posix())
-                if _read_json(report, 4 * 1024**2).get('success') is not True:
+                if not finished(_read_json(report, 4 * 1024**2)):
                     raise ValueError('Creation is incomplete')
             media = probe(path)
             if source['kind'] == 'work':
@@ -1005,7 +1029,7 @@ def sources(root, keys):
                     # The existing endpoint requires a complete request receipt.
                     receipt = _safe(root, Path(relative).with_suffix('.request.json').as_posix())
                     _safe(root, Path(relative).with_suffix('.thumbnail.jpg').as_posix())
-                    if receipt.is_file() and _read_json(receipt, 4 * 1024**2).get('success') is True:
+                    if receipt.is_file() and finished(_read_json(receipt, 4 * 1024**2)):
                         cover = '/freevideo/library/thumbnail?' + urlencode(dict(id=library_id))
                 if cover is None:
                     cover = '/freevideo/editor/thumbnail?' + urlencode(dict(key=key))

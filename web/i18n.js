@@ -65,10 +65,46 @@ if (CATALOG && globalThis.document?.documentElement) globalThis.document.documen
 // shapes and its line-breaking rules by it.
 export const pageLanguage = () => LANGUAGE === 'zh-Hans' ? 'zh-CN' : LANGUAGE;
 
+// Names held together on screen. The language files and the code keep plain text; what the page shows holds a button's
+// or a level's name on one line: a name in paired quotes (any language's marks, up to 32 characters) and a quality
+// level's Chinese name get a word joiner (U+2060) between ideographs and no-break spaces, as the launcher's t() does.
+// Copying and reports turn it back into plain text (plainText).
+const ideograph = ch => { const n = ch.codePointAt(0); return n >= 0x2e80 && n <= 0x9fff || n >= 0xf900 && n <= 0xfaff || n >= 0x20000; };
+const holdName = name => {
+    const chars = Array.from(name.replace(/\u2060/g, '').replace(/ /g, '\u00a0'));  // held once, also when held text is filled into another
+    return chars.map((c, i) => i && (ideograph(c) || ideograph(chars[i - 1])) ? '\u2060' + c : c).join('');
+};
+const QUOTED = /"([^"\n]{1,32})"|“([^“”\n]{1,32})”|「([^「」\n]{1,32})」|『([^『』\n]{1,32})』|«([^«»\n]{1,32})»|„([^„“”\n]{1,32})“/g;
+// The quality levels' names as the Chinese files write them (Simplified and Traditional), held by value wherever they stand.
+export const LEVEL_NAMES = ['极速档', '轻量档', '标准档', '精细档', '极致档', '極速檔', '輕量檔', '標準檔', '精細檔', '極致檔'];
+const LEVELS = new RegExp(LEVEL_NAMES.join('|'), 'g');
+// A level's quoted name and the 档 / 檔 / 等級 right after its closing mark: no break may come between them either.
+const LEVEL_AFTER_QUOTE = /([”」』])\u2060?(档|檔|等\u2060?級)/g;
+export function holdNames(text) {
+    if (typeof text !== 'string' || !text) return text;
+    return text.replace(QUOTED, (whole, ...groups) => {
+        const name = groups.slice(0, 6).find(value => value !== undefined);
+        return whole.slice(0, whole.length - name.length - 1) + holdName(name) + whole.slice(-1);
+    }).replace(LEVELS, holdName).replace(LEVEL_AFTER_QUOTE, (whole, mark, word) => mark + '\u2060' + holdName(word));
+}
+/** A fixed phrase that follows a label (" · includes first-time setup") kept on one line as a whole, as names are. */
+export const holdPhrase = text => typeof text === 'string' && text ? holdName(text) : text;
+export const plainText = text => String(text ?? '').replace(/\u2060/g, '').replace(/\u00a0/g, ' ');
+// What a person copies from the page is plain text: the marks added for the screen stay on the screen.
+if (typeof globalThis.document?.addEventListener === 'function' && !globalThis.__fvPlainCopy) {
+    globalThis.__fvPlainCopy = true;
+    globalThis.document.addEventListener('copy', event => {
+        const selected = globalThis.getSelection?.()?.toString() || '';
+        if (!event.clipboardData || !/[\u2060\u00a0]/.test(selected)) return;
+        event.clipboardData.setData('text/plain', plainText(selected));
+        event.preventDefault();
+    });
+}
+
 // t(en, zh, values) for a catalog (null: the text written in the code) and the language the module read.
 export const translatorFor = (catalog, chinese) => catalog
-    ? (en, zh, values) => lookup(catalog, en, zh, values)
-    : (en, zh, values) => values ? fill(chinese ? zh : en, values) : chinese ? zh : en;
+    ? (en, zh, values) => holdNames(lookup(catalog, en, zh, values))
+    : (en, zh, values) => holdNames(values ? fill(chinese ? zh : en, values) : chinese ? zh : en);
 
 // A module's t(en, zh) for the language it read.
 export const translator = chinese => translatorFor(CATALOG, chinese);

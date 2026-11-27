@@ -151,8 +151,8 @@ def summarize(report, engine, encoding):
     passes = engine.get('sampling_passes')
     for index, row in enumerate(passes if isinstance(passes, list) else [], 1):
         # Staging is a capacity route. Several GiB of the budget left unused
-        # means the plan was more conservative than the request needed, as in
-        # issue #30: 13.5 of 30.3 GiB on a 32 GB card.
+        # means the plan was more conservative than the request needed, for
+        # example 13.5 of 30.3 GiB used on a 32 GB card.
         staged = mapping(mapping(row).get('compute_configuration'))
         admission = mapping(mapping(row).get('pass_cache_admission'))
         budget, peak = number(admission.get('gpu_budget_bytes')), number(admission.get('measured_peak_reserved_bytes'))

@@ -40,7 +40,7 @@ function editorPanel(node) {
             return {node: String(node.id), prompt: value.output, extra_data: {extra_pnginfo: {workflow: value.workflow || {}}}};
         }};
 }
-export function openEditorView(node, {studio, work = null, extend = false, onProjectLoaded} = {}) {
+export function openEditorView(node, {studio, work = null, extend = false, edit = null, onProjectLoaded} = {}) {
     studio?.querySelectorAll('video,audio').forEach(media => media.pause());
     const panel = editorPanel(node);
     if (onProjectLoaded) panel.onProjectLoaded = onProjectLoaded;
@@ -67,7 +67,7 @@ export function openEditorView(node, {studio, work = null, extend = false, onPro
                 left: Number.isFinite(left) ? left : null, over: words('.fv-generation-late') !== ''};
         };
     }
-    const handle = openEditor({api, app, panel, from: work ? {work, ...(extend ? {extend: true} : {})} : null, onView(view, options = {}) {
+    const handle = openEditor({api, app, panel, from: work ? {work, ...(extend ? {extend: true} : {})} : edit?.edit ? edit : null, onView(view, options = {}) {
         if (view === 'nodes') showNodes(node, studio);
         else if (view === 'autopilot') openAutopilot(node, {studio, ...options});
         else if (view === 'image') openImage(node, {studio});

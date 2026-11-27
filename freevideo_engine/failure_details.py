@@ -26,7 +26,7 @@ ENGINE_BUSY_DETAIL = (
 IMAGE_PACK_FAILURES = {
     'disk_space': ('Not enough disk space to install the image model.', '磁盘空间不足，无法安装图像模型。'),
     'offline': ('The network is unavailable; the image model could not be downloaded.', '网络不通，无法下载图像模型。'),
-    'source_failed': ("The image model download didn't finish. Check your network and try again.", '图像模型没有下载完成，请检查网络后重试。'),
+    'source_failed': ("The image model download didn't finish. Check your network and try again.", '图像模型未能下载完成，请检查网络后重试。'),
     'integrity_failed': ('The image model files are incomplete or damaged. Repair them in the launcher.', '图像模型文件不完整或已损坏，请在启动器里修复。'),
     'write_failed': ('The image model files are in use or cannot be written or deleted. Close programs that may be using them (for example an antivirus scan), check that the model folder can be written to, then try again.',
                      '图像模型文件被占用，或无法写入／删除。请关闭可能正在使用它们的程序（例如杀毒软件扫描），确认模型文件夹可以写入，然后重试。'),
@@ -105,7 +105,7 @@ def image_pack_error_code(error):
 
 
 # A file the video install shares differs from the tested version, shown where there is no Repair button (the picture
-# page): the file and how it is renamed are on the confirmation page, so this says only where to go (Lane-5x's wording).
+# page): the file and how it is renamed are on the confirmation page, so this says only where to go.
 SHARED_MISMATCH_ELSEWHERE = (
     'A model file differs from the tested version and was left unchanged. '
     'Select "Repair" in the launcher under Settings > Environment and confirm.',
@@ -355,15 +355,15 @@ def sampling_table_failure(value, *, zh=False):
     if names:
         available = names[0] if len(names) == 1 else ('、' if zh else ', ').join(names[:-1]) + ('或' if zh else ' or ') + names[-1]
     size = size_text(details['missing_bytes'], details['decimal_sizes'])
-    # A custom step count is not a quality level (Iris): no "档" / "quality level" for it.
+    # A custom step count is not a quality level: no "档" / "quality level" for it.
     if zh:
         if index is None:
-            title = '“自定义（%d 步）”还没有下载' % details['base_steps']
+            title = '“自定义（%d 步）”尚未下载' % details['base_steps']
             what = '这个步数需要的文件'
         else:
-            title = '“%s”还没有下载' % QUALITY_LEVELS[index][1]
+            title = '“%s”尚未下载' % QUALITY_LEVELS[index][1]
             what = '这一档需要的文件'
-        detail = ('这次生成要先下载%s（约 %s），但没能下载完。'
+        detail = ('这次生成要先下载%s（约 %s），但未能下载完成。'
                   '请确认网络连接后再生成一次，FreeVideo 会自动下载。') % (what, size)
         if available:
             detail += '也可以改用已经可以使用的%s档。' % available
@@ -505,6 +505,8 @@ def setup_command_failure(label, log, exit_code, report=None):
 # uv's error for an interpreter that exists but cannot be started, as in
 # "error: Failed to run `C:\...\python.exe`" then "Caused by: <system language> (os error 5)".
 PYTHON_START_DENIED = r'Failed to run [^\n]*python[^\n]*\s+Caused by:[^\n]*(?:os error 5|WinError 5)\b'
+# managed_python: the isolated Python setup uses was installed again and still runs without answering. The same card.
+MANAGED_PYTHON_NO_ANSWER = 'The isolated Python that setup uses does not start or gives no answer'
 
 
 # Leads the error of a step that needed an environment's Python file after it
@@ -739,13 +741,22 @@ def _startup_cause(summary, zh):
     nodes = re.findall(r'(?:Cannot import |\(IMPORT FAILED\): ).*?custom_nodes[\\/]([^\\/\r\n]+?)(?: module for custom nodes|\s*$)',
                        summary, re.M)
     node = nodes[-1].strip()[:80] if nodes else ''
+    # A crash leaves no error line; Windows' own record names the module that failed (crash_event).
+    from .crash_event import module_from, native
+    module = module_from(summary)
+    shown = code.group(1) if code else ''
+    if code and native(int(shown)):
+        # A Windows crash status reads as Windows writes it (0xC0000409); the number stays in the details.
+        shown = '0x%08X' % (int(shown) & 0xFFFFFFFF)
     if zh:
-        return ('ComfyUI 在启动时退出' + ('（退出码 %s）' % code.group(1) if code else '')
+        return ('ComfyUI 在启动时退出' + ('（退出码 %s）' % shown if code else '')
                 + ('，自定义节点“%s”未能加载' % node if node else '')
-                + ('，最后一条错误：%s。' % known if known else '。'))
-    return ('ComfyUI quit while starting' + (' (exit code %s)' % code.group(1) if code else '')
+                + ('，最后一条错误：%s。' % known if known else '。')
+                + ('Windows 记录的出错模块为 %s。' % module if module else ''))
+    return ('ComfyUI quit while starting' + (' (exit code %s)' % shown if code else '')
             + ('. The custom node "%s" did not load' % node if node else '')
-            + ('. Last error: %s.' % known if known else '.'))
+            + ('. Last error: %s.' % known if known else '.')
+            + (' Windows recorded %s as the module that failed.' % module if module else ''))
 
 
 def _stopped_on_missing_module(text):
@@ -814,9 +825,12 @@ def model_mismatch_package(value, zh=False):
 # Shown instead of the missing-driver card when the system lists no NVIDIA graphics card.
 UNSUPPORTED_VENDOR = (
     ('No NVIDIA graphics card was found',
-     'FreeVideo requires an NVIDIA RTX 30 series or newer graphics card.'),
+     'FreeVideo requires an NVIDIA RTX 30 series or newer graphics card, including professional cards of the same '
+     'generation, with 8 GB of graphics memory or more recommended. It also runs on Macs with Apple silicon (preview). '
+     'The graphics card in this computer cannot run FreeVideo.'),
     ('未找到 NVIDIA 显卡',
-     'FreeVideo 需要 NVIDIA RTX 30 系列或更新的显卡。'))
+     'FreeVideo 需要 NVIDIA RTX 30 系列或更新的显卡（含同代专业卡，建议显存 8 GB 以上），或 Apple 芯片的 Mac（预览版）。'
+     '这台电脑的显卡无法运行 FreeVideo。'))
 
 # The system lists an NVIDIA card but no driver answers.
 DRIVER_FOR_LISTED_CARD = (
@@ -855,10 +869,21 @@ SOURCE_REASONS = {
     'no-resume': ('Resume not supported', '不支持续传'),
     'faster-source': ('Dropped for a faster source', '速度较慢，已换用其他源'),
     'redirect': ('Redirect refused', '重定向被拒绝'),
+    # network.GIT_REWRITE_MESSAGE: a url.<address>.insteadOf rule of this computer took the address FreeVideo needs.
+    'git-rewrite': ("Address rewritten by this computer's Git settings", '地址被这台电脑的 Git 设置改写'),
     'exit': ('Exit code {code}', '退出代码 {code}'),
     'other': ('Other error', '其他错误'),
 }
 SOURCE_ROUTES = {'direct': ('direct', '直连'), 'inherited': ('current connection', '当前连接')}
+# network.PROXY_FROM: where the current connection's proxy came from, shown beside the route.
+SOURCE_PROXY_FROM = {'proxy from environment variables': ('proxy environment variables', '代理环境变量'),
+                     'proxy from system settings': ('system proxy', '系统代理'),
+                     'proxy from Git settings': ('Git proxy setting', 'Git 代理设置')}
+# Every try through the current connection failed reaching a proxy on this computer itself: nothing listens there.
+PROXY_NOT_RUNNING = ('The proxy set on this computer does not respond and may not be running. Start the program that provides it, '
+                     'then try again.',
+                     '这台电脑设置的代理没有响应，可能未在运行。请先启动提供这个代理的程序，然后重试。')
+_LOCAL_PROXY = re.compile(r'\b(?:via|connect to) \[?(?:127(?:\.\d{1,3}){3}|localhost|::1)\]?(?![\w.-])', re.I)
 SOURCE_CUSTOM = ('custom source', '自定义源')
 SOURCE_CARD_LINES = 6
 _SOURCE_LINE = re.compile(r'^\s*- (?P<source>[^/\s]+)/(?P<route>[^\s:(]+)(?: \((?P<host>[^)\s]*)\))?: '
@@ -897,6 +922,9 @@ def source_lines(lines, zh=False):
                                                  code=code and next(filter(None, code.groups()), ''))
         host = found['host'] or (SOURCE_CUSTOM[zh] if found['source'].startswith('user') else found['source'])
         route = SOURCE_ROUTES.get(found['route'], (found['route'],) * 2)[zh]
+        origin = next((names for text, names in SOURCE_PROXY_FROM.items() if ', ' + text + ',' in rest), None)
+        if origin:
+            route += ('（%s）' if zh else ' (%s)') % origin[zh]
         if seconds:
             value = float(seconds[1])
             value = ('%.1f' % value) if value < 10 else '%d' % round(value)
@@ -931,6 +959,9 @@ def launcher_failure(value, *, zh=False, **options):
     sources = source_lines(lines, zh)
     if sources:
         failure['sources'] = '\n'.join(sources)
+    found = [m for m in map(_SOURCE_LINE.match, lines) if m and m['route'] == 'inherited']
+    if found and all(m['cls'] == 'proxy' and _LOCAL_PROXY.search(m['rest']) for m in found):
+        failure['detail'] = PROXY_NOT_RUNNING[zh] + ('\n' + failure['detail'] if failure.get('detail') else '')
     return failure
 
 
@@ -1201,8 +1232,8 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
          ('FreeVideo did not load completely in the browser', '浏览器里的 FreeVideo 没有完整加载'),
          ('The browser page names the files that failed and what to do. Follow it, then reload the page; if it happens again, export the report.',
           '请按浏览器页面上的提示处理后刷新；仍然出现时，可以导出报告。')),
-        (r'The browser has not opened FreeVideo yet|浏览器还没有打开 FreeVideo', 'page-silent',
-         ('The browser has not opened FreeVideo', '浏览器还没有打开 FreeVideo'),
+        (r'The browser has not opened FreeVideo yet|浏览器(?:尚未|还没有)打开 FreeVideo', 'page-silent',
+         ('The browser has not opened FreeVideo', '浏览器尚未打开 FreeVideo'),
          ('Click “Open FreeVideo”. If the page stays blank or keeps loading, open it in a current Chrome or Edge.',
           '请点击“打开 FreeVideo”。如果页面空白或一直在加载，请用最新版 Chrome 或 Edge 打开。')),
         (r'NVIDIA driver/nvidia-smi is missing\.', 'gpu-driver-missing',
@@ -1213,10 +1244,12 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
         # Setup reports an unsupported card and an old driver together; the first match is shown, and
         # a driver update cannot help a card below the hardware floor, so that card comes first.
         (r'CUDA_ARCH_UNSUPPORTED', 'gpu-architecture',
-         ('This GPU is not supported', '这张显卡不受支持'),
-         ('FreeVideo requires a GPU with compute capability 8.0 or higher, such as an NVIDIA GeForce RTX 30 series card or newer. '
-          'This requirement does not depend on the amount of VRAM, and a driver update cannot change it.',
-          'FreeVideo 需要计算能力 8.0 及以上的显卡，例如 NVIDIA GeForce RTX 30 系列及更新型号。这一要求与显存大小无关，更新驱动也无法改变。')),
+         ('This graphics card is not supported', '这张显卡不受支持'),
+         ('FreeVideo requires an NVIDIA RTX 30 series or newer graphics card, including professional cards of the same '
+          'generation, or a Mac with Apple silicon (preview). This requirement does not depend on the amount of graphics '
+          'memory, and a driver update cannot change it.',
+          'FreeVideo 需要 NVIDIA RTX 30 系列或更新的显卡（含同代专业卡），或 Apple 芯片的 Mac（预览版）。'
+          '这一要求与显存大小无关，更新驱动也无法改变。')),
         (r'NVIDIA driver(?: [\w.]+)?(?: \([^)]*\))? is older than 580', 'gpu-driver-old',
          ('The NVIDIA driver is too old', 'NVIDIA 显卡驱动版本过低'),
          ('Update the NVIDIA driver to version 580 or newer, restart the computer, then click "Retry installation".',
@@ -1233,7 +1266,7 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
         (r'The shell cannot be started\. A failure occurred during initialization', 'powershell-start',
          ('Windows PowerShell could not start', 'Windows PowerShell 无法启动'),
          ('FreeVideo uses Windows PowerShell to inspect this computer, but Windows PowerShell could not start. Restart the computer, then click "Retry installation". If it fails again, export the report.',
-          'FreeVideo 要用 Windows PowerShell 检查这台电脑，但 Windows PowerShell 没能启动。请重启电脑，然后点击“重试安装”。仍然失败时，可以导出报告。')),
+          'FreeVideo 要用 Windows PowerShell 检查这台电脑，但 Windows PowerShell 未能启动。请重启电脑，然后点击“重试安装”。仍然失败时，可以导出报告。')),
         (r'\[CUDA_INIT_FAILED\]', 'gpu-cuda-init',
          ('CUDA could not start on this GPU', 'CUDA 未能在这张显卡上启动'),
          ('The NVIDIA driver is installed. Restart the computer, then open FreeVideo again. If it still fails, export the report.',
@@ -1310,10 +1343,10 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
          ('A program file is missing', '缺少一个程序文件'),
          ('It may have been quarantined by security software. Restore the file or allow the FreeVideo folder, '
           'then click "Retry installation".',
-          '可能被安全软件隔离了。恢复这个文件或允许 FreeVideo 所在的文件夹后，点“重试安装”。')),
+          '可能已被安全软件隔离。恢复这个文件或允许 FreeVideo 所在的文件夹后，点“重试安装”。')),
         # uv could not start an environment's Python and Windows answered "access denied". The error code
         # is matched, not the text, which Windows writes in the system language.
-        (PYTHON_START_DENIED, 'python-start-denied',
+        (PYTHON_START_DENIED + '|' + re.escape(MANAGED_PYTHON_NO_ANSWER), 'python-start-denied',
          ('Windows refused to run the Python program', 'Windows 拒绝运行 Python 程序'),
          ('Security software or a Windows protection feature is blocking the Python file of the FreeVideo environment. '
           'Allow the FreeVideo folder there (for Windows Security: Virus & threat protection → Manage ransomware protection → '
@@ -1389,10 +1422,10 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
                 # instruction goes under the detected driver instead of being hidden by it.
                 return dict(title=title[zh], detail=(detail + '\n' if detail else '') + action[zh], action='', kind=kind)
             if kind == 'gpu-architecture':
+                # The card names the model only; its compute capability stays in the exported report.
                 found = re.search(r'\[CUDA_ARCH_UNSUPPORTED\]\s+(.+?)\s+\(SM\w+; compute capability ([\d.]+);', text)
                 if found:
-                    model, capability = found.groups()
-                    detail = ('检测到：%s，计算能力 %s' if zh else 'Detected: %s, compute capability %s') % (model, capability)
+                    detail = ('检测到：%s' if zh else 'Detected: %s') % found[1]
                     return dict(title=title[zh], detail=detail + '\n' + action[zh], action='', kind=kind)
                 found = re.search(r'\[CUDA_ARCH_UNSUPPORTED\]\s+(.+?)\s+\(SMunknown;', text)
                 if found:
@@ -1923,10 +1956,14 @@ def generation_failure(run, exit_code=None, *, repair=None):
     return value
 
 
-def startup_failure(message, log, *, exit_code=None, context=None):
+def startup_failure(message, log, *, exit_code=None, context=None, crash=None):
     detail = _read(Path(log), 8192, tail=True).strip()
     if exit_code is not None:
         message += '\nProcess exit code: ' + str(exit_code)
+    if crash:
+        # The module Windows recorded for this process's crash (crash_event.read), or why it could not be read.
+        from .crash_event import line
+        message += '\n' + line(crash)
     if context:
         message += '\nEnvironment: ' + context['environment'] + '\nCustom nodes: ' + context['custom_nodes']
     return Redactor().text(message + ('\n\n' + detail if detail else '\nNo readable process output was produced.') + '\n\nLog: ' + str(log))

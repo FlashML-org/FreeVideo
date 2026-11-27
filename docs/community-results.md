@@ -152,6 +152,9 @@ Thanks to the community members who sent diagnostic reports. FreeVideo already r
 | M4&nbsp;Max | Unified | 128&nbsp;GB | 1344×768 | 10.1&nbsp;s | Light | 0.5.4 | 3399&nbsp;s | 0.5.4 | Already&nbsp;optimal |
 | RTX&nbsp;Spark&nbsp;N1X | 110&nbsp;GB | 32&nbsp;GB | 832×640 | 15.1&nbsp;s | Light | 0.6.12 | 1298&nbsp;s | 0.6.12 | GPU&nbsp;shared¹⁶ |
 | RTX&nbsp;Spark&nbsp;N1X | 110&nbsp;GB | 32&nbsp;GB | 1920×1088 | 15.1&nbsp;s | Medium | 0.6.12 | 4400&nbsp;s¹² | 0.6.12 | Power&nbsp;limited¹⁷ |
+| RTX&nbsp;Spark&nbsp;N1X | 110&nbsp;GB | 32&nbsp;GB | 1344×768 | 7.3&nbsp;s | Medium | 0.6.13 | 639&nbsp;s¹² | 0.6.14 | 627&nbsp;s&nbsp;(−12&nbsp;s) |
+| RTX&nbsp;Spark&nbsp;N1X | 110&nbsp;GB | 32&nbsp;GB | 1344×768 | 10.1&nbsp;s | Medium | 0.6.13 | 728&nbsp;s | 0.6.14 | 715&nbsp;s&nbsp;(−13&nbsp;s) |
+| M1&nbsp;Max | Unified | 32&nbsp;GB | 1344×768 | 10.1&nbsp;s | High | 0.5.3 | 27578&nbsp;s¹² | 0.5.3 | Already&nbsp;optimal¹⁸ |
 
 - Time: end to end, from submission until the video is saved.
 - After: the estimated time, derived from the report's stage times and from complete planned runs on our test machines (RTX 3090 and RTX 5060 Ti on Windows, RTX PRO 6000 on Linux) under the reporting machine's VRAM and RAM limits, not from reruns on that machine.
@@ -173,3 +176,4 @@ Thanks to the community members who sent diagnostic reports. FreeVideo already r
 - ¹⁵ The video model is read from the drive again at every step, at about 110 MB/s on this machine; the graphics card was busy for about 9–13% of the first pass and 36% of the second pass.
 - ¹⁶ GPU shared: another program was using about 40% of the graphics card during the first nine of the eleven steps, which took 103–128 s each against about 55 s once it stopped. With the card free, the same request is estimated at about 830 s.
 - ¹⁷ Power-limited: the system's power limit lowered the graphics card's clock as the run went on, from about 1943 MHz at 49 W in the first step to about 1285 MHz at 23 W in the ninth and about 995 MHz while decoding. Without this slowdown, the same request is estimated at about 2500 s.
+- ¹⁸ From 0.6.14 this machine can use the Fast level, estimated at about 5700 s.

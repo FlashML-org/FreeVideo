@@ -148,7 +148,7 @@ function row(job, t, api, refresh, open, cancellationErrors) {
             try {
                 const response = await retryAgentPost(api, '/freevideo/agent/activity/cancel', {id: job.id});
                 if (!response?.ok) {
-                    const message = t('Could not stop. Click again; if it keeps failing, report the problem.', '没能停止。请再点一次；仍然失败时，请提交问题。');
+                    const message = t('Could not stop. Click again; if it keeps failing, report the problem.', '未能停止。请再点一次；仍然失败时，请提交问题。');
                     details.textContent = message;
                     cancellationErrors.set(job.id, message);
                     issue.hidden = false;

@@ -46,7 +46,7 @@ export function createEditorText({element,state,t,actions,adjust,player,toolbar,
     const marker=toolbar.querySelector('.fv-ed-marker, .fv-ed-add-marker');
     if(marker) marker.after(buttons); else toolbar.insertBefore(buttons,toolbar.querySelector('.fv-ed-zoom'));
     const notice=el('span');notice.setAttribute('role','button');notice.tabIndex=0;notice.onclick=()=>jumpMissing();notice.onkeydown=e=>{if(['Enter',' '].includes(e.key)){e.preventDefault();jumpMissing();}}; notice.classList.add('fv-ed-text-notice'); notice.hidden=true; exportBox.prepend(notice);
-    const fontFailure=()=>t('Text fonts could not be loaded','文字字体没能加载');
+    const fontFailure=()=>t('Text fonts could not be loaded','文字字体未能加载');
     let fontIssue=null;
     const menu=el('div','fv-ed-text-menu'); menu.hidden=true; menu.setAttribute('role','menu'); element.append(menu);
     const names={sans:t('Sans','黑体'),serif:t('Serif','宋体'),kai:t('Kai','楷体'),mono:t('Mono','等宽')};
@@ -76,7 +76,7 @@ export function createEditorText({element,state,t,actions,adjust,player,toolbar,
     // Once every byte is in, the download is unpacked; the button says so and keeps the width it had, so it does not jump.
     function speechLabel(fraction,phase=null){speech.shown=fraction;const unpacking=fraction!=null&&speech.loading&&phase==='unpack',p=Math.round(Math.min(1,Math.max(0,Number(fraction)||0))*100),size=Math.max(1,Math.round(speech.need/1e6)),text=fraction==null?(speech.need?t('Auto subtitles · Download {size} MB','自动字幕 · 下载 {size} MB', { size }):t('Auto subtitles','自动字幕')):unpacking?t('Cancel · Unpacking','取消 · 正在解压'):speech.loading?t('Cancel · Downloading {p}%','取消 · 下载 {p}%', { p }):t('Cancel · {p}%','取消 · {p}%', { p });for(const b of speech.buttons){if(unpacking&&!b.style.minWidth&&b.offsetWidth)b.style.minWidth=`min(${b.offsetWidth}px, 100%)`;else if(!unpacking)b.style.minWidth='';b.textContent=text;b.hidden=!(speech.available||speech.need);}}
     function speechEnd(text,where=null){speech.stop?.();speech.stop=null;speech.job=null;speech.busy=false;speech.loading=false;speechLabel(null);if(text)actions.notify?.(text,where);}
-    const speechFailed=()=>t('Could not create subtitles. Try again; if it keeps failing, report the problem.','没能生成字幕。请重试；仍然失败时，请提交问题。'),speechSilent=()=>t('No speech found','没有听到说话声');
+    const speechFailed=()=>t('Could not create subtitles. Try again; if it keeps failing, report the problem.','未能生成字幕。请重试；仍然失败时，请提交问题。'),speechSilent=()=>t('No speech found','未检测到说话声');
     const speechDisk=()=>t('The disk is full. Free some space, then try again.','磁盘空间不足，请清理出空间后重试。');
     // Causes the person can act on are named and carry no issue button; anything else is unexplained.
     const speechReasons={no_sound:speechSilent,language:()=>t('Language not supported yet','暂不支持这种语言'),too_long:()=>t('Auto subtitles work on up to 2 hours of sound.','自动字幕最多处理 2 小时的声音。'),
@@ -108,7 +108,7 @@ export function createEditorText({element,state,t,actions,adjust,player,toolbar,
                 const ability=done===true?await actions.speech.ability():null;
                 if(run!==speech.run)return;
                 if(ability){speech.available=ability.available;speech.need=ability.need;}
-                if(done!==true||speech.need){speechEnd(done==='disk_space'?speechDisk():t('The speech model could not be downloaded. Check the connection and try again.','语音模型没能下载。请检查网络后再试一次。'),done==='disk_space'?null:SPEECH_ISSUE);return;}
+                if(done!==true||speech.need){speechEnd(done==='disk_space'?speechDisk():t('The speech model could not be downloaded. Check the connection and try again.','语音模型未能下载。请检查网络后重试。'),done==='disk_space'?null:SPEECH_ISSUE);return;}
                 if(!speech.available){speechEnd(speechFailed(),SPEECH_ISSUE);return;}
                 speech.loading=false;
             }
@@ -118,7 +118,7 @@ export function createEditorText({element,state,t,actions,adjust,player,toolbar,
             if(!job){speechEnd(speechFailed(),SPEECH_ISSUE);return;}
             speech.job=job.id??null;
             if(speechResult(job))speech.stop=actions.speech.watch(job.id,value=>{if(run!==speech.run)return false;if(!value){speechEnd(speechFailed(),SPEECH_ISSUE);return false;}return speechResult(value);},()=>{if(run===speech.run)speechEnd(speechFailed(),SPEECH_ISSUE);});
-        }catch{if(run===speech.run)speechEnd(speech.loading?t('The speech model could not be downloaded. Check the connection and try again.','语音模型没能下载。请检查网络后再试一次。'):speechFailed(),SPEECH_ISSUE);}
+        }catch{if(run===speech.run)speechEnd(speech.loading?t('The speech model could not be downloaded. Check the connection and try again.','语音模型未能下载。请检查网络后重试。'):speechFailed(),SPEECH_ISSUE);}
     }
     function commitDraft(){if(draft){const change=draft.change;apply(t('Text','文字'),change);const c=selectedText();if(c?.text_kind==='text')lastStyle={...styleOf(state.record,c)};}}
     // Editing a text ended. One left without words is taken away; one that never had any leaves no step behind.
@@ -185,7 +185,7 @@ export function createEditorText({element,state,t,actions,adjust,player,toolbar,
             file.onchange=async()=>{const f=file.files?.[0];if(!f)return;let text;const result={};
                 try{
                     if(f.size>4*1024*1024){actions.notify?.(t('Subtitle files can be up to 4 MB.','字幕文件不能超过 4 MB。'));return;}
-                    try{text=decodeSRT(await f.arrayBuffer(),t('windows-1252','gb18030'));}catch{actions.notify?.(t('Could not read this subtitle file','读不出这个字幕文件'));return;}
+                    try{text=decodeSRT(await f.arrayBuffer(),t('windows-1252','gb18030'));}catch{actions.notify?.(t('Could not read this subtitle file','无法读取这个字幕文件'));return;}
                     try{parseSRT(text,result);}catch{actions.notify?.(t('No subtitles found. Only SRT files can be imported.','未找到字幕。仅支持导入 SRT 字幕文件。'));return;}
                 }finally{file.value='';}
                 if(apply(t('Import subtitle file','导入字幕文件'),r=>importSRT(r,text))){const missing=projectMissing(state.record);if(missing.length)actions.notify?.(missingHint([...new Set(missing.flatMap(r=>r.chars))],t));
@@ -355,6 +355,8 @@ export function createEditorText({element,state,t,actions,adjust,player,toolbar,
         Object.assign(input.style,{left:`${clamp(x/r.width*100,0,80)}%`,top:`${clamp(y/r.height*100,0,80)}%`,width:`${Math.max(20,Math.min(86,w/r.width*100+4))}%`,height:`${Math.max(18,h/r.height*100+8)}%`,fontFamily:textFontStack(s.font),fontSize:`${s.size*frame.getBoundingClientRect().height}px`,fontWeight:s.bold?'700':'400',textAlign:s.align,color:s.color});
         editing={id,input};boundsLayer.replaceChildren(input);
         input.oninput=()=>updateContent(c,input.value,true);
+        // A layer of the view (shell.js FLOATING): its own Escape ends the typing and keeps the text chosen, instead of the view's.
+        input.dataset.fvLayer='';
         input.onkeydown=e=>{e.stopPropagation();if(e.key==='Escape'){e.preventDefault();finishInline();} };input.onkeyup=e=>e.stopPropagation();
         input.onblur=e=>finishInline(e.relatedTarget);render();input.focus();if(selectAll)input.select();
     }

@@ -141,6 +141,8 @@ export function createImageGenClient(fetchImpl = globalThis.fetch.bind(globalThi
         // The image models are fetched by this page's own engine; the reply is the new info.
         async packInstall(model) { const value = await post('pack-install', model ? {model} : {}); return {...value, installed: value.installed ?? value[p.installed] ?? false}; },
         async packCancel(model) { const value = await post('pack-cancel', model ? {model} : {}); return {...value, installed: value.installed ?? value[p.installed] ?? false}; },
+        // Settings › image models: remove a model's own files (image_gen.service.remove_model).
+        async packRemove(model) { const value = await post('pack-remove', {model}); return {...value, installed: value.installed ?? value[p.installed] ?? false}; },
         // Click select: the engine finds the object under a point; the pack it needs is fetched on demand like the image models.
         async segment({image, points}) { return post('segment', {image, points}); },
         segmentInstall: () => post('segment-install', {}),
@@ -228,13 +230,13 @@ export function packView(info, t) {
     return {loading: false, fraction: null, reason: !!reason, button: resume ? t('Resume download', '继续下载') : t('Download image generation models', '下载图像生成模型'),
         note: reason || (resume ? t('{done}\u00a0GB / {size}{time}', '{done}\u00a0GB / {size}{time}', { done: gb(install.done || 0), size, time }) : size + time)};
 }
-// FreeVideo went away while a picture was being made (#1121): why, as far as the launcher saw it end, and what next. The
+// FreeVideo went away while a picture was being made: why, as far as the launcher saw it end, and what next. The
 // page's cause (task_store, engine_exit.js exitCause) picks the row; a restart without a record reads as quitting
-// unexpectedly. Lane, review/engine-closed-reason copy_lane.
+// unexpectedly.
 const LOST_ENGINE = {
     engine_restarted: {
         memory: [["The system closed FreeVideo, most likely because the computer ran out of memory. FreeVideo has restarted.", "FreeVideo 被系统关闭，很可能是因为电脑内存不足。FreeVideo 已重新启动。"], ["Use a smaller size, or close other programs that use memory, then generate again.", "请缩小尺寸，或关闭其他占用内存的程序后重新生成。"]],
-        // Lane 11-25 (copy_lane_memory_maybe_0613).
+        // The count rose, but the system's reason is not known: "possibly".
         memory_maybe: [["The system ended FreeVideo, possibly because the computer ran out of memory. FreeVideo has restarted.", "FreeVideo 被系统结束，可能是因为电脑内存不足。FreeVideo 已重新启动。"], ["Use a smaller size, or close other programs that use memory, then generate again.", "请缩小尺寸，或关闭其他占用内存的程序后重新生成。"]],
         ended: [["The system or another program ended FreeVideo. It has restarted.", "FreeVideo 被系统或其他程序结束，已重新启动。"], ["Generate again.", "请重新生成。"]],
         crashed: [["FreeVideo crashed. It has restarted.", "FreeVideo 意外崩溃，已重新启动。"], ["Generate again. If it happens again, choose \"Report a problem\".", "请重新生成。再次出现时，请点击“提交问题”。"]],
@@ -272,11 +274,11 @@ export function imageGenError(code, info, t) {
         busy_video: ['A video is generating. Try again when it finishes.', '视频正在生成，完成后再试。'],
         busy: ['The image queue is full. Wait for the earlier images to finish, then try again.', '等待生成的图片已满，请等前面的图片完成后再试。'],
         model_unavailable: ['This computer does not support the chosen image model. Use Qwen-Image 2.1.', '这台电脑不支持所选的图片模型。请改用 Qwen-Image 2.1。'],
-        // Lane 11-25 (image-prompt-read-failure-reason copy_lane_gpu_kernels).
+        // The startup computation check failed: driver first, then the report.
         gpu_kernels_failed: ["The graphics card's computation check did not pass. Update the graphics card driver, then restart FreeVideo. If the check still does not pass, download the report and report the problem.", "\u663e\u5361\u7684\u8ba1\u7b97\u68c0\u67e5\u672a\u901a\u8fc7\u3002\u8bf7\u66f4\u65b0\u663e\u5361\u9a71\u52a8\u540e\u91cd\u65b0\u542f\u52a8 FreeVideo\uff1b\u5982\u4ecd\u672a\u901a\u8fc7\uff0c\u8bf7\u4e0b\u8f7d\u62a5\u544a\u5e76\u63d0\u4ea4\u95ee\u9898\u3002"],
         model_unreadable: ['The image generation model files could not be read. Repair them in the launcher and try again.',
-            '图像生成模型的文件读不出来。在启动器里修复后再试。'],
-        device_unavailable: ['The graphics card is not available right now. Try again later.', '显卡暂时用不了，稍后再试。'],
+            '无法读取图像生成模型的文件。请在启动器里修复后再试。'],
+        device_unavailable: ['The graphics card is not available right now. Try again later.', '显卡暂时无法使用，请稍后再试。'],
         worker_exit: ['Image generation stopped unexpectedly. Try again.', '图像生成意外停止，请重试。'],
         timeout: ['This image took too long and was stopped. Try again.', '这张图片用时过长，已停止。请重试。'],
         disk_full: ['Saving the image failed: the disk is full. Free some space, then generate again.', '保存图片时出错：磁盘空间不够，空出空间后再生成。'],
@@ -289,10 +291,10 @@ export function imageGenError(code, info, t) {
         too_many_images: ['There are more reference images than the chosen model supports. Remove some and try again.', '参考图超过所选模型支持的数量。请减少参考图后重试。'],
         output_unwritable: ['The folder that keeps the images cannot be written (freevideo-image in the ComfyUI input folder). Check that it exists, is writable and has no file of the same name, then try again.',
             '无法写入保存图片的文件夹（ComfyUI 的 input 目录下的 freevideo-image）。请确认该目录存在、可写，且没有同名文件，然后重试。'],
-        invalid_layout: ['A layout box cannot be used. Draw it larger or change its words, then generate again.', '有一个布局框用不了。请把它画大一些或改一下文字，再生成。'],
+        invalid_layout: ['A layout box cannot be used. Draw it larger or change its words, then generate again.', '有一个布局框无法使用。请把它画大一些或修改文字，再生成。'],
         too_many_boxes: ['A layout takes at most 8 boxes. Delete one, then generate again.', '布局最多 8 个框。请删掉一个，再生成。'],
-        layout_too_long: ['The words in the layout are too long. Shorten the lines in the boxes, then generate again.', '布局里的文字太长。请把框里的话写短一些，再生成。'],
-        invalid_media: ['This image cannot be read or is larger than 4096×4096 pixels. Choose another image.', '这张图片读不出来，或超过 4096×4096 像素。请换一张图片。'],
+        layout_too_long: ['The words in the layout are too long. Shorten the lines in the boxes, then generate again.', '布局里的文字太长。请缩短框里的文字，再生成。'],
+        invalid_media: ['This image cannot be read or is larger than 4096×4096 pixels. Choose another image.', '这张图片无法读取，或超过 4096×4096 像素。请换一张图片。'],
         invalid_points: ['Choose 1 to 16 points inside the image, with at least one to select (1 selects, 0 excludes).',
             '请在图片内选 1 到 16 个点，其中至少一个是选中点（1 表示选中，0 表示排除）。'],
         segment_not_installed: ['The click-select model is not installed. Download it first.', '点选模型尚未安装，请先下载点选模型。'],
@@ -448,10 +450,10 @@ export function pageImageReport({error, stage, step, memory, error_type} = {}, v
 // The failures the person fixes by changing a setting or making room (image_gen/failure.py NO_REPORT; a test keeps the two
 // equal): the engine makes no report for them and the card offers no "Report a problem".
 export const NO_REPORT = new Set([
-    'busy', 'cancelled', 'disk_full', 'duplicate_lora', 'invalid_dimensions', 'invalid_lora_model',
+    'busy', 'cancelled', 'disk_full', 'duplicate_lora', 'invalid_dimensions', 'invalid_layout', 'invalid_lora_model',
     'invalid_lora_strength', 'invalid_loras', 'invalid_media', 'invalid_points', 'invalid_prompt', 'invalid_request',
-    'invalid_seed', 'lora_not_found', 'output_unwritable', 'segment_not_installed', 'small_memory',
-    'too_many_images', 'too_many_loras'
+    'invalid_seed', 'layout_too_long', 'lora_not_found', 'output_unwritable', 'segment_not_installed', 'small_memory',
+    'too_many_boxes', 'too_many_images', 'too_many_loras'
 ]);
 
 export function renderImageFailure(host, {error, report_id, stage, step, fitted, info, memory, other_usage, cause, misses, error_type} = {}, t,
@@ -481,7 +483,7 @@ export function renderImageFailure(host, {error, report_id, stage, step, fitted,
     let bar;
     if (report_id) ({bar} = imageReportBar(card, report_id, t, {productVersion, fetchApi}));
     else {
-        // A picture FreeVideo's going away ended (#1121) names why (fixed words) and the last asks that failed.
+        // A picture FreeVideo's going away ended names why (fixed words) and the last asks that failed.
         const facts = [[['Error code', '错误码'], error], [['Stage', '阶段'], stage], [['Step', '步骤'], step || (stage || cause ? '' : 'unreported')],
             [['Cause', '原因'], cause], [['Last attempts', '最后几次请求'], Array.isArray(misses) ? misses.slice(-3).map(miss => typeof miss === 'string' && /^[a-z][a-z0-9_]{0,31}$/.test(miss) ? miss : 'other').join(', ') : ''], [['Memory', '内存'], memory],
             [['Error type', '错误类型'], codeWord(error_type)]].filter(([, v]) => v);

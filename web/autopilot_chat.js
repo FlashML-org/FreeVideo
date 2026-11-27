@@ -40,7 +40,7 @@ function glyph(path, width = 2.2) {
     return svg;
 }
 const press = (cls, text, action) => { const b = el('button', cls, text); b.type = 'button'; b.onclick = action; return b; };
-// Frontend placeholder contract; Drew can rename the request field here, and Iris can replace the copy/icon here.
+// Frontend placeholder contract: the request field, the copy and the icon can be changed here.
 export const WHITEBOX_PREVIEW = Object.freeze({
     field: 'whitebox_preview', storageKey: 'freevideo.chat.whitebox-preview',
     label: ['Whitebox', '白模'], name: ['Preview a whitebox first', '先生成白模预览'],
@@ -350,7 +350,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         input.focus();
         let done = false;
         try { done = (await dataLayer.abandon(session)).ok; } catch {}
-        if (!done && state.session === session) { state = {...state, abandoned: false}; render(); say(t('Could not stop. Click again; if it keeps failing, report the problem.', '没能停止。请再点一次；仍然失败时，请提交问题。')); }
+        if (!done && state.session === session) { state = {...state, abandoned: false}; render(); say(t('Could not stop. Click again; if it keeps failing, report the problem.', '未能停止。请再点一次；仍然失败时，请提交问题。')); }
     }
     let whiteboxPreview = false;
     try { whiteboxPreview = localStorage.getItem(WHITEBOX_PREVIEW.storageKey) === 'true'; } catch {}
@@ -614,7 +614,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
     const slashKey = el('kbd', 'fv-chat-key', '/'); slashKey.setAttribute('aria-hidden', 'true');
     searchRow.append(glyph(ICON.search, 2), searchBox, slashKey);
     const noMatch = el('p', 'fv-chat-rail-empty fv-chat-no-match', t('No chat matches.', '没有匹配的对话。')); noMatch.hidden = true;
-    const railEmpty = el('p', 'fv-chat-rail-empty', t('No chats yet. Say what you want to make; the chat is kept here.', '还没有对话。说一句想做什么，对话会留在这里。'));
+    const railEmpty = el('p', 'fv-chat-rail-empty', t('No chats yet. Say what you want to make; the chat is kept here.', '暂无对话。说一句想做什么，对话会留在这里。'));
     const railFoot = el('footer', 'fv-chat-rail-foot');
     searchBox.addEventListener('input', () => renderConversations());
     listenDialogKey(searchBox, 'keydown', event => { if (event.key === 'Escape' && searchBox.value) { event.preventDefault(); event.stopPropagation(); searchBox.value = ''; renderConversations(); } });
@@ -665,7 +665,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
     // A note of a failed task in the top bar's status panel opens that task's card (its cause, next step and report).
     const openTaskCard = event => {
         const id = event.detail?.id; if (!id) return;
-        const look = left => { if (findCard(id)) showCard(id, '.fv-chat-retry:not([hidden]), .fv-report-button, button'); else if (left > 0 && !stopped) setTimeout(() => look(left - 1), 150); else if (!stopped) say(t('That task is no longer in this conversation.', '这条任务已经不在当前对话里了。')); };
+        const look = left => { if (findCard(id)) showCard(id, '.fv-chat-retry:not([hidden]), .fv-report-button, button'); else if (left > 0 && !stopped) setTimeout(() => look(left - 1), 150); else if (!stopped) say(t('That task is no longer in this conversation.', '这条任务已不在当前对话里。')); };
         look(20);
     };
     window.addEventListener('freevideo-agent-task-open', openTaskCard);
@@ -1133,7 +1133,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         ids.forEach(id => stopping.add(id)); render(); report();
         const results = await Promise.all(ids.map(id => dataLayer.cancel(id)));
         results.forEach((response, index) => { if (!response?.ok) stopping.delete(ids[index]); });
-        if (results.some(response => !response?.ok)) say(t('Could not stop. Click again; if it keeps failing, report the problem.', '没能停止。请再点一次；仍然失败时，请提交问题。'), true);
+        if (results.some(response => !response?.ok)) say(t('Could not stop. Click again; if it keeps failing, report the problem.', '未能停止。请再点一次；仍然失败时，请提交问题。'), true);
         else say('');
         if (!stopped) { render(); report(); void poll(); }
     }
@@ -1741,7 +1741,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         const error = await sendError(response);
         if (!stopped) void poll();
         // Another sentence came first: the page reads it, and this one stays in the box.
-        if (error?.code === 'invalid_request') return t('A newer message was sent first. This one was not sent.', '已有更新的消息，此⁠条⁠未⁠发⁠送⁠。');
+        if (error?.code === 'invalid_request') return t('A newer message was sent first. This one was not sent.', '已有更新的消息，此条未发送。');
         if (WAIT_FOR_AGENT.includes(error?.code) || error?.code === 'session_full') return t('Not sent: ', '没发出去：') + failureReason({error}, t);
         return t('Could not stop. Click again; if it keeps failing, report the problem.', '未能停止。请再点一次；仍然失败时，请提交问题。');
     }

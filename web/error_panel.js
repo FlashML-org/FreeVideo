@@ -1,4 +1,5 @@
 // Shared by the Studio and graph view. Text only; never render exception HTML.
+import { holdNames, plainText } from './i18n.js';
 import {readOtherUsage, otherUsageText} from './other_usage.js';
 import {pageRepair, repairAction, repairButton} from './repair_hint.js';
 import {detectBrowserExtension, browserExtensionAdvice, extensionSteps, isNetworkTypeError, connectionLostText, engineNotRunning, engineNotRunningText, engineNotResponding, engineNotRespondingText, isRequestTimeout, requestTimeoutText, requestTimeoutAction} from './browser_extension.js';
@@ -407,20 +408,20 @@ export function createErrorReport(detail, context = {}) {
 
 // Failures of turning a reference video into depth (freevideo_engine/depth_reference.py), most specific first.
 const RETRY_REPORT = ['Try again. If it happens again, choose "Report a problem" to send us the report.', '请重试。再次出现时，请点击“提交问题”，把报告发给我们。'];
-// The engine's refusal of a preview with other first-pass steps (preview.validate_flags; Lane, review/preview-steps-check-0610).
+// The engine's refusal of a preview with other first-pass steps (preview.validate_flags).
 const PREVIEW_STEPS = [/A preview uses two-pass generation, which runs only with 8 first-pass steps/,
     'preview-steps', ['Preview first needs 8 first-pass steps', '先出预览需一采 8 步'], ['', ''],
     ['Set the first-pass steps to 8, or turn off Preview first, then generate again.', '请将一采步数改为 8，或关闭“先出预览”，再重新生成。']];
 // A redo whose name was already used with other settings (chain_errors.py redo_request_changed): what happened and where
-// to look first, instead of a plain "try again" (Lane, review/chain-redo-lost-reply-duplicate copy_lane).
+// to look first, instead of a plain "try again".
 const REDO_CHANGED = [/This redo was already submitted with the earlier settings\./,
     'redo-request-changed', ['The redo did not start', '没有重新开始生成'],
     ['This redo was already submitted with the earlier settings.', '这次重新生成已按之前的设置提交过。'],
     ['Check the queue first. If you still want the current settings, choose "Redo from here" again.', '请先查看队列；仍需要按现在的设置生成时，再点一次“从这段重新生成”。']];
 const REFERENCE_FAILURES = [
     [/Source video (?:frame count )?changed during depth (?:conversion|inspection)|reference video changed while it was being turned into lines/i,
-        'reference-changed', ['The reference video changed', '参考视频在转换时被改动'],
-        ['The reference video file changed while FreeVideo was converting it.', '转换参考视频的过程中，这个文件被改动了。'],
+        'reference-changed', ['The reference video changed', '参考视频在转换过程中被修改'],
+        ['The reference video file changed while FreeVideo was converting it.', '转换参考视频的过程中，该文件已被修改。'],
         ['Try again, and leave the file unchanged until the video is generated.', '请重试，并在生成完成前保持该文件不变。']],
     [/Depth reference (?:needs a decodable video|video has no valid frame rate|video changes display rotation|video changes dimensions|video has no decodable frames)/i,
         'reference-unreadable', ['The reference video cannot be read', '无法读取参考视频'],
@@ -468,10 +469,8 @@ export function failureAdvice(value, t, known = knownError(value)) {
         const custom = index < 0;
         // Tables follow the step count: a level with the same steps and passes (Light and Medium) needs the same download.
         const available = known.available.filter(i => SAMPLING_EFFORTS[i]?.steps !== known.base_steps || SAMPLING_EFFORTS[i].twoPass !== known.two_pass);
-        // Iris: a level name and its 档 never break apart. The summary is set as text,
-        // so word joiners (U+2060) keep each group on one line instead of markup.
-        const keep = value => /[\u4e00-\u9fff]/.test(value) ? [...value].join('\u2060') : value;
-        const also = available.map((i, at) => keep(at === available.length - 1 ? t('{level}', '“{level}”档', { level: t(...levels[i]) }) : t('{level}', '“{level}”', { level: t(...levels[i]) })));
+        // A level's name stays on one line: the quoted name is held where the page shows it (i18n.js holdNames).
+        const also = available.map((i, at) => at === available.length - 1 ? t('{level}', '“{level}”档', { level: t(...levels[i]) }) : t('{level}', '“{level}”', { level: t(...levels[i]) }));
         const list = also.length < 2 ? also[0] || '' : also.slice(0, -1).join(t(', ', '、')) + t(' or ', '或') + also.at(-1);
         const bytes = known.missing_bytes;
         // As launcher_copy.size_text: one decimal for GiB, whole MiB; decimal units on macOS.
@@ -485,11 +484,11 @@ export function failureAdvice(value, t, known = knownError(value)) {
             summary: t('The first upscale needs to download sampling caches (about {size}), and the download did not finish this time. Check the network connection, then upscale again.', '第一次放大需要先下载采样缓存（约 {size}），这次未能完成。请检查网络后再放大一次。', { size }), plain: true};
         // A custom step count is not a quality level: no "档" / "quality level" for it.
         const title = custom
-            ? ['Custom ({steps} steps) is not downloaded yet', '“自定义（{steps} 步）”还没下载', { steps: known.base_steps }]
-            : ['The {level} quality level is not downloaded yet', '“\u2060{level}\u2060”\u2060档还没下载', { level: keep(t(...levels[index])) }];
+            ? ['Custom ({steps} steps) is not downloaded yet', '“自定义（{steps} 步）”尚未下载', { steps: known.base_steps }]
+            : ['The {level} quality level is not downloaded yet', '“{level}”档尚未下载', { level: t(...levels[index]) }];
         const summary = custom
-            ? t('This step count needs a download (about {size}) that did not finish this time. Generate again when online and it downloads automatically.', '这个步数要先下载（约 {size}），这次没能下载。联网后再生成一次，会自动下载。', { size })
-            : t('This level needs a download (about {size}) that did not finish this time. Generate again when online and it downloads automatically.', '这一档要先下载（约 {size}），这次没能下载。联网后再生成一次，会自动下载。', { size });
+            ? t('This step count needs a download (about {size}) that did not finish this time. Generate again when online and it downloads automatically.', '这个步数要先下载（约 {size}），这次未能下载完成。联网后再生成一次，会自动下载。', { size })
+            : t('This level needs a download (about {size}) that did not finish this time. Generate again when online and it downloads automatically.', '这一档要先下载（约 {size}），这次未能下载完成。联网后再生成一次，会自动下载。', { size });
         return {...row('sampling-table', title, ['', ''], ['', '']), summary: summary + (available.length ? t(' You can also use {levels} for now.', '也可以先用{levels}。', { levels: list }) : ''), plain: true};
     }
     // ComfyUI and worker tracebacks carry English exceptions. Translate these
@@ -571,7 +570,7 @@ export function failureAdvice(value, t, known = knownError(value)) {
             ['Close memory-heavy applications and retry. If you set a memory limit, remove or raise it. Copy the details below if it still fails.', '关闭占用内存较多的程序后重试；设置过内存上限的，请取消或调高。仍然失败时，可复制下方详情。']);
     if (outputNotWritable(text))
         return row('output-folder', ['The output folder cannot be written to', '输出目录不可写'],
-            ['The video could not be saved.', '视频没能保存。'],
+            ['The video could not be saved.', '视频未能保存。'],
             ['Check that the output folder can be written to, then retry.', '请检查输出文件夹的写入权限后重试。']);
     if (/ENCODER_MODEL_MISSING:|Model in folder ['"]text_encoders['"] with filename ['"][^\r\n]+?['"] not found\./i.test(text)
             || /manifest\.json/i.test(text) && /No such file|FileNotFoundError|\[Errno 2\]/i.test(text))
@@ -587,10 +586,11 @@ export function failureAdvice(value, t, known = knownError(value)) {
         return row('encoder-files', ['The text encoder is not fully installed', '文本编码器没有装全'],
             ['Some of the text encoder files FreeVideo needs are missing.', 'FreeVideo 需要的部分文本编码器文件缺失。'],
             repairAction());
-    // Upscaling to 4K (frame_upscale.py): its own small model, disk need and GPU memory.
-    if (/The 4K upscale model (?:could not be downloaded|failed its size\/SHA-256 check)/.test(text))
+    // Upscaling by the small frame-wise model (frame_upscale.py: 4K or the quick size): its download, disk need and GPU memory.
+    // Older versions said "4K" in these sentences.
+    if (/The (?:4K )?upscale model (?:could not be downloaded|failed its size\/SHA-256 check)/.test(text))
         return row('upscale-download', ['The upscale model could not be downloaded', '放大模型未能下载'],
-            ['Upscaling uses a small model (about 5 MB), which could not be downloaded or verified this time.', '放大要用一个约 5 MB 的小模型，这次没能下载，或下载后校验未通过。'],
+            ['Upscaling uses a small model (about 5 MB), which could not be downloaded or verified this time.', '放大要用一个约 5 MB 的小模型，这次未能下载，或下载后校验未通过。'],
             ['Check the network connection or choose another download source in Settings, then try again. If it happens again, choose "Report a problem" to send us the report.',
              '请检查网络，或在设置里换一个下载源，然后重试。再次出现时，请点击“提交问题”，把报告发给我们。']);
     // A video the upscale refuses (frame_upscale.REASONS): the engine's own code picks the cause and the next step.
@@ -600,7 +600,7 @@ export function failureAdvice(value, t, known = knownError(value)) {
             outside: ['It is not in the FreeVideo output folder.', '它不在 FreeVideo 的输出文件夹里。'],
             missing: ['The video file is missing or cannot be read.', '找不到这个视频文件，或文件无法读取。'],
             no_request: ['A merged or imported video can only be upscaled to the largest size.', '合并或导入的视频只能放大到最大尺寸。'],
-            unfinished: ['Its generation did not finish.', '它没有生成完成。'],
+            unfinished: ['Its generation did not finish.', '它未能生成完成。'],
             preview: ['It is a preview.', '它是预览视频。'],
             fps: ['It is not 24 fps.', '它不是 24 fps。'],
             streams: ["This video's format cannot be upscaled.", '这个视频的格式不能放大。'],
@@ -618,15 +618,15 @@ export function failureAdvice(value, t, known = knownError(value)) {
             size_4k: ['', '']}[refused];
         return row('upscale-refused', ['This video cannot be upscaled', '这个视频不能放大'], why, next);
     }
-    if (/Not enough disk space to save the 4K video/.test(text)) {
+    if (/Not enough disk space to save the (?:4K|upscaled) video/.test(text)) {
         const megabytes = /about (\d+) MB is needed/.exec(text)?.[1];
-        return row('upscale-disk', ['Not enough disk space for the upscaled video', '磁盘空间不足，放大后的视频没能保存'],
+        return row('upscale-disk', ['Not enough disk space for the upscaled video', '磁盘空间不足，放大后的视频未能保存'],
             megabytes ? ['The upscaled video needs about {megabytes} MB on the drive of the output folder.', '放大后的视频需要输出文件夹所在磁盘约 {megabytes} MB 空间。', { megabytes }]
                 : ['The upscaled video needs more space on the drive of the output folder.', '放大后的视频需要输出文件夹所在磁盘更多空间。'],
             ['Free some space on that drive, then try again.', '请在该磁盘上腾出空间后重试。']);
     }
-    if (/Not enough GPU memory to upscale to 4K/.test(text))
-        return row('upscale-memory', ['Not enough GPU memory to upscale', '显存不足，放大没能完成'],
+    if (/Not enough GPU memory to upscale(?: to 4K)?\./.test(text))
+        return row('upscale-memory', ['Not enough GPU memory to upscale', '显存不足，放大未能完成'],
             ['Upscaling needs about 1.5 GB of free GPU memory, and other programs were using it.', '放大需要约 1.5 GB 空闲显存，当时被其他程序占用。'],
             ['Close other programs that use the GPU, then try again.', '请关闭其他占用显卡的程序，然后重试。']);
     if (/No space left on device|WinError 112|disk (?:is )?full/i.test(text))
@@ -664,8 +664,8 @@ export function failureAdvice(value, t, known = knownError(value)) {
     // Only here, after every more specific card: memory, disk or an output folder are not solved by another level.
     if (!killed && /^FreeVideo generation failed(?: \(exit -?\d+\))?$/m.test(text)
         && /^FAST_MODE_FAILED: The fastest mode could not run\.$/m.test(text))
-        return row('fast-mode-failed', ['The Fast level did not finish', '极\u2060速\u2060档未能完成生成'],
-            ['Switch to the Light level and generate again.', '请改用轻\u2060量\u2060档后重新生成。'],
+        return row('fast-mode-failed', ['The Fast level did not finish', '极速档未能完成生成'],
+            ['Switch to the Light level and generate again.', '请改用轻量档后重新生成。'],
             ['If it happens again, choose "Report a problem" to send us the report.', '再次出现时，请点击“提交问题”，把报告发给我们。']);
     if (exit) {
         return row('process-exit', ['Generation stopped unexpectedly', '生成意外中断'],
@@ -680,6 +680,14 @@ export function failureAdvice(value, t, known = knownError(value)) {
         ['', ''], ['', '']);
 }
 
+// In a dialog without "Report a problem", the part of a card's advice that names it, and what it becomes.
+export const REPORT_ON_CARD = [
+    [['choose "Report a problem"', '请点击“提交问题”'],
+     ['choose "Report a problem" on the failure card in Create', '请在创作面板的失败卡上点“提交问题”']],
+    [['then "Report a problem"', '再点击“提交问题”'],
+     ['then "Report a problem" on the failure card in Create', '再在创作面板的失败卡上点击“提交问题”']],
+];
+
 let activeDialog = null;
 function showFailureDialog(report, t) {
     // Both graph and Studio receive execution_error. Show one modal for that
@@ -692,7 +700,22 @@ function showFailureDialog(report, t) {
     dialog.setAttribute('aria-label', t('FreeVideo error', 'FreeVideo 错误'));
     const panel = createErrorPanel(t); panel.show(report, false);
     // The dialog has no run's report to download; submitting stays on the failure card.
-    if (diagnosticReports.has(report)) panel.element.querySelector('.fv-failure-github:not([data-lora])')?.remove();
+    const reportButton = diagnosticReports.has(report) ? panel.element.querySelector('.fv-failure-github:not([data-lora])') : null;
+    reportButton?.remove();
+    // Advice that names "Report a problem": once this dialog has no such button, it names the failure card that does.
+    const next = panel.element.querySelector('.fv-failure-next');
+    if (reportButton && next) {
+        if (next.textContent === t('Try again. If it still fails, choose "Report a problem" to send us the report.', '请重试。仍然失败时，请点击“提交问题”发送报告。'))
+            next.textContent = t('Try again. If it still fails, choose "Report a problem" on the failure card in Create.', '请重试。仍然失败时，请在创作面板的失败卡上点“提交问题”发送报告。');
+        else {
+            // A card's own advice changes only where it names the button; the rest of the sentence stays. A language whose
+            // sentence does not hold the fragment's own translation keeps the sentence (tests/failure_dialog_fragments.mjs).
+            for (const [from, to] of REPORT_ON_CARD) {
+                const button = t(...from);
+                if (next.textContent.includes(button)) { next.textContent = next.textContent.replace(button, t(...to)); break; }
+            }
+        }
+    }
     const close = document.createElement('button'); close.type = 'button'; close.className = 'fv-failure-primary';
     close.textContent = t('Close', '关闭'); close.onclick = () => dialog.close();
     // The title has its own line; the secondary buttons sit at the left of the bottom row, the main button at the right.
@@ -841,7 +864,7 @@ export function createErrorPanel(t, route = null) {
     details.setAttribute('aria-label', t('Error details', '错误详情')); details.spellcheck = false;
     const copyDetails = async button => {
         let copied = false;
-        try { await navigator.clipboard.writeText(details.value); copied = true; } catch {
+        try { await navigator.clipboard.writeText(plainText(details.value)); copied = true; } catch {
             // Remote ComfyUI commonly uses plain HTTP, where Clipboard API is
             // unavailable. Keep selectable text even if the browser denies copy.
             disclosure.open = true; details.focus(); details.select();
@@ -957,7 +980,13 @@ export function createErrorPanel(t, route = null) {
         else if (download.hidden) {
             // Advice that ends with "export the report" points at the report this card does offer.
             for (const [from, to] of EXPORT_TO_DOWNLOAD)
-                if (action.textContent.includes(from)) action.textContent = action.textContent.replace(from, to);
+                if (action.textContent.includes(from)) action.textContent = action.textContent.replace(from, holdNames(to));  // set as shown, as t() would
+            // The same for advice that names both buttons, in every language the sentence is translated into.
+            const both = t('Switching the download source or connection mode gives the same result. Choose "Export report", then "Report a problem", and attach the report.',
+                '更换下载源或连接方式后结果相同。请先点击“导出报告”，再点击“提交问题”并附上报告。');
+            if (action.textContent === both)
+                action.textContent = t('Switching the download source or connection mode gives the same result. Choose "Download report" in the preview, then "Report a problem", and attach the report.',
+                    '更换下载源或连接方式后结果相同。请先点击预览区的“下载报告”，再点击“提交问题”并附上报告。');
         }
         action.hidden = !action.textContent;
         repair.hidden = !pageRepair(action.textContent);

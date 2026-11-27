@@ -111,7 +111,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         return rows;
     }
     const changed = () => {
-        if (!broadcasting) refresh().catch(error => current?.message(userMessage(error, text, text('Could not refresh the list. Try again.', '没能刷新列表，请重试。'))));
+        if (!broadcasting) refresh().catch(error => current?.message(userMessage(error, text, text('Could not refresh the list. Try again.', '未能刷新列表，请重试。'))));
     };
     async function saved() {
         broadcasting = true;
@@ -120,8 +120,10 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         await refresh();
     }
 
-    function openDialog(id = null) {
-        if (disposed || !available) return;
+    // preset: {file, onClose} for a new card from a picture of elsewhere (Save as character): the picture goes where a
+    // dropped one would, and onClose runs once the dialog is gone, saved or not.
+    function openDialog(id = null, preset = {}) {
+        if (disposed || !available) return false;
         current?.close();
         let closed = false, loading = !!id, saving = false, revision, active = 'upload';
         // A character's views are made on three tabs: From a photo, Upload images (a new character: from one picture, in
@@ -333,7 +335,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
                 try {
                     await load();
                     message(text('Changed elsewhere. Showing the latest version.', '已在别处修改，已显示最新内容'), true);
-                } catch (error) { message(userMessage(error, text, text('Could not show the latest version. Close and open it again.', '没能显示最新内容，请关闭后重新打开。'))); }
+                } catch (error) { message(userMessage(error, text, text('Could not show the latest version. Close and open it again.', '未能显示最新内容，请关闭后重新打开。'))); }
             } else message(userMessage(error, text));
         }
         async function saveCard() {
@@ -395,6 +397,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
             if (dialog.open) dialog.close(); dialog.remove();
             if (current?.element === dialog) current = null;
             add.focus();
+            preset.onClose?.();
         }
         // A click anywhere else in the dialog takes the second step back.
         dialog.addEventListener('keydown', () => { moved = true; }); dialog.addEventListener('pointerdown', () => { moved = true; });
@@ -403,7 +406,9 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         dialog.onclose = close;
         current = {element: dialog, message, close};
         name.value = ''; select('upload'); document.body.append(dialog); dialog.showModal(); name.focus();
-        if (id) load().catch(error => message(userMessage(error, text, text('Could not open it. Try again.', '没能打开，请重试。'))));
+        // The front slot holds it where the picture maker is missing; the maker's own source slot takes it once it loads.
+        if (preset.file) chooseFiles(0, [preset.file]);
+        if (id) load().catch(error => message(userMessage(error, text, text('Could not open it. Try again.', '未能打开，请重试。'))));
         // A scene has one set of pictures: the chosen option takes the first place, where the Upload tab shows it.
         const pick = file => { if (closed || !scene) return; slots[0] = {media: file, label: 'other'}; pickedLoras = generator?.getLoras?.() ?? null; paint(0); };
         // Scenes and props: the description's candidates. Characters: the four views from each source.
@@ -423,12 +428,14 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
                 if (closed) { instance?.cancel(); instance?.destroy(); return; }
                 if (!instance) return;
                 makers[source] = instance;
+                if (source === 'image' && preset.file) instance.preset?.(preset.file);
                 if (instance.action) actions.insertBefore(instance.action, save);
                 photoTab.hidden = !makers.photo; aiTab.hidden = !makers.ai; tabs.hidden = photoTab.hidden && aiTab.hidden;
                 // A new character opens on "From a photo", the quickest way to a card of a real person.
                 if (source === 'photo' && !id && !loading && active === 'upload' && !slots.some(Boolean)) select('photo'); else select(active);
             });
         }
+        return true;
     }
 
     // The @ popup reports which characters the prompt currently mentions; they get an accent ring.
@@ -442,7 +449,9 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
     // notice: the could-not-read line, which a page showing several libraries may move below all of them.
     return {element, notice: skipped, list: () => rows, get, refresh,
         subscribe(fn) { subscribers.add(fn); return () => subscribers.delete(fn); },
-        openNew: () => openDialog(), openEdit: id => openDialog(id),
+        openNew: (preset = {}) => openDialog(null, preset), openEdit: id => openDialog(id),
+        // Whether the library can be used at all (the agent interface is on): false keeps the row hidden.
+        ready: probe,
         destroy() {
             if (disposed) return;
             disposed = true; request++; current?.close(); subscribers.clear(); element.remove(); skipped.remove();

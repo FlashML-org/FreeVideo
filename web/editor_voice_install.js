@@ -19,7 +19,7 @@ export function percent(row) {
     return Math.max(0, Math.min(99, Math.floor(row.done / row.total * 100)));
 }
 
-// Lane-5x 11-22: no version or date is promised.
+// No version or date is promised.
 export const laterText = t => t('Dubbing is not available on this computer.', '这台电脑上无法使用配音。');
 export const offerText = (bytes, t) => t('Voice change needs the dubbing model (about {size}).', '换人声需要配音模型，约 {size}。', { size: sizeText(bytes) });
 export const progressText = (value, t) => value == null ? t('Downloading the dubbing model', '正在下载配音模型')

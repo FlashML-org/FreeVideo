@@ -366,6 +366,19 @@ def _area(r):
     return b['width']*b['height']/(a['width']*a['height'])
 
 
+def _plan_scale(r):
+    """This plan's second-pass area over the default 2x plan's, for the same request: the ratio fit (2026-10-10) saw
+    2x plans only (second/first areas 3.72 to 4.00). 1 when the canvases are the 2x plan's (every 2x plan, and the small
+    sizes both plans sample alike); against 4 if the 2x plan had a single pass and this one has two."""
+    q = dict(r)
+    q.pop('sampling_geometry', None)
+    q['upscale_factor'] = 2
+    area, default = _area(r), _area(q)
+    if area == default:
+        return 1.
+    return area/(default if default > 1 else 4.)
+
+
 def _physical_transfer(h, r, p, measured, coef):
     b = p['step']['bc_normalized'][0]
     c, ss = coef[0], coef[1:]
@@ -400,6 +413,9 @@ def _pass2(h,r,p,warm1,method):
     name = 'ratio_offload' if method == 'ratio_offload' else 'ratio'
     coef = p['v2']['ratio'][name]
     ratio = float(math.exp(_clip(_dot(_ratio_features(h,r,name=='ratio_offload'),coef),math.log(.25),math.log(32.))))
+    # The ratio was fitted on 2x plans only; a plan whose second pass is a smaller step up (1.5x: 2.25 times the first
+    # pass's area instead of about 4) takes that much less per step. On a 2x plan this is 1 and nothing changes.
+    ratio *= _plan_scale(r)
     if method.startswith('blend'):
         alpha = float(method[5:])/100.
         ratio = math.exp(alpha*math.log(ratio)+(1-alpha)*math.log(_area(r)))

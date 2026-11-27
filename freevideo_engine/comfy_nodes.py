@@ -195,7 +195,7 @@ class FreeVideoGenerate(io.ComfyNode):
         refine_from = optional_text(refine_from)
         if optional_text(upscale_from):
             # The bridge reads the finished video's own request; the node's widgets do not apply.
-            return True if optional_text(upscale_to) in (None, '', '4k') else 'Upscale size must be empty or 4k'
+            return True if optional_text(upscale_to) in (None, '', '4k', 'fast') else 'Upscale size must be empty, 4k or fast'
         try:
             options = request_options(continue_from, node_frames(frames))
             if fast_mode_option(fast_mode):
@@ -252,14 +252,19 @@ class FreeVideoGenerate(io.ComfyNode):
         refine_from, continue_from = optional_text(refine_from), optional_text(continue_from)
         upscale_from = optional_text(upscale_from)
         upscale_to = optional_text(upscale_to) if upscale_from else None
-        # The 4K size is made by a small frame-wise model beside whatever else is loaded (frame_upscale).
-        frames_upscale = upscale_to == '4k'
+        # The 4K size and the quick 1.5x size are made by a small frame-wise model beside whatever else is loaded (frame_upscale).
+        frames_upscale = upscale_to in ('4k', 'fast')
         if upscale_from:
             # Upscaling a finished video is its own request: three refinement steps, no preview or continuation.
             two_pass, preview, base_steps, refine_steps, step_cache = True, False, 8, 3, 'none'
             refine_from = continue_from = ''
             frames = 0
         node_id = cls.hidden.unique_id
+        # A rewrite no queue made (queued_rewrite.py): generated with the prompt as it is, and the result says so.
+        from .queued_rewrite import request_left
+        not_rewritten = request_left(getattr(cls.hidden, 'prompt', None), node_id)
+        if not_rewritten:
+            logging.warning('[FreeVideo] A queued prompt rewrite was not made; generating with the original prompt')
         chain = block_context(PromptServer.instance, node_id)
         options = request_options(continue_from, node_frames(frames))
         notes = []
@@ -445,7 +450,7 @@ class FreeVideoGenerate(io.ComfyNode):
                 **({'hide_tail': True} if hide_tail is True else {}),
                 **({'allow_empty_prompt': True} if allow_empty_prompt is True else {}),
                 **({'upscale_from': upscale_from} if upscale_from else {}),
-                **({'upscale_to': '4k'} if frames_upscale else {}),
+                **({'upscale_to': upscale_to} if frames_upscale else {}),
                 **step_cache_option(step_cache),
                 **upscale_option(upscale_factor),
                 **fast_mode_option(fast_mode),
@@ -460,6 +465,8 @@ class FreeVideoGenerate(io.ComfyNode):
             if 'continuation' in preview['freevideo_summary'][0] and options.get('frames'):
                 preview['freevideo_summary'][0]['continuation']['requested_frames'] = options['frames']
             preview['freevideo_summary'][0]['result_cache_hit'] = result_reused[0]
+            if not_rewritten:
+                preview['freevideo_summary'][0]['enhance_fallback'] = 'not_rewritten'
             from .comfy_progress import REPORTS
             known = REPORTS.tokens(output_root).get(relative.as_posix().removeprefix('FreeVideo/'))
             if known:

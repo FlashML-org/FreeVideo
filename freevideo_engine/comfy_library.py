@@ -39,6 +39,17 @@ class _Unfinished(ValueError):
     """A run whose summary says it did not finish: not a damaged record."""
 
 
+def finished(report):
+    """Whether a request summary describes a finished video. Upscales by the small frame-wise model (4K, quick 1.5x)
+    were once saved without "success"; their summary is written only after the upscale finished, so one that holds the
+    upscale result and no "success" at all is a finished video too. A summary that says success is false never is."""
+    if not isinstance(report, dict):
+        return False
+    if report.get('success') is True:
+        return True
+    return 'success' not in report and isinstance(report.get('frame_upscale'), dict) and bool(report.get('upscaled_work'))
+
+
 def _report(path):
     # Read only the small request summary, never tensors, prompts or media.
     with path.with_suffix('.request.json').open('rb') as stream:
@@ -48,7 +59,7 @@ def _report(path):
     report = json.loads(data)
     if not isinstance(report, dict):
         raise ValueError('Request summary is not an object')
-    if report.get('success') is not True:
+    if not finished(report):
         raise _Unfinished('Video is not complete')
     return report
 
@@ -520,9 +531,9 @@ _REPARSE_POINT = 0x400
 
 
 class DeleteRefused(ValueError):
-    def __init__(self, reason, kept=()):
+    def __init__(self, reason, kept=(), edits=()):
         super().__init__(reason)
-        self.reason, self.kept = reason, list(kept)
+        self.reason, self.kept, self.edits = reason, list(kept), list(edits)
 
 
 def _plain(path):
@@ -960,13 +971,14 @@ def _trash_creation(output_directory, identity, queue, cache, announce=None):
     # Not while the startup release is deleting files in this folder. _PENDING comes first,
     # as in undo_deleted, so the move and its in-flight mark cannot interleave with a purge.
     with _PENDING, _RELEASING, (queue.mutex if queue is not None else nullcontext()):
-        from .comfy_editor import reference_users
+        from .comfy_editor import reference_edits
         try:
-            users = reference_users(output_directory, identity)
+            edits = reference_edits(output_directory, identity)
         except (OSError, ValueError):
             raise DeleteRefused('editor-unavailable') from None
-        if users:
-            raise DeleteRefused('editor-in-use', users)
+        if edits:
+            # kept: the names, as before; edits: which edit, which clip and whether the timeline shows it.
+            raise DeleteRefused('editor-in-use', [edit['name'] for edit in edits], edits)
         kept = _foreign(folder)
         if kept:
             raise DeleteRefused('foreign-files', kept)
@@ -1376,7 +1388,7 @@ def delete_videos(output_directory, identities, *, queue=None, batch=None, exten
                 target, identifier = _trash_creation(output_directory, identity, queue, cache,
                                                      announce=announce(dict(id=identity)))
             except DeleteRefused as error:
-                skipped.append(dict(id=identity, reason=error.reason, kept=error.kept[:20]))
+                skipped.append(dict(id=identity, reason=error.reason, kept=error.kept[:20], **({'edits': error.edits[:20]} if error.edits else {})))
             except RecordUnsaved:
                 skipped.append(dict(id=identity, reason='unsaved', kept=[]))
             except (FileNotFoundError, NotADirectoryError, ValueError):
@@ -1892,7 +1904,8 @@ def register():
                                              body.get('id') if isinstance(body, dict) else None,
                                              queue=getattr(server, 'prompt_queue', None))
         except DeleteRefused as error:
-            return web.json_response(dict(deleted=False, reason=error.reason, kept=error.kept[:20]), status=409)
+            return web.json_response(dict(deleted=False, reason=error.reason, kept=error.kept[:20],
+                                          **({'edits': error.edits[:20]} if error.edits else {})), status=409)
         except FileNotFoundError:
             raise web.HTTPNotFound(text='Saved video unavailable') from None
         except OSError as error:

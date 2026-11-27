@@ -5,7 +5,7 @@
 import { isNetworkTypeError, connectionLostText } from './browser_extension.js';
 import { api } from '../../scripts/api.js';
 import { app } from '../../scripts/app.js';
-import { jobs, imageSource, progressSource, chainSource, queueSource, journalSource, ACTIVE, FINAL } from './task_store.js';
+import { jobs, imageSource, progressSource, chainSource, queueSource, journalSource, ACTIVE, FINAL, queuedRewriteWords } from './task_store.js';
 import { errorText, failureAdvice } from './error_panel.js';
 import { createImageGenClient, imageGenError, imageReportBar, lostEngineText, WAITING_TEXT } from './image_generation.js';
 import { exitCause, newEngineExit, watchEngineExit } from './engine_exit.js';
@@ -29,7 +29,7 @@ const outputURL = file => api.apiURL('/view?' + new URLSearchParams({filename: f
 export function startJobSources() {
     if (sourcesStarted) return; sourcesStarted = true;
     let storage = null; try { storage = globalThis.localStorage; } catch { /* Private windows keep jobs in memory only. */ }
-    // Why FreeVideo went away while a picture was being made, as the launcher saw it end (#1121).
+    // Why FreeVideo went away while a picture was being made, as the launcher saw it end.
     void watchEngineExit(api);
     imageSource(jobs, {client: createImageGenClient(), storage, connection: api, lastExit: async () => exitCause(await newEngineExit(api))});
     // The request the engine runs on each node now, from its own events: a plain (one graphics card) run's progress
@@ -187,13 +187,13 @@ function stateWord(row) {
 function reasonShort(row) {
     const code = row.failure?.code;
     if (code === 'engine_closed') return t('Connection lost', '连接中断');
-    // Short enough for the card's line (Lane, copy_lane.float_short); the hover and the opened card say it whole.
+    // Short enough for the card's line; the hover and the opened card say it whole.
     if (code === 'engine_restarted' || row.status === 'interrupted') return t('Restarted', '已重新启动');
     return t('Open for the reason', '点开查看原因');
 }
 function reasonLong(row) {
     const code = row.failure?.code;
-    // A picture: why FreeVideo went away, as far as the launcher saw it end, and what next (#1121).
+    // A picture: why FreeVideo went away, as far as the launcher saw it end, and what next.
     if (row.kind === 'image' && (code === 'engine_closed' || code === 'engine_restarted')) return lostEngineText(code, row.failure?.cause, t).join(t(' ', ''));
     if (code === 'engine_closed') return lostEngineText(code, row.failure?.cause, t).join(t(' ', ''));
     if (code === 'engine_restarted' || row.status === 'interrupted') return t('FreeVideo restarted while this was being made, so it did not finish. Finished parts are in your creations.', 'FreeVideo 在生成过程中重新启动，这次未完成。已经完成的部分在作品里。');
@@ -210,10 +210,10 @@ function reasonLong(row) {
         'FreeVideo 没有给出这段视频失败的原因。请重试，仍然失败请提交问题。');
 }
 function line2(row) {
-    // Waiting for FreeVideo to come back (#1121): said, with the stop button turned into "Stop waiting".
+    // Waiting for FreeVideo to come back: said, with the stop button turned into "Stop waiting".
     if (row.meta?.reconnecting && ACTIVE.has(row.status)) return t(...WAITING_TEXT.short);
     if (row.status === 'running') return etaText(row.eta_seconds) || elapsedText(row);
-    if (row.status === 'queued' || row.status === 'submitting') return t('Starts after the one before it', '等前一项完成后开始');
+    if (row.status === 'queued' || row.status === 'submitting') return queuedRewriteWords(row, t) || t('Starts after the one before it', '等前一项完成后开始');
     if (row.status === 'cancelling') return elapsedText(row);
     if (row.status === 'done') return t('Saved to your creations', '已存入作品');
     return reasonShort(row);
@@ -263,9 +263,9 @@ export function confirmStop(anchor, {kind = 'video', queued = false, host = null
         title.textContent = queued ? t('Remove from the queue?', '取消排队？') : voice ? t('Stop dubbing?', '停止配音？') : t('Stop generating?', '停止生成？');
         if (agent) {
             title.textContent = queued ? t('Remove from the queue?', '取消排队？') : t('Stop this step?', '停止这一步？');
-            text.textContent = queued ? t('It has not started; it will not run.', '这一步还没有开始，取消后不会进行。')
+            text.textContent = queued ? t('It has not started; it will not run.', '这一步尚未开始，取消后不会进行。')
                 : t('What this step has made so far is not kept. Finished creations stay.', '这一步做到一半的不会保留，已经完成的作品不受影响。');
-        } else text.textContent = queued ? t('It has not started; it will not be made.', '这项还没有开始，取消后不会生成。')
+        } else text.textContent = queued ? t('It has not started; it will not be made.', '这项尚未开始，取消后不会生成。')
             : voice ? t('Lines already dubbed are kept; the rest can be dubbed again later.', '已配好的台词会保留，其余台词可以稍后重新配音。')
             : kind === 'image' ? t('This image will not be kept.', '这张图不会保留。') : t('What has been made so far is not kept. Queued jobs go on.', '已生成的部分不会保留，排队的任务照常进行。');
         const ask = el('div', 'sgf-ask'), acts = el('div', 'sgf-acts');
@@ -624,7 +624,7 @@ export function installTaskFloat() {
             const queued = target.status === 'queued';
             const box = el('div', 'sgf-ask'); box.setAttribute('role', 'alertdialog');
             const title = el('b'), text = el('p'); title.textContent = queued ? t('Remove from the queue?', '取消排队？') : t('Stop generating?', '停止生成？');
-            text.textContent = queued ? t('It has not started; it will not be made.', '这项还没有开始，取消后不会生成。') : t('What has been made so far is not kept. Queued jobs go on.', '已生成的部分不会保留，排队的任务照常进行。');
+            text.textContent = queued ? t('It has not started; it will not be made.', '这项尚未开始，取消后不会生成。') : t('What has been made so far is not kept. Queued jobs go on.', '已生成的部分不会保留，排队的任务照常进行。');
             const acts = el('div', 'sgf-acts'), keep = el('button', 'pill line'), stop = el('button', 'pill danger');
             keep.type = stop.type = 'button'; keep.dataset.k = 'keep'; stop.dataset.k = 'stop';
             keep.textContent = t('Keep going', '继续生成'); stop.textContent = queued ? t('Remove', '取消排队') : t('Stop', '停止');
@@ -871,7 +871,7 @@ export function installTaskFloat() {
             drawSheet(); draw(); return;
         }
         if (button === close) {
-            // Waiting for FreeVideo: nothing can reach it to stop the job, so the button stops waiting (#1121).
+            // Waiting for FreeVideo: nothing can reach it to stop the job, so the button stops waiting.
             if (row.meta?.reconnecting && ACTIVE.has(row.status)) { jobs.stopWaiting(row.id); draw(); return; }
             if (ACTIVE.has(row.status)) { ask = row.id; stopError = ''; open = false; failCard = null; drawSheet(); setTimeout(() => sheet.querySelector('[data-k="keep"]')?.focus({preventScroll: true}), 0); }
             else { jobs.dismiss(row.id); }

@@ -9,9 +9,11 @@
 | <a href="https://github.com/FlashML-org/FreeVideo/releases/latest/download/FreeVideo.exe"><b>Windows</b></a> | <a href="https://github.com/FlashML-org/FreeVideo/releases/latest/download/FreeVideo-Mac-arm64.dmg"><b>macOS</b></a> | <a href="https://github.com/FlashML-org/FreeVideo/releases/latest/download/FreeVideo-Linux-x86_64.AppImage"><b>Linux</b></a> | <a href="docs/community-results.md"><b>Community Results</b></a> | <a href="https://freevideo-community.pages.dev/#gallery"><b>Gallery</b></a> | <a href="https://discord.gg/MsA277cJzZ"><b>Discord</b></a> | <a href="https://freevideo-community.pages.dev/qq"><b>QQ Group</b></a> | <a href="https://freevideo-community.pages.dev/wechat"><b>WeChat Group</b></a> |
 </p>
 
+<p align="center">Requirements: an NVIDIA RTX 30 series or newer graphics card (professional cards of the same generation included; 8 GB of graphics memory or more recommended) and 16 GB of memory, or a Mac with Apple silicon (preview). GTX 10, GTX 16 and RTX 20 series cards and AMD or Intel graphics cannot run FreeVideo.</p>
+
 <p align="center">English · <a href="README.zh-CN.md">中文</a></p>
 
-Make videos on the computer you already own. Powered by [Video DeltaNet (VDN)](https://openvdn.github.io/), FreeVideo runs MiniMax H3 in as little as 8 GB of VRAM and 16 GB of RAM on NVIDIA graphics cards with compute capability 8.0 or higher (such as the RTX 30 series or newer, professional cards included), with acceleration adapted to your&nbsp;hardware. Apple silicon Macs run a preview.
+Make videos on the computer you already own. Powered by [Video DeltaNet (VDN)](https://openvdn.github.io/), FreeVideo runs MiniMax H3 on NVIDIA graphics cards with compute capability 8.0 or higher (such as the RTX 30 series or newer, professional cards of the same generation included), with 8 GB of VRAM or more recommended and 16 GB of RAM, and with acceleration adapted to your&nbsp;hardware. Apple silicon Macs run a preview.
 
 https://github.com/user-attachments/assets/ecda7d0d-7fbe-4e0c-8c29-8f3315bafc15
 
@@ -37,13 +39,15 @@ FreeVideo is a local inference engine for MiniMax H3 on consumer GPUs, built on 
 It coordinates VRAM, system memory and disk, adapting weight placement, compute precision and attention kernels to the available hardware. FreeVideo runs as a ComfyUI plugin, with launchers for Windows, macOS and Linux. Its core features include:
 
 - **Hardware-adaptive execution**: Chooses the weight format for each GPU, int8 on GeForce RTX 30, 40 and 50 series cards and other Ampere cards, and FP8 on workstation and datacenter cards of newer architectures, and automatically probes the available attention kernels.
-- **Low-memory inference**: Weight streaming, asynchronous prefetching and chunked computation keep peak memory low, enabling inference with as little as 8 GB of VRAM and 16 GB of RAM.
+- **Low-memory inference**: Weight streaming, asynchronous prefetching and chunked computation keep peak memory low; 8 GB of VRAM or more and 16 GB of RAM are recommended.
 - **Multimodal inputs**: Text prompts, first and last frames, and image, video and audio references.
 - **Community LoRAs**: Use MiniMax H3 LoRAs in your workflow. See [examples](docs/LoRA.md).
 - **ComfyUI integration**: A dedicated creative workspace inside ComfyUI that supports two-pass sampling and batch generation and keeps a history of past creations. For finer control, switch to the node view to add LoRAs or customize the workflow.
 - **One-click deployment**: The Windows, Mac and Linux launchers set up ComfyUI, the runtime environment and the models, reuse existing models, and support offline installation.
 
 ## Getting Started
+
+Requirements: an NVIDIA RTX 30 series or newer graphics card (professional cards of the same generation included; 8 GB of graphics memory or more recommended) and 16 GB of memory, or a Mac with Apple silicon (preview). GTX 10, GTX 16 and RTX 20 series cards and AMD or Intel graphics cannot run FreeVideo.
 
 ### Windows
 

@@ -99,11 +99,12 @@ export async function upscaleResult(api, nodeId, result, currentPrompt) {
 
 // Upscale a finished video by one step into a new creation. The bridge reads the source's own saved
 // description and length; the node's current settings only carry the request through the queue.
-// {to: '4k'} asks for the 4K size, made frame by frame by a small model instead of one 1.5× step.
+// {to: '4k'} asks for the 4K size and {to: 'fast'} for the quick 1.5× size, both made frame by frame by a small model
+// instead of the detailed 1.5× step (upscale_offer.upscaleChoices).
 export async function upscaleWork(api, nodeId, result, currentPrompt, {to = ''} = {}) {
     nodeId = String(nodeId);
     if (!result?.video || result.preview) throw new Error('not_finished');
-    if (to !== '' && to !== '4k') throw new Error('unknown_size');
+    if (!['', '4k', 'fast'].includes(to)) throw new Error('unknown_size');
     const snapshot = clone(await currentPrompt());
     if (!snapshot.output?.[nodeId]) throw new Error('missing_node');
     if ('fast_mode' in snapshot.output[nodeId].inputs) snapshot.output[nodeId].inputs.fast_mode = 'none';
@@ -149,6 +150,8 @@ export function createStudioQueue(api, nodeId, {random = randomSeed, pollMs = 20
     nodeId = String(nodeId);
     let running = null, pending = [], submitting = false, loop = null, timer = null, batch = null;
     let runningAll = [], pooled = false;
+    // Tasks in the queue that are not this node's (another window or node): the prompt model waits for them too.
+    let others = 0;
     let refreshing = null, refreshAgain = false, lastError = null, disposed = false, outage = null, submitError = null;
     const listeners = new Set();
     const owned = new Set(), delivered = new Set();
@@ -158,7 +161,7 @@ export function createStudioQueue(api, nodeId, {random = randomSeed, pollMs = 20
         delivered.add(id); onResult(output, id);
     }
     const state = () => ({running, pending, submitting, batch, looping: Boolean(loop?.active),
-        loopCompleted: loop?.completed || 0, error: lastError, ...(pooled ? {running_all: runningAll} : {})});
+        loopCompleted: loop?.completed || 0, error: lastError, ...(others ? {others} : {}), ...(pooled ? {running_all: runningAll} : {})});
     const publish = () => { for (const listener of listeners) listener(state()); };
     function schedule() {
         clearTimeout(timer); timer = null;
@@ -173,11 +176,15 @@ export function createStudioQueue(api, nodeId, {random = randomSeed, pollMs = 20
         return row[2]?.[nodeId]?.class_type === 'FreeVideoGenerate'
             && (!api.clientId || row[3]?.client_id === api.clientId);
     }
+    const isObject = value => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
     const entry = row => {
         // An older snapshot never moves a task's progress backwards.
         const snapshot = row[3]?.freevideo_progress?.[nodeId], known = runningAll.find(item => item.id === row[1])?.progress;
         const progress = snapshot && !isStaleProgress(known, snapshot) ? snapshot : known || snapshot;
-        return {id: row[1], inputs: clone(row[2][nodeId].inputs),
+        // A queued rewrite's request stays with the control process; the row says only where its rewrite is, and
+        // (rewrite) that one is still to be made: the request leaves the inputs once it is rewritten.
+        const inputs = clone(row[2][nodeId].inputs), rewrite = isObject(inputs.freevideo_enhance); delete inputs.freevideo_enhance;
+        return {id: row[1], inputs, ...(rewrite ? {rewrite: true} : {}), ...(row[3]?.freevideo_enhance ? {enhance: clone(row[3].freevideo_enhance)} : {}),
             ...(row[3]?.freevideo_dispatch ? {executor: row[3].freevideo_dispatch, ...(progress ? {progress} : {})} : {})};
     };
     async function cancel(id) {
@@ -251,6 +258,7 @@ export function createStudioQueue(api, nodeId, {random = randomSeed, pollMs = 20
         if (!response.ok) throw new Error('queue_unavailable');
         const queue = await readEngineJson(response);
         runningAll = (queue.queue_running || []).filter(matches).map(entry);
+        others = [...(queue.queue_running || []), ...(queue.queue_pending || [])].filter(row => !matches(row)).length;
         running = runningAll[0] || null;
         // Comfy returns its heap array; the queue number gives the real running order.
         pending = (queue.queue_pending || []).filter(matches).sort((a, b) => a[0] - b[0]).map(entry);

@@ -19,8 +19,10 @@ import { createMetaStore, promptOfRow } from './image_view_history.js';
 import { attach as attachPlayerBar } from './glass/player_bar.js';
 import { hasPictureThumbnail, mediaQueue, pictureThumbnailURL, watchCards } from './work_media.js';
 import { zoomable } from './picture_zoom.js';
-import { createUpscaleOffer, upscaleChoices, admittedFrames as admittedUpscaleFrames, UPSCALE_USE, UPSCALE_QUEUED, UPSCALE_FAILED } from './upscale_offer.js';
+import { createUpscaleOffer, upscaleChoices, admittedFrames as admittedUpscaleFrames, upscaleTimes as readUpscaleTimes, UPSCALE_QUEUED, UPSCALE_FAILED } from './upscale_offer.js';
 import { LANGUAGE } from './i18n.js';
+import { castAvailable, saveAsCharacter } from './cast_from_image.js';
+import { editsText, keptSummary } from './library_kept.js';
 
 const style = document.createElement('link');
 style.rel = 'stylesheet'; style.href = new URL('./library.css', import.meta.url).href; document.head.append(style);
@@ -56,6 +58,7 @@ const LINE = {
     expand: '<path d="M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9"/>',
     left: '<path d="m10 3-5 5 5 5"/>', right: '<path d="m6 3 5 5-5 5"/>',
     restore: '<path d="M3 8a5 5 0 1 0 1.5-3.5M3 2.5v2.5h2.5"/>',
+    person: '<circle cx="8" cy="5.5" r="2.5"/><path d="M3 13.5a5 5 0 0 1 10 0"/>',
     spark: '<path d="M8 2v3M8 11v3M2 8h3M11 8h3M4 4l2 2M10 10l2 2M12 4l-2 2M6 10l-2 2"/>',
     check: '<path d="m3.5 8.5 3 3 6-7"/>',
     info: '<circle cx="8" cy="8" r="5.75"/><path d="M8 7.25v3.75M8 5h.01"/>',
@@ -213,11 +216,11 @@ async function openVideoFolder(id) {
     } catch { return null; }
 }
 const videoFolderMessage = (t, answer, single = false) => !answer
-    ? t('Could not open the folder. Open it on the computer that runs FreeVideo.', '没能打开文件夹。请在运行 FreeVideo 的电脑上打开。')
+    ? t('Could not open the folder. Open it on the computer that runs FreeVideo.', '未能打开文件夹。请在运行 FreeVideo 的电脑上打开。')
     : answer.missing ? t('The video file cannot be found. If you moved the file, refresh the page.', '找不到这条视频的文件。如果移动过文件，请刷新页面。')
     : answer.opened === false && answer.folder
-        ? (single ? t('Could not open the folder. This video is in {folder}', '没能打开文件夹。视频在 {folder}', { folder: answer.folder })
-            : t('Could not open the folder. The videos are in {folder}', '没能打开文件夹。视频在 {folder}', { folder: answer.folder })) : '';
+        ? (single ? t('Could not open the folder. This video is in {folder}', '未能打开文件夹。视频在 {folder}', { folder: answer.folder })
+            : t('Could not open the folder. The videos are in {folder}', '未能打开文件夹。视频在 {folder}', { folder: answer.folder })) : '';
 // Keeps earlier batches of one click undoable while its next request runs, then gives them the normal time again.
 async function holdBatches(tokens, running) {
     const states = await askUndoState('/freevideo/library/hold', {batches: tokens, running});
@@ -340,7 +343,7 @@ async function workflowBackfill(collection, t, before = null) {
     const run = button(t('Add settings', '补上设置'), async () => {
         run.disabled = later.disabled = true;
         try { if (!(await post('run')).ok) throw new Error(); follow(); }
-        catch { run.disabled = later.disabled = false; text.textContent = t('Could not start. Try again.', '没能开始，请重试。'); }
+        catch { run.disabled = later.disabled = false; text.textContent = t('Could not start. Try again.', '未能开始，请重试。'); }
     }, 'fv-primary');
     tip(run, t('Add settings', '补上设置'), t('Write each video\'s settings into it, keeping a backup', '给每个视频写入生成设置，并保留备份'));
     const later = button(t('Don\'t ask again', '不再提示'), async () => { box.remove(); try { await post('dismiss'); } catch {} }, 'fv-quiet');
@@ -380,13 +383,17 @@ export function setDefaultUpscaleWork(run) { defaultUpscaleWork = typeof run ===
 export function admittedFrames(width, height) {
     return admittedUpscaleFrames(path => api.fetchApi(path), width, height);
 }
+// About how long each upscale row takes here for a source of this size and length (upscale_offer.upscaleTimes).
+export function upscaleTimes(width, height, frames) {
+    return readUpscaleTimes(path => api.fetchApi(path), width, height, frames);
+}
 // ``reuse`` is the creation panel's {now, apply}: given, Reuse settings fills that panel from a creation.
 export function openLibrary(t, options = {}) {
     if (parked?.dialog.isConnected !== false && parked && !parked.dialog.open) return parked.reopen(options);
     if (parked?.dialog.open) { parked.reopen(options); return; }
     let {upscale = null, selectedWork = null, extend = null, reuse = null, back: backLabel = null} = options;
     const secondPassRunner = () => upscale || defaultUpscale;
-    const upscaleOffer = createUpscaleOffer(admittedFrames);
+    const upscaleOffer = createUpscaleOffer(admittedFrames, upscaleTimes);
     const dialog = el('dialog', null, 'fv-studio fv-library'); opened = dialog;
     let host = libraryHost();
     const hostClosed = () => { if (dialog.open) dialog.close(); };
@@ -430,6 +437,10 @@ export function openLibrary(t, options = {}) {
     });
     headerObserver.observe(header); headerObserver.observe(tools);
     const body = el('div', null, 'fv-library-body');
+    // Save as character is offered only where the character library is (the agent interface on); the menus read this flag.
+    let castOn = false; void castAvailable(api).then(on => { castOn = on; });
+    const castWords = [['Save as character', '存为角色'], ['Make a character from this image, then use @name in the prompt', '用这张图新建角色，之后可以在提示词里用 @名字 引用']];
+    const saveCast = row => void saveAsCharacter({api, text: t, url: pictureURL(row), name: row.name || row.file});
     // The room has two shelves: creations, and the characters, scenes and props (cast_room.js).
     title.className = 'fv-library-tabs'; title.setAttribute('role', 'tablist'); title.setAttribute('aria-label', t('Library', '资料库'));
     const tabWorks = button(t('Creations', '作品'), () => showTab('works'), 'fv-library-tab');
@@ -504,7 +515,7 @@ export function openLibrary(t, options = {}) {
     tip(placeTrash, t('Recently deleted', '最近删除'), t('Bring back what was just deleted', '恢复刚删除的作品'));
     const openFolder = button('', async () => {
         try { const answer = await (await pictures()).historyOpen(); if (answer && answer.opened === false && answer.folder) say(t('The images are in {folder}', '图片在 {folder}', { folder: answer.folder })); }
-        catch { say(t('Could not open the folder.', '没能打开文件夹。'), true); }
+        catch { say(t('Could not open the folder.', '未能打开文件夹。'), true); }
     }, 'fv-library-place fv-library-open-folder');
     openFolder.append(line('folder'), el('span', t('Image folder', '图片文件夹'), 'fv-library-place-name'));
     tip(openFolder, t('Image folder', '图片文件夹'), t('Show the images in the file manager', '在文件管理器里打开图片所在文件夹'));
@@ -837,7 +848,12 @@ export function openLibrary(t, options = {}) {
         }, 'fv-action fv-action-secondary fv-library-picture-delete');
         remove.append(icon('trash'), el('span', t('Delete', '删除')));
         tip(remove, t('Delete', '删除'), t('Delete it; undo for 10 seconds', '删除这张图片，10 秒内可撤销'));
-        bar.append(heart, download, usePrompt, imageView, remove);
+        // Save as character: the character library's New character dialog with this picture in it (only where the library is).
+        const cast = button('', () => saveCast(row), 'fv-action fv-action-secondary fv-action-save-cast');
+        cast.append(line('person'), el('span', t(...castWords[0])));
+        tip(cast, t(...castWords[0]), t(...castWords[1]));
+        cast.hidden = !castOn; if (!castOn) void castAvailable(api).then(on => { cast.hidden = !on; });
+        bar.append(heart, download, usePrompt, cast, imageView, remove);
         return bar;
     }
     function select(key, reveal = true) {
@@ -919,7 +935,7 @@ export function openLibrary(t, options = {}) {
         const saved = await savedSettings(api, row);
         if (disposed) return;
         if (!saved) { say(t('This video kept no prompt to reuse.', '这条视频没有保存可复用的提示词。'), true); return; }
-        try { reuseNow().apply(saved); if (reuse) closeDialog(dialog); } catch { say(t('Could not fill in the settings. Try again.', '没能填入设置，请重试。'), true); }
+        try { reuseNow().apply(saved); if (reuse) closeDialog(dialog); } catch { say(t('Could not fill in the settings. Try again.', '未能填入设置，请重试。'), true); }
     }
     // A cover with other videos folded under it is named "N results" by the fold (task_groups.js); names loading later keep that.
     const foldedCover = card => card.classList.contains('fv-task-head') && card.hasAttribute('aria-expanded');
@@ -966,7 +982,7 @@ export function openLibrary(t, options = {}) {
             await secondPassRunner()(row);
             if (!disposed && selected === workKey(row)) notice.textContent = t('Queued. It appears in "Creations" when done.', '已加入队列，完成后在“作品”里。');
         } catch (error) {
-            if (!disposed && selected === workKey(row)) fault(notice, userMessage(error, t, t('Could not start the second pass. Try again.', '没能开始二采，请重试。')), ['Second pass', '二采'], null, error);
+            if (!disposed && selected === workKey(row)) fault(notice, userMessage(error, t, t('Could not start the second pass. Try again.', '未能开始二采，请重试。')), ['Second pass', '二采'], null, error);
             throw error;
         }
     }
@@ -1006,8 +1022,8 @@ export function openLibrary(t, options = {}) {
         const heads = applyTasks({cards: byVideo, rows, order, open: unfolded, selecting, selected: works.get(selected)?.video ?? null, t, label: video => cardLabel(rows.get(video))});
         for (const [video, card] of byVideo) {
             if (!card) continue;
-            // The count mark on a task's newest video is the one control for the fold: pressed while the task is unfolded
-            // (Iris), pressed again it folds. The others of an unfolded task carry none; while picking, every video shows.
+            // The count mark on a task's newest video is the one control for the fold: pressed while the task is unfolded,
+            // pressed again it folds. The others of an unfolded task carry none; while picking, every video shows.
             const head = heads.get(video), shownMark = head && !selecting, unfoldedNow = card.classList.contains('fv-task-open');
             let stack = card.querySelector('.fv-library-stack');
             if (shownMark && !stack) {
@@ -1239,7 +1255,7 @@ export function openLibrary(t, options = {}) {
     }
     function emptyText() {
         if (filter.query) return t('Nothing matches this search.', '没有符合搜索的作品。');
-        if (filter.tag) return t('No creation has this tag yet. Select creations and press Tag.', '还没有作品带这个标签。选中作品后点“标签”。');
+        if (filter.tag) return t('No creation has this tag yet. Select creations and press Tag.', '暂无带这个标签的作品。选中作品后点“标签”。');
         if (filter.period !== 'any' || filter.source || filter.preview || filter.agent) return t('Nothing matches these filters.', '没有符合筛选条件的作品。');
         if (filter.favorites) return t("No favorite creations. Click the heart in a creation's details to add one.", '暂无收藏的作品。点作品详情中的爱心图标收藏。');
         if (filter.kind === 'image') return picturesState === 'failed' ? t('Images could not be read just now.', '图片暂时无法读取。') : t('Images made in the image view appear here.', '在图像视图里生成的图片会保存在这里。');
@@ -1367,7 +1383,7 @@ export function openLibrary(t, options = {}) {
             filterMenu.append(menuItem(label, filter.source === key, () => { filter.source = key; drawFilterMenu(); applyFilter(); }));
         }
         filterMenu.append(el('div', null, 'fv-library-menu-sep'), el('div', t('Only', '只看'), 'fv-library-menu-label'));
-        filterMenu.append(menuItem(t('First-pass previews', '一采预览'), filter.preview, () => { filter.preview = !filter.preview; drawFilterMenu(); applyFilter(); }, 'menuitemcheckbox', t('Videos that still need a second pass', '还没有继续二采的视频')));
+        filterMenu.append(menuItem(t('First-pass previews', '一采预览'), filter.preview, () => { filter.preview = !filter.preview; drawFilterMenu(); applyFilter(); }, 'menuitemcheckbox', t('Videos that still need a second pass', '尚未继续二采的视频')));
         filterMenu.append(menuItem(t('Made by the assistant', '助手生成'), filter.agent, () => { filter.agent = !filter.agent; drawFilterMenu(); applyFilter(); }, 'menuitemcheckbox', t('Videos made by the assistant', '由助手生成的视频')));
         const clear = button(t('Clear filters', '清除筛选'), () => { filter.period = 'any'; filter.source = ''; filter.preview = filter.agent = false; drawFilterMenu(); applyFilter(); }, 'fv-library-menu-clear');
         clear.disabled = filter.period === 'any' && !filter.source && !filter.preview && !filter.agent;
@@ -1437,11 +1453,11 @@ export function openLibrary(t, options = {}) {
             for (const key of keys) { const row = works.get(key); if (!isVideo(key)) { row.favorite = value; syncFavorite(row); } }
             let failed = 0;
             for (const key of keys.filter(isVideo)) { try { await saveFavorite(works.get(key), value, true); } catch { failed++; } }
-            if (!disposed) { if (failed) say(t('{failed} could not be changed. Try again.', '有 {failed} 个没能更改，请重试。', { failed }), true); if (selected) select(selected, false); render(); }
+            if (!disposed) { if (failed) say(t('{failed} could not be changed. Try again.', '有 {failed} 个未能更改，请重试。', { failed }), true); if (selected) select(selected, false); render(); }
         }});
         const tagRows = meta.tags().map(tag => {
             const have = keys.filter(key => meta.tagsOf(key).includes(tag.id)).length;
-            return {id: 'tags', label: [tag.name, tag.name], checked: have === keys.length, use: have && have < keys.length ? ['Some of the selection have it; choose to add to all', '选中的部分作品带着它，点一下全部加上'] : null,
+            return {id: 'tags', label: [tag.name, tag.name], checked: have === keys.length, use: have && have < keys.length ? ['Some of the selection have it; choose to add to all', '选中的作品中有一部分已带这个标签，点击为全部加上'] : null,
                 run: () => meta.setTags(keys, have === keys.length ? [] : [tag.id], have === keys.length ? [tag.id] : [])};
         });
         items.push({id: 'tags', icon: 'tag', label: ['Tags', '标签'], submenu: [...tagRows, ...(tagRows.length ? ['-'] : []),
@@ -1458,10 +1474,10 @@ export function openLibrary(t, options = {}) {
                     use: ['Finish the full-resolution video', '从预览继续生成全分辨率视频'],
                     disabled: secondPassRunner() ? '' : ['Open the create view first, then run the second pass', '请先打开创作页，再继续二采'],
                     run: () => secondPass(one).then(() => say(t('Queued. It appears in "Creations" when done.', '已加入队列，完成后在“作品”里。')), error => say(t('Could not start the second pass: ', '无法继续二采：') + error.message, true))});
-                // One 1.5× step where this computer can generate it (gap-04a), and the 4K size by a small model (gap-04b):
-                // each shown on its own, the same rows as the result's "⋯" (upscaleChoices).
+                // The quick 1.5× size and the 4K size by a small model, and the detailed 1.5× step where this computer can
+                // generate it: each shown on its own with about how long it takes, the same rows as the result's "⋯" (upscaleChoices).
                 if (defaultUpscaleWork) for (const choice of upscaleChoices(one, upscaleOffer)) {
-                    items.push({id: choice.id, icon: 'upscale', label: choice.label, use: UPSCALE_USE,
+                    items.push({id: choice.id, icon: 'upscale', label: choice.label, use: choice.use, note: choice.note,
                         run: () => defaultUpscaleWork(one, choice.options).then(() => say(t(...UPSCALE_QUEUED)),
                             error => say(t(...UPSCALE_FAILED) + error.message, true))});
                 }
@@ -1477,6 +1493,7 @@ export function openLibrary(t, options = {}) {
                     use: ['Put its prompt in the box of the image view', '把它的提示词填回图像视图的提示词框'], run: () => usePicturePrompt(text)});
                 items.push({id: 'image-view', icon: 'image', label: ['Open in Images', '在图像视图打开'],
                     use: ['Use it as a reference or make more like it there', '在那里用作参考图，或接着生成'], run: () => openInImageView(one)});
+                if (castOn) items.push({id: 'save-cast', icon: 'person', label: castWords[0], use: castWords[1], run: () => saveCast(one)});
             }
             const promptOf = one.kind === 'image' ? picturePrompt(one) : prompts.get(one.id);
             items.push({id: 'copy-prompt', icon: 'copy', label: ['Copy prompt', '复制提示词'],
@@ -1491,7 +1508,7 @@ export function openLibrary(t, options = {}) {
                     return;
                 }
                 try { const answer = await (await pictures()).historyOpen(); if (answer && answer.opened === false && answer.folder) say(t('The images are in {folder}', '图片在 {folder}', { folder: answer.folder })); }
-                catch { say(t('Could not open the folder.', '没能打开文件夹。'), true); }
+                catch { say(t('Could not open the folder.', '未能打开文件夹。'), true); }
             }});
         if (!selecting) items.push({id: 'select', icon: 'check', label: ['Select', '选择'], use: ['Start selecting with this one', '从这一个开始多选'],
             run: () => { setSelecting(true); picked.add(keys[0]); anchor = keys[0]; syncSelection(); }});
@@ -1500,8 +1517,8 @@ export function openLibrary(t, options = {}) {
             use: ['Delete; undo for 10 seconds', '删除，10 秒内可撤销'], run: async () => {
                 const result = await removeKeys(keys);
                 if (disposed) return;
-                undoNote = result.skipped.length ? skippedText(result.skipped) : null;
-                undoFailure = result.failed ? t('Could not delete. Try again.', '没能删除，请重试。') : '';
+                undoNote = keptNote(keys.length, result.skipped);
+                undoFailure = result.failed ? t('Could not delete. Try again.', '未能删除，请重试。') : '';
                 for (const key of result.removed) picked.delete(key);
                 render(); showUndo();
             }});
@@ -1705,7 +1722,7 @@ export function openLibrary(t, options = {}) {
         for (const key of keys.filter(isVideo)) { try { await saveFavorite(works.get(key), value, true); } catch { failed++; } }
         if (disposed) return;
         barFavorite.disabled = false;
-        say(failed ? t('{failed} could not be changed. Try again.', '有 {failed} 个没能更改，请重试。', { failed }) : value ? t('Added to Favorites.', '已加入收藏。') : t('Removed from Favorites.', '已移出收藏。'), !!failed);
+        say(failed ? t('{failed} could not be changed. Try again.', '有 {failed} 个未能更改，请重试。', { failed }) : value ? t('Added to Favorites.', '已加入收藏。') : t('Removed from Favorites.', '已移出收藏。'), !!failed);
         render();
     }
     async function confirmDelete() {
@@ -1722,6 +1739,7 @@ export function openLibrary(t, options = {}) {
         await removeSelected();
     }
     let undoNote = null, undoFailure = '';
+    const NOTED = 'fv-library-undo-noted';
     // A short line in the dock (a favorite saved for many, a folder that could not open).
     let sayTimer = 0;
     function say(text, warn = false, hold = 4000) {
@@ -1737,9 +1755,14 @@ export function openLibrary(t, options = {}) {
         const live = offeredUndoRows(), held = pictureBin.list();
         const deletedCount = live.reduce((sum, row) => sum + row.count, 0) + held.reduce((sum, row) => sum + row.files.length, 0);
         const notes = [undoNote ? el('span', undoNote, 'fv-library-skipped') : null, undoFailure ? el('span', undoFailure, 'fv-library-skipped') : null].filter(Boolean);
+        if (undoNote && keptOpen?.text === undoNote) {
+            const target = keptOpen.open, open = button(t('Open edit', '打开剪辑'), () => openEdit(target), 'fv-quiet fv-library-open-edit');
+            notes.splice(1, 0, open);
+        }
         if (undoFailure) notes.push(issueButton(t, () => ({where: ['Delete or restore creations', '删除或恢复作品'], message: undoFailure})));
-        const settle = () => { if (undoRows().length || pictureBin.list().length) { showUndo(); return; } undoNote = null; undoFailure = ''; undoBar.replaceChildren(); undoBar.hidden = true; };
-        undoBar.replaceChildren(); undoBar.hidden = !deletedCount && !notes.length;
+        const settle = () => { if (undoRows().length || pictureBin.list().length) { showUndo(); return; } undoNote = null; undoFailure = ''; undoBar.replaceChildren(); undoBar.classList.remove(NOTED); undoBar.hidden = true; };
+        // A line that can run to a second line (why some were kept) gets the selection bar's corners (library.css).
+        undoBar.replaceChildren(); undoBar.classList.toggle(NOTED, notes.some(node => node.classList?.contains('fv-library-skipped'))); undoBar.hidden = !deletedCount && !notes.length;
         if (trash) drawTrash();
         syncCounts();
         if (!deletedCount) { undoBar.append(...notes); return; }
@@ -1775,20 +1798,21 @@ export function openLibrary(t, options = {}) {
         if (disposed) return;
         if (back) render();
         if (again.length) {
-            undoFailure = t('Could not undo. Try again.', '没能撤销，请重试。');
+            undoFailure = t('Could not undo. Try again.', '未能撤销，请重试。');
             showUndo();
             if (settled.length) load(false);
             return;
         }
         undoFailure = '';
         undoBar.hidden = false;
+        undoBar.classList.remove(NOTED);
         undoBar.replaceChildren(el('span', expired ? t('The undo time has passed.', '已过了撤销时间。')
-            : lost ? t('Restored, but {lost} could not be brought back.', '已恢复，其中 {lost} 个没能恢复。', { lost }) : t('Restored.', '已恢复。')));
+            : lost ? t('Restored, but {lost} could not be brought back.', '已恢复，其中 {lost} 个未能恢复。', { lost }) : t('Restored.', '已恢复。')));
         if (lost && !expired) {
             const text = undoBar.firstElementChild.textContent;
             undoBar.append(issueButton(t, () => ({where: ['Restore creations', '恢复作品'], message: text})));
         }
-        undoTimer = setTimeout(() => { if (!undoRows().length && !pictureBin.list().length) { undoBar.replaceChildren(); undoBar.hidden = true; } else showUndo(); }, 4000);
+        undoTimer = setTimeout(() => { if (!undoRows().length && !pictureBin.list().length) { undoBar.replaceChildren(); undoBar.classList.remove(NOTED); undoBar.hidden = true; } else showUndo(); }, 4000);
         if (trash) drawTrash();
         syncCounts();
         if (settled.length) load(false);
@@ -1831,15 +1855,29 @@ export function openLibrary(t, options = {}) {
         }
         trashTimer = setTimeout(drawTrash, 1000);
     }
-    const skippedText = skipped => {
-        const using = skipped.filter(row => row.reason !== 'foreign-files').length, other = skipped.length - using;
-        if (using && other) return other === 1
-            ? t('{kept} kept: {using} in use, 1 folder has other files.', '{kept} 个已保留：{using} 个正在使用，1 个文件夹里有别的文件。', { kept: using + other, using })
-            : t('{kept} kept: {using} in use, {other} folders have other files.', '{kept} 个已保留：{using} 个正在使用，{other} 个文件夹里有别的文件。', { kept: using + other, using, other });
-        if (using) return t('{using} in use, kept.', '{using} 个正在使用，已保留。', { using });
-        return other === 1 ? t('1 folder has other files, kept.', '1 个文件夹里有别的文件，已保留。')
-            : t('{other} folders have other files, kept.', '{other} 个文件夹里有别的文件，已保留。', { other });
-    };
+    // What a delete kept: one creation asked for alone says why in full (and which edit uses it, with Open edit);
+    // several say how many stayed and why (the line already says how many went), and those stay selected.
+    let keptOpen = null;
+    const stamp = value => videoTimestamp({created_at: value}, t);
+    function keptNote(asked, skipped) {
+        keptOpen = null;
+        if (!skipped.length) return null;
+        if (asked === 1) {
+            const row = skipped[0], said = row.reason === 'editor-in-use' ? editsText(t, row.edits, stamp) : null;
+            if (said) { keptOpen = said; return said.text; }
+            if (['foreign-files', 'editor-in-use', 'editor-unavailable', 'continuation-in-use', 'in-use'].includes(row.reason)) return refusal(row.reason, row.kept || []);
+        }
+        return keptSummary(t, skipped, {selecting});
+    }
+    async function openEdit(target) {
+        const isCurrent = () => !disposed && dialog.open && dialog.dataset.closing !== 'true';
+        player?.pause();
+        try {
+            const editor = await (await import('./studio.js')).openEditEditor(target, undefined, {isCurrent});
+            if (!editor && isCurrent()) throw new Error(t('Could not open the editor. Try again.', '无法打开剪辑，请重试。'));
+            if (editor && !disposed) { dialog.close(); editor.element?.focus({preventScroll: true}); }
+        } catch (error) { say(userMessage(error, t, t('Could not open the editor. Try again.', '无法打开剪辑，请重试。')), true); }
+    }
     function leaveShelf(key) {
         const row = works.get(key);
         if (cards.has(key)) originals.unobserve(cards.get(key));
@@ -1863,7 +1901,7 @@ export function openLibrary(t, options = {}) {
         // A held picture stays known (the shelf hides it while held), so Undo puts its card straight back; it leaves for
         // good only when the engine has deleted it (freevideo-pictures-deleted).
         const skipped = [];
-        let failed = false, unsaved = false, why = '';
+        let failed = false, why = '';
         if (!videoKeys.length) return {removed, skipped, failed, why};
         const idOf = new Map(videoKeys.map(key => [key, works.get(key)?.id])), ids = videoKeys.map(key => idOf.get(key)).filter(Boolean);
         // Windows keeps a streamed video open; release it before deleting.
@@ -1905,8 +1943,8 @@ export function openLibrary(t, options = {}) {
                     const gone = new Set(value.deleted || []);
                     // A creation that is already gone from disk only needs to leave the page.
                     for (const row of value.skipped || []) {
-                        // 'unsaved' and 'failed': the creation could not be noted or touched, so it stayed and is still selected.
-                        if (row.reason === 'unavailable') gone.add(row.id); else if (row.reason === 'unsaved' || row.reason === 'failed') unsaved = true; else skipped.push(row);
+                        // Any other reason keeps it, said in the note; 'unsaved' and 'failed' included (nothing was moved).
+                        if (row.reason === 'unavailable') gone.add(row.id); else skipped.push(row);
                     }
                     // The server's own undo time, kept at once so a later chunk that fails, or a closed dialog, cannot lose it.
                     if (value.batch && value.batch !== name) forgetUndo([name]);
@@ -1920,7 +1958,6 @@ export function openLibrary(t, options = {}) {
                 undoChangedHere();
             }
         } catch { failed = true; }
-        if (unsaved) failed = true;
         // However it ended, the earlier chunks get the normal undo time from now; the server is asked, and
         // this page's own estimate stands when it cannot answer.
         if (earlier.length) { setUndoDue(earlier, undoFor); await holdBatches(earlier, false); }
@@ -1938,18 +1975,20 @@ export function openLibrary(t, options = {}) {
         const {removed, skipped, failed, why} = await removeKeys(keys);
         deleting = false;
         if (disposed) return;
-        const kept = new Set(skipped.map(row => row.id));
-        for (const key of keys) if (kept.has(works.get(key)?.id)) picked.delete(key);
-        undoNote = skipped.length ? skippedText(skipped) : null;
+        undoNote = keptNote(keys.length, skipped);
         if (failed) {
             // What was deleted keeps its Undo; only the part that is still selected is tried again.
             for (const key of removed) picked.delete(key);
             confirming = false;
             undoFailure = removed.size
-                ? t('{size} could not be deleted. Try again.', '还有 {size} 个没能删除，请重试。', { size: picked.size })
-                : why || t('Could not delete. Try again.', '没能删除，请重试。');
+                ? t('{size} could not be deleted. Try again.', '还有 {size} 个未能删除，请重试。', { size: picked.size })
+                : why || t('Could not delete. Try again.', '未能删除，请重试。');
             if (!picked.size) setSelecting(false);
-        } else { undoFailure = ''; setSelecting(false); }
+        } else {
+            // What was kept stays selected, so it can be looked at or tried again; nothing kept ends selecting.
+            undoFailure = ''; for (const key of removed) picked.delete(key); confirming = false;
+            if (!picked.size) setSelecting(false); else syncSelection();
+        }
         render();
         showUndo();
         // The confirm button is gone; keep the keyboard inside the dialog, so Escape still walks back from here: on the
@@ -2095,7 +2134,7 @@ export function openLibrary(t, options = {}) {
                 if (appendPage) tailState = 'failed';
                 else if (error.restart) message.textContent = error.message;
                 else {
-                    fault(message, userMessage(error, t, t('Could not read the creations. Try again.', '没能读取作品，请重试。')), undefined, null, error); retryRead(message);
+                    fault(message, userMessage(error, t, t('Could not read the creations. Try again.', '未能读取作品，请重试。')), undefined, null, error); retryRead(message);
                     for (const ghost of grid.querySelectorAll(':scope > .fv-library-ghost')) ghost.remove();
                 }
             }
@@ -2591,7 +2630,7 @@ export function openLibrary(t, options = {}) {
     // A picture whose delete could not be done comes back with a note.
     const pictureOff = pictureBin.subscribe(event => {
         if (disposed) return;
-        if (event?.failed?.length) { loadPictures().then(() => { render(); say(t('{count} could not be deleted; they are back.', '有 {count} 个没能删除，已放回。', { count: event.failed.length }), true); }); return; }
+        if (event?.failed?.length) { loadPictures().then(() => { render(); say(t('{count} could not be deleted; they are back.', '有 {count} 个未能删除，已放回。', { count: event.failed.length }), true); }); return; }
         showUndo();
     });
     // A delete that an earlier opening of the dialog is still carrying out takes its creations off this one too.

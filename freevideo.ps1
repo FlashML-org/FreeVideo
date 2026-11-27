@@ -94,6 +94,20 @@ try {
                 -ProxyRoutes $proxyRoutes -OfficialOnly:$officialOnly
             $env:UV_PYTHON_INSTALL_DIR = Join-Path $bootstrapRoot 'python'
             $env:UV_NO_CONFIG = '1'
+            # Isolated Python: begin (scripts/test_windows_python_recover.ps1 runs this part with stand-ins for uv and Python)
+            # An isolated Python already here whose python.exe is gone or does not answer (security software): uv still
+            # calls it installed, and every step after fails on it. It is installed again, once: before the download when
+            # it is found broken, or after it when it breaks at once. managed_python.py keeps the same rules for setup.
+            $pythonReinstall = @()
+            if (Get-ChildItem -LiteralPath $env:UV_PYTHON_INSTALL_DIR -Directory -Filter ('cpython-' + $versions.python + '-*') -ErrorAction SilentlyContinue) {
+                $pythonState = Get-FreeVideoManagedPythonProblem -Uv $uv -Version $versions.python -LogPath $bootstrapLog
+                if ($pythonState.Kind) {
+                    Write-FreeVideoPythonReinstall -State $pythonState -LogPath $bootstrapLog
+                    $pythonReinstall = @('--reinstall')
+                }
+            }
+            # The download below runs a second time only to install a Python that broke at once again.
+            foreach ($pythonRound in @(1, 2)) {
             $installed = $false
             # Python sources: begin (scripts/test_windows_python_sources.ps1 runs this block with a stand-in for uv)
             # The GitHub mirror (ghfast) refuses the Python runtime files (403), so it is not a Python source:
@@ -147,7 +161,7 @@ try {
                   $pythonLabel = "Install Python $($versions.python), attempt $attempt ($proxyRoute connection)"
                   if ($profile.Mode -eq 'patient') { $pythonLabel += ", $($profile.Mode)" }
                   $pythonExit = Invoke-FreeVideoBootstrapCommand -Executable $uv `
-                      -Arguments @('python', 'install', '--no-bin', '--no-registry', '--no-progress', '--color', 'never', $versions.python) `
+                      -Arguments (@('python', 'install', '--no-bin', '--no-registry', '--no-progress', '--color', 'never', $versions.python) + $pythonReinstall) `
                       -LogPath $bootstrapLog -Label $pythonLabel `
                       -Direct:($proxyRoute -eq 'direct') -OutputTail ([ref]$pythonOutput)
                   if ($pythonExit -ne 0 -and (Test-FreeVideoCertificateFailure $pythonOutput)) {
@@ -155,7 +169,7 @@ try {
                       $originalExit = $pythonExit
                       $retryOutput = ''
                       $retryExit = Invoke-FreeVideoBootstrapCommand -Executable $uv `
-                          -Arguments @('--native-tls', 'python', 'install', '--no-bin', '--no-registry', '--no-progress', '--color', 'never', $versions.python) `
+                          -Arguments (@('--native-tls', 'python', 'install', '--no-bin', '--no-registry', '--no-progress', '--color', 'never', $versions.python) + $pythonReinstall) `
                           -LogPath $bootstrapLog -Label ($pythonLabel + ', system certificates') `
                           -Direct:($proxyRoute -eq 'direct') -OutputTail ([ref]$retryOutput)
                       if ($retryExit -eq 0) {
@@ -176,7 +190,7 @@ try {
                       Start-Sleep -Seconds $wait
                       $pythonOutput = ''
                       $pythonExit = Invoke-FreeVideoBootstrapCommand -Executable $uv `
-                          -Arguments @('python', 'install', '--no-bin', '--no-registry', '--no-progress', '--color', 'never', $versions.python) `
+                          -Arguments (@('python', 'install', '--no-bin', '--no-registry', '--no-progress', '--color', 'never', $versions.python) + $pythonReinstall) `
                           -LogPath $bootstrapLog -Label ($pythonLabel + ", again after $wait s") `
                           -Direct:($proxyRoute -eq 'direct') -OutputTail ([ref]$pythonOutput)
                       $blocked = $null
@@ -224,8 +238,14 @@ try {
                 throw "Python installation failed (uv exit $($lead.Exit)).$leadDetail Check your network or connection mode in Downloads. See $bootstrapLog and retry."
             }
             # Python sources: end
-            $freevideoPython = (& $uv python find --managed-python $versions.python | Select-Object -Last 1).Trim()
-            if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $freevideoPython)) { throw "Python was installed but could not be found (uv exit $LASTEXITCODE). See $bootstrapLog, then run the same command again." }
+            $pythonState = Get-FreeVideoManagedPythonProblem -Uv $uv -Version $versions.python -LogPath $bootstrapLog
+            if (-not $pythonState.Kind) { break }
+            if ($pythonReinstall.Count) { throw (Get-FreeVideoManagedPythonMessage -State $pythonState -LogPath $bootstrapLog) }
+            Write-FreeVideoPythonReinstall -State $pythonState -LogPath $bootstrapLog
+            $pythonReinstall = @('--reinstall')
+            }
+            $freevideoPython = $pythonState.Path
+            # Isolated Python: end
         } finally {
             if ($patientDownloadNotice -and $env:FREEVIDEO_UI_EVENTS -eq '1') {
                 Write-Host '{"event":"freevideo_ui","kind":"progress","key":"download-patient-python","label":"Download","detail":"","state":"complete"}'

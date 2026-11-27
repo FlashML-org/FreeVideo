@@ -67,6 +67,8 @@ export function liftMenu(details, panel, {align = 'end', gap = 8} = {}) {
     panel.popover = 'manual'; panel.classList.add('fv-lifted');
     const summary = details.querySelector(':scope>summary');
     const place = () => {
+        // Measured from the left edge: a fixed panel left where it was would shrink to the room on that side.
+        panel.style.left = '0px';
         const r = summary.getBoundingClientRect(), w = panel.offsetWidth, h = panel.offsetHeight;
         const left = Math.max(8, Math.min(align === 'end' ? r.right - w : r.left, window.innerWidth - w - 8));
         const top = r.top - h - gap >= 8 ? r.top - h - gap : Math.min(r.bottom + gap, window.innerHeight - h - 8);
@@ -156,7 +158,7 @@ function deleteAction(t, remove) {
         confirm.disabled = cancel.disabled = true; confirm.lastElementChild.textContent = t('Deleting…', '正在删除…');
         try { await remove(); menu.open = false; }
         catch (error) {
-            problem.textContent = userMessage(error, t, t('Could not delete. Try again.', '没能删除，请重试。')); problem.hidden = false;
+            problem.textContent = userMessage(error, t, t('Could not delete. Try again.', '未能删除，请重试。')); problem.hidden = false;
             if (error.reportable !== false) {
                 problemIssue = issueButton(t, () => ({where: ['Delete creation', '删除作品'], message: error?.message || problem.textContent}));
                 problem.after(problemIssue);

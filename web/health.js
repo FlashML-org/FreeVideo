@@ -22,10 +22,10 @@ export const MODULES = ['video_enlarge.js', 'audio_original.js', 'chat_data.js',
     'editor_loader.js', 'editor_text_coverage.js', 'editor_text.js', 'editor_toolbar_more.js', 'editor_text_model.js', 'editor_text_layout.js', 'editor_notes.js', 'editor_icons.js', 'dialog_keys.js', 'dom_quiet.js', 'done_notify.js', 'file_failure.js', 'has_mirror.js', 'failure_issue.js', 'feedback.js', 'frame_sizes.js', 'health.js', 'i18n.js', 'image_commands.js', 'random_id.js', 'clipboard_text.js', 'image_editor.js', 'image_editor_engine.js', 'image_generation.js', 'image_lora.js', 'image_view.js', 'launch_visit.js', 'launcher.js', 'length_plan.js', 'lora_triggers.js', 'lora_check.js', 'library.js', 'motion.js', 'native_errors.js', 'translate_guard.js', 'output_download.js', 'port_notice.js', 'preview_scene.js', 'panel_shell.js',
     'progress_connection.js', 'prompt_draft.js', 'prompt_enhance.js', 'prompt_references.js', 'prompt_sections.js', 'prompt_terms.js', 'request_assets.js', 'repair_hint.js', 'report_issue.js', 'issue_button.js', 'studio_recent.js', 'media_queue.js', 'work_media.js', 'task_groups.js',
     'result_actions.js', 'result_reuse.js', 'sampling_effort.js', 'pass_mode.js','setup.js', 'share.js', 'share_layout.js', 'studio.js', 'studio_chain.js', 'studio_extend.js', 'studio_length.js', 'first_frame_row.js', 'replace_person.js', 'replace_state.js', 'optional_inputs.js', 'other_usage.js', 'studio_queue.js', 'studio_size.js',
-    'toolbar_position.js', 'updates.js', 'video_model.js', 'view_navigation.js', 'whatsnew.js', 'whatsnew_pages.js', 'whatsnew_peaks.js', 'wordmark.js', 'workspace_restore.js', 'cast_library.js', 'media_upload.js', 'whitebox_encode.js', 'whitebox_mp4.js', 'whitebox_recording.js', 'whitebox_render.js', 'whitebox_scenes.js', 'whitebox_worker.js',
+    'toolbar_position.js', 'updates.js', 'update_reload.js', 'video_model.js', 'view_navigation.js', 'whatsnew.js', 'whatsnew_pages.js', 'whatsnew_peaks.js', 'wordmark.js', 'workspace_restore.js', 'cast_library.js', 'media_upload.js', 'whitebox_encode.js', 'whitebox_mp4.js', 'whitebox_recording.js', 'whitebox_render.js', 'whitebox_scenes.js', 'whitebox_worker.js',
     'empty_prompt_notice.js', 'feature_tour.js', 'feature_tour_content.js', 'i18n_tables.js', 'howto.js', 'swap_lora.js', 'fast_pack.js', 'sound_bubble.js', 'tour_goto.js', 'tour_try.js', 'tutorial_book.js', 'tutorial_book_content.js',
     'shell.js', 'tooltip.js', 'tooltip_copy.js',
-    'library_meta.js', 'cast_room.js',
+    'library_meta.js', 'library_kept.js', 'cast_room.js',
     'editor_tracks_tips.js', 'tip_words.js', 'cut_tip.js', 'field_note.js', 'image_view_layout.js',
     'task_store.js', 'task_float.js',
     'image_view_ui.js', 'studio_columns.js', 'image_view_size.js', 'image_view_models.js', 'image_view_history.js', 'image_view_prompts.js', 'image_view_compare.js', 'image_view_queue.js', 'image_view_mentions.js', 'image_view_warm.js', 'image_view_viewer.js', 'image_view_lora.js', 'work_column.js', 'picture_url.js', 'studio_right_column.js', 'studio_works.js',
@@ -33,7 +33,7 @@ export const MODULES = ['video_enlarge.js', 'audio_original.js', 'chat_data.js',
     'studio_console.js', 'studio_stage.js', 'prompt_library.js',
     'autopilot_panels.js', 'autopilot_tips.js', 'autopilot_history.js', 'a11y.js', 'topbar.js', 'view_switch_place.js', 'view_navigation_fit.js', 'editor_tips.js', 'editor_narration.js', 'editor_narration_model.js', 'editor_beats_model.js', 'empty_frame.js', 'studio_compare.js', 'image_library.js', 'fv_select.js', 'preview_style.js',
     'feature_tour_layer.js', 'settings_room.js', 'settings_kit.js', 'settings_words.js', 'language_picker.js',
-    'image_works.js', 'cast_photo.js', 'editor_opening.js', 'editor_poster.js', 'topbar_state.js', 'preload_setting.js', 'private_offers.js', 'cast_face_crop.js', 'context_fallback.js', 'studio_warm.js',
+    'image_works.js', 'cast_photo.js', 'editor_opening.js', 'editor_poster.js', 'topbar_state.js', 'preload_setting.js', 'private_offers.js', 'cast_face_crop.js', 'cast_from_image.js', 'context_fallback.js', 'studio_warm.js',
     'pose_body.js', 'pose_props.js', 'pose_stage.js', 'pose_tool.js', 'release_media.js', 'ui_speed.js',
     'lora_menu.js', 'upscale_offer.js', 'user_message.js', 'workflow_drafts.js', 'comfy_templates.js'];
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -451,10 +451,10 @@ function workspaceProblem(app) {
     if (onScreen(bar) && !cover) return null;
     // Its own stylesheet places it above the canvas.
     return sheetLoaded('view_navigation.css')
-        ? {text: t('The FreeVideo toolbar that opens the creative workspace is hidden or covered by other page elements.', '打开创作面板的 FreeVideo 工具栏被页面上的其他元素隐藏或遮挡了。'), advice: 'plugin',
+        ? {text: t('The FreeVideo toolbar that opens the creative workspace is hidden or covered by other page elements.', '打开创作面板的 FreeVideo 工具栏被页面上的其他元素隐藏或遮挡。'), advice: 'plugin',
             ...(cover && {cover: nameOf(cover)})}
         : {text: t('The FreeVideo toolbar that opens the creative workspace cannot be seen: its stylesheet view_navigation.css did not load.',
-            '看不到打开创作面板的 FreeVideo 工具栏：样式文件 view_navigation.css 没有加载。'), advice: 'reload', sheet: 'view_navigation.css'};
+            '看不到打开创作面板的 FreeVideo 工具栏：样式文件 view_navigation.css 未能加载。'), advice: 'reload', sheet: 'view_navigation.css'};
 }
 
 // Looks again as the page changes, such as another workflow coming to the
@@ -484,14 +484,18 @@ async function watchWorkspace(app) {
 }
 
 function reportText(item) {
-    const where = {studio: t('The creative workspace could not open', '创作面板打不开'),
-        navigation: t('The FreeVideo toolbar could not be added', 'FreeVideo 工具栏没有加载'),
+    const where = {studio: t('The creative workspace could not open', '创作面板无法打开'),
+        navigation: t('The FreeVideo toolbar could not be added', 'FreeVideo 工具栏未能加载'),
         progress: t('Live progress could not start', '生成进度无法更新'),
         updates: t('Update checks could not start', '更新检查无法启动'),
-        launch: t('The FreeVideo workflow did not open', 'FreeVideo 工作流没有打开'),
+        launch: t('The FreeVideo workflow did not open', 'FreeVideo 工作流未能打开'),
         menu: t('FreeVideo could not be opened from the menu', '从菜单打开 FreeVideo 失败')}[item.where] || t('FreeVideo reported an error', 'FreeVideo 报错');
     // The script's own words go to the technical details and the report, not into the sentence the card shows.
-    return {text: where, detail: describe(item.error), error: item.error, advice: item.where === 'launch' ? 'relaunch' : 'reload', asked: item.where === 'menu'};
+    // A few plain facts the failing step gathered for the report (strings only, at most 8 lines of 2,000 characters). They go
+    // only where the user sees them: the report form's text, Copy details and the browser console, never to the server.
+    const facts = Array.isArray(item.error?.facts) ? item.error.facts.filter(row => typeof row === 'string').slice(0, 8).map(row => row.slice(0, 2000)) : null;
+    return {text: where, detail: describe(item.error), error: item.error, advice: item.where === 'launch' ? 'relaunch' : 'reload', asked: item.where === 'menu',
+        ...(facts?.length ? {facts} : {})};
 }
 
 function extensionProblem(problem) {
@@ -553,7 +557,7 @@ function details(problems) {
         `ComfyUI frontend: ${window.__COMFYUI_FRONTEND_VERSION__ || 'unknown'}`,
         `FreeVideo UI: ${JSON.stringify(window.FreeVideoUI || {})}`,
         `Automatic reload: ${retried ? new Date(Number(retryRecord.at)).toISOString() : retryRecord ? 'not needed' : 'unavailable (no session storage)'}`,
-        '', 'Problems:', ...problems.flatMap(p => [`- ${p.text}`, ...(p.detail ? [`  error: ${p.detail}`] : []), ...(p.cover ? [`  covered by: ${p.cover}`] : []), ...(p.state ? [`  state: ${p.state}`] : [])]),
+        '', 'Problems:', ...problems.flatMap(p => [`- ${p.text}`, ...(p.detail ? [`  error: ${p.detail}`] : []), ...(p.cover ? [`  covered by: ${p.cover}`] : []), ...(p.state ? [`  state: ${p.state}`] : []), ...(p.facts || []).map(row => `  ${row}`)]),
         ...(checks.length ? ['', 'Load check:', ...checks.map(row => `- ${row}`)] : []),
         ...(cache.length ? ['', 'Browser cache:', ...cache.map(row => `- ${row}`)] : []),
         ...(before.length ? ['', 'Browser cache before the automatic reload:', ...before.map(row => `- ${row}`)] : []),
@@ -775,7 +779,7 @@ async function check() {
     send('loading', []);
     const app = await waitFor(comfy, 60000);
     if (!app) {
-        const problems = [{text: t('The page did not finish loading. Reload and try again.', '页面没有加载完成，请刷新后再试。'), detail: 'The ComfyUI page did not finish loading within a minute.', advice: 'reload'}];
+        const problems = [{text: t('The page did not finish loading. Reload and try again.', '页面未能加载完成，请刷新后再试。'), detail: 'The ComfyUI page did not finish loading within a minute.', advice: 'reload'}];
         show(problems); send('error', problems); return;
     }
     // A restarted ComfyUI has not heard from this page; tell it again.
@@ -798,7 +802,7 @@ async function check() {
     // FreeVideo's delays it. Give it the rest of the minute before naming it.
     if (!window.FreeVideoUI?.ready && !problems.length) await waitFor(() => window.FreeVideoUI?.ready, 50000);
     opening?.finish(); opening = null;
-    const notStarted = {text: t('The page did not finish loading. Reload and try again.', '页面没有加载完成，请刷新后再试。'), detail: 'FreeVideo’s scripts loaded, but ComfyUI did not start them.', advice: 'reload'};
+    const notStarted = {text: t('The page did not finish loading. Reload and try again.', '页面未能加载完成，请刷新后再试。'), detail: 'FreeVideo’s scripts loaded, but ComfyUI did not start them.', advice: 'reload'};
     if (!window.FreeVideoUI?.ready && !problems.length) {
         problems.push(notStarted);
         // A start later than that clears the card instead of leaving it up.
@@ -813,7 +817,7 @@ async function check() {
     if (!problems.length) problems.push(...await diagnoseStyles());
     let checkStudio = false;
     if (launchVisit && !problems.length) {
-        if (!launched) problems.push({text: t('The page did not finish loading. Reload and try again.', '页面没有加载完成，请刷新后再试。'), detail: 'The FreeVideo workflow did not open: launcher.js did not report back.', advice: 'reload'});
+        if (!launched) problems.push({text: t('The page did not finish loading. Reload and try again.', '页面未能加载完成，请刷新后再试。'), detail: 'The FreeVideo workflow did not open: launcher.js did not report back.', advice: 'reload'});
         else if (launched.error) problems.push(reportText(launched));
         else if (!studioWorkflow(app.graph)) problems.push({text: t('The interface opened another workspace; FreeVideo is in another tab.', '界面打开了另一个工作区，FreeVideo 在其他标签页中。'), detail: 'ComfyUI shows another workflow.', advice: 'relaunch'});
         else checkStudio = true;
@@ -843,7 +847,7 @@ async function check() {
     if (checkStudio && studioWorkflow(app.graph) && preferredView() !== 'nodes' && window.FreeVideoShell?.view?.() !== 'nodes' && !inTransition() && !surfaceOnScreen()
         && !['dialog.fv-workspace-opening[open]', 'dialog.fv-editor[open]', 'dialog.fv-studio[open]'].some(selector => document.querySelector(selector))
         && !reports.some(item => item.type === 'error' && item.where === 'studio'))
-        problems.unshift({text: t('The creative workspace did not open.', '创作面板没有打开。'), advice: 'reload'});
+        problems.unshift({text: t('The creative workspace did not open.', '创作面板未能打开。'), advice: 'reload'});
     problems.push(...lastProblems);
     // Started while this check was waiting for the page to be in front.
     if (window.FreeVideoUI?.ready && problems.includes(notStarted)) problems.splice(problems.indexOf(notStarted), 1);

@@ -31,7 +31,7 @@ export function createLanAccess(t, api) {
             if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(state.link);
             else { const area = el('textarea'); area.value = state.link; panel.append(area); area.select(); const ok = document.execCommand('copy'); area.remove(); if (!ok) throw new Error(); }
             copy.textContent = t('Copied', '已复制'); clearTimeout(copied); copied = setTimeout(() => { copy.textContent = t('Copy link', '复制链接'); }, 1500);
-        } catch { fail(t('Could not copy the link. Try again.', '没能复制链接，请重试。')); }
+        } catch { fail(t('Could not copy the link. Try again.', '未能复制链接，请重试。')); }
     });
     const passwordRow = el('div', 'fv-lan-password'), passwordState = el('span'), set = button('fv-lan-set', t('Set', '设置'), () => { form.hidden = false; password.focus(); });
     passwordRow.append(passwordState, set);
@@ -90,7 +90,7 @@ export function createLanAccess(t, api) {
         } else if (pending) starting.textContent = t('Opening…', '正在打开…');
         passwordState.textContent = state.password_set ? t('Password: on', '密码：已设置') : t('Password: not set', '密码：未设置');
         set.textContent = state.password_set ? t('Change', '修改') : t('Set', '设置');
-        if (!content.hidden && state.link !== drawn) { try { drawQr(qr, state.link); drawn = state.link; } catch { fail(t('Could not show the QR code. Use Copy link.', '没能显示二维码，请用“复制链接”。')); } }
+        if (!content.hidden && state.link !== drawn) { try { drawQr(qr, state.link); drawn = state.link; } catch { fail(t('Could not show the QR code. Use Copy link.', '未能显示二维码，请用“复制链接”。')); } }
         position();
     }
     async function read() {
@@ -100,7 +100,7 @@ export function createLanAccess(t, api) {
             if (!response.ok) throw Object.assign(new Error(), {status: response.status}); const value = await response.json(); if (disposed || writing) return;
             state = value; if (state.reason || desired === state.enabled && (!desired || state.link)) desired = null;
             error.hidden = true; render();
-        } catch (failure) { if (!disposed) fail(userMessage(failure?.name === 'TimeoutError' ? new TypeError('Failed to fetch') : failure, t, t('Could not read the phone access status. Try again.', '没能读取手机连接状态，请重试。'))); }
+        } catch (failure) { if (!disposed) fail(userMessage(failure?.name === 'TimeoutError' ? new TypeError('Failed to fetch') : failure, t, t('Could not read the phone access status. Try again.', '未能读取手机连接状态，请重试。'))); }
         finally { reading = false; if (!disposed && !panel.hidden) timer = setTimeout(read, document.hidden ? 10000 : 2000); }
     }
     trigger.onpointerenter = trigger.onfocus = () => { if (!panel.hidden) return; const box = trigger.getBoundingClientRect(); tip.hidden = false; place(tip, box.bottom + 8, Math.max(8, Math.min(box.right, window.innerWidth - 8) - tip.offsetWidth)); };
@@ -122,7 +122,7 @@ export function createLanAccess(t, api) {
             if (!response.ok) throw Object.assign(new Error(), {status: response.status});
             const value = await response.json(); if (disposed) return false;
             if (typeof value.enabled === 'boolean') state = {...state, ...value}; return true;
-        } catch (failure) { if (!disposed) fail(userMessage(failure, t, t('Could not change phone access. Try again.', '没能更改手机连接设置，请重试。'))); return false; }
+        } catch (failure) { if (!disposed) fail(userMessage(failure, t, t('Could not change phone access. Try again.', '未能更改手机连接设置，请重试。'))); return false; }
         finally { writing = false; if (!disposed) render(); }
     }
     async function changeEnabled() { await open(!(state.enabled || state.starting)); }

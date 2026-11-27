@@ -337,7 +337,7 @@ export function createEditorNarration({state, store, t, sources = () => new Map(
 export function createNarrationRow(host, controller, {t}) {
     const element = el('div', 'fv-ed-say-voice'), label = el('span', 'fv-ed-say-label', t('Voice', '音色'));
     const select = el('select', 'fv-ed-say-select'); select.setAttribute('aria-label', t('Voice', '音色'));
-    const listen = el('button', 'fv-ed-say-listen'); listen.type = 'button'; listen.setAttribute('aria-label', t('Listen', '试听')); tip(listen, {name: t('Listen', '试听'), use: t('Hear a sample of this voice', '听一下这个音色')});
+    const listen = el('button', 'fv-ed-say-listen'); listen.type = 'button'; listen.setAttribute('aria-label', t('Listen', '试听')); tip(listen, {name: t('Listen', '试听'), use: t('Hear a sample of this voice', '试听这个音色')});
     const icon = document.createElementNS(SVG, 'svg'); icon.setAttribute('viewBox', '0 0 16 16'); icon.setAttribute('aria-hidden', 'true');
     const shape = document.createElementNS(SVG, 'path'); icon.append(shape); listen.append(icon);
     const none = el('span', 'fv-ed-say-none', t('No voice available. Record or import a voice clip first.', '没有可用的音色。请先录音或导入一段人声。'));

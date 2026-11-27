@@ -259,6 +259,44 @@ def _near(left, right):
     return left > 0 and abs(right / left - 1.) <= .1000001
 
 
+def decode_scale(records, request, hardware, params=None):
+    """This machine's decode-and-save time relative to the model, from its last runs at the same frame size.
+
+    Width x height must be within 10%; the frame count may differ, since the model scales with it. The median of up to
+    three ratios (measured / predicted for that run), kept within 1/3 to 3; None without such a run. A larger frame size
+    is not judged from a smaller one: a machine can be disproportionately slower there.
+    """
+    from .stage_estimate import canvases, predict_prior
+    target = canvases(request)[2]
+    area = target['width'] * target['height']
+    recent = records[:48]
+    if recent and all(positive(row.get('recorded_epoch')) for row in recent):
+        recent = sorted(recent, key=lambda row: row['recorded_epoch'], reverse=True)
+    ratios = []
+    for row in recent:
+        try:
+            if not _believable(row):
+                continue
+            measured = (row.get('stages') or {}).get('decode_save')
+            if not positive(measured):
+                continue
+            shape = dict(row['shape'], two_pass=row['two_pass'], sampling_geometry=row.get('sampling_geometry'),
+                         flow=row.get('flow', 'full'))
+            decoded = canvases(shape)[2]
+            if not _near(area, decoded['width'] * decoded['height']):
+                continue
+            then = dict(request, **{key: row['shape'][key] for key in ('width', 'height', 'frames')},
+                        two_pass=row['two_pass'], sampling_geometry=row.get('sampling_geometry'), flow=row.get('flow', 'full'))
+            predicted = predict_prior(hardware, then, {}, params)['stages']['decode_save']['seconds']
+            if positive(predicted):
+                ratios.append(measured / predicted)
+        except (LookupError, TypeError, ValueError, ArithmeticError, AttributeError):
+            continue
+        if len(ratios) == 3:
+            break
+    return min(3., max(1 / 3., median(ratios))) if ratios else None
+
+
 def stage_forecast(records, request, cold_flags, prior, version=None):
     """Prefer runs of this FreeVideo version; older runs stay in use until then.
 
@@ -399,6 +437,37 @@ def _context_key(output_directory, machine):
     return (str(output_directory), json.dumps(device, sort_keys=True), system, machine.get('setup_run')), device, system
 
 
+_INVENTORY = {}
+
+
+def inventory_hardware(machine):
+    """The installer's hardware inventory for this machine's device (gpu_name, capability, ram/vram totals, system), from
+    its setup run's plan.json; {} when there is none or it describes another device. Read again only when the file
+    changes, so callers that ask often (the prompt model's info) stay cheap."""
+    _, device, _ = _context_key('', machine)
+    try:
+        path = Path(machine['setup_run']) / 'plan.json'
+        stamp = path.stat().st_mtime_ns
+    except (KeyError, TypeError, OSError):
+        return {}
+    key = (str(path), json.dumps(device, sort_keys=True))
+    cached = _INVENTORY.get(key)
+    if cached and cached[0] == stamp:
+        return dict(cached[1])
+    hardware = {}
+    try:
+        with path.open('rb') as stream:
+            raw = stream.read(1024 * 1024 + 1)
+        if len(raw) <= 1024 * 1024:
+            found = json.loads(raw).get('inventory', {}).get('hardware', {})
+            if same_device(found, device):
+                hardware = {k: found[k] for k in ('gpu_name', 'capability', 'ram_total', 'vram_total', 'system') if k in found}
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass
+    _INVENTORY[key] = (stamp, hardware)
+    return dict(hardware)
+
+
 def start_context(output_directory, machine, *, timeout=.035):
     """Bound foreground IO to ~35 ms, even on slow/unavailable output disks.
 
@@ -423,17 +492,8 @@ def start_context(output_directory, machine, *, timeout=.035):
     if start:
         def read():
             hardware, records = dict(entry['hardware']), list(entry['records'])
-            try:
-                if machine.get('setup_run'):
-                    with (Path(machine['setup_run']) / 'plan.json').open('rb') as stream:
-                        raw = stream.read(1024 * 1024 + 1)
-                    if len(raw) <= 1024 * 1024:
-                        found = json.loads(raw).get('inventory', {}).get('hardware', {})
-                        if same_device(found, device):
-                            hardware = {k: found[k] for k in
-                                ('gpu_name', 'capability', 'ram_total', 'vram_total', 'system') if k in found}
-            except (OSError, ValueError, TypeError, AttributeError):
-                pass
+            if machine.get('setup_run'):
+                hardware = inventory_hardware(machine) or hardware
             try:
                 records = local_records(output_directory, device, system=system, stage_details=True)
             except (OSError, ValueError, TypeError, AttributeError):

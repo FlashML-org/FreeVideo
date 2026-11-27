@@ -177,6 +177,27 @@ def curl_command(timeout, env=None):
     return command
 
 
+# Windows curl (Schannel) refuses a server whose certificate it could not check for revocation: the
+# network blocks the revocation list or the OCSP responder. Only these two errors, on curl's own
+# Schannel error line (no host name is in it), never another TLS error. A curl that has no name for
+# the code prints it alone in brackets, as "Unknown error (0x80092012)".
+REVOCATION_UNKNOWN = re.compile(r'^curl: \(35\) schannel: .*?(?:\bCRYPT_E_NO_REVOCATION_CHECK\b|'
+                                r'\bCRYPT_E_REVOCATION_OFFLINE\b|\(0x8009201[23]\))', re.M)
+# With this option Schannel goes on when the revocation status cannot be learned; the certificate,
+# its chain and the host name are still checked, and a certificate known to be revoked still fails.
+REVOKE_BEST_EFFORT = '--ssl-revoke-best-effort'
+REVOKE_BEST_EFFORT_SINCE = (7, 70)
+
+
+def revoke_best_effort_supported(executable, env=None):
+    """Whether this curl takes REVOKE_BEST_EFFORT: Windows curl from 7.70 on."""
+    if not windows():
+        return False
+    from .curl_windows import probe
+    found = re.match(r'(\d+)\.(\d+)', str(probe(Path(executable), dict(os.environ if env is None else env)).get('version') or ''))
+    return bool(found) and (int(found[1]), int(found[2])) >= REVOKE_BEST_EFFORT_SINCE
+
+
 def curl_process(command, **kwargs):
     # Match discovery's environment: the frozen GUI's DLL directory can break
     # otherwise healthy external curl binaries (including Git's copy).
@@ -342,6 +363,8 @@ def probe(family, name, spec, versions, timeout, env, *, measure_speed=False):
             import uuid
             remote = 'freevideo-probe-' + uuid.uuid4().hex
             settings = {'remote.' + remote + '.url': endpoint}
+            # The probe measures our source, not where a rewrite rule of this computer would send it.
+            settings.update([own_address(endpoint)])
             # remote.url is multivalued: reusing this checkout's origin can
             # select its existing SSH URL instead of the HTTPS URL being tested.
             # A private temporary name avoids that; carry origin's proxy policy
@@ -700,7 +723,8 @@ SOURCES_TRIED = '\nSources tried:'
 # Checked in order on each output line; the last line that names a cause wins.
 FAILURE_CLASSES = (
     ('disk-full', r'no space left on device|winerror 112\b|disk (?:is )?full|not enough space on the disk|errno 28\b'),
-    ('proxy', r'proxy|\b407\b'),
+    # A word of its own: a host name that holds it (a mirror named like ghproxy) says nothing about a proxy.
+    ('proxy', r'(?<![A-Za-z0-9.-])proxy|\b407\b'),
     ('dns', r'could not resolve|name or service not known|nodename nor servname|getaddrinfo|dns error|'
             r'failed to lookup address|name resolution|no such host|winerror 11001\b'),
     ('timeout', r'timed out|timeout|operation too slow'),
@@ -788,12 +812,67 @@ def sources_text(rows, item=''):
             parts.append(str(row['code']))
         elif row.get('returncode') not in (None, 0):
             parts.append('exit %s' % row['returncode'])
+        if row.get('revocation_check') == 'best-effort':
+            parts.append('retried without revocation status')
+        if row.get('proxy_from') in PROXY_FROM:
+            parts.append(PROXY_FROM[row['proxy_from']])
+        # The time stays last: the launcher's source card reads it from there.
         parts.append('%.1f s' % float(row.get('elapsed_seconds') or 0))
         message = str(row.get('message') or '')
         lines.append('  - %s: %s' % (head, ', '.join(parts)) + (': ' + message if message else ''))
     if not lines:
         return ''
     return (SOURCES_TRIED[:-1] + (' for %s:' % item if item else ':')) + '\n' + '\n'.join(lines)
+
+
+# What a failed source line says about the proxy of the route ("current connection"): where it came from, by kind.
+PROXY_FROM = {'environment': 'proxy from environment variables', 'system': 'proxy from system settings',
+              'git-config': 'proxy from Git settings'}
+# A failure the client reports as a connection to the proxy itself: curl's "... via <proxy> after" and
+# "connect to <proxy> port <its port>". Matched against the route's own proxies, never by a word in a host name.
+_PROXY_VIA = r'\bvia \[?%s\]?(?![\w.-])|\bconnect to \[?%s\]? port %s\b'
+
+
+def _proxies(env, git=False):
+    """(host, port) of each proxy the route uses, for matching only; nothing of it is reported."""
+    values = [v for k, v in env.items() if k.lower() in ('http_proxy', 'https_proxy', 'all_proxy') and v]
+    if git:
+        for key in ('http.proxy', 'https.proxy'):
+            try:
+                found = subprocess_output.run_external(['git', 'config', '--get', key], env=env, capture_output=True,
+                                                       timeout=10)
+            except (OSError, ValueError, subprocess.SubprocessError):
+                continue
+            if found.returncode == 0 and (found.stdout or '').strip():
+                values.append(found.stdout.strip())
+    out = set()
+    for value in values:
+        try:
+            parts = urlsplit(value if '://' in value else 'http://' + value)
+            if parts.hostname:
+                # Without a port, curl (and Git through it) uses 1080 for every proxy except an https:// one, 443.
+                out.add((parts.hostname, str(parts.port or (443 if parts.scheme == 'https' else 1080))))
+        except ValueError:
+            continue
+    return out
+
+
+def proxy_row(row, base_env, route, *, git=False):
+    """A failed source row of the route through the inherited connection, with where its proxy came from (a kind only),
+    and the proxy class when the failure was reaching that proxy. Other rows are returned as they are."""
+    if route != 'inherited':
+        return row
+    kind = proxy.origin(base_env, git=git)
+    if not kind:
+        return row
+    row['proxy_from'] = kind
+    message = str(row.get('message') or '')
+    route_env = proxy.environment(base_env, 'inherited', git=git)
+    for host, port in _proxies(route_env, git):
+        if re.search(_PROXY_VIA % (re.escape(host), re.escape(host), re.escape(port)), message, re.I):
+            row['error_class'] = 'proxy'
+            break
+    return row
 
 
 def _package_attempt(error, source, route, host='', seconds=0.):
@@ -950,8 +1029,8 @@ def download_command(network, family, run, env=None, *, category=None, extra_sou
                             return result
                         except (RuntimeError, subprocess.CalledProcessError):
                             pass
-                    attempt = dict(_package_attempt(error, name, route, source_host(family, name, env), elapsed),
-                                   retry_mode=retry_mode)
+                    attempt = dict(proxy_row(_package_attempt(error, name, route, source_host(family, name, env), elapsed),
+                                             env, route), retry_mode=retry_mode)
                     if native_retry:
                         attempt['system_certificates_tried'] = True
                     attempts.append(attempt)
@@ -959,6 +1038,7 @@ def download_command(network, family, run, env=None, *, category=None, extra_sou
                           error_type=attempt['error_type'], returncode=attempt['returncode'],
                           detail=attempt['detail'], summary=attempt['summary'], host=attempt['host'],
                           error_class=attempt['error_class'], message=attempt['message'],
+                          **({'proxy_from': attempt['proxy_from']} if attempt.get('proxy_from') else {}),
                           elapsed_seconds=attempt['elapsed_seconds'], **retry_details)
                     detail = attempt['detail']
                     if (not retryable(detail)
@@ -1282,6 +1362,8 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
     updating = category == 'launcher-update'
     integrity_failed = False
     attempts, failures, spent = {}, {}, {}
+    # Sources and routes retried once without a revocation answer (REVOCATION_UNKNOWN); later attempts keep it.
+    revocation_best_effort = set()
 
     def note_failure(source, route, reason, status='', address='', message=''):
         # The last reason each source and route gave, for the final error.
@@ -1292,10 +1374,12 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
         error_class = (_REASON_CLASSES.get(reason) or ('http' if http and code == 22 else _CURL_CLASSES.get(code))
                        or (failure_reason(message)[0] if message else 'exit'))
         failures.pop((source, route), None)
-        failures[source, route] = _source_row(source, route, _host(address), error_class,
+        failures[source, route] = proxy_row(_source_row(source, route, _host(address), error_class,
                                               failure_reason(message)[1] if message else '',
                                               spent.get((source, route), 0.), attempts[source, route],
-                                              returncode=code, http_status=status if http else '')
+                                              returncode=code, http_status=status if http else '',
+                                              **(dict(revocation_check='best-effort') if (source, route) in revocation_best_effort else {})),
+                                            env, route)
 
     failed_sources = set()
     transferred, high_water, last_rate = 0, 0, 0.
@@ -1435,7 +1519,9 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
             url, redirects, restart = original_url, 0, 0
             # Redirects are individual curl requests when a caller supplies a
             # policy. Never let curl contact an unchecked redirect destination.
-            for attempt in range(16 if validate_url else (3 if model else 2)):
+            tries, attempt = (16 if validate_url else (3 if model else 2)), 0
+            while attempt < tries:
+                attempt += 1
                 if updating and network.get('resource_check'):
                     network['resource_check']()
                 if validate_url:
@@ -1476,6 +1562,8 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
                     command += ['--max-time', str(max_seconds)]
                 if url.startswith('https://'):
                     command += ['--proto-redir', '=https']
+                if (name, route) in revocation_best_effort:
+                    command.append(REVOKE_BEST_EFFORT)
                 if size:
                     # curl also applies this cap to intermediate redirect
                     # bodies (e.g. HF Mirror's 307 for a 96-byte JSON file).
@@ -1584,6 +1672,15 @@ def download_here(candidates, path, expected, progress=None, *, network=None, en
                         continue
                 current_size = partial.stat().st_size if partial.exists() else 0
                 spent[name, route] = spent.get((name, route), 0.) + time.monotonic() - started
+                if (process.returncode == 35 and (name, route) not in revocation_best_effort
+                        and REVOCATION_UNKNOWN.search(stderr.decode('utf-8', errors='replace'))
+                        and revoke_best_effort_supported(command[0], attempt_env)):
+                    # Once per source and route, as a try of its own; the report says so.
+                    revocation_best_effort.add((name, route))
+                    tries += 1
+                    event(network, category=category, source=name, route=route, file=path.name,
+                          action='revocation-best-effort', reason='revocation-status-unavailable')
+                    continue
                 if slow_seconds is not None:
                     # A later failure at another address of the same source and
                     # route must not erase the rate it was measured at.
@@ -1740,6 +1837,34 @@ def old_git_message(version):
 def git_parameter(value):
     """A `-c` setting quoted as Git quotes it in GIT_CONFIG_PARAMETERS."""
     return "'" + value.replace("'", "'\\''").replace('!', "'\\!'") + "'"
+
+
+# A url.<base>.insteadOf rule in this computer's Git settings rewrites every address that starts with <base>, our own
+# sources included (a GitHub mirror set up by hand, often one that no longer answers). Git takes the longest matching
+# rule, so a rule that maps the whole address onto itself keeps that one address as it is and leaves every other setting
+# (proxy, certificates, TLS backend) alone. Only a rule for the very same whole address can still win; setup checks.
+def own_address(endpoint):
+    """The Git setting that keeps `endpoint` from being rewritten."""
+    return 'url.%s.insteadOf' % endpoint, endpoint
+
+
+# The source name for one last try through this computer's own rewrite, after FreeVideo's sources failed. It starts with
+# "user" so the launcher names it a custom source; the address it leads to is never written to a report.
+GIT_SETTINGS_SOURCE = 'user-git-settings'
+GIT_REWRITE_MESSAGE = ("This computer's Git settings rewrite this exact address to another one (a url.<address>.insteadOf rule), "
+                       "so FreeVideo could not use the address it needs. To let FreeVideo use this source, remove that rule.")
+
+
+def git_url(git, work, address, env):
+    """The address Git will use for `address` (a remote name or a URL) after this computer's rewrite rules, or None.
+
+    Only an address counts (scheme://… or user@host:path); anything else Git printed is no answer."""
+    try:
+        value = subprocess_output.output_external([str(git), '-C', str(work), 'ls-remote', '--get-url', address], env=env,
+                                                  stderr=subprocess.DEVNULL, timeout=30, **hidden_console()).strip()
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+    return value if re.match(r'[A-Za-z][A-Za-z0-9+.-]*://|[^/\s@]+@[^:\s]+:', value) else None
 
 
 # Git for Windows cannot find a repository from a working folder deeper than
@@ -2002,30 +2127,50 @@ def same_source(first, second):
     return normal(first) == normal(second)
 
 
-def owned_checkout(target, url, sparse, git, env):
-    """Whether `target` is a checkout FreeVideo made itself and may set aside.
+# Why a folder in `vendor` is not a checkout clone() made: it came from another address (its own origin), it is a Git
+# worktree or submodule of another repository (.git is a file), or its sparse checkout is not the one clone() sets.
+# Only the kind reaches the report, never the address, which can name a private repository or carry a token.
+FOREIGN_KINDS = ('other-origin', 'worktree', 'sparse')
 
-    Only dependency folders directly in a FreeVideo `vendor` folder qualify, and
-    only when the checkout is set up as clone() leaves it: the same sparse
-    patterns, or (without them) no origin or the same origin. A ComfyUI the user
-    works in is never replaced: its custom nodes and models live inside it.
+
+def foreign_checkout(target, url, sparse, git, env):
+    """None when `target` is a checkout FreeVideo made itself and may set aside; otherwise why not.
+
+    Only dependency folders directly in a FreeVideo `vendor` folder qualify ('outside-vendor' otherwise), and
+    only when the checkout is set up as clone() leaves it: the same sparse patterns, or (without them) no origin or
+    the same origin (FOREIGN_KINDS otherwise). A ComfyUI the user works in is never replaced: its custom nodes and
+    models live inside it.
     """
     target = Path(target)
-    if target.parent.name != 'vendor' or not io_path(target / '.git').is_dir():
-        return False
+    if target.parent.name != 'vendor':
+        return 'outside-vendor'
+    if not io_path(target / '.git').is_dir():
+        return 'worktree'
     enabled = sparse_enabled(target, git, env)
     if sparse:
         try:
             patterns = io_path(target / '.git' / 'info' / 'sparse-checkout').read_text(encoding='utf-8').split()
         except OSError:
-            return False
-        return enabled and patterns == [p.strip() for p in sparse]
+            return 'sparse'
+        return None if enabled and patterns == [p.strip() for p in sparse] else 'sparse'
+    if enabled:
+        return 'sparse'
     origin = config_value(target, 'remote.origin.url', git, env)
-    return not enabled and (origin is None or same_source(origin, url))
+    return None if origin is None or same_source(origin, url) else 'other-origin'
 
 
-def mismatch_message(target, git, env, head, commit, dirty):
-    """A specific description of how an existing checkout differs, naming only its folder and files."""
+def owned_checkout(target, url, sparse, git, env):
+    """Whether `target` is a checkout FreeVideo made itself and may set aside (see foreign_checkout)."""
+    return foreign_checkout(target, url, sparse, git, env) is None
+
+
+def mismatch_message(target, git, env, head, commit, dirty, foreign=None):
+    """A specific description of how an existing checkout differs, naming only its folder and files.
+
+    foreign: why foreign_checkout did not take the folder for FreeVideo's own. A folder in `vendor` that FreeVideo did
+    not download is said to be one, and named as vendor\\<name> too: reports keep only the last part of a path, and
+    the models folder can hold a folder of the same name."""
+    target = Path(target)
     details = []
     if head is None:
         details.append('Its version could not be read.')
@@ -2046,9 +2191,14 @@ def mismatch_message(target, git, env, head, commit, dirty):
             details.append('1 other file differs only in permissions, which does not block installation.'
                            if len(modes) == 1 else
                            '%d other files differ only in permissions, which do not block installation.' % len(modes))
+    if foreign in FOREIGN_KINDS:
+        details.append('FreeVideo did not download this folder and has not changed it.')
+    shown = target
+    if target.parent.name == 'vendor':
+        shown = '%s (the %s folder inside the FreeVideo folder)' % (target, os.path.join('vendor', target.name))
     return ('A dependency folder differs from the version FreeVideo needs: %s. %s '
-            'Rename or move this folder, then retry installation. FreeVideo will download a fresh copy.'
-            % (target, ' '.join(details)))
+            'Rename or move this folder, then choose "Retry installation". FreeVideo will then download a new copy.'
+            % (shown, ' '.join(details)))
 
 
 # Git reads a checkout's settings from .git\config by its ordinary path, even in
@@ -2136,6 +2286,21 @@ def windows_store_retry(error):
             and not any(word in text for word in ('schannel', 'sec_e_', 'crypt_e_')))
 
 
+# Git on Windows with Schannel refuses a server whose certificate it could not check for revocation, as curl does
+# (REVOCATION_UNKNOWN): only these two errors, on Git's own "unable to access '<address>': schannel:" line.
+GIT_REVOCATION_UNKNOWN = re.compile(r"^fatal: unable to access '[^'\n]*': schannel: [^\n]*?(?:\bCRYPT_E_NO_REVOCATION_CHECK\b|"
+                                    r"\bCRYPT_E_REVOCATION_OFFLINE\b|\(0x8009201[23]\))", re.M)
+# Git for Windows (2.26 and later) then goes on when the revocation status cannot be learned; the certificate, its chain
+# and the host name are still checked, and a certificate known to be revoked still fails. Its default is the same unless
+# a setting asks for the strict check. Never `false`, which turns the check off.
+GIT_REVOKE_BEST_EFFORT = 'http.schannelCheckRevoke=best-effort'
+
+
+def git_revocation_retry(error):
+    """Whether a failed Git fetch is worth one more try with the revocation check done on a best-effort basis."""
+    return is_windows() and bool(GIT_REVOCATION_UNKNOWN.search(str(error)))
+
+
 def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None):
     """Fetch only the pinned commit, atomically; never reset existing checkouts.
 
@@ -2167,8 +2332,11 @@ def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None)
             return target
         if target.parent.name == 'vendor' and git_settings_out_of_reach(target):
             raise ValueError(path_too_long_message(target))
-        if not owned_checkout(target, url, sparse, git, env):
-            raise ValueError(mismatch_message(target, git, env, head, commit, dirty))
+        foreign = foreign_checkout(target, url, sparse, git, env)
+        if foreign:
+            if foreign in FOREIGN_KINDS:
+                event(network, category='git', file=target.name, action='foreign-checkout', reason=foreign)
+            raise ValueError(mismatch_message(target, git, env, head, commit, dirty, foreign))
         replacing = True
         event(network, category='git', file=target.name, action='replace-planned', commit=commit,
               reason='unreadable' if head is None else 'other-version' if head != commit else 'changed-content',
@@ -2195,9 +2363,11 @@ def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None)
         except OSError:
             pass  # Held by another program; the download goes on and a later run tries again.
     attempts = []
-    for name, endpoint, route in [(name, endpoint, route) for name, endpoint in candidates
-                                 for route in route_order(network, 'git', name, configured_env)]:
+    queue = [(name, endpoint, route) for name, endpoint in candidates for route in route_order(network, 'git', name, configured_env)]
+    rewritten = False
+    for name, endpoint, route in queue:
         env = route_environment(network, 'git', name, configured_env, route)
+        revocation_retried = False
         temporary = target.with_name(target.name + '.partial-' + str(time.time_ns()))
         event(network, category='git', source=name, route=route, file=target.name, action='attempt', commit=commit)
         scratch = git_scratch_folder() if git_folder_too_deep(temporary) else None
@@ -2244,25 +2414,51 @@ def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None)
             # children, in every Git version: never in process arguments, logs
             # or the repository's config, even if the fetch is killed.
             original = env
+            own = name != GIT_SETTINGS_SOURCE
+            if own and not rewritten and git_url(git, work, endpoint, env) not in (None, endpoint):
+                # This computer rewrites our address. Our sources go first as published; its own rewrite gets one
+                # try at the end, so a hand-made mirror that works there still helps. Only that it happened is logged.
+                rewritten = True
+                event(network, category='git', source=name, route=route, file=target.name, action='git-url-rewrite')
+                queue.append((GIT_SETTINGS_SOURCE, endpoint, route_order(network, 'git', name, configured_env)[0]))
             env = dict(env, GIT_CONFIG_PARAMETERS=' '.join(filter(None, (
-                env.get('GIT_CONFIG_PARAMETERS', '').strip(), git_parameter('remote.origin.url=' + endpoint)))))
+                env.get('GIT_CONFIG_PARAMETERS', '').strip(), git_parameter('remote.origin.url=' + endpoint),
+                *([git_parameter('%s=%s' % own_address(endpoint))] if own else ())))))
+            if own and git_url(git, work, 'origin', env) not in (None, endpoint):
+                # A rule for this very address wins over ours: say so instead of reaching another host.
+                failure = RuntimeError(GIT_REWRITE_MESSAGE)
+                failure.error_class = 'git-rewrite'
+                raise failure
             fetch = ['git', '-C', work, '-c', 'fetch.fsckObjects=true', 'fetch', '--depth=1', '--no-tags', 'origin', commit]
             try:
                 try:
                     execute(target.name + '-fetch-' + name, fetch)
                 except RuntimeError as first:
-                    if not windows_store_retry(first):
+                    if git_revocation_retry(first):
+                        # Once per source and route, as for curl; the report says so.
+                        revocation_retried = True
+                        event(network, category='git', source=name, route=route, file=target.name,
+                              action='revocation-best-effort', reason='revocation-status-unavailable')
+                        try:
+                            execute(target.name + '-fetch-revocation-' + name, fetch[:3] + ['-c', GIT_REVOKE_BEST_EFFORT] + fetch[3:])
+                        except RuntimeError as second:
+                            # A Git older than that value reads it as a yes/no setting and refuses it, in words that say
+                            # nothing about the download: the first error stays the one reported then.
+                            unsupported = re.search(r"bad (?:boolean|numeric) config value 'best-effort'", str(second), re.I)
+                            raise first if unsupported else second from None
+                    elif windows_store_retry(first):
+                        event(network, category='git', source=name, route=route, file=target.name, action='certificate-store-retry',
+                              reason='windows-certificate-store')
+                        try:
+                            execute(target.name + '-fetch-windows-store-' + name,
+                                    fetch[:3] + ['-c', 'http.sslBackend=schannel'] + fetch[3:])
+                        except RuntimeError as second:
+                            # A Git without that backend says so in words that say nothing about the
+                            # download; the first error stays the one reported then.
+                            unsupported = 'unsupported ssl backend' in str(second).lower()
+                            raise second if failure_reason(second)[0] == 'tls' and not unsupported else first from None
+                    else:
                         raise
-                    event(network, category='git', source=name, route=route, file=target.name, action='certificate-store-retry',
-                          reason='windows-certificate-store')
-                    try:
-                        execute(target.name + '-fetch-windows-store-' + name,
-                                fetch[:3] + ['-c', 'http.sslBackend=schannel'] + fetch[3:])
-                    except RuntimeError as second:
-                        # A Git without that backend says so in words that say nothing about the
-                        # download; the first error stays the one reported then.
-                        unsupported = 'unsupported ssl backend' in str(second).lower()
-                        raise second if failure_reason(second)[0] == 'tls' and not unsupported else first from None
             finally:
                 env = original
             execute(target.name + '-checkout', ['git', '-C', work, 'checkout', '--detach', commit])
@@ -2297,16 +2493,27 @@ def clone(target, url, commit, *, sparse=None, run=None, network=None, env=None)
             event(network, category='git', source=name, route=route, file=target.name, action='verified', commit=commit)
             return target
         except RuntimeError as error:
-            if not retryable(error):
+            # The last try through this computer's own rewrite never ends the download with its own error.
+            if not retryable(error) and not getattr(error, 'error_class', None) and name != GIT_SETTINGS_SOURCE:
                 raise
             source_health(network, 'git', name, False)
             error_class, message = failure_reason(error)
-            attempt = _source_row(name, route, _host(endpoint), error_class, message, time.monotonic() - started,
-                                  returncode=exit_code(error))
+            if getattr(error, 'error_class', None):
+                error_class, message = error.error_class, str(error)
+            # Where this computer's rewrite leads stays out of the report: it can name a private mirror, an address, a path
+            # or an organisation. That row keeps only the kind of failure and its time, never Git's own words.
+            host = '' if name == GIT_SETTINGS_SOURCE else _host(endpoint)
+            if name == GIT_SETTINGS_SOURCE:
+                message = ''
+            attempt = proxy_row(_source_row(name, route, host, error_class, message, time.monotonic() - started,
+                                            returncode=exit_code(error),
+                                            **(dict(revocation_check='best-effort') if revocation_retried else {})),
+                                configured_env, route, git=True)
             attempts.append(attempt)
             event(network, category='git', source=name, route=route, file=target.name, action='fallback',
-                  reason='network-fetch-failed', host=attempt['host'], error_class=error_class, message=message,
-                  returncode=attempt['returncode'], elapsed_seconds=attempt['elapsed_seconds'])
+                  reason='network-fetch-failed', host=attempt['host'], error_class=attempt['error_class'], message=message,
+                  returncode=attempt['returncode'], elapsed_seconds=attempt['elapsed_seconds'],
+                  **({'proxy_from': attempt['proxy_from']} if attempt.get('proxy_from') else {}))
         finally:
             # Best effort: a file still held by antivirus or git.exe must not replace the
             # error being handled or stop the fallback to the next source.

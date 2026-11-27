@@ -118,6 +118,8 @@
   box-shadow:inset 0 1px 0 var(--fv-edge-hi),var(--fv-sh3);-webkit-backdrop-filter:blur(var(--fv-glass-blur3)) saturate(175%);backdrop-filter:blur(var(--fv-glass-blur3)) saturate(175%);animation:fvs-pop var(--fv-dur-1) var(--fv-ease-out)}
 .fv-studio.fv-create .fv-actions .fv-more-menu{min-width:200px;display:grid;gap:var(--fv-sp-2)}
 .fv-studio.fv-create .fv-actions .fv-more-menu .fv-action{justify-content:flex-start;width:100%;border-radius:var(--fv-rad-ctl);height:var(--fv-ctl);color:var(--fv-fg)}
+/* About how long an upscale row takes: where a menu shows a key, in its colour. */
+.fv-studio.fv-create .fv-actions .fv-more-menu .fv-more-note{margin-left:auto;padding-left:var(--fv-sp-3,12px);font-size:var(--fv-fs-1,12px);color:var(--fv-fg3);white-space:nowrap;font-variant-numeric:tabular-nums}
 
 /* The status line under the picture: one line kept free, so a message never pushes the picture. */
 .fv-studio.fv-create .fv-status{min-height:24px;line-height:24px;text-align:center;font-size:var(--fv-fs-1);color:var(--fv-fg3);align-self:center;width:min(100%,max(560px,var(--fvs-stage-w,100%)))}
@@ -535,7 +537,8 @@
 /* ── Compare: two videos on the stage, side by side or split by a divider ── */
 .fv-studio.fv-create .fvs-compare{position:absolute;inset:0;z-index:4;display:flex;flex-direction:column;background:#0b0e13}
 .fv-studio.fv-create .fvs-compare[hidden]{display:none}
-.fvs-compare-panes{position:relative;flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:2px;--fvs-split:50%}
+/* --fvs-split is set on .fvs-compare by studio_compare.js; the panes inherit it (a value of their own here would hold the divider in the middle). */
+.fvs-compare-panes{position:relative;flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:2px}
 .fvs-compare-pane{position:relative;min-width:0;min-height:0;background:#0b0e13}
 .fv-studio.fv-create .fvs-compare-pane video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#0b0e13}
 .fvs-compare-tag{position:absolute;left:var(--fv-sp-8);top:var(--fv-sp-8);max-width:calc(100% - 16px);padding:var(--fv-sp-2) var(--fv-sp-8);border-radius:var(--fv-rad-pill);
@@ -543,9 +546,9 @@
 .fvs-compare-divider{display:none}
 .fvs-compare[data-mode=slider] .fvs-compare-panes{display:block;cursor:ew-resize;touch-action:none}
 .fvs-compare[data-mode=slider] .fvs-compare-pane{position:absolute;inset:0}
-.fvs-compare[data-mode=slider] .fvs-compare-b{clip-path:inset(0 0 0 var(--fvs-split))}
+.fvs-compare[data-mode=slider] .fvs-compare-b{clip-path:inset(0 0 0 var(--fvs-split,50%))}
 .fvs-compare[data-mode=slider] .fvs-compare-b .fvs-compare-tag{left:auto;right:var(--fv-sp-8)}
-.fvs-compare[data-mode=slider] .fvs-compare-divider{display:block;position:absolute;top:0;bottom:0;left:var(--fvs-split);width:2px;margin-left:-1px;background:#fff;box-shadow:0 0 0 1px rgb(0 0 0 / .25);outline:none}
+.fvs-compare[data-mode=slider] .fvs-compare-divider{display:block;position:absolute;top:0;bottom:0;left:var(--fvs-split,50%);width:2px;margin-left:-1px;background:#fff;box-shadow:0 0 0 1px rgb(0 0 0 / .25);outline:none}
 .fvs-compare[data-mode=slider] .fvs-compare-divider::after{content:'';position:absolute;top:50%;left:50%;width:28px;height:28px;transform:translate(-50%,-50%);border-radius:var(--fv-r-pill);background:#fff;
   box-shadow:0 2px 8px rgb(0 0 0 / .4)}
 .fvs-compare[data-mode=slider] .fvs-compare-divider:focus-visible::after{box-shadow:0 0 0 3px var(--fv-accent-line),0 2px 8px rgb(0 0 0 / .4)}
@@ -843,7 +846,7 @@ html body .fv-studio.fv-create .fvs-console :is(.fvs-console-prompt,.fv-section,
 /* LoRA tray: an empty list is just a left-aligned Add; no standing note; the tray is as tall as what it holds. */
 .fv-studio.fv-create .fvs-tray .fv-lora-add{justify-content:flex-start}
 .fv-studio.fv-create .fvs-tray :is(.fv-lora-note,.fv-lora-list):empty{display:none}
-/* A row short of room folds its chips (web/studio_console.js fitRow; Iris 11-24): Media and LoRA keep their icon and
+/* A row short of room folds its chips (web/studio_console.js fitRow): Media and LoRA keep their icon and
    count, styled and placed as when open (no badge); without a count they are square (as wide as they are tall, like
    @). Then Enhance keeps its star, square, its on state unchanged. The words stay for screen readers. */
 .fv-studio.fv-create .fvs-chips[data-fold] :is(.fvs-chip[data-chip=media],.fvs-chip[data-chip=lora]) .fvs-chip-label,
@@ -851,7 +854,7 @@ html body .fv-studio.fv-create .fvs-console :is(.fvs-console-prompt,.fv-section,
 .fv-studio.fv-create .fvs-chips[data-fold] :is(.fvs-chip[data-chip=media],.fvs-chip[data-chip=lora]){padding:0 10px}
 .fv-studio.fv-create .fvs-chips[data-fold] :is(.fvs-chip[data-chip=media],.fvs-chip[data-chip=lora])[data-empty],
 .fv-studio.fv-create .fvs-chips:is([data-fold="2"],[data-fold="3"]) .fv-enhance-chip{width:auto;min-width:0;aspect-ratio:1;padding:0;justify-content:center}
-/* Third step (Lane 11-24): the phone's compact keys below (520 px): the duration shows its number (its name and hover
+/* Third step: the phone's compact keys below (520 px): the duration shows its number (its name and hover
    card keep the unit), the size and quality keys drop their drawings. */
 .fv-studio.fv-create .fvs-console .fvs-chips[data-fold="3"]>.fvs-stepper{padding:0 var(--fv-sp-2)}
 .fv-studio.fv-create .fvs-console .fvs-chips[data-fold="3"] .fvs-stepper .fvs-step{width:32px;min-width:32px}

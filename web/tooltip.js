@@ -29,6 +29,8 @@ const t = translator(isChinese());
 const pick = value => Array.isArray(value) ? t(...value) : value;
 
 export const SHOW_DELAY = 500, HIDE_DELAY = 100, WARM_FOR = 700, GAP = 8, MARGIN = 8, LONG_PRESS = 500, MAX_WIDTH = 320;
+// A list of file paths (data-fv-tip-lines) is wider.
+const LIST_MAX_WIDTH = 480;
 const timing = {show: SHOW_DELAY, hide: HIDE_DELAY, warm: WARM_FOR};
 // Kept for views that still import it; scope is decided by inScope() below.
 export const SCOPE = '[data-fv-tip-scope]';
@@ -42,6 +44,22 @@ const REGION = '[role=region],[role=group],[role=tabpanel],[role=list],[role=gri
 
 const disabledOf = element => element.matches(':disabled') || element.getAttribute('aria-disabled') === 'true';
 const clean = text => String(text || '').replace(/\s+/g, ' ').trim();
+// data-fv-tip-lines: the use line is a list, one item per line (files kept by a removal).
+// A path breaks only after a slash, never inside a name ("moss-image" stays whole): each part between slashes is kept
+// whole and a break is offered after each slash. No character is added, so the text copies as the path.
+function listLines(node, text) {
+    for (const line of text.split('\n')) {
+        const row = document.createElement('div');
+        line.split('/').forEach((part, index, parts) => {
+            const whole = document.createElement('span'); whole.className = 'fv-tip-part';
+            whole.textContent = index < parts.length - 1 ? part + '/' : part;
+            row.append(whole);
+            if (index < parts.length - 1) row.append(document.createElement('wbr'));
+        });
+        node.append(row);
+    }
+}
+const cleanLines = text => String(text || '').split('\n').map(clean).filter(Boolean).join('\n');
 const safeMatches = (element, selector) => { try { return element.matches(selector); } catch { return false; } };
 
 // A FreeVideo surface: the control or a holder has an fv- / sgf- class, or carries data-fv-tip-scope. The walk stops
@@ -161,7 +179,8 @@ export function tipContent(element) {
     if (disabled && !off && !entry) off = pick(copyFor(element)?.entry?.off) || '';
     if (disabled && !off && title && title !== use && title !== name) off = title;
     if (!name && !use && !(disabled && off)) return null;
-    return {name: clean(name), use: clean(use) === clean(name) ? '' : clean(use), key: clean(key), off: disabled ? clean(off) : ''};
+    const lines = Boolean(data.fvTipLines);
+    return {name: clean(name), use: clean(use) === clean(name) ? '' : lines ? cleanLines(use) : clean(use), key: clean(key), off: disabled ? clean(off) : '', ...(lines ? {lines} : {})};
 }
 
 // ── Placement (pure, tested in tests/tips_tooltip.mjs) ──────────────────────────────────────────
@@ -267,7 +286,13 @@ function render(content) {
     const name = document.createElement('span'); name.className = 'fv-tip-name'; name.textContent = content.name; head.append(name);
     if (content.key) head.append(keyCap(content.key));
     box.append(head);
-    if (content.use && !content.off) { const use = document.createElement('div'); use.className = 'fv-tip-use'; use.textContent = content.use; box.append(use); }
+    if (content.use && !content.off) {
+        const use = document.createElement('div'); use.className = 'fv-tip-use';
+        if (content.lines) listLines(use, content.use); else use.textContent = content.use;
+        box.append(use);
+    }
+    // A list (file paths) is wider than other tips; the dataset flag lets the stylesheet say how wide.
+    if (content.lines) box.dataset.lines = ''; else delete box.dataset.lines;
     if (content.off) { const off = document.createElement('div'); off.className = 'fv-tip-off'; off.textContent = content.off; box.append(off); }
     box.dataset.state = content.off ? 'off' : 'on';
 }
@@ -319,7 +344,7 @@ function position(element) {
     if (!rect.width && !rect.height) return false;
     // Measure the real card: open but invisible, at the corner, at its final width limit.
     box.style.visibility = 'hidden'; box.style.left = '0px'; box.style.top = '0px';
-    box.style.maxWidth = `${Math.min(MAX_WIDTH, innerWidth - 2 * MARGIN)}px`;
+    box.style.maxWidth = `${Math.min(box.dataset.lines === undefined ? MAX_WIDTH : LIST_MAX_WIDTH, innerWidth - 2 * MARGIN)}px`;
     box.dataset.open = 'true';
     const size = box.getBoundingClientRect();
     placedSize = `${size.width}x${size.height}`;

@@ -6,6 +6,8 @@ import {resolve} from './editor_test_hooks.mjs';
 if (modules.registerHooks) modules.registerHooks({resolve});
 else modules.register('./editor_test_hooks.mjs', import.meta.url);
 import {mediaName, uploadMedia} from '../web/media_upload.js';
+// Shown text is compared as plain text: the page holds quoted names together with marks that are not words.
+import {plainText} from '../web/i18n.js';
 import {outputDownloadURL, checkedDownload, anchoredNotice, unreadableVideoText} from '../web/output_download.js';
 import * as studioQueue from '../web/studio_queue.js';
 import {referenceInputs, mediaRows} from '../web/prompt_references.js';
@@ -311,7 +313,7 @@ test('main browser entry registers both views and preserves node hooks', async t
                     for (const [name, en, zh, , tooltip] of rows) {
                         const widget = node.widgets.find(w => w.name === name);
                         assert.equal(widget.label, language === 'zh' ? zh : en, name);
-                        assert.equal(widget.tooltip, language === 'zh' && tooltip ? tooltip : `original ${name}`, name);
+                        assert.equal(plainText(widget.tooltip), language === 'zh' && tooltip ? tooltip : `original ${name}`, name);
                     }
                     assert.equal(node.widgets.find(w => w.name === 'force_regenerate').type, 'hidden');
                     assert.equal(node.widgets.find(w => w.name === 'force_regenerate').serializeValue(), false);
@@ -643,7 +645,7 @@ test('main browser entry registers both views and preserves node hooks', async t
                         ? '请连接“参考音频”，或把“音频用途”改为“参考”后再生成。'
                         : 'Connect audio to "Reference audio", or set "Audio use" to "reference", before generating.';
                     const assertWarning = enabled => {
-                        assert.equal(warning.textContent === expected, enabled);
+                        assert.equal(plainText(warning.textContent) === expected, enabled);
                         assert.equal(warning.classList.contains('fv-error'), enabled);
                     };
                     assertWarning(true);
@@ -673,9 +675,9 @@ test('main browser entry registers both views and preserves node hooks', async t
                     const dispose = owner.freevideoCreateMediaEditor(mount);
                     assert.equal(widget.callback, wrapped, 'opening the Studio editor does not wrap again');
                     const mountedWarning = mount.children[0].children.find(child => child.className === 'fv-note');
-                    assert.equal(mountedWarning.textContent, expected);
+                    assert.equal(plainText(mountedWarning.textContent), expected);
                     widget.value = 'reference'; widget.callback('reference');
-                    assertWarning(false); assert.notEqual(mountedWarning.textContent, expected);
+                    assertWarning(false); assert.notEqual(plainText(mountedWarning.textContent), expected);
                     dispose(); owner.onRemoved();
                     // A new widget without a prior callback and old saves without the widget both work.
                     for (const widgets of [[{name: 'audio_use', value: 'reference'}], []]) {
@@ -685,7 +687,7 @@ test('main browser entry registers both views and preserves node hooks', async t
                             legacy.widgets[1].value = 'original';
                             assert.doesNotThrow(() => legacy.widgets[1].callback('original'));
                             const legacyWarning = legacy.dom.find(row => row.name === 'freevideo_media').element.children.find(child => child.className === 'fv-note');
-                            assert.equal(legacyWarning.textContent, expected);
+                            assert.equal(plainText(legacyWarning.textContent), expected);
                         }
                         legacy.onRemoved();
                     }

@@ -73,7 +73,7 @@ export function createLayout({host, layer = document.body, onChange = () => {}, 
     const lift = () => { if (viewport) bar.style.setProperty('--fv-kb', `${Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)}px`); keepInView(); };
     viewport?.addEventListener('resize', lift); viewport?.addEventListener('scroll', lift);
     window.addEventListener('resize', lift);
-    // The box being written stays in sight above the bar (8 px clear, Iris 11-19): the page under it scrolls by what the
+    // The box being written stays in sight above the bar (8 px clear): the page under it scrolls by what the
     // bar covers; a box already clear is left where it is.
     function keepInView() {
         if (editing < 0 || bar.hidden) return;

@@ -6,6 +6,7 @@
 import { listenDialogKey } from './dialog_keys.js';
 
 export const ICONS = {
+    trash: '<path d="M5 7h14M10 4h4M7 7l.8 12a1.5 1.5 0 0 0 1.5 1.4h5.4a1.5 1.5 0 0 0 1.5-1.4L17 7"/><path d="M10.5 11v5.5M13.5 11v5.5"/>',
     cube: '<path d="M12 3.5l7.5 4.2v8.6L12 20.5l-7.5-4.2V7.7z"/><path d="M4.8 7.9L12 12l7.2-4.1M12 12v8.3"/>',
     down: '<path d="M12 4.5v10M7.5 10.5L12 15l4.5-4.5M5 19.5h14"/>',
     img: '<rect x="4" y="4.5" width="16" height="15" rx="3"/><circle cx="9" cy="9.5" r="1.5"/><path d="M4.5 16l4.5-4 3.5 3 2.5-2 4.5 4"/>',

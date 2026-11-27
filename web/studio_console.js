@@ -147,8 +147,8 @@ export function createConsole({t, body, controls, prompt, runbar, trays, chips, 
         }
         fitRow();
     }
-    // A row that cannot hold every chip on one line folds them (Iris 11-24, review/i18n/shots-widest/collapse-spec-iris.md):
-    // first Media and LoRA show their icon and count, then Enhance its star, then (Lane 11-24) the duration shows its number
+    // A row that cannot hold every chip on one line folds them:
+    // first Media and LoRA show their icon and count, then Enhance its star, then the duration shows its number
     // and the size and quality keys drop their drawings, as on a phone; the row never wraps. Judged by the row's own
     // width in every language, not by a set breakpoint; the words come back once the row is 16 px wider than where it
     // folded (no back and forth while a window is dragged). The narrow layout (760 px and less) wraps by design and does
@@ -156,7 +156,7 @@ export function createConsole({t, body, controls, prompt, runbar, trays, chips, 
     let fold = 0;
     // Where each step was taken: the row's width and what its chips showed. Without the 16 px margin a step is only undone
     // when that content has changed (a shorter level, fewer media); a resize back and forth or a refresh with the same
-    // content keeps it (c1-boot review 11-24).
+    // content keeps it.
     const foldedAt = [0, 0, 0, 0], shownAt = ['', '', '', ''];
     const shown = () => [...row.querySelectorAll('.fvs-chip-label,.fvs-chip-extra,.fvs-step-number,.fvp-chip-label,.fv-enhance-chip>span')]
         .map(node => node.hidden ? '' : node.textContent).join('\u241f');
@@ -222,7 +222,7 @@ export function durationStepper(t, seconds, {onOpen, max = () => Infinity, locke
     minus.setAttribute('aria-label', t('One second shorter', '缩短 1 秒')); plus.setAttribute('aria-label', t('One second longer', '加长 1 秒'));
     tip(minus, t('Shorter', '缩短'), t('One second shorter', '时长减少 1 秒'));
     tip(plus, t('Longer', '加长'), t('One second longer', '时长增加 1 秒'));
-    tip(value, t('Duration', '时长'), t('Click to type an exact length', '点一下输入精确时长'));
+    tip(value, t('Duration', '时长'), t('Click to type an exact length', '点击输入精确时长'));
     element.append(minus, value, plus);
     const step = delta => {
         if (seconds.disabled) return;

@@ -359,7 +359,7 @@ export function createEditorStore(api, {t = en => en, notify = () => {}, onGener
                         copySuffix: t(' (copy)', '（副本）'), read: id => store.load(id),
                         write: (record, create, operation) => request('/freevideo/editor/project', post({project: record, operation, ...(create ? {create} : {})})),
                         onSaved: (record, memory, local) => { if (memory) memoryProjects.set(local, copy(record)); try { localStorage.setItem('fv-editor-last', record.id || local); } catch {} },
-                        onCopied: () => notice('conflict', 'This edit changed elsewhere. Your changes here were saved as a copy.', '这条剪辑在别处改过，这里的改动已存为副本')});
+                        onCopied: () => notice('conflict', 'This edit was changed elsewhere, so your changes here were saved as a copy.', '这个剪辑在别处改过，这里的改动已另存为副本。')});
                     try {
                         q.enqueue(entry.project); await q.flush();
                         if (q.dirty) {
@@ -395,7 +395,7 @@ export function createEditorStore(api, {t = en => en, notify = () => {}, onGener
                     if (memory) memoryProjects.set(record.id || local, copy(state.record));
                 },
                 onConflict: (record, nameSuffix) => { state.adopt({id: null, revision: 0, nameSuffix}); },
-                onCopied: () => notice('conflict', 'This edit changed elsewhere. Your changes here were saved as a copy.', '这条剪辑在别处改过，这里的改动已存为副本'),
+                onCopied: () => notice('conflict', 'This edit was changed elsewhere, so your changes here were saved as a copy.', '这个剪辑在别处改过，这里的改动已另存为副本。'),
                 onMemory: () => notice('memory', 'Changes are kept in this page for now. Update and restart to save them.', '改动暂存在这个页面里，更新并重启后会保存。'),
                 // Automatic retries stay quiet; switching away while unsaved warns in editor.js.
                 onError: error => onFailed(error)});

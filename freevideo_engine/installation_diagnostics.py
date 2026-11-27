@@ -41,7 +41,8 @@ def collect(root, since):
         # Python and Git downloads in the setup run, and ComfyUI dependency
         # preparation in launcher/host-runs. The command output remains in the
         # local manual bundle.
-        package_attempts, native_tls_sources = [], []
+        package_attempts, native_tls_sources, revocation_sources, reinstalls, foreign = [], [], [], [], []
+        git_rewrite = False
         folders = [run]
         host_root = root / 'launcher' / 'host-runs'
         if host_root.is_dir():
@@ -53,16 +54,24 @@ def collect(root, since):
                     continue
                 package_attempts += source_failures(folder / 'network.jsonl')
                 native_tls_sources += native_tls_fallbacks(folder / 'network.jsonl')
+                revocation_sources += revocation_best_effort(folder / 'network.jsonl')
+                reinstalls += python_reinstalls(folder / 'network.jsonl')
+                foreign += foreign_checkouts(folder / 'network.jsonl')
+                git_rewrite = git_rewrite or git_url_rewritten(folder / 'network.jsonl')
             except OSError:
                 continue
         return plain_data(dict(state=state, samples=rows, package_attempts=package_attempts[-16:],
-                               native_tls_fallback=list(dict.fromkeys(native_tls_sources))[-8:]))
+                               native_tls_fallback=list(dict.fromkeys(native_tls_sources))[-8:],
+                               revocation_best_effort=list(dict.fromkeys(revocation_sources))[-8:],
+                               python_reinstall=list(dict.fromkeys(reinstalls))[-4:],
+                               foreign_checkout=[list(row) for row in dict.fromkeys(foreign)][-4:],
+                               git_url_rewrite=git_rewrite))
     except (OSError, ValueError, KeyError, TypeError):
         return {}
 
 
 SOURCE_KEYS = ('category', 'source', 'route', 'host', 'error_class', 'message', 'elapsed_seconds',
-               'error_type', 'returncode', 'summary')
+               'error_type', 'returncode', 'summary', 'proxy_from')
 
 
 def source_failures(path):
@@ -85,10 +94,78 @@ def source_failures(path):
     return rows[-16:]
 
 
+REINSTALL_KINDS = ('missing', 'silent', 'failed')
+
+
+def python_reinstalls(path):
+    """Why setup installed the isolated Python again (managed_python's kinds), from the network log; nothing else is read."""
+    with io_path(path).open('rb') as stream:
+        size = stream.seek(0, 2)
+        stream.seek(max(0, size - 256 * 1024))
+        lines = stream.read(256 * 1024).splitlines()
+    kinds = []
+    for line in lines:
+        try:
+            item = d.mapping(json.loads(line))
+        except (ValueError, UnicodeError):
+            continue
+        if item.get('action') == 'python-reinstall' and item.get('reason') in REINSTALL_KINDS:
+            kinds.append(item['reason'])
+    return kinds
+
+
+FOREIGN_KINDS = ('other-origin', 'worktree', 'sparse')  # network.FOREIGN_KINDS
+
+
+def foreign_checkouts(path):
+    """(folder, kind) for each dependency folder setup left alone because FreeVideo did not download it.
+
+    Only the folder's own name (a short word) and the kind are read, never an address."""
+    with io_path(path).open('rb') as stream:
+        size = stream.seek(0, 2)
+        stream.seek(max(0, size - 256 * 1024))
+        lines = stream.read(256 * 1024).splitlines()
+    rows = []
+    for line in lines:
+        try:
+            item = d.mapping(json.loads(line))
+        except (ValueError, UnicodeError):
+            continue
+        folder, kind = item.get('file'), item.get('reason')
+        if (item.get('action') == 'foreign-checkout' and kind in FOREIGN_KINDS
+                and isinstance(folder, str) and re.fullmatch(r'[A-Za-z0-9_.-]{1,40}', folder)):
+            rows.append((folder, kind))
+    return rows
+
+
+def git_url_rewritten(path):
+    """Whether this computer's Git settings rewrote one of FreeVideo's Git addresses (network.clone); only that is read."""
+    with io_path(path).open('rb') as stream:
+        size = stream.seek(0, 2)
+        stream.seek(max(0, size - 256 * 1024))
+        lines = stream.read(256 * 1024).splitlines()
+    for line in lines:
+        try:
+            if d.mapping(json.loads(line)).get('action') == 'git-url-rewrite':
+                return True
+        except (ValueError, UnicodeError):
+            continue
+    return False
+
+
 def native_tls_fallbacks(path):
     """The names of the sources where setup retried a download with the system certificate store.
 
     Only the source name is read, and only as a short lowercase word: nothing else of the event is kept."""
+    return _event_sources(path, lambda action: action.endswith('-system-certificates'))
+
+
+def revocation_best_effort(path):
+    """The names of the sources where Windows curl was retried without a certificate revocation answer, read as above."""
+    return _event_sources(path, lambda action: action == 'revocation-best-effort')
+
+
+def _event_sources(path, wanted):
     with io_path(path).open('rb') as stream:
         size = stream.seek(0, 2)
         stream.seek(max(0, size - 256 * 1024))
@@ -102,7 +179,7 @@ def native_tls_fallbacks(path):
         except (ValueError, UnicodeError):
             continue
         action, source = item.get('action'), item.get('source')
-        if (isinstance(action, str) and action.endswith('-system-certificates')
+        if (isinstance(action, str) and wanted(action)
                 and isinstance(source, str) and re.fullmatch(r'[a-z0-9_.-]{1,40}', source)):
             names.append(source)
     return names
@@ -191,6 +268,17 @@ def enrich(result, value):
     notes = [dict(note='native-tls fallback used', source=name)
              for name in d.sequence(value.get('native_tls_fallback'))[:8]
              if isinstance(name, str) and re.fullmatch(r'[a-z0-9_.-]{1,40}', name)]
+    notes += [dict(note='revocation check best effort used', source=name)
+              for name in d.sequence(value.get('revocation_best_effort'))[:8]
+              if isinstance(name, str) and re.fullmatch(r'[a-z0-9_.-]{1,40}', name)]
+    notes += [dict(note='isolated python installed again', reason=kind)
+              for kind in d.sequence(value.get('python_reinstall'))[:4] if kind in REINSTALL_KINDS]
+    notes += [dict(note='dependency folder not from FreeVideo', folder=row[0], reason=row[1])
+              for row in d.sequence(value.get('foreign_checkout'))[:4]
+              if isinstance(row, (list, tuple)) and len(row) == 2 and row[1] in FOREIGN_KINDS
+              and isinstance(row[0], str) and re.fullmatch(r'[A-Za-z0-9_.-]{1,40}', row[0])]
+    if value.get('git_url_rewrite') is True:
+        notes.append(dict(note="git addresses rewritten by this computer's settings"))
     if notes:
         result['notes'] = notes
     result['diagnostic_revision'] = 6

@@ -84,7 +84,7 @@
 .sgf .sgf-x { width: 28px; height: 28px; border-radius: var(--fv-r-sm); display: grid; place-items: center; color: var(--f-fg2); opacity: 0; transition: opacity 160ms, background-color 160ms, color 160ms; }
 .sgf .sgf-x svg { width: 14px; height: 14px; }
 .sgf:is(:hover, :focus-within) .sgf-x, .sgf.sheet-on .sgf-x { opacity: 1; }
-/* Waiting for FreeVideo to come back (#1121): Stop waiting stays in sight, not only on hover. */
+/* Waiting for FreeVideo to come back: Stop waiting stays in sight, not only on hover. */
 .sgf.waiting .sgf-x { opacity: 1; }
 @media (hover: none) { .sgf .sgf-x { opacity: 1; } }
 .sgf .sgf-x:hover { background: var(--f-ctl-h); color: var(--f-fg); }

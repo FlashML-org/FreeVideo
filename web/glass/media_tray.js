@@ -203,8 +203,8 @@ function drawWorks(panel) {
     }));
     const empty = page.querySelector('.fv-mt-works-empty');
     empty.hidden = Boolean(items.length) || !panel.fvMtLoaded;
-    empty.textContent = filter === 'video' ? say(panel, 'No saved videos yet.', '作品库里还没有视频。')
-        : filter === 'image' ? say(panel, 'No saved images yet.', '作品库里还没有图片。') : say(panel, 'No saved creations yet.', '作品库里还没有作品。');
+    empty.textContent = filter === 'video' ? say(panel, 'No saved videos yet.', '作品库里暂无视频。')
+        : filter === 'image' ? say(panel, 'No saved images yet.', '作品库里暂无图片。') : say(panel, 'No saved creations yet.', '作品库里暂无作品。');
     page.dataset.loading = String(!panel.fvMtLoaded);
     glideTo(page.querySelector('.fv-mt-filter'));
 }
@@ -351,7 +351,7 @@ function markNow(panel) {
     if (!panel.fvMtActions) {
         const line = panel.fvMtActions = make('div', 'fv-mt-actions');
         const browse = make('button', 'fv-mt-browse'); browse.type = 'button';
-        // Its shown name is short (Lane 11-25) so the line keeps the AI and audio keys in a 268 px column; the hover card says
+        // Its shown name is short so the line keeps the AI and audio keys in a 268 px column; the hover card says
         // the whole action.
         browse.append(make('span', 'fv-mt-browse-name', say(panel, 'From creations', '从作品库选择')));
         browse.dataset.fvTipName = say(panel, 'Choose from creations', '从作品库选择'); browse.dataset.fvTipUse = say(panel, 'Add a saved video or image', '加入作品库里的视频或图片');

@@ -1,5 +1,6 @@
 import { referenceItems } from './prompt_references.js';
 import { effortFor, effortsFrom, stepCacheOf, upscaleOf } from './sampling_effort.js';
+import { holdPhrase } from './i18n.js';
 
 const PRESETS = [.5, .75, .98, 1.5, 2];
 const COLUMN_SPACING = 'equal'; // 'equal' or 'width'
@@ -154,7 +155,7 @@ export function capabilitySurface(grid, state) {
     return {sizes, xs, top, edge, snap, nearest, at: seconds => curve(available.map(i => xs[i]), available.map(i => curves[i](seconds)))};
 }
 
-// Iris's blue ramp in OKLab, interpolated in linear light; transparent beyond
+// The blue ramp in OKLab, interpolated in linear light; transparent beyond
 // the edge so the heatmap dissolves into whichever panel contains it.
 const stops = [[0, .845, .085, 240], [.30, .760, .115, 245], [.64, .605, .140, 252], [1, .440, .128, 261]];
 const lab = stops.map(([, l, c, h]) => [l, c * Math.cos(h * Math.PI / 180), c * Math.sin(h * Math.PI / 180)]);
@@ -190,7 +191,9 @@ export function surfacePixels(surface, width, height) {
 
 let serial = 0;
 // What the estimate adds while the first build is still owed.
-export const setupNote = t => t(' · \u2060includes\u00a0first-time\u00a0setup', ' · \u2060含\u2060首\u2060次\u2060准\u2060备');
+// The separator and the phrase after it move to the next line together, never split inside: the line breaks only at the
+// space before the dot (the language files keep plain text).
+export const setupNote = t => t(' · includes\u00a0first-time\u00a0setup', ' · 含首次准备').replace(/^ · (.+)$/, (whole, phrase) => ' ·\u00a0' + holdPhrase(phrase));
 
 export function createCapabilityView({node, api, t, getState, onPick, onEstimate, onGrid}) {
     if (!document.querySelector('link[data-fv-capability]')) {
@@ -405,7 +408,8 @@ export function createCapabilityView({node, api, t, getState, onPick, onEstimate
     api.addEventListener('freevideo_capabilities', changed);
     const outside = event => { if (!plot.contains(event.target)) hideHover(); };
     node && window.addEventListener('pointerdown', outside);
-    return {element, update, estimate(steps, twoPass, refine, stepCache = null, upscale = 2) {
+    // extra: seconds spent before the video starts (a prompt rewrite), counted in the time shown.
+    return {element, update, estimate(steps, twoPass, refine, stepCache = null, upscale = 2, extra = 0) {
         if (!grid || !surface) return '';
         const tier = gridTier(grid, steps, twoPass, refine, stepCache, upscale);
         const i = grid.sizes.findIndex(s => s.width === Number(value(node, 'width')) && s.height === Number(value(node, 'height')));
@@ -413,8 +417,8 @@ export function createCapabilityView({node, api, t, getState, onPick, onEstimate
         const seconds = tier?.estimate_seconds?.[i]?.[j];
         if (!positive(seconds)) return '';
         // The suffix stays in one piece so a narrow line moves it whole to the next line.
-        return aboutTime(seconds, t) + (grid.machine?.compile_owed === true ? setupNote(t) : '');
-    }, fast() {
+        return aboutTime(seconds + (positive(extra) ? extra : 0), t) + (grid.machine?.compile_owed === true ? setupNote(t) : '');
+    }, fast(extra = 0) {
         // The fastest mode at the chosen size and length (capabilities.fast_mode): whether it fits, its time, and where it
         // does not, why (the limit past this size's longest length) and the planner's ways out.
         const fast = grid?.fast_mode;
@@ -438,7 +442,7 @@ export function createCapabilityView({node, api, t, getState, onPick, onEstimate
         return {fits, limit: fast.limit?.[i] ?? null, actions: Array.isArray(fast.actions?.[i]) ? fast.actions[i] : [],
             shorten: positive(fast.shorten_seconds?.[i]) ? fast.shorten_seconds[i] : null,
             lightFits: admits(grid.tiers?.light) === true,
-            estimate: fits && positive(seconds) ? aboutTime(seconds, t) + (grid.machine?.compile_owed === true
+            estimate: fits && positive(seconds) ? aboutTime(seconds + (positive(extra) ? extra : 0), t) + (grid.machine?.compile_owed === true
                 ? setupNote(t) : '') : ''};
     }, warning(steps, twoPass, refine, stepCache = null, upscale = 2) {
         if (!grid || !surface) return '';

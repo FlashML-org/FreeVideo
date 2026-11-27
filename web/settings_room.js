@@ -38,7 +38,7 @@ if (typeof document !== 'undefined') {
 
 import { nearestAllowed } from './field_note.js';
 import { cn, t, INSTALLED_HINT, gib, bytesText, atLeast, WAIT_REFUSAL, reportable, reportText, failureText, setupError, SECTIONS, sectionOf } from './settings_words.js';
-import { languageUrl } from './i18n.js';
+import { holdPhrase, isChinese, languageUrl } from './i18n.js';
 import { languagePicker, addressLanguage } from './language_picker.js';
 import { localized } from './i18n_tables.js';
 export { failureText, sectionOf, SECTIONS, bytesText };
@@ -253,10 +253,17 @@ export async function openSetup(options) {
         const r = row({iconName: 'img', title: model.short, sub: IMAGE_WORDS[model.id] || '', cls: 'st-mrow'});
         const size = el('span', 'st-sz'); const chip = el('span', 'st-chip'); chip.hidden = true;
         const act = button(t('Install', '安装'), {iconName: 'down', kind: 'fill'}); act.hidden = true;
+        // Delete: always shown on an installed model (touch screens have no hover); greyed with the reason while
+        // something is under way. It opens a confirmation under the row, with Cancel focused first.
+        const del = button(t('Delete', '删除'), {iconName: 'trash'}); del.hidden = true;
         const meter = bar('st-mbar'); meter.hidden = true;
-        r.end.append(size, chip, act); r.element.append(meter);
-        imageRows.set(model.id, {row: r, size, chip, act, meter, model});
-        imageCard.append(r.element);
+        const confirm = el('div', 'st-confirm'); confirm.hidden = true;
+        const ask = el('p'), keys = el('div', 'st-keys');
+        const no = button(t('Cancel', '取消')), yes = button(t('Delete', '删除'), {iconName: 'trash', kind: 'danger'});
+        keys.append(no, yes); confirm.append(ask, keys);
+        r.end.append(size, chip, act, del); r.element.append(meter);
+        imageRows.set(model.id, {row: r, size, chip, act, del, meter, confirm, ask, no, yes, model});
+        imageCard.append(r.element, confirm);
     }
     // Add-on models: Replace person's model, and every quality level prepared ahead.
     const addCard = card();
@@ -428,7 +435,7 @@ export async function openSetup(options) {
         loraVerdicts.clear(); loraCard.replaceChildren();
         loraHead.querySelector('.r').textContent = usable.length ? t('{count} files', '{count} 个文件', { count: usable.length }) : '';
         if (!usable.length) {
-            loraCard.append(row({iconName: 'layers', title: t('No LoRA files yet', '还没有 LoRA 文件'), sub: t('Put .safetensors files in models/loras, then check again', '把 .safetensors 文件放进 models/loras 文件夹，再点“重新检查”')}).element);
+            loraCard.append(row({iconName: 'layers', title: t('No LoRA files yet', '暂无 LoRA 文件'), sub: t('Put .safetensors files in models/loras, then check again', '把 .safetensors 文件放进 models/loras 文件夹，再点“重新检查”')}).element);
             loraStatus.textContent = other ? t('{other} files of other formats are not read.', '另有 {other} 个其他格式的文件不会被读取。', { other }) : '';
             loraRescan.disabled = false; return;
         }
@@ -1056,9 +1063,9 @@ export async function openSetup(options) {
                 }
             } else if (s.state === 'failed') {
                 r.sub.className = 'is-warn'; r.sub.textContent = s.reason
-                    ? t('{model} download failed: {reason}. Retry to continue; if it keeps failing, report the problem.', '{model} 下载失败：{reason}。请重试以继续下载；仍然失败时，请提交问题。',
+                    ? t('{model} download failed: {reason}. Try again; if it still fails, report the problem.', '{model} 下载失败：{reason}。请重试；仍然失败时，请提交问题。',
                         { model: item.model.short, reason: s.reason.replace(/[.。]$/, '') })
-                    : t('{model} download failed. Retry to continue; if it keeps failing, report the problem.', '{model} 下载失败。请重试以继续下载；仍然失败时，请提交问题。', { model: item.model.short });
+                    : t('{model} download failed. Try again; if it still fails, report the problem.', '{model} 下载失败。请重试；仍然失败时，请提交问题。', { model: item.model.short });
                 act.hidden = false; act.className = 'st-btn is-fill'; act.replaceChildren(icon('retry', 'fv-i s'), el('span', 'st-btn-t', t('Retry', '重试')));
                 act.onclick = () => imageAction(id, 'install');
                 tip(act, t('Retry', '重试'), t('Download again; the part downloaded is kept', '重新下载，已下载的部分会保留'));
@@ -1071,8 +1078,111 @@ export async function openSetup(options) {
                 r.sub.textContent = t('Not available on this computer', '这台电脑不支持'); r.element.setAttribute('aria-disabled', 'true');
             } else r.sub.textContent = t('Checking…', '正在检查…');
             act.disabled = imageBusy;
+            paintRemove(id, item, s);
         }
         imageHead.querySelector('.r').textContent = '';
+    }
+    // Removing a model (image_gen.service.remove_model): why it waits, the confirmation, and what it did.
+    const REMOVE_WAIT = {
+        generating: () => t('Available when the current generation finishes.', '正在生成，完成后才能删除。'),
+        downloading: () => t('Available when the current download or check finishes.', '正在下载或检查模型文件，完成后才能删除。'),
+        installing: () => t('Available when the installation or update finishes.', '正在安装或更新，完成后才能删除。'),
+        other: () => t('Available when FreeVideo finishes its current task.', 'FreeVideo 正在处理其他任务，完成后才能删除。'),
+    };
+    let removeAsked = '', removeShown = {};
+    // Files named from the model folder, at most five, one per line; more are counted.
+    const fileList = (files, count) => [...files, ...(count > files.length ? [t('and {count} more', '另外 {count} 个', { count: count - files.length })] : [])].join('\n');
+    function listTip(node, name, files, count) {
+        if (!count) { delete node.dataset.fvTipName; delete node.dataset.fvTipUse; delete node.dataset.fvTipLines; node.removeAttribute('tabindex'); return; }
+        node.dataset.fvTipName = name; node.dataset.fvTipUse = fileList(files, count); node.dataset.fvTipLines = '1'; node.tabIndex = 0;
+    }
+    // How much a removal frees: "about 14.5 GiB", or "less than 0.1 GiB" (never "about 0.0 GiB").
+    // The number and its unit stay on one line on screen (holdPhrase; the text copies plain).
+    const freesAbout = bytes => holdPhrase(bytes < 0.1 * 2 ** 30 ? t('less than 0.1 GiB', '不到 0.1 GiB') : t('about {size} GiB', '约 {size} GiB', { size: gb(bytes) }));
+    const freed = bytes => holdPhrase(bytes < 0.1 * 2 ** 30 ? t('less than 0.1 GiB', '不到 0.1 GiB') : t('{size} GiB', '{size} GiB', { size: gb(bytes) }));
+    // Sentences follow one another with a space in English and none in Chinese.
+    const sentences = parts => parts.filter(Boolean).join(isChinese() ? '' : ' ');
+    // installed: the whole model is there; otherwise only what a stopped (or half-removed) download left.
+    function removeQuestion(item, rm, installed) {
+        const words = {model: item.model.short, amount: freesAbout(rm.bytes)};
+        const shared = item.shared ? t('The text encoder that video generation also uses ({shared} GiB) is kept.',
+            '视频生成也在用的文本编码器（{shared} GiB）会保留。', { shared: gb(item.shared) }) : '';
+        const kept = !rm.kept ? '' : rm.kept === 1
+            ? t('1 file that FreeVideo did not download or that was changed is kept.', '有 1 个文件不是 FreeVideo 下载的或已被修改，会保留。')
+            : t('{count} files that FreeVideo did not download or that were changed are kept.', '有 {count} 个文件不是 FreeVideo 下载的或已被修改，会保留。', { count: rm.kept });
+        return installed
+            ? sentences([t('Delete {model}? This frees {amount}.', '删除 {model}？将释放{amount}。', words), shared,
+                t('You can download it again here later.', '以后可以在这里重新下载。'), kept])
+            : sentences([t('Delete the downloaded part of {model}? This frees {amount}.', '删除 {model} 已下载的部分？将释放{amount}。', words),
+                t('Downloading it again will start from the beginning.', '删除后再下载需要从头开始。'), shared, kept]);
+    }
+    function removeResult(item, rm) {
+        const done = rm.result || {};
+        if (done.in_use) return {cls: 'is-warn', text: done.in_use === 1
+            ? t('1 file is in use and could not be deleted. Restart FreeVideo, then delete again.', '有 1 个文件正在使用，未能删除。请重新启动 FreeVideo 后再删除一次。')
+            : t('{count} files are in use and could not be deleted. Restart FreeVideo, then delete again.', '有 {count} 个文件正在使用，未能删除。请重新启动 FreeVideo 后再删除一次。', { count: done.in_use }),
+            list: [t('Files in use', '正在使用的文件'), done.in_use_files || [], done.in_use]};
+        const amount = freed(done.released_bytes || 0);
+        if (done.kept) return {cls: 'is-accent', text: done.kept === 1
+            ? t('Deleted. {amount} freed; 1 file that FreeVideo did not download was kept.', '已删除，释放了 {amount}；1 个不是 FreeVideo 下载的文件已保留。', { amount })
+            : t('Deleted. {amount} freed; {count} files that FreeVideo did not download were kept.', '已删除，释放了 {amount}；{count} 个不是 FreeVideo 下载的文件已保留。', { amount, count: done.kept }),
+            list: [t('Files kept', '已保留的文件'), done.kept_files || [], done.kept]};
+        return {cls: 'is-accent', text: t('Deleted. {amount} freed.', '已删除，释放了 {amount}。', { amount }), fades: true};
+    }
+    function paintRemove(id, item, s) {
+        const {row: r, del, confirm, ask, no, yes} = item;
+        const info = imageInfo?.models?.find(m => m.id === id), rm = info?.remove || null;
+        item.shared = info?.shared_bytes || 0;
+        const can = rm && rm.bytes > 0 && !['downloading', 'unavailable', 'checking'].includes(s.state);
+        const running = rm?.state === 'running';
+        del.hidden = !(can || running);
+        const wait = running ? '' : rm?.blocked ? REMOVE_WAIT[rm.blocked]?.() || REMOVE_WAIT.other() : '';
+        const off = running || Boolean(wait) || imageBusy;
+        del.setAttribute('aria-disabled', String(off));
+        tip(del, t('Delete', '删除'), t('Delete the files FreeVideo downloaded for this image model', '删除这个图像模型下载的文件'));
+        if (wait) del.dataset.fvTipWhy = wait; else delete del.dataset.fvTipWhy;
+        del.onclick = () => { if (del.getAttribute('aria-disabled') === 'true') return; removeAsked = id; paintImages(); no.focus(); };
+        const open = removeAsked === id && can && !off;
+        if (removeAsked === id && !open) removeAsked = '';
+        confirm.hidden = !open;
+        if (open) ask.textContent = removeQuestion(item, rm, s.state === 'ready');
+        const close = () => { removeAsked = ''; paintImages(); del.focus(); };
+        no.onclick = close;
+        confirm.onkeydown = event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); } };
+        yes.onclick = () => imageRemove(id);
+        listTip(r.sub, '', [], 0);
+        if (running) { r.sub.className = ''; r.sub.textContent = t('Deleting…', '正在删除…'); return; }
+        if (rm?.state === 'failed') {
+            const failure = rm.failure || {};
+            r.sub.className = 'is-warn';
+            r.sub.textContent = failure.reason === 'busy' ? REMOVE_WAIT.other() : localized({en: failure.message_en, zh: failure.message_zh}, t) || REMOVE_WAIT.other();
+            return;
+        }
+        if (rm?.state === 'done') {
+            const shown = removeResult(item, rm), key = JSON.stringify(rm.result || {});
+            if (removeShown[id]?.key !== key) { removeShown[id] = {key, at: Date.now()}; chooseAnother(id); }
+            if (shown.fades && Date.now() - removeShown[id].at > 6000) return;
+            if (shown.fades) setTimeout(() => { if (dialog.open) paintImages(); }, 6100);
+            r.sub.className = shown.cls; r.sub.textContent = shown.text;
+            if (shown.list) listTip(r.sub, ...shown.list);
+        }
+    }
+    // The image view's chosen model is gone: choose the first one still installed, so the next Generate does not
+    // quietly download it again. With none left, the choice stays and Generate offers the download as before.
+    function chooseAnother(id) {
+        const KEY = 'freevideo.imageModel';
+        try {
+            if (localStorage.getItem(KEY) !== id) return;
+            const next = IMAGE_MODELS.find(m => m.id !== id && modelState(imageInfo, m.id).state === 'ready');
+            if (next) localStorage.setItem(KEY, next.id);
+        } catch { /* the choice is only not kept */ }
+    }
+    async function imageRemove(id) {
+        removeAsked = ''; imageBusy = true; paintImages();
+        try { imageInfo = await imageClient.packRemove(id); }
+        catch { /* The next reading shows the state. */ }
+        imageBusy = false; paintImages(); pollImages();
+        imageRows.get(id)?.del.focus();
     }
     async function imageAction(id, what) {
         imageBusy = true; paintImages();
@@ -1085,7 +1195,8 @@ export async function openSetup(options) {
         if (!dialog.open) return;
         try { imageInfo = await imageClient.info(); } catch { imageInfo ??= {models: []}; }
         paintImages();
-        const downloading = IMAGE_MODELS.some(m => modelState(imageInfo, m.id).state === 'downloading');
+        const downloading = IMAGE_MODELS.some(m => modelState(imageInfo, m.id).state === 'downloading'
+            || imageInfo?.models?.find(row => row.id === m.id)?.remove?.state === 'running');
         if (downloading && shown === 'models') imageTimer = setTimeout(pollImages, 2000);
     }
     paintImages(); pollImages();
@@ -1156,7 +1267,7 @@ export async function openSetup(options) {
             stale: t('Settings changed', '设置已更改'),
             stopped: t('Stopped; downloaded files are kept', '已停止，已下载的文件保留'),
             ready: t('Ready to generate', '已就绪，可以开始生成'),
-            none: t('Video models are not installed yet', '视频模型还没有安装'),
+            none: t('Video models are not installed yet', '视频模型尚未安装'),
         }[kind];
         const iconName = {ready: 'check', failed: 'warn', readerr: 'warn', problem: 'warn', stale: 'info', plan: 'down', busy: 'down', stopped: 'stop'}[kind] || 'cube';
         heroIcon.className = 'st-hic' + ({ready: ' is-ok', failed: ' is-warn', readerr: ' is-warn', problem: ' is-warn', stale: ' is-caution', plan: ' is-accent', busy: ' is-accent is-run', stopped: ' is-caution'}[kind] || '');
@@ -1208,7 +1319,7 @@ export async function openSetup(options) {
             // so the progress it points to is visible.
             calibrateWait = WAIT_REFUSAL.test(String(error.message || ''));
             calibrateStatus.className = calibrateWait ? 'st-slot' : 'st-slot is-warn';
-            fault(calibrateStatus, error.message, error, t('Could not start the measurement. Try again.', '没能开始测量，请重试。'));
+            fault(calibrateStatus, error.message, error, t('Could not start the measurement. Try again.', '未能开始测量，请重试。'));
             if (calibrateWait) poll();
         } finally { calibrateButton.disabled = busy; }
     };
@@ -1274,7 +1385,7 @@ export async function openSetup(options) {
         const measured = value.probe?.status === 'complete' ? value.probe : value.preferences?.probe;
         if (measured?.network_unavailable && !probeBusy) sourceStatus.textContent = t('No source can be reached. Check the network or the connection mode.', '下载源均无法连接，请检查网络或切换连接方式。');
         if (value.probe?.error || measured?.network_unavailable && !probeBusy) { sourceStatus.className = 'st-slot st-under is-warn'; fault(sourceStatus, sourceStatus.textContent); }
-        if (!sourceStatus.textContent) sourceStatus.textContent = measured?.sources ? t('Speeds are a guide; actual downloads may differ.', '测速只作参考，实际下载速度可能不同。') : t('Not measured yet. Test again to compare the sources.', '还没有测速，点“重新测速”比较各下载源。');
+        if (!sourceStatus.textContent) sourceStatus.textContent = measured?.sources ? t('Speeds are a guide; actual downloads may differ.', '测速只作参考，实际下载速度可能不同。') : t('Not measured yet. Test again to compare the sources.', '尚未测速，点“重新测速”比较各下载源。');
         speeds.replaceChildren();
         measuredRates = {}; autoBest = '';
         speedDetails.element.hidden = !measured?.sources;
@@ -1290,7 +1401,7 @@ export async function openSetup(options) {
             if (family.startsWith('torch-')) names[family] = t('GPU runtime', '显卡运行环境');
             const rate = r.bytes_per_second / 2 ** 20;
             const speed = !r.ok ? t('Unavailable', '未连通') : r.speed_measured === false || !Number.isFinite(rate) || rate <= 0 ?
-                t('Connected; speed not measured yet', '已连通，速度还没测出') : rate < .005 ? '<0.01 MiB/s' : `${rate.toFixed(rate < 1 ? 2 : 1)} MiB/s`;
+                t('Connected; speed not measured yet', '已连通，尚未测出速度') : rate < .005 ? '<0.01 MiB/s' : `${rate.toFixed(rate < 1 ? 2 : 1)} MiB/s`;
             for (const text of [names[family] || family, `${SOURCE_NAMES[r.id] || r.id} · ${r.route === 'direct' ? t('Direct', '直连') : t('Current connection', '当前连接')}`, speed]) tr.append(el('td', '', text));
             if (!r.ok) tr.lastChild.className = 'off';
             table.append(tr);
@@ -1473,7 +1584,7 @@ export async function openSetup(options) {
         invalidate(true); busy = true; controls();
         const before = [[...state.childNodes], state.className]; doing('Saving model folders…', '正在保存模型文件夹…');
         try { await saveModelFolders(); }
-        catch (error) { savedFolders = ''; savedMissing = false; fault(folderStatus, error.message, error, t('Could not save the model folders. Try again.', '没能保存模型文件夹，请重试。')); folderStatus.className = 'st-slot is-warn'; }
+        catch (error) { savedFolders = ''; savedMissing = false; fault(folderStatus, error.message, error, t('Could not save the model folders. Try again.', '未能保存模型文件夹，请重试。')); folderStatus.className = 'st-slot is-warn'; }
         finally { busy = false; waitSince = undefined; state.replaceChildren(...before[0]); state.className = before[1]; controls(); }
     };
     headInspect.onclick = () => { if (!busy) inspect.click(); };

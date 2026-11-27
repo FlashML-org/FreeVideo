@@ -355,6 +355,64 @@ def _other_usage(params, failure=False):
         return None
 
 
+# The card and its whole-video correction, kept briefly per output folder: a menu asks once per size and length, and
+# reading the local records (local_records with refresh) stats every saved request. The upscale times file itself is
+# read on every question (a few milliseconds), so a finished upscale corrects the next answer at once.
+UPSCALE_CONTEXT_SECONDS = 15.
+_upscale_contexts = {}
+_upscale_context_lock = threading.Lock()
+
+
+def _upscale_context(output_directory, clock=None):
+    from .capabilities import _calibration, _forecast_hardware, _machine
+    clock = clock or time.monotonic
+    key = str(output_directory)
+    with _upscale_context_lock:
+        kept = _upscale_contexts.get(key)
+        if kept and clock() - kept[0] < UPSCALE_CONTEXT_SECONDS:
+            return kept[1]
+    context, records = _context(output_directory)
+    machine = _machine(context)
+    value = None
+    if machine is not None:
+        hardware = _forecast_hardware(machine)
+        calibration = None
+        try:
+            from .stage_estimate import _params
+            calibration = _calibration(machine, hardware, records, _params(None), __version__)
+        except (LookupError, TypeError, ValueError, ArithmeticError):
+            pass
+        value = (hardware, calibration['ratio'] if calibration else None)
+    with _upscale_context_lock:
+        _upscale_contexts[key] = (clock(), value)
+        while len(_upscale_contexts) > 8:
+            _upscale_contexts.pop(next(iter(_upscale_contexts)))
+    return value
+
+
+def upscale_estimates(output_directory, width, height, frames):
+    """The upscale menu's times for a finished width x height video of `frames` frames (upscale_estimate): seconds or
+    None for each row (fast, detailed, 4k), and the sizes they make. Nothing here starts a GPU process."""
+    from . import frame_upscale, upscale_estimate, work_upscale
+    from .comfy_bridge import installation_root
+    sizes = {'fast': frame_upscale.fast_size(width, height), 'detailed': work_upscale.size(width, height),
+             '4k': frame_upscale.size(width, height)}
+    found = _upscale_context(output_directory)
+    if found is None:
+        return dict(seconds={kind: None for kind in sizes}, sizes=sizes)
+    hardware, ratio = found
+    seconds = upscale_estimate.estimates(hardware, installation_root(), (width, height), frames, sizes=sizes,
+                                         generation_ratio=ratio)
+    return dict(seconds=seconds, sizes=sizes)
+
+
+def _upscale_query(query):
+    values = tuple(int(query.get(name, '')) for name in ('width', 'height', 'frames'))
+    if not all(0 < value <= limit for value, limit in zip(values, (16384, 16384, 24 * 3600))):
+        raise ValueError('width, height and frames must be positive')
+    return values
+
+
 def register():
     from aiohttp import web
     import folder_paths
@@ -376,6 +434,19 @@ def register():
                 raise web.HTTPBadRequest(text=str(error)) from error
             result = await asyncio.to_thread(_other_usage, params, request.query.get('failure') == '1')
         return web.json_response(dict(status='ok', notice=result), headers={'Cache-Control': 'no-store'})
+
+    @server.routes.get('/freevideo/upscale-estimate')
+    async def upscale_estimate(request):
+        try:
+            width, height, frames = _upscale_query(request.query)
+        except (ValueError, TypeError, OverflowError) as error:
+            raise web.HTTPBadRequest(text=str(error)) from error
+        try:
+            result = await asyncio.to_thread(upscale_estimates, folder_paths.get_output_directory(), width, height, frames)
+        except Exception:
+            logging.debug('[FreeVideo] Upscale times could not be estimated.', exc_info=True)
+            result = dict(seconds=dict(fast=None, detailed=None, **{'4k': None}), sizes=None)
+        return web.json_response(result, headers={'Cache-Control': 'no-store'})
 
     @server.routes.get('/freevideo/capabilities')
     async def capabilities(request):

@@ -4,6 +4,7 @@
 // `groups` is a map (or a function) from an option's data-group to the heading above its run. `search` ({placeholder, empty}) puts a
 // filter box above a long list (more than SEARCH_FROM options): typing narrows the items, Enter takes the first, Down enters the list.
 import { listenDialogKey } from './dialog_keys.js';
+import { plainText } from './i18n.js';
 const SEARCH_FROM = 12;
 const MAX_HEIGHT = 360;  // about ten rows: a long list scrolls instead of reaching the top of the window
 const el = (tag, cls, label) => { const e = document.createElement(tag); if (cls) e.className = cls; if (label) e.textContent = label; return e; };
@@ -70,7 +71,7 @@ export function menuSelect(select, {groups = {}, search = null, overlay = false,
         for (const child of select.children) {
             if (child.tagName === 'HR') { if (started && !needle) menu.append(Object.assign(el('div'), {role: 'separator'})); previous = null; continue; }
             if (child.hidden || child.disabled) continue;
-            if (needle && !child.textContent.toLocaleLowerCase().includes(needle)) continue;  // matches the whole name, not just the shown label
+            if (needle && !plainText(child.textContent).toLocaleLowerCase().includes(needle)) continue;  // matches the whole name, not just the shown label; held names compared as plain text
             const group = child.dataset.group || '';
             if (started && group !== (previous ?? group)) menu.append(Object.assign(el('div'), {role: 'separator'}));
             const heading = group && group !== previous ? (typeof groups === 'function' ? groups(group) : groups[group]) : '';

@@ -12,7 +12,7 @@ ROUTE = {
     'invalid': ('The long video request is not valid. Reload the page and try again; if it happens again, send a report.',
                 '长视频请求无效。请刷新页面后重试；如果再次出现，请发送诊断报告。'),
     'disk_full': ('The disk is full, so the long video could not be saved. Free up disk space and try again.',
-                  '磁盘空间不足，长视频没能保存。请清理磁盘空间后重试。'),
+                  '磁盘空间不足，长视频未能保存。请清理磁盘空间后重试。'),
     'storage_unreadable': ('FreeVideo could not read or write the long video files. Check that the FreeVideo folder '
                            'can be opened and is not read-only, then try again.',
                            '长视频文件读写失败。请确认 FreeVideo 文件夹可以打开且不是只读，然后重试。'),
@@ -32,18 +32,18 @@ HOST_UNAVAILABLE = {
 }
 BLOCK = {
     'generation_failed': ('This part could not be generated. Continue from this part; if it fails again, send a report.',
-                          '这一段没能生成。请从这段继续；如果再次失败，请发送诊断报告。'),
+                          '这一段未能生成。请从这段继续；如果再次失败，请发送诊断报告。'),
     'disk_full': ('The disk is full, so this part could not be saved. Free up disk space, then continue from this part.',
-                  '磁盘空间不足，这一段没能保存。请清理磁盘空间，然后从这段继续。'),
+                  '磁盘空间不足，这一段未能保存。请清理磁盘空间，然后从这段继续。'),
     'storage_unreadable': ('FreeVideo could not read or write the long video files, so this part did not start. '
                            'Check that the FreeVideo folder can be opened and is not read-only, then continue from this part.',
-                           '长视频文件读写失败，这一段没能开始。请确认 FreeVideo 文件夹可以打开且不是只读，然后从这段继续。'),
+                           '长视频文件读写失败，这一段未能开始。请确认 FreeVideo 文件夹可以打开且不是只读，然后从这段继续。'),
 }
 JOIN = {
     'join_failed': ('The parts could not be joined into one video. Try again; if it fails again, send a report.',
-                    '各段没能接合成一个视频。请重试；如果再次失败，请发送诊断报告。'),
+                    '各段未能接合成一个视频。请重试；如果再次失败，请发送诊断报告。'),
     'disk_full': ('The disk is full, so the joined video could not be saved. Free up disk space and try again.',
-                  '磁盘空间不足，接合后的视频没能保存。请清理磁盘空间后重试。'),
+                  '磁盘空间不足，接合后的视频未能保存。请清理磁盘空间后重试。'),
 }
 # The same causes when only the text of an error is left, as from a prompt that failed in the host.
 DISK_FULL_TEXT = re.compile(r'no space left on device|disk quota exceeded|winerror 112\b|errno 28\b|errno 122\b'

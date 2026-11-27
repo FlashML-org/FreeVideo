@@ -2,6 +2,7 @@
 // It reads the page-wide job store (task_store.js), as the floating window does; it never owns a job.
 // Rows in the order of the store (running, then waiting, then finished); a row opens its own generation screen.
 import { el, icon, t, tip, button } from './image_view_ui.js';
+import { queuedRewriteWords, rewrittenTip } from './task_store.js';
 
 const VIEW_WORDS = {image: ['Images', '图像视图'], studio: ['Create', '创作面板'], editor: ['Edit', '剪辑视图'], autopilot: ['Autopilot', 'AI 全自动'], nodes: ['Nodes', '节点视图']};
 const STATUS_WORDS = {submitting: ['Starting', '正在开始'], queued: ['Waiting', '排队中'], running: ['Generating', '正在生成'], cancelling: ['Stopping', '正在停止'],
@@ -21,10 +22,13 @@ export function queuePanel({jobs, confirmStop, pictureURL, onOpen}) {
         if (preview) { const i = el('img'); i.alt = ''; i.src = preview; i.draggable = false; th.append(i); } else th.append(icon(row.kind === 'image' ? 'asref' : 'single'));
         const tx = el('span', 'fv-iv-qtx');
         const title = (row.meta?.text || row.prompt || '').trim() || (row.kind === 'image' ? t('Image', '图片') : t('Video', '视频'));
-        const status = t(...(STATUS_WORDS[row.status] || STATUS_WORDS.running)) + (row.status === 'running' && Number.isFinite(row.percent) ? ` ${Math.floor(row.percent * 100)}%` : '');
+        const rewrite = queuedRewriteWords(row, t);
+        const status = rewrite || t(...(STATUS_WORDS[row.status] || STATUS_WORDS.running)) + (row.status === 'running' && Number.isFinite(row.percent) ? ` ${Math.floor(row.percent * 100)}%` : '');
         tx.append(el('b', '', title), el('small', '', [t(...(VIEW_WORDS[row.view] || VIEW_WORDS.studio)), status].join(' · ')));
         open.append(th, tx);
-        tip(open, title.length > 40 ? title.slice(0, 40) + '…' : title, ACTIVE.has(row.status) ? t('Back to its generation screen', '回到它的生成画面') : t('Open the result', '打开结果'));
+        // A rewritten waiting prompt shows the new prompt on hover.
+        const rewritten = row.status === 'queued' && row.meta?.enhance?.state === 'rewritten' ? rewrittenTip(row.meta.enhance.rewritten) : '';
+        tip(open, title.length > 40 ? title.slice(0, 40) + '…' : title, rewritten || (ACTIVE.has(row.status) ? t('Back to its generation screen', '回到它的生成画面') : t('Open the result', '打开结果')));
         open.addEventListener('click', () => onOpen(row));
         item.append(open);
         if (row.status === 'running') { const bar = el('i', 'fv-iv-qbar'); bar.style.setProperty('--p', String(row.percent || 0)); item.append(bar); }

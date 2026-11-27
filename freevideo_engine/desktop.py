@@ -518,7 +518,7 @@ class Desktop:
         if path and io_path(path).exists():
             os.startfile(plain(path))
         else:
-            messagebox.showinfo('FreeVideo', self.t('No result yet.', '目前还没有结果。'), parent=self.window)
+            messagebox.showinfo('FreeVideo', self.t('No result yet.', '暂无结果。'), parent=self.window)
 
     @plain_errors
     def open_report(self):

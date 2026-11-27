@@ -25,11 +25,11 @@ ERRORS = frozenset(('no_memory', 'small_memory', 'busy_video', 'busy', 'pack_mis
                     'invalid_media', 'invalid_points', 'segment_not_installed', 'generation_failed')) | LORA_ERRORS
 NO_REPORT = frozenset(('small_memory', 'busy', 'invalid_request', 'invalid_prompt', 'invalid_dimensions', 'invalid_seed',
                        'too_many_images', 'output_unwritable', 'invalid_media', 'invalid_points', 'segment_not_installed', 'cancelled',
-                       'disk_full')) | LORA_ERRORS
+                       'disk_full', 'invalid_layout', 'too_many_boxes', 'layout_too_long')) | LORA_ERRORS
 STAGES = ('start', 'load', 'text', 'encode', 'denoise', 'decode')
 KINDS = ('generate', 'edit', 'cast', 'compose', 'download', 'install')
 # Each failure in English and Chinese. The image page writes the same sentences in imageGenError (a test keeps the
-# codes both have equal); these reach API and agent callers as message_en and message_zh. Wording: Lane, 11-25.
+# codes both have equal); these reach API and agent callers as message_en and message_zh.
 MESSAGES = {
     **LORA_MESSAGES,
     'no_memory': ('Not enough GPU memory, even at the smallest size. Close other apps using the GPU, then try again.',
@@ -45,9 +45,9 @@ MESSAGES = {
     'model_unavailable': ('This computer does not support the chosen image model. Use Qwen-Image 2.1.',
                          '这台电脑不支持所选的图片模型。请改用 Qwen-Image 2.1。'),
     'model_unreadable': ('The image generation model files could not be read. Repair them in the launcher and try again.',
-                        '图像生成模型的文件读不出来。在启动器里修复后再试。'),
+                        '无法读取图像生成模型的文件。请在启动器里修复后再试。'),
     'device_unavailable': ('The graphics card is not available right now. Try again later.',
-                          '显卡暂时用不了，稍后再试。'),
+                          '显卡暂时无法使用，请稍后再试。'),
     'gpu_kernels_failed': ("The graphics card's computation check did not pass. Update the graphics card driver, then restart "
                            'FreeVideo. If the check still does not pass, download the report and report the problem.',
                            '显卡的计算检查未通过。请更新显卡驱动后重新启动 FreeVideo；如仍未通过，请下载报告并提交问题。'),
@@ -72,7 +72,7 @@ MESSAGES = {
     'output_unwritable': ('The folder that keeps the images cannot be written (freevideo-image in the ComfyUI input folder). Check that it exists, is writable and has no file of the same name, then try again.',
                          '无法写入保存图片的文件夹（ComfyUI 的 input 目录下的 freevideo-image）。请确认该目录存在、可写，且没有同名文件，然后重试。'),
     'invalid_media': ('This image cannot be read or is larger than 4096×4096 pixels. Choose another image.',
-                     '这张图片读不出来，或超过 4096×4096 像素。请换一张图片。'),
+                     '这张图片无法读取，或超过 4096×4096 像素。请换一张图片。'),
     'invalid_points': ('Choose 1 to 16 points inside the image, with at least one to select (1 selects, 0 excludes).',
                       '请在图片内选 1 到 16 个点，其中至少一个是选中点（1 表示选中，0 表示排除）。'),
     'segment_not_installed': ('The click-select model is not installed. Download it first.',

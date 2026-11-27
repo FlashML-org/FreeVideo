@@ -80,7 +80,7 @@ const pageClipboard = createClipboard();
 export function createSelectionActions({state, t = translatorFor(null, false), actions = {}, clipboard = pageClipboard}) {
     function report(error) {
         if (!(error instanceof model.EditError)) throw error;
-        if (error.code === 'not_generated' && actions.notify) actions.notify(t('Not generated yet', '还没生成'));
+        if (error.code === 'not_generated' && actions.notify) actions.notify(t('Not generated yet', '尚未生成'));
         else if (error.code !== 'clipboard_empty') actions.editError?.(error);
         return {ok: false, reason: error.code};
     }

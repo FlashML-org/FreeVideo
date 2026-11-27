@@ -174,7 +174,7 @@ export function createJobStore({now = () => Date.now(), storage = null} = {}) {
         localOf: id => local[id] || null,
         async refresh() { await Promise.all([...new Set(sources.values())].map(source => source.refresh?.().catch?.(() => {}))); },
         // For sources only.
-        // A job waiting for FreeVideo to come back (meta.reconnecting): its source stops waiting and ends it (#1121).
+        // A job waiting for FreeVideo to come back (meta.reconnecting): its source stops waiting and ends it.
         stopWaiting(id) { const row = rows.get(id), source = sourceOf(row); return Boolean(source?.stopWaiting?.(id)); },
         upsert, addSource(name, source) { sources.set(name, source); return () => { if (sources.get(name) === source) sources.delete(name); }; },
         now,
@@ -197,7 +197,7 @@ export function imageSource(store, {client, storage = null, poll = 500, now = st
     // The resume list holds the worker's job key, the model and the view: no prompt (old entries lose theirs on load).
     const keys = readJSON(storage, IMAGE_KEY), tracking = new Set(), missed = new Map(); // id → the last failed asks, for Stop waiting
     // The page's socket to ComfyUI closing (its 'reconnecting' event) wakes every poll at once: two failed asks in a row
-    // and the page says it is waiting, within seconds of FreeVideo going away instead of after the backoff (#1121).
+    // and the page says it is waiting, within seconds of FreeVideo going away instead of after the backoff.
     const wakers = new Set();
     const nap = ms => new Promise(done => { const wake = () => { wakers.delete(wake); done(); }; wakers.add(wake); void Promise.resolve(sleep(ms)).then(wake); });
     connection?.addEventListener?.('reconnecting', () => { for (const wake of [...wakers]) wake(); });
@@ -213,7 +213,7 @@ export function imageSource(store, {client, storage = null, poll = 500, now = st
     async function track(id) {
         if (tracking.has(id)) return; tracking.add(id);
         // misses: the kind of the last failed asks (connection_lost, engine_error, http_502...); lostSince: when the page
-        // began to wait for FreeVideo to come back (#1121: an engine_closed that said nothing of why).
+        // began to wait for FreeVideo to come back (so an engine_closed can say why).
         let serial = 0, outages = 0, preview = store.get(id)?.meta?.preview || '', misses = [], lostSince = null;
         try {
             for (;;) {
@@ -327,7 +327,7 @@ export function imageSource(store, {client, storage = null, poll = 500, now = st
     store.addSource('image', source);
     return source;
 }
-// What a failed ask was, for the problem report (#1121): a fixed word (connection_lost, engine_error, http_502...),
+// What a failed ask was, for the problem report: a fixed word (connection_lost, engine_error, http_502...),
 // never the server's text, a prompt or a file name; anything else is 'other'.
 export const missWord = value => typeof value === 'string' && /^[a-z][a-z0-9_]{0,31}$/.test(value) ? value : 'other';
 const pick = value => value && typeof value === 'object' ? Object.fromEntries(['report_id', 'stage', 'step', 'fitted', 'memory', 'other_usage', 'message_zh']
@@ -456,7 +456,9 @@ export function queueSource(store, {fetchJson, clientId = () => null, interval =
             const id = 'video:' + row[1], previous = store.get(id); now.set(id, {promptId: row[1], status: 'queued'});
             if (previous && !['queued', 'submitting'].includes(previous.status)) return;
             store.upsert({id, kind: 'video', source: 'video', status: 'queued', prompt_id: row[1], node: generateOf(row)[0], cancellable: true,
-                position: index + allRunning.length, prompt: previous?.prompt || text(row)});
+                position: index + allRunning.length, prompt: previous?.prompt || text(row),
+                // Where its queued rewrite is (queued_rewrite.py), when it asked for one.
+                meta: {enhance: row[3]?.freevideo_enhance ?? null}});
         });
         for (const [id, was] of known) {
             if (now.has(id)) continue;
@@ -574,3 +576,33 @@ export function journalSource(store, {fetchJson, storage = null, interval = 3000
 }
 
 export const jobs = createJobStore({storage: (() => { try { return globalThis.localStorage || null; } catch { return null; } })()});
+
+// A waiting video's queued rewrite, in the words of its row ('' when it asked for none): each row by its own state.
+export function queuedRewriteWords(row, t) {
+    const state = row?.status === 'queued' ? row.meta?.enhance?.state : null;
+    // Short enough for a row of the works column at its default width.
+    return state === 'waiting' ? t('To be rewritten', '等待改写提示词')
+        : state === 'rewriting' ? t('Rewriting prompt', '正在改写提示词')
+        : state === 'rewritten' ? t('Prompt rewritten', '提示词已改写') : '';
+}
+
+// A rewritten prompt on hover: its start, so the tip stays five or six lines high (a rewrite can run to 12000 characters).
+// Measured by width: a Chinese, Japanese or Korean character counts 2, any other 1; English ends at its last whole word.
+export const REWRITE_TIP_WIDTH = 200;
+const WIDE = /[\u1100-\u115F\u2E80-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6\u{20000}-\u{3FFFD}]/u;
+export function rewrittenTip(text) {
+    const chars = [...String(text ?? '').trim()];
+    let width = 0, cut = -1;
+    for (let index = 0; index < chars.length; index++) {
+        width += WIDE.test(chars[index]) ? 2 : 1;
+        if (width > REWRITE_TIP_WIDTH) { cut = index; break; }
+    }
+    if (cut < 0) return chars.join('');
+    // Inside an English word: back to the space before it, unless that would drop more than a third of the line.
+    // Between Chinese, Japanese or Korean characters any place is a whole word: the cut stays.
+    if (chars[cut] !== ' ' && !WIDE.test(chars[cut]) && !WIDE.test(chars[cut - 1])) {
+        const space = chars.lastIndexOf(' ', cut - 1);
+        if (space > cut * 2 / 3) cut = space;
+    }
+    return chars.slice(0, cut).join('').trimEnd() + '…';
+}

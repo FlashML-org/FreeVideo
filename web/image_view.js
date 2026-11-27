@@ -11,7 +11,7 @@ import { listenDialogKey, topDialog } from './dialog_keys.js';
 import { openEditorView } from './editor_loader.js';
 import { openSetup } from './setup.js';
 import { feedbackButton, guideButton } from './feedback.js';
-import { createPromptEnhancer } from './prompt_enhance.js';
+import { createPromptEnhancer, imageBusyWhy } from './prompt_enhance.js';
 import { createExpandButton } from './editor_expand.js';
 import { issueButton } from './issue_button.js';
 import { openStudio, showNodes } from './studio.js';
@@ -34,6 +34,7 @@ import { PICTURE_WORDS, SUBJECT_WORDS, brokenMentions, mentionText, mentionsToEn
 import { HISTORY_KEY, forgetDeletedPrompts, promptLibrary, rememberPrompt } from './image_view_prompts.js';
 import { COMPARE_MAX, compareView } from './image_view_compare.js';
 import { queuePanel } from './image_view_queue.js';
+import { castAvailable, saveAsCharacter } from './cast_from_image.js';
 import { createWorkColumn } from './work_column.js';
 import { pictureURL } from './picture_url.js';
 import { isHeld, worksClient, saveToWorks } from './image_works.js';
@@ -266,7 +267,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     modelBox.append(cards.element);
 
     // Prompt: the enhancer wraps the box, as on the video page.
-    // Every group is open as it is (CEO: nobody folds these); when the panel has no room it scrolls.
+    // Every group is open as it is (nobody folds these); when the panel has no room it scrolls.
     const promptGroup = section('prompt', {title: t('Prompt', '提示词'), iconName: 'prompt', fixed: true});
     const prompt = el('textarea', 'fv-image-prompt fv-iv-prompt'); prompt.rows = 3; prompt.maxLength = 2000;
     // Prompt help (the creation panel's own: switch, original and rewritten, rewrite again, back to the original,
@@ -277,7 +278,11 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     if (keptDraft?.prompt) prompt.value = keptDraft.prompt;
     // The rewrite and the original are put in the box by the helper: the mention marks are drawn again over the new text.
     let paintMentions = () => {};
-    const enhancer = createPromptEnhancer({node: enhancerNode, input: prompt, api, t, context: enhanceScene, setText: () => { render(); paintMentions(); }, issueButton,
+    // While this page's own picture is being made, rewriting waits; the keys say which picture.
+    const imageWhy = (line = false) => running ? imageBusyWhy(t, running.size, line) : '';
+    // render() may run while the helper below is still being made.
+    let refreshEnhancer = () => {};
+    const enhancer = createPromptEnhancer({node: enhancerNode, input: prompt, api, t, context: enhanceScene, setText: () => { render(); paintMentions(); }, issueButton, busyReason: imageWhy,
         resolve: async ({references: ids, ...scene}) => {
             const media = [];
             for (const id of ids) {
@@ -294,6 +299,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
                 .replace(SUBJECT_WORDS, (_, n) => `<Subject ${n}>`);
         },
         restore: text => text.replace(/<Picture (\d+)>/g, (_, n) => mentionText(n)).replace(/<Subject (\d+)>/g, (_, n) => subject(Number(n)))});
+    refreshEnhancer = () => enhancer.refresh();
     let enhancerReady = false;
     // A MOSS layout is sent as boxes the engine writes into the prompt: a rewrite would rewrite them as prose and drop
     // them (the official template keeps its rewrite off with boxes), so with boxes the words go as written.
@@ -413,7 +419,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     const clearStep = () => { stepURL = ''; stepPicture.removeAttribute('src'); stepFrame.hidden = true; block.classList.remove('fv-image-block-low'); };
     const block = el('div', 'fv-image-block'), progressText = el('p', 'fv-image-progress');
     const progressLine = el('b'), progressSub = el('span'), runReport = el('div', 'fv-image-run-report');
-    // While the page waits for FreeVideo to come back (#1121): a button that stops waiting, beside the waiting line.
+    // While the page waits for FreeVideo to come back: a button that stops waiting, beside the waiting line.
     const stopWaiting = el('button', 'fv-action fv-image-stop-waiting'); stopWaiting.type = 'button'; stopWaiting.hidden = true;
     stopWaiting.onclick = () => { if (running?.id) jobs.stopWaiting(running.id); };
     progressLine.setAttribute('role', 'status'); progressText.append(progressLine, progressSub, stopWaiting); block.append(progressText, runReport);
@@ -475,7 +481,11 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         prompt.value = text; prompt.dispatchEvent(new Event('input', {bubbles: true})); promptGroup.open(true);
         if (boxes) { const moss = IMAGE_MODELS.find(m => m.id === MOSS); if (moss && model.id !== MOSS) chooseModel(moss); layout.set(boxes); }
     }
-    more.append(menuItem('folder', t('Open folder', '打开文件夹'), t('Show the images on this computer', '在电脑上打开保存图片的文件夹'), () => void openFolder()),
+    // Save as character: the character library's New character dialog with this image in it (only where the library is).
+    const castWords = [t('Save as character', '存为角色'), t('Make a character from this image, then use @name in the prompt', '用这张图新建角色，之后可以在提示词里用 @名字 引用')];
+    const saveCast = () => { if (shownFile && save.href) void saveAsCharacter({api, text: t, url: save.href, name: shownFile}); };
+    const castItem = menuItem('person', ...castWords, saveCast); castItem.hidden = true;
+    more.append(castItem, menuItem('folder', t('Open folder', '打开文件夹'), t('Show the images on this computer', '在电脑上打开保存图片的文件夹'), () => void openFolder()),
         menuItem('copy', t('Copy prompt', '复制提示词'), t('Copy the words this image was made from', '复制这张图的提示词'), copyPrompt), usePromptItem,
         menuItem('trash', t('Delete', '删除'), t('Move to recently deleted; can be undone', '移到最近删除，可以撤销'), () => deleteFiles([shownFile]), 'fv-iv-danger'));
     const moreHost = el('span', 'fv-image-more-host fv-iv-more-host'); moreHost.append(moreButton, more);
@@ -484,7 +494,13 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     const inlineBtn = (iconName, name, use, onClick, cls = '') => { const b = button('fv-iv-icon-btn ' + cls, {iconName, name, use}); b.addEventListener('click', onClick); return b; };
     const copyInline = inlineBtn('copy', t('Copy prompt', '复制提示词'), t('Copy the words this image was made from', '复制这张图的提示词'), copyPrompt);
     const useInline = inlineBtn('prompt', t('Use prompt', '使用提示词'), t('Put its prompt back in the box', '把它的提示词填回提示词框'), () => usePromptItem.click());
-    inline.append(copyInline, useInline,
+    const castInline = inlineBtn('person', ...castWords, saveCast); castInline.hidden = true;
+    void castAvailable(api).then(on => {
+        if (!on || !alive) return;
+        castInline.hidden = castItem.hidden = false;
+        tip(moreButton, t('More', '更多'), t('Save as character, folder, copy prompt, delete', '存为角色、打开文件夹、复制提示词、删除'));
+    });
+    inline.append(castInline, copyInline, useInline,
         inlineBtn('folder', t('Open folder', '打开文件夹'), t('Show the images on this computer', '在电脑上打开保存图片的文件夹'), () => void openFolder()),
         inlineBtn('trash', t('Delete', '删除'), t('Move to recently deleted; can be undone', '移到最近删除，可以撤销'), () => deleteFiles([shownFile]), 'fv-iv-danger'));
     const capActions = el('div', 'fv-iv-cap-actions'); capActions.append(editThis, asReference, el('i', 'fv-iv-sep'), favBtn, save, inline, moreHost);
@@ -633,7 +649,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             // The engine's own bin answers without a list: what it deleted leaves the works here, not only on the next load.
             if (answer.items) rows = answer.items; else rows = rows.filter(r => !gone.includes(r.file));
             if (gone.length) { meta.forget(gone); void removeSavedImages(api, gone).catch(() => {}); announce('freevideo-works-removed', gone, {undoable: false}); }
-            if (kept.size) say(t('Could not delete {size}.', '有 {size} 张没能删除。', { size: kept.size }));
+            if (kept.size) say(t('Could not delete {size}.', '有 {size} 张未能删除。', { size: kept.size }));
             if (undoNote && list?.some(f => undoNote.files.includes(f))) undoNote = null;
         }
         if (alive) { drawWorks(); render(); }
@@ -782,7 +798,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             changeRefs(() => { if (first) references.unshift(record); else references.push(record); });
             const probe = new Image(); probe.onload = () => { record.width = probe.naturalWidth; record.height = probe.naturalHeight; if (alive) render(); }; probe.src = record.url;
             promptGroup.open(true); render(); prompt.focus();
-        } catch { say(t('That image could not be read.', '这张图读不了。')); }
+        } catch { say(t('That image could not be read.', '未能读取这张图。')); }
     }
     // Any change to the pictures' order goes through here: the mentions in the prompt follow their pictures.
     function changeRefs(mutate) {
@@ -829,7 +845,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             const {openImageEditor} = await import('./image_editor.js');
             outcome = await openImageEditor({source: null, name: 'sketch.png', target: record ? {width: record.width, height: record.height} : sketchTarget(), edit: record?.edit || null,
                 role: 'reference', tool: 'brush', mode: 'sketch', t, resolve: url => url, upload: async blob => client.upload(blob), imageGenClient: client});
-        } catch { say(t('The sketch canvas cannot open right now.', '草图画布暂时打不开。')); return; }
+        } catch { say(t('The sketch canvas cannot open right now.', '草图画布暂时无法打开。')); return; }
         if (!alive || !outcome?.blob) return;
         const file = new File([outcome.blob], 'sketch.png', {type: outcome.blob.type || 'image/png'});
         if (record) {
@@ -853,7 +869,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             const {openImageEditor} = await import('./image_editor.js').catch(error => { loadFailed = true; throw error; });
             outcome = await openImageEditor({source: record.original?.url || record.url, name: record.original?.file?.name || record.file?.name || 'reference.png', edit: record.edit || null,
                 role: 'reference', t, resolve: url => url, upload: async blob => client.upload(blob), imageGenClient: client});
-        } catch { say(loadFailed ? t('The image editor did not load. Reload the page and try again.', '图片编辑器没有加载出来。请刷新页面后再试。') : t('This image could not be read. Choose another image.', '这张图无法读取。请重新选择一张。')); return; }
+        } catch { say(loadFailed ? t('The image editor did not load. Reload the page and try again.', '图片编辑器未能加载。请刷新页面后再试。') : t('This image could not be read. Choose another image.', '这张图无法读取。请重新选择一张。')); return; }
         if (!alive || !outcome || !references.includes(record)) return;
         if (outcome.restore) { restoreReference(record); return; }
         if (!outcome.blob) return;
@@ -930,7 +946,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     };
     // ───── Prompt from a picture or video ─────
     let reverseMenu = null;
-    const reverseWhy = () => running ? t('Finish the current queue before writing a prompt from media.', '请等待当前队列完成后再生成提示词。') : '';
+    const reverseWhy = () => imageWhy();
     function startReverse(file) {
         const kind = file.type?.startsWith('video/') ? 'video' : file.type?.startsWith('image/') ? 'image' : 'other';
         promptGroup.open(true);
@@ -1023,7 +1039,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     function paintSlot() {
         // One fixed-height line above Generate: the most pressing thing there is to say.
         const s = modelState(info, model.id), tooMany = over() > 0;
-        let kind = '', parts = [];
+        let kind = '', parts = [], whole = false;
         if (note.textContent && folderNote && note.textContent === folderNote.text) { kind = 'note'; parts = folderParts(); }
         else if (note.textContent) { kind = note.dataset.kind === 'busy' ? 'info' : 'warn'; parts = [icon(kind === 'info' ? 'clock' : 'warn'), el('span', 'fv-iv-slot-tx', note.textContent)]; }
         else if (tooMany) {
@@ -1034,10 +1050,13 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', t('An image named in the prompt was removed; choose it again with @', '提示词里引用的参考图已移除，请用 @ 重新选择'))];
         }
         else if (s.state === 'failed') {
-            kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', s.reason
-                ? t('{model} download failed: {reason}. Retry to continue; if it keeps failing, report the problem.', '{model} 下载失败：{reason}。请重试以继续下载；仍然失败时，请提交问题。',
+            // Said whole (the line grows to hold it), with the button the sentence names.
+            const said = s.reason
+                ? t('{model} download failed: {reason}. Try again; if it still fails, choose "Report a problem".', '{model} 下载失败：{reason}。请重试；仍然失败时，请点击“提交问题”。',
                     { model: model.short, reason: s.reason.replace(/[.。]$/, '') })
-                : t('{model} download failed. Retry to continue; if it keeps failing, report the problem.', '{model} 下载失败。请重试以继续下载；仍然失败时，请提交问题。', { model: model.short }))];
+                : t('{model} download failed. Try again; if it still fails, choose "Report a problem".', '{model} 下载失败。请重试；仍然失败时，请点击“提交问题”。', { model: model.short });
+            kind = 'warn'; whole = true;
+            parts = [icon('warn'), el('span', 'fv-iv-slot-tx', said), issueButton(t, () => ({where: ['Image model download', '图像模型下载'], message: said}), {className: 'fv-iv-slot-report'})];
         } else if (s.state === 'downloading' && s.paused) {
             // What the download waits for, and that the model row's Continue download runs it now.
             kind = 'info'; parts = [icon('clock'), el('span', 'fv-iv-slot-tx', t('{short}: {state}', '{short}：{state}', { short: model.short, state: pausedText(s) }))];
@@ -1051,7 +1070,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         else parts = running ? [el('span', 'fv-iv-slot-tx', t('Generating; you can leave this view', '正在生成，可以离开这个视图'))] : [];
         slot.dataset.kind = kind; slot.replaceChildren(...parts);
         // A folder that could not be opened is read (and copied) in full: that line takes the height it needs.
-        slot.toggleAttribute('data-whole', kind === 'note');
+        slot.toggleAttribute('data-whole', kind === 'note' || whole);
         paintStatus();
     }
 
@@ -1146,6 +1165,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     function render() {
         if (!alive) return;
         syncCompare();
+        refreshEnhancer();
         // Generate fills the draft frame in place; when the picture is done the stage shows it.
         if (running && !browsing) { draft = false; draftPreview = null; }
         enhancer.element.dataset.off = String(enhancerOff());
@@ -1210,7 +1230,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         picture.hidden = state !== 'done'; stepFrame.hidden = state !== 'running' || !stepURL; block.hidden = state !== 'running'; failHost.hidden = state !== 'failed'; grid.hidden = state !== 'blank';
         if (state !== 'draft') layoutOn = false;
         layout.show(state === 'draft' && layoutOn && isMoss()); stage.dataset.layout = String(layout.shown);
-        // With boxes on the frame its size and estimate would be crossed by their lines (Iris 11-19): they show without.
+        // With boxes on the frame its size and estimate would be crossed by their lines: they show without.
         sceneHost.hidden = state !== 'running'; draftNote.hidden = state !== 'draft' || (layout.shown && layout.count() > 0);
         // While running the caption keeps its room unseen, so a step picture and the finished one sit in the same place.
         // The caption row also waits for the picture's shape: it takes the frame's width, so it shows at its final one.
@@ -1348,7 +1368,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         try { info = await client.packInstall(mine); } catch (error) {
             // A failed download says so in its own words; the generation sentences do not describe it.
             say(error?.code === 'connection_lost'
-                ? t('The download did not start: FreeVideo could not be reached. Start FreeVideo again, then try again.', '下载未能开始：连不上 FreeVideo。请重新启动 FreeVideo 后再试。')
+                ? t('The download did not start: FreeVideo could not be reached. Start FreeVideo again, then try again.', '下载未能开始：无法连接 FreeVideo。请重新启动 FreeVideo 后再试。')
                 : error?.code === 'disk_full'
                     ? t('The download did not start: the disk is full. Free some space, then download again.', '下载未能开始：磁盘空间不够。空出空间后再下载。')
                 : ['no_memory', 'pack_missing', 'model_unreadable'].includes(error?.code)
@@ -1396,12 +1416,12 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         };
         if (!fits()) { prompt.focus(); return; }
         layoutOn = false;
-        say(''); note.dataset.kind = ''; failure = null; const mine = running = {cancelled: false}, withImages = references.length > 0, sent = size(), tierNow = tier;
+        say(''); note.dataset.kind = ''; failure = null; const sent = size(), mine = running = {cancelled: false, size: sent}, withImages = references.length > 0, tierNow = tier;
         render(); drawWorks(); progressLine.textContent = progressSub.textContent = ''; runReport.replaceChildren(); runReport.dataset.id = ''; doneReport.replaceChildren(); lastReport = null;
         level.hidden = false; level.dataset.counted = 'false'; level.style.setProperty('--fv-progress', '0');
         clearStep();
         const names = [];
-        // Where a failure without a reason of its own was caught (#1097: an upload that never left the page said "unreported").
+        // Where a failure without a reason of its own was caught (an upload that never left the page would say "unreported").
         let reached = 'upload';
         try {
             for (const r of references.slice(0, cap_(model))) names.push(await client.upload(r.file));
@@ -1456,7 +1476,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     function showJob(row) {
         if (!alive) return;
         if (!row) { unwatch?.(); unwatch = null; if (running) { running = null; level.hidden = true; clearStep(); render(); drawWorks(); } return; }
-        if (!running || running.id !== row.id) running = {cancelled: false, id: row.id};
+        if (!running || running.id !== row.id) running = {cancelled: false, id: row.id, ...(row.meta?.width ? {size: {width: row.meta.width, height: row.meta.height}} : {})};
         canvas.dataset.fvTaskId = row.id;
         if (ACTIVE.has(row.status)) {
             const percent = Number.isFinite(row.percent) ? row.percent : 0;
@@ -1509,7 +1529,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             label: failure.retryStandard ? ['Retry at Standard', '改用标准并重试'] : ['Retry', '重试'],
             onClick: () => { if (failure.noList) { failure = null; render(); go.onclick(); return; } if (failure.retryStandard) { area = RANGES[model.id].presets.standard; keepSize(); } void generate(); }}});
         const head = el('div', 'fv-iv-fail-head'), mark = el('i', 'fv-iv-fail-icon'); mark.append(icon('warn'));
-        // One title for every failure; why FreeVideo went away is in the sentence below it (Lane, engine-closed-reason).
+        // One title for every failure; why FreeVideo went away is in the sentence below it.
         head.append(mark, el('h3', '', t('The image was not made', '这张图片未能生成')));
         failHost.prepend(head);
         const stage_ = STAGE_WORDS[failure.stage];
@@ -1583,7 +1603,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         try {
             const {openImageEditor} = await import('./image_editor.js').catch(error => { loadFailed = true; throw error; });
             outcome = await openImageEditor({source: file, name: file, role: 'reference', t, resolve: pictureURL, upload: async blob => client.upload(blob), imageGenClient: client});
-        } catch { say(loadFailed ? t('The image editor did not load. Reload the page and try again.', '图片编辑器没有加载出来。请刷新页面后再试。') : t('This image could not be read. Choose another image.', '这张图无法读取。请重新选择一张。')); return; }
+        } catch { say(loadFailed ? t('The image editor did not load. Reload the page and try again.', '图片编辑器未能加载。请刷新页面后再试。') : t('This image could not be read. Choose another image.', '这张图无法读取。请重新选择一张。')); return; }
         if (!alive || !outcome?.blob) return;
         try {
             const edited = new File([outcome.blob], outcome.name || 'edited.png', {type: outcome.blob.type || 'image/png'});
@@ -1593,7 +1613,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             const record = {file: edited, url: URL.createObjectURL(edited), width: outcome.width, height: outcome.height};
             if (references.length >= most()) URL.revokeObjectURL(record.url); else { changeRefs(() => references.unshift(record)); promptGroup.open(true); }
             render();
-        } catch (error) { say(isNetworkTypeError(error) ? connectionLostText(t) : t('The edited image could not be saved. Try again; if it keeps failing, report the problem.', '编辑后的图片没能保存。请重试；仍然失败时，请提交问题。')); }
+        } catch (error) { say(isNetworkTypeError(error) ? connectionLostText(t) : t('The edited image could not be saved. Try again; if it keeps failing, report the problem.', '编辑后的图片未能保存。请重试；仍然失败时，请提交问题。')); }
     }
     asReference.addEventListener('click', () => void useAsReference(shownFile, false));
     // Opens downward when it fits inside the stage, otherwise upward over the picture.
@@ -1748,7 +1768,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         // ── run: tasks owns this block (job store) ──
         startJobSources();
         const live = jobs.active({kind: 'image', view: 'image'})[0];
-        if (live && !running) { running = {cancelled: false, id: live.id}; follow(live.id); }
+        if (live && !running) { running = {cancelled: false, id: live.id, ...(live.meta?.width ? {size: {width: live.meta.width, height: live.meta.height}} : {})}; follow(live.id); }
         // ── end run ──
         // Nothing is redrawn at the press (the view is as it was, and the page's events kept it current while away):
         // the works are read again once it is in front, after the switch has finished, and redrawn only from that answer.

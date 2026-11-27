@@ -127,6 +127,9 @@ class Service:
         self.request_epoch = None
         self.active_worker = None
         self.release_readings = None
+        # Set when a run on the Apple GPU had to be repeated on the CPU: later requests of this session
+        # go straight to the CPU instead of failing the same way first.
+        self.cpu_only = False
         atexit.register(self.close)
 
     def prestart(self, root, machine, *, generating=False):
@@ -264,7 +267,22 @@ class Service:
             return dict(ready=False, model='', license='', bytes=0, busy=self.busy(), ram_bytes=self.ram_bytes(machine))
         return dict(ready=assets.settle(root) if wait else assets.ready(root), model=spec['repo'], license=spec['license'],
                     bytes=sum(row['bytes'] for row in spec['files']), busy=self.busy(),
-                    ram_bytes=self.ram_bytes(machine))
+                    ram_bytes=self.ram_bytes(machine), rewrite_seconds=self.rewrite_seconds(root, machine),
+                    prestart=self.prewarm_state.get('phase'))
+
+    @staticmethod
+    def rewrite_seconds(root, machine):
+        """About how long a rewrite takes here, cold and after the prestart (timing.py), for the time beside Generate."""
+        from . import timing
+        try:
+            # The card's name as the time beside Generate reads it: an installation's machine.json names only the
+            # device (gpu_uuid); the installer's inventory names the card.
+            from ..comfy_bridge import WholeVideoProgress
+            from ..effort_forecast import inventory_hardware
+            hardware = WholeVideoProgress._hardware(inventory_hardware(machine), machine)
+            return timing.estimate(root, hardware)
+        except Exception:
+            return None
 
     def ram_bytes(self, machine):
         """Available RAM the model usually needs on this computer, for the download card.
@@ -757,6 +775,8 @@ class Service:
         def submit():
             try:
                 request = dict(value)
+                if self.cpu_only:
+                    request['_cpu_only'] = True
                 if prewarm != 'cold':
                     request['_prewarm'] = dict(sent_epoch=time.time())
                 child.stdin.write(json.dumps(request, ensure_ascii=True))
@@ -812,6 +832,9 @@ class Service:
             self.check()
             if session.reader.is_alive() or not result or child.returncode and result.get('phase') == 'complete':
                 raise RuntimeError('worker_exit')
+            # Whatever becomes of this answer (a failure, or text the checks below refuse), the Apple GPU already failed once.
+            if (result.get('diagnostics') or {}).get('execution_fallback') == 'apple_gpu':
+                self.cpu_only = True
             if result.get('phase') == 'complete':
                 if value.get('mode') == 'ask':
                     rules.validate_answers(result.get('answers'), value)
@@ -890,6 +913,9 @@ def register():
         return
     service = Service(installation, folder_paths.get_input_directory)
     server._freevideo_prompt_vlm = service
+    # One card: ComfyUI's own queue rewrites the waiting requests that carry a rewrite before it runs the first of them.
+    from ..queued_rewrite import install_native
+    install_native(server)
     token = secrets.token_urlsafe(24)
 
     @server.routes.get('/freevideo/prompt-vlm')

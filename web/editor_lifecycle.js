@@ -30,7 +30,7 @@ export const hiddenEmptyEdit = (row, initial) => row.frames === 0 && !row.keep_e
 
 export const deleteEditText = (t, name = '') => ({
     item: t('Delete edit', '删除剪辑'),
-    confirm: t('Delete "{name}"? This can\'t be undone.', '删除“{name}”？删除后无法恢复。', { name }),
+    confirm: t('Delete "{name}"? This cannot be undone.', '删除“{name}”？删除后无法恢复。', { name }),
     remove: t('Delete', '删除'), cancel: t('Cancel', '取消'),
     also: residue => {
         // Each kind: how many, then its one and its many as whole phrases.

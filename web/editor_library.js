@@ -59,7 +59,7 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
     const removal = new Map(); // import id → {users, busy, failed}: the clips whose deletion is being asked about
     let focusAfter = null; // {cancel: id} | {card: key} | {next: key}: where focus goes once the list is drawn again
     const preparing = () => t('Preparing this clip. It goes on the timeline when ready.', '素材准备好后会自动放到时间线上。');
-    const cannotOpen = () => t('This file cannot be opened. Supported formats: ', '这个文件打不开。支持的格式：') + FORMATS;
+    const cannotOpen = () => t('This file cannot be opened. Supported formats: ', '无法打开这个文件。支持的格式：') + FORMATS;
     // Why an import did not work, and where to report it: only a file that could not be read lists the formats and asks for a report.
     const importFailure = (reason, status) => status === 413 ? [t('This file is over 8 GiB. Trim or compress it, then try again.', '文件超过 8 GiB，请先剪短或压缩后再导入。')]
         : reason === 'disk_full' ? [t('The disk is full. Free some space, then import again.', '磁盘空间不足，请清理出空间后再导入。')]
@@ -129,7 +129,7 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
         else if (row.kind === 'audio') picture.append(el('span', 'fv-ed-audio-icon', '♫'));
         if (ready) { if (!row.cached || framesShown) picture.append(el('span', 'fv-ed-source-time', stamp(framesShown))); }
         else if (row.state === 'failed') {
-            picture.append(el('span', 'fv-ed-source-preparing', row.reason === 'disk_full' ? t('Disk full', '磁盘已满') : t('Cannot open', '打不开')));
+            picture.append(el('span', 'fv-ed-source-preparing', row.reason === 'disk_full' ? t('Disk full', '磁盘已满') : t('Cannot open', '无法打开')));
         } else {
             // Sending, then waiting behind another import, then being made; only the first and the last have a percentage.
             const percent = Number.isFinite(row.fraction) ? ` ${Math.round(Math.max(0, Math.min(1, row.fraction)) * 100)}%` : '';
@@ -179,7 +179,7 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
             const asking = removal.get(row.id);
             if (asking) { container.dataset.asking = 'true'; container.append(removeStrip(row, asking)); }
         }
-        if (kind !== 'work' && row.state === 'failed' && row.reason !== 'disk_full') container.append(issueButton(t, () => ({where: LIBRARY_ISSUE, message: t('Cannot open', '打不开'), kind: row.detail || null})));
+        if (kind !== 'work' && row.state === 'failed' && row.reason !== 'disk_full') container.append(issueButton(t, () => ({where: LIBRARY_ISSUE, message: t('Cannot open', '无法打开'), kind: row.detail || null})));
         return container;
     }
     // Asked inside the card, so a list that redraws keeps the question. Only FreeVideo's copy goes; the original file stays where it is.
@@ -197,6 +197,8 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
         yes.onclick = event => { event.stopPropagation(); removeImport(row); };
         no.onclick = event => { event.stopPropagation(); cancel(); };
         // The editor hands a key to the control's own handler, as for the tabs above; Escape closes only the question.
+        // A layer of the view (shell.js FLOATING), so the shell leaves that Escape to it instead of the view.
+        strip.dataset.fvLayer = '';
         strip.onkeydown = event => { if (event.key === 'Escape' && !asking.busy) { event.preventDefault(); event.stopPropagation(); cancel(); } };
         buttons.append(no, yes);
         strip.append(el('strong', null, t('Delete this clip?', '删除这个素材？')), hint, buttons);
@@ -308,8 +310,11 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
                     // The returned prefix is authoritative, including removals after a
                     // joined result hides its inputs. Keep already loaded older pages.
                     const covered = value.next ? rows.reduce((end, row, i) => ids.has(row.id) ? i + 1 : end, 0) : rows.length;
+                    // Every row loaded so far is in the new first page: the server's cursor is where the list goes on (a list
+                    // that fitted in one page may not any more). Older pages kept below keep the cursor they came with.
+                    const whole = covered >= rows.length;
                     rows = [...items, ...rows.slice(covered).filter(row => !ids.has(row.id))];
-                    if (!value.next) next = null;
+                    if (!value.next) next = null; else if (whole) next = value.next;
                 } else {
                     rows = append ? [...rows, ...items.filter(row => !rows.some(old => old.id === row.id))] : items;
                     next = value.next;
@@ -431,6 +436,7 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
     render(); load();
     return {element: host, importFiles, refresh,
         suspend() { suspended = true; if (!waiting()) { stopImports?.(); stopImports = null; } },
-        resume() { suspended = false; watchImports(); },
+        // Coming back: what was made meanwhile elsewhere (another window, Autopilot) is read in once, as on opening.
+        resume() { suspended = false; watchImports(); void refresh(); },
         dispose() { disposed = true; pendingAdds.clear(); window.removeEventListener('freevideo-result', generated); window.removeEventListener('freevideo-library-deleted', deleted); window.removeEventListener('freevideo-library-restored', restored); host.removeEventListener('scroll', scheduleMore); resize.disconnect(); cancelAnimationFrame(moreFrame); stopImports?.(); stopImports = null; stopUsed?.(); clearTimeout(retryTimer); finishRetry?.(); }};
 }

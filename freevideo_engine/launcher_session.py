@@ -1581,8 +1581,8 @@ class Session:
                     return t("Couldn't open the browser. Click Copy address and open it in your browser.",
                              '未能自动打开浏览器。请点击“复制地址”，在浏览器中打开。')
                 return str(error)
-            self.browser_error = self.phrase(lambda t: t('ComfyUI is ready. Open the browser again or copy its address.\n',
-                                                         'ComfyUI 已就绪，请重试打开浏览器，或复制地址手动打开。\n') + cause(t))
+            self.browser_error = self.phrase(lambda t: t('FreeVideo is ready. Open the browser again, or copy the address and open it by hand.\n',
+                                                         'FreeVideo 已就绪。请重新打开浏览器，或复制地址手动打开。\n') + cause(t))
 
     def select_source(self, name):
         self.probe.select(self.engine_root(), name)
@@ -2979,6 +2979,8 @@ class Session:
                 # No NVIDIA card is listed: the card says what FreeVideo needs; the note names what was found.
                 from .failure_details import UNSUPPORTED_VENDOR
                 failure['title'], failure['action'] = self.both(lambda zh: UNSUPPORTED_VENDOR[1 if zh else 0])
+                # Its own kind: like an unsupported card it offers no "Report a problem" (a report cannot change it).
+                failure['kind'] = 'gpu-vendor'
             elif nvidia_driver_listed(names):
                 # Its driver named the card, so a driver is installed but does not answer: reinstall it.
                 from .failure_details import DRIVER_NOT_WORKING
@@ -3064,8 +3066,9 @@ class Session:
             model_upgrade=dict(model_upgrade, switching=bool(self.model_switch)),
             offline=dict(progress_view(self.importer.state, language), runtime=bool(self.form['offline_runtime']),
                 runtime_supported=runtime_packages_supported(),
-                models=self.offline_model_count(), guide=self.both(lambda zh: package_instructions(
-                    self.form['new_comfy'] and self.form['environment_method'] == 'manual' and not self.form['offline_runtime'], zh))),
+                models=self.offline_model_count(), guide=package_instructions(
+                    self.form['new_comfy'] and self.form['environment_method'] == 'manual' and not self.form['offline_runtime'],
+                    t=self.t)),
             video_model_guide=self.both(video_instructions),
             adaln_dialog=self.adaln_dialog_view(error, update),
             selected=bool(self.selected), can_repair=self.can_repair(), repair_offered=repair_offered, error=error,

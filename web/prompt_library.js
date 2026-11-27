@@ -178,7 +178,7 @@ export function createPromptLibrary({t, host, fill, snapshot, apply, describe = 
             for (const item of rows) list.append(row(item.name, describe(item.settings), () => {
                 hide();
                 Promise.resolve(apply(item.settings)).then(problem => problem ? notify(problem, null, 'warn') : notify(t('Preset applied: {name}', '已套用预设：{name}', { name: item.name })),
-                    () => notify(t('Could not apply the preset.', '预设没能套用。'), null, 'fail'));
+                    () => notify(t('Could not apply the preset.', '未能套用预设。'), null, 'fail'));
             }, () => { removePreset(item.id, storage); render(); }, t('Delete preset', '删除预设'), {named: true}));
             if (!rows.length) empty(t('Save the current settings to use them again in one step.', '把当前设置存成预设，下次一步套用。'));
             const form = el('form', 'fvs-preset-form');
@@ -198,7 +198,7 @@ export function createPromptLibrary({t, host, fill, snapshot, apply, describe = 
                 if (!name.value.trim()) { name.focus(); nameNote.say(t('Fill in the preset name.', '请填写预设名称。')); return; }
                 const settings = snapshot({prompt: promptBox.checked, seed: seedBox.checked});
                 if (savePreset(name.value, settings, storage)) { name.value = ''; render(); notify(t('Preset saved', '预设已保存')); }
-                else notify(t('Could not save the preset.', '预设没能保存。'), null, 'fail');
+                else notify(t('Could not save the preset.', '未能保存预设。'), null, 'fail');
             };
             foot.append(form);
         }

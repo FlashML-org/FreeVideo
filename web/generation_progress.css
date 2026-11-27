@@ -65,7 +65,7 @@
 .fv-studio .fv-stage .fv-generation-progress.fv-generation-compact .fv-generation-times{display:flex;justify-content:center}
 .fv-studio .fv-stage .fv-generation-progress.fv-generation-compact .fv-generation-count{font-size:clamp(26px,3vw,40px)}
 /* Studio: the text group sits on a soft dark field, so the rising wave never runs
-   through it at any level. The box hugs the text; no border or corners (Iris v6).
+   through it at any level. The box hugs the text; no border or corners.
    The wave reads --fv-progress from this element, not its size. */
 .fv-studio .fv-stage .fv-generation-progress.fv-generation-compact{inset:auto;top:50%;left:50%;transform:translate(-50%,-50%);box-sizing:border-box;width:max-content;min-width:min(100%,320px);max-width:100%;padding:18px 40px;background:radial-gradient(ellipse 60% 60% at 50% 50%,rgba(7,19,32,.55),transparent 72%)}
 .fv-studio .fv-stage[data-short=true] .fv-generation-progress.fv-generation-compact{padding:8px 16px}

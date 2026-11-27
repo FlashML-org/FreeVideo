@@ -148,7 +148,7 @@ export function deleteWithUndo(files, t) {
                 : t('Used by a character card. Remove the image from the card, or delete the card, then delete it here.', '这张图正被角色卡使用。先从角色卡中移除这张图，或删除角色卡后再删。'), {tone: 'warn'});
             for (const file of inCards) cardsKeeping.delete(file);
         }
-        if (!undone && others > 0) toast(t('{others} could not be deleted.', '有 {others} 张没能删除。', { others }), {tone: 'warn'});
+        if (!undone && others > 0) toast(t('{others} could not be deleted.', '有 {others} 张未能删除。', { others }), {tone: 'warn'});
     })();
     return handle;
 }

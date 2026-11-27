@@ -110,13 +110,13 @@ export function editorErrorText(value, t = translatorFor(null, false)) {
         chain_too_long: t('One continuous shot can have up to {maxParts} parts.', '一个连续镜头最多 {maxParts} 段。', { maxParts: model.RULES.maxParts }),
         too_long: t('This part is longer than the maximum length. Shorten it and try again.', '这一段超过了最长时长，请缩短后再试。'),
         missing_node: t('Generation is not ready. Restart FreeVideo.', '生成功能没有就绪，请重新启动 FreeVideo。'),
-        chain_missing: t('Generation could not start. Choose "Generate" again.', '生成没能开始，请再点“生成”。'),
-        result_mismatch: t('Could not read the result. Choose "Generate" again.', '没能读取结果，请再点“生成”。'),
+        chain_missing: t('Generation could not start. Choose "Generate" again.', '生成未能开始，请再点“生成”。'),
+        result_mismatch: t('Could not read the result. Choose "Generate" again.', '未能读取结果，请再点“生成”。'),
         no_material: t('The media this part uses is missing. Import it again from the library.', '找不到这一段用到的素材，请在素材库重新导入。'),
     };
     if (known[code]) return known[code];
     if (outputNotWritable(whole))
-        return t('The output folder cannot be written to, so the video was not saved. Check that the folder can be written to, then retry.', '输出目录不可写，视频没能保存。请检查这个文件夹的写入权限后重试。');
+        return t('The output folder cannot be written to, so the video was not saved. Check that the folder can be written to, then retry.', '输出目录不可写，视频未能保存。请检查这个文件夹的写入权限后重试。');
     if (/manifest\.json/i.test(whole) && /No such file|not found|Errno 2\b|FileNotFoundError/i.test(whole))
         return t('The model is not fully installed. ', '模型没有装全。') + t(...repairAction());
     if (modelTableDamaged(whole))
@@ -309,11 +309,20 @@ function fitLentBar(host, t) {
 
 // `components` replaces the optional progress module (see loadEditorComponents); tests also pass their generation stand-in here.
 export function openEditor({api, app, from = null, panel = {}, components: given = undefined, onView = view => viewChanged(view)}) {
-    // A kept view (hidden when the user went to another view) comes back as it was: no rebuild, no reload. Opening a
-    // work, another node's panel or a new creation panel builds a fresh one instead.
+    // A saved edit asked for by id (Creations names the edit that keeps a creation): whichever editor opens below then
+    // shows that edit with the clip selected. A fresh one starts on it directly, as on the last edit.
+    if (from?.edit) {
+        const {edit, clip = null} = from; from = null;
+        if (!opened) try { localStorage.setItem('fv-editor-last', edit); globalThis.sessionStorage?.removeItem('fv-editor-draft'); } catch {}
+        const handle = openEditor({api, app, from, panel, components: given, onView});
+        Promise.resolve(handle?.ready).then(() => handle.showClip(edit, clip)).catch(() => {});
+        return handle;
+    }
+    // A kept view (hidden when the user went to another view) comes back as it was: no rebuild, no reload, whichever view
+    // it comes back from. Opening a work or another node's panel builds a fresh one instead.
     if (opened?.kept) {
-        if (from?.work || panel.onProjectLoaded || opened.panel.node !== panel.node || opened.panel.progressElement !== panel.progressElement) opened.dispose();
-        else return opened.reopen();
+        if (from?.work || panel.onProjectLoaded || opened.panel.node !== panel.node) opened.dispose();
+        else return opened.reopen(panel);
     }
     if (opened) {
         const dialog = opened.element;
@@ -418,7 +427,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         void (view ? handle.switchView(view) : handle.close());
     }, 'fv-ed-save-leave');
     saveWarning.append(saveWarningText, saveAgain, leaveUnsaved);
-    tip(saveAgain, {name: t('Save again', '重新保存'), use: t('Try saving the changes now', '现在再试一次保存改动')});
+    tip(saveAgain, {name: t('Save again', '重新保存'), use: t('Try saving the changes now', '现在重新保存改动')});
     tip(leaveUnsaved, {name: t('Leave without saving', '放弃改动并离开'), use: t('Go on; the latest changes are lost', '离开这里，最近的改动会丢失')});
     const notices = el('div', 'fv-ed-notice-stack');
     // Where the server cannot generate, the bar's row says so instead of standing empty.
@@ -467,6 +476,16 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     const failures = createEditorFailures({api, state, jobStatuses, reasonText: value => editorErrorText(value, t)});
     let submissionFailure = null;
     let blockStates = null, progressObserver = null, progressConnection = null;
+    // The bar repeats the creation panel's progress words while this view covers that panel; they change with it.
+    function watchProgress() {
+        progressObserver?.disconnect(); progressObserver = null;
+        if (!panel.progressElement || typeof MutationObserver === 'undefined') return;
+        progressObserver = new MutationObserver(() => {
+            for (const job of jobStatuses.values()) paintJob(job);
+            if (mostRecentJob && jobStatuses.has(mostRecentJob)) genbar?.update(barJob(jobStatuses.get(mostRecentJob)));
+        });
+        progressObserver.observe(panel.progressElement, {subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['aria-valuenow', 'hidden']});
+    }
     function barJob(job) {
         if (!job) return job;
         const latest = [...runProgress.values()].filter(message => message.chain.id === job.id)
@@ -542,6 +561,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         notices.append(card);
         while (notices.children.length > 3) notices.firstElementChild.remove();
         const timer = setTimeout(() => { noticeTimers.delete(timer); card.remove(); }, where ? 20000 : 9000); noticeTimers.add(timer);
+        return card;
     }
     const EDITOR_ISSUE = ['Editor', '编辑器'], EXPORT_ISSUE = ['Export', '导出'];
     // The step a failure belongs to, named for the user: "{what could not be done}. Try again; if it still fails, ...", so the
@@ -696,7 +716,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if (saveState.dataset.state === now) return;
         saveState.dataset.state = now;
         saveState.textContent = {saved: t('Saved', '已保存'), saving: t('Saving…', '正在保存…'), unsaved: t('Not saved', '未保存')}[now];
-        tip(saveState, {name: saveState.textContent, use: now === 'unsaved' ? t('Click to save the changes again', '点一下重新保存改动')
+        tip(saveState, {name: saveState.textContent, use: now === 'unsaved' ? t('Click to save the changes again', '点击重新保存改动')
             : t('Changes save by themselves as you edit', '改动会自动保存')});
     }
     async function retrySave() {
@@ -857,7 +877,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         return store.getSources(model.references(state.record).map(sourceKey)).then(() => { player.refresh(); tracks?.refresh?.(); sayMissing(); });
     }
     // A picture whose file was moved or deleted stays on the timeline as a grey part; the notice bar says so once for each
-    // such file, however the edit was opened (Iris 11-20). Moving a file is not a fault, so there is no report button.
+    // such file, however the edit was opened. Moving a file is not a fault, so there is no report button.
     const toldMissing = new Set();
     function sayMissing() {
         if (disposed) return;
@@ -957,7 +977,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             const said = {no_picture: t('There is no picture at this position. Move the playhead onto a clip.', '这个位置没有画面，请把播放头移到片段上。'),
                 range: t('There is no picture at this position. Move the playhead onto a clip.', '这个位置没有画面，请把播放头移到片段上。'),
                 generating: t('This part is still being generated. Save the frame when it is done.', '这一段还在生成，完成后再保存。'),
-                unreadable: t('A source file cannot be read. Import it again from the library.', '有素材读不出来，请在素材库重新导入。'),
+                unreadable: t('A source file cannot be read. Import it again from the library.', '有素材无法读取，请在素材库重新导入。'),
                 not_writable: t('The image folder cannot be written to. Check that the folder can be written to, then save the frame again.', '图片文件夹不可写。请检查这个文件夹的写入权限后再保存。'),
                 disk_full: t('The disk is full. Free some space, then save the frame again.', '磁盘空间不足，请清理出空间后再保存。')}[value?.reason];
             if (said) notify(said); else error(value, 'frame');
@@ -1155,14 +1175,18 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             recordCache.set(entry.id, entry);
             try { const text = JSON.stringify(entry); if (text.length < RECORD_LIMIT) localStorage.setItem(RECORD_KEY, text); } catch {}
         }
-        const value = {selection: state.selection, text: genbar.getText(), playhead: state.playhead,
-            zoom: state.zoom, scrollLeft: tracks ? tracks.getScrollLeft() : editorViews.get(key)?.scrollLeft || 0};
+        // Whether a range held parts when it was left: one that did and is later wholly after a shortened edit's end goes.
+        const range = state.selection?.kind === 'range' ? state.selection : null;
+        const covered = !!range && state.record.tracks.some(track => track.clips.some(clip => clip.start < range.start + range.frames && clip.start + clip.frames > range.start));
+        const value = {selection: state.selection, covered, text: genbar.getText(), playhead: state.playhead,
+            // Out of sight the timeline is not laid out and reads 0: a kept view keeps where it was left.
+            zoom: state.zoom, scrollLeft: tracks && !handle.kept ? tracks.getScrollLeft() : editorViews.get(key)?.scrollLeft || 0};
         editorViews.set(key, value);
         try {
             // Queued parts stay queued across a reload; they are only planned drafts until sent.
             const waiting = held.map(entry => ({ids: entry.ids, text: entry.text, ...(entry.allowEmpty === true ? {allowEmpty: true} : {})}));
             value.held = waiting;
-            localStorage.setItem(viewPrefix + key, JSON.stringify({selection: value.selection, text: value.text, ...(waiting.length ? {held: waiting} : {})}));
+            localStorage.setItem(viewPrefix + key, JSON.stringify({selection: value.selection, ...(covered ? {covered} : {}), text: value.text, ...(waiting.length ? {held: waiting} : {})}));
             if (state.record.id) localStorage.setItem('fv-editor-last', key);
             localStorage.setItem('fv-editor-opening', JSON.stringify({id: key, name: state.record.name}));
         } catch {}
@@ -1185,6 +1209,22 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             Promise.resolve(sent).catch(() => {});
         }
     }
+    // What changed in this saved edit elsewhere while the view was away (an agent's edit, say) arrives in place: a newer
+    // saved copy replaces it as an opening's does, the view kept as it was left. Changes not yet saved here are kept.
+    async function catchUp() {
+        const id = state.record.id, revision = state.record.revision, epoch = projectEpoch;
+        if (!id || queue.dirty) return;
+        const record = await store.load(id).catch(() => null);
+        if (!record || disposed || handle.kept || switching || closing || epoch !== projectEpoch || queue.dirty || state.record.id !== id || !(record.revision > revision)) return;
+        // As a switch between edits does: nothing can be changed here until the newer copy is in place.
+        switching = true; element.inert = true; updateTop();
+        try { await replaceProject(record, id); } catch (value) { error(value, null, undefined, 'open-session'); return; }
+        finally { switching = false; element.inert = false; updateTop(); }
+        if (disposed) return;
+        savedContent = content(state.record); player.refresh(); updateTop(); updateTransport();
+        // Never in silence: the undo steps taken before are gone with the copy they belonged to.
+        notify(t('This edit was saved elsewhere with newer changes, so the newer version is shown. Earlier undo steps are cleared.', '这个剪辑在别处保存过更新的版本，已换上；之前的撤销记录已清空。'));
+    }
     async function replaceProject(record, key = null) {
         releaseTakes(); rememberView(); viewReady = false;
         await store.activateProject(record.id).catch(() => {});
@@ -1197,7 +1237,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         mostRecentJob = null; submissionFailure = null; music.reset(); narration.reset(); genbar?.update(null); queue.reset(record); stopExport?.(); stopExport = null; exportStatus = exportSnapshot = null; exportButton.textContent = t('Export', '导出');
         suppressSave = true; try { state.replace(record); savedContent = content(record); } finally { suppressSave = false; }
         panel.onProjectLoaded?.(record);
-        const width = tracksHost.clientWidth - 148; if (width > 0) state.setZoom(model.openingZoom(width, record));
+        const width = tracks?.timeWidth?.() || 0; if (width > 0) state.setZoom(model.openingZoom(width, record));
         tracks?.setScrollLeft(0);
         // An empty edit opens with one part's length selected at the start, ready to generate.
         const selectInitial = () => { if (!store.generationAvailable) return; initialSelection = state.select({kind: 'range', start: 0,
@@ -1282,10 +1322,15 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         }
         queue.reset(); forgetProject();
     }
+    // A delete held back by something the user can deal with (the edit open in another window, a part still generating)
+    // is not a fault, so its notice has no "Report a problem". A notice about a delete that did not happen goes once
+    // the same edit is deleted after all: it no longer holds.
+    const DELETE_HELD = new Set(['project_in_use', 'generation_active']);
+    const deleteNotices = new Map();
     async function deleteCurrentProject() {
         if (switching || closing) return;
         switching = true; element.inert = true; updateTop();
-        let step = 'flush';
+        let step = 'flush'; const id = state.record.id;
         try {
             const words = deleteEditText(t);
             if (jobActive()) throw {reason: 'generation_active'};
@@ -1302,10 +1347,13 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             if (!record) throw Object.assign(new Error(words.delete_failed), {code: 'no_replacement'});
             step = 'delete';
             await discardProject();
+            if (id) { deleteNotices.get(id)?.remove(); deleteNotices.delete(id); }
             step = 'open';
             await replaceProject(record); menu.hidden = true; title.setAttribute('aria-expanded', 'false'); title.focus();
         } catch (value) {
-            const words = deleteEditText(t); notify(words[value?.reason] || words.delete_failed, EDITOR_ISSUE, failureKind('delete', {reason: deleteReason(value, step)}));
+            const words = deleteEditText(t), held = DELETE_HELD.has(value?.reason);
+            const card = notify(held ? words[value.reason] : words.delete_failed, EDITOR_ISSUE, failureKind('delete', {reason: deleteReason(value, step)}), null, {report: !held});
+            if (id && card) deleteNotices.set(id, card);
         } finally { switching = false; element.inert = false; updateTop(); }
     }
     function confirmDelete() {
@@ -1931,9 +1979,9 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 if (['source_missing', 'missing_glyphs', 'MissingGlyphs'].includes(value.reason || value.code)) error(value, null, undefined, 'export');
                 else notify(value.reason === 'not_writable' ? t('Export failed: the output folder cannot be written to. Check that the folder can be written to, then retry.', '导出时出错：输出目录不可写。请检查这个文件夹的写入权限后重试。')
                     : value.reason === 'disk_full' ? t('Export failed: the disk is full. Free some space, then export again.', '导出时出错：磁盘空间不够，空出空间后再导出。')
-                    : value.reason === 'interp_download' ? t('Export failed: the model needed for 48/60 fps could not be downloaded. Check the connection and export again, or set the frame rate to 24.', '导出时出错：48/60 帧率需要的模型没能下载。请检查网络后重新导出，或把帧率改为 24。')
+                    : value.reason === 'interp_download' ? t('Export failed: the model needed for 48/60 fps could not be downloaded. Check the connection and export again, or set the frame rate to 24.', '导出时出错：48/60 帧率需要的模型未能下载。请检查网络后重新导出，或把帧率改为 24。')
                     : value.reason === 'interp_memory' ? t('Export failed: the graphics card did not have enough free memory for 48/60 fps. Export again after the current generation finishes, or set the frame rate to 24.', '导出时出错：显卡空闲显存不足，无法导出 48/60 帧率。请等当前生成结束后重新导出，或把帧率改为 24。')
-                    : value.reason === 'unreadable' ? t('Export failed: a source file cannot be read. Import it again from the library.', '导出时出错：有素材读不出来，请在素材库重新导入。')
+                    : value.reason === 'unreadable' ? t('Export failed: a source file cannot be read. Import it again from the library.', '导出时出错：有素材无法读取，请在素材库重新导入。')
                     : t('Export failed. Try again.', '导出时出错，请重试。'), EXPORT_ISSUE, failureKind('export', value));
             }
             if (value.state === 'cancelled') notify(t('Export cancelled. No unfinished file is kept.', '已取消导出，没有留下不完整的文件。'));
@@ -2293,7 +2341,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         toolUndo.disabled = !state.canUndo; toolRedo.disabled = !state.canRedo;
         const named = (verb, label) => label ? verb + t(': ', '：') + label : verb;
         tip(toolUndo, {name: named(t('Undo', '撤销'), state.undoLabel), use: t('Take back the last edit', '退回上一步改动'), key: `${modKey}Z`,
-            why: toolUndo.disabled ? t('Nothing to undo yet', '还没有可以撤销的改动') : ''});
+            why: toolUndo.disabled ? t('Nothing to undo yet', '暂无可以撤销的改动') : ''});
         tip(toolRedo, {name: named(t('Redo', '重做'), state.redoLabel), use: t('Bring back the edit just undone', '恢复刚撤销的改动'), key: `${modKey}⇧Z / ${modKey}Y`,
             why: toolRedo.disabled ? t('Nothing to redo', '没有可以重做的改动') : ''});
         updateSplit();
@@ -2489,6 +2537,15 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     const collapse = () => { void handle.close(); };
     window.addEventListener('freevideo-collapse', collapse);
     const handle = {element, state, actions, store, adjust, audio, music, notify,
+        // Open this saved edit (the current one is saved first, as the name menu does) and select the clip, with its pair.
+        async showClip(edit, clip = null) {
+            if (closing || disposed || !edit) return false;
+            if (state.record.id !== edit) await switchProject(edit);
+            if (state.record.id !== edit) return false;
+            const found = clip && model.find(state.record, clip);
+            if (found) { state.seek(found.start); state.select({kind: 'clip', ids: model.pair(state.record, found.id).map(member => member.id)}); }
+            return true;
+        },
         async switchView(view) {
             if (closing || disposed || view === 'editor') return;
             leaveTo = view;
@@ -2537,8 +2594,15 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         // progress and the job watchers go on, so coming back needs nothing redrawn. The import list waits (it is
         // read again on coming back), unless an import it waits for is still on its way.
         kept: false, panel,
-        reopen() {
+        reopen(next = panel) {
             handle.kept = false;
+            // Back from another view: the progress words are read from the creation panel it came back by (none from a
+            // view without one), as a view opened from there would read them.
+            if (next !== panel && next.progressElement !== panel.progressElement) {
+                for (const key of ['progressElement', 'progressSnapshot', 'progressWords']) { if (next[key]) panel[key] = next[key]; else delete panel[key]; }
+                watchProgress();
+                if (mostRecentJob && jobStatuses.has(mostRecentJob)) genbar?.update(barJob(jobStatuses.get(mostRecentJob)));
+            }
             // A blank edit of this tab that nothing was done in follows the creation panel's quality as it is now: a level
             // chosen there while this view was away applies here too, as one chosen here goes there. An edit with parts,
             // a saved one, or one with a part queued or generating keeps its own settings. The blank edit stays unsaved.
@@ -2553,13 +2617,21 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             // What the last switch left on the dialog (its fade, the leaving mark) goes, so it shows as it was.
             element.getAnimations?.().forEach(animation => animation.cancel());
             delete element.dataset.closing; delete element.dataset.fvLeaving;
-            // Keys go to the last open dialog in page order: move it after one opened since (moving resets scrolling, so only then).
+            const scrolled = editorViews.get(state.record.id || viewKey)?.scrollLeft;
+            // Taking the bar back may first make the creation panel (parked, out of sight), which says another view came
+            // to the front while this one was still closed: the view is reachable again only after that.
+            attachBar?.(); library?.resume?.();
+            // Keys go to the last open dialog in page order: move it after one opened since, the parked panel still closing
+            // included, so it is in front at once and nothing moves it again (moving resets scrolling, so only then).
             const later = [...document.querySelectorAll('dialog[open]')].some(dialog => dialog !== element && element.compareDocumentPosition(dialog) & Node.DOCUMENT_POSITION_FOLLOWING);
             if (!element.isConnected || later) document.body.append(element);
             element.inert = false;
-            attachBar?.(); library?.resume?.();
             if (!element.open) element.showModal();
+            // The timeline shows where it was left (a moved or closed view can come back at its start).
+            if (tracks && Number.isFinite(scrolled) && tracks.getScrollLeft() !== scrolled) tracks.setScrollLeft(scrolled);
             viewChanged('editor'); globalThis.FreeVideoStageLight?.refresh();
+            // An edit still being read goes on loading; a loaded one is read again for what changed meanwhile.
+            if (loaded) handle.ready = catchUp();
             // The tab takes focus after the first frame: focusing now would lay the whole view out a second time before it shows.
             const given = document.activeElement;
             requestAnimationFrame(() => setTimeout(() => {
@@ -2664,13 +2736,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             api.addEventListener('execution_error', executionError);
             listeners.push(() => api.removeEventListener('execution_error', executionError));
         }
-        if (panel.progressElement && typeof MutationObserver !== 'undefined') {
-            progressObserver = new MutationObserver(() => {
-                for (const job of jobStatuses.values()) paintJob(job);
-                if (mostRecentJob && jobStatuses.has(mostRecentJob)) genbar?.update(barJob(jobStatuses.get(mostRecentJob)));
-            });
-            progressObserver.observe(panel.progressElement, {subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['aria-valuenow', 'hidden']});
-        }
+        watchProgress();
         const bar = tracks.element.querySelector('.fv-ed-track-zoom');
         if (bar) { zoomHost.append(bar); updateZoom(); }
         for (const [id, value] of progress) tracks.setProgress(id, value);
@@ -2729,7 +2795,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 if (closing || disposed || !element.open) return;
                 const others = Array.isArray(rows) && rows.some(row => row.id !== state.record.id);
                 notify(t('The last edit could not be found, so a blank edit is open.', '找不到上次的剪辑，已打开空白剪辑。')
-                    + (others ? t(' Click the edit name at the top to open another edit.', '点击顶部的剪⁠辑⁠名可打开其他剪辑。') : ''));
+                    + (others ? t(' Click the edit name at the top to open another edit.', '点击顶部的剪辑名可打开其他剪辑。') : ''));
                 notices.lastElementChild?.setAttribute('data-lost-last', '');
             });
         }

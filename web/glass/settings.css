@@ -490,7 +490,7 @@ dialog.fv-set .st-search input:focus-visible{outline:none}
 @media (pointer:coarse){dialog.fv-set .st-search{height:var(--fv-touch)}}
 
 /* Interface language (language_picker.js): a button with the globe and the language's own name, and its list.
-   Sizes and colours from Iris's visual final (review/i18n/language-switch.md, 11-24); the launcher uses the same. */
+   The launcher uses the same sizes and colours. */
 dialog.fv-set .st-lang{position:relative;flex:none}
 dialog.fv-set .st-lang-btn{display:inline-flex;align-items:center;gap:var(--fv-sp-8);height:32px;padding:0 var(--fv-sp-12);
   border:0;border-radius:8px;background:var(--fv-ctl-bg);box-shadow:inset 0 0 0 1px var(--fv-line);color:var(--fv-fg);font:inherit;cursor:pointer}
@@ -524,3 +524,13 @@ dialog.fv-set .st-lang-opt[aria-selected=true]{background:var(--fv-accent-soft);
 dialog.fv-set .st-lang-opt[aria-selected=true] .st-lang-mark{visibility:visible}
 dialog.fv-set .st-lang-none{padding:var(--fv-sp-8) 0;color:var(--fv-fg3);text-align:center}
 :root[data-theme=light] dialog.fv-set .st-lang-pop{box-shadow:0 0 0 1px var(--fv-line2),0 14px 36px rgb(30 40 60 / .18)}
+
+/* Removing an image model (Settings › Models): the confirmation opens under its row; the key that deletes is red. */
+dialog.fv-set .st-btn.is-danger{background:#d93f45;color:#fff}
+dialog.fv-set .st-btn.is-danger:not(:disabled):hover{background:#c5353b;color:#fff}
+dialog.fv-set .st-btn[aria-disabled=true]{opacity:.45;cursor:default}
+dialog.fv-set .st-confirm{margin:0 14px 12px 58px;padding:12px 14px;border-radius:10px;border:1px solid rgb(229 72 77 / .45);background:rgb(229 72 77 / .10);display:flex;flex-direction:column;gap:10px}
+dialog.fv-set .st-confirm[hidden]{display:none}
+dialog.fv-set .st-confirm p{margin:0;font-size:13px;line-height:1.5;overflow-wrap:anywhere}
+dialog.fv-set .st-confirm .st-keys{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+@media (max-width:520px){dialog.fv-set .st-confirm{margin-left:14px}}

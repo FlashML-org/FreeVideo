@@ -1,6 +1,6 @@
 """Optional, file-backed depth and line references. Torch lives only in a disposable worker.
 
-Depth: Small's vendored Apache-2.0 network and preprocessing follow Quinn's fixed
+Depth: Small's vendored Apache-2.0 network and preprocessing follow a fixed
 DAV2 experiment. Lines: a drawing of the clip's edges, made on the CPU with no model.
 Cache identity deliberately excludes prompt, seed and K.
 """
@@ -243,7 +243,7 @@ def _load_model(weights, device):
 
 
 def _clay_relief(gray):
-    """Render quantized, near-bright depth with Quinn's fixed shade.py recipe.
+    """Render quantized, near-bright depth with a fixed shade.py recipe.
 
     SciPy's default Gaussian uses sigma=3, radius=12 and half-sample symmetric
     reflection (including the edge pixel). Torch's reflect pad excludes that

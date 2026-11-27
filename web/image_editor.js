@@ -1146,7 +1146,7 @@ async function openImageEditorNow({source = null, name = source || '', target = 
             commitInserted(commands.addImageLayer(doc, {src: file, nw: img.naturalWidth, nh: img.naturalHeight,
                 name: label || file.split('/').pop()}));
             if (!keepTool) select('move');
-        } catch { message(t('The image could not be added. Choose another one.', '图片没能添加，请换一张。'), ['Image editor', '图片编辑器']); }
+        } catch { message(t('The image could not be added. Choose another one.', '图片未能添加，请换一张。'), ['Image editor', '图片编辑器']); }
     }
     filePicker.onchange = async () => {
         const file = filePicker.files?.[0]; filePicker.value = '';
@@ -1158,7 +1158,7 @@ async function openImageEditorNow({source = null, name = source || '', target = 
             else { const result = await upload(file); name = typeof result === 'string' ? result : result?.file; }
             done(); await addImageLayer(name, file.name);
         }
-        catch (error) { message(userMessage(error, t, t('Could not upload. Try again.', '没能上传，请重试。')), ['Image editor upload', '图片编辑器上传'], error); }
+        catch (error) { message(userMessage(error, t, t('Could not upload. Try again.', '未能上传，请重试。')), ['Image editor upload', '图片编辑器上传'], error); }
     };
     function duplicateLayer() {
         const layer = active();
@@ -1390,7 +1390,7 @@ async function openImageEditorNow({source = null, name = source || '', target = 
         if (layer) commit(pixelCommand(doc, layer.id, d => commands.fillSelection(d, layer.id, color, selection)));
     }
     function clearSelection() {
-        if (!selection) { message(t('Nothing is selected.', '还没有选区。')); return; }
+        if (!selection) { message(t('Nothing is selected.', '尚无选区。')); return; }
         const layer = pixelLayer();
         if (layer && selection) commit(pixelCommand(doc, layer.id, d => commands.clearSelection(d, layer.id, selection)));
     }
@@ -1966,7 +1966,7 @@ async function openImageEditorNow({source = null, name = source || '', target = 
             const works = await saveToWorks(blob, {name: named, source: source || null, client: genClient}).catch(() => null);
             close({blob, name: named, edit: doc, width, height, ...(works ? {works} : {})});
         } catch {
-            message(t('The image could not be saved. Try a smaller canvas or reload the page.', '图片没能保存，请缩小画布或刷新页面后重试。'), ['Image editor save', '图片编辑器保存']);
+            message(t('The image could not be saved. Try a smaller canvas or reload the page.', '图片未能保存，请缩小画布或刷新页面后重试。'), ['Image editor save', '图片编辑器保存']);
             save.disabled = cancel.disabled = false;
         }
     }

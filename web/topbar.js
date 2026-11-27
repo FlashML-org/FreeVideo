@@ -86,7 +86,7 @@ function ringSVG() {
 // The notification centre's unread count (palette's notifications.js), when it is there.
 let notices = null, promptJob = null;
 
-// The first time a notice is unread, a one-time hint under the capsule says the notices are there (Parker N2). It goes
+// The first time a notice is unread, a one-time hint under the capsule says the notices are there. It goes
 // for good once "Got it" or the capsule is pressed (kept in this browser).
 const HINT_KEY = 'freevideo.topbar.noticeHint';
 let hint = null;
@@ -522,7 +522,7 @@ export function topbarActions(t = t0) {
     const search = paletteButton(t, 'fv-tb-btn fv-tb-search'); withIcon(search, 'search'); search.replaceChildren(); tip(search, ...w.search);
     search.dataset.fvField = t('Search creations, prompts and actions', '搜索作品、提示词和操作');
     const sep = el('span', 'fv-tb-sep'); sep.setAttribute('aria-hidden', 'true');
-    // The works library is one click away in every view and at every width: never folded into the menu (CEO 11-17).
+    // The works library is one click away in every view and at every width: never folded into the menu.
     // It is a link like the five beside it (same box, icon, hover), kept out of the phone menu so it stays on the bar.
     const works = el('button', 'fv-tb-link fv-tb-works'); works.type = 'button'; withIcon(works, 'works'); tip(works, ...w.works);
     works.append(el('span', 'fv-tb-lbl', w.works[0])); works.setAttribute('aria-label', w.works[0]);
@@ -672,7 +672,7 @@ function slide(group) {
     if (!group.hasAttribute('data-fv-tb-ink')) { void getComputedStyle(group, '::before').clipPath; group.setAttribute('data-fv-tb-ink', ''); }
 }
 
-// The capsule is as wide as what it says (Iris W6: a fixed width left "Ready" in an empty pill); its figures sit in
+// The capsule is as wide as what it says (a fixed width left "Ready" in an empty pill); its figures sit in
 // fixed digit slots so a changing number never changes its width, and the bar refits when its words change.
 // The capsule fits its content (no reserved minimum: a wide pill around "Waiting 1" looked unfinished).
 function reserveCapsule(header) { header.style.removeProperty('--fv-tb-cap-w'); header.style.removeProperty('--fv-tb-cap-min'); }

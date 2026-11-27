@@ -22,7 +22,7 @@ import { skinSelect } from './fv_select.js';
 import { loraMenu } from './lora_menu.js';
 import { createPreviewScene } from './preview_scene.js?v=20261115-still';
 import { animateDetails, closeDialog } from './motion.js';
-import { openLibrary, setDefaultUpscale, setDefaultUpscaleWork, videoThumbnailURL, admittedFrames } from './library.js';
+import { openLibrary, setDefaultUpscale, setDefaultUpscaleWork, videoThumbnailURL, admittedFrames, upscaleTimes } from './library.js';
 import { createUpscaleOffer, upscaleChoices, UPSCALE_USE, UPSCALE_QUEUED, UPSCALE_FAILED } from './upscale_offer.js';
 import { createStudioQueue, randomSeed, turnNodeOn } from './studio_queue.js';
 import { isNetworkTypeError, connectionLostText, wrappedFetchOnly } from './browser_extension.js';
@@ -50,7 +50,7 @@ import { attach as attachPlayer } from './glass/player_bar.js';
 import { enlarged, toggleEnlarge } from './video_enlarge.js';
 import { framesOf, savedPrompt, savedSettings } from './result_reuse.js';
 import { addVideoLabel, addVideoModel, missingVideoText, videoModelState } from './video_model.js';
-import { createPromptEnhancer } from './prompt_enhance.js';
+import { createPromptEnhancer, queueBusyWhy } from './prompt_enhance.js';
 import { requestText, shownRewrite } from './prompt_sections.js';
 import { createRequestAssets, enabledLoras, referenceFiles } from './request_assets.js';
 import { promptDraftTrouble, rememberPromptDraft, restorePromptDraft, savePromptDraft, trackPromptDraft, watchPromptDraftTrouble } from './prompt_draft.js';
@@ -78,6 +78,7 @@ import { createPassMode } from './pass_mode.js';
 import { createConsole, durationStepper, tip, glyph } from './studio_console.js';
 import { createStageBar } from './studio_stage.js';
 import { confirmStop, startJobSources } from './task_float.js';
+import { queuedRewriteWords, rewrittenTip } from './task_store.js';
 import { resultEffort, effortName } from './sampling_effort.js';
 import { createPromptLibrary, rememberPrompt } from './prompt_library.js';
 import { createCompare, COMPARE_ICON } from './studio_compare.js';
@@ -183,7 +184,7 @@ function createChainPartList(t, save, {onShow = () => {}, onHide = () => {}, red
             // A redo refused for its changed settings is told on the card; its line stays the short one.
             const said = error.code === 'redo_request_changed' ? null : error.said || error.cause?.said;
             if (rows.get(row.part.id) === row) flash(row, said ? t(...said)
-                : t('Could not start. See the details on the picture.', '没能开始，原因见画面上的说明。'), 'error');
+                : t('Could not start. See the details on the picture.', '未能开始，原因见画面上的说明。'), 'error');
             onError(error);
         } finally { row.starting = false; row.redo.disabled = false; }
     }
@@ -206,8 +207,8 @@ function createChainPartList(t, save, {onShow = () => {}, onHide = () => {}, red
             row.saving = null;
             if (rows.get(row.part.id) !== row) return;
             row.part = {...row.part, text: before}; draw(row);
-            flash(row, error.status === 409 ? t('This part is already generating. Your edit was not saved.', '这一段已在生成，改动没有保存')
-                : t('Your edit was not saved.', '改动没有保存'), 'error');
+            flash(row, error.status === 409 ? t('This part is already generating. Your edit was not saved.', '这一段已在生成，改动未能保存')
+                : t('Your edit was not saved.', '改动未能保存'), 'error');
         }
     }
     function open(row) {
@@ -275,7 +276,7 @@ function createChainPartList(t, save, {onShow = () => {}, onHide = () => {}, red
                 // The part began while it was open: the words typed so far cannot reach it. A video that ended just closes it.
                 const changed = row.draft !== row.part.text;
                 editing = null; row.part = part; draw(row);
-                if (changed && active) flash(row, t('This part is already generating. Your edit was not saved.', '这一段已在生成，改动没有保存'), 'error');
+                if (changed && active) flash(row, t('This part is already generating. Your edit was not saved.', '这一段已在生成，改动未能保存'), 'error');
                 return;
             }
             if (editing === row) { row.part = {...part, text: row.part.text}; return; }
@@ -585,7 +586,7 @@ export function loraPanel(node, panel, {promptNode = null} = {}) {
                 else check(false);
                 list.append(wrap);
                 if (list.isConnected) restoreStrengthNote();
-                loadTriggers(row.name).catch(error => { if (!disposed && trigger.isConnected) note.textContent = userMessage(error, t, t('Could not read the trigger words. Try again.', '没能读取触发词，请重试。')); });
+                loadTriggers(row.name).catch(error => { if (!disposed && trigger.isConnected) note.textContent = userMessage(error, t, t('Could not read the trigger words. Try again.', '未能读取触发词，请重试。')); });
             });
             if (rows.length > 1) actions.append(clear);
             if (focusGrip != null) { list.querySelector(`.fv-lora-row[data-index="${focusGrip}"] .fv-lora-grip`)?.focus(); focusGrip = null; }
@@ -729,11 +730,28 @@ export async function openExtendEditor(record, node = current?.node || app.graph
         node = app.graph?._nodes?.find(row => row.type === 'FreeVideoGenerate');
         if (!node) {
             node = globalThis.LiteGraph?.createNode('FreeVideoGenerate');
-            if (!node || !app.graph) throw new Error(t('Could not open the creative panel. Try again.', '没能打开创作面板，请重试。'));
+            if (!node || !app.graph) throw new Error(t('Could not open the creative panel. Try again.', '未能打开创作面板，请重试。'));
             app.graph.add(node); app.graph.change?.();
         }
     }
     const handle = await openEditorView(node, {studio, work: record, extend: true, isCurrent});
+    await handle?.ready;
+    return handle;
+}
+
+// The edit view on a saved edit with one clip selected ({edit, clip}), from Creations: the same node as Extend uses.
+export async function openEditEditor(target, node = current?.node || app.graph?._nodes?.find(row => row.type === 'FreeVideoGenerate'),
+    {studio = current?.node === node ? current?.dialog : undefined, isCurrent} = {}) {
+    if (isCurrent?.() === false) return null;
+    if (!node || !app.graph?._nodes?.includes(node)) {
+        node = app.graph?._nodes?.find(row => row.type === 'FreeVideoGenerate');
+        if (!node) {
+            node = globalThis.LiteGraph?.createNode('FreeVideoGenerate');
+            if (!node || !app.graph) throw new Error(t('Could not open the creative panel. Try again.', '未能打开创作面板，请重试。'));
+            app.graph.add(node); app.graph.change?.();
+        }
+    }
+    const handle = await openEditorView(node, {studio, edit: target, isCurrent});
     await handle?.ready;
     return handle;
 }
@@ -846,19 +864,19 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const tourFault = (reason, error) => {
         const missing = /^missing_example_asset:/.test(String(error?.message || ''));
         const say = {
-            busy: ['A video is being made. Try the example when it finishes.', '正在生成，完成后再试示例'],
-            linked: ['Some settings this example needs are connected to other nodes, so it cannot fill them in. Disconnect those links in the node view, then try again.', '示例要改的设置已连到别的节点，无法填入；在节点视图断开这些连线后再试'],
-            unavailable: ['The current model cannot use this example\'s settings.', '当前模型用不了这个示例的设置'],
-            asset: missing ? ['An example file is missing from this installation. Select "Repair" under Settings > Environment, then try again.', '示例素材不在本机安装里，在“设置 → 环境”里点“修复”后重试']
-                : ['The example files could not be read from FreeVideo. Check that FreeVideo is still running, then try again.', '没能从 FreeVideo 读取示例素材，确认 FreeVideo 仍在运行后再试'],
+            busy: ['A video is being made. Try the example when it finishes.', '正在生成视频，完成后再使用示例。'],
+            linked: ['Some settings this example needs are connected to other nodes, so it cannot fill them in. Disconnect those links in the node view, then try again.', '示例需要修改的设置已连接到其他节点，无法填入。请在节点视图中断开这些连线后重试。'],
+            unavailable: ['The current model cannot use this example\'s settings.', '当前模型无法使用这个示例的设置'],
+            asset: missing ? ['An example file is missing from this installation. Select "Repair" under Settings > Environment, then try again.', '本机安装中缺少示例素材。请在“设置 → 环境”中点击“修复”后重试。']
+                : ['The example files could not be read from FreeVideo. Check that FreeVideo is still running, then try again.', '未能从 FreeVideo 读取示例素材。请确认 FreeVideo 仍在运行后重试。'],
             write: ['The example files could not be added to this panel\'s media list. Try again.', '示例素材未能加入这个面板的素材列表，请重试。'],
-            workspace_changed: ['Another view was opened, so the example was not filled in. Go back to the creation panel and try again.', '已切到别的视图，示例没有填入，回到创作面板再试'],
-            no_editor: ['The editor did not open, so the start clip was not placed. Open the editor, then select the example again.', '剪辑视图没有打开，起始片段没有放上去；打开剪辑视图后再点一次示例'],
-            'pending-assets': ['This example is not available yet.', '这个示例暂时不能用'],
-            unknown_example: ['This example is not available yet.', '这个示例暂时不能用'],
+            workspace_changed: ['Another view was opened, so the example was not filled in. Go back to the creation panel and try again.', '已切换到其他视图，示例未能填入。请回到创作面板后重试。'],
+            no_editor: ['The editor did not open, so the start clip was not placed. Open the editor, then select the example again.', '剪辑视图未能打开，起始片段未能放入。请打开剪辑视图后重新选择示例。'],
+            'pending-assets': ['This example is not available yet.', '这个示例暂不可用。'],
+            unknown_example: ['This example is not available yet.', '这个示例暂不可用。'],
         }[reason];
         const detail = String(error?.message || error || '').split('\n')[0].slice(0, 160);
-        fault(say ? t(...say) : detail ? t('The example was not filled in: {detail}', '示例没有填入：{detail}', { detail }) : t('The example was not filled in.', '示例没有填入'));
+        fault(say ? t(...say) : detail ? t('The example was not filled in: {detail}', '示例未能填入：{detail}', { detail }) : t('The example was not filled in.', '示例未能填入'));
     };
     const tourBlock = example => busy || queued || capturing ? 'busy'
         : (example.prompt && linked(node, 'text')) || Object.keys(example.settings || {}).some(name => linked(node, name)) ? 'linked' : 'unavailable';
@@ -999,13 +1017,18 @@ export function openStudio(node, {extendFrom = null} = {}) {
     openCastLibrary({api, text: t, viewURL: view, uploadOne: castUpload, kind: 'prop', onChange: () => { references.refresh(); }})
         .then(library => { if (disposed) library?.destroy?.(); else propLibrary = library; });
     let requestAssets = null, rewriteSubjects = [];
-    const enhancer = createPromptEnhancer({node, input: prompt, editor: promptEditor, api, t, starter, issueButton,
+    // Set once the panel is built: changes from the enhancer redraw the time beside Generate from then on.
+    let estimateLive = false, queueRewriteCase = 'now';
+    // Why the Rewrite key waits: set once the queue state below exists.
+    let enhanceBusy = () => '';
+    const enhancer = createPromptEnhancer({node, input: prompt, editor: promptEditor, api, t, starter, issueButton, busyReason: line => enhanceBusy(line),
         // One rewrite runs at a time, so the subjects of the text it was given are the ones its numbers refer to.
         prepare: text => { const out = expandCast(timedRun() ? timedText(text, Number(value(node, 'seconds'))) : text, mediaRows(node), {continued: Boolean(extension.source)}); rewriteSubjects = out.subjects; return out.text; },
         restore: text => restoreCast(text, rewriteSubjects), display: text => shownRewrite(text, t('en', 'zh')) ?? text,
         // The rewrite has its own report; the video's report entry is not touched.
         onReport: row => { node.freevideoPromptReportId = row.rewrite_report_id || row.report_id; },
-        onChange: () => { rememberPromptDraft(api, node); requestAssets?.refresh(); },
+        // Enhancement on or off, the original chosen, a new rewrite: the time beside Generate counts the rewrite or not.
+        onChange: () => { rememberPromptDraft(api, node); requestAssets?.refresh(); if (estimateLive) refreshEffortEstimate(); },
         setText: text => { set(node, 'text', text || (untouched() ? starter : '')); placeholder(); castOverlay.refresh(); announceCast(); }, context: () => {
         const media = enhancementMedia(referenceItems(node), linked(node, 'conditioning'));
         return {seconds: Number(value(node, 'seconds')), media};
@@ -1092,7 +1115,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         if (![...mp.options].some(option => Number(option.value) === pixels)) { const option = el('option', `${pixels.toFixed(2)} MP`); option.value = pixels; mp.append(option); }
         mp.value = String(pixels);
         try { applySize(); if (pixels !== 1) legacyOption?.remove(); status.dataset.error = 'false'; }
-        catch (error) { pixels = previous; mp.value = String(previous); syncResolutionLabel(); status.dataset.error = 'true'; status.textContent = userMessage(error, t, t('Could not change the resolution. Try again.', '没能更改清晰度，请重试。')); }
+        catch (error) { pixels = previous; mp.value = String(previous); syncResolutionLabel(); status.dataset.error = 'true'; status.textContent = userMessage(error, t, t('Could not change the resolution. Try again.', '未能更改清晰度，请重试。')); }
     }
     for (const preset of PRESET_PIXELS) {
         const mark = button(String(preset), () => choosePixels(preset), 'fvs-res-tick');
@@ -1150,7 +1173,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const passControl = createPassMode({t, onChoose: mode => choosePassMode(mode), listen: listenDialogKey});
     const passMode = passControl.element;
     cleanup.push(passControl.dispose);
-    const fastRowWords = () => fastParts() ? t('Each part runs a second pass', '每段使用二采') : t('Fast uses one pass', '极⁠速⁠档一次生成');
+    const fastRowWords = () => fastParts() ? t('Each part runs a second pass', '每段使用二采') : t('Fast uses one pass', '极速档一次生成');
     const previewPassHint = t('Stops at a lower-resolution preview. Choose "Run second pass" in the result when it looks right; the video matches a direct run.',
         '先出低分辨率预览，满意后在结果里点“继续二采”，成片与直接生成一致。');
     twoPassLabel.append(el('span', t('Second pass', '二采')), twoPassStatus, passMode);
@@ -1287,7 +1310,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     }
     function passState() {
         if (fastOn()) return {mode: fastParts() ? 'on' : 'off', disabled: {off: true, on: true, preview: true}, hidden: {preview: !widget(node, 'preview')}, hint: '',
-            why: fastParts() ? fastRowWords() : t('Fast makes the full size in one pass. Choose another level to use it.', '极⁠速⁠档一次生成全分辨率。选其他档位后可用。')};
+            why: fastParts() ? fastRowWords() : t('Fast makes the full size in one pass. Choose another level to use it.', '极速档一次生成全分辨率。选其他档位后可用。')};
         const passLinked = linked(node, 'two_pass'), previewLinked = linked(node, 'preview');
         return {mode: !twoPass.checked ? 'off' : previewFirst.checked ? 'preview' : 'on',
             disabled: {off: Boolean(extension.source) || passLinked || !widget(node, 'two_pass'), on: twoPass.disabled,
@@ -1570,10 +1593,33 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // The Fast level where the chosen size and length do not fit (capabilities.fast_mode): why, and the ways out. A video
     // made in parts is sampled at Light, so this is about one run only.
     // Declared, not assigned: a saved Fast setting asks for the estimate while the panel is still being built.
-    function fastCell() { return fastOn() && !(lengthControl?.plan?.count > 1) ? capabilityView?.fast?.() ?? null : null; }
+    function fastCell() { return fastOn() && !(lengthControl?.plan?.count > 1) ? capabilityView?.fast?.(rewriteExtra()) ?? null : null; }
+    // Seconds the next Generate spends rewriting the prompt first (prompt_vlm/timing.py), counted in the time beside it.
+    // While a task runs the rewrite waits for this request's turn, and the tasks waiting for one are rewritten together
+    // (queued_rewrite.py): one already waiting means this request joins its batch, so only the first of a batch counts
+    // it, cold (the page's prestart is not that worker's).
+    // A waiting row that still carries its rewrite request (or is marked waiting in a batch) is rewritten in the same batch
+    // as the next one, so only the first queued task counts the rewrite.
+    function rewriteJoins(state) { return (state?.pending || []).some(row => row?.rewrite || row?.enhance?.state === 'waiting'); }
+    function rewriteExtra() {
+        let running = false;
+        try { running = busy; } catch { /* asked while the panel is still being built: nothing runs yet */ }
+        if (!running) return enhancer?.rewriteSeconds?.() || 0;
+        if (rewriteJoins(queueState)) return 0;
+        return enhancer?.rewriteSeconds?.({queued: true}) || 0;
+    }
+    // The time's tip says how much of it is the rewrite: "{seconds} s" to the nearest 5 under a minute, else whole minutes.
+    // joined: after " · " in Generate's hover card, where English goes on in lower case.
+    function rewriteTip(seconds, joined = false) {
+        if (!(seconds > 0)) return '';
+        const time = seconds < 60 ? t('{seconds} s', '{seconds} 秒', { seconds: Math.max(5, Math.round(seconds / 5) * 5) })
+            : t('{minutes} min', '{minutes} 分钟', { minutes: Math.round(seconds / 60) });
+        return joined ? t('includes about {time} to rewrite the prompt', '含改写提示词约 {time}', { time })
+            : t('Includes about {time} to rewrite the prompt', '含改写提示词约 {time}', { time });
+    }
     function fastShortfall() { const cell = fastCell(); return cell && !cell.fits ? cell : null; }
     // Where the page cannot tell yet: 'checking' (the planner's grid is not in) holds the key; 'linked' (the size comes from
-    // another node, so it never can) lets it go, and a refusal then comes back as the failure card (Lane 11-24).
+    // another node, so it never can) lets it go, and a refusal then comes back as the failure card.
     function fastUnknown() {
         // Not listed (no answer from the planner either): it is sent at Light, so nothing waits. A Mac's answer is the
         // listing alone (fast_only, no sizes), as for every level there: nothing waits, and the Mac's own admission
@@ -1583,8 +1629,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     }
     function fastUnknownWords(kind) {
         return kind === 'linked'
-            ? t('The size comes from a connected node, so the Fast level is checked when you generate.', '宽高来自连接的节点，生成时再确认极\u2060速\u2060档能否生成。')
-            : t('Checking whether the Fast level can make this video…', '正在检查极\u2060速\u2060档能否生成这个视频…');
+            ? t('The size comes from a connected node, so the Fast level is checked when you generate.', '宽高来自连接的节点，生成时再确认极速档能否生成。')
+            : t('Checking whether the Fast level can make this video…', '正在检查极速档能否生成这个视频…');
     }
     function fastWays(cell) {
         const ways = [];
@@ -1605,17 +1651,17 @@ export function openStudio(node, {extendFrom = null} = {}) {
         // Whole sentences for each shortage, so a language whose words change with the noun can say each its own way.
         if (fastWays(cell)[0].id === 'size') return {
             vram: () => t('This computer does not have enough graphics memory for the Fast or Light level at this size. Use a smaller size, then generate again.',
-                '这台电脑的显存不足以用极\u2060速\u2060档或轻\u2060量\u2060档生成这个尺寸的视频。请缩小尺寸后重新生成。'),
+                '这台电脑的显存不足以用极速档或轻量档生成这个尺寸的视频。请缩小尺寸后重新生成。'),
             ram: () => t('This computer does not have enough memory for the Fast or Light level at this size. Use a smaller size, then generate again.',
-                '这台电脑的内存不足以用极\u2060速\u2060档或轻\u2060量\u2060档生成这个尺寸的视频。请缩小尺寸后重新生成。'),
+                '这台电脑的内存不足以用极速档或轻量档生成这个尺寸的视频。请缩小尺寸后重新生成。'),
             either: () => t('This computer does not have enough graphics memory or memory for the Fast or Light level at this size. Use a smaller size, then generate again.',
-                '这台电脑的显存或内存不足以用极\u2060速\u2060档或轻\u2060量\u2060档生成这个尺寸的视频。请缩小尺寸后重新生成。'),
+                '这台电脑的显存或内存不足以用极速档或轻量档生成这个尺寸的视频。请缩小尺寸后重新生成。'),
         }[kind]();
         const s = Number(seconds.value);
         return {
-            vram: () => t('This computer does not have enough graphics memory for the Fast level at {seconds} s.', '这台电脑的显存不足以用极\u2060速\u2060档生成 {seconds} 秒视频。', { seconds: s }),
-            ram: () => t('This computer does not have enough memory for the Fast level at {seconds} s.', '这台电脑的内存不足以用极\u2060速\u2060档生成 {seconds} 秒视频。', { seconds: s }),
-            either: () => t('This computer does not have enough graphics memory or memory for the Fast level at {seconds} s.', '这台电脑的显存或内存不足以用极\u2060速\u2060档生成 {seconds} 秒视频。', { seconds: s }),
+            vram: () => t('This computer does not have enough graphics memory for the Fast level at {seconds} s.', '这台电脑的显存不足以用极速档生成 {seconds} 秒视频。', { seconds: s }),
+            ram: () => t('This computer does not have enough memory for the Fast level at {seconds} s.', '这台电脑的内存不足以用极速档生成 {seconds} 秒视频。', { seconds: s }),
+            either: () => t('This computer does not have enough graphics memory or memory for the Fast level at {seconds} s.', '这台电脑的显存或内存不足以用极速档生成 {seconds} 秒视频。', { seconds: s }),
         }[kind]();
     }
     function refreshFast() { showEffortEstimate(); if (qualityChip.element.isConnected) qualityChip.place(); }
@@ -1624,7 +1670,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         if (!arguments.length && fastOn()) {
             // Its time where the planner has one; a video made in parts is sampled at Light.
             const cell = fastCell();
-            effort.setEstimate(cell?.fits ? cell.estimate : '');
+            effort.setEstimate(cell?.fits ? cell.estimate : '', cell?.fits && cell.estimate ? rewriteTip(rewriteExtra()) : '');
             // In the three-column Quality section this sentence is the level's own line, under the levels (sayLevel), so the
             // levels do not move; the Quality window keeps it above them.
             if (lengthControl.plan?.count > 1) { if (!levelsInColumn()) effort.setWarning(fastPartsWords()); }
@@ -1654,9 +1700,10 @@ export function openStudio(node, {extendFrom = null} = {}) {
                 : t('{count} parts', '分 {count} 段', { count: plan.count }), '', plan.count);
             return;
         }
-        const rangeEstimate = capabilityView?.estimate(steps, twoPassPlan, arguments.length ? 3 : Number(refineSteps.value), cache, factor);
+        const rewriting = rewriteExtra();
+        const rangeEstimate = capabilityView?.estimate(steps, twoPassPlan, arguments.length ? 3 : Number(refineSteps.value), cache, factor, rewriting);
         if (rangeEstimate) {
-            effort.setEstimate(rangeEstimate);
+            effort.setEstimate(rangeEstimate, rewriteTip(rewriting));
             effort.setWarning(capabilityView.warning(steps, twoPassPlan, arguments.length ? 3 : Number(refineSteps.value), cache, factor));
             return;
         }
@@ -1668,12 +1715,12 @@ export function openStudio(node, {extendFrom = null} = {}) {
             effort.setEstimate('', t('No estimate is available for these settings.', '当前设置暂无预计用时。'));
             return;
         }
-        const minutes = estimate.high_seconds >= 90, scale = minutes ? 60 : 1;
-        const low = Math.max(1, Math.floor(estimate.low_seconds / scale));
-        const high = Math.max(low + 1, Math.ceil(estimate.high_seconds / scale));
+        const minutes = estimate.high_seconds + rewriting >= 90, scale = minutes ? 60 : 1;
+        const low = Math.max(1, Math.floor((estimate.low_seconds + rewriting) / scale));
+        const high = Math.max(low + 1, Math.ceil((estimate.high_seconds + rewriting) / scale));
         const unit = minutes ? t('min', '分钟') : t('s', '秒');
         const extra = estimate.includes_text_encoding ? '' : t(' + prompt', ' + 提示词准备');
-        effort.setEstimate(`${t('~', '约 ')}${low}–${high} ${unit}${extra}`);
+        effort.setEstimate(`${t('~', '约 ')}${low}–${high} ${unit}${extra}`, rewriteTip(rewriting));
     }
     function refreshEffortEstimate(force = false) {
         capabilityView?.update();
@@ -2020,8 +2067,32 @@ export function openStudio(node, {extendFrom = null} = {}) {
     }
     const previewObserver = new ResizeObserver(fitPreview);
     previewObserver.observe(output); cleanup.push(() => previewObserver.disconnect());
+    // The queued-rewrite batch's line while the preview shows it.
+    let rewriteShown = null;
+    // While a task runs, a work picked in the right column stays on the stage with its actions (Run second pass among
+    // them): the run's progress is kept (heldProgress) and comes back when the person returns to it (the column's
+    // Generating tile, or the preview the running second pass is made from), or generates again. A result that arrives
+    // meanwhile does not take the stage; picking a work with nothing running ends it too.
+    let browsing = false, heldProgress = null;
+    function leaveRun() {
+        if (browsing) return;
+        browsing = true; hideProgress();
+        window.dispatchEvent(new CustomEvent('freevideo-task-stage-leave', {detail: {view: 'studio', element: stage, id: activePrompt}}));
+    }
+    function endBrowsing() {
+        if (!browsing) return;
+        browsing = false;
+        window.dispatchEvent(new CustomEvent('freevideo-task-stage-return', {detail: {view: 'studio', element: stage, id: activePrompt}}));
+    }
+    function returnToRun() {
+        endBrowsing();
+        if (busy && heldProgress) showProgress(heldProgress);
+    }
     function showProgress(message) {
         phoneAccess.observe(message);
+        heldProgress = message;
+        worksColumn?.setRunning?.({fraction: message?.overall?.fraction ?? 0});
+        if (browsing) return;
         // The bar under the picture says nothing about the run (the top bar's task shows it and its place).
         summaryFor = null; stageBar.setSummary('');
         watchedRun = true; reportTipFor = null; clearTimeout(reportTipTimer);
@@ -2082,7 +2153,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // The result's "⋯" offers the library's upscale rows (upscaleChoices, the same words and conditions): the 4K size at
     // once, the 1.5× step once this computer's answer for that size is known. Asked again for each new video, since free
     // memory may have changed; a row whose condition is not met is not shown.
-    const upscaleOffer = createUpscaleOffer(admittedFrames);
+    const upscaleOffer = createUpscaleOffer(admittedFrames, upscaleTimes);
     let upscaleAsked = null;
     function upscaleItems(r) {
         if (typeof node.freevideoUpscaleWork !== 'function') return [];
@@ -2090,7 +2161,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
             const item = el('button', null, 'fv-action fv-action-secondary fv-action-upscale fv-more-item');
             item.type = 'button'; item.dataset.upscale = choice.id;
             item.append(icon('upscale'), el('span', t(...choice.label)));
-            item.dataset.fvTipName = t(...choice.label); item.dataset.fvTipUse = t(...UPSCALE_USE);
+            // About how long, where a menu shows a key; what the row is like in its tip.
+            if (choice.note) item.append(el('span', t(...choice.note), 'fv-more-note'));
+            item.dataset.fvTipName = t(...choice.label); item.dataset.fvTipUse = t(...choice.use);
             item.onclick = async () => {
                 const menu = item.closest('details'); if (menu) menu.open = false;
                 try { await node.freevideoUpscaleWork(r, choice.options); notify(t(...UPSCALE_QUEUED)); await syncQueue(); }
@@ -2108,7 +2181,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
             const panel = links.querySelector('.fv-actions .fv-more-menu');
             if (disposed || result !== r || !panel) return;
             const shown = [...panel.querySelectorAll('.fv-action-upscale')], fresh = upscaleItems(r);
-            if (shown.map(e => e.dataset.upscale).join() === fresh.map(e => e.dataset.upscale).join()) return;
+            // Redrawn when a row comes or goes, or its time arrives.
+            const said = rows => rows.map(e => e.dataset.upscale + ':' + e.textContent).join();
+            if (said(shown) === said(fresh)) return;
             shown.forEach(e => e.remove());
             const copy = panel.querySelector('.fv-action-copy');
             if (copy) copy.after(...fresh); else panel.prepend(...fresh);
@@ -2189,7 +2264,11 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // The right column of the three-column layout: the library's videos, the shown video's facts, the queue. The owner's
     // Creations button stands beside its search.
     worksColumn = mountStudioColumn({slot: body.querySelector('.fv-work-column'), shell: body.studioPanels, entry: worksButton,
-        onShow: row => { if (compare.active) compare.close(); showResult(row, {chosen: true}); }, named: row => savedPrompt(api, row),
+        onShow: row => {
+            if (busy && row?.video && row.video === queueState?.running?.inputs?.refine_from) { if (compare.active) compare.close(); returnToRun(); return; }
+            if (compare.active) compare.close(); showResult(row, {chosen: true});
+        }, named: row => savedPrompt(api, row),
+        onRun: () => { if (compare.active) compare.close(); returnToRun(); },
         onPick: rows => {
             if (rows.length === 2) { if (compare.active) compare.close(); compare.open(rows[0], rows[1]); }
             else { if (compare.active) compare.close(); if (rows[0]) showResult(rows[0], {chosen: true}); }
@@ -2263,6 +2342,14 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // chosen: a video picked from Recent videos. It only changes the picture; a run in progress keeps its progress.
     function showResult(r, {chosen = false} = {}) {
         if (!r?.video || disposed) return; result = r; leaveNext();
+        if (chosen && busy) leaveRun(); else if (chosen) endBrowsing();
+        // A queued rewrite that could not be made: the result says so, the prompt box is left alone.
+        // Either the queue said so, or the node generated with a rewrite still attached (r.enhance_fallback). Said once
+        // per request, as the queue's reason is: reopening the panel on the same result does not say it again.
+        const told = node.freevideoEnhanceTold || (node.freevideoEnhanceTold = new Set());
+        const fallback = chosen || told.has(r.request_id) ? undefined : node.freevideoEnhanceFallbacks?.get(r.request_id) ?? r.enhance_fallback;
+        if (fallback !== undefined) { node.freevideoEnhanceFallbacks?.delete(r.request_id); if (r.request_id) told.add(r.request_id); }
+        if (fallback !== undefined) queueMicrotask(() => { if (!disposed && result === r) { status.dataset.error = 'false'; status.textContent = enhancer.queuedFallback(fallback); } });
         worksColumn?.setShown(r); syncPartList();
         refreshEffortEstimate(true);
         // The report belongs to the video that run made; a video picked from Recent videos
@@ -2385,9 +2472,16 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // not fall back to "Generate video" between two reports, e.g. while decoding.
     const LIVE_PROGRESS_MS = 120000;
     let liveProgressAt = 0;
+    // The running video's own estimate of what is left, and when it came: counted down between progress messages.
+    let liveRemaining = null;
+    // Only the running task's own estimate counts: the one for the video before it says nothing about this one.
+    const remainingNow = () => liveRemaining && liveRemaining.task === queueState?.running?.id
+        ? Math.max(0, liveRemaining.seconds - (Date.now() - liveRemaining.at) / 1000)
+        : Number.isFinite(queueState?.running?.progress?.overall?.remaining_seconds) ? queueState.running.progress.overall.remaining_seconds : null;
     const progressLive = () => Date.now() - liveProgressAt < LIVE_PROGRESS_MS;
     let runMode = ['single', 'batch', 'loop'].includes(node.properties?.freevideo_run_mode)
         ? node.properties.freevideo_run_mode : 'single', queueState;
+    enhanceBusy = line => queueBusyWhy(t, queueState, remainingNow(), line);
     if (!studioQueues.has(node)) studioQueues.set(node, createStudioQueue(api, node.id, {
         formatError: (error, snapshot) => createErrorReport(error, {stage: 'submission', snapshot, node, graph: app.graph}),
         // Direct snapshot submission still feeds the same graph result panel.
@@ -2434,10 +2528,11 @@ export function openStudio(node, {extendFrom = null} = {}) {
             syncResume();
             updateRunButton();
         },
-        onResult: (result, outcome) => { node.freevideoLastResult = result; showResult(result, {chosen: outcome.partial});
+        onResult: (result, outcome) => { node.freevideoLastResult = result; if (!browsing) showResult(result, {chosen: outcome.partial});
             if (!outcome.partial) firstStart?.complete(result);
-            // A part that failed keeps its sentence; the part list already marks which ones finished.
-            if (outcome.partial && !outcome.joined && status.dataset.error !== 'true') status.textContent = t('Showing the last completed part.', '正在显示最后完成的一段。'); },
+            // A part that failed keeps its sentence; the part list already marks which ones finished. While another work
+            // is on the stage (browsing) the line would name a part that is not shown, so it waits.
+            if (!browsing && outcome.partial && !outcome.joined && status.dataset.error !== 'true') status.textContent = t('Showing the last completed part.', '正在显示最后完成的一段。'); },
         onError: showPartError});
     cleanup.push(() => chainController.dispose());
     node.freevideoStudioChain = chainController;
@@ -2500,13 +2595,16 @@ export function openStudio(node, {extendFrom = null} = {}) {
     generate.dataset.fvGuide = 'generate'; generate.dataset.tourId = 'generate-btn';
     // Generate reads as one key: what it does, and under it about how long the video takes (the quality's estimate).
     const keyLabel = el('span', null, 'fvs-key-label'), keyEta = el('span', null, 'fvs-key-eta');
-    let keyShowsEta = false, keySetup = false;
+    // keyRewrite: the estimate's own tip when it counts a prompt rewrite ("Includes about … to rewrite the prompt").
+    let keyShowsEta = false, keySetup = false, keyRewrite = '';
     // A one-time note (the first build) is not a standing line: it goes to the key's hover card instead.
     const plainWords = text => text.replace(/\u2060/g, '').replace(/\u00a0/g, ' ').replace(/^ · /, '').trim(), setupWords = plainWords(setupNote(t));
     const setupPart = part => plainWords(part) === setupWords;
     const paintEta = () => {
-        const parts = (effort?.element?.querySelector('.fv-effort-estimate')?.textContent || '').trim().split(' · ').filter(Boolean);
+        const parts = (effort?.element?.querySelector('.fv-effort-estimate')?.textContent || '').trim().split(/ ·[ \u00a0]/).filter(Boolean);  // the setup phrase keeps its dot with a no-break space
         keySetup = parts.some(setupPart);
+        const rewriting = rewriteExtra();
+        keyRewrite = rewriting > 0 ? rewriteTip(rewriting, true) : '';
         // A preview has no estimate of its own (the figures are for the whole two-pass run), so the line stays empty rather than show the wrong time.
         const estimate = keyShowsEta && !(previewFirst.checked && !previewFirst.disabled) ? parts.filter(part => !setupPart(part)).join(' · ') : '';
         if (keyEta.textContent !== estimate) keyEta.textContent = estimate;
@@ -2595,15 +2693,15 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // A chain action the server refused with its own sentence says that sentence, not the general "could not continue".
     const queueError = error => (error?.action && error.said ? t(...error.said) : null) || ({
         queue_unavailable: t('Could not read the queue. The loop has stopped; videos already added stay queued.', '暂时读不到队列，循环已停止；已加入的视频还在队列中。'),
-        cancel_failed: t('Could not cancel. Try again.', '没有取消成功，请重试。'),
+        cancel_failed: t('Could not cancel. Try again.', '未能取消，请重试。'),
         move_failed: t('Could not move it. Try again.', '没有移动成功，请重试。'),
-        submit_failed: t('Could not add to the queue. Check the settings in node view.', '没能加入队列，请在节点视图检查设置。'),
+        submit_failed: t('Could not add to the queue. Check the settings in node view.', '未能加入队列，请在节点视图检查设置。'),
         loop_active: t('Stop the current loop before starting another.', '请先停止当前循环。'),
-        loop_stopped: t('The last video did not finish. The loop has stopped.', '上一个视频没有生成完，循环已停止。'),
+        loop_stopped: t('The last video did not finish. The loop has stopped.', '上一个视频未能生成完成，循环已停止。'),
         linked_seed: t('Batch and loop use the seed in this panel. Disconnect the seed link in node view.', '批量和循环要用面板里的种子，请在节点视图断开种子的连线。'),
         missing_node: t('This node is disabled or no longer in the workflow.', '该节点已禁用或已从工作流移除。'),
-        chain_cancel_failed: t('Could not cancel. Refresh the page and try again.', '没有取消成功，请刷新页面后再试。'),
-        chain_resume_failed: t('Could not continue. Refresh the page and try again.', '没有继续生成，请刷新页面后再试。'),
+        chain_cancel_failed: t('Could not cancel. Refresh the page and try again.', '未能取消，请刷新页面后再试。'),
+        chain_resume_failed: t('Could not continue. Refresh the page and try again.', '未能继续生成，请刷新页面后再试。'),
     }[error?.message] || (error?.said ? t(...error.said) : null) || userMessage(error, t));
     let lastQueueError = null, connectionNotice = false;
     watchEngineExit(api).catch(() => {});
@@ -2616,7 +2714,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         if (['loop_stopped', 'queue_unavailable'].includes(error?.message)
             && node.freevideoFailureReport && node.freevideoFailureReport.stage !== 'queue') return;
         status.textContent = error?.schema === 'freevideo.error-report'
-            ? t('Could not start. See the details on the picture.', '没能开始生成，原因见画面上的说明。')
+            ? t('Could not start. See the details on the picture.', '未能开始生成，原因见画面上的说明。')
             : extensionCause(error) ? t('A browser extension is interfering with FreeVideo. See the details on the picture.', '浏览器扩展干扰了 FreeVideo，详见画面上的说明。')
             : queueError(error);
         // Recoverable chain actions need one visible sentence, not a second error card.
@@ -2725,7 +2823,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
             : fastWait ? fastUnknownWords(fastWait) : '';
         if (lengthWhy.textContent !== lengthSaid) lengthWhy.textContent = lengthSaid;
         if (lengthWhy.hidden !== !lengthSaid) lengthWhy.hidden = !lengthSaid;
-        const words = {fvTipName: keyLabel.textContent.replace(/…$/, ''), fvTipUse: use && keySetup && keyShowsEta ? `${use} · ${t('Includes first-time setup', '含首次准备')}` : use, fvTipKey: TIPS['studio.generate'].key, fvTipWhy: why};
+        const notes = keyShowsEta ? [keySetup ? t('Includes first-time setup', '含首次准备') : '', keyRewrite].filter(Boolean) : [];
+        const words = {fvTipName: keyLabel.textContent.replace(/…$/, ''), fvTipUse: use && notes.length ? [use, ...notes].join(' · ') : use, fvTipKey: TIPS['studio.generate'].key, fvTipWhy: why};
         for (const [field, value] of Object.entries(words)) {
             if (value) { if (generate.dataset[field] !== value) generate.dataset[field] = value; } else delete generate.dataset[field];
         }
@@ -2789,13 +2888,21 @@ export function openStudio(node, {extendFrom = null} = {}) {
     function renderQueue(state) {
         if (disposed) return;
         queueState = state;
+        if (!state.running) liveRemaining = null;
+        enhancer.refresh();
         if (chainController?.active && !state.running_all) { updateRunButton(); return; }
         const active = state.running || state.pending[0];
         activePrompt = active?.id || null;
         const wasBusy = busy;
         busy = Boolean(active) || progressLive(); queued = !state.running && Boolean(state.pending.length);
+        // The works column's Generating tile follows the run; once nothing runs, the kept progress is the last run's.
+        if (!busy) heldProgress = null;
+        worksColumn?.setRunning?.(busy ? {fraction: heldProgress?.overall?.fraction ?? 0} : null);
         // A finished, failed or cancelled video may have downloaded what the line above Generate still lists.
         if (wasBusy && !busy) { requestAssets?.refresh(true); }
+        // Whether the next Generate rewrites first, and whether that counts here, follows the queue (rewriteExtra).
+        const rewriteCase = busy ? (rewriteJoins(state) ? 'joins' : 'first') : 'now';
+        if (rewriteCase !== queueRewriteCase) { queueRewriteCase = rewriteCase; if (estimateLive) refreshEffortEstimate(); }
         const g = active?.inputs;
         runningSummary = Number.isFinite(g?.width) && Number.isFinite(g?.height)
             ? [t('Generating', '正在生成'), `${g.width} × ${g.height}`, Number(g.seconds) > 0 ? t('{seconds} s', '{seconds} 秒', { seconds: g.seconds }) : ''].filter(Boolean).join(' · ') : '';
@@ -2808,8 +2915,22 @@ export function openStudio(node, {extendFrom = null} = {}) {
             : [running && t('{running} generating', '生成中 {running} 个', { running }), waiting && t('{waiting} queued', '排队 {waiting} 个', { waiting })]
                 .filter(Boolean).join(' · ');
         queueDetails.hidden = queueRows.length === 0;
-        const signature = JSON.stringify(queueRows.map(row => [row.id, row.inputs.width, row.inputs.height,
+        const signature = JSON.stringify(queueRows.map(row => [row.id, row.inputs.width, row.inputs.height, row.enhance?.state,
             ...(state.running_all ? [state.running_all.includes(row), row.progress?.sequence] : [])]));
+        // Queued rewrites (queued_rewrite.py): a request that could not be rewritten says why on its own result.
+        const fallbacks = node.freevideoEnhanceFallbacks || (node.freevideoEnhanceFallbacks = new Map());
+        for (const row of [...(state.running_all || (state.running ? [state.running] : [])), ...state.pending])
+            if (row.enhance?.state === 'original') fallbacks.set(row.id, row.enhance.reason || '');
+        // The batch's progress, while it runs, where a generation shows its own: in the preview.
+        const rewriting = state.pending.find(row => row.enhance?.state === 'rewriting');
+        const batchLine = rewriting ? `${rewriting.enhance.position}/${rewriting.enhance.total}` : '';
+        if (batchLine) { if (rewriteShown?.line !== batchLine) { const shown = {phase: 'queued_rewrite', line: batchLine, done: rewriting.enhance.position,
+            total: rewriting.enhance.total, reset: !rewriteShown}; showProgress(shown); rewriteShown = shown; } }
+        else if (rewriteShown) {
+            // Over: a video of ours that has started shows its own progress instead.
+            rewriteShown = null;
+            if (!(state.running_all?.length || state.running)) hideProgress();
+        }
         if (queueList.dataset.signature !== signature) {
             queueList.dataset.signature = signature; queueList.replaceChildren();
             queueRows.forEach(row => {
@@ -2825,6 +2946,13 @@ export function openStudio(node, {extendFrom = null} = {}) {
                 if (summary) { const line = el('span', summary, 'fv-queue-summary'); cutTip(line, summary); description.append(line); }
                 description.append(el('span', executing ? `${size} · ${row.inputs.seconds} s`
                     : `${index + 1} · ${size} · ${row.inputs.seconds} s`, 'fv-queue-meta'));
+                // Where its queued rewrite is; a rewritten one shows the new prompt on hover.
+                const rewrite = !executing && queuedRewriteWords({status: 'queued', meta: {enhance: row.enhance}}, t);
+                if (rewrite) {
+                    const line = el('span', rewrite, 'fv-queue-rewrite');
+                    if (row.enhance.state === 'rewritten' && row.enhance.rewritten) { line.dataset.fvTipName = rewrite; line.dataset.fvTipUse = rewrittenTip(row.enhance.rewritten); line.tabIndex = 0; }
+                    description.append(line);
+                }
                 if (executing) {
                     const bar = el('div', null, 'fv-queue-bar'), fill = el('div', null, 'fv-queue-fill');
                     bar.setAttribute('role', 'progressbar'); bar.setAttribute('aria-valuemin', '0'); bar.setAttribute('aria-valuemax', '100');
@@ -2885,6 +3013,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
         } catch (error) { cancelling = false; updateRunButton(); showQueueError(error); }
     }
     async function submitDraft(options) {
+        // Generating again shows the generation again, as going back to the run does.
+        returnToRun();
         // Borrowed by the editor: its Generate runs the editor's own submission (editor_bar.js), with this bar's values.
         if (borrowed) {
             // The enhancement and the replace-person check are this bar's; what is then made is the editor's.
@@ -2975,11 +3105,18 @@ export function openStudio(node, {extendFrom = null} = {}) {
             capturing = true; updateRunButton(); status.dataset.error = 'false'; runOptions.open = false;
             lengthControl.freeze();
             // Lines are sent as written: an enhanced rewrite would merge them into one description.
-            if (!texts && (!extension.source || prompt.value.trim()) && !swapState(mediaNode) && await enhancer.beforeGenerate() === false) return;
+            // While a task runs, the rewrite goes with the request and is made when its turn comes (queuedRewrite).
+            let queuedEnhance = null;
+            if (!texts && (!extension.source || prompt.value.trim()) && !swapState(mediaNode)) {
+                queuedEnhance = await enhancer.queuedRewrite();
+                if (!queuedEnhance && await enhancer.beforeGenerate() === false) return;
+            }
             if (disposed) return;
             if (selected === 'input' && !dimensionsLinked) await inputRatio(true);
             const lengthPlan = await lengthControl.ready();
             if (disposed || lengthControl.blocked) return;
+            // A video made in parts has its own descriptions per part: it is rewritten (or not) now, as before.
+            if (queuedEnhance && lengthPlan?.count > 1) { queuedEnhance = null; if (await enhancer.beforeGenerate() === false) return; }
             // A saved or restored Fast setting on a machine the planner has not offered it to is sampled at Light.
             if (fastOn() && !fastOffered()) chooseEffort(effort.levels().find(tier => tier.name === 'Light'));
             const short = fastShortfall();
@@ -3015,9 +3152,12 @@ export function openStudio(node, {extendFrom = null} = {}) {
             if (emptyAllowed && !prompt.value.trim() && !extension.source) allowEmptyPrompt(graph, node.id);
             snapshot = singleRunSnapshot(extendSnapshot(graph, node.id, source,
                 {multiple: lengthPlan?.count > 1}), node.id, lengthPlan);
-            if (!snapshot) { fault(t('Could not prepare this run. Try again.', '没能准备这次生成，请重试。')); return; }
+            if (!snapshot) { fault(t('Could not prepare this run. Try again.', '未能准备这次生成，请重试。')); return; }
             // The Fast level makes one whole video: the parts of a longer one are sampled at Light.
             if (fastOn() && lengthPlan?.count > 1) Object.assign(snapshot.output[node.id].inputs, {fast_mode: 'none', two_pass: true, preview: false});
+            // The prompt as it is now goes with the request, with what its rewrite reads; the box is not touched later.
+            if (queuedEnhance) Object.assign(snapshot.output[node.id].inputs, {text: queuedEnhance.original,
+                freevideo_enhance: {...queuedEnhance, subjects: rewriteSubjects.map(subject => ({handle: subject.handle ?? subject.name}))}});
             const seedIndex = node.widgets.findIndex(w => w.name === 'seed');
             capturing = false;
             for (const section of controls.querySelectorAll('.fv-section')) section.inert = false;
@@ -3030,6 +3170,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
                     await queueController.start(snapshot, {count: batchCount, repeat: chosenMode === 'loop', seedIndex, onAccepted}); }
             } else await queueController.start(snapshot, {count: batchCount, repeat: chosenMode === 'loop', seedIndex, onAccepted,
                 ...(texts ? {texts, textIndex: node.widgets.findIndex(w => w.name === 'text')} : {})});
+            if (queuedEnhance && accepted) enhancer.noteQueued();
             // Preserve draft changes made while the POST was in flight.
             if (chosenMode === 'single' && !linked(node, 'seed') && value(node, 'seed') === originalSeed) {
                 const max = Number.MAX_SAFE_INTEGER;
@@ -3220,7 +3361,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const lorasChanged = e => { if (String(e.detail) === String(loraNode?.id)) refreshEffortEstimate(true); };
     window.addEventListener('freevideo-loras', lorasChanged);
     cleanup.push(() => window.removeEventListener('freevideo-loras', lorasChanged));
-    const resultChanged = e => { if (String(e.detail.node) === String(node.id)) { if (chainController.active || chainController.isBlockOutput(e.detail.value)) { node.freevideoLastResult = result; return; } failure.clear(); showResult(e.detail.value); firstStart?.complete(e.detail.value); cancelling = false; status.textContent = ''; syncQueue().catch(() => {}); } };
+    const resultChanged = e => { if (String(e.detail.node) === String(node.id)) { if (chainController.active || chainController.isBlockOutput(e.detail.value)) { node.freevideoLastResult = result; return; } failure.clear(); if (!browsing) showResult(e.detail.value); firstStart?.complete(e.detail.value); cancelling = false; status.textContent = ''; syncQueue().catch(() => {}); } };
     const prewarmChanged = e => { if (String(e.detail.node) === String(node.id)) prewarm.textContent = e.detail.label; };
     window.addEventListener('freevideo-prewarm', prewarmChanged);
     cleanup.push(() => window.removeEventListener('freevideo-prewarm', prewarmChanged));
@@ -3243,6 +3384,10 @@ export function openStudio(node, {extendFrom = null} = {}) {
             return;
         }
         liveProgressAt = Date.now(); busy = true; queued = false; updateRunButton(); status.dataset.error = 'false';
+        const left = e.detail.overall?.remaining_seconds;
+        const task = e.detail.task_id || activePrompt;
+        liveRemaining = Number.isFinite(left) ? {seconds: left, at: Date.now(), task} : liveRemaining?.task === task ? liveRemaining : null;
+        enhancer.refresh();
         if (cancelling) return;
         status.textContent = '';
         showProgress(e.detail);
@@ -3515,7 +3660,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const stepValue = stepper.element.querySelector('.fvs-step-value');
     const paintDuration = () => {
         const plan = lengthControl?.plan, parts = plan?.count > 1 ? plan.count : 0;
-        stepValue.dataset.fvTipUse = parts ? t('Made in {parts} parts and joined', '分 {parts} 段生成并拼接', { parts }) : t('Click to type an exact length', '点一下输入精确时长');
+        stepValue.dataset.fvTipUse = parts ? t('Made in {parts} parts and joined', '分 {parts} 段生成并拼接', { parts }) : t('Click to type an exact length', '点击输入精确时长');
         stepper.sync();
     };
     seconds.addEventListener('input', paintDuration); seconds.addEventListener('change', paintDuration);
@@ -3764,7 +3909,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     reversePick = el('input'); reversePick.type = 'file'; reversePick.accept = 'image/*,video/*'; reversePick.hidden = true;
     const reverseIcon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 5.5v-1a2 2 0 0 1 2-2h1M10.5 2.5h1a2 2 0 0 1 2 2v1M13.5 10.5v1a2 2 0 0 1-2 2h-1M5.5 13.5h-1a2 2 0 0 1-2-2v-1"/><path d="M5.5 6.5h5M5.5 9h3.2"/></svg>';
     const stopIcon = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" fill="currentColor"/></svg>';
-    const reverseQueueWhy = () => queueState?.running || queueState?.pending?.length ? t('Finish the current queue before writing a prompt from media.', '请等待当前队列完成后再生成提示词。') : '';
+    // The same sentences as the Rewrite key's.
+    const reverseQueueWhy = () => queueBusyWhy(t, queueState, remainingNow());
     function startReverse(file) {
         const kind = file.type?.startsWith('video/') ? 'video' : file.type?.startsWith('image/') ? 'image' : 'other';
         enhancer.reverse({kind, upload: async () => { if (kind === 'other') throw new Error('unsupported_media'); return (await uploadMedia(api, file)).file; }}, {shapeVideo: true}).catch(() => {});
@@ -3873,6 +4019,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
     cleanup.push(() => firstStart.dispose());
     const tourContext = {dialog, api, cn, onError: error => tourFault('', error), onTry: tryTourExample, onStartClip: tryStartClip, canTry: canTryTour, isBusy: () => busy || queued || capturing};
     cleanup.push(registerTourWorkspace(tourContext));
+    // How long a rewrite takes here (and whether its imports are already done) arrives after the panel opens.
+    estimateLive = true;
+    cleanup.push(enhancer.model.subscribe(() => refreshEffortEstimate()));
     const tourTimer = setTimeout(async () => { const state = await firstStart.ready; if (!closed && !state?.firstRun && !tourContext.isBusy()) offerVersionTour(tourContext); }, 1400);
     cleanup.push(() => clearTimeout(tourTimer));
     const recentLoad = worksColumn.refresh();

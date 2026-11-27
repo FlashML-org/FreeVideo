@@ -9,7 +9,7 @@ import { localized } from './i18n_tables.js';
 export const TOUR_TEXT = {
     en: {examples: 'Feature examples', use: 'Use example', next: 'Next', goto: 'Take me there', noView: 'Could not open the Edit view. Choose "Edit" at the top.', noTarget: 'This item is not available here. Follow the steps above.', noHidden: 'The timeline has no clip with sound yet. Import or generate one first.', book: 'Read the tutorial', done: 'Done', close: 'Close', gotIt: 'Got it',
         closeUse: 'Put this card away', nextUse: 'Show the next feature', useUse: 'Fill the creation panel with this example', gotoUse: 'Point at the control on screen', bookUse: 'Open the tutorial chapter', segmentUse: 'Play this version with sound', dotUse: 'Show this feature'},
-    zh: {examples: '功能示例', use: '填入示例', next: '下一张', goto: '带我去', noView: '无法打开剪辑视图，请点顶部的“剪辑视图”。', noTarget: '当前界面中找不到这一项，请按上面的步骤操作。', noHidden: '时间线上还没有带声音的片段，请先导入或生成一段。', book: '看教程', done: '完成', close: '关闭', gotIt: '知道了',
+    zh: {examples: '功能示例', use: '填入示例', next: '下一张', goto: '带我去', noView: '无法打开剪辑视图，请点顶部的“剪辑视图”。', noTarget: '当前界面中找不到这一项，请按上面的步骤操作。', noHidden: '时间线上尚无带声音的片段，请先导入或生成一段。', book: '看教程', done: '完成', close: '关闭', gotIt: '知道了',
         closeUse: '收起这张卡片', nextUse: '看下一项功能', useUse: '把示例填进创作面板', gotoUse: '在界面上指出这个控件', bookUse: '打开教程里的这一章', segmentUse: '带声音播放这一版', dotUse: '看这一项功能'},
 };
 // The chapter of the tutorial book that teaches the same thing as the card.

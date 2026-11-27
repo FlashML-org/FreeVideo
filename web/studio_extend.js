@@ -7,7 +7,7 @@ export const EXTEND_TEXT = Object.freeze({
     remove: ['Remove', '移除'],
     prompt: ['Prompt', '提示词'],
     unavailable: ['Video unavailable', '视频不可用'],
-    unchecked: ['Could not check the video', '没能检查视频'],
+    unchecked: ['Could not check the video', '未能检查视频'],
 });
 export const extendText = (t, key) => t(...EXTEND_TEXT[key]);
 
@@ -40,7 +40,7 @@ export async function extendSourceExists(api, record) {
 export const extendSourceProblem = (t, state) => extendText(t, state === 'missing' ? 'unavailable' : 'unchecked');
 
 export const videoUnavailableText = t => t('This video cannot be opened. If you moved the file, refresh the page.',
-    '视频打不开，如果移动过文件，请刷新页面。');
+    '无法打开视频。如果移动过文件，请刷新页面。');
 
 export async function readExtendRecord(api, record) {
     if (record.geometry?.width && record.geometry?.height && (record.geometry.seconds || record.geometry.frames)) return record;

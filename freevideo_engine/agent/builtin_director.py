@@ -337,7 +337,7 @@ def plan(story, *, ask, shots=(3, 8)):
             prompt += '\ndrama.check problems: ' + _dump(error.problems)
             continue
         return candidate
-    return Problem('plan_failed', '没能把故事排成合格剧本，请补充镜头内容后再试。')
+    return Problem('plan_failed', '未能把故事排成合格剧本，请补充镜头内容后再试。')
 
 
 def _selectable(shot):

@@ -1,4 +1,4 @@
-/* Block descriptions (Iris 10-11): the Picture page's 说明 / 重新生成 / 版本 rows and the strip on timeline blocks. */
+/* Block descriptions: the Picture page's 说明 / 重新生成 / 版本 rows and the strip on timeline blocks. */
 .fv-ed-notes{display:flex;flex-direction:column;gap:6px;margin-bottom:12px;min-width:0}
 .fv-ed-notes-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
 .fv-editor .fv-ed-notes-again{display:inline-flex;align-items:center;gap:4px;height:28px;min-height:28px;padding:0 8px;font-size:12px}

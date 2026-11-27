@@ -2144,8 +2144,36 @@ class Installer:
                         self.command('python-bootstrap-reuse', subprocess_output.python_command([candidate, '-I', '-B', '-c',
                                      'import sys; print("Reusing verified bootstrap Python: " + sys.executable)']))
                         return
+        # A Python already here whose python.exe is gone or does not answer (security software) is installed again,
+        # once: before the download when it is found broken, or after it when it breaks at once.
+        from . import managed_python
+        request, pattern = self.python_request(), self.versions.get('python_request') or 'cpython-' + self.versions['python'] + '-*'
+        def broken():
+            return managed_python.problem(uv, current, request, self.versions['python'], self.env)
+        before = broken() if managed_python.installed(current, pattern) else None
+        if before:
+            self.reinstall_notice(before)
+        for reinstall in ((True,) if before else (False, True)):
+            result = self.python_download(uv, reinstall)
+            after = broken()
+            if after is None:
+                return result
+            if reinstall:
+                raise RuntimeError(managed_python.message(after[0], after[1] or str(current)))
+            self.reinstall_notice(after)
+
+    def reinstall_notice(self, found):
+        """Say that the isolated Python is installed again, and why. The step log keeps uv's words and the path; the
+        network log (and from it the report) only the kind."""
+        from . import managed_python
+        kind, path, detail = found
+        self.ui.write('The isolated Python %s %s (%s); installing it again.\n'
+                      % (path or 'that setup uses', 'is missing' if kind == managed_python.MISSING else 'does not answer', detail))
+        network.event(self.network, category='python', source='managed', action='python-reinstall', reason=kind)
+
+    def python_download(self, uv, reinstall=False):
         custom = self.env.get('UV_PYTHON_INSTALL_MIRROR') if self.network.get('mode') != 'official' else None
-        isolation = ['--no-bin', '--no-registry']
+        isolation = ['--no-bin', '--no-registry'] + (['--reinstall'] if reinstall else [])
         def attempt(source, route, retry_mode, native_tls=False):
             env = network.download_environment(
                 network.route_environment(self.network, 'github', source, self.env, route), retry_mode)

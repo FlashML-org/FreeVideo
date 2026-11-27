@@ -78,7 +78,7 @@ function useOf(model, state) {
             : t('Not installed: Generate installs it first, {size}', '未安装：点生成会先安装，{size}', { size }),
         downloading: state.paused ? pausedText(state) : state.verifying ? (state.unknown ? t('Verifying the files; usable when done', '正在校验文件，完成后可以使用') : t('Verifying the files {percent}%; usable when done', '正在校验文件 {percent}%，完成后即可使用', { percent: Math.floor(state.fraction * 100) })) : t('Downloading {percent}%; usable when done', '正在下载 {percent}%，完成后即可使用', { percent: Math.floor((state.fraction || 0) * 100) }),
         // The engine's sentence ends with its own full stop; the other states have none, and the tips add one after it.
-        failed: state.reason ? String(state.reason).replace(/[.。]\s*$/, '') : t('The download stopped; press Retry', '下载已中断，请点击“重试”'),
+        failed: state.reason ? String(state.reason).replace(/[.。]\s*$/, '') : t('The download stopped; choose "Retry"', '下载已中断，请点击“重试”'),
         unavailable: model.id === 'moss-image-sft' ? t('MOSS-Image needs an NVIDIA graphics card, which this computer does not have. Choose another model', 'MOSS-Image 需要 NVIDIA 显卡，这台电脑没有。请选别的模型')
             : t('This model needs an NVIDIA graphics card, which this computer does not have. Choose another model', '这个模型需要 NVIDIA 显卡，这台电脑没有。请选别的模型'),
         checking: t('Asking the engine', '正在询问引擎'),
@@ -150,7 +150,7 @@ export function modelPicker({host, onPick, onInstall, onPause}) {
         status.replaceChildren(icon(state.unknown ? 'clock' : ICON_OF[state.state] || 'cloud'), el('span', '', statusLine(state)));
         // Closed, the row names the model only; it speaks when something needs doing (to download, downloading, failed).
         status.hidden = state.state === 'ready' || state.state === 'checking';
-        tip(trigger, t('Model', '模型'), t('{name}: {state}. Choose another model.', '{name}：{state}。也可以换用其他模型。', { name: model.name, state: useOf(model, state) }));
+        tip(trigger, t('Model', '模型'), t('{name}: {state}. You can also choose another model.', '{name}：{state}。也可以换用其他模型。', { name: model.name, state: useOf(model, state) }));
         const act = actionOf(state); action.hidden = !act; action.replaceChildren(el('span', 'fv-iv-btn-label', act));
         if (act) tip(action, state.paused ? t('Continue download', '继续下载') : state.state === 'downloading' ? t('Pause download', '暂停下载') : state.state === 'failed' ? t('Retry download', '重新下载') : t('Install {short}', '安装 {short}', { short: model.short }),
             state.paused ? continueUse() : useOf(model, state));

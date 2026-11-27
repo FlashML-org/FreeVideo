@@ -244,6 +244,65 @@ function Test-FreeVideoCertificateFailure {
     return ($Detail -match 'certificate verify failed|certificate_verify_failed|invalid peer certificate|unknown issuer')
 }
 
+function Get-FreeVideoManagedPythonProblem {
+    param([string]$Uv, [string]$Version, [string]$LogPath)
+    # Match managed_python.problem: @{Kind = $null; Path = <python.exe>} when uv finds the isolated Python and it answers
+    # with its version; otherwise Kind is 'missing' (the file is gone), 'silent' (it ran and printed nothing) or 'failed'.
+    $found = ''
+    $findExit = Invoke-FreeVideoBootstrapCommand -Executable $Uv -Arguments @('python', 'find', '--managed-python', '--no-python-downloads', $Version) `
+        -LogPath $LogPath -Label 'Find the isolated Python' -OutputTail ([ref]$found)
+    $found = [string]$found
+    if ($findExit -ne 0) {
+        $named = [regex]::Match($found, 'at `([^`\r\n]+)`')
+        $path = ''
+        if ($named.Success) { $path = $named.Groups[1].Value }
+        $kind = 'failed'
+        if ($found -match 'interpreter not found at') { $kind = 'missing' }
+        elseif ($found -match 'invalid response|EOF while parsing') { $kind = 'silent' }
+        return @{Kind = $kind; Path = $path; Detail = (Get-FreeVideoFailureReason $found)}
+    }
+    $path = [string](@($found -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ }) | Select-Object -Last 1)
+    if (-not $path -or -not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        return @{Kind = 'missing'; Path = $path; Detail = 'uv named a Python file that is not there'}
+    }
+    $answer = ''
+    try {
+        $checkExit = Invoke-FreeVideoBootstrapCommand -Executable $path -Arguments @('-I', '-B', '-c', 'import platform; print(platform.python_version())') `
+            -LogPath $LogPath -Label 'Check the isolated Python' -OutputTail ([ref]$answer)
+    } catch {
+        # Windows refused to start it (security software, a policy): PowerShell throws instead of returning an exit code.
+        return @{Kind = 'failed'; Path = $path; Detail = $_.Exception.Message}
+    }
+    $answer = ([string]$answer).Trim()
+    if ($checkExit -eq 0 -and $answer -eq $Version) { return @{Kind = $null; Path = $path; Detail = ''} }
+    $kind = 'failed'
+    if (-not $answer) { $kind = 'silent' }
+    if ($answer.Length -gt 80) { $answer = $answer.Substring(0, 80) }
+    return @{Kind = $kind; Path = $path; Detail = "exit $checkExit, printed '$answer'"}
+}
+
+function Write-FreeVideoPythonReinstall {
+    param([hashtable]$State, [string]$LogPath)
+    # The console reaches the launcher's report; the log keeps uv's words.
+    $what = 'does not answer'
+    if ($State.Kind -eq 'missing') { $what = 'is missing' }
+    $where = $State.Path
+    if (-not $where) { $where = 'that setup uses' }
+    $line = "The isolated Python $where $what ($($State.Detail)); installing it again."
+    Write-Host $line
+    [IO.File]::AppendAllText($LogPath, ('[' + [DateTime]::UtcNow.ToString('o') + '] ' + $line + [Environment]::NewLine), (New-Object System.Text.UTF8Encoding($false)))
+}
+
+function Get-FreeVideoManagedPythonMessage {
+    param([hashtable]$State, [string]$LogPath)
+    # Match managed_python.message: the first words are what failure_details reads for the card of a missing program
+    # file (ENVIRONMENT_PYTHON_REMOVED) or of a Python file Windows refused to run (MANAGED_PYTHON_NO_ANSWER).
+    if ($State.Kind -eq 'missing') {
+        return "The Python file of the FreeVideo environment is missing: $($State.Path)`nThe isolated Python that setup uses was installed again and its file is still missing. See $LogPath."
+    }
+    return "The isolated Python that setup uses does not start or gives no answer: $($State.Path)`nIt was installed again and still does not answer ($($State.Detail)). See $LogPath."
+}
+
 function Get-FreeVideoBlockedTable {
     param([string]$Path)
     # windows_blocked.json: what Windows answers when security software, a policy or another program

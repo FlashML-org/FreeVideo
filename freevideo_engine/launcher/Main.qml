@@ -205,6 +205,9 @@ ApplicationWindow {
     function plainText(text) { return String(text ?? "").replace(/\u2060/g, "").replace(/\u00a0/g, " ") }
     function reportOpened(error, title) { return s.report_opened === plainText(error) + "\u0001" + plainText(title) }
     readonly property bool notAFault: s.failure.kind === "setup-busy" || s.failure.kind === "update-busy" || s.failure.kind === "busy"
+    // No NVIDIA card, or one below the supported generation: a report cannot change it, so no "Report a problem" (the
+    // export stays). Driver problems keep it.
+    readonly property bool unsupportedGpu: s.failure.kind === "gpu-vendor" || s.failure.kind === "gpu-architecture"
     readonly property bool diskFailure: !!disk && (s.failure.kind || "").indexOf("disk") === 0
     readonly property bool updateOffered: s.update.engine || (!!s.update.candidate && ["available", "downloading", "ready", "error", "cancelled"].indexOf(s.update.status) >= 0)
     // An engine update needs no download; offer it as the way to launch.
@@ -641,7 +644,7 @@ ApplicationWindow {
                             FButton { objectName: "vcRuntimeLink"; visible: s.failure.kind === "vc-runtime"
                                       text: t("Download runtime ↗", "下载运行库 ↗"); onClicked: backend.link("https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist") }
                             FButton { objectName: "exportError"; visible: !diskFailure && !notAFault; text: t("Export report", "导出报告"); enabled: s.report.status !== "running"; onClicked: backend.exportReport() }
-                            FButton { objectName: "reportProblem"; visible: !diskFailure && !notAFault && s.failure.kind !== "port-taken" && s.failure.kind !== "comfy-restart" && s.failure.kind !== "comfy-folder" && s.failure.kind !== "engine-folder-denied" && s.failure.kind !== "folder-name-invalid" && s.failure.kind !== "vc-runtime" && s.failure.kind !== "python-file-blocked"; text: reportOpened(s.error, s.failure.title || "") ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(s.error, s.failure.title || ""); onClicked: backend.reportProblem(plainText(s.error), plainText(s.failure.title || "")) }
+                            FButton { objectName: "reportProblem"; visible: !diskFailure && !notAFault && !unsupportedGpu && s.failure.kind !== "port-taken" && s.failure.kind !== "comfy-restart" && s.failure.kind !== "comfy-folder" && s.failure.kind !== "engine-folder-denied" && s.failure.kind !== "folder-name-invalid" && s.failure.kind !== "vc-runtime" && s.failure.kind !== "python-file-blocked"; text: reportOpened(s.error, s.failure.title || "") ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(s.error, s.failure.title || ""); onClicked: backend.reportProblem(plainText(s.error), plainText(s.failure.title || "")) }
                         }
                         FButton {
                             objectName: "showError"; visible: !notAFault; text: t("Technical details", "技术详情"); flat: true
@@ -865,7 +868,7 @@ ApplicationWindow {
                                     model: cloudLinks
                                     delegate: FButton { required property var modelData; required property int index; objectName: "offlineShare-" + index; text: t("Download from Quark ↗", "打开夸克网盘 ↗"); onClicked: backend.link(modelData.url) }
                                 }
-                                FText { objectName: "offlinePackageGuide"; text: s.offline.guide; color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
+                                FText { objectName: "offlinePackageGuide"; text: holdNames(s.offline.guide); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
                                 FButton { objectName: "otherModelLinks"; text: downloads.copy.title + "  ›"; flat: true; enabled: !s.busy; implicitHeight: theme.heightSm; leftPadding: 0; font.pixelSize: theme.micro + 1; onClicked: { backend.setDownloadScope("video"); modelInfoOpen = true } }
                             }
                             ColumnLayout {
@@ -1121,9 +1124,20 @@ ApplicationWindow {
                         // A failed start is told once, by the problem card above; this card is for every other state.
                         objectName: "statusCard"; visible: !(s.status === "failed" && !!s.error)
                         Layout.fillWidth: true; padding: 26; spacing: 18
-                        RowLayout {
-                            spacing: 20; Layout.fillWidth: true
+                        GridLayout {
+                            id: statusHead
+                            objectName: "statusHead"
+                            // Every title in English and Chinese and as this language shows it, measured in the title's own font: when the longest one no longer fits
+                            // beside the icon, the icon moves above it so the title keeps one line, whatever the state.
+                            readonly property var titleTexts: ["FreeVideo is ready", "FreeVideo 已就绪", "Startup interrupted", "启动未完成", "Starting FreeVideo", "正在启动 FreeVideo", "FreeVideo stopped", "FreeVideo 已停止", "Restart FreeVideo", "请重启 FreeVideo", "Ready to launch", "准备就绪"]
+                            readonly property var shownTitles: [t("FreeVideo is ready", "FreeVideo 已就绪"), t("Startup interrupted", "启动未完成"), t("Starting FreeVideo", "正在启动 FreeVideo"),
+                                t("FreeVideo stopped", "FreeVideo 已停止"), t("Restart FreeVideo", "请重启 FreeVideo"), t("Ready to launch", "准备就绪")]
+                            readonly property real titleNeed: { var f = statusTitle.font; return Math.max.apply(null, titleTexts.concat(shownTitles).map(function(x) { return Math.ceil(titleMetrics.advanceWidth(x)) })) }
+                            readonly property bool stacked: titleNeed + 64 + columnSpacing > width
+                            FontMetrics { id: titleMetrics; font: statusTitle.font }
+                            columns: stacked ? 1 : 2; columnSpacing: 20; rowSpacing: 14; Layout.fillWidth: true
                             Item {
+                                objectName: "statusIcon"
                                 Layout.preferredWidth: 64; Layout.preferredHeight: 64
                                 Image { anchors.fill: parent; source: "../assets/icon.png"; sourceSize.width: 128; sourceSize.height: 128 }
                                 // Ready: a check settles onto the icon.
@@ -1139,8 +1153,11 @@ ApplicationWindow {
                             ColumnLayout {
                                 Layout.fillWidth: true; spacing: 6
                                 // A failed start stays failed while another task (an import, a cleanup) runs: the controller's own tasks clear it first.
-                                FText { objectName: "statusTitle"; text: s.status === "open" ? t("FreeVideo is ready", "FreeVideo 已就绪") : s.status === "failed" ? t("Startup interrupted", "启动未完成") : s.busy ? t("Starting FreeVideo", "正在启动 FreeVideo") : s.status === "restart-required" && s.engine_exit_text ? t("FreeVideo stopped", "FreeVideo 已停止") : s.status === "restart-required" ? t("Restart FreeVideo", "请重启 FreeVideo") : t("Ready to launch", "准备就绪"); font.pixelSize: theme.section + 2; font.weight: Font.DemiBold; Layout.fillWidth: true }
-                                FText { objectName: "statusDetail"; text: s.status === "open" ? s.url : s.status === "restart-required" && s.engine_exit_text ? holdNames(s.engine_exit_text) : s.status === "restart-required" ? t("Restart FreeVideo after the update, then choose \"Connect again\".", "更新后需重启 FreeVideo，再点“重新连接”。") : s.status === "failed" ? t("FreeVideo did not start. See the message above.", "FreeVideo 未能启动，原因见上方。") : t("Your models and environment are connected.", "已连接模型与运行环境。"); color: theme.muted; Layout.fillWidth: true }
+                                FText { id: statusTitle; objectName: "statusTitle"; readonly property int titleIndex: s.status === "open" ? 0 : s.status === "failed" ? 1 : s.busy ? 2 : s.status === "restart-required" && s.engine_exit_text ? 3 : s.status === "restart-required" ? 4 : 5
+                                    text: statusHead.shownTitles[titleIndex]; font.pixelSize: theme.section + 2; font.weight: Font.DemiBold; Layout.fillWidth: true }
+                                FText { objectName: "statusDetail"; text: s.status === "open" ? s.url : s.status === "restart-required" && s.engine_exit_text ? holdNames(s.engine_exit_text) : s.status === "restart-required" ? t("Restart FreeVideo after the update, then choose \"Connect again\".", "更新后需重启 FreeVideo，再点“重新连接”。") : s.status === "failed" ? t("FreeVideo did not start. See the message above.", "FreeVideo 未能启动，原因见上方。") : t("Your models and environment are connected.", "已连接模型与运行环境。"); color: theme.muted; Layout.fillWidth: true
+                                    // On a narrow window the address stays one line; the middle gives way so the host and the language tail stay readable.
+                                    wrapMode: win.narrow && s.status === "open" ? Text.NoWrap : Text.Wrap; elide: win.narrow && s.status === "open" ? Text.ElideMiddle : Text.ElideNone }
                                 FText { objectName: "portMovedNote"; visible: s.status === "open" && s.port_from > 0; text: t("Port %1 is in use by another program, so FreeVideo now uses port %2 and will keep using this address.", "端口 %1 已被其他程序占用，FreeVideo 改用端口 %2，以后也使用这个地址。").arg(s.port_from).arg(s.port_to); font.pixelSize: 13; color: theme.muted; wrapMode: Text.WordWrap; Layout.fillWidth: true; Layout.topMargin: -2 }
                                 FText { objectName: "pluginScopedNote"; visible: s.status === "open" && s.plugin_scoped; text: t("Some installed plugins are not compatible with FreeVideo, so only FreeVideo was loaded this time.", "部分已装的插件与 FreeVideo 不兼容，这次只载入了 FreeVideo。"); font.pixelSize: 13; color: theme.muted; wrapMode: Text.WordWrap; Layout.fillWidth: true; Layout.topMargin: -2 }
                             }
@@ -1747,7 +1764,7 @@ ApplicationWindow {
                                 Layout.fillWidth: true; spacing: 8
                                 FButton { text: t("Copy details", "复制详情"); implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1; onClicked: backend.copy(s.error) }
                                 FButton { text: t("Export report", "导出报告"); implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1; enabled: s.report.status !== "running"; onClicked: backend.exportReport() }
-                                FButton { objectName: "settingsReportProblem"; visible: s.failure.kind !== "comfy-folder" && s.failure.kind !== "engine-folder-denied" && s.failure.kind !== "folder-name-invalid" && s.failure.kind !== "vc-runtime" && s.failure.kind !== "python-file-blocked"; text: reportOpened(s.error, s.failure.title || "") ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(s.error, s.failure.title || ""); implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1; onClicked: backend.reportProblem(plainText(s.error), plainText(s.failure.title || "")) }
+                                FButton { objectName: "settingsReportProblem"; visible: !unsupportedGpu && s.failure.kind !== "comfy-folder" && s.failure.kind !== "engine-folder-denied" && s.failure.kind !== "folder-name-invalid" && s.failure.kind !== "vc-runtime" && s.failure.kind !== "python-file-blocked"; text: reportOpened(s.error, s.failure.title || "") ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(s.error, s.failure.title || ""); implicitHeight: theme.heightSm; font.pixelSize: theme.micro + 1; onClicked: backend.reportProblem(plainText(s.error), plainText(s.failure.title || "")) }
                             }
                             FText {
                                 visible: s.report.status !== "idle"; Layout.fillWidth: true; font.pixelSize: theme.micro; color: theme.muted

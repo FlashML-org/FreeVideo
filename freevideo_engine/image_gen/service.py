@@ -51,6 +51,9 @@ H3_MAX_IMAGES = 16
 H3_MAX_AREA = image_model.H3_AREAS['high'] ** 2
 H3_MAX_SIDE = 8192
 H3_GROUP = 'h3-image:' + image_pack.default_tier()
+# Settings offers Delete for a model whose own files free at least this much: the row shows sizes to a tenth of a GiB,
+# so anything smaller would read as 0.0 there while the confirmation names a size.
+REMOVE_LEAST = 2 ** 30 // 10
 MOSS_GROUP = image_pack.MOSS_GROUP
 MOSS_MAX_SIDE = 2048
 REPORT_LIMIT = 16
@@ -476,6 +479,7 @@ class Service:
         self.pack_installer = None
         self.h3_installer = None
         self.moss_installer = None
+        self.removers = {}  # model id -> image_pack.Installer running or done with 'remove' (settings › image models)
         # Model ids waiting for the other model's download to end; started one by one in memory only.
         self.pack_queue = []
         self.pack_drain = None
@@ -533,7 +537,12 @@ class Service:
         ready, problem = self.pack_checked(image_pack.ready, root)
         ready = bool(ready)
         downloading = not ready and not problem and bool(self.pack_checked(image_pack.downloading, root, engine_root)[0])
-        return dict(ready=ready, model=spec['repo'], models=self.model_rows(machine, ready, downloading, problem),
+        models = self.model_rows(machine, ready, downloading, problem)
+        blocked = self.remove_blocked(root, engine_root, downloading=downloading)
+        for row in models:
+            if row.get('available'):
+                row['remove'] = self.removal_row(row['id'], root, blocked)
+        return dict(ready=ready, model=spec['repo'], models=models,
                     checking=not ready and image_pack.checking(root),
                     downloading=downloading,
                     bytes=sum(row['bytes'] for row in spec['groups']['image']), busy=self.busy(),
@@ -756,6 +765,85 @@ class Service:
                     logging.getLogger(__name__).exception('queued image model install failed to start')
                     if self.pack_queue and self.pack_queue[0] == model:
                         self.pack_queue.pop(0)
+
+    def remove_blocked(self, root, engine_root, downloading=None):
+        """Why a picture model cannot be removed now, or None: the first of 'generating' (a picture or a video made or
+        waiting), 'downloading' (a model downloaded or checked), 'installing' (an installation or update) and 'other'
+        (another task holds the card: the prompt model, dubbing, stems, the background compile, another removal).
+        An idle picture worker is no reason: removal hands it back first. downloading: what info() already knows of a
+        download by another process (it probes the pack lease only for a pack that is not ready); None probes it here,
+        as removing does."""
+        with self.mutex:
+            if self.busy() or self.pending or self.video_busy():
+                return 'generating'
+            installer = self.segment_installer
+            if (self._active_pack() is not None or self.pack_queue
+                    or installer is not None and installer.state()['state'] in ('running', 'paused_for_generation')):
+                return 'downloading'
+            removing = any(remover.state()['state'] == 'running' for remover in self.removers.values())
+            idle_worker = self.lease_holder() == 'idle'
+        if downloading is None:
+            downloading = bool(self.pack_checked(image_pack.downloading, root, engine_root)[0])
+        if downloading or image_pack.checking(root):
+            return 'downloading'
+        # Only a lock file that exists can be held; asking about one never creates it (or its folder).
+        if engine_root is not None and any((Path(engine_root) / name).is_file() and image_pack._lease_held(Path(engine_root) / name)
+                                           for name in ('setup.lock', 'launcher/host-setup.lock')):
+            return 'installing'
+        if removing or (not idle_worker and image_pack.engine_state(engine_root) == 'running'):
+            return 'other'
+        return None
+
+    def removal_row(self, model, root, blocked):
+        """What removing a picture model would do, for its row in Settings: the bytes it frees (only files FreeVideo
+        downloaded and nobody changed), the files kept (named from the model folder, at most five) and why it waits;
+        with the last removal of this model, its state and result. None when nothing of it can be removed."""
+        group = self.model_group(model)
+        plan, problem = self.pack_checked(image_pack.removal_plan, root, **({'group': group} if group else {}))
+        remover = self.removers.get(model)
+        state = remover.state() if remover is not None else None
+        # Delete is offered when it frees something worth it: a weight of its own, or at least REMOVE_LEAST bytes (a
+        # stopped download keeps what it fetched in .partial files, which Delete clears). The few bytes of records that
+        # resume a download alone are not worth a Delete.
+        kinds = image_pack._kinds(group or 'image')
+        weights = plan is not None and any(kinds.get(entry['file']) == 'weight' for entry in plan['files'])
+        if not (weights or plan is not None and plan['bytes'] >= REMOVE_LEAST) and state is None:
+            return None
+        kept = list((plan or {}).get('skipped') or [])
+        row = dict(bytes=(plan or {}).get('bytes', 0), kept=len(kept), kept_files=kept[:5], blocked=blocked)
+        if state is not None:
+            row['state'] = state['state']
+            if state['state'] == 'done':
+                result = state.get('result') or {}
+                row['result'] = dict(released_bytes=result.get('released_bytes', 0),
+                                     kept=len(result.get('skipped') or []), kept_files=(result.get('skipped') or [])[:5],
+                                     in_use=len(result.get('in_use') or []), in_use_files=(result.get('in_use') or [])[:5])
+            elif state['state'] == 'failed':
+                from ..failure_details import image_pack_failure
+                reason = state.get('reason')
+                row['failure'] = dict(reason=reason, report_id=state.get('report_id'),
+                                      message_en=image_pack_failure(reason, write=state.get('write'))['detail'],
+                                      message_zh=image_pack_failure(reason, zh=True, write=state.get('write'))['detail'])
+        return row
+
+    def remove_model(self, model):
+        """Remove a picture model's own files from Settings, without closing FreeVideo: unless something is under way
+        (remove_blocked), an idle picture worker hands the card back first, then image_pack.remove runs in the
+        background. Returns info()."""
+        if model not in image_model.MODELS or (model != image_model.QWEN and sys.platform == 'darwin'):
+            raise ValueError('invalid_request')
+        engine_root, machine = self.installation()
+        root = machine['model_root']
+        if self.remove_blocked(root, engine_root) is None:
+            # The same hand-back the prompt model uses: a picture being made is never cut off.
+            self.stop_for_generation(only_idle=True)
+            with self.mutex:
+                if self.remove_blocked(root, engine_root) is None:
+                    group = self.model_group(model)
+                    remover = image_pack.Installer(root, engine_root=engine_root, **({'group': group} if group else {}))
+                    self.removers[model] = remover
+                    remover.start('remove')
+        return self.info()
 
     def pack_action(self, action, *, group='image', model=None):
         """Start or cancel an image model download from the page; it yields to a running video.
@@ -3196,6 +3284,9 @@ def register():
                 result = service.discard_uploads(value.get('images'))
             elif name in ('pack-install', 'pack-cancel'):
                 result = service.pack_action(name.split('-')[1], model=value.get('model'))
+            elif name == 'pack-remove':
+                # Handing back an idle picture worker waits for it to end: off the event loop.
+                result = await asyncio.to_thread(service.remove_model, value.get('model'))
             elif name in ('segment-install', 'segment-cancel'):
                 result = service.pack_action(name.split('-')[1], group='segment')
             elif name == 'segment':
