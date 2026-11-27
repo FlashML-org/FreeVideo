@@ -100,11 +100,11 @@ export function phoneFailure(error, t, what) {
     if (!(Number.isInteger(status) && status >= 100 && status < 600)) {
         if (error?.name === 'TypeError' || error?.unreachable)
             return t('Could not {action}: the phone cannot reach FreeVideo on the computer. Check that the computer is on and connected to the same Wi-Fi.',
-                '没能{action}：手机连不上电脑上的 FreeVideo。请确认电脑已开机，并与手机连接同一个 Wi-Fi。', { action });
-        return t('Could not {action}. Try again.', '没能{action}，请重试。', { action });
+                '未能{action}：手机无法连接电脑上的 FreeVideo。请确认电脑已开机，并与手机连接同一个 Wi-Fi。', { action });
+        return t('Could not {action}. Try again.', '未能{action}，请重试。', { action });
     }
     const said = error?.data?.error?.message ?? error?.data?.message ?? (typeof error?.data?.error === 'string' ? error.data.error : '');
     if (typeof said === 'string' && said.trim() && !RAW_REPLY.test(said.trim())) return said.trim();
     return t('Could not {action}: FreeVideo on the computer returned an error (HTTP {status}). Try again.',
-        '没能{action}：电脑上的 FreeVideo 返回了错误（HTTP {status}）。请重试。', { action, status });
+        '未能{action}：电脑上的 FreeVideo 返回错误（HTTP {status}）。请重试。', { action, status });
 }

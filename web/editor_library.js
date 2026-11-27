@@ -59,7 +59,7 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
     const removal = new Map(); // import id → {users, busy, failed}: the clips whose deletion is being asked about
     let focusAfter = null; // {cancel: id} | {card: key} | {next: key}: where focus goes once the list is drawn again
     const preparing = () => t('Preparing this clip. It goes on the timeline when ready.', '素材准备好后会自动放到时间线上。');
-    const cannotOpen = () => t('This file cannot be opened. Supported formats: ', '这个文件打不开。支持的格式：') + FORMATS;
+    const cannotOpen = () => t('This file cannot be opened. Supported formats: ', '无法打开这个文件。支持的格式：') + FORMATS;
     // Why an import did not work, and where to report it: only a file that could not be read lists the formats and asks for a report.
     const importFailure = (reason, status) => status === 413 ? [t('This file is over 8 GiB. Trim or compress it, then try again.', '文件超过 8 GiB，请先剪短或压缩后再导入。')]
         : reason === 'disk_full' ? [t('The disk is full. Free some space, then import again.', '磁盘空间不足，请清理出空间后再导入。')]
@@ -129,7 +129,7 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
         else if (row.kind === 'audio') picture.append(el('span', 'fv-ed-audio-icon', '♫'));
         if (ready) { if (!row.cached || framesShown) picture.append(el('span', 'fv-ed-source-time', stamp(framesShown))); }
         else if (row.state === 'failed') {
-            picture.append(el('span', 'fv-ed-source-preparing', row.reason === 'disk_full' ? t('Disk full', '磁盘已满') : t('Cannot open', '打不开')));
+            picture.append(el('span', 'fv-ed-source-preparing', row.reason === 'disk_full' ? t('Disk full', '磁盘已满') : t('Cannot open', '无法打开')));
         } else {
             // Sending, then waiting behind another import, then being made; only the first and the last have a percentage.
             const percent = Number.isFinite(row.fraction) ? ` ${Math.round(Math.max(0, Math.min(1, row.fraction)) * 100)}%` : '';
@@ -179,7 +179,7 @@ export function createEditorLibrary(host, {store, t, actions, state}) {
             const asking = removal.get(row.id);
             if (asking) { container.dataset.asking = 'true'; container.append(removeStrip(row, asking)); }
         }
-        if (kind !== 'work' && row.state === 'failed' && row.reason !== 'disk_full') container.append(issueButton(t, () => ({where: LIBRARY_ISSUE, message: t('Cannot open', '打不开'), kind: row.detail || null})));
+        if (kind !== 'work' && row.state === 'failed' && row.reason !== 'disk_full') container.append(issueButton(t, () => ({where: LIBRARY_ISSUE, message: t('Cannot open', '无法打开'), kind: row.detail || null})));
         return container;
     }
     // Asked inside the card, so a list that redraws keeps the question. Only FreeVideo's copy goes; the original file stays where it is.

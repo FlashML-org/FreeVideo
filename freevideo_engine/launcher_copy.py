@@ -13,7 +13,7 @@ ACTION_COPY = {
     'folder_open_failed': ('The folder could not be opened automatically. Open it in a file manager.',
                            '无法自动打开该文件夹，请在文件管理器中手动打开'),
     'installation_missing': ('There is no installation information yet. Complete installation first.',
-                             '还没有安装信息，请先完成安装'),
+                             '尚无安装信息，请先完成安装'),
     'installation_unavailable': ('The saved ComfyUI folder could not be opened. It may have been moved or renamed, or its drive may be disconnected. Choose its current location below, or choose New installation.',
                                  '无法打开已保存的 ComfyUI 文件夹，它可能已被移动、改名，或所在磁盘未连接。请在下方选择它现在的位置，或选择“全新安装”。'),
     'checking_update': ('Checking for updates. Please wait.', '正在检查更新，请稍候'),

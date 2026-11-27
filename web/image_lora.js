@@ -136,7 +136,7 @@ export function createImageLoras({t, fetchApi, el = domEl, getPrompt = () => '',
                 const name = row.name, draft = trigger.value;
                 drafts.set(name, draft);
                 try { await saveWords(name, draft); drafts.delete(name); note.textContent = ''; syncPrompt(); save(); onChange(); }
-                catch (error) { note.textContent = userMessage(error, t, t('Could not save the trigger words. Try again.', '没能保存触发词，请重试。')); }
+                catch (error) { note.textContent = userMessage(error, t, t('Could not save the trigger words. Try again.', '未能保存触发词，请重试。')); }
             };
             const check = () => verdicts.get(row.name).then(() => { if (!disposed && wrap.isConnected && select.value === row.name) { show(); drawSummary(); syncPrompt(); onChange(); } });
             wrap.append(on, loraMenu(select, t).wrap, strength, remove, trigger, problem);
@@ -145,7 +145,7 @@ export function createImageLoras({t, fetchApi, el = domEl, getPrompt = () => '',
             triggerWords(row.name).then(() => {
                 if (!disposed && trigger.isConnected && !drafts.has(row.name)) trigger.value = words.get(row.name) ?? '';
                 syncPrompt(); save(); drawSummary(); onChange();
-            }, error => { note.textContent = userMessage(error, t, t('Could not read the trigger words. Try again.', '没能读取触发词，请重试。')); });
+            }, error => { note.textContent = userMessage(error, t, t('Could not read the trigger words. Try again.', '未能读取触发词，请重试。')); });
         });
         add.disabled = rows.length >= IMAGE_LORA_LIMIT;
         if (!note.textContent || !rows.some(r => drafts.has(r.name))) note.textContent = skipped

@@ -214,11 +214,11 @@ async function openVideoFolder(id) {
     } catch { return null; }
 }
 const videoFolderMessage = (t, answer, single = false) => !answer
-    ? t('Could not open the folder. Open it on the computer that runs FreeVideo.', '没能打开文件夹。请在运行 FreeVideo 的电脑上打开。')
+    ? t('Could not open the folder. Open it on the computer that runs FreeVideo.', '未能打开文件夹。请在运行 FreeVideo 的电脑上打开。')
     : answer.missing ? t('The video file cannot be found. If you moved the file, refresh the page.', '找不到这条视频的文件。如果移动过文件，请刷新页面。')
     : answer.opened === false && answer.folder
-        ? (single ? t('Could not open the folder. This video is in {folder}', '没能打开文件夹。视频在 {folder}', { folder: answer.folder })
-            : t('Could not open the folder. The videos are in {folder}', '没能打开文件夹。视频在 {folder}', { folder: answer.folder })) : '';
+        ? (single ? t('Could not open the folder. This video is in {folder}', '未能打开文件夹。视频在 {folder}', { folder: answer.folder })
+            : t('Could not open the folder. The videos are in {folder}', '未能打开文件夹。视频在 {folder}', { folder: answer.folder })) : '';
 // Keeps earlier batches of one click undoable while its next request runs, then gives them the normal time again.
 async function holdBatches(tokens, running) {
     const states = await askUndoState('/freevideo/library/hold', {batches: tokens, running});
@@ -341,7 +341,7 @@ async function workflowBackfill(collection, t, before = null) {
     const run = button(t('Add settings', '补上设置'), async () => {
         run.disabled = later.disabled = true;
         try { if (!(await post('run')).ok) throw new Error(); follow(); }
-        catch { run.disabled = later.disabled = false; text.textContent = t('Could not start. Try again.', '没能开始，请重试。'); }
+        catch { run.disabled = later.disabled = false; text.textContent = t('Could not start. Try again.', '未能开始，请重试。'); }
     }, 'fv-primary');
     tip(run, t('Add settings', '补上设置'), t('Write each video\'s settings into it, keeping a backup', '给每个视频写入生成设置，并保留备份'));
     const later = button(t('Don\'t ask again', '不再提示'), async () => { box.remove(); try { await post('dismiss'); } catch {} }, 'fv-quiet');
@@ -505,7 +505,7 @@ export function openLibrary(t, options = {}) {
     tip(placeTrash, t('Recently deleted', '最近删除'), t('Bring back what was just deleted', '恢复刚删除的作品'));
     const openFolder = button('', async () => {
         try { const answer = await (await pictures()).historyOpen(); if (answer && answer.opened === false && answer.folder) say(t('The images are in {folder}', '图片在 {folder}', { folder: answer.folder })); }
-        catch { say(t('Could not open the folder.', '没能打开文件夹。'), true); }
+        catch { say(t('Could not open the folder.', '未能打开文件夹。'), true); }
     }, 'fv-library-place fv-library-open-folder');
     openFolder.append(line('folder'), el('span', t('Image folder', '图片文件夹'), 'fv-library-place-name'));
     tip(openFolder, t('Image folder', '图片文件夹'), t('Show the images in the file manager', '在文件管理器里打开图片所在文件夹'));
@@ -920,7 +920,7 @@ export function openLibrary(t, options = {}) {
         const saved = await savedSettings(api, row);
         if (disposed) return;
         if (!saved) { say(t('This video kept no prompt to reuse.', '这条视频没有保存可复用的提示词。'), true); return; }
-        try { reuseNow().apply(saved); if (reuse) closeDialog(dialog); } catch { say(t('Could not fill in the settings. Try again.', '没能填入设置，请重试。'), true); }
+        try { reuseNow().apply(saved); if (reuse) closeDialog(dialog); } catch { say(t('Could not fill in the settings. Try again.', '未能填入设置，请重试。'), true); }
     }
     // A cover with other videos folded under it is named "N results" by the fold (task_groups.js); names loading later keep that.
     const foldedCover = card => card.classList.contains('fv-task-head') && card.hasAttribute('aria-expanded');
@@ -967,7 +967,7 @@ export function openLibrary(t, options = {}) {
             await secondPassRunner()(row);
             if (!disposed && selected === workKey(row)) notice.textContent = t('Queued. It appears in "Creations" when done.', '已加入队列，完成后在“作品”里。');
         } catch (error) {
-            if (!disposed && selected === workKey(row)) fault(notice, userMessage(error, t, t('Could not start the second pass. Try again.', '没能开始二采，请重试。')), ['Second pass', '二采'], null, error);
+            if (!disposed && selected === workKey(row)) fault(notice, userMessage(error, t, t('Could not start the second pass. Try again.', '未能开始二采，请重试。')), ['Second pass', '二采'], null, error);
             throw error;
         }
     }
@@ -1240,7 +1240,7 @@ export function openLibrary(t, options = {}) {
     }
     function emptyText() {
         if (filter.query) return t('Nothing matches this search.', '没有符合搜索的作品。');
-        if (filter.tag) return t('No creation has this tag yet. Select creations and press Tag.', '还没有作品带这个标签。选中作品后点“标签”。');
+        if (filter.tag) return t('No creation has this tag yet. Select creations and press Tag.', '暂无带这个标签的作品。选中作品后点“标签”。');
         if (filter.period !== 'any' || filter.source || filter.preview || filter.agent) return t('Nothing matches these filters.', '没有符合筛选条件的作品。');
         if (filter.favorites) return t("No favorite creations. Click the heart in a creation's details to add one.", '暂无收藏的作品。点作品详情中的爱心图标收藏。');
         if (filter.kind === 'image') return picturesState === 'failed' ? t('Images could not be read just now.', '图片暂时无法读取。') : t('Images made in the image view appear here.', '在图像视图里生成的图片会保存在这里。');
@@ -1368,7 +1368,7 @@ export function openLibrary(t, options = {}) {
             filterMenu.append(menuItem(label, filter.source === key, () => { filter.source = key; drawFilterMenu(); applyFilter(); }));
         }
         filterMenu.append(el('div', null, 'fv-library-menu-sep'), el('div', t('Only', '只看'), 'fv-library-menu-label'));
-        filterMenu.append(menuItem(t('First-pass previews', '一采预览'), filter.preview, () => { filter.preview = !filter.preview; drawFilterMenu(); applyFilter(); }, 'menuitemcheckbox', t('Videos that still need a second pass', '还没有继续二采的视频')));
+        filterMenu.append(menuItem(t('First-pass previews', '一采预览'), filter.preview, () => { filter.preview = !filter.preview; drawFilterMenu(); applyFilter(); }, 'menuitemcheckbox', t('Videos that still need a second pass', '尚未继续二采的视频')));
         filterMenu.append(menuItem(t('Made by the assistant', '助手生成'), filter.agent, () => { filter.agent = !filter.agent; drawFilterMenu(); applyFilter(); }, 'menuitemcheckbox', t('Videos made by the assistant', '由助手生成的视频')));
         const clear = button(t('Clear filters', '清除筛选'), () => { filter.period = 'any'; filter.source = ''; filter.preview = filter.agent = false; drawFilterMenu(); applyFilter(); }, 'fv-library-menu-clear');
         clear.disabled = filter.period === 'any' && !filter.source && !filter.preview && !filter.agent;
@@ -1438,11 +1438,11 @@ export function openLibrary(t, options = {}) {
             for (const key of keys) { const row = works.get(key); if (!isVideo(key)) { row.favorite = value; syncFavorite(row); } }
             let failed = 0;
             for (const key of keys.filter(isVideo)) { try { await saveFavorite(works.get(key), value, true); } catch { failed++; } }
-            if (!disposed) { if (failed) say(t('{failed} could not be changed. Try again.', '有 {failed} 个没能更改，请重试。', { failed }), true); if (selected) select(selected, false); render(); }
+            if (!disposed) { if (failed) say(t('{failed} could not be changed. Try again.', '有 {failed} 个未能更改，请重试。', { failed }), true); if (selected) select(selected, false); render(); }
         }});
         const tagRows = meta.tags().map(tag => {
             const have = keys.filter(key => meta.tagsOf(key).includes(tag.id)).length;
-            return {id: 'tags', label: [tag.name, tag.name], checked: have === keys.length, use: have && have < keys.length ? ['Some of the selection have it; choose to add to all', '选中的部分作品带着它，点一下全部加上'] : null,
+            return {id: 'tags', label: [tag.name, tag.name], checked: have === keys.length, use: have && have < keys.length ? ['Some of the selection have it; choose to add to all', '选中的作品中有一部分已带这个标签，点击为全部加上'] : null,
                 run: () => meta.setTags(keys, have === keys.length ? [] : [tag.id], have === keys.length ? [tag.id] : [])};
         });
         items.push({id: 'tags', icon: 'tag', label: ['Tags', '标签'], submenu: [...tagRows, ...(tagRows.length ? ['-'] : []),
@@ -1492,7 +1492,7 @@ export function openLibrary(t, options = {}) {
                     return;
                 }
                 try { const answer = await (await pictures()).historyOpen(); if (answer && answer.opened === false && answer.folder) say(t('The images are in {folder}', '图片在 {folder}', { folder: answer.folder })); }
-                catch { say(t('Could not open the folder.', '没能打开文件夹。'), true); }
+                catch { say(t('Could not open the folder.', '未能打开文件夹。'), true); }
             }});
         if (!selecting) items.push({id: 'select', icon: 'check', label: ['Select', '选择'], use: ['Start selecting with this one', '从这一个开始多选'],
             run: () => { setSelecting(true); picked.add(keys[0]); anchor = keys[0]; syncSelection(); }});
@@ -1502,7 +1502,7 @@ export function openLibrary(t, options = {}) {
                 const result = await removeKeys(keys);
                 if (disposed) return;
                 undoNote = keptNote(keys.length, result.skipped);
-                undoFailure = result.failed ? t('Could not delete. Try again.', '没能删除，请重试。') : '';
+                undoFailure = result.failed ? t('Could not delete. Try again.', '未能删除，请重试。') : '';
                 for (const key of result.removed) picked.delete(key);
                 render(); showUndo();
             }});
@@ -1706,7 +1706,7 @@ export function openLibrary(t, options = {}) {
         for (const key of keys.filter(isVideo)) { try { await saveFavorite(works.get(key), value, true); } catch { failed++; } }
         if (disposed) return;
         barFavorite.disabled = false;
-        say(failed ? t('{failed} could not be changed. Try again.', '有 {failed} 个没能更改，请重试。', { failed }) : value ? t('Added to Favorites.', '已加入收藏。') : t('Removed from Favorites.', '已移出收藏。'), !!failed);
+        say(failed ? t('{failed} could not be changed. Try again.', '有 {failed} 个未能更改，请重试。', { failed }) : value ? t('Added to Favorites.', '已加入收藏。') : t('Removed from Favorites.', '已移出收藏。'), !!failed);
         render();
     }
     async function confirmDelete() {
@@ -1782,7 +1782,7 @@ export function openLibrary(t, options = {}) {
         if (disposed) return;
         if (back) render();
         if (again.length) {
-            undoFailure = t('Could not undo. Try again.', '没能撤销，请重试。');
+            undoFailure = t('Could not undo. Try again.', '未能撤销，请重试。');
             showUndo();
             if (settled.length) load(false);
             return;
@@ -1791,7 +1791,7 @@ export function openLibrary(t, options = {}) {
         undoBar.hidden = false;
         undoBar.classList.remove(NOTED);
         undoBar.replaceChildren(el('span', expired ? t('The undo time has passed.', '已过了撤销时间。')
-            : lost ? t('Restored, but {lost} could not be brought back.', '已恢复，其中 {lost} 个没能恢复。', { lost }) : t('Restored.', '已恢复。')));
+            : lost ? t('Restored, but {lost} could not be brought back.', '已恢复，其中 {lost} 个未能恢复。', { lost }) : t('Restored.', '已恢复。')));
         if (lost && !expired) {
             const text = undoBar.firstElementChild.textContent;
             undoBar.append(issueButton(t, () => ({where: ['Restore creations', '恢复作品'], message: text})));
@@ -1965,8 +1965,8 @@ export function openLibrary(t, options = {}) {
             for (const key of removed) picked.delete(key);
             confirming = false;
             undoFailure = removed.size
-                ? t('{size} could not be deleted. Try again.', '还有 {size} 个没能删除，请重试。', { size: picked.size })
-                : why || t('Could not delete. Try again.', '没能删除，请重试。');
+                ? t('{size} could not be deleted. Try again.', '还有 {size} 个未能删除，请重试。', { size: picked.size })
+                : why || t('Could not delete. Try again.', '未能删除，请重试。');
             if (!picked.size) setSelecting(false);
         } else {
             // What was kept stays selected, so it can be looked at or tried again; nothing kept ends selecting.
@@ -2118,7 +2118,7 @@ export function openLibrary(t, options = {}) {
                 if (appendPage) tailState = 'failed';
                 else if (error.restart) message.textContent = error.message;
                 else {
-                    fault(message, userMessage(error, t, t('Could not read the creations. Try again.', '没能读取作品，请重试。')), undefined, null, error); retryRead(message);
+                    fault(message, userMessage(error, t, t('Could not read the creations. Try again.', '未能读取作品，请重试。')), undefined, null, error); retryRead(message);
                     for (const ghost of grid.querySelectorAll(':scope > .fv-library-ghost')) ghost.remove();
                 }
             }
@@ -2614,7 +2614,7 @@ export function openLibrary(t, options = {}) {
     // A picture whose delete could not be done comes back with a note.
     const pictureOff = pictureBin.subscribe(event => {
         if (disposed) return;
-        if (event?.failed?.length) { loadPictures().then(() => { render(); say(t('{count} could not be deleted; they are back.', '有 {count} 个没能删除，已放回。', { count: event.failed.length }), true); }); return; }
+        if (event?.failed?.length) { loadPictures().then(() => { render(); say(t('{count} could not be deleted; they are back.', '有 {count} 个未能删除，已放回。', { count: event.failed.length }), true); }); return; }
         showUndo();
     });
     // A delete that an earlier opening of the dialog is still carrying out takes its creations off this one too.

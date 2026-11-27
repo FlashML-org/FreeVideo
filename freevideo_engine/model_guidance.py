@@ -51,7 +51,7 @@ DOWNLOAD_COPY = {
     'write_in_use': ('a file there is in use by another program. Close that program, then try again.', '该文件夹中有文件被其他程序占用。请关闭该程序后再试。'),
     'write_missing': ('the folder is no longer there, or its drive was disconnected. Choose the folder again.', '这个文件夹已不存在，或所在磁盘已断开。请重新选择文件夹。'),
     'write_path_long': ('the path is too long. Choose a folder closer to the top of the drive.', '路径太长，请选择层级更浅的文件夹。'),
-    'write_other': ('the system did not allow the file to be written. Choose another folder and try again.', '系统不允许写入文件。请换一个文件夹再试一次。'),
+    'write_other': ('the system did not allow the file to be written. Choose another folder and try again.', '系统不允许写入文件。请换一个文件夹后重试。'),
     'video': NAMES['video'], 'text': NAMES['text'], 'decoder': NAMES['decoder'], 'sampling': NAMES['sampling'],
     'readme': (
         'FreeVideo download list\n'

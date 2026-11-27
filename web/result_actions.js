@@ -156,7 +156,7 @@ function deleteAction(t, remove) {
         confirm.disabled = cancel.disabled = true; confirm.lastElementChild.textContent = t('Deleting…', '正在删除…');
         try { await remove(); menu.open = false; }
         catch (error) {
-            problem.textContent = userMessage(error, t, t('Could not delete. Try again.', '没能删除，请重试。')); problem.hidden = false;
+            problem.textContent = userMessage(error, t, t('Could not delete. Try again.', '未能删除，请重试。')); problem.hidden = false;
             if (error.reportable !== false) {
                 problemIssue = issueButton(t, () => ({where: ['Delete creation', '删除作品'], message: error?.message || problem.textContent}));
                 problem.after(problemIssue);

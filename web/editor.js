@@ -110,13 +110,13 @@ export function editorErrorText(value, t = translatorFor(null, false)) {
         chain_too_long: t('One continuous shot can have up to {maxParts} parts.', '一个连续镜头最多 {maxParts} 段。', { maxParts: model.RULES.maxParts }),
         too_long: t('This part is longer than the maximum length. Shorten it and try again.', '这一段超过了最长时长，请缩短后再试。'),
         missing_node: t('Generation is not ready. Restart FreeVideo.', '生成功能没有就绪，请重新启动 FreeVideo。'),
-        chain_missing: t('Generation could not start. Choose "Generate" again.', '生成没能开始，请再点“生成”。'),
-        result_mismatch: t('Could not read the result. Choose "Generate" again.', '没能读取结果，请再点“生成”。'),
+        chain_missing: t('Generation could not start. Choose "Generate" again.', '生成未能开始，请再点“生成”。'),
+        result_mismatch: t('Could not read the result. Choose "Generate" again.', '未能读取结果，请再点“生成”。'),
         no_material: t('The media this part uses is missing. Import it again from the library.', '找不到这一段用到的素材，请在素材库重新导入。'),
     };
     if (known[code]) return known[code];
     if (outputNotWritable(whole))
-        return t('The output folder cannot be written to, so the video was not saved. Check that the folder can be written to, then retry.', '输出目录不可写，视频没能保存。请检查这个文件夹的写入权限后重试。');
+        return t('The output folder cannot be written to, so the video was not saved. Check that the folder can be written to, then retry.', '输出目录不可写，视频未能保存。请检查这个文件夹的写入权限后重试。');
     if (/manifest\.json/i.test(whole) && /No such file|not found|Errno 2\b|FileNotFoundError/i.test(whole))
         return t('The model is not fully installed. ', '模型没有装全。') + t(...repairAction());
     if (modelTableDamaged(whole))
@@ -427,7 +427,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         void (view ? handle.switchView(view) : handle.close());
     }, 'fv-ed-save-leave');
     saveWarning.append(saveWarningText, saveAgain, leaveUnsaved);
-    tip(saveAgain, {name: t('Save again', '重新保存'), use: t('Try saving the changes now', '现在再试一次保存改动')});
+    tip(saveAgain, {name: t('Save again', '重新保存'), use: t('Try saving the changes now', '现在重新保存改动')});
     tip(leaveUnsaved, {name: t('Leave without saving', '放弃改动并离开'), use: t('Go on; the latest changes are lost', '离开这里，最近的改动会丢失')});
     const notices = el('div', 'fv-ed-notice-stack');
     // Where the server cannot generate, the bar's row says so instead of standing empty.
@@ -715,7 +715,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if (saveState.dataset.state === now) return;
         saveState.dataset.state = now;
         saveState.textContent = {saved: t('Saved', '已保存'), saving: t('Saving…', '正在保存…'), unsaved: t('Not saved', '未保存')}[now];
-        tip(saveState, {name: saveState.textContent, use: now === 'unsaved' ? t('Click to save the changes again', '点一下重新保存改动')
+        tip(saveState, {name: saveState.textContent, use: now === 'unsaved' ? t('Click to save the changes again', '点击重新保存改动')
             : t('Changes save by themselves as you edit', '改动会自动保存')});
     }
     async function retrySave() {
@@ -976,7 +976,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
             const said = {no_picture: t('There is no picture at this position. Move the playhead onto a clip.', '这个位置没有画面，请把播放头移到片段上。'),
                 range: t('There is no picture at this position. Move the playhead onto a clip.', '这个位置没有画面，请把播放头移到片段上。'),
                 generating: t('This part is still being generated. Save the frame when it is done.', '这一段还在生成，完成后再保存。'),
-                unreadable: t('A source file cannot be read. Import it again from the library.', '有素材读不出来，请在素材库重新导入。'),
+                unreadable: t('A source file cannot be read. Import it again from the library.', '有素材无法读取，请在素材库重新导入。'),
                 not_writable: t('The image folder cannot be written to. Check that the folder can be written to, then save the frame again.', '图片文件夹不可写。请检查这个文件夹的写入权限后再保存。'),
                 disk_full: t('The disk is full. Free some space, then save the frame again.', '磁盘空间不足，请清理出空间后再保存。')}[value?.reason];
             if (said) notify(said); else error(value, 'frame');
@@ -1970,9 +1970,9 @@ export function openEditor({api, app, from = null, panel = {}, components: given
                 if (['source_missing', 'missing_glyphs', 'MissingGlyphs'].includes(value.reason || value.code)) error(value, null, undefined, 'export');
                 else notify(value.reason === 'not_writable' ? t('Export failed: the output folder cannot be written to. Check that the folder can be written to, then retry.', '导出时出错：输出目录不可写。请检查这个文件夹的写入权限后重试。')
                     : value.reason === 'disk_full' ? t('Export failed: the disk is full. Free some space, then export again.', '导出时出错：磁盘空间不够，空出空间后再导出。')
-                    : value.reason === 'interp_download' ? t('Export failed: the model needed for 48/60 fps could not be downloaded. Check the connection and export again, or set the frame rate to 24.', '导出时出错：48/60 帧率需要的模型没能下载。请检查网络后重新导出，或把帧率改为 24。')
+                    : value.reason === 'interp_download' ? t('Export failed: the model needed for 48/60 fps could not be downloaded. Check the connection and export again, or set the frame rate to 24.', '导出时出错：48/60 帧率需要的模型未能下载。请检查网络后重新导出，或把帧率改为 24。')
                     : value.reason === 'interp_memory' ? t('Export failed: the graphics card did not have enough free memory for 48/60 fps. Export again after the current generation finishes, or set the frame rate to 24.', '导出时出错：显卡空闲显存不足，无法导出 48/60 帧率。请等当前生成结束后重新导出，或把帧率改为 24。')
-                    : value.reason === 'unreadable' ? t('Export failed: a source file cannot be read. Import it again from the library.', '导出时出错：有素材读不出来，请在素材库重新导入。')
+                    : value.reason === 'unreadable' ? t('Export failed: a source file cannot be read. Import it again from the library.', '导出时出错：有素材无法读取，请在素材库重新导入。')
                     : t('Export failed. Try again.', '导出时出错，请重试。'), EXPORT_ISSUE, failureKind('export', value));
             }
             if (value.state === 'cancelled') notify(t('Export cancelled. No unfinished file is kept.', '已取消导出，没有留下不完整的文件。'));
@@ -2332,7 +2332,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         toolUndo.disabled = !state.canUndo; toolRedo.disabled = !state.canRedo;
         const named = (verb, label) => label ? verb + t(': ', '：') + label : verb;
         tip(toolUndo, {name: named(t('Undo', '撤销'), state.undoLabel), use: t('Take back the last edit', '退回上一步改动'), key: `${modKey}Z`,
-            why: toolUndo.disabled ? t('Nothing to undo yet', '还没有可以撤销的改动') : ''});
+            why: toolUndo.disabled ? t('Nothing to undo yet', '暂无可以撤销的改动') : ''});
         tip(toolRedo, {name: named(t('Redo', '重做'), state.redoLabel), use: t('Bring back the edit just undone', '恢复刚撤销的改动'), key: `${modKey}⇧Z / ${modKey}Y`,
             why: toolRedo.disabled ? t('Nothing to redo', '没有可以重做的改动') : ''});
         updateSplit();

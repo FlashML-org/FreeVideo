@@ -159,7 +159,7 @@ export function createEditorTransport({element, preview, transport, toolbar, edi
         applyTip(toEnd, 'end', t, {why: toEnd.disabled ? (total ? t('Already at the end', '已经在结尾') : empty) : ''});
         if (frame) {
             setDisabled(frame, savingFrame || !model.exportFrames(state.record));
-            applyTip(frame, 'saveFrame', t, {why: savingFrame ? t('Saving this frame…', '正在保存这一帧…') : frame.disabled ? t('There is no picture to save yet', '还没有可以保存的画面') : ''});
+            applyTip(frame, 'saveFrame', t, {why: savingFrame ? t('Saving this frame…', '正在保存这一帧…') : frame.disabled ? t('There is no picture to save yet', '尚无可以保存的画面') : ''});
         }
         setAttr(fullscreen, 'aria-pressed', document.fullscreenElement === fullHost);
         setData(transport, 'rate', player.playing ? clock.rate : 0);

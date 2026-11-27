@@ -350,7 +350,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         input.focus();
         let done = false;
         try { done = (await dataLayer.abandon(session)).ok; } catch {}
-        if (!done && state.session === session) { state = {...state, abandoned: false}; render(); say(t('Could not stop. Click again; if it keeps failing, report the problem.', '没能停止。请再点一次；仍然失败时，请提交问题。')); }
+        if (!done && state.session === session) { state = {...state, abandoned: false}; render(); say(t('Could not stop. Click again; if it keeps failing, report the problem.', '未能停止。请再点一次；仍然失败时，请提交问题。')); }
     }
     let whiteboxPreview = false;
     try { whiteboxPreview = localStorage.getItem(WHITEBOX_PREVIEW.storageKey) === 'true'; } catch {}
@@ -614,7 +614,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
     const slashKey = el('kbd', 'fv-chat-key', '/'); slashKey.setAttribute('aria-hidden', 'true');
     searchRow.append(glyph(ICON.search, 2), searchBox, slashKey);
     const noMatch = el('p', 'fv-chat-rail-empty fv-chat-no-match', t('No chat matches.', '没有匹配的对话。')); noMatch.hidden = true;
-    const railEmpty = el('p', 'fv-chat-rail-empty', t('No chats yet. Say what you want to make; the chat is kept here.', '还没有对话。说一句想做什么，对话会留在这里。'));
+    const railEmpty = el('p', 'fv-chat-rail-empty', t('No chats yet. Say what you want to make; the chat is kept here.', '暂无对话。说一句想做什么，对话会留在这里。'));
     const railFoot = el('footer', 'fv-chat-rail-foot');
     searchBox.addEventListener('input', () => renderConversations());
     listenDialogKey(searchBox, 'keydown', event => { if (event.key === 'Escape' && searchBox.value) { event.preventDefault(); event.stopPropagation(); searchBox.value = ''; renderConversations(); } });
@@ -665,7 +665,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
     // A note of a failed task in the top bar's status panel opens that task's card (its cause, next step and report).
     const openTaskCard = event => {
         const id = event.detail?.id; if (!id) return;
-        const look = left => { if (findCard(id)) showCard(id, '.fv-chat-retry:not([hidden]), .fv-report-button, button'); else if (left > 0 && !stopped) setTimeout(() => look(left - 1), 150); else if (!stopped) say(t('That task is no longer in this conversation.', '这条任务已经不在当前对话里了。')); };
+        const look = left => { if (findCard(id)) showCard(id, '.fv-chat-retry:not([hidden]), .fv-report-button, button'); else if (left > 0 && !stopped) setTimeout(() => look(left - 1), 150); else if (!stopped) say(t('That task is no longer in this conversation.', '这条任务已不在当前对话里。')); };
         look(20);
     };
     window.addEventListener('freevideo-agent-task-open', openTaskCard);
@@ -1133,7 +1133,7 @@ export function agentChat(t, api, {open, edit, shown = () => true, changed = () 
         ids.forEach(id => stopping.add(id)); render(); report();
         const results = await Promise.all(ids.map(id => dataLayer.cancel(id)));
         results.forEach((response, index) => { if (!response?.ok) stopping.delete(ids[index]); });
-        if (results.some(response => !response?.ok)) say(t('Could not stop. Click again; if it keeps failing, report the problem.', '没能停止。请再点一次；仍然失败时，请提交问题。'), true);
+        if (results.some(response => !response?.ok)) say(t('Could not stop. Click again; if it keeps failing, report the problem.', '未能停止。请再点一次；仍然失败时，请提交问题。'), true);
         else say('');
         if (!stopped) { render(); report(); void poll(); }
     }

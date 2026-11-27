@@ -49,7 +49,7 @@ def speed_text(row, zh=False):
     rate = row.get('bytes_per_second')
     if (row.get('speed_measured') is False or not isinstance(rate, (int, float))
             or not math.isfinite(rate) or rate <= 0):
-        return '已连通，速度还没测出' if zh else 'Connected; speed not measured yet'
+        return '已连通，尚未测出速度' if zh else 'Connected; speed not measured yet'
     speed = rate / 2**20
     return '<0.01 MiB/s' if speed < .005 else (('%.2f' if speed < 1 else '%.1f') % speed + ' MiB/s')
 

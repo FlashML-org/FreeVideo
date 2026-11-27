@@ -29,7 +29,7 @@ export const TIPS = Object.freeze({
     edit: {name: ['Edit', '剪辑'], use: ['Open it in Edit to cut and add sound', '在剪辑视图里继续剪辑和配音']},
     download: {name: ['Download', '下载'], use: ['Save the image to this computer', '把图片保存到本机']},
     why: {name: ['See why', '查看原因'], use: ['What went wrong and what to do', '出了什么问题、可以怎么做']},
-    retry: {name: ['Retry', '重试'], use: ['Try again with the same request', '用同样的要求再试一次']},
+    retry: {name: ['Retry', '重试'], use: ['Try again with the same request', '用同样的要求重试']},
     continue: {name: ['Continue generating', '继续生成'], use: ['Go on from the finished parts', '从已完成的部分接着生成']},
     resend: {name: ['Send again', '再发一次'], use: ['Send the same words again', '把同样的话再发一次']},
     report: {name: ['Download report', '下载报告'], use: ['Save the diagnostic report to send us', '保存诊断报告，方便发给我们']},

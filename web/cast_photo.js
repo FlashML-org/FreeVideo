@@ -120,7 +120,7 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
                 const {openImageEditor} = await import('./image_editor.js').catch(error => { loadFailed = true; throw error; });
                 outcome = await openImageEditor({source: record.original?.url || record.url, name: record.file.name || 'picture.png', edit: record.edit || null,
                     role: 'reference', t: tr, resolve: url => url, upload: async blob => client.upload(blob), imageGenClient: client});
-            } catch { attention = loadFailed ? tr('The image editor did not load. Reload the page and try again.', '图片编辑器没有加载出来。请刷新页面后再试。') : tr('This image could not be read. Choose another image.', '这张图无法读取。请重新选择一张。'); render(); return; }
+            } catch { attention = loadFailed ? tr('The image editor did not load. Reload the page and try again.', '图片编辑器未能加载。请刷新页面后再试。') : tr('This image could not be read. Choose another image.', '这张图无法读取。请重新选择一张。'); render(); return; }
             if (!outcome || !record || disposed) return;
             if (outcome.restore) { back(); return; }
             if (!outcome.blob) return;
@@ -277,7 +277,7 @@ export function mountCastPhoto({container, api, text, viewURL, onState = () => {
             const {openImageEditor} = await import('./image_editor.js').catch(error => { loadFailed = true; throw error; });
             outcome = await openImageEditor({source: sourceOf(view), name: `${view}.png`, edit: edits[view]?.edit || null,
                 role: 'reference', t: tr, resolve: url => url, upload: async blob => client.upload(blob), imageGenClient: client});
-        } catch { attention = loadFailed ? tr('The image editor did not load. Reload the page and try again.', '图片编辑器没有加载出来。请刷新页面后再试。') : tr('This image could not be read. Choose another image.', '这张图无法读取。请重新选择一张。'); render(); return; }
+        } catch { attention = loadFailed ? tr('The image editor did not load. Reload the page and try again.', '图片编辑器未能加载。请刷新页面后再试。') : tr('This image could not be read. Choose another image.', '这张图无法读取。请重新选择一张。'); render(); return; }
         if (!outcome || disposed) return;
         if (outcome.restore) { dropEdit(view); if (leads(view)) faceChanged = true; render(); return; }
         if (!outcome.blob) return;

@@ -111,7 +111,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         return rows;
     }
     const changed = () => {
-        if (!broadcasting) refresh().catch(error => current?.message(userMessage(error, text, text('Could not refresh the list. Try again.', '没能刷新列表，请重试。'))));
+        if (!broadcasting) refresh().catch(error => current?.message(userMessage(error, text, text('Could not refresh the list. Try again.', '未能刷新列表，请重试。'))));
     };
     async function saved() {
         broadcasting = true;
@@ -333,7 +333,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
                 try {
                     await load();
                     message(text('Changed elsewhere. Showing the latest version.', '已在别处修改，已显示最新内容'), true);
-                } catch (error) { message(userMessage(error, text, text('Could not show the latest version. Close and open it again.', '没能显示最新内容，请关闭后重新打开。'))); }
+                } catch (error) { message(userMessage(error, text, text('Could not show the latest version. Close and open it again.', '未能显示最新内容，请关闭后重新打开。'))); }
             } else message(userMessage(error, text));
         }
         async function saveCard() {
@@ -403,7 +403,7 @@ export function createCastLibrary({api, text, viewURL, uploadOne, onChange = () 
         dialog.onclose = close;
         current = {element: dialog, message, close};
         name.value = ''; select('upload'); document.body.append(dialog); dialog.showModal(); name.focus();
-        if (id) load().catch(error => message(userMessage(error, text, text('Could not open it. Try again.', '没能打开，请重试。'))));
+        if (id) load().catch(error => message(userMessage(error, text, text('Could not open it. Try again.', '未能打开，请重试。'))));
         // A scene has one set of pictures: the chosen option takes the first place, where the Upload tab shows it.
         const pick = file => { if (closed || !scene) return; slots[0] = {media: file, label: 'other'}; pickedLoras = generator?.getLoras?.() ?? null; paint(0); };
         // Scenes and props: the description's candidates. Characters: the four views from each source.

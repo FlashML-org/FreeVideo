@@ -63,6 +63,5 @@ class PageCheck:
         if not report.get('state') and opened_at is not None and now - opened_at >= SILENT_AFTER:
             return t('The browser has not opened FreeVideo yet. If no browser window appeared, click “Open FreeVideo”. '
                      'If the page stays blank or keeps loading, open %s in a current Chrome or Edge.',
-                     '浏览器还没有打开 FreeVideo。如果没有弹出浏览器窗口，请点击“打开 FreeVideo”；'
-                     '如果页面空白或一直在加载，请用最新版 Chrome 或 Edge 打开 %s。') % address
+                     '浏览器尚未打开 FreeVideo。如果未弹出浏览器窗口，请点击“打开 FreeVideo”；如果页面空白或一直在加载，请用最新版 Chrome 或 Edge 打开 %s。') % address
         return ''

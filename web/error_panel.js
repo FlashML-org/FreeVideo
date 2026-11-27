@@ -420,8 +420,8 @@ const REDO_CHANGED = [/This redo was already submitted with the earlier settings
     ['Check the queue first. If you still want the current settings, choose "Redo from here" again.', '请先查看队列；仍需要按现在的设置生成时，再点一次“从这段重新生成”。']];
 const REFERENCE_FAILURES = [
     [/Source video (?:frame count )?changed during depth (?:conversion|inspection)|reference video changed while it was being turned into lines/i,
-        'reference-changed', ['The reference video changed', '参考视频在转换时被改动'],
-        ['The reference video file changed while FreeVideo was converting it.', '转换参考视频的过程中，这个文件被改动了。'],
+        'reference-changed', ['The reference video changed', '参考视频在转换过程中被修改'],
+        ['The reference video file changed while FreeVideo was converting it.', '转换参考视频的过程中，该文件已被修改。'],
         ['Try again, and leave the file unchanged until the video is generated.', '请重试，并在生成完成前保持该文件不变。']],
     [/Depth reference (?:needs a decodable video|video has no valid frame rate|video changes display rotation|video changes dimensions|video has no decodable frames)/i,
         'reference-unreadable', ['The reference video cannot be read', '无法读取参考视频'],
@@ -484,11 +484,11 @@ export function failureAdvice(value, t, known = knownError(value)) {
             summary: t('The first upscale needs to download sampling caches (about {size}), and the download did not finish this time. Check the network connection, then upscale again.', '第一次放大需要先下载采样缓存（约 {size}），这次未能完成。请检查网络后再放大一次。', { size }), plain: true};
         // A custom step count is not a quality level: no "档" / "quality level" for it.
         const title = custom
-            ? ['Custom ({steps} steps) is not downloaded yet', '“自定义（{steps} 步）”还没下载', { steps: known.base_steps }]
-            : ['The {level} quality level is not downloaded yet', '“{level}”档还没下载', { level: t(...levels[index]) }];
+            ? ['Custom ({steps} steps) is not downloaded yet', '“自定义（{steps} 步）”尚未下载', { steps: known.base_steps }]
+            : ['The {level} quality level is not downloaded yet', '“{level}”档尚未下载', { level: t(...levels[index]) }];
         const summary = custom
-            ? t('This step count needs a download (about {size}) that did not finish this time. Generate again when online and it downloads automatically.', '这个步数要先下载（约 {size}），这次没能下载。联网后再生成一次，会自动下载。', { size })
-            : t('This level needs a download (about {size}) that did not finish this time. Generate again when online and it downloads automatically.', '这一档要先下载（约 {size}），这次没能下载。联网后再生成一次，会自动下载。', { size });
+            ? t('This step count needs a download (about {size}) that did not finish this time. Generate again when online and it downloads automatically.', '这个步数要先下载（约 {size}），这次未能下载完成。联网后再生成一次，会自动下载。', { size })
+            : t('This level needs a download (about {size}) that did not finish this time. Generate again when online and it downloads automatically.', '这一档要先下载（约 {size}），这次未能下载完成。联网后再生成一次，会自动下载。', { size });
         return {...row('sampling-table', title, ['', ''], ['', '']), summary: summary + (available.length ? t(' You can also use {levels} for now.', '也可以先用{levels}。', { levels: list }) : ''), plain: true};
     }
     // ComfyUI and worker tracebacks carry English exceptions. Translate these
@@ -570,7 +570,7 @@ export function failureAdvice(value, t, known = knownError(value)) {
             ['Close memory-heavy applications and retry. If you set a memory limit, remove or raise it. Copy the details below if it still fails.', '关闭占用内存较多的程序后重试；设置过内存上限的，请取消或调高。仍然失败时，可复制下方详情。']);
     if (outputNotWritable(text))
         return row('output-folder', ['The output folder cannot be written to', '输出目录不可写'],
-            ['The video could not be saved.', '视频没能保存。'],
+            ['The video could not be saved.', '视频未能保存。'],
             ['Check that the output folder can be written to, then retry.', '请检查输出文件夹的写入权限后重试。']);
     if (/ENCODER_MODEL_MISSING:|Model in folder ['"]text_encoders['"] with filename ['"][^\r\n]+?['"] not found\./i.test(text)
             || /manifest\.json/i.test(text) && /No such file|FileNotFoundError|\[Errno 2\]/i.test(text))
@@ -589,7 +589,7 @@ export function failureAdvice(value, t, known = knownError(value)) {
     // Upscaling to 4K (frame_upscale.py): its own small model, disk need and GPU memory.
     if (/The 4K upscale model (?:could not be downloaded|failed its size\/SHA-256 check)/.test(text))
         return row('upscale-download', ['The upscale model could not be downloaded', '放大模型未能下载'],
-            ['Upscaling uses a small model (about 5 MB), which could not be downloaded or verified this time.', '放大要用一个约 5 MB 的小模型，这次没能下载，或下载后校验未通过。'],
+            ['Upscaling uses a small model (about 5 MB), which could not be downloaded or verified this time.', '放大要用一个约 5 MB 的小模型，这次未能下载，或下载后校验未通过。'],
             ['Check the network connection or choose another download source in Settings, then try again. If it happens again, choose "Report a problem" to send us the report.',
              '请检查网络，或在设置里换一个下载源，然后重试。再次出现时，请点击“提交问题”，把报告发给我们。']);
     // A video the upscale refuses (frame_upscale.REASONS): the engine's own code picks the cause and the next step.
@@ -599,7 +599,7 @@ export function failureAdvice(value, t, known = knownError(value)) {
             outside: ['It is not in the FreeVideo output folder.', '它不在 FreeVideo 的输出文件夹里。'],
             missing: ['The video file is missing or cannot be read.', '找不到这个视频文件，或文件无法读取。'],
             no_request: ['A merged or imported video can only be upscaled to the largest size.', '合并或导入的视频只能放大到最大尺寸。'],
-            unfinished: ['Its generation did not finish.', '它没有生成完成。'],
+            unfinished: ['Its generation did not finish.', '它未能生成完成。'],
             preview: ['It is a preview.', '它是预览视频。'],
             fps: ['It is not 24 fps.', '它不是 24 fps。'],
             streams: ["This video's format cannot be upscaled.", '这个视频的格式不能放大。'],
@@ -619,13 +619,13 @@ export function failureAdvice(value, t, known = knownError(value)) {
     }
     if (/Not enough disk space to save the 4K video/.test(text)) {
         const megabytes = /about (\d+) MB is needed/.exec(text)?.[1];
-        return row('upscale-disk', ['Not enough disk space for the upscaled video', '磁盘空间不足，放大后的视频没能保存'],
+        return row('upscale-disk', ['Not enough disk space for the upscaled video', '磁盘空间不足，放大后的视频未能保存'],
             megabytes ? ['The upscaled video needs about {megabytes} MB on the drive of the output folder.', '放大后的视频需要输出文件夹所在磁盘约 {megabytes} MB 空间。', { megabytes }]
                 : ['The upscaled video needs more space on the drive of the output folder.', '放大后的视频需要输出文件夹所在磁盘更多空间。'],
             ['Free some space on that drive, then try again.', '请在该磁盘上腾出空间后重试。']);
     }
     if (/Not enough GPU memory to upscale to 4K/.test(text))
-        return row('upscale-memory', ['Not enough GPU memory to upscale', '显存不足，放大没能完成'],
+        return row('upscale-memory', ['Not enough GPU memory to upscale', '显存不足，放大未能完成'],
             ['Upscaling needs about 1.5 GB of free GPU memory, and other programs were using it.', '放大需要约 1.5 GB 空闲显存，当时被其他程序占用。'],
             ['Close other programs that use the GPU, then try again.', '请关闭其他占用显卡的程序，然后重试。']);
     if (/No space left on device|WinError 112|disk (?:is )?full/i.test(text))

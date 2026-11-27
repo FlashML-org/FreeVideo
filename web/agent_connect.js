@@ -95,7 +95,7 @@ export function linkReason(agent, t) {
             next: reconnect};
     }
     if (agent?.reason === 'never') return {reason: 'never', report: false,
-        text: t('No assistant has connected since FreeVideo started.', 'FreeVideo 启动后还没有助手连接。'), next: reconnect};
+        text: t('No assistant has connected since FreeVideo started.', 'FreeVideo 启动后尚无助手连接。'), next: reconnect};
     return {reason: 'unknown', report: true, text: t('The assistant is not connected.', '助手未连接。'), next: reconnect};
 }
 

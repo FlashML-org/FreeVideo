@@ -214,7 +214,7 @@ export function createSideRail(t, handlers = {}) {
         const active = rows.filter(row => ['running', 'queued', 'stopping'].includes(statusKey(row.job))).length;
         put(count, rows.length ? String(rows.length) : ''); count.hidden = !rows.length;
         count.setAttribute('aria-label', t('{count} tasks, {active} under way', '{count} 个任务，{active} 个进行中', { count: rows.length, active }));
-        put(emptyTitle, rows.length ? (shown.length ? '' : t('No task matches', '没有匹配的任务')) : t('No tasks yet', '还没有任务'));
+        put(emptyTitle, rows.length ? (shown.length ? '' : t('No task matches', '没有匹配的任务')) : t('No tasks yet', '暂无任务'));
         put(emptyText, rows.length ? (shown.length ? '' : t('Try other words or another filter.', '换个词或换个筛选试试。')) : t('Each video and image the assistant makes is listed here, with its prompt, time and state.', '助手生成的每段视频和每张图片都会列在这里，带提示词、时间和状态。'));
         emptyMark.hidden = !!rows.length;
         empty.hidden = !emptyTitle.textContent; searchRow.hidden = rows.length < 2 && !query; filters.hidden = !rows.length;

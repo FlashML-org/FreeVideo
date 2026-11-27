@@ -186,7 +186,7 @@ export const TIPS = {
     'editor.delete': {name: ['Delete', '删除'], use: ['Remove the selected clips', '删除选中的片段'], key: 'Delete', off: ['Select a clip first', '先选中一个片段']},
     'editor.closeGap': {name: ['Remove gaps', '移除空隙'], use: ['Slide clips together to close empty space', '把片段前移，填掉中间的空白']},
     'editor.previous': {name: ['Previous version', '上一版'], use: ['Step back to an earlier take of this clip', '换回这一段更早的版本'],
-        off: ['This clip has no earlier version', '这一段还没有更早的版本']},
+        off: ['This clip has no earlier version', '这一段尚无更早的版本']},
     'editor.snap': {name: ['Snapping', '吸附'], use: ['Clips stick to edges and the playhead', '拖动时贴齐片段边缘和播放头'], key: 'S'},
     'editor.marker': {name: ['Marker', '标记'], use: ['Mark this moment to find it later', '在这一刻做标记，方便回找'], key: 'M'},
     'editor.play': {name: ['Play', '播放'], use: ['Play or pause from the playhead', '从播放头开始播放或暂停'], key: 'Space'},
@@ -223,7 +223,7 @@ export const TIPS = {
     // ── Words that mean the same everywhere (matched by label when nothing more specific does) ───
     'common.close': {name: ['Close', '关闭'], use: ['Close this panel', '关闭这个面板'], key: 'Esc'},
     'common.cancel': {name: ['Cancel', '取消'], use: ['Leave without changing anything', '不做改动，退出这一步']},
-    'common.retry': {name: ['Retry', '重试'], use: ['Try what failed once more', '再试一次刚才失败的操作']},
+    'common.retry': {name: ['Retry', '重试'], use: ['Try what failed once more', '重试刚才失败的操作']},
     'common.copy': {name: ['Copy', '复制'], use: ['Copy it to the clipboard', '复制到剪贴板']},
     'common.copyDetails': {name: ['Copy details', '复制详情'], use: ['Copy the error to send to us', '复制出错信息，便于反馈']},
     'common.save': {name: ['Save', '保存'], use: ['Keep the changes made here', '保存这里的修改']},

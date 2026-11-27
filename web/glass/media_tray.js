@@ -203,8 +203,8 @@ function drawWorks(panel) {
     }));
     const empty = page.querySelector('.fv-mt-works-empty');
     empty.hidden = Boolean(items.length) || !panel.fvMtLoaded;
-    empty.textContent = filter === 'video' ? say(panel, 'No saved videos yet.', '作品库里还没有视频。')
-        : filter === 'image' ? say(panel, 'No saved images yet.', '作品库里还没有图片。') : say(panel, 'No saved creations yet.', '作品库里还没有作品。');
+    empty.textContent = filter === 'video' ? say(panel, 'No saved videos yet.', '作品库里暂无视频。')
+        : filter === 'image' ? say(panel, 'No saved images yet.', '作品库里暂无图片。') : say(panel, 'No saved creations yet.', '作品库里暂无作品。');
     page.dataset.loading = String(!panel.fvMtLoaded);
     glideTo(page.querySelector('.fv-mt-filter'));
 }

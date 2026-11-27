@@ -435,7 +435,7 @@ export async function openSetup(options) {
         loraVerdicts.clear(); loraCard.replaceChildren();
         loraHead.querySelector('.r').textContent = usable.length ? t('{count} files', '{count} 个文件', { count: usable.length }) : '';
         if (!usable.length) {
-            loraCard.append(row({iconName: 'layers', title: t('No LoRA files yet', '还没有 LoRA 文件'), sub: t('Put .safetensors files in models/loras, then check again', '把 .safetensors 文件放进 models/loras 文件夹，再点“重新检查”')}).element);
+            loraCard.append(row({iconName: 'layers', title: t('No LoRA files yet', '暂无 LoRA 文件'), sub: t('Put .safetensors files in models/loras, then check again', '把 .safetensors 文件放进 models/loras 文件夹，再点“重新检查”')}).element);
             loraStatus.textContent = other ? t('{other} files of other formats are not read.', '另有 {other} 个其他格式的文件不会被读取。', { other }) : '';
             loraRescan.disabled = false; return;
         }
@@ -1267,7 +1267,7 @@ export async function openSetup(options) {
             stale: t('Settings changed', '设置已更改'),
             stopped: t('Stopped; downloaded files are kept', '已停止，已下载的文件保留'),
             ready: t('Ready to generate', '已就绪，可以开始生成'),
-            none: t('Video models are not installed yet', '视频模型还没有安装'),
+            none: t('Video models are not installed yet', '视频模型尚未安装'),
         }[kind];
         const iconName = {ready: 'check', failed: 'warn', readerr: 'warn', problem: 'warn', stale: 'info', plan: 'down', busy: 'down', stopped: 'stop'}[kind] || 'cube';
         heroIcon.className = 'st-hic' + ({ready: ' is-ok', failed: ' is-warn', readerr: ' is-warn', problem: ' is-warn', stale: ' is-caution', plan: ' is-accent', busy: ' is-accent is-run', stopped: ' is-caution'}[kind] || '');
@@ -1319,7 +1319,7 @@ export async function openSetup(options) {
             // so the progress it points to is visible.
             calibrateWait = WAIT_REFUSAL.test(String(error.message || ''));
             calibrateStatus.className = calibrateWait ? 'st-slot' : 'st-slot is-warn';
-            fault(calibrateStatus, error.message, error, t('Could not start the measurement. Try again.', '没能开始测量，请重试。'));
+            fault(calibrateStatus, error.message, error, t('Could not start the measurement. Try again.', '未能开始测量，请重试。'));
             if (calibrateWait) poll();
         } finally { calibrateButton.disabled = busy; }
     };
@@ -1385,7 +1385,7 @@ export async function openSetup(options) {
         const measured = value.probe?.status === 'complete' ? value.probe : value.preferences?.probe;
         if (measured?.network_unavailable && !probeBusy) sourceStatus.textContent = t('No source can be reached. Check the network or the connection mode.', '下载源均无法连接，请检查网络或切换连接方式。');
         if (value.probe?.error || measured?.network_unavailable && !probeBusy) { sourceStatus.className = 'st-slot st-under is-warn'; fault(sourceStatus, sourceStatus.textContent); }
-        if (!sourceStatus.textContent) sourceStatus.textContent = measured?.sources ? t('Speeds are a guide; actual downloads may differ.', '测速只作参考，实际下载速度可能不同。') : t('Not measured yet. Test again to compare the sources.', '还没有测速，点“重新测速”比较各下载源。');
+        if (!sourceStatus.textContent) sourceStatus.textContent = measured?.sources ? t('Speeds are a guide; actual downloads may differ.', '测速只作参考，实际下载速度可能不同。') : t('Not measured yet. Test again to compare the sources.', '尚未测速，点“重新测速”比较各下载源。');
         speeds.replaceChildren();
         measuredRates = {}; autoBest = '';
         speedDetails.element.hidden = !measured?.sources;
@@ -1401,7 +1401,7 @@ export async function openSetup(options) {
             if (family.startsWith('torch-')) names[family] = t('GPU runtime', '显卡运行环境');
             const rate = r.bytes_per_second / 2 ** 20;
             const speed = !r.ok ? t('Unavailable', '未连通') : r.speed_measured === false || !Number.isFinite(rate) || rate <= 0 ?
-                t('Connected; speed not measured yet', '已连通，速度还没测出') : rate < .005 ? '<0.01 MiB/s' : `${rate.toFixed(rate < 1 ? 2 : 1)} MiB/s`;
+                t('Connected; speed not measured yet', '已连通，尚未测出速度') : rate < .005 ? '<0.01 MiB/s' : `${rate.toFixed(rate < 1 ? 2 : 1)} MiB/s`;
             for (const text of [names[family] || family, `${SOURCE_NAMES[r.id] || r.id} · ${r.route === 'direct' ? t('Direct', '直连') : t('Current connection', '当前连接')}`, speed]) tr.append(el('td', '', text));
             if (!r.ok) tr.lastChild.className = 'off';
             table.append(tr);
@@ -1584,7 +1584,7 @@ export async function openSetup(options) {
         invalidate(true); busy = true; controls();
         const before = [[...state.childNodes], state.className]; doing('Saving model folders…', '正在保存模型文件夹…');
         try { await saveModelFolders(); }
-        catch (error) { savedFolders = ''; savedMissing = false; fault(folderStatus, error.message, error, t('Could not save the model folders. Try again.', '没能保存模型文件夹，请重试。')); folderStatus.className = 'st-slot is-warn'; }
+        catch (error) { savedFolders = ''; savedMissing = false; fault(folderStatus, error.message, error, t('Could not save the model folders. Try again.', '未能保存模型文件夹，请重试。')); folderStatus.className = 'st-slot is-warn'; }
         finally { busy = false; waitSince = undefined; state.replaceChildren(...before[0]); state.className = before[1]; controls(); }
     };
     headInspect.onclick = () => { if (!busy) inspect.click(); };

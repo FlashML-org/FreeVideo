@@ -229,7 +229,7 @@ function renderJobs() {
     const signature = JSON.stringify([Object.values(jobs).map(phoneJobKey), limit, previewStyle(), hintWanted()]); if (signature === jobsSignature) return; jobsSignature = signature;
     const active = document.activeElement?.dataset.action;
     const {running, queued, done} = jobGroups(jobs); generations.replaceChildren();
-    if (!running.length && !queued.length && !done.length) generations.append(el('p', 'phone-empty', t('Nothing yet. Tell the Agent what to make in Chat.', '还没有作品，在对话里说想做什么。')));
+    if (!running.length && !queued.length && !done.length) generations.append(el('p', 'phone-empty', t('Nothing yet. Tell the Agent what to make in Chat.', '暂无作品，在对话里说想做什么。')));
     if (running.length) generations.append(el('h2', 'phone-section', t('Generating', '正在生成')));
     for (const job of running) {
         const card = el('article', 'phone-running'), frame = el('div', 'phone-frame'), info = el('div', 'phone-info'); card.dataset.job = job.id;

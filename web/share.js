@@ -193,7 +193,7 @@ export async function openShare(record,t){
             if(disposed)return;
             const a=el('a');a.href=api.apiURL('/freevideo/share/video?'+new URLSearchParams(exported));a.download='';a.click();say('');
         }catch(error){if(!disposed){
-            say(error.name==='AbortError'?'':isNetworkTypeError(error)?connectionLostText(t):kind==='image'?t('Could not save the share image. Try again.','分享图没有保存成功，请重试。'):error.message,error.reportable!==false&&!isNetworkTypeError(error));
+            say(error.name==='AbortError'?'':isNetworkTypeError(error)?connectionLostText(t):kind==='image'?t('Could not save the share image. Try again.','未能保存分享图，请重试。'):error.message,error.reportable!==false&&!isNetworkTypeError(error));
         }}
         finally{clearInterval(watch);busy=false;if(!disposed){save.disabled=false;keep.input.disabled=false;cancel.hidden=true;delete dialog.dataset.busy;tabs.querySelectorAll('button').forEach(b=>b.disabled=false);}}
     }

@@ -263,9 +263,9 @@ export function confirmStop(anchor, {kind = 'video', queued = false, host = null
         title.textContent = queued ? t('Remove from the queue?', '取消排队？') : voice ? t('Stop dubbing?', '停止配音？') : t('Stop generating?', '停止生成？');
         if (agent) {
             title.textContent = queued ? t('Remove from the queue?', '取消排队？') : t('Stop this step?', '停止这一步？');
-            text.textContent = queued ? t('It has not started; it will not run.', '这一步还没有开始，取消后不会进行。')
+            text.textContent = queued ? t('It has not started; it will not run.', '这一步尚未开始，取消后不会进行。')
                 : t('What this step has made so far is not kept. Finished creations stay.', '这一步做到一半的不会保留，已经完成的作品不受影响。');
-        } else text.textContent = queued ? t('It has not started; it will not be made.', '这项还没有开始，取消后不会生成。')
+        } else text.textContent = queued ? t('It has not started; it will not be made.', '这项尚未开始，取消后不会生成。')
             : voice ? t('Lines already dubbed are kept; the rest can be dubbed again later.', '已配好的台词会保留，其余台词可以稍后重新配音。')
             : kind === 'image' ? t('This image will not be kept.', '这张图不会保留。') : t('What has been made so far is not kept. Queued jobs go on.', '已生成的部分不会保留，排队的任务照常进行。');
         const ask = el('div', 'sgf-ask'), acts = el('div', 'sgf-acts');
@@ -624,7 +624,7 @@ export function installTaskFloat() {
             const queued = target.status === 'queued';
             const box = el('div', 'sgf-ask'); box.setAttribute('role', 'alertdialog');
             const title = el('b'), text = el('p'); title.textContent = queued ? t('Remove from the queue?', '取消排队？') : t('Stop generating?', '停止生成？');
-            text.textContent = queued ? t('It has not started; it will not be made.', '这项还没有开始，取消后不会生成。') : t('What has been made so far is not kept. Queued jobs go on.', '已生成的部分不会保留，排队的任务照常进行。');
+            text.textContent = queued ? t('It has not started; it will not be made.', '这项尚未开始，取消后不会生成。') : t('What has been made so far is not kept. Queued jobs go on.', '已生成的部分不会保留，排队的任务照常进行。');
             const acts = el('div', 'sgf-acts'), keep = el('button', 'pill line'), stop = el('button', 'pill danger');
             keep.type = stop.type = 'button'; keep.dataset.k = 'keep'; stop.dataset.k = 'stop';
             keep.textContent = t('Keep going', '继续生成'); stop.textContent = queued ? t('Remove', '取消排队') : t('Stop', '停止');

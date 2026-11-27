@@ -170,7 +170,7 @@ export function createCastRoom({api, t, viewURL: outputURL}) {
             const full = await libraries[row.kind].get(row.id);
             if (disposed || selected !== row.id) return;
             card = {...full, kind: full.kind || row.kind}; paint();
-        } catch (error) { if (selected === row.id) notice.textContent = userMessage(error, t, t('Could not open it. Try again.', '没能打开，请重试。')); }
+        } catch (error) { if (selected === row.id) notice.textContent = userMessage(error, t, t('Could not open it. Try again.', '未能打开，请重试。')); }
     }
     function paint() {
         if (!card) return;
@@ -203,7 +203,7 @@ export function createCastRoom({api, t, viewURL: outputURL}) {
         if (!card) return;
         const text = '@' + card.name + ' ';
         const ok = await copyText(text);
-        notice.textContent = ok ? t('Copied @{name}. Paste it in a prompt.', '已复制 @{name}，粘贴到提示词里使用。', { name: card.name }) : t('Could not copy. Type the name after @ in a prompt.', '没能复制。可在提示词中输入 @ 加名字。');
+        notice.textContent = ok ? t('Copied @{name}. Paste it in a prompt.', '已复制 @{name}，粘贴到提示词里使用。', { name: card.name }) : t('Could not copy. Type the name after @ in a prompt.', '未能复制。可在提示词中输入 @ 加名字。');
     }
     function resetRemove() { clearTimeout(arm); arm = 0; remove.classList.remove('fv-library-arming'); remove.lastElementChild.textContent = t('Delete', '删除'); }
     async function removeCard() {
@@ -214,12 +214,12 @@ export function createCastRoom({api, t, viewURL: outputURL}) {
             const response = await agentSend(api, 'DELETE', '/freevideo/agent/cast/' + encodeURIComponent(card.id), {}, {'If-Match': String(card.revision)});
             if (!response.ok) {
                 const data = await response.json().catch(() => null);
-                throw new Error(response.status === 409 ? t('Changed elsewhere. Refresh and try again.', '已在别处修改，请刷新后重试。') : data?.error?.message || t('Could not delete. Try again.', '没能删除，请重试。'));
+                throw new Error(response.status === 409 ? t('Changed elsewhere. Refresh and try again.', '已在别处修改，请刷新后重试。') : data?.error?.message || t('Could not delete. Try again.', '未能删除，请重试。'));
             }
             window.dispatchEvent(new CustomEvent('freevideo-cast-changed'));
             clearDetail(); await refresh();
         } catch (error) {
-            notice.textContent = userMessage(error, t, t('Could not delete. Try again.', '没能删除，请重试。'));
+            notice.textContent = userMessage(error, t, t('Could not delete. Try again.', '未能删除，请重试。'));
             notice.append(issueButton(t, () => ({where: ['Character library', '角色库'], message: error.message})));
         } finally { remove.disabled = false; }
     }

@@ -220,7 +220,7 @@ function announceGenerate() {
     dispatchEvent(new CustomEvent('freevideo-command', {detail}));
     if (detail.handled) return;
     const button = shell()?.viewDialog?.(view)?.querySelector(GENERATE_BUTTONS[view] || '[data-fv-command="generate"]');
-    if (!button || !button.getClientRects().length) { toast(t('This view has nothing to generate yet.', '这个视图里还没有可生成的内容。'), {tone: 'caution'}); return; }
+    if (!button || !button.getClientRects().length) { toast(t('This view has nothing to generate yet.', '这个视图里尚无可生成的内容。'), {tone: 'caution'}); return; }
     button.focus({preventScroll: false});
     button.classList.add('fv-cmd-pulse');
     setTimeout(() => button.classList.remove('fv-cmd-pulse'), 1400);
@@ -507,7 +507,7 @@ function draw() {
         const line = document.createElement('span');
         if (searchState === 'error' && scope !== 'actions') { head.textContent = t('Could not search the creations', '暂时无法搜索作品'); line.textContent = t('Try again in a moment.', '请稍后再试。'); }
         else if (q) { head.textContent = t('No results for “{q}”', '没有找到“{q}”', { q }); line.textContent = onlyMake ? t('Try another word, or use it as a prompt.', '换个词，或直接用它作为提示词生成。') : t('Try another word.', '换个词试试。'); }
-        else { head.textContent = t('Nothing here yet', '这里还没有内容'); line.textContent = {works: t('Videos and images show here once made.', '生成的视频和图片会出现在这里。'), prompt: t('Prompts show here once used.', '用过的提示词会出现在这里。'), cast: t('Characters show here once created.', '创建的角色会出现在这里。')}[scope] || ''; }
+        else { head.textContent = t('Nothing here yet', '这里暂无内容'); line.textContent = {works: t('Videos and images show here once made.', '生成的视频和图片会出现在这里。'), prompt: t('Prompts show here once used.', '用过的提示词会出现在这里。'), cast: t('Characters show here once created.', '创建的角色会出现在这里。')}[scope] || ''; }
         empty.append(art, head, line);
         if (onlyMake) ui.list.replaceChildren(empty, fragment); else { ui.list.replaceChildren(empty); }
         active = Math.min(active, Math.max(0, rows.length - 1)); mark(false);

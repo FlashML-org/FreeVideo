@@ -99,7 +99,7 @@ export function createReplacePerson({t, api, media, mount, view, onChange = () =
             if (kind === 'video') { next.source = {file: result.file, audio: result.audio === true}; if (!next.source.audio) next.keepSound = false; }
             else { const list = peopleOf(next).slice(); list[Math.min(index, list.length)] = {file: result.file}; withPeople(next, list.slice(0, MAX_PEOPLE)); }
             save();
-        } catch (error) { note.textContent = userMessage(error, t, t('Could not upload. Try again.', '没能上传，请重试。')); }
+        } catch (error) { note.textContent = userMessage(error, t, t('Could not upload. Try again.', '未能上传，请重试。')); }
         finally { busy = false; media.isUploading = false; paint(); }
     }
     function dropPerson(index) {

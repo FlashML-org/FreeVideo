@@ -26,7 +26,7 @@ ENGINE_BUSY_DETAIL = (
 IMAGE_PACK_FAILURES = {
     'disk_space': ('Not enough disk space to install the image model.', '磁盘空间不足，无法安装图像模型。'),
     'offline': ('The network is unavailable; the image model could not be downloaded.', '网络不通，无法下载图像模型。'),
-    'source_failed': ("The image model download didn't finish. Check your network and try again.", '图像模型没有下载完成，请检查网络后重试。'),
+    'source_failed': ("The image model download didn't finish. Check your network and try again.", '图像模型未能下载完成，请检查网络后重试。'),
     'integrity_failed': ('The image model files are incomplete or damaged. Repair them in the launcher.', '图像模型文件不完整或已损坏，请在启动器里修复。'),
     'write_failed': ('The image model files are in use or cannot be written or deleted. Close programs that may be using them (for example an antivirus scan), check that the model folder can be written to, then try again.',
                      '图像模型文件被占用，或无法写入／删除。请关闭可能正在使用它们的程序（例如杀毒软件扫描），确认模型文件夹可以写入，然后重试。'),
@@ -358,12 +358,12 @@ def sampling_table_failure(value, *, zh=False):
     # A custom step count is not a quality level: no "档" / "quality level" for it.
     if zh:
         if index is None:
-            title = '“自定义（%d 步）”还没有下载' % details['base_steps']
+            title = '“自定义（%d 步）”尚未下载' % details['base_steps']
             what = '这个步数需要的文件'
         else:
-            title = '“%s”还没有下载' % QUALITY_LEVELS[index][1]
+            title = '“%s”尚未下载' % QUALITY_LEVELS[index][1]
             what = '这一档需要的文件'
-        detail = ('这次生成要先下载%s（约 %s），但没能下载完。'
+        detail = ('这次生成要先下载%s（约 %s），但未能下载完成。'
                   '请确认网络连接后再生成一次，FreeVideo 会自动下载。') % (what, size)
         if available:
             detail += '也可以改用已经可以使用的%s档。' % available
@@ -1213,8 +1213,8 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
          ('FreeVideo did not load completely in the browser', '浏览器里的 FreeVideo 没有完整加载'),
          ('The browser page names the files that failed and what to do. Follow it, then reload the page; if it happens again, export the report.',
           '请按浏览器页面上的提示处理后刷新；仍然出现时，可以导出报告。')),
-        (r'The browser has not opened FreeVideo yet|浏览器还没有打开 FreeVideo', 'page-silent',
-         ('The browser has not opened FreeVideo', '浏览器还没有打开 FreeVideo'),
+        (r'The browser has not opened FreeVideo yet|浏览器(?:尚未|还没有)打开 FreeVideo', 'page-silent',
+         ('The browser has not opened FreeVideo', '浏览器尚未打开 FreeVideo'),
          ('Click “Open FreeVideo”. If the page stays blank or keeps loading, open it in a current Chrome or Edge.',
           '请点击“打开 FreeVideo”。如果页面空白或一直在加载，请用最新版 Chrome 或 Edge 打开。')),
         (r'NVIDIA driver/nvidia-smi is missing\.', 'gpu-driver-missing',
@@ -1247,7 +1247,7 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
         (r'The shell cannot be started\. A failure occurred during initialization', 'powershell-start',
          ('Windows PowerShell could not start', 'Windows PowerShell 无法启动'),
          ('FreeVideo uses Windows PowerShell to inspect this computer, but Windows PowerShell could not start. Restart the computer, then click "Retry installation". If it fails again, export the report.',
-          'FreeVideo 要用 Windows PowerShell 检查这台电脑，但 Windows PowerShell 没能启动。请重启电脑，然后点击“重试安装”。仍然失败时，可以导出报告。')),
+          'FreeVideo 要用 Windows PowerShell 检查这台电脑，但 Windows PowerShell 未能启动。请重启电脑，然后点击“重试安装”。仍然失败时，可以导出报告。')),
         (r'\[CUDA_INIT_FAILED\]', 'gpu-cuda-init',
          ('CUDA could not start on this GPU', 'CUDA 未能在这张显卡上启动'),
          ('The NVIDIA driver is installed. Restart the computer, then open FreeVideo again. If it still fails, export the report.',
@@ -1324,7 +1324,7 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
          ('A program file is missing', '缺少一个程序文件'),
          ('It may have been quarantined by security software. Restore the file or allow the FreeVideo folder, '
           'then click "Retry installation".',
-          '可能被安全软件隔离了。恢复这个文件或允许 FreeVideo 所在的文件夹后，点“重试安装”。')),
+          '可能已被安全软件隔离。恢复这个文件或允许 FreeVideo 所在的文件夹后，点“重试安装”。')),
         # uv could not start an environment's Python and Windows answered "access denied". The error code
         # is matched, not the text, which Windows writes in the system language.
         (PYTHON_START_DENIED, 'python-start-denied',

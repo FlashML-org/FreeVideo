@@ -587,7 +587,7 @@ export function createEditorGenbar(host, {state, t, actions, text = ''}) {
         // A specific reason is said once; the planning limits are already shown above.
         catch (error) { const result = actions.error(error, 'generate'); reason = result?.say || '';
             if (result?.say && !['chain_too_long', 'chain_part_too_short', 'chain_short_parts', 'chain_source_full', 'timed_text', 'middle_frames'].includes(result.reason)) say(result.say, false, ['Editor generation', '剪辑器生成']);
-            else if (!result && !note.textContent) { reason = t('Generation could not start. Try again; if it keeps failing, report the problem.', '生成没能开始。请重试；仍然失败时，请提交问题。'); say(reason, false, ['Editor generation', '剪辑器生成']); } }
+            else if (!result && !note.textContent) { reason = t('Generation could not start. Try again; if it keeps failing, report the problem.', '生成未能开始。请重试；仍然失败时，请提交问题。'); say(reason, false, ['Editor generation', '剪辑器生成']); } }
         finally { pressing.delete(key); render(); }
         return reason;
     };

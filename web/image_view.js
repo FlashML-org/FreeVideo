@@ -633,7 +633,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             // The engine's own bin answers without a list: what it deleted leaves the works here, not only on the next load.
             if (answer.items) rows = answer.items; else rows = rows.filter(r => !gone.includes(r.file));
             if (gone.length) { meta.forget(gone); void removeSavedImages(api, gone).catch(() => {}); announce('freevideo-works-removed', gone, {undoable: false}); }
-            if (kept.size) say(t('Could not delete {size}.', '有 {size} 张没能删除。', { size: kept.size }));
+            if (kept.size) say(t('Could not delete {size}.', '有 {size} 张未能删除。', { size: kept.size }));
             if (undoNote && list?.some(f => undoNote.files.includes(f))) undoNote = null;
         }
         if (alive) { drawWorks(); render(); }
@@ -782,7 +782,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             changeRefs(() => { if (first) references.unshift(record); else references.push(record); });
             const probe = new Image(); probe.onload = () => { record.width = probe.naturalWidth; record.height = probe.naturalHeight; if (alive) render(); }; probe.src = record.url;
             promptGroup.open(true); render(); prompt.focus();
-        } catch { say(t('That image could not be read.', '这张图读不了。')); }
+        } catch { say(t('That image could not be read.', '未能读取这张图。')); }
     }
     // Any change to the pictures' order goes through here: the mentions in the prompt follow their pictures.
     function changeRefs(mutate) {
@@ -829,7 +829,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             const {openImageEditor} = await import('./image_editor.js');
             outcome = await openImageEditor({source: null, name: 'sketch.png', target: record ? {width: record.width, height: record.height} : sketchTarget(), edit: record?.edit || null,
                 role: 'reference', tool: 'brush', mode: 'sketch', t, resolve: url => url, upload: async blob => client.upload(blob), imageGenClient: client});
-        } catch { say(t('The sketch canvas cannot open right now.', '草图画布暂时打不开。')); return; }
+        } catch { say(t('The sketch canvas cannot open right now.', '草图画布暂时无法打开。')); return; }
         if (!alive || !outcome?.blob) return;
         const file = new File([outcome.blob], 'sketch.png', {type: outcome.blob.type || 'image/png'});
         if (record) {
@@ -853,7 +853,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             const {openImageEditor} = await import('./image_editor.js').catch(error => { loadFailed = true; throw error; });
             outcome = await openImageEditor({source: record.original?.url || record.url, name: record.original?.file?.name || record.file?.name || 'reference.png', edit: record.edit || null,
                 role: 'reference', t, resolve: url => url, upload: async blob => client.upload(blob), imageGenClient: client});
-        } catch { say(loadFailed ? t('The image editor did not load. Reload the page and try again.', '图片编辑器没有加载出来。请刷新页面后再试。') : t('This image could not be read. Choose another image.', '这张图无法读取。请重新选择一张。')); return; }
+        } catch { say(loadFailed ? t('The image editor did not load. Reload the page and try again.', '图片编辑器未能加载。请刷新页面后再试。') : t('This image could not be read. Choose another image.', '这张图无法读取。请重新选择一张。')); return; }
         if (!alive || !outcome || !references.includes(record)) return;
         if (outcome.restore) { restoreReference(record); return; }
         if (!outcome.blob) return;
@@ -1351,7 +1351,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         try { info = await client.packInstall(mine); } catch (error) {
             // A failed download says so in its own words; the generation sentences do not describe it.
             say(error?.code === 'connection_lost'
-                ? t('The download did not start: FreeVideo could not be reached. Start FreeVideo again, then try again.', '下载未能开始：连不上 FreeVideo。请重新启动 FreeVideo 后再试。')
+                ? t('The download did not start: FreeVideo could not be reached. Start FreeVideo again, then try again.', '下载未能开始：无法连接 FreeVideo。请重新启动 FreeVideo 后再试。')
                 : error?.code === 'disk_full'
                     ? t('The download did not start: the disk is full. Free some space, then download again.', '下载未能开始：磁盘空间不够。空出空间后再下载。')
                 : ['no_memory', 'pack_missing', 'model_unreadable'].includes(error?.code)
@@ -1586,7 +1586,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         try {
             const {openImageEditor} = await import('./image_editor.js').catch(error => { loadFailed = true; throw error; });
             outcome = await openImageEditor({source: file, name: file, role: 'reference', t, resolve: pictureURL, upload: async blob => client.upload(blob), imageGenClient: client});
-        } catch { say(loadFailed ? t('The image editor did not load. Reload the page and try again.', '图片编辑器没有加载出来。请刷新页面后再试。') : t('This image could not be read. Choose another image.', '这张图无法读取。请重新选择一张。')); return; }
+        } catch { say(loadFailed ? t('The image editor did not load. Reload the page and try again.', '图片编辑器未能加载。请刷新页面后再试。') : t('This image could not be read. Choose another image.', '这张图无法读取。请重新选择一张。')); return; }
         if (!alive || !outcome?.blob) return;
         try {
             const edited = new File([outcome.blob], outcome.name || 'edited.png', {type: outcome.blob.type || 'image/png'});
@@ -1596,7 +1596,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             const record = {file: edited, url: URL.createObjectURL(edited), width: outcome.width, height: outcome.height};
             if (references.length >= most()) URL.revokeObjectURL(record.url); else { changeRefs(() => references.unshift(record)); promptGroup.open(true); }
             render();
-        } catch (error) { say(isNetworkTypeError(error) ? connectionLostText(t) : t('The edited image could not be saved. Try again; if it keeps failing, report the problem.', '编辑后的图片没能保存。请重试；仍然失败时，请提交问题。')); }
+        } catch (error) { say(isNetworkTypeError(error) ? connectionLostText(t) : t('The edited image could not be saved. Try again; if it keeps failing, report the problem.', '编辑后的图片未能保存。请重试；仍然失败时，请提交问题。')); }
     }
     asReference.addEventListener('click', () => void useAsReference(shownFile, false));
     // Opens downward when it fits inside the stage, otherwise upward over the picture.

@@ -451,10 +451,10 @@ function workspaceProblem(app) {
     if (onScreen(bar) && !cover) return null;
     // Its own stylesheet places it above the canvas.
     return sheetLoaded('view_navigation.css')
-        ? {text: t('The FreeVideo toolbar that opens the creative workspace is hidden or covered by other page elements.', '打开创作面板的 FreeVideo 工具栏被页面上的其他元素隐藏或遮挡了。'), advice: 'plugin',
+        ? {text: t('The FreeVideo toolbar that opens the creative workspace is hidden or covered by other page elements.', '打开创作面板的 FreeVideo 工具栏被页面上的其他元素隐藏或遮挡。'), advice: 'plugin',
             ...(cover && {cover: nameOf(cover)})}
         : {text: t('The FreeVideo toolbar that opens the creative workspace cannot be seen: its stylesheet view_navigation.css did not load.',
-            '看不到打开创作面板的 FreeVideo 工具栏：样式文件 view_navigation.css 没有加载。'), advice: 'reload', sheet: 'view_navigation.css'};
+            '看不到打开创作面板的 FreeVideo 工具栏：样式文件 view_navigation.css 未能加载。'), advice: 'reload', sheet: 'view_navigation.css'};
 }
 
 // Looks again as the page changes, such as another workflow coming to the
@@ -484,11 +484,11 @@ async function watchWorkspace(app) {
 }
 
 function reportText(item) {
-    const where = {studio: t('The creative workspace could not open', '创作面板打不开'),
-        navigation: t('The FreeVideo toolbar could not be added', 'FreeVideo 工具栏没有加载'),
+    const where = {studio: t('The creative workspace could not open', '创作面板无法打开'),
+        navigation: t('The FreeVideo toolbar could not be added', 'FreeVideo 工具栏未能加载'),
         progress: t('Live progress could not start', '生成进度无法更新'),
         updates: t('Update checks could not start', '更新检查无法启动'),
-        launch: t('The FreeVideo workflow did not open', 'FreeVideo 工作流没有打开'),
+        launch: t('The FreeVideo workflow did not open', 'FreeVideo 工作流未能打开'),
         menu: t('FreeVideo could not be opened from the menu', '从菜单打开 FreeVideo 失败')}[item.where] || t('FreeVideo reported an error', 'FreeVideo 报错');
     // The script's own words go to the technical details and the report, not into the sentence the card shows.
     return {text: where, detail: describe(item.error), error: item.error, advice: item.where === 'launch' ? 'relaunch' : 'reload', asked: item.where === 'menu'};
@@ -775,7 +775,7 @@ async function check() {
     send('loading', []);
     const app = await waitFor(comfy, 60000);
     if (!app) {
-        const problems = [{text: t('The page did not finish loading. Reload and try again.', '页面没有加载完成，请刷新后再试。'), detail: 'The ComfyUI page did not finish loading within a minute.', advice: 'reload'}];
+        const problems = [{text: t('The page did not finish loading. Reload and try again.', '页面未能加载完成，请刷新后再试。'), detail: 'The ComfyUI page did not finish loading within a minute.', advice: 'reload'}];
         show(problems); send('error', problems); return;
     }
     // A restarted ComfyUI has not heard from this page; tell it again.
@@ -798,7 +798,7 @@ async function check() {
     // FreeVideo's delays it. Give it the rest of the minute before naming it.
     if (!window.FreeVideoUI?.ready && !problems.length) await waitFor(() => window.FreeVideoUI?.ready, 50000);
     opening?.finish(); opening = null;
-    const notStarted = {text: t('The page did not finish loading. Reload and try again.', '页面没有加载完成，请刷新后再试。'), detail: 'FreeVideo’s scripts loaded, but ComfyUI did not start them.', advice: 'reload'};
+    const notStarted = {text: t('The page did not finish loading. Reload and try again.', '页面未能加载完成，请刷新后再试。'), detail: 'FreeVideo’s scripts loaded, but ComfyUI did not start them.', advice: 'reload'};
     if (!window.FreeVideoUI?.ready && !problems.length) {
         problems.push(notStarted);
         // A start later than that clears the card instead of leaving it up.
@@ -813,7 +813,7 @@ async function check() {
     if (!problems.length) problems.push(...await diagnoseStyles());
     let checkStudio = false;
     if (launchVisit && !problems.length) {
-        if (!launched) problems.push({text: t('The page did not finish loading. Reload and try again.', '页面没有加载完成，请刷新后再试。'), detail: 'The FreeVideo workflow did not open: launcher.js did not report back.', advice: 'reload'});
+        if (!launched) problems.push({text: t('The page did not finish loading. Reload and try again.', '页面未能加载完成，请刷新后再试。'), detail: 'The FreeVideo workflow did not open: launcher.js did not report back.', advice: 'reload'});
         else if (launched.error) problems.push(reportText(launched));
         else if (!studioWorkflow(app.graph)) problems.push({text: t('The interface opened another workspace; FreeVideo is in another tab.', '界面打开了另一个工作区，FreeVideo 在其他标签页中。'), detail: 'ComfyUI shows another workflow.', advice: 'relaunch'});
         else checkStudio = true;
@@ -843,7 +843,7 @@ async function check() {
     if (checkStudio && studioWorkflow(app.graph) && preferredView() !== 'nodes' && window.FreeVideoShell?.view?.() !== 'nodes' && !inTransition() && !surfaceOnScreen()
         && !['dialog.fv-workspace-opening[open]', 'dialog.fv-editor[open]', 'dialog.fv-studio[open]'].some(selector => document.querySelector(selector))
         && !reports.some(item => item.type === 'error' && item.where === 'studio'))
-        problems.unshift({text: t('The creative workspace did not open.', '创作面板没有打开。'), advice: 'reload'});
+        problems.unshift({text: t('The creative workspace did not open.', '创作面板未能打开。'), advice: 'reload'});
     problems.push(...lastProblems);
     // Started while this check was waiting for the page to be in front.
     if (window.FreeVideoUI?.ready && problems.includes(notStarted)) problems.splice(problems.indexOf(notStarted), 1);

@@ -250,7 +250,7 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         unsupported_media: t('Enhancement can read only images and videos added in Media. You can keep using the original.', '增强只能读取素材中添加的图片和视频，可先使用原文生成。'),
         connected_media: t('Enhancement cannot read connected nodes. Add images or videos in Media, or use the original.', '增强读不到连接节点的素材，请在素材中添加图片或视频，或使用原文。'),
         audio_media: t('Enhancement cannot read audio. Add images or videos in Media, or use the original.', '增强读不到音频，请在素材中添加图片或视频，或使用原文。'),
-        unreadable_video: t('Could not read a frame from this video. Replace it with another video or an image, or use the original.', '读不出这个视频的画面，请换一个视频或图片，或使用原文。'),
+        unreadable_video: t('Could not read a frame from this video. Replace it with another video or an image, or use the original.', '无法读取这个视频的画面，请换一个视频或图片，或使用原文。'),
         too_many_images: t('Use up to 8 reference images for enhancement.', '增强暂支持最多 8 张参考图。'),
         invalid_prompt: error?.characters ? (error.expanded
             ? t('The prompt and character prompts have {number} characters; enhancement supports up to 12,000. Shorten it or use the original.', '提示词连同角色提示词共 {number} 字符，增强最多支持 12,000 字符，请精简或使用原文。', tooLong(error))

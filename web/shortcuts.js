@@ -256,7 +256,7 @@ function draw() {
     const list = sections({filter: state.filter, query: state.query});
     if (!list.length) {
         const empty = document.createElement('p'); empty.className = 'fv-ks-empty';
-        empty.textContent = state.query ? t('No shortcut matches.', '没有匹配的快捷键。') : t('No shortcuts here yet.', '这里还没有快捷键。');
+        empty.textContent = state.query ? t('No shortcut matches.', '没有匹配的快捷键。') : t('No shortcuts here yet.', '这里暂无快捷键。');
         parts.body.replaceChildren(empty);
         return;
     }

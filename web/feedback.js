@@ -172,7 +172,7 @@ export function openFeedback(t, { open = openPage, version = productVersion,
             setPicture(null);
             console.warn('FreeVideo feedback screenshot:', error);
             // Declining the browser's prompt is the user's own answer; anything else is said once.
-            if (error?.name !== 'NotAllowedError') status.textContent = t("Couldn't capture this page. You can submit without it.", '没能截取这一页，可以不带截图提交。');
+            if (error?.name !== 'NotAllowedError') status.textContent = t("Couldn't capture this page. You can submit without it.", '未能截取这一页，可以不带截图提交。');
         } finally { shotCheck.box.disabled = false; }
     });
     // Read while the box is ticked, so the page can open in the same click as Send.
@@ -182,7 +182,7 @@ export function openFeedback(t, { open = openPage, version = productVersion,
         status.replaceChildren(); diagCheck.box.disabled = true;
         diagnostics = await readDiagnostics(fetchApi);
         diagCheck.box.disabled = false;
-        if (!diagnostics) { diagCheck.box.checked = false; status.textContent = t("Couldn't read the diagnostic info. You can submit without it.", '没能读取诊断信息，可以不带它提交。'); }
+        if (!diagnostics) { diagCheck.box.checked = false; status.textContent = t("Couldn't read the diagnostic info. You can submit without it.", '未能读取诊断信息，可以不附诊断信息提交。'); }
     });
     send.onclick = async () => {
         const text = field.value.trim();
@@ -201,12 +201,12 @@ export function openFeedback(t, { open = openPage, version = productVersion,
                 ? t('The feedback page is open, but the text was too long and was cut short there. Your full text stays here.', '已打开反馈页面，但文字过长，那边被截短了，完整文字仍留在这里。')
                 : t('The feedback page is open, but the text was too long and was cut short there. The full text is copied; paste it in.', '已打开反馈页面，但文字过长，那边被截短了，完整文字已复制，请粘贴补全。'))
             : !reached
-            ? (done ? t("Couldn't open the feedback page. The link is copied; paste it into your browser.", '没能打开反馈页面，链接已复制，请粘贴到浏览器。')
-                : t("Couldn't open the feedback page. Please try again later.", '没能打开反馈页面，请稍后再试。'))
+            ? (done ? t("Couldn't open the feedback page. The link is copied; paste it into your browser.", '未能打开反馈页面，链接已复制，请粘贴到浏览器。')
+                : t("Couldn't open the feedback page. Please try again later.", '未能打开反馈页面，请稍后再试。'))
             : hadPicture && done
                 ? t('The feedback page is open and the screenshot is copied. Paste it in, then submit.', '已打开反馈页面，截图已复制，粘贴后提交。')
                 : hadPicture
-                ? t("The feedback page is open with your text filled in, but the screenshot couldn't be copied. Submit it there without it.", '已打开反馈页面，文字已填好，但截图没能复制，可不带截图提交。')
+                ? t("The feedback page is open with your text filled in, but the screenshot couldn't be copied. Submit it there without it.", '已打开反馈页面，文字已填好，但截图未能复制，可不带截图提交。')
                 : t('The feedback page is open with your text filled in. Submit it there.', '已打开反馈页面，文字已填好，确认后提交。');
     };
 

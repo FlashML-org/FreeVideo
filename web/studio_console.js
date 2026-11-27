@@ -222,7 +222,7 @@ export function durationStepper(t, seconds, {onOpen, max = () => Infinity, locke
     minus.setAttribute('aria-label', t('One second shorter', '缩短 1 秒')); plus.setAttribute('aria-label', t('One second longer', '加长 1 秒'));
     tip(minus, t('Shorter', '缩短'), t('One second shorter', '时长减少 1 秒'));
     tip(plus, t('Longer', '加长'), t('One second longer', '时长增加 1 秒'));
-    tip(value, t('Duration', '时长'), t('Click to type an exact length', '点一下输入精确时长'));
+    tip(value, t('Duration', '时长'), t('Click to type an exact length', '点击输入精确时长'));
     element.append(minus, value, plus);
     const step = delta => {
         if (seconds.disabled) return;

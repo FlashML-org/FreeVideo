@@ -183,7 +183,7 @@ function createChainPartList(t, save, {onShow = () => {}, onHide = () => {}, red
             // A redo refused for its changed settings is told on the card; its line stays the short one.
             const said = error.code === 'redo_request_changed' ? null : error.said || error.cause?.said;
             if (rows.get(row.part.id) === row) flash(row, said ? t(...said)
-                : t('Could not start. See the details on the picture.', '没能开始，原因见画面上的说明。'), 'error');
+                : t('Could not start. See the details on the picture.', '未能开始，原因见画面上的说明。'), 'error');
             onError(error);
         } finally { row.starting = false; row.redo.disabled = false; }
     }
@@ -206,8 +206,8 @@ function createChainPartList(t, save, {onShow = () => {}, onHide = () => {}, red
             row.saving = null;
             if (rows.get(row.part.id) !== row) return;
             row.part = {...row.part, text: before}; draw(row);
-            flash(row, error.status === 409 ? t('This part is already generating. Your edit was not saved.', '这一段已在生成，改动没有保存')
-                : t('Your edit was not saved.', '改动没有保存'), 'error');
+            flash(row, error.status === 409 ? t('This part is already generating. Your edit was not saved.', '这一段已在生成，改动未能保存')
+                : t('Your edit was not saved.', '改动未能保存'), 'error');
         }
     }
     function open(row) {
@@ -275,7 +275,7 @@ function createChainPartList(t, save, {onShow = () => {}, onHide = () => {}, red
                 // The part began while it was open: the words typed so far cannot reach it. A video that ended just closes it.
                 const changed = row.draft !== row.part.text;
                 editing = null; row.part = part; draw(row);
-                if (changed && active) flash(row, t('This part is already generating. Your edit was not saved.', '这一段已在生成，改动没有保存'), 'error');
+                if (changed && active) flash(row, t('This part is already generating. Your edit was not saved.', '这一段已在生成，改动未能保存'), 'error');
                 return;
             }
             if (editing === row) { row.part = {...part, text: row.part.text}; return; }
@@ -585,7 +585,7 @@ export function loraPanel(node, panel, {promptNode = null} = {}) {
                 else check(false);
                 list.append(wrap);
                 if (list.isConnected) restoreStrengthNote();
-                loadTriggers(row.name).catch(error => { if (!disposed && trigger.isConnected) note.textContent = userMessage(error, t, t('Could not read the trigger words. Try again.', '没能读取触发词，请重试。')); });
+                loadTriggers(row.name).catch(error => { if (!disposed && trigger.isConnected) note.textContent = userMessage(error, t, t('Could not read the trigger words. Try again.', '未能读取触发词，请重试。')); });
             });
             if (rows.length > 1) actions.append(clear);
             if (focusGrip != null) { list.querySelector(`.fv-lora-row[data-index="${focusGrip}"] .fv-lora-grip`)?.focus(); focusGrip = null; }
@@ -729,7 +729,7 @@ export async function openExtendEditor(record, node = current?.node || app.graph
         node = app.graph?._nodes?.find(row => row.type === 'FreeVideoGenerate');
         if (!node) {
             node = globalThis.LiteGraph?.createNode('FreeVideoGenerate');
-            if (!node || !app.graph) throw new Error(t('Could not open the creative panel. Try again.', '没能打开创作面板，请重试。'));
+            if (!node || !app.graph) throw new Error(t('Could not open the creative panel. Try again.', '未能打开创作面板，请重试。'));
             app.graph.add(node); app.graph.change?.();
         }
     }
@@ -746,7 +746,7 @@ export async function openEditEditor(target, node = current?.node || app.graph?.
         node = app.graph?._nodes?.find(row => row.type === 'FreeVideoGenerate');
         if (!node) {
             node = globalThis.LiteGraph?.createNode('FreeVideoGenerate');
-            if (!node || !app.graph) throw new Error(t('Could not open the creative panel. Try again.', '没能打开创作面板，请重试。'));
+            if (!node || !app.graph) throw new Error(t('Could not open the creative panel. Try again.', '未能打开创作面板，请重试。'));
             app.graph.add(node); app.graph.change?.();
         }
     }
@@ -863,19 +863,19 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const tourFault = (reason, error) => {
         const missing = /^missing_example_asset:/.test(String(error?.message || ''));
         const say = {
-            busy: ['A video is being made. Try the example when it finishes.', '正在生成，完成后再试示例'],
-            linked: ['Some settings this example needs are connected to other nodes, so it cannot fill them in. Disconnect those links in the node view, then try again.', '示例要改的设置已连到别的节点，无法填入；在节点视图断开这些连线后再试'],
-            unavailable: ['The current model cannot use this example\'s settings.', '当前模型用不了这个示例的设置'],
-            asset: missing ? ['An example file is missing from this installation. Select "Repair" under Settings > Environment, then try again.', '示例素材不在本机安装里，在“设置 → 环境”里点“修复”后重试']
-                : ['The example files could not be read from FreeVideo. Check that FreeVideo is still running, then try again.', '没能从 FreeVideo 读取示例素材，确认 FreeVideo 仍在运行后再试'],
+            busy: ['A video is being made. Try the example when it finishes.', '正在生成视频，完成后再使用示例。'],
+            linked: ['Some settings this example needs are connected to other nodes, so it cannot fill them in. Disconnect those links in the node view, then try again.', '示例需要修改的设置已连接到其他节点，无法填入。请在节点视图中断开这些连线后重试。'],
+            unavailable: ['The current model cannot use this example\'s settings.', '当前模型无法使用这个示例的设置'],
+            asset: missing ? ['An example file is missing from this installation. Select "Repair" under Settings > Environment, then try again.', '本机安装中缺少示例素材。请在“设置 → 环境”中点击“修复”后重试。']
+                : ['The example files could not be read from FreeVideo. Check that FreeVideo is still running, then try again.', '未能从 FreeVideo 读取示例素材。请确认 FreeVideo 仍在运行后重试。'],
             write: ['The example files could not be added to this panel\'s media list. Try again.', '示例素材未能加入这个面板的素材列表，请重试。'],
-            workspace_changed: ['Another view was opened, so the example was not filled in. Go back to the creation panel and try again.', '已切到别的视图，示例没有填入，回到创作面板再试'],
-            no_editor: ['The editor did not open, so the start clip was not placed. Open the editor, then select the example again.', '剪辑视图没有打开，起始片段没有放上去；打开剪辑视图后再点一次示例'],
-            'pending-assets': ['This example is not available yet.', '这个示例暂时不能用'],
-            unknown_example: ['This example is not available yet.', '这个示例暂时不能用'],
+            workspace_changed: ['Another view was opened, so the example was not filled in. Go back to the creation panel and try again.', '已切换到其他视图，示例未能填入。请回到创作面板后重试。'],
+            no_editor: ['The editor did not open, so the start clip was not placed. Open the editor, then select the example again.', '剪辑视图未能打开，起始片段未能放入。请打开剪辑视图后重新选择示例。'],
+            'pending-assets': ['This example is not available yet.', '这个示例暂不可用。'],
+            unknown_example: ['This example is not available yet.', '这个示例暂不可用。'],
         }[reason];
         const detail = String(error?.message || error || '').split('\n')[0].slice(0, 160);
-        fault(say ? t(...say) : detail ? t('The example was not filled in: {detail}', '示例没有填入：{detail}', { detail }) : t('The example was not filled in.', '示例没有填入'));
+        fault(say ? t(...say) : detail ? t('The example was not filled in: {detail}', '示例未能填入：{detail}', { detail }) : t('The example was not filled in.', '示例未能填入'));
     };
     const tourBlock = example => busy || queued || capturing ? 'busy'
         : (example.prompt && linked(node, 'text')) || Object.keys(example.settings || {}).some(name => linked(node, name)) ? 'linked' : 'unavailable';
@@ -1109,7 +1109,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         if (![...mp.options].some(option => Number(option.value) === pixels)) { const option = el('option', `${pixels.toFixed(2)} MP`); option.value = pixels; mp.append(option); }
         mp.value = String(pixels);
         try { applySize(); if (pixels !== 1) legacyOption?.remove(); status.dataset.error = 'false'; }
-        catch (error) { pixels = previous; mp.value = String(previous); syncResolutionLabel(); status.dataset.error = 'true'; status.textContent = userMessage(error, t, t('Could not change the resolution. Try again.', '没能更改清晰度，请重试。')); }
+        catch (error) { pixels = previous; mp.value = String(previous); syncResolutionLabel(); status.dataset.error = 'true'; status.textContent = userMessage(error, t, t('Could not change the resolution. Try again.', '未能更改清晰度，请重试。')); }
     }
     for (const preset of PRESET_PIXELS) {
         const mark = button(String(preset), () => choosePixels(preset), 'fvs-res-tick');
@@ -2612,15 +2612,15 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // A chain action the server refused with its own sentence says that sentence, not the general "could not continue".
     const queueError = error => (error?.action && error.said ? t(...error.said) : null) || ({
         queue_unavailable: t('Could not read the queue. The loop has stopped; videos already added stay queued.', '暂时读不到队列，循环已停止；已加入的视频还在队列中。'),
-        cancel_failed: t('Could not cancel. Try again.', '没有取消成功，请重试。'),
+        cancel_failed: t('Could not cancel. Try again.', '未能取消，请重试。'),
         move_failed: t('Could not move it. Try again.', '没有移动成功，请重试。'),
-        submit_failed: t('Could not add to the queue. Check the settings in node view.', '没能加入队列，请在节点视图检查设置。'),
+        submit_failed: t('Could not add to the queue. Check the settings in node view.', '未能加入队列，请在节点视图检查设置。'),
         loop_active: t('Stop the current loop before starting another.', '请先停止当前循环。'),
-        loop_stopped: t('The last video did not finish. The loop has stopped.', '上一个视频没有生成完，循环已停止。'),
+        loop_stopped: t('The last video did not finish. The loop has stopped.', '上一个视频未能生成完成，循环已停止。'),
         linked_seed: t('Batch and loop use the seed in this panel. Disconnect the seed link in node view.', '批量和循环要用面板里的种子，请在节点视图断开种子的连线。'),
         missing_node: t('This node is disabled or no longer in the workflow.', '该节点已禁用或已从工作流移除。'),
-        chain_cancel_failed: t('Could not cancel. Refresh the page and try again.', '没有取消成功，请刷新页面后再试。'),
-        chain_resume_failed: t('Could not continue. Refresh the page and try again.', '没有继续生成，请刷新页面后再试。'),
+        chain_cancel_failed: t('Could not cancel. Refresh the page and try again.', '未能取消，请刷新页面后再试。'),
+        chain_resume_failed: t('Could not continue. Refresh the page and try again.', '未能继续生成，请刷新页面后再试。'),
     }[error?.message] || (error?.said ? t(...error.said) : null) || userMessage(error, t));
     let lastQueueError = null, connectionNotice = false;
     watchEngineExit(api).catch(() => {});
@@ -2633,7 +2633,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
         if (['loop_stopped', 'queue_unavailable'].includes(error?.message)
             && node.freevideoFailureReport && node.freevideoFailureReport.stage !== 'queue') return;
         status.textContent = error?.schema === 'freevideo.error-report'
-            ? t('Could not start. See the details on the picture.', '没能开始生成，原因见画面上的说明。')
+            ? t('Could not start. See the details on the picture.', '未能开始生成，原因见画面上的说明。')
             : extensionCause(error) ? t('A browser extension is interfering with FreeVideo. See the details on the picture.', '浏览器扩展干扰了 FreeVideo，详见画面上的说明。')
             : queueError(error);
         // Recoverable chain actions need one visible sentence, not a second error card.
@@ -3032,7 +3032,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
             if (emptyAllowed && !prompt.value.trim() && !extension.source) allowEmptyPrompt(graph, node.id);
             snapshot = singleRunSnapshot(extendSnapshot(graph, node.id, source,
                 {multiple: lengthPlan?.count > 1}), node.id, lengthPlan);
-            if (!snapshot) { fault(t('Could not prepare this run. Try again.', '没能准备这次生成，请重试。')); return; }
+            if (!snapshot) { fault(t('Could not prepare this run. Try again.', '未能准备这次生成，请重试。')); return; }
             // The Fast level makes one whole video: the parts of a longer one are sampled at Light.
             if (fastOn() && lengthPlan?.count > 1) Object.assign(snapshot.output[node.id].inputs, {fast_mode: 'none', two_pass: true, preview: false});
             const seedIndex = node.widgets.findIndex(w => w.name === 'seed');
@@ -3532,7 +3532,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
     const stepValue = stepper.element.querySelector('.fvs-step-value');
     const paintDuration = () => {
         const plan = lengthControl?.plan, parts = plan?.count > 1 ? plan.count : 0;
-        stepValue.dataset.fvTipUse = parts ? t('Made in {parts} parts and joined', '分 {parts} 段生成并拼接', { parts }) : t('Click to type an exact length', '点一下输入精确时长');
+        stepValue.dataset.fvTipUse = parts ? t('Made in {parts} parts and joined', '分 {parts} 段生成并拼接', { parts }) : t('Click to type an exact length', '点击输入精确时长');
         stepper.sync();
     };
     seconds.addEventListener('input', paintDuration); seconds.addEventListener('change', paintDuration);
