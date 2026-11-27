@@ -1419,7 +1419,9 @@ def upscale_frames(upscale_from, output_directory, *, source=None, environ=None,
         from .upscale_estimate import remember
         remember(root, kind, _estimate_hardware(machine), (saved['geometry']['width'], saved['geometry']['height']),
                  (width, height), result['frames'], seconds)
-        save(output.with_suffix('.request.json'), dict(geometry=canvas, request_seconds=seconds, output_frames=result['frames'],
+        # success: the library and the edit view list a creation only with it, as for every generated video.
+        save(output.with_suffix('.request.json'), dict(success=True, geometry=canvas, request_seconds=seconds,
+             output_frames=result['frames'],
              upscaled_work=str(video), frame_upscale=result,
              video=dict(torch_peak_reserved_bytes=result.get('torch_peak_reserved_bytes'))))
         if progress:

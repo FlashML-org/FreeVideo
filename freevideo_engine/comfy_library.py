@@ -39,6 +39,17 @@ class _Unfinished(ValueError):
     """A run whose summary says it did not finish: not a damaged record."""
 
 
+def finished(report):
+    """Whether a request summary describes a finished video. Upscales by the small frame-wise model (4K, quick 1.5x)
+    were once saved without "success"; their summary is written only after the upscale finished, so one that holds the
+    upscale result and no "success" at all is a finished video too. A summary that says success is false never is."""
+    if not isinstance(report, dict):
+        return False
+    if report.get('success') is True:
+        return True
+    return 'success' not in report and isinstance(report.get('frame_upscale'), dict) and bool(report.get('upscaled_work'))
+
+
 def _report(path):
     # Read only the small request summary, never tensors, prompts or media.
     with path.with_suffix('.request.json').open('rb') as stream:
@@ -48,7 +59,7 @@ def _report(path):
     report = json.loads(data)
     if not isinstance(report, dict):
         raise ValueError('Request summary is not an object')
-    if report.get('success') is not True:
+    if not finished(report):
         raise _Unfinished('Video is not complete')
     return report
 

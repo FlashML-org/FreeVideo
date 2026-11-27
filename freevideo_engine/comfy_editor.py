@@ -24,7 +24,7 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from urllib.parse import unquote, urlencode, urlsplit
 
 from .origin_scheme import effective_scheme
-from .comfy_library import _ID, _plain, _video
+from .comfy_library import _ID, _plain, _video, finished
 from .system import windows
 from .editor_frames import frame_not_after, last_frame_end
 from .editor_limits import PROJECT_BYTES
@@ -1003,7 +1003,7 @@ def sources(root, keys):
                 raise ValueError('Empty media')
             if source['kind'] == 'work':
                 report = _safe(root, Path(relative).with_suffix('.request.json').as_posix())
-                if _read_json(report, 4 * 1024**2).get('success') is not True:
+                if not finished(_read_json(report, 4 * 1024**2)):
                     raise ValueError('Creation is incomplete')
             media = probe(path)
             if source['kind'] == 'work':
@@ -1029,7 +1029,7 @@ def sources(root, keys):
                     # The existing endpoint requires a complete request receipt.
                     receipt = _safe(root, Path(relative).with_suffix('.request.json').as_posix())
                     _safe(root, Path(relative).with_suffix('.thumbnail.jpg').as_posix())
-                    if receipt.is_file() and _read_json(receipt, 4 * 1024**2).get('success') is True:
+                    if receipt.is_file() and finished(_read_json(receipt, 4 * 1024**2)):
                         cover = '/freevideo/library/thumbnail?' + urlencode(dict(id=library_id))
                 if cover is None:
                     cover = '/freevideo/editor/thumbnail?' + urlencode(dict(key=key))
