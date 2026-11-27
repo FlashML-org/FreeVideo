@@ -25,7 +25,8 @@ async function client(source = api) {
             method: 'POST', headers: {'Content-Type':'application/json','X-FreeVideo-Setup':info.discovery.token},
             body: JSON.stringify({root:info.discovery.root, ...value}),
         });
-        const result = await response.json();
+        // A reply that is not JSON (the server's plain-text error page) keeps its HTTP status for the message.
+        const result = await response.json().catch(error => { error.status = response.status; throw error; });
         if (!response.ok || result.error) throw new Error(result.error || response.statusText);
         return result;
     };
@@ -213,9 +214,13 @@ export async function notifyCompatibility({inFront = () => true} = {}) {
                 : t('Generation is slowed automatically for stability; it speeds up after 3 successful generations in a row, or you can change this in Settings.',
                     '为了稳定，生成已自动放慢；连续完成 3 次后会加快一些，也可在设置里调整。'));
         panel.actions.before(message);
+        let failed = null;
         const finish = async (settings) => {
             try { await request('ack', {notice_id: value.notice.id}); panel.close(); if (settings) await openCompatibility(); }
-            catch (error) { panel.actions.before(element('p', error.message)); }
+            catch (error) {
+                // One line for the latest failure: pressing again replaces it instead of adding another.
+                failed?.remove(); failed = element('p', saveFailure(error, t)); panel.actions.before(failed);
+            }
         };
         button(panel, t('Adjust settings', '调整设置'), () => finish(true));
         const ok = button(panel, t('OK', '知道了'), () => finish(false), true);
