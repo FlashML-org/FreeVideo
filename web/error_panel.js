@@ -679,6 +679,14 @@ export function failureAdvice(value, t, known = knownError(value)) {
         ['', ''], ['', '']);
 }
 
+// In a dialog without "Report a problem", the part of a card's advice that names it, and what it becomes.
+export const REPORT_ON_CARD = [
+    [['choose "Report a problem"', '请点击“提交问题”'],
+     ['choose "Report a problem" on the failure card in Create', '请在创作面板的失败卡上点“提交问题”']],
+    [['then "Report a problem"', '再点击“提交问题”'],
+     ['then "Report a problem" on the failure card in Create', '再在创作面板的失败卡上点击“提交问题”']],
+];
+
 let activeDialog = null;
 function showFailureDialog(report, t) {
     // Both graph and Studio receive execution_error. Show one modal for that
@@ -691,7 +699,22 @@ function showFailureDialog(report, t) {
     dialog.setAttribute('aria-label', t('FreeVideo error', 'FreeVideo 错误'));
     const panel = createErrorPanel(t); panel.show(report, false);
     // The dialog has no run's report to download; submitting stays on the failure card.
-    if (diagnosticReports.has(report)) panel.element.querySelector('.fv-failure-github:not([data-lora])')?.remove();
+    const reportButton = diagnosticReports.has(report) ? panel.element.querySelector('.fv-failure-github:not([data-lora])') : null;
+    reportButton?.remove();
+    // Advice that names "Report a problem": once this dialog has no such button, it names the failure card that does.
+    const next = panel.element.querySelector('.fv-failure-next');
+    if (reportButton && next) {
+        if (next.textContent === t('Try again. If it still fails, choose "Report a problem" to send us the report.', '请重试。仍然失败时，请点击“提交问题”发送报告。'))
+            next.textContent = t('Try again. If it still fails, choose "Report a problem" on the failure card in Create.', '请重试。仍然失败时，请在创作面板的失败卡上点“提交问题”发送报告。');
+        else {
+            // A card's own advice changes only where it names the button; the rest of the sentence stays. A language whose
+            // sentence does not hold the fragment's own translation keeps the sentence (tests/failure_dialog_fragments.mjs).
+            for (const [from, to] of REPORT_ON_CARD) {
+                const button = t(...from);
+                if (next.textContent.includes(button)) { next.textContent = next.textContent.replace(button, t(...to)); break; }
+            }
+        }
+    }
     const close = document.createElement('button'); close.type = 'button'; close.className = 'fv-failure-primary';
     close.textContent = t('Close', '关闭'); close.onclick = () => dialog.close();
     // The title has its own line; the secondary buttons sit at the left of the bottom row, the main button at the right.
@@ -957,6 +980,12 @@ export function createErrorPanel(t, route = null) {
             // Advice that ends with "export the report" points at the report this card does offer.
             for (const [from, to] of EXPORT_TO_DOWNLOAD)
                 if (action.textContent.includes(from)) action.textContent = action.textContent.replace(from, holdNames(to));  // set as shown, as t() would
+            // The same for advice that names both buttons, in every language the sentence is translated into.
+            const both = t('Switching the download source or connection mode gives the same result. Choose "Export report", then "Report a problem", and attach the report.',
+                '更换下载源或连接方式后结果相同。请先点击“导出报告”，再点击“提交问题”并附上报告。');
+            if (action.textContent === both)
+                action.textContent = t('Switching the download source or connection mode gives the same result. Choose "Download report" in the preview, then "Report a problem", and attach the report.',
+                    '更换下载源或连接方式后结果相同。请先点击预览区的“下载报告”，再点击“提交问题”并附上报告。');
         }
         action.hidden = !action.textContent;
         repair.hidden = !pageRepair(action.textContent);
