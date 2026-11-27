@@ -41,7 +41,7 @@ def collect(root, since):
         # Python and Git downloads in the setup run, and ComfyUI dependency
         # preparation in launcher/host-runs. The command output remains in the
         # local manual bundle.
-        package_attempts, native_tls_sources, revocation_sources = [], [], []
+        package_attempts, native_tls_sources, revocation_sources, reinstalls = [], [], [], []
         folders = [run]
         host_root = root / 'launcher' / 'host-runs'
         if host_root.is_dir():
@@ -54,11 +54,13 @@ def collect(root, since):
                 package_attempts += source_failures(folder / 'network.jsonl')
                 native_tls_sources += native_tls_fallbacks(folder / 'network.jsonl')
                 revocation_sources += revocation_best_effort(folder / 'network.jsonl')
+                reinstalls += python_reinstalls(folder / 'network.jsonl')
             except OSError:
                 continue
         return plain_data(dict(state=state, samples=rows, package_attempts=package_attempts[-16:],
                                native_tls_fallback=list(dict.fromkeys(native_tls_sources))[-8:],
-                               revocation_best_effort=list(dict.fromkeys(revocation_sources))[-8:]))
+                               revocation_best_effort=list(dict.fromkeys(revocation_sources))[-8:],
+                               python_reinstall=list(dict.fromkeys(reinstalls))[-4:]))
     except (OSError, ValueError, KeyError, TypeError):
         return {}
 
@@ -85,6 +87,26 @@ def source_failures(path):
                 item.get('category') == 'git' and item.get('action') == 'fallback' and 'error_class' in item):
             rows.append({key: item[key] for key in SOURCE_KEYS if key in item})
     return rows[-16:]
+
+
+REINSTALL_KINDS = ('missing', 'silent', 'failed')
+
+
+def python_reinstalls(path):
+    """Why setup installed the isolated Python again (managed_python's kinds), from the network log; nothing else is read."""
+    with io_path(path).open('rb') as stream:
+        size = stream.seek(0, 2)
+        stream.seek(max(0, size - 256 * 1024))
+        lines = stream.read(256 * 1024).splitlines()
+    kinds = []
+    for line in lines:
+        try:
+            item = d.mapping(json.loads(line))
+        except (ValueError, UnicodeError):
+            continue
+        if item.get('action') == 'python-reinstall' and item.get('reason') in REINSTALL_KINDS:
+            kinds.append(item['reason'])
+    return kinds
 
 
 def native_tls_fallbacks(path):
@@ -205,6 +227,8 @@ def enrich(result, value):
     notes += [dict(note='revocation check best effort used', source=name)
               for name in d.sequence(value.get('revocation_best_effort'))[:8]
               if isinstance(name, str) and re.fullmatch(r'[a-z0-9_.-]{1,40}', name)]
+    notes += [dict(note='isolated python installed again', reason=kind)
+              for kind in d.sequence(value.get('python_reinstall'))[:4] if kind in REINSTALL_KINDS]
     if notes:
         result['notes'] = notes
     result['diagnostic_revision'] = 6

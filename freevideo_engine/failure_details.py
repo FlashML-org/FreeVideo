@@ -505,6 +505,8 @@ def setup_command_failure(label, log, exit_code, report=None):
 # uv's error for an interpreter that exists but cannot be started, as in
 # "error: Failed to run `C:\...\python.exe`" then "Caused by: <system language> (os error 5)".
 PYTHON_START_DENIED = r'Failed to run [^\n]*python[^\n]*\s+Caused by:[^\n]*(?:os error 5|WinError 5)\b'
+# managed_python: the isolated Python setup uses was installed again and still runs without answering. The same card.
+MANAGED_PYTHON_NO_ANSWER = 'The isolated Python that setup uses does not start or gives no answer'
 
 
 # Leads the error of a step that needed an environment's Python file after it
@@ -1327,7 +1329,7 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
           '可能已被安全软件隔离。恢复这个文件或允许 FreeVideo 所在的文件夹后，点“重试安装”。')),
         # uv could not start an environment's Python and Windows answered "access denied". The error code
         # is matched, not the text, which Windows writes in the system language.
-        (PYTHON_START_DENIED, 'python-start-denied',
+        (PYTHON_START_DENIED + '|' + re.escape(MANAGED_PYTHON_NO_ANSWER), 'python-start-denied',
          ('Windows refused to run the Python program', 'Windows 拒绝运行 Python 程序'),
          ('Security software or a Windows protection feature is blocking the Python file of the FreeVideo environment. '
           'Allow the FreeVideo folder there (for Windows Security: Virus & threat protection → Manage ransomware protection → '
