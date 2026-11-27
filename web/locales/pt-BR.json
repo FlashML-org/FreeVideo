@@ -5672,6 +5672,7 @@
  "This edit is open in another window. Close it there first.": "Esta edição está aberta em outra janela. Feche-a lá primeiro.",
  "This edit is still generating. You can delete it when it finishes.": "Esta edição ainda está sendo gerada. Você poderá excluí-la quando terminar.",
  "This edit was changed elsewhere, so your changes here were saved as a copy.": "Esta edição foi alterada em outro lugar, por isso suas alterações aqui foram salvas como cópia.",
+ "This edit was saved elsewhere with newer changes, so the newer version is shown. Earlier undo steps are cleared.": "Esta edição foi salva em outro lugar com alterações mais recentes, por isso a versão mais recente é exibida. As etapas anteriores de desfazer foram apagadas.",
  "This example is not available yet.": "Este exemplo ainda não está disponível.",
  "This file cannot be opened. Supported formats: ": "Não foi possível abrir este arquivo. Formatos compatíveis: ",
  "This file is empty. Choose another file.": "Este arquivo está vazio. Escolha outro arquivo.",
