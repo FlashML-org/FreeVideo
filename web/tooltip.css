@@ -23,3 +23,6 @@
 .fv-tip-off{margin-top:var(--fv-sp-2,2px);color:var(--fv-caution,var(--fv-fg))}
 .fv-tip[data-state=off] .fv-tip-name{color:var(--fv-fg2)}
 @media (forced-colors:active){.fv-tip{border-color:CanvasText;background:Canvas;color:CanvasText}}
+
+/* A list of file paths (data-fv-tip-lines): wider, one item per line, broken only after a slash. */
+.fv-tip .fv-tip-part{white-space:nowrap}

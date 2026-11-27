@@ -141,6 +141,8 @@ export function createImageGenClient(fetchImpl = globalThis.fetch.bind(globalThi
         // The image models are fetched by this page's own engine; the reply is the new info.
         async packInstall(model) { const value = await post('pack-install', model ? {model} : {}); return {...value, installed: value.installed ?? value[p.installed] ?? false}; },
         async packCancel(model) { const value = await post('pack-cancel', model ? {model} : {}); return {...value, installed: value.installed ?? value[p.installed] ?? false}; },
+        // Settings › image models: remove a model's own files (image_gen.service.remove_model).
+        async packRemove(model) { const value = await post('pack-remove', {model}); return {...value, installed: value.installed ?? value[p.installed] ?? false}; },
         // Click select: the engine finds the object under a point; the pack it needs is fetched on demand like the image models.
         async segment({image, points}) { return post('segment', {image, points}); },
         segmentInstall: () => post('segment-install', {}),

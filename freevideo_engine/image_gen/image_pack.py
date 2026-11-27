@@ -552,6 +552,14 @@ def _start_recheck(root, folder, stale):
     return True
 
 
+def _size(path):
+    """A file's size, 0 when it is not there: a removal running beside this read can take it between two looks."""
+    try:
+        return path.stat().st_size if path.is_file() else 0
+    except FileNotFoundError:
+        return 0
+
+
 def status(root=None, *, group='image'):
     """Missing files and unique retained bytes; no network and no weight reads on this thread."""
     folder = base(root)
@@ -566,9 +574,9 @@ def status(root=None, *, group='image'):
         old = not intact and _stale(path, row, ledger)
         if old:
             stale.append(path)
-        size = path.stat().st_size if path.is_file() else 0
+        size = _size(path)
         part = _side(folder, row, root, '.partial')
-        partial = part.stat().st_size if part.is_file() else 0
+        partial = _size(part)
         retained = row['bytes'] if intact else min(row['bytes'], max(size, partial))
         # A file the video install put there is not downloaded again; install() checks its hash.
         present = bool(row.get('shared')) and not intact and size == row['bytes']
@@ -1241,24 +1249,37 @@ def removal_plan(root=None, *, group='image'):
                 raise
             skipped.append(name)
             continue
-        if not path.exists():
-            continue
-        # A weight the user replaced with a link is theirs now: neither the link nor what it leads to is removed.
-        if not _linked(path) and _owned_intact(path, stamp):
-            files.append(dict(file=name, identity=stamp, bytes=path.stat().st_size))
-        else:
-            skipped.append(name)
+        try:
+            if not path.exists():
+                continue
+            # A weight the user replaced with a link is theirs now: neither the link nor what it leads to is removed.
+            if not _linked(path) and _owned_intact(path, stamp):
+                files.append(dict(file=name, identity=stamp, bytes=path.stat().st_size))
+            else:
+                skipped.append(name)
+        except FileNotFoundError:
+            continue  # removed while this was read (a removal running beside it): nothing left to plan for
+    # The notice goes last: a removal stopped part way leaves the license notice beside the weights still there.
+    files.sort(key=lambda f: f['file'] == notice)
     return dict(files=files, bytes=sum(f['bytes'] for f in files), skipped=skipped)
 
 
+def _in_use(error):
+    """A file another program has open (Windows refuses to delete it): kept for now, the rest still goes."""
+    return isinstance(error, PermissionError) and (os.name == 'nt' or getattr(error, 'winerror', None) in (5, 32))
+
+
 def remove(root=None, check=None, *, engine_root=None, group='image'):
-    """Delete our unchanged downloads/partials/notice; keep imports and repairs."""
+    """Delete our unchanged downloads/partials/notice; keep imports and repairs.
+
+    Each file removed is recorded at once, so the records always match the disk. A file in use is left and named
+    (in_use); any other error stops the removal there, with everything removed so far already recorded."""
     check = check or (lambda: None)
     try:
         with _lease(root, engine_root, destructive=True) as folder:
             plan = removal_plan(root, group=group)
             owned, ledger = _read(folder, OWNERSHIP), _read(folder, LEDGER)
-            released, removed = 0, []
+            released, removed, in_use = 0, [], []
             kinds = _kinds(group)
             for entry in plan['files']:
                 check()
@@ -1267,8 +1288,14 @@ def remove(root=None, check=None, *, engine_root=None, group='image'):
                 if _linked(path) or not _owned_intact(path, stamp):
                     plan['skipped'].append(entry['file'])
                     continue
-                with _step('remove'):
-                    path.unlink()
+                try:
+                    with _step('remove'):
+                        path.unlink()
+                except OSError as error:
+                    if not _in_use(error):
+                        raise
+                    in_use.append(entry['file'])
+                    continue
                 removed.append(entry['file'])
                 released += entry['bytes']
                 owned.pop(entry['file'], None)
@@ -1276,7 +1303,7 @@ def remove(root=None, check=None, *, engine_root=None, group='image'):
                 with _step('record'):
                     save(_path(folder, OWNERSHIP), owned)
                     save(_path(folder, LEDGER), ledger)
-            return dict(released_bytes=released, removed=removed, skipped=plan['skipped'])
+            return dict(released_bytes=released, removed=removed, skipped=plan['skipped'], in_use=in_use)
     except BlockingIOError as error:
         raise PackError('busy') from error
 

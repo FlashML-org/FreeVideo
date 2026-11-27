@@ -38,7 +38,7 @@ if (typeof document !== 'undefined') {
 
 import { nearestAllowed } from './field_note.js';
 import { cn, t, INSTALLED_HINT, gib, bytesText, atLeast, WAIT_REFUSAL, reportable, reportText, failureText, setupError, SECTIONS, sectionOf } from './settings_words.js';
-import { languageUrl } from './i18n.js';
+import { holdPhrase, isChinese, languageUrl } from './i18n.js';
 import { languagePicker, addressLanguage } from './language_picker.js';
 import { localized } from './i18n_tables.js';
 export { failureText, sectionOf, SECTIONS, bytesText };
@@ -253,10 +253,17 @@ export async function openSetup(options) {
         const r = row({iconName: 'img', title: model.short, sub: IMAGE_WORDS[model.id] || '', cls: 'st-mrow'});
         const size = el('span', 'st-sz'); const chip = el('span', 'st-chip'); chip.hidden = true;
         const act = button(t('Install', '安装'), {iconName: 'down', kind: 'fill'}); act.hidden = true;
+        // Delete: always shown on an installed model (touch screens have no hover); greyed with the reason while
+        // something is under way. It opens a confirmation under the row, with Cancel focused first.
+        const del = button(t('Delete', '删除'), {iconName: 'trash'}); del.hidden = true;
         const meter = bar('st-mbar'); meter.hidden = true;
-        r.end.append(size, chip, act); r.element.append(meter);
-        imageRows.set(model.id, {row: r, size, chip, act, meter, model});
-        imageCard.append(r.element);
+        const confirm = el('div', 'st-confirm'); confirm.hidden = true;
+        const ask = el('p'), keys = el('div', 'st-keys');
+        const no = button(t('Cancel', '取消')), yes = button(t('Delete', '删除'), {iconName: 'trash', kind: 'danger'});
+        keys.append(no, yes); confirm.append(ask, keys);
+        r.end.append(size, chip, act, del); r.element.append(meter);
+        imageRows.set(model.id, {row: r, size, chip, act, del, meter, confirm, ask, no, yes, model});
+        imageCard.append(r.element, confirm);
     }
     // Add-on models: Replace person's model, and every quality level prepared ahead.
     const addCard = card();
@@ -1071,8 +1078,111 @@ export async function openSetup(options) {
                 r.sub.textContent = t('Not available on this computer', '这台电脑不支持'); r.element.setAttribute('aria-disabled', 'true');
             } else r.sub.textContent = t('Checking…', '正在检查…');
             act.disabled = imageBusy;
+            paintRemove(id, item, s);
         }
         imageHead.querySelector('.r').textContent = '';
+    }
+    // Removing a model (image_gen.service.remove_model): why it waits, the confirmation, and what it did.
+    const REMOVE_WAIT = {
+        generating: () => t('Available when the current generation finishes.', '正在生成，完成后才能删除。'),
+        downloading: () => t('Available when the current download or check finishes.', '正在下载或检查模型文件，完成后才能删除。'),
+        installing: () => t('Available when the installation or update finishes.', '正在安装或更新，完成后才能删除。'),
+        other: () => t('Available when FreeVideo finishes its current task.', 'FreeVideo 正在处理其他任务，完成后才能删除。'),
+    };
+    let removeAsked = '', removeShown = {};
+    // Files named from the model folder, at most five, one per line; more are counted.
+    const fileList = (files, count) => [...files, ...(count > files.length ? [t('and {count} more', '另外 {count} 个', { count: count - files.length })] : [])].join('\n');
+    function listTip(node, name, files, count) {
+        if (!count) { delete node.dataset.fvTipName; delete node.dataset.fvTipUse; delete node.dataset.fvTipLines; node.removeAttribute('tabindex'); return; }
+        node.dataset.fvTipName = name; node.dataset.fvTipUse = fileList(files, count); node.dataset.fvTipLines = '1'; node.tabIndex = 0;
+    }
+    // How much a removal frees: "about 14.5 GiB", or "less than 0.1 GiB" (never "about 0.0 GiB").
+    // The number and its unit stay on one line on screen (holdPhrase; the text copies plain).
+    const freesAbout = bytes => holdPhrase(bytes < 0.1 * 2 ** 30 ? t('less than 0.1 GiB', '不到 0.1 GiB') : t('about {size} GiB', '约 {size} GiB', { size: gb(bytes) }));
+    const freed = bytes => holdPhrase(bytes < 0.1 * 2 ** 30 ? t('less than 0.1 GiB', '不到 0.1 GiB') : t('{size} GiB', '{size} GiB', { size: gb(bytes) }));
+    // Sentences follow one another with a space in English and none in Chinese.
+    const sentences = parts => parts.filter(Boolean).join(isChinese() ? '' : ' ');
+    // installed: the whole model is there; otherwise only what a stopped (or half-removed) download left.
+    function removeQuestion(item, rm, installed) {
+        const words = {model: item.model.short, amount: freesAbout(rm.bytes)};
+        const shared = item.shared ? t('The text encoder that video generation also uses ({shared} GiB) is kept.',
+            '视频生成也在用的文本编码器（{shared} GiB）会保留。', { shared: gb(item.shared) }) : '';
+        const kept = !rm.kept ? '' : rm.kept === 1
+            ? t('1 file that FreeVideo did not download or that was changed is kept.', '有 1 个文件不是 FreeVideo 下载的或已被修改，会保留。')
+            : t('{count} files that FreeVideo did not download or that were changed are kept.', '有 {count} 个文件不是 FreeVideo 下载的或已被修改，会保留。', { count: rm.kept });
+        return installed
+            ? sentences([t('Delete {model}? This frees {amount}.', '删除 {model}？将释放{amount}。', words), shared,
+                t('You can download it again here later.', '以后可以在这里重新下载。'), kept])
+            : sentences([t('Delete the downloaded part of {model}? This frees {amount}.', '删除 {model} 已下载的部分？将释放{amount}。', words),
+                t('Downloading it again will start from the beginning.', '删除后再下载需要从头开始。'), shared, kept]);
+    }
+    function removeResult(item, rm) {
+        const done = rm.result || {};
+        if (done.in_use) return {cls: 'is-warn', text: done.in_use === 1
+            ? t('1 file is in use and could not be deleted. Restart FreeVideo, then delete again.', '有 1 个文件正在使用，未能删除。请重新启动 FreeVideo 后再删除一次。')
+            : t('{count} files are in use and could not be deleted. Restart FreeVideo, then delete again.', '有 {count} 个文件正在使用，未能删除。请重新启动 FreeVideo 后再删除一次。', { count: done.in_use }),
+            list: [t('Files in use', '正在使用的文件'), done.in_use_files || [], done.in_use]};
+        const amount = freed(done.released_bytes || 0);
+        if (done.kept) return {cls: 'is-accent', text: done.kept === 1
+            ? t('Deleted. {amount} freed; 1 file that FreeVideo did not download was kept.', '已删除，释放了 {amount}；1 个不是 FreeVideo 下载的文件已保留。', { amount })
+            : t('Deleted. {amount} freed; {count} files that FreeVideo did not download were kept.', '已删除，释放了 {amount}；{count} 个不是 FreeVideo 下载的文件已保留。', { amount, count: done.kept }),
+            list: [t('Files kept', '已保留的文件'), done.kept_files || [], done.kept]};
+        return {cls: 'is-accent', text: t('Deleted. {amount} freed.', '已删除，释放了 {amount}。', { amount }), fades: true};
+    }
+    function paintRemove(id, item, s) {
+        const {row: r, del, confirm, ask, no, yes} = item;
+        const info = imageInfo?.models?.find(m => m.id === id), rm = info?.remove || null;
+        item.shared = info?.shared_bytes || 0;
+        const can = rm && rm.bytes > 0 && !['downloading', 'unavailable', 'checking'].includes(s.state);
+        const running = rm?.state === 'running';
+        del.hidden = !(can || running);
+        const wait = running ? '' : rm?.blocked ? REMOVE_WAIT[rm.blocked]?.() || REMOVE_WAIT.other() : '';
+        const off = running || Boolean(wait) || imageBusy;
+        del.setAttribute('aria-disabled', String(off));
+        tip(del, t('Delete', '删除'), t('Delete the files FreeVideo downloaded for this image model', '删除这个图像模型下载的文件'));
+        if (wait) del.dataset.fvTipWhy = wait; else delete del.dataset.fvTipWhy;
+        del.onclick = () => { if (del.getAttribute('aria-disabled') === 'true') return; removeAsked = id; paintImages(); no.focus(); };
+        const open = removeAsked === id && can && !off;
+        if (removeAsked === id && !open) removeAsked = '';
+        confirm.hidden = !open;
+        if (open) ask.textContent = removeQuestion(item, rm, s.state === 'ready');
+        const close = () => { removeAsked = ''; paintImages(); del.focus(); };
+        no.onclick = close;
+        confirm.onkeydown = event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); } };
+        yes.onclick = () => imageRemove(id);
+        listTip(r.sub, '', [], 0);
+        if (running) { r.sub.className = ''; r.sub.textContent = t('Deleting…', '正在删除…'); return; }
+        if (rm?.state === 'failed') {
+            const failure = rm.failure || {};
+            r.sub.className = 'is-warn';
+            r.sub.textContent = failure.reason === 'busy' ? REMOVE_WAIT.other() : localized({en: failure.message_en, zh: failure.message_zh}, t) || REMOVE_WAIT.other();
+            return;
+        }
+        if (rm?.state === 'done') {
+            const shown = removeResult(item, rm), key = JSON.stringify(rm.result || {});
+            if (removeShown[id]?.key !== key) { removeShown[id] = {key, at: Date.now()}; chooseAnother(id); }
+            if (shown.fades && Date.now() - removeShown[id].at > 6000) return;
+            if (shown.fades) setTimeout(() => { if (dialog.open) paintImages(); }, 6100);
+            r.sub.className = shown.cls; r.sub.textContent = shown.text;
+            if (shown.list) listTip(r.sub, ...shown.list);
+        }
+    }
+    // The image view's chosen model is gone: choose the first one still installed, so the next Generate does not
+    // quietly download it again. With none left, the choice stays and Generate offers the download as before.
+    function chooseAnother(id) {
+        const KEY = 'freevideo.imageModel';
+        try {
+            if (localStorage.getItem(KEY) !== id) return;
+            const next = IMAGE_MODELS.find(m => m.id !== id && modelState(imageInfo, m.id).state === 'ready');
+            if (next) localStorage.setItem(KEY, next.id);
+        } catch { /* the choice is only not kept */ }
+    }
+    async function imageRemove(id) {
+        removeAsked = ''; imageBusy = true; paintImages();
+        try { imageInfo = await imageClient.packRemove(id); }
+        catch { /* The next reading shows the state. */ }
+        imageBusy = false; paintImages(); pollImages();
+        imageRows.get(id)?.del.focus();
     }
     async function imageAction(id, what) {
         imageBusy = true; paintImages();
@@ -1085,7 +1195,8 @@ export async function openSetup(options) {
         if (!dialog.open) return;
         try { imageInfo = await imageClient.info(); } catch { imageInfo ??= {models: []}; }
         paintImages();
-        const downloading = IMAGE_MODELS.some(m => modelState(imageInfo, m.id).state === 'downloading');
+        const downloading = IMAGE_MODELS.some(m => modelState(imageInfo, m.id).state === 'downloading'
+            || imageInfo?.models?.find(row => row.id === m.id)?.remove?.state === 'running');
         if (downloading && shown === 'models') imageTimer = setTimeout(pollImages, 2000);
     }
     paintImages(); pollImages();
