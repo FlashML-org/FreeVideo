@@ -1621,6 +1621,8 @@ class Controller:
             server = processes.popen(started, cwd=selected['root'], env=env, stdin=subprocess.DEVNULL,
                 stdout=log, stderr=subprocess.STDOUT, start_new_session=True, supervise=True)
             self.server = server
+            # When it was started, so a crash record of Windows can be matched to this run (crash_event).
+            self.server_started_at = time.time()
             from .engine_exit import oom_baseline
             # The kernel's out-of-memory counts when this ComfyUI started: its own cgroup's, and the whole computer's.
             self.server_oom_kills = oom_baseline(server.pid)
@@ -1667,8 +1669,13 @@ class Controller:
                 if not scoped:
                     return fall_back()
                 from .failure_details import startup_failure
+                from . import crash_event
+                crash = None
+                if os.name == 'nt' and crash_event.native(server.returncode):
+                    crash = crash_event.read(getattr(self, 'server_started_at', time.time() - 600), pids={server.pid},
+                                             roots=[selected['engine'], selected['root']])
                 message = startup_failure('ComfyUI could not start.', directory / 'comfy.log',
-                                          exit_code=server.returncode, context=context)
+                                          exit_code=server.returncode, context=context, crash=crash)
                 if frontend_error:
                     message += '\n\nComfyUI packages could not be updated first: ' + frontend_error
                 if managed:

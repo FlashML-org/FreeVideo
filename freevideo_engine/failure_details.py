@@ -739,13 +739,22 @@ def _startup_cause(summary, zh):
     nodes = re.findall(r'(?:Cannot import |\(IMPORT FAILED\): ).*?custom_nodes[\\/]([^\\/\r\n]+?)(?: module for custom nodes|\s*$)',
                        summary, re.M)
     node = nodes[-1].strip()[:80] if nodes else ''
+    # A crash leaves no error line; Windows' own record names the module that failed (crash_event).
+    from .crash_event import module_from, native
+    module = module_from(summary)
+    shown = code.group(1) if code else ''
+    if code and native(int(shown)):
+        # A Windows crash status reads as Windows writes it (0xC0000409); the number stays in the details.
+        shown = '0x%08X' % (int(shown) & 0xFFFFFFFF)
     if zh:
-        return ('ComfyUI 在启动时退出' + ('（退出码 %s）' % code.group(1) if code else '')
+        return ('ComfyUI 在启动时退出' + ('（退出码 %s）' % shown if code else '')
                 + ('，自定义节点“%s”未能加载' % node if node else '')
-                + ('，最后一条错误：%s。' % known if known else '。'))
-    return ('ComfyUI quit while starting' + (' (exit code %s)' % code.group(1) if code else '')
+                + ('，最后一条错误：%s。' % known if known else '。')
+                + ('Windows 记录的出错模块为 %s。' % module if module else ''))
+    return ('ComfyUI quit while starting' + (' (exit code %s)' % shown if code else '')
             + ('. The custom node "%s" did not load' % node if node else '')
-            + ('. Last error: %s.' % known if known else '.'))
+            + ('. Last error: %s.' % known if known else '.')
+            + (' Windows recorded %s as the module that failed.' % module if module else ''))
 
 
 def _stopped_on_missing_module(text):
@@ -1923,10 +1932,14 @@ def generation_failure(run, exit_code=None, *, repair=None):
     return value
 
 
-def startup_failure(message, log, *, exit_code=None, context=None):
+def startup_failure(message, log, *, exit_code=None, context=None, crash=None):
     detail = _read(Path(log), 8192, tail=True).strip()
     if exit_code is not None:
         message += '\nProcess exit code: ' + str(exit_code)
+    if crash:
+        # The module Windows recorded for this process's crash (crash_event.read), or why it could not be read.
+        from .crash_event import line
+        message += '\n' + line(crash)
     if context:
         message += '\nEnvironment: ' + context['environment'] + '\nCustom nodes: ' + context['custom_nodes']
     return Redactor().text(message + ('\n\n' + detail if detail else '\nNo readable process output was produced.') + '\n\nLog: ' + str(log))
