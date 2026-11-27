@@ -15,7 +15,7 @@
       "Mac: a second pass that hits the GPU watchdog is tried again instead of failing, and the prompt model runs on the Apple GPU when its memory fits.",
       "Memory: when FreeVideo already holds the text encoder on the graphics card, generating an image with reference images counts that memory, so on cards with less memory it is no longer refused before it starts.",
       "Interface text: names in quotes and level names are kept on one line where they are shown; more Chinese messages use formal written wording; several English sentences were made consistent; failure messages without a \"Report a problem\" button name the next step; the image view shows the whole message of a failed model download, and layout limits no longer offer a report.",
-      "Other fixes: the compatibility notice says plainly when a reply cannot be read and keeps only the latest failure line; a Windows crash card names the module Windows recorded; the offline package guide names each package by its file name in every language."
+      "Other fixes: the compare divider in the Create panel follows the drag instead of staying in the middle; the compatibility notice says plainly when a reply cannot be read and keeps only the latest failure line; a Windows crash card names the module Windows recorded; the offline package guide names each package by its file name in every language."
     ]
   },
   "zh": {
@@ -32,7 +32,7 @@
       "Mac：第二遍碰到 GPU 看门狗时会再试一次，不再直接失败；提示词模型在内存足够时使用 Apple GPU。",
       "显存：显存较小的显卡带参考图生成图片时，不再因为未计入已在显卡上的文本编码器而在开始前被拒绝。",
       "界面文字：引号里的名称和档位名在显示时不再被拆到两行；更多中文提示改用书面用语；统一了几处英文说法；没有“提交问题”键的失败提示会写明下一步；图像视图里模型下载失败的提示会完整显示，布局限制类的报错不再提供报告。",
-      "其他修复：兼容性提示在收到无法读取的回复时会直接说明，连续失败只保留最新一行；Windows 崩溃时的提示卡会写出 Windows 记录的模块；离线安装包说明在各语言中都使用下载页上的文件名。"
+      "其他修复：创作面板里对比的分界线会跟着拖动，不再停在中间；兼容性提示在收到无法读取的回复时会直接说明，连续失败只保留最新一行；Windows 崩溃时的提示卡会写出 Windows 记录的模块；离线安装包说明在各语言中都使用下载页上的文件名。"
     ]
   },
   "history": [
