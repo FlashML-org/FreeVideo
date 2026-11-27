@@ -3064,8 +3064,9 @@ class Session:
             model_upgrade=dict(model_upgrade, switching=bool(self.model_switch)),
             offline=dict(progress_view(self.importer.state, language), runtime=bool(self.form['offline_runtime']),
                 runtime_supported=runtime_packages_supported(),
-                models=self.offline_model_count(), guide=self.both(lambda zh: package_instructions(
-                    self.form['new_comfy'] and self.form['environment_method'] == 'manual' and not self.form['offline_runtime'], zh))),
+                models=self.offline_model_count(), guide=package_instructions(
+                    self.form['new_comfy'] and self.form['environment_method'] == 'manual' and not self.form['offline_runtime'],
+                    t=self.t)),
             video_model_guide=self.both(video_instructions),
             adaln_dialog=self.adaln_dialog_view(error, update),
             selected=bool(self.selected), can_repair=self.can_repair(), repair_offered=repair_offered, error=error,

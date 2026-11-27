@@ -865,7 +865,7 @@ ApplicationWindow {
                                     model: cloudLinks
                                     delegate: FButton { required property var modelData; required property int index; objectName: "offlineShare-" + index; text: t("Download from Quark ↗", "打开夸克网盘 ↗"); onClicked: backend.link(modelData.url) }
                                 }
-                                FText { objectName: "offlinePackageGuide"; text: s.offline.guide; color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
+                                FText { objectName: "offlinePackageGuide"; text: holdNames(s.offline.guide); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
                                 FButton { objectName: "otherModelLinks"; text: downloads.copy.title + "  ›"; flat: true; enabled: !s.busy; implicitHeight: theme.heightSm; leftPadding: 0; font.pixelSize: theme.micro + 1; onClicked: { backend.setDownloadScope("video"); modelInfoOpen = true } }
                             }
                             ColumnLayout {

@@ -432,32 +432,40 @@ def runtime_packages_supported():
     return sys.platform == 'win32' and not windows_arm64()
 
 
-def package_instructions(runtime_needed, zh=False):
+def package_instructions(runtime_needed, zh=False, t=None):
     """Describe the payloads this host can actually import.
 
     runtime_needed: a new installation with the offline environment chosen and
     no Environment ZIP imported yet; once it is in, asking again only invites
     importing it a second time.
+    t: the interface's t(English, Chinese, values), so the sentences are read from the language files with the file
+    names filled in unchanged; without it, the English or (zh) the Chinese.
+    The file names are those the download page lists (share_files); without them there is nothing to point at.
     """
+    files = share_files()
+    if not files:
+        return ''
+    if t is None:
+        def t(en, cn, values):
+            return (cn if zh else en).format(**values)
     if sys.platform == 'darwin':
-        return (
-            'Get the four model packs: video model, prompt model (FreeVideo-文本编码器.zip), video & audio decoder, and sampling caches. They also work on Mac. '
-            'The installer downloads the Mac environment automatically. Do not download the Windows Environment package.',
-            '下载「视频模型」「提示词模型（FreeVideo-文本编码器.zip）」「视频与音频解码器」「采样缓存」四个模型包，Mac 同样适用。'
-            'Mac 运行环境由安装器自动下载，无需下载 Windows「运行环境」包。')[bool(zh)]
+        return t('Get the four model packs "{decoder}", "{video}", "{prompt}" and "{sampling}"; they also work on Mac. '
+                 'The installer downloads the Mac environment automatically, so the Windows environment package '
+                 '"{runtime}" is not needed.',
+                 '下载「{decoder}」「{video}」「{prompt}」「{sampling}」四个模型包，Mac 同样适用。'
+                 'Mac 运行环境由安装器自动下载，无需下载 Windows 运行环境包「{runtime}」。', files)
     if sys.platform.startswith('linux'):
-        return (
-            'Get the four model packs: video model, prompt model (FreeVideo-文本编码器.zip), video & audio decoder, and sampling caches. They also work on Linux. '
-            'The installer downloads the Linux environment automatically. Do not download the Windows Environment package.',
-            '下载「视频模型」「提示词模型（FreeVideo-文本编码器.zip）」「视频与音频解码器」「采样缓存」四个模型包，Linux 同样适用。'
-            'Linux 运行环境由安装器自动下载，无需下载 Windows「运行环境」包。')[bool(zh)]
-    text = ('Get the four model packs: video model, prompt model (FreeVideo-文本编码器.zip), video & audio decoder, and sampling caches. '
-            'The reference audio pack is optional, for audio references.',
-            '下载「视频模型」「提示词模型（FreeVideo-文本编码器.zip）」「视频与音频解码器」「采样缓存」四个模型包；'
-            '「音频参考缓存」可选，用音频做参考时才需要。')[bool(zh)]
+        return t('Get the four model packs "{decoder}", "{video}", "{prompt}" and "{sampling}"; they also work on Linux. '
+                 'The installer downloads the Linux environment automatically, so the Windows environment package '
+                 '"{runtime}" is not needed.',
+                 '下载「{decoder}」「{video}」「{prompt}」「{sampling}」四个模型包，Linux 同样适用。'
+                 'Linux 运行环境由安装器自动下载，无需下载 Windows 运行环境包「{runtime}」。', files)
+    text = t('Get the four model packs "{decoder}", "{video}", "{prompt}" and "{sampling}". '
+             '"{audio}" is optional, for audio references.',
+             '下载「{decoder}」「{video}」「{prompt}」「{sampling}」四个模型包；「{audio}」可选，用音频做参考时才需要。',
+             files)
     if runtime_needed:
-        text += '\n' + ('For a new installation, also get the Environment package.',
-                        '全新安装还需「运行环境」包。')[bool(zh)]
+        text += '\n' + t('For a new installation, also get "{runtime}".', '全新安装还需「{runtime}」。', files)
     return text
 
 
@@ -475,6 +483,20 @@ def links(plan=None):
                     for row in (plan or {}).get('download_files', []) if row['group'] == group
                     for source, key in (('Hugging Face', 'hf_url'), ('ModelScope', 'modelscope_url')) if row[key]]
             for group in LIST_FAMILIES}
+
+
+PACKAGE_KEYS = ('runtime', 'decoder', 'video', 'prompt', 'sampling', 'audio')
+
+
+def share_files():
+    """The offline packages as the download page the offline page opens lists them ("files" of that share in
+    model_shares.json: Simplified Chinese, numbered as the page shows them). Every language quotes them as they are,
+    since these are the names the user looks for there. {} when the share does not list all of them."""
+    shares = cloud_models()
+    files = shares[0].get('files') if shares else None
+    if not isinstance(files, dict) or not all(isinstance(files.get(k), str) and files[k] for k in PACKAGE_KEYS):
+        return {}
+    return {k: files[k] for k in PACKAGE_KEYS}
 
 
 @plain_errors
