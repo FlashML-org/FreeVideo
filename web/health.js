@@ -491,7 +491,11 @@ function reportText(item) {
         launch: t('The FreeVideo workflow did not open', 'FreeVideo 工作流未能打开'),
         menu: t('FreeVideo could not be opened from the menu', '从菜单打开 FreeVideo 失败')}[item.where] || t('FreeVideo reported an error', 'FreeVideo 报错');
     // The script's own words go to the technical details and the report, not into the sentence the card shows.
-    return {text: where, detail: describe(item.error), error: item.error, advice: item.where === 'launch' ? 'relaunch' : 'reload', asked: item.where === 'menu'};
+    // A few plain facts the failing step gathered for the report (strings only, at most 8 lines of 2,000 characters). They go
+    // only where the user sees them: the report form's text, Copy details and the browser console, never to the server.
+    const facts = Array.isArray(item.error?.facts) ? item.error.facts.filter(row => typeof row === 'string').slice(0, 8).map(row => row.slice(0, 2000)) : null;
+    return {text: where, detail: describe(item.error), error: item.error, advice: item.where === 'launch' ? 'relaunch' : 'reload', asked: item.where === 'menu',
+        ...(facts?.length ? {facts} : {})};
 }
 
 function extensionProblem(problem) {
@@ -553,7 +557,7 @@ function details(problems) {
         `ComfyUI frontend: ${window.__COMFYUI_FRONTEND_VERSION__ || 'unknown'}`,
         `FreeVideo UI: ${JSON.stringify(window.FreeVideoUI || {})}`,
         `Automatic reload: ${retried ? new Date(Number(retryRecord.at)).toISOString() : retryRecord ? 'not needed' : 'unavailable (no session storage)'}`,
-        '', 'Problems:', ...problems.flatMap(p => [`- ${p.text}`, ...(p.detail ? [`  error: ${p.detail}`] : []), ...(p.cover ? [`  covered by: ${p.cover}`] : []), ...(p.state ? [`  state: ${p.state}`] : [])]),
+        '', 'Problems:', ...problems.flatMap(p => [`- ${p.text}`, ...(p.detail ? [`  error: ${p.detail}`] : []), ...(p.cover ? [`  covered by: ${p.cover}`] : []), ...(p.state ? [`  state: ${p.state}`] : []), ...(p.facts || []).map(row => `  ${row}`)]),
         ...(checks.length ? ['', 'Load check:', ...checks.map(row => `- ${row}`)] : []),
         ...(cache.length ? ['', 'Browser cache:', ...cache.map(row => `- ${row}`)] : []),
         ...(before.length ? ['', 'Browser cache before the automatic reload:', ...before.map(row => `- ${row}`)] : []),

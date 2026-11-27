@@ -958,11 +958,34 @@ const isFreeVideoNode = id => /^FreeVideo/.test(String(app.graph?.getNodeById(id
 const launchVisit = isLaunchVisit(globalThis.location?.search, globalThis.sessionStorage);
 const inFront = freeVideoInFront(launchVisit);
 
+// What was in front when FreeVideo's workflow came back without its generate node, for the report, which is posted in
+// public: whether it is FreeVideo's own tab and workflow (yes or no), how many nodes of each type, and the names of the
+// other frontend extensions. Never a file name, a path, a prompt or a value.
+function frontFacts() {
+    const clean = value => String(value ?? '').replace(/[^\w .:+-]/g, '').trim().slice(0, 60) || '?';
+    // A group node's type carries the name the user gave the group, and a subgraph's is its id: neither is written.
+    const kind = node => {
+        const type = String(node.comfyClass || node.type || '');
+        return /^workflow[>/]/.test(type) ? 'group node' : /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(type) ? 'subgraph' : clean(type);
+    };
+    const nodes = app.graph?._nodes || [], counts = new Map();
+    for (const node of nodes) { const type = kind(node); counts.set(type, (counts.get(type) || 0) + 1); }
+    const types = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 40).map(([type, count]) => `${type} ${count}`);
+    // At most 30 names, then how many more: the line stays one the user can read in the form before sending it.
+    const all = [...new Set((app.extensions || []).map(row => row?.name).filter(name => typeof name === 'string' && !/^(Comfy|FreeVideo)\./.test(name)).map(clean))].sort();
+    const others = all.length > 30 ? [...all.slice(0, 30), `and ${all.length - 30} more`] : all;
+    const yes = value => value ? 'yes' : 'no';
+    return [`FreeVideo tab in front: ${yes(app.extensionManager?.workflow?.activeWorkflow?.path === 'workflows/FreeVideo.json')}`,
+        `FreeVideo workflow in front: ${yes(app.graph?.extra?.freevideo_studio === true)}`,
+        `nodes in front: ${nodes.length}${types.length ? ` (${types.join(', ')})` : ''}`,
+        `other frontend extensions: ${others.length ? others.join(', ') : 'none'}`];
+}
+
 // A failure here goes to the page check's card, which names the cause, says what to do, and carries the error for the report.
 async function openFromMenu() {
     try {
         const node = (app.graph?._nodes || []).find(isGenerate) || await openFreeVideoWorkflow();
-        if (!node) throw new Error('The FreeVideo workflow loaded without a FreeVideoGenerate node');
+        if (!node) throw Object.assign(new Error('The FreeVideo workflow loaded without a FreeVideoGenerate node'), {facts: frontFacts()});
         showStudio(node);
     } catch (error) {
         console.warn('FreeVideo menu:', error);
