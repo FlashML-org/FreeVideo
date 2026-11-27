@@ -1,8 +1,8 @@
 """Whether the Microsoft Visual C++ runtime that PyTorch needs on Windows loads in this process.
 
-PyTorch's core library (c10.dll) links the C++ runtime MSVCP140.dll and VCRUNTIME140.dll and VCRUNTIME140_1.dll,
-and its wheels carry none of them: Windows has them from the Visual C++ Redistributable. Without them the first
-``import torch`` fails with Windows error 126 (a file is missing) or 1114 (a library did not initialize), and the
+PyTorch's core library (c10.dll) links the C++ runtime MSVCP140.dll and VCRUNTIME140.dll, and on x64 also
+VCRUNTIME140_1.dll; its wheels carry none of them: Windows has them from the Visual C++ Redistributable. Without them
+the first ``import torch`` fails with Windows error 126 (a file is missing) or 1114 (a library did not initialize), and the
 step's exit code is all a person sees. Before that import, setup loads them in a child process of the same Python
 (require_in_child), so it finds them where torch would and the process that imports torch loads nothing early. The child
 writes where each one came from to the step's log, and a library that does not load stops setup with MARKER, which the
@@ -15,12 +15,21 @@ import sysconfig
 MARKER = 'VC_RUNTIME_UNAVAILABLE'
 CHILD_FAILED = 3  # The child's exit code when a library did not load.
 LIBRARIES = ('VCRUNTIME140.dll', 'VCRUNTIME140_1.dll', 'MSVCP140.dll')
+# x64 only. The ARM64 builds of PyTorch import just VCRUNTIME140.dll and MSVCP140.dll, and the ARM64 Python that setup
+# installs carries an x64 VCRUNTIME140_1.dll in its own folder, which a native ARM64 process cannot load (Windows error 193).
+X64_ONLY = ('VCRUNTIME140_1.dll',)
 
 
 def architecture(platform_tag=None):
     """The Redistributable that fits this Python: ARM64 for a native Arm build, x64 otherwise (an x64 Python emulated
     on Windows on Arm loads x64 libraries)."""
     return 'ARM64' if (platform_tag or sysconfig.get_platform()).lower().endswith('arm64') else 'x64'
+
+
+def libraries(platform_tag=None):
+    """The libraries PyTorch needs on this Python's build."""
+    arm64 = architecture(platform_tag) == 'ARM64'
+    return tuple(name for name in LIBRARIES if not (arm64 and name in X64_ONLY))
 
 
 class RuntimeUnavailable(RuntimeError):
@@ -77,10 +86,10 @@ def _load(name):
         return '', ''
 
 
-def check(load=_load):
+def check(load=_load, platform_tag=None):
     """[(name, path, version)] of the libraries that loaded, and [(name, Windows error)] of those that did not."""
     loaded, failures = [], []
-    for name in LIBRARIES:
+    for name in libraries(platform_tag):
         try:
             path, version = load(name)
         except OSError as error:
@@ -112,7 +121,7 @@ def require(*, windows=None, load=_load, out=None, platform_tag=None):
     if not (sys.platform == 'win32' if windows is None else windows):
         return
     out = out or sys.stdout
-    loaded, failures = check(load)
+    loaded, failures = check(load, platform_tag)
     for name, path, version in loaded:
         print('Visual C++ runtime: %s %s %s %s' % (name, version or 'version-unknown', where(path), path or 'path-unknown'),
               file=out, flush=True)
