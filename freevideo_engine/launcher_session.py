@@ -2979,6 +2979,8 @@ class Session:
                 # No NVIDIA card is listed: the card says what FreeVideo needs; the note names what was found.
                 from .failure_details import UNSUPPORTED_VENDOR
                 failure['title'], failure['action'] = self.both(lambda zh: UNSUPPORTED_VENDOR[1 if zh else 0])
+                # Its own kind: like an unsupported card it offers no "Report a problem" (a report cannot change it).
+                failure['kind'] = 'gpu-vendor'
             elif nvidia_driver_listed(names):
                 # Its driver named the card, so a driver is installed but does not answer: reinstall it.
                 from .failure_details import DRIVER_NOT_WORKING

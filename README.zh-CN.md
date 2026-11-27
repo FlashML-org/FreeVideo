@@ -9,9 +9,11 @@
 | <a href="https://github.com/FlashML-org/FreeVideo/releases/latest/download/FreeVideo.exe"><b>Windows</b></a> | <a href="https://github.com/FlashML-org/FreeVideo/releases/latest/download/FreeVideo-Mac-arm64.dmg"><b>macOS</b></a> | <a href="https://github.com/FlashML-org/FreeVideo/releases/latest/download/FreeVideo-Linux-x86_64.AppImage"><b>Linux</b></a> | <a href="docs/zh-CN/community-results.md"><b>社区实测</b></a> | <a href="https://freevideo-community.pages.dev/#gallery"><b>作品展示</b></a> | <a href="https://discord.gg/MsA277cJzZ"><b>Discord</b></a> | <a href="https://freevideo-community.pages.dev/qq"><b>QQ 群</b></a> | <a href="https://freevideo-community.pages.dev/wechat"><b>微信群</b></a> |
 </p>
 
+<p align="center">系统要求：NVIDIA RTX 30 系列或更新的显卡（含同代专业卡，建议显存 8 GB 以上）和 16 GB 内存，或 Apple 芯片的 Mac（预览版）。GTX 10、GTX 16、RTX 20 系列以及 AMD、Intel 显卡无法运行 FreeVideo。</p>
+
 <p align="center"><a href="README.md">English</a> · 中文</p>
 
-FreeVideo 由 [Video DeltaNet（VDN）](https://openvdn.github.io/) 驱动，让 MiniMax H3 能够在计算能力 8.0 及以上的 NVIDIA 显卡（如 RTX 30 系列及更新，包括专业卡）上本地运行，最低只需 8GB 显存和 16GB 内存，并会根据硬件配置自动选择合适的加速路径。Apple 芯片 Mac 为预览版。
+FreeVideo 由 [Video DeltaNet（VDN）](https://openvdn.github.io/) 驱动，让 MiniMax H3 能够在计算能力 8.0 及以上的 NVIDIA 显卡（如 RTX 30 系列及更新，含同代专业卡）上本地运行，建议显存 8 GB 以上、内存 16 GB，并会根据硬件配置自动选择合适的加速路径。Apple 芯片 Mac 为预览版。
 
 https://github.com/user-attachments/assets/ecda7d0d-7fbe-4e0c-8c29-8f3315bafc15
 
@@ -37,13 +39,15 @@ FreeVideo 是面向消费级显卡的 MiniMax H3 本地推理引擎，基于 [Op
 它统一调度显存、内存与磁盘，并根据硬件条件调整权重放置、计算精度和注意力内核。FreeVideo 以 ComfyUI 插件形式提供，配备 Windows、macOS 和 Linux 启动器。主要特性包括：
 
 - **硬件自适应**：针对不同显卡选择权重格式（GeForce RTX 30、40、50 系列和其他 Ampere 架构的显卡用 int8，更新架构的专业卡和数据中心卡用 FP8），并自动探测可用的注意力内核，无需手动配置。
-- **低显存推理**：通过权重流式加载、异步预取与分块计算降低峰值显存，最低只需 8GB 显存和 16GB 内存。
+- **低显存推理**：通过权重流式加载、异步预取与分块计算降低峰值显存，建议显存 8 GB 以上、内存 16 GB。
 - **多模态输入**：支持文本、首帧、尾帧，以及图像、视频、音频参考输入。
 - **社区 LoRA**：支持在工作流中使用 MiniMax H3 社区 LoRA。[查看效果对比](docs/LoRA.zh-CN.md)。
 - **ComfyUI 集成**：在 ComfyUI 中提供专门的创作面板，支持二次采样和批量生成，并可浏览历史作品；需要更精细的控制时，可切换到节点视图，接入 LoRA 或自定义工作流。
 - **一键部署**：Windows、Mac 和 Linux 启动器自动完成 ComfyUI、运行环境与模型的部署，可复用已有模型，并支持离线安装。
 
 ## 开始使用
+
+系统要求：NVIDIA RTX 30 系列或更新的显卡（含同代专业卡，建议显存 8 GB 以上）和 16 GB 内存，或 Apple 芯片的 Mac（预览版）。GTX 10、GTX 16、RTX 20 系列以及 AMD、Intel 显卡无法运行 FreeVideo。
 
 ### Windows
 

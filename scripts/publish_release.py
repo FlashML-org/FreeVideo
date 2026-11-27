@@ -119,9 +119,9 @@ def whats_new(raw):
 
 def downloads(base, builds=None):
     rows = ['| | |', '|---|---|',
-            '| **Windows** 10/11 · NVIDIA GPU | [FreeVideo.exe](%sFreeVideo.exe) |' % base,
+            '| **Windows** 10/11 · NVIDIA RTX 30 series or newer | [FreeVideo.exe](%sFreeVideo.exe) |' % base,
             '| **macOS** 14+ · Apple silicon | [FreeVideo-Mac-arm64.dmg](%sFreeVideo-Mac-arm64.dmg) |' % base,
-            '| **Linux** x86_64 · NVIDIA GPU | [FreeVideo-Linux-x86_64.AppImage](%sFreeVideo-Linux-x86_64.AppImage) |' % base]
+            '| **Linux** x86_64 · NVIDIA RTX 30 series or newer | [FreeVideo-Linux-x86_64.AppImage](%sFreeVideo-Linux-x86_64.AppImage) |' % base]
     if builds and WINDOWS_ARM64_CHANNEL in builds:
         name = RELEASE_ASSETS[WINDOWS_ARM64_CHANNEL][0]
         rows.append('| **Windows** ARM64 · NVIDIA GPU (experimental) | [%s](%s%s) |' % (name, base, name))
@@ -149,13 +149,13 @@ def stable_body(builds, tag):
              '**Linux:** make the AppImage executable (`chmod +x FreeVideo-Linux-x86_64.AppImage`) and open it, as on '
              'Windows. On a server or from a terminal, see [Linux](%s/blob/main/docs/Linux.md).' % PAGE,
              '',
-             '**Windows：** 运行 FreeVideo.exe，选择已有的 ComfyUI 或安装新的 ComfyUI，点击 **安装并启动**。'
+             '**Windows：** 需要 NVIDIA RTX 30 系列或更新的显卡。运行 FreeVideo.exe，选择已有的 ComfyUI 或安装新的 ComfyUI，点击 **安装并启动**。'
              '离线包见[夸克网盘](https://pan.quark.cn/s/c51235b84618)或[魔搭](%s)。' % OFFLINE_MODELSCOPE,
              '',
              '**macOS：** 打开 DMG，将 FreeVideo.app 拖入「应用程序」。首次打开如需确认，请参考'
              '[首次打开步骤](%s/blob/main/docs/Mac.zh-CN.md#首次打开)。' % PAGE,
              '',
-             '**Linux：** 给 AppImage 加上可执行权限（`chmod +x FreeVideo-Linux-x86_64.AppImage`）后打开，用法与 Windows 相同。'
+             '**Linux：** 需要 NVIDIA RTX 30 系列或更新的显卡。给 AppImage 加上可执行权限（`chmod +x FreeVideo-Linux-x86_64.AppImage`）后打开，用法与 Windows 相同。'
              '在服务器或终端中使用请参考 [Linux 说明](%s/blob/main/docs/Linux.zh-CN.md)。' % PAGE,
              '']
     rows += whats_new(builds[CHANNEL]['raw'])

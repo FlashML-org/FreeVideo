@@ -823,9 +823,12 @@ def model_mismatch_package(value, zh=False):
 # Shown instead of the missing-driver card when the system lists no NVIDIA graphics card.
 UNSUPPORTED_VENDOR = (
     ('No NVIDIA graphics card was found',
-     'FreeVideo requires an NVIDIA RTX 30 series or newer graphics card.'),
+     'FreeVideo requires an NVIDIA RTX 30 series or newer graphics card, including professional cards of the same '
+     'generation, with 8 GB of graphics memory or more recommended. It also runs on Macs with Apple silicon (preview). '
+     'The graphics card in this computer cannot run FreeVideo.'),
     ('未找到 NVIDIA 显卡',
-     'FreeVideo 需要 NVIDIA RTX 30 系列或更新的显卡。'))
+     'FreeVideo 需要 NVIDIA RTX 30 系列或更新的显卡（含同代专业卡，建议显存 8 GB 以上），或 Apple 芯片的 Mac（预览版）。'
+     '这台电脑的显卡无法运行 FreeVideo。'))
 
 # The system lists an NVIDIA card but no driver answers.
 DRIVER_FOR_LISTED_CARD = (
@@ -1222,10 +1225,12 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
         # Setup reports an unsupported card and an old driver together; the first match is shown, and
         # a driver update cannot help a card below the hardware floor, so that card comes first.
         (r'CUDA_ARCH_UNSUPPORTED', 'gpu-architecture',
-         ('This GPU is not supported', '这张显卡不受支持'),
-         ('FreeVideo requires a GPU with compute capability 8.0 or higher, such as an NVIDIA GeForce RTX 30 series card or newer. '
-          'This requirement does not depend on the amount of VRAM, and a driver update cannot change it.',
-          'FreeVideo 需要计算能力 8.0 及以上的显卡，例如 NVIDIA GeForce RTX 30 系列及更新型号。这一要求与显存大小无关，更新驱动也无法改变。')),
+         ('This graphics card is not supported', '这张显卡不受支持'),
+         ('FreeVideo requires an NVIDIA RTX 30 series or newer graphics card, including professional cards of the same '
+          'generation, or a Mac with Apple silicon (preview). This requirement does not depend on the amount of graphics '
+          'memory, and a driver update cannot change it.',
+          'FreeVideo 需要 NVIDIA RTX 30 系列或更新的显卡（含同代专业卡），或 Apple 芯片的 Mac（预览版）。'
+          '这一要求与显存大小无关，更新驱动也无法改变。')),
         (r'NVIDIA driver(?: [\w.]+)?(?: \([^)]*\))? is older than 580', 'gpu-driver-old',
          ('The NVIDIA driver is too old', 'NVIDIA 显卡驱动版本过低'),
          ('Update the NVIDIA driver to version 580 or newer, restart the computer, then click "Retry installation".',
@@ -1398,10 +1403,10 @@ def _launcher_failure(value, *, zh=False, other_disk=False, disk_name='', can_re
                 # instruction goes under the detected driver instead of being hidden by it.
                 return dict(title=title[zh], detail=(detail + '\n' if detail else '') + action[zh], action='', kind=kind)
             if kind == 'gpu-architecture':
+                # The card names the model only; its compute capability stays in the exported report.
                 found = re.search(r'\[CUDA_ARCH_UNSUPPORTED\]\s+(.+?)\s+\(SM\w+; compute capability ([\d.]+);', text)
                 if found:
-                    model, capability = found.groups()
-                    detail = ('检测到：%s，计算能力 %s' if zh else 'Detected: %s, compute capability %s') % (model, capability)
+                    detail = ('检测到：%s' if zh else 'Detected: %s') % found[1]
                     return dict(title=title[zh], detail=detail + '\n' + action[zh], action='', kind=kind)
                 found = re.search(r'\[CUDA_ARCH_UNSUPPORTED\]\s+(.+?)\s+\(SMunknown;', text)
                 if found:
