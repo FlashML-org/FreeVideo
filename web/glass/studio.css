@@ -537,7 +537,8 @@
 /* ── Compare: two videos on the stage, side by side or split by a divider ── */
 .fv-studio.fv-create .fvs-compare{position:absolute;inset:0;z-index:4;display:flex;flex-direction:column;background:#0b0e13}
 .fv-studio.fv-create .fvs-compare[hidden]{display:none}
-.fvs-compare-panes{position:relative;flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:2px;--fvs-split:50%}
+/* --fvs-split is set on .fvs-compare by studio_compare.js; the panes inherit it (a value of their own here would hold the divider in the middle). */
+.fvs-compare-panes{position:relative;flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:2px}
 .fvs-compare-pane{position:relative;min-width:0;min-height:0;background:#0b0e13}
 .fv-studio.fv-create .fvs-compare-pane video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#0b0e13}
 .fvs-compare-tag{position:absolute;left:var(--fv-sp-8);top:var(--fv-sp-8);max-width:calc(100% - 16px);padding:var(--fv-sp-2) var(--fv-sp-8);border-radius:var(--fv-rad-pill);
@@ -545,9 +546,9 @@
 .fvs-compare-divider{display:none}
 .fvs-compare[data-mode=slider] .fvs-compare-panes{display:block;cursor:ew-resize;touch-action:none}
 .fvs-compare[data-mode=slider] .fvs-compare-pane{position:absolute;inset:0}
-.fvs-compare[data-mode=slider] .fvs-compare-b{clip-path:inset(0 0 0 var(--fvs-split))}
+.fvs-compare[data-mode=slider] .fvs-compare-b{clip-path:inset(0 0 0 var(--fvs-split,50%))}
 .fvs-compare[data-mode=slider] .fvs-compare-b .fvs-compare-tag{left:auto;right:var(--fv-sp-8)}
-.fvs-compare[data-mode=slider] .fvs-compare-divider{display:block;position:absolute;top:0;bottom:0;left:var(--fvs-split);width:2px;margin-left:-1px;background:#fff;box-shadow:0 0 0 1px rgb(0 0 0 / .25);outline:none}
+.fvs-compare[data-mode=slider] .fvs-compare-divider{display:block;position:absolute;top:0;bottom:0;left:var(--fvs-split,50%);width:2px;margin-left:-1px;background:#fff;box-shadow:0 0 0 1px rgb(0 0 0 / .25);outline:none}
 .fvs-compare[data-mode=slider] .fvs-compare-divider::after{content:'';position:absolute;top:50%;left:50%;width:28px;height:28px;transform:translate(-50%,-50%);border-radius:var(--fv-r-pill);background:#fff;
   box-shadow:0 2px 8px rgb(0 0 0 / .4)}
 .fvs-compare[data-mode=slider] .fvs-compare-divider:focus-visible::after{box-shadow:0 0 0 3px var(--fv-accent-line),0 2px 8px rgb(0 0 0 / .4)}
