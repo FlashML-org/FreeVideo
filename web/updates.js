@@ -16,7 +16,7 @@ const listeners = new Set();
 // Launcher phases during which the server may disappear and come back updated.
 const working = new Set(['checking', 'downloading', 'waiting', 'restarting', 'engine']);
 let value = null, dismissed, started = false, pending = false, retrying = false, lastCheck = -Infinity, timer = null;
-let loadedVersion, updating = false, offline = false, failure = '';
+let loadedVersion, updating = false, offline = false, failure = '', reloading = false;
 try { dismissed = sessionStorage.getItem(storageKey); } catch { /* Session memory still works. */ }
 // The launcher passes its language in the first address, which ComfyUI later
 // rewrites; keep it when reloading into an updated engine.
@@ -147,7 +147,7 @@ function mediaHolder(holder, cn) {
 const topRelease = () => value?.available ? [value.available, 'available'] : [value?.current_release, 'current'];
 
 export async function checkUpdates() {
-    if (pending || Date.now() - lastCheck < 1500 || (document.hidden && !updating)) return;
+    if (reloading || pending || Date.now() - lastCheck < 1500 || (document.hidden && !updating)) return;
     pending = true; lastCheck = Date.now();
     try {
         const response = await api.fetchApi('/freevideo/updates?client=1', {cache: 'no-store', signal: AbortSignal.timeout(10000)});
@@ -156,13 +156,19 @@ export async function checkUpdates() {
         const version = next.current_version ?? null;
         if (loadedVersion === undefined) loadedVersion = version;
         else if (version !== loadedVersion) {
-            // The server restarted with another engine; load its matching
-            // interface. ComfyUI keeps the workflow, including the prompt.
-            const url = new URL(location.href);
-            if (languageHint && !url.searchParams.has(LANGUAGE_PARAM)) {
-                url.searchParams.set(LANGUAGE_PARAM, languageHint);
-                location.replace(url.href);
-            } else location.reload();
+            // The server restarted with another engine; load its matching interface. Workflow drafts are off, so
+            // the workflow in front (and a prompt not yet sent, which lives on its node) is handed to the updated server
+            // for this one reload and taken back after it (update_reload.js); when it cannot be kept, the page asks first.
+            reloading = true;
+            const reload = () => {
+                const url = new URL(location.href);
+                if (languageHint && !url.searchParams.has(LANGUAGE_PARAM)) {
+                    url.searchParams.set(LANGUAGE_PARAM, languageHint);
+                    location.replace(url.href);
+                } else location.reload();
+            };
+            // Loaded when needed (it is also loaded as an extension, so this is at once); without it the page reloads as before.
+            import('./update_reload.js').then(({reloadAfterUpdate}) => reloadAfterUpdate(reload, () => { reloading = false; }), () => reload());
             return;
         }
         value = next; offline = false;
