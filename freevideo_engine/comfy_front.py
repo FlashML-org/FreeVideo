@@ -102,6 +102,9 @@ class Front:
         self.background = set()
         # Devices whose executor exited. Their work moves to the others until the control process restarts.
         self.unavailable = set()
+        # Rewrites of queued requests, made when their turn comes and before their videos are dispatched.
+        from .queued_rewrite import QueuedRewrites
+        self.rewrites = QueuedRewrites(self)
 
     def accepting(self):
         # Busy devices and host pressure belong in the scheduler's pending queue.
@@ -317,6 +320,7 @@ class Front:
                 return 'cancelling'
             state = self.scheduler.cancel(prompt_id)
             if state == 'queued':
+                self.rewrites.cancelled(prompt_id)
                 row.state = 'finished'
                 row.result = dict(prompt=self._queue_row(row), outputs={},
                     status=dict(status_str='error', completed=False,
@@ -384,7 +388,10 @@ class Front:
                         and row.worker is not None and row.worker_prompt_id is None and row.result is None]
             await asyncio.gather(*(self._reconcile(row) for row in lost))
             self._reap_exited()
-            auxiliary_busy = self.auxiliary_busy()
+            # A batch of queued rewrites runs (or waits for the running videos) before anything else is dispatched.
+            holding = await asyncio.to_thread(self.rewrites.holding)
+            auxiliary_busy = holding or self.auxiliary_busy()
+            from .queued_rewrite import enhancement
             with self.lock:
                 assignments = self.scheduler.dispatch() if not self.closed and not self.paused and not auxiliary_busy else []
                 workers = {worker.device.uuid: worker for worker in self.workers()}
@@ -392,6 +399,11 @@ class Front:
                 for task, device in assignments:
                     row = self.records[task.id]
                     row.worker, row.state = workers.get(device.uuid), 'submitting'
+                    if enhancement(row) is not None:
+                        # Its rewrite comes first, when it reaches the head of the queue (QueuedRewrites).
+                        self._requeue(row)
+                        moved = True
+                        continue
                     if row.worker is not None and self._exited(row.worker):
                         # Nothing was sent: put it back for another device.
                         self._mark_unavailable(row.worker)
@@ -787,6 +799,7 @@ def register(server, *, scheduler=None, supervisor=None, envelope=None):
             yield
         finally:
             front.closed = True
+            await asyncio.to_thread(front.rewrites.close)
             for task in tasks:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)

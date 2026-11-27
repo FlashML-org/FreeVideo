@@ -898,6 +898,9 @@ def register():
         return
     service = Service(installation, folder_paths.get_input_directory)
     server._freevideo_prompt_vlm = service
+    # One card: ComfyUI's own queue rewrites the waiting requests that carry a rewrite before it runs the first of them.
+    from ..queued_rewrite import install_native
+    install_native(server)
     token = secrets.token_urlsafe(24)
 
     @server.routes.get('/freevideo/prompt-vlm')

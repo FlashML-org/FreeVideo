@@ -78,6 +78,7 @@ import { createPassMode } from './pass_mode.js';
 import { createConsole, durationStepper, tip, glyph } from './studio_console.js';
 import { createStageBar } from './studio_stage.js';
 import { confirmStop, startJobSources } from './task_float.js';
+import { queuedRewriteWords, rewrittenTip } from './task_store.js';
 import { resultEffort, effortName } from './sampling_effort.js';
 import { createPromptLibrary, rememberPrompt } from './prompt_library.js';
 import { createCompare, COMPARE_ICON } from './studio_compare.js';
@@ -2039,6 +2040,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
     }
     const previewObserver = new ResizeObserver(fitPreview);
     previewObserver.observe(output); cleanup.push(() => previewObserver.disconnect());
+    // The queued-rewrite batch's line while the preview shows it.
+    let rewriteShown = null;
     function showProgress(message) {
         phoneAccess.observe(message);
         // The bar under the picture says nothing about the run (the top bar's task shows it and its place).
@@ -2282,6 +2285,13 @@ export function openStudio(node, {extendFrom = null} = {}) {
     // chosen: a video picked from Recent videos. It only changes the picture; a run in progress keeps its progress.
     function showResult(r, {chosen = false} = {}) {
         if (!r?.video || disposed) return; result = r; leaveNext();
+        // A queued rewrite that could not be made: the result says so, the prompt box is left alone.
+        // Either the queue said so, or the node generated with a rewrite still attached (r.enhance_fallback). Said once
+        // per request, as the queue's reason is: reopening the panel on the same result does not say it again.
+        const told = node.freevideoEnhanceTold || (node.freevideoEnhanceTold = new Set());
+        const fallback = chosen || told.has(r.request_id) ? undefined : node.freevideoEnhanceFallbacks?.get(r.request_id) ?? r.enhance_fallback;
+        if (fallback !== undefined) { node.freevideoEnhanceFallbacks?.delete(r.request_id); if (r.request_id) told.add(r.request_id); }
+        if (fallback !== undefined) queueMicrotask(() => { if (!disposed && result === r) { status.dataset.error = 'false'; status.textContent = enhancer.queuedFallback(fallback); } });
         worksColumn?.setShown(r); syncPartList();
         refreshEffortEstimate(true);
         // The report belongs to the video that run made; a video picked from Recent videos
@@ -2836,8 +2846,22 @@ export function openStudio(node, {extendFrom = null} = {}) {
             : [running && t('{running} generating', '生成中 {running} 个', { running }), waiting && t('{waiting} queued', '排队 {waiting} 个', { waiting })]
                 .filter(Boolean).join(' · ');
         queueDetails.hidden = queueRows.length === 0;
-        const signature = JSON.stringify(queueRows.map(row => [row.id, row.inputs.width, row.inputs.height,
+        const signature = JSON.stringify(queueRows.map(row => [row.id, row.inputs.width, row.inputs.height, row.enhance?.state,
             ...(state.running_all ? [state.running_all.includes(row), row.progress?.sequence] : [])]));
+        // Queued rewrites (queued_rewrite.py): a request that could not be rewritten says why on its own result.
+        const fallbacks = node.freevideoEnhanceFallbacks || (node.freevideoEnhanceFallbacks = new Map());
+        for (const row of [...(state.running_all || (state.running ? [state.running] : [])), ...state.pending])
+            if (row.enhance?.state === 'original') fallbacks.set(row.id, row.enhance.reason || '');
+        // The batch's progress, while it runs, where a generation shows its own: in the preview.
+        const rewriting = state.pending.find(row => row.enhance?.state === 'rewriting');
+        const batchLine = rewriting ? `${rewriting.enhance.position}/${rewriting.enhance.total}` : '';
+        if (batchLine) { if (rewriteShown?.line !== batchLine) { const shown = {phase: 'queued_rewrite', line: batchLine, done: rewriting.enhance.position,
+            total: rewriting.enhance.total, reset: !rewriteShown}; showProgress(shown); rewriteShown = shown; } }
+        else if (rewriteShown) {
+            // Over: a video of ours that has started shows its own progress instead.
+            rewriteShown = null;
+            if (!(state.running_all?.length || state.running)) hideProgress();
+        }
         if (queueList.dataset.signature !== signature) {
             queueList.dataset.signature = signature; queueList.replaceChildren();
             queueRows.forEach(row => {
@@ -2853,6 +2877,13 @@ export function openStudio(node, {extendFrom = null} = {}) {
                 if (summary) { const line = el('span', summary, 'fv-queue-summary'); cutTip(line, summary); description.append(line); }
                 description.append(el('span', executing ? `${size} · ${row.inputs.seconds} s`
                     : `${index + 1} · ${size} · ${row.inputs.seconds} s`, 'fv-queue-meta'));
+                // Where its queued rewrite is; a rewritten one shows the new prompt on hover.
+                const rewrite = !executing && queuedRewriteWords({status: 'queued', meta: {enhance: row.enhance}}, t);
+                if (rewrite) {
+                    const line = el('span', rewrite, 'fv-queue-rewrite');
+                    if (row.enhance.state === 'rewritten' && row.enhance.rewritten) { line.dataset.fvTipName = rewrite; line.dataset.fvTipUse = rewrittenTip(row.enhance.rewritten); line.tabIndex = 0; }
+                    description.append(line);
+                }
                 if (executing) {
                     const bar = el('div', null, 'fv-queue-bar'), fill = el('div', null, 'fv-queue-fill');
                     bar.setAttribute('role', 'progressbar'); bar.setAttribute('aria-valuemin', '0'); bar.setAttribute('aria-valuemax', '100');
@@ -3003,11 +3034,18 @@ export function openStudio(node, {extendFrom = null} = {}) {
             capturing = true; updateRunButton(); status.dataset.error = 'false'; runOptions.open = false;
             lengthControl.freeze();
             // Lines are sent as written: an enhanced rewrite would merge them into one description.
-            if (!texts && (!extension.source || prompt.value.trim()) && !swapState(mediaNode) && await enhancer.beforeGenerate() === false) return;
+            // While a task runs, the rewrite goes with the request and is made when its turn comes (queuedRewrite).
+            let queuedEnhance = null;
+            if (!texts && (!extension.source || prompt.value.trim()) && !swapState(mediaNode)) {
+                queuedEnhance = await enhancer.queuedRewrite();
+                if (!queuedEnhance && await enhancer.beforeGenerate() === false) return;
+            }
             if (disposed) return;
             if (selected === 'input' && !dimensionsLinked) await inputRatio(true);
             const lengthPlan = await lengthControl.ready();
             if (disposed || lengthControl.blocked) return;
+            // A video made in parts has its own descriptions per part: it is rewritten (or not) now, as before.
+            if (queuedEnhance && lengthPlan?.count > 1) { queuedEnhance = null; if (await enhancer.beforeGenerate() === false) return; }
             // A saved or restored Fast setting on a machine the planner has not offered it to is sampled at Light.
             if (fastOn() && !fastOffered()) chooseEffort(effort.levels().find(tier => tier.name === 'Light'));
             const short = fastShortfall();
@@ -3046,6 +3084,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
             if (!snapshot) { fault(t('Could not prepare this run. Try again.', '未能准备这次生成，请重试。')); return; }
             // The Fast level makes one whole video: the parts of a longer one are sampled at Light.
             if (fastOn() && lengthPlan?.count > 1) Object.assign(snapshot.output[node.id].inputs, {fast_mode: 'none', two_pass: true, preview: false});
+            // The prompt as it is now goes with the request, with what its rewrite reads; the box is not touched later.
+            if (queuedEnhance) Object.assign(snapshot.output[node.id].inputs, {text: queuedEnhance.original,
+                freevideo_enhance: {...queuedEnhance, subjects: rewriteSubjects.map(subject => ({handle: subject.handle ?? subject.name}))}});
             const seedIndex = node.widgets.findIndex(w => w.name === 'seed');
             capturing = false;
             for (const section of controls.querySelectorAll('.fv-section')) section.inert = false;
@@ -3058,6 +3099,7 @@ export function openStudio(node, {extendFrom = null} = {}) {
                     await queueController.start(snapshot, {count: batchCount, repeat: chosenMode === 'loop', seedIndex, onAccepted}); }
             } else await queueController.start(snapshot, {count: batchCount, repeat: chosenMode === 'loop', seedIndex, onAccepted,
                 ...(texts ? {texts, textIndex: node.widgets.findIndex(w => w.name === 'text')} : {})});
+            if (queuedEnhance && accepted) enhancer.noteQueued();
             // Preserve draft changes made while the POST was in flight.
             if (chosenMode === 'single' && !linked(node, 'seed') && value(node, 'seed') === originalSeed) {
                 const max = Number.MAX_SAFE_INTEGER;

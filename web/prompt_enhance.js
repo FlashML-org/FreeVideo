@@ -750,7 +750,29 @@ export function createPromptEnhancer({node, input, editor, api, context, setText
         onReverse(listener) { reverseListeners.add(listener); listener(reverseState); return () => reverseListeners.delete(listener); }, model: {read: readModel, download: downloadModel, subscribe(listener) {
         modelListeners.add(listener); listener(modelState);
         return () => modelListeners.delete(listener);
-    }}, async beforeGenerate() {
+    }},
+    // While a task runs, a request with enhancement on is not rewritten now: it carries what the rewrite reads (the prompt
+    // as it is now, and the scene) and the control process rewrites it when its turn comes (queued_rewrite.py).
+    // null when the rewrite is not needed or not possible that way; the request then goes as before.
+    async queuedRewrite() {
+        if (running || !blockedWhy() || !versions.value.enabled || versions.value.useOriginal) return null;
+        const original = versions.value.original;
+        if (!original.trim() || versions.fresh(context())) return null;
+        const text = prepare(original);
+        if ([...text].length > PROMPT_LIMIT) return null;
+        const body = {text, ...await resolve(context())};
+        return {body, original};
+    },
+    noteQueued() {
+        show(t('Added to the queue; the prompt is rewritten when this task\'s turn comes.', '已加入队列，轮到这个任务时会先改写提示词。'), 'note');
+    },
+    // The reason a queued rewrite could not be made, as the line after "Generated with the original prompt." says it.
+    queuedFallback(code) {
+        // The queue's own codes have no sentence of their own: the rewrite failed.
+        const reason = ['rewrite_failed', 'unavailable', 'cancelled', 'not_rewritten', ''].includes(code ?? '') ? t('The rewrite failed.', '改写失败。') : fallbackText({message: code});
+        return t('Generated with the original prompt. {reason}', '已用原文生成。{reason}', { reason });
+    },
+    async beforeGenerate() {
         if (running && downloadOnly) {
             // The download holds the engine the video needs: pause it (Retry resumes) instead of waiting for it.
             const request = running, downloading = consent ? '' : job;

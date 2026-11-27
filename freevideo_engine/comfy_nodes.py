@@ -260,6 +260,11 @@ class FreeVideoGenerate(io.ComfyNode):
             refine_from = continue_from = ''
             frames = 0
         node_id = cls.hidden.unique_id
+        # A rewrite no queue made (queued_rewrite.py): generated with the prompt as it is, and the result says so.
+        from .queued_rewrite import request_left
+        not_rewritten = request_left(getattr(cls.hidden, 'prompt', None), node_id)
+        if not_rewritten:
+            logging.warning('[FreeVideo] A queued prompt rewrite was not made; generating with the original prompt')
         chain = block_context(PromptServer.instance, node_id)
         options = request_options(continue_from, node_frames(frames))
         notes = []
@@ -460,6 +465,8 @@ class FreeVideoGenerate(io.ComfyNode):
             if 'continuation' in preview['freevideo_summary'][0] and options.get('frames'):
                 preview['freevideo_summary'][0]['continuation']['requested_frames'] = options['frames']
             preview['freevideo_summary'][0]['result_cache_hit'] = result_reused[0]
+            if not_rewritten:
+                preview['freevideo_summary'][0]['enhance_fallback'] = 'not_rewritten'
             from .comfy_progress import REPORTS
             known = REPORTS.tokens(output_root).get(relative.as_posix().removeprefix('FreeVideo/'))
             if known:

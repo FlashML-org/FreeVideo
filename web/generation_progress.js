@@ -103,6 +103,8 @@ const STALL_SECONDS_BY_PHASE = Object.freeze({
     // A long video's part descriptions: the server waits at most 10 min for the model and
     // writes for at most 15 min, then splits the description by sentence on its own.
     describe: 1500,
+    // Queued prompts rewritten before their videos: a rewrite may wait up to 10 min for the prompt model.
+    queued_rewrite: 900,
 });
 // Normal stage sentences keep the sampling step or a download's size and speed.
 // After 15 s of engine silence SUBACTIVITY names the work without counts.
@@ -179,6 +181,10 @@ function baseActivityLabel(message, t, plan = {}, secondPass = false, references
     const phase = message.phase || message.timing_phase || message.stage;
     const named = key => ({key, text: t(...ACTIVITY[key])});
     if (phase === 'dependencies' && message.stage === 'probe') return named('prepare');
+    // The queue's prompts rewritten before their videos (queued_rewrite.py), counted when there are several.
+    if (phase === 'queued_rewrite') return {key: 'rewrite', text: valid(message.total) && message.total > 1
+        ? t('Rewriting queued prompts ({current} of {total})', '正在改写排队任务的提示词（{current}/{total}）', {current: message.done, total: message.total})
+        : t('Rewriting queued prompts', '正在改写排队任务的提示词')};
     const download = DOWNLOADS[message.stage] || (phase === 'dependencies' ? DOWNLOADS.dependencies : null);
     if (download) {
         const detail = [];

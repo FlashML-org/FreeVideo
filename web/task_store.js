@@ -456,7 +456,9 @@ export function queueSource(store, {fetchJson, clientId = () => null, interval =
             const id = 'video:' + row[1], previous = store.get(id); now.set(id, {promptId: row[1], status: 'queued'});
             if (previous && !['queued', 'submitting'].includes(previous.status)) return;
             store.upsert({id, kind: 'video', source: 'video', status: 'queued', prompt_id: row[1], node: generateOf(row)[0], cancellable: true,
-                position: index + allRunning.length, prompt: previous?.prompt || text(row)});
+                position: index + allRunning.length, prompt: previous?.prompt || text(row),
+                // Where its queued rewrite is (queued_rewrite.py), when it asked for one.
+                meta: {enhance: row[3]?.freevideo_enhance ?? null}});
         });
         for (const [id, was] of known) {
             if (now.has(id)) continue;
@@ -574,3 +576,33 @@ export function journalSource(store, {fetchJson, storage = null, interval = 3000
 }
 
 export const jobs = createJobStore({storage: (() => { try { return globalThis.localStorage || null; } catch { return null; } })()});
+
+// A waiting video's queued rewrite, in the words of its row ('' when it asked for none): each row by its own state.
+export function queuedRewriteWords(row, t) {
+    const state = row?.status === 'queued' ? row.meta?.enhance?.state : null;
+    // Short enough for a row of the works column at its default width.
+    return state === 'waiting' ? t('To be rewritten', '等待改写提示词')
+        : state === 'rewriting' ? t('Rewriting prompt', '正在改写提示词')
+        : state === 'rewritten' ? t('Prompt rewritten', '提示词已改写') : '';
+}
+
+// A rewritten prompt on hover: its start, so the tip stays five or six lines high (a rewrite can run to 12000 characters).
+// Measured by width: a Chinese, Japanese or Korean character counts 2, any other 1; English ends at its last whole word.
+export const REWRITE_TIP_WIDTH = 200;
+const WIDE = /[\u1100-\u115F\u2E80-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6\u{20000}-\u{3FFFD}]/u;
+export function rewrittenTip(text) {
+    const chars = [...String(text ?? '').trim()];
+    let width = 0, cut = -1;
+    for (let index = 0; index < chars.length; index++) {
+        width += WIDE.test(chars[index]) ? 2 : 1;
+        if (width > REWRITE_TIP_WIDTH) { cut = index; break; }
+    }
+    if (cut < 0) return chars.join('');
+    // Inside an English word: back to the space before it, unless that would drop more than a third of the line.
+    // Between Chinese, Japanese or Korean characters any place is a whole word: the cut stays.
+    if (chars[cut] !== ' ' && !WIDE.test(chars[cut]) && !WIDE.test(chars[cut - 1])) {
+        const space = chars.lastIndexOf(' ', cut - 1);
+        if (space > cut * 2 / 3) cut = space;
+    }
+    return chars.slice(0, cut).join('').trimEnd() + '…';
+}

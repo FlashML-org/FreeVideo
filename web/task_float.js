@@ -5,7 +5,7 @@
 import { isNetworkTypeError, connectionLostText } from './browser_extension.js';
 import { api } from '../../scripts/api.js';
 import { app } from '../../scripts/app.js';
-import { jobs, imageSource, progressSource, chainSource, queueSource, journalSource, ACTIVE, FINAL } from './task_store.js';
+import { jobs, imageSource, progressSource, chainSource, queueSource, journalSource, ACTIVE, FINAL, queuedRewriteWords } from './task_store.js';
 import { errorText, failureAdvice } from './error_panel.js';
 import { createImageGenClient, imageGenError, imageReportBar, lostEngineText, WAITING_TEXT } from './image_generation.js';
 import { exitCause, newEngineExit, watchEngineExit } from './engine_exit.js';
@@ -213,7 +213,7 @@ function line2(row) {
     // Waiting for FreeVideo to come back: said, with the stop button turned into "Stop waiting".
     if (row.meta?.reconnecting && ACTIVE.has(row.status)) return t(...WAITING_TEXT.short);
     if (row.status === 'running') return etaText(row.eta_seconds) || elapsedText(row);
-    if (row.status === 'queued' || row.status === 'submitting') return t('Starts after the one before it', '等前一项完成后开始');
+    if (row.status === 'queued' || row.status === 'submitting') return queuedRewriteWords(row, t) || t('Starts after the one before it', '等前一项完成后开始');
     if (row.status === 'cancelling') return elapsedText(row);
     if (row.status === 'done') return t('Saved to your creations', '已存入作品');
     return reasonShort(row);
