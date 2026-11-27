@@ -25,7 +25,7 @@ ERRORS = frozenset(('no_memory', 'small_memory', 'busy_video', 'busy', 'pack_mis
                     'invalid_media', 'invalid_points', 'segment_not_installed', 'generation_failed')) | LORA_ERRORS
 NO_REPORT = frozenset(('small_memory', 'busy', 'invalid_request', 'invalid_prompt', 'invalid_dimensions', 'invalid_seed',
                        'too_many_images', 'output_unwritable', 'invalid_media', 'invalid_points', 'segment_not_installed', 'cancelled',
-                       'disk_full')) | LORA_ERRORS
+                       'disk_full', 'invalid_layout', 'too_many_boxes', 'layout_too_long')) | LORA_ERRORS
 STAGES = ('start', 'load', 'text', 'encode', 'denoise', 'decode')
 KINDS = ('generate', 'edit', 'cast', 'compose', 'download', 'install')
 # Each failure in English and Chinese. The image page writes the same sentences in imageGenError (a test keeps the

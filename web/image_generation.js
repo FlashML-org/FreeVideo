@@ -448,10 +448,10 @@ export function pageImageReport({error, stage, step, memory, error_type} = {}, v
 // The failures the person fixes by changing a setting or making room (image_gen/failure.py NO_REPORT; a test keeps the two
 // equal): the engine makes no report for them and the card offers no "Report a problem".
 export const NO_REPORT = new Set([
-    'busy', 'cancelled', 'disk_full', 'duplicate_lora', 'invalid_dimensions', 'invalid_lora_model',
+    'busy', 'cancelled', 'disk_full', 'duplicate_lora', 'invalid_dimensions', 'invalid_layout', 'invalid_lora_model',
     'invalid_lora_strength', 'invalid_loras', 'invalid_media', 'invalid_points', 'invalid_prompt', 'invalid_request',
-    'invalid_seed', 'lora_not_found', 'output_unwritable', 'segment_not_installed', 'small_memory',
-    'too_many_images', 'too_many_loras'
+    'invalid_seed', 'layout_too_long', 'lora_not_found', 'output_unwritable', 'segment_not_installed', 'small_memory',
+    'too_many_boxes', 'too_many_images', 'too_many_loras'
 ]);
 
 export function renderImageFailure(host, {error, report_id, stage, step, fitted, info, memory, other_usage, cause, misses, error_type} = {}, t,

@@ -274,6 +274,7 @@ dialog.fv-studio.fv-image:not([open]){display:none!important}
 .fv-iv .fv-iv-slot[data-kind=warn]{background:var(--fv-warn-soft);color:var(--fv-warn)}
 .fv-iv .fv-iv-slot[data-kind=info]{background:var(--fv-accent-soft);color:var(--fv-accent-ink)}
 .fv-iv .fv-iv-slot-act{height:28px;padding:0 12px;color:inherit;font-weight:600}
+.fv-iv .fv-iv-slot .fv-iv-slot-report{flex:none;align-self:flex-start;gap:6px;padding:4px 10px;border:1px solid var(--fv-line);border-radius:var(--fv-r-sm,8px);color:inherit;white-space:nowrap}
 .fv-iv .fv-iv-slot.fv-image-notice-flash{animation:fv-image-notice-flash .9s ease-in-out}
 @keyframes fv-image-notice-flash{0%,100%{opacity:1}25%,75%{opacity:.25}50%{opacity:1}}
 .fv-studio .fv-iv .fv-iv-go{position:relative;overflow:hidden;width:100%;height:var(--fv-h-lg,44px);min-height:var(--fv-h-lg,44px);display:flex;align-items:center;gap:12px;padding:0 16px;border:0;border-radius:var(--fv-rad-ctl,12px);cursor:pointer;

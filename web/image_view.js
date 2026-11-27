@@ -1023,7 +1023,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
     function paintSlot() {
         // One fixed-height line above Generate: the most pressing thing there is to say.
         const s = modelState(info, model.id), tooMany = over() > 0;
-        let kind = '', parts = [];
+        let kind = '', parts = [], whole = false;
         if (note.textContent && folderNote && note.textContent === folderNote.text) { kind = 'note'; parts = folderParts(); }
         else if (note.textContent) { kind = note.dataset.kind === 'busy' ? 'info' : 'warn'; parts = [icon(kind === 'info' ? 'clock' : 'warn'), el('span', 'fv-iv-slot-tx', note.textContent)]; }
         else if (tooMany) {
@@ -1034,10 +1034,13 @@ export function openImageView(node, {studio = null, client: given = null, poll =
             kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', t('An image named in the prompt was removed; choose it again with @', '提示词里引用的参考图已移除，请用 @ 重新选择'))];
         }
         else if (s.state === 'failed') {
-            kind = 'warn'; parts = [icon('warn'), el('span', 'fv-iv-slot-tx', s.reason
-                ? t('{model} download failed: {reason}. Retry to continue; if it keeps failing, report the problem.', '{model} 下载失败：{reason}。请重试以继续下载；仍然失败时，请提交问题。',
+            // Said whole (the line grows to hold it), with the button the sentence names.
+            const said = s.reason
+                ? t('{model} download failed: {reason}. Try again; if it still fails, choose "Report a problem".', '{model} 下载失败：{reason}。请重试；仍然失败时，请点击“提交问题”。',
                     { model: model.short, reason: s.reason.replace(/[.。]$/, '') })
-                : t('{model} download failed. Retry to continue; if it keeps failing, report the problem.', '{model} 下载失败。请重试以继续下载；仍然失败时，请提交问题。', { model: model.short }))];
+                : t('{model} download failed. Try again; if it still fails, choose "Report a problem".', '{model} 下载失败。请重试；仍然失败时，请点击“提交问题”。', { model: model.short });
+            kind = 'warn'; whole = true;
+            parts = [icon('warn'), el('span', 'fv-iv-slot-tx', said), issueButton(t, () => ({where: ['Image model download', '图像模型下载'], message: said}), {className: 'fv-iv-slot-report'})];
         } else if (s.state === 'downloading' && s.paused) {
             // What the download waits for, and that the model row's Continue download runs it now.
             kind = 'info'; parts = [icon('clock'), el('span', 'fv-iv-slot-tx', t('{short}: {state}', '{short}：{state}', { short: model.short, state: pausedText(s) }))];
@@ -1051,7 +1054,7 @@ export function openImageView(node, {studio = null, client: given = null, poll =
         else parts = running ? [el('span', 'fv-iv-slot-tx', t('Generating; you can leave this view', '正在生成，可以离开这个视图'))] : [];
         slot.dataset.kind = kind; slot.replaceChildren(...parts);
         // A folder that could not be opened is read (and copied) in full: that line takes the height it needs.
-        slot.toggleAttribute('data-whole', kind === 'note');
+        slot.toggleAttribute('data-whole', kind === 'note' || whole);
         paintStatus();
     }
 

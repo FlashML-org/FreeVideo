@@ -1056,9 +1056,9 @@ export async function openSetup(options) {
                 }
             } else if (s.state === 'failed') {
                 r.sub.className = 'is-warn'; r.sub.textContent = s.reason
-                    ? t('{model} download failed: {reason}. Retry to continue; if it keeps failing, report the problem.', '{model} 下载失败：{reason}。请重试以继续下载；仍然失败时，请提交问题。',
+                    ? t('{model} download failed: {reason}. Try again; if it still fails, report the problem.', '{model} 下载失败：{reason}。请重试；仍然失败时，请提交问题。',
                         { model: item.model.short, reason: s.reason.replace(/[.。]$/, '') })
-                    : t('{model} download failed. Retry to continue; if it keeps failing, report the problem.', '{model} 下载失败。请重试以继续下载；仍然失败时，请提交问题。', { model: item.model.short });
+                    : t('{model} download failed. Try again; if it still fails, report the problem.', '{model} 下载失败。请重试；仍然失败时，请提交问题。', { model: item.model.short });
                 act.hidden = false; act.className = 'st-btn is-fill'; act.replaceChildren(icon('retry', 'fv-i s'), el('span', 'st-btn-t', t('Retry', '重试')));
                 act.onclick = () => imageAction(id, 'install');
                 tip(act, t('Retry', '重试'), t('Download again; the part downloaded is kept', '重新下载，已下载的部分会保留'));

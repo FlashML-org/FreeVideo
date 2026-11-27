@@ -150,7 +150,7 @@ export function modelPicker({host, onPick, onInstall, onPause}) {
         status.replaceChildren(icon(state.unknown ? 'clock' : ICON_OF[state.state] || 'cloud'), el('span', '', statusLine(state)));
         // Closed, the row names the model only; it speaks when something needs doing (to download, downloading, failed).
         status.hidden = state.state === 'ready' || state.state === 'checking';
-        tip(trigger, t('Model', '模型'), t('{name}: {state}. Choose another model.', '{name}：{state}。也可以换用其他模型。', { name: model.name, state: useOf(model, state) }));
+        tip(trigger, t('Model', '模型'), t('{name}: {state}. You can also choose another model.', '{name}：{state}。也可以换用其他模型。', { name: model.name, state: useOf(model, state) }));
         const act = actionOf(state); action.hidden = !act; action.replaceChildren(el('span', 'fv-iv-btn-label', act));
         if (act) tip(action, state.paused ? t('Continue download', '继续下载') : state.state === 'downloading' ? t('Pause download', '暂停下载') : state.state === 'failed' ? t('Retry download', '重新下载') : t('Install {short}', '安装 {short}', { short: model.short }),
             state.paused ? continueUse() : useOf(model, state));
