@@ -2458,6 +2458,9 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if (event.target !== element) return;
         event.preventDefault();
         if (escapeTaken || topDialog() !== element) return;
+        // The view sends this cancel before the key reaches the quality knob: while the knob is held, the Escape is the
+        // knob's own cancel of the drag, and the selection stays.
+        if (element.querySelector('.fv-effort-rail[data-dragging]')) return;
         // A pending "replace audio" is an inner layer too: Escape ends it and keeps the selection.
         if (dismissPopup(event) || tracks?.cancelGesture() || pictureEdit.cancelDraft() || replaceMode(state).cancel()) { tookEscape(); return; }
         if (document.fullscreenElement) { tookEscape(); document.exitFullscreen().catch(() => {}); return; }
