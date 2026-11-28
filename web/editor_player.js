@@ -10,6 +10,7 @@ import {previewSpeed, speedAudioFrame, separateSpeedAudio} from './editor_speed.
 import {sourceFrame, percent} from './editor_speed_model.js';
 import {applyTip} from './editor_tracks_tips.js';
 import {attach as attachPlayer} from './glass/player_bar.js';
+import {enlarged, toggleEnlarge} from './video_enlarge.js';
 import {setAttr, setData, setDisabled, setHidden, setText} from './dom_quiet.js';
 const el = (tag, cls) => { const e = document.createElement(tag); if (cls) e.className = cls; return e; };
 export function audioSeconds(clip, sourceFrame) {
@@ -430,7 +431,14 @@ export function createEditorPlayer(host, transport, {state, sources, api, t, err
     }
     const pictureLayout = record => JSON.stringify([record.width, record.height, record.tracks, record.replacements]);
     let previewBar = null;
-    function clearPreview() { if (preview) { previewBar?.detach(); previewBar = null; preview.onended = null; preview.pause(); preview.removeAttribute('src'); preview.load(); preview.remove(); preview = null; } previewSize = previewProject = null; setHidden(closePreview, true); }
+    // What had the keyboard when the preview opened (the source picked), where it goes back when the preview goes while it
+    // has the keyboard (its bar, or the window-filling view), instead of falling to the page.
+    let previewOpener = null;
+    function clearPreview() { if (preview) { const focused = document.activeElement;
+        const held = !!focused && (preview.contains(focused) || !!previewBar?.element.contains(focused) || (enlarged(preview) && !!focused.closest?.('dialog.fv-video-full')));
+        if (enlarged(preview)) toggleEnlarge(preview); previewBar?.detach(); previewBar = null; preview.onended = null; preview.pause(); preview.removeAttribute('src'); preview.load(); preview.remove(); preview = null;
+        if (held && !disposed) (previewOpener?.isConnected ? previewOpener : playButton).focus({preventScroll: true}); previewOpener = null; }
+        previewSize = previewProject = null; setHidden(closePreview, true); }
     closePreview.onclick = () => { clearPreview(); render(); };
     function play() {
         if (disposed || playing || playButton.disabled) return;
@@ -521,14 +529,19 @@ export function createEditorPlayer(host, transport, {state, sources, api, t, err
         async previewSource(source) {
             if (disposed) return;
             const previousSize = previewSize || {width: state.record.width, height: state.record.height};
+            const opener = document.activeElement;
             pause(); clearPreview(); const metadata = sources.get(sourceKey(source)); if (!metadata?.video && !metadata?.audio) { render(); return; }
+            previewOpener = opener && opener !== document.body ? opener : null;
             preview = el(metadata.video ? 'video' : 'audio', 'fv-ed-source-preview'); preview.playsInline = true;
             if (metadata.video && Number.isFinite(metadata.width) && Number.isFinite(metadata.height) && metadata.width >= 2 && metadata.height >= 2)
                 previewSize = {width: metadata.width, height: metadata.height};
             else if (!metadata.video) previewSize = previousSize;
             previewProject = pictureLayout(state.record);
             preview.onended = () => { clearPreview(); render(); };
-            preview.src = mediaURL(api, metadata.video || metadata.audio); frame.append(preview); previewBar = attachPlayer(preview, frame, {t, click: true}); previewBar.element.classList.add('fv-player-over', 'fv-player-on-dark'); closePreview.hidden = false; render(); preview.play().catch(() => {});
+            preview.src = mediaURL(api, metadata.video || metadata.audio); frame.append(preview); const shown = preview;
+            // The shared play bar with sound, speed and, for a video, the key that fills the window (an ending or a closed preview puts it back first).
+            previewBar = attachPlayer(shown, frame, {t, click: true, volume: true, speed: true,
+                full: shown.tagName === 'VIDEO' ? {shown: () => enlarged(shown), toggle: key => toggleEnlarge(shown, {t, opener: key})} : null}); previewBar.element.classList.add('fv-player-over', 'fv-player-on-dark'); closePreview.hidden = false; render(); preview.play().catch(() => {});
         },
         dispose() { disposed = true; playing = false; centring?.disconnect(); opening?.disconnect(); if (typeof window !== 'undefined') window.removeEventListener?.('resize', centre); chainRequest?.abort(); removeChains(); cancelAnimationFrame(raf); unsubscribe(); stopPictureEdit(); clearPreview(); audioPreview.dispose();
             allMedia().forEach(media => { media.pause(); media.onloadedmetadata = media.onerror = null; media.removeAttribute('src'); delete media.dataset.source; media.load(); media.remove(); }); playButton.onclick = closePreview.onclick = null; picturePreview.dispose(); pictureGuide.dispose(); audioContext?.close().catch(() => {}); },
