@@ -744,7 +744,7 @@ ApplicationWindow {
                             FButton { objectName: "clearRuntime"; visible: usingRuntime; text: t("Use automatic download", "改用自动下载"); flat: true; enabled: !s.busy; onClicked: backend.clearRuntime() }
                         }
                         FText { objectName: "runtimeHelp"; Layout.fillWidth: true; color: theme.muted; font.pixelSize: theme.micro
-                            text: usingRuntime ? t("Environment ready. Import the model packages in the next step.", "运行环境已就绪，下一步导入模型包。") : t("Download the Environment ZIP from Quark, then import it here. Model packages come next.", "从夸克下载「运行环境」ZIP，在这里导入。模型包放在下一步。") }
+                            text: usingRuntime ? t("Environment ready. Import the model packages in the next step.", "运行环境已就绪，下一步导入模型包。") : t("Download the Environment ZIP from ModelScope, then import it here. Model packages come next.", "从魔搭下载「运行环境」ZIP，在这里导入。模型包放在下一步。") }
                         Rectangle {
                             Layout.fillWidth: true; implicitHeight: runtimeContents.implicitHeight + 24; radius: theme.radiusSm
                             color: runtimeDrop.containsDrag ? theme.accentSubtle : theme.bg; border.color: runtimeDrop.containsDrag ? theme.accent : theme.sheen
@@ -759,8 +759,8 @@ ApplicationWindow {
                                     Layout.alignment: Qt.AlignHCenter; Layout.maximumWidth: parent.width; spacing: 8
                                     FButton { objectName: "importRuntime"; text: usingRuntime ? t("Replace package…", "更换环境包…") : t("Choose environment ZIP…", "选择运行环境包…"); enabled: !s.busy; implicitHeight: theme.heightSm; onClicked: backend.browseRuntimePackage() }
                                     Repeater {
-                                        model: cloudLinks
-                                        delegate: FButton { required property var modelData; required property int index; objectName: "runtimeShare-" + index; text: t("Quark download ↗", "夸克网盘下载 ↗"); flat: true; implicitHeight: theme.heightSm; onClicked: backend.link(modelData.url) }
+                                        model: runtimeLinks
+                                        delegate: FButton { required property var modelData; required property int index; objectName: "runtimeShare-" + index; text: t("Download from ModelScope ↗", "从魔搭下载 ↗"); width: Math.min(implicitWidth, runtimeContents.width); flat: true; implicitHeight: theme.heightSm; onClicked: backend.link(modelData.url) }
                                     }
                                 }
                             }
@@ -867,7 +867,12 @@ ApplicationWindow {
                                 FText { text: t("1. Download your packages", "1. 下载离线包"); font.weight: Font.DemiBold; Layout.fillWidth: true }
                                 Repeater {
                                     model: cloudLinks
-                                    delegate: FButton { required property var modelData; required property int index; objectName: "offlineShare-" + index; text: t("Download from Quark ↗", "打开夸克网盘 ↗"); onClicked: backend.link(modelData.url) }
+                                    delegate: FButton { required property var modelData; required property int index; objectName: "offlineShare-" + index; text: t("Download model packs from Quark ↗", "从夸克下载模型包 ↗"); Layout.maximumWidth: parent.width; onClicked: backend.link(modelData.url) }
+                                }
+                                Repeater {
+                                    // The Environment ZIP of this version is on the release mirror, not on the Quark share.
+                                    model: s.offline.runtime_needed && s.offline.runtime_supported ? runtimeLinks : []
+                                    delegate: FButton { required property var modelData; required property int index; objectName: "offlineRuntimeShare-" + index; text: t("Download environment from ModelScope ↗", "从魔搭下载运行环境 ↗"); Layout.maximumWidth: parent.width; onClicked: backend.link(modelData.url) }
                                 }
                                 FText { objectName: "offlinePackageGuide"; text: holdNames(s.offline.guide); color: theme.muted; font.pixelSize: theme.micro; Layout.fillWidth: true }
                                 FButton { objectName: "otherModelLinks"; text: downloads.copy.title + "  ›"; flat: true; enabled: !s.busy; implicitHeight: theme.heightSm; leftPadding: 0; font.pixelSize: theme.micro + 1; onClicked: { backend.setDownloadScope("video"); modelInfoOpen = true } }

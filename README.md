@@ -61,7 +61,7 @@ Requirements: an NVIDIA RTX 30 series or newer graphics card (professional cards
 
 **Security software:** FreeVideo.exe is code-signed. If security software blocks FreeVideo.exe or quarantines files in the FreeVideo folder, check that the SHA-256 of FreeVideo.exe matches the value on the release page, then restore the files and add the FreeVideo folder to the software's exclusion list.
 
-**Offline installation:** Download the packages from [Quark](https://pan.quark.cn/s/c51235b84618) and drag the ZIP files into the launcher without extracting them. A fully offline installation needs the four model packs (video model, text encoder, video & audio decoder, and sampling caches), plus the environment package for a new ComfyUI installation. After importing only the environment package, you can also choose **Automatic download** for the models (v0.3.12 or newer). The audio reference cache is optional and is used only when a reference includes audio.
+**Offline installation:** Download the model packages from [Quark](https://pan.quark.cn/s/c51235b84618) and the environment package from [ModelScope](https://modelscope.cn/models/BowenXue/FreeVideo-releases/tree/master/offline), then drag the ZIP files into the launcher without extracting them. A fully offline installation needs the four model packs (video model, text encoder, video & audio decoder, and sampling caches), plus the environment package for a new ComfyUI installation. After importing only the environment package, you can also choose **Automatic download** for the models (v0.3.12 or newer). The audio reference cache is optional and is used only when a reference includes audio.
 
 ### macOS (Apple silicon preview)
 

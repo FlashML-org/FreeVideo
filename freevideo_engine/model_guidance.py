@@ -465,7 +465,7 @@ def package_instructions(runtime_needed, zh=False, t=None):
              '下载「{decoder}」「{video}」「{prompt}」「{sampling}」四个模型包；「{audio}」可选，用音频做参考时才需要。',
              files)
     if runtime_needed:
-        text += '\n' + t('For a new installation, also get "{runtime}".', '全新安装还需「{runtime}」。', files)
+        text += '\n' + t('For a new installation, also get "{runtime}" from ModelScope.', '全新安装还需从魔搭下载「{runtime}」。', files)
     return text
 
 
@@ -489,23 +489,31 @@ PACKAGE_KEYS = ('runtime', 'decoder', 'video', 'prompt', 'sampling', 'audio')
 
 
 def share_files():
-    """The offline packages as the download page the offline page opens lists them ("files" of that share in
-    model_shares.json: Simplified Chinese, numbered as the page shows them). Every language quotes them as they are,
-    since these are the names the user looks for there. {} when the share does not list all of them."""
+    """The offline packages as the download pages the offline page opens list them: the model packs from "files" of
+    the share in model_shares.json (Simplified Chinese, numbered as that page shows them), the Environment ZIP from
+    the release mirror (runtime_links). Every language quotes them as they are, since these are the names the user
+    looks for there. {} when the pages do not list all of them."""
     shares = cloud_models()
-    files = shares[0].get('files') if shares else None
-    if not isinstance(files, dict) or not all(isinstance(files.get(k), str) and files[k] for k in PACKAGE_KEYS):
+    files = dict(shares[0].get('files') or {}) if shares and isinstance(shares[0].get('files'), dict) else {}
+    runtime = runtime_links()
+    if runtime:
+        files['runtime'] = runtime[0]['file']
+    if not all(isinstance(files.get(k), str) and files[k] for k in PACKAGE_KEYS):
         return {}
     return {k: files[k] for k in PACKAGE_KEYS}
 
 
 @plain_errors
-def cloud_models():
-    """Only publisher-approved or release-verified shares become download links."""
+def _shares():
     path = io_path(Path(__file__).with_name('model_shares.json'))
     if not path.exists():
-        return []
-    value = json.loads(path.read_text(encoding='utf-8'))
+        return {}
+    return json.loads(path.read_text(encoding='utf-8'))
+
+
+def cloud_models():
+    """Only publisher-approved or release-verified shares become download links."""
+    value = _shares()
     result = []
     for row in value.get('models', []):
         url = urlsplit(row.get('url', ''))
@@ -514,6 +522,23 @@ def cloud_models():
                 and url.path.startswith('/s/') and not url.username and not url.password):
             result.append(row)
     return result
+
+
+RUNTIME_MIRROR = '/models/BowenXue/FreeVideo-releases/'
+
+
+def runtime_links():
+    """Where the Environment ZIP of this version is: the release mirror's offline folder, whose address stays the
+    same from one version to the next. [] when model_shares.json names no approved page there."""
+    row = _shares().get('runtime')
+    if not isinstance(row, dict) or not isinstance(row.get('file'), str) or not row['file']:
+        return []
+    url = urlsplit(row.get('url', ''))
+    if ((row.get('publisher_approved') is True or row.get('verified') is True)
+            and url.scheme == 'https' and url.hostname in ('modelscope.cn', 'www.modelscope.cn')
+            and url.path.startswith(RUNTIME_MIRROR) and not url.username and not url.password):
+        return [row]
+    return []
 
 
 def show_component(app, component):
