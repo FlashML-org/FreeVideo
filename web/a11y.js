@@ -82,13 +82,25 @@ export function frontLayer(active = doc.activeElement) {
     return modal;
 }
 
-// Seen at all: some size, inside the window's reach, and not faded out by itself or a holder.
+// Fading in: an opacity animation running on the node that ends with it visible (a page or panel that has just shown,
+// still at its first frame). Its opacity now is not what it will be a moment later.
+function fadingIn(node) {
+    return (node.getAnimations?.() || []).some(animation => {
+        if (animation.playState !== 'running' && animation.playState !== 'pending' && !animation.pending) return false;
+        const frames = animation.effect?.getKeyframes?.() || [];
+        if (!frames.some(frame => 'opacity' in frame)) return false;
+        const end = frames.filter(frame => (frame.computedOffset ?? frame.offset) === 1 && 'opacity' in frame).at(-1);
+        return !end || Number(end.opacity) >= 0.05;
+    });
+}
+
+// Seen at all: some size, inside the window's reach, and not faded out by itself or a holder (one fading in counts as seen).
 function seen(element) {
     const rect = element.getBoundingClientRect();
     if (rect.width < 1 || rect.height < 1) return false;
     for (let node = element; node && node.nodeType === 1; node = node.parentElement) {
         const style = getComputedStyle(node);
-        if (style.visibility === 'hidden' || style.display === 'none' || Number(style.opacity) < 0.05) return false;
+        if (style.visibility === 'hidden' || style.display === 'none' || (Number(style.opacity) < 0.05 && !fadingIn(node))) return false;
         if (node.matches('dialog,[popover]')) break;
     }
     return true;
