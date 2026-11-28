@@ -717,6 +717,9 @@ export function createTracks(host, {state, sources = {}, t = translatorFor(null,
             if (tourId) row.element.dataset.tourId = tourId; else delete row.element.dataset.tourId;
             row.head.dataset.sub = row.element.dataset.sub = String(track.id === 'a3');
             row.empty.hidden = track.clips.length > 0;
+            // Music is made on the second sound track: while it is empty it says how to start (the line fades under a range).
+            const emptyWords = track.id === MUSIC_TRACK && !track.stem ? t('Drag a range to make music', '拖出一段，生成配乐') : '';
+            if (row.empty.textContent !== emptyWords) row.empty.textContent = emptyWords;
             // A picture track with any block description grows a strip for it under the pictures.
             const noted = !!actions.describedTrack?.(track); row.element.dataset.noted = String(noted);
             row.natural = track.kind === 'video' ? 64 + (noted ? 22 : 0) : laneHeight(); row.sound = track.kind === 'audio';

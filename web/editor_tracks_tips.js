@@ -9,7 +9,7 @@ export {setTip};
 // Each entry: [English name, Chinese name, English purpose (≤ 10 words), Chinese purpose (≤ 20 characters), key].
 // Keys use modKey at run time where a modifier is involved.
 const COPY = {
-    addAudio: ['Add audio track', '添加声音轨', 'Another track for music or a voice', '多一条轨，放配乐或旁白', ''],
+    addAudio: ['Add audio track', '添加声音轨', 'A second track for music or a voice', '添加第二条轨，用于配乐或旁白', ''],
     removeAudio: ['Remove Audio 2', '移除声音 2', 'Take away the second audio track', '去掉第二条声音轨', ''],
     playhead: ['Playhead', '播放头', 'Drag to move through the edit', '拖动到要看的画面', '← →'],
     marker: ['Add marker', '添加标记', 'Mark the playhead position', '在播放头处做一个记号', 'M'],
