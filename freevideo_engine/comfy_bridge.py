@@ -1465,9 +1465,9 @@ def generate(prompt, width, height, seconds, seed, output_directory, *,
              continue_from=None, frames=None, first_frame_reference=False, voice_reference=False, hide_tail=False,
              step_cache=None, upscale_factor=2, allow_empty_prompt=False, upscale_from=None, upscale_to=None,
              fast_mode=None):
-    from .comfy_environment import control_process
+    from .comfy_environment import NOT_DISPATCHED, control_process
     if control_process(environ):
-        raise RuntimeError('Generation requires a dispatched executor')
+        raise RuntimeError(NOT_DISPATCHED)
     if upscale_to not in (None, '', '4k', 'fast'):
         raise ValueError('Upscale size must be 4k or fast')
     if upscale_to:

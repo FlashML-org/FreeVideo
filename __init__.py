@@ -12,8 +12,9 @@ WEB_DIRECTORY = './web'
 
 async def comfy_entrypoint():
     from .freevideo_engine.comfy_environment import control_process
-    from .freevideo_engine.gpu_pool import pool_enabled
-    if control_process() and pool_enabled():
+    # The launcher made this the control process; register_pool reads the cards (again if it must) and either starts
+    # the multi-GPU queue or turns this back into a single-card process.
+    if control_process():
         from server import PromptServer
         from .freevideo_engine import comfy_bridge
         from .freevideo_engine.comfy_pool import register_pool

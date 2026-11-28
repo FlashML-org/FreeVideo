@@ -140,13 +140,17 @@ def eligible_devices(env=None):
     return [d for d in devices if str(d.index) in allowed or d.uuid in allowed]
 
 
-def pool_enabled(env=None):
+def pool_allowed(env=None):
+    """Whether the multi-GPU queue may run at all here (the switch and the platform), before any device is read."""
     env = os.environ if env is None else env
     if env.get('FREEVIDEO_MULTI_GPU', '').strip().lower() in OFF:
         return False
-    if not (windows() or os.name == 'posix'):
-        return False
-    return len(eligible_devices(env)) >= 2
+    return windows() or os.name == 'posix'
+
+
+def pool_enabled(env=None):
+    env = os.environ if env is None else env
+    return pool_allowed(env) and len(eligible_devices(env)) >= 2
 
 
 def device_environment(device):

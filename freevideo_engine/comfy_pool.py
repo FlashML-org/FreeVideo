@@ -267,35 +267,95 @@ class PoolSupervisor:
             rows.append(dict(device=worker.device.uuid, state=state))
         try:
             view = server._freevideo_scheduler.view()
-            busy = busy or bool(view['running'] or view['pending'])
-            running, pending = server.prompt_queue.get_current_queue()
-            busy = busy or bool(running or pending)
-            agent = getattr(server, '_freevideo_agent', None)
-            busy = busy or bool(agent is not None and agent.active())
-            from .comfy_chain import RUNNER
-            if RUNNER is not None:
-                with RUNNER.lock:
-                    busy = busy or bool(RUNNER.active or RUNNER.queue)
-                    busy = busy or any(row.get('output_state') == 'joining' for row in RUNNER.records.values())
+            busy = busy or bool(view['running'] or view['pending']) or _work_held(server)
         except Exception:
             confirmed = False
         return dict(confirmed=confirmed, busy=busy or not confirmed, workers=rows)
 
 
+def _work_held(server):
+    """ComfyUI's own queue, a connected agent's work or a chain: anything that still needs this process."""
+    running, pending = server.prompt_queue.get_current_queue()
+    busy = bool(running or pending)
+    agent = getattr(server, '_freevideo_agent', None)
+    busy = busy or bool(agent is not None and agent.active())
+    from .comfy_chain import RUNNER
+    if RUNNER is not None:
+        with RUNNER.lock:
+            busy = busy or bool(RUNNER.active or RUNNER.queue)
+            busy = busy or any(row.get('output_state') == 'joining' for row in RUNNER.records.values())
+    return busy
+
+
+def single_status(server, reason):
+    """/freevideo/pool after the multi-GPU queue could not start: one card, no executors (register_pool)."""
+    try:
+        busy, confirmed = _work_held(server), True
+    except Exception:
+        busy, confirmed = True, False
+    return dict(confirmed=confirmed, busy=busy or not confirmed, workers=[], dispatch='single', reason=reason)
+
+
+# Seconds between reads of the cards when ComfyUI starts as the control process and nvidia-smi shows fewer than two.
+READ_AGAIN_SECONDS = (3, 10)
+
+
+async def _read_devices():
+    """The eligible cards, read again after a short wait while fewer than two show: the launcher saw two or more
+    moments ago, and nvidia-smi can fail or pass its time limit once (a card waking up, a busy driver)."""
+    from .gpu_pool import eligible_devices
+    devices = await asyncio.to_thread(eligible_devices)
+    tries = 1
+    for wait in READ_AGAIN_SECONDS:
+        if len(devices) >= 2:
+            break
+        await asyncio.sleep(wait)
+        devices = await asyncio.to_thread(eligible_devices)
+        tries += 1
+    return devices, tries
+
+
+def _single_card(server, reason, found, tries):
+    """The multi-GPU queue cannot start: this process stops being the control process, so generation takes the
+    single-card path, which runs in its own child process on the card CUDA shows (as with FREEVIDEO_MULTI_GPU=0),
+    instead of every generation failing until FreeVideo restarts. Launched with --cpu, ComfyUI itself keeps no
+    model on a card either way."""
+    import logging
+    from aiohttp import web
+    from .comfy_environment import POOL_CONTROL
+    os.environ.pop(POOL_CONTROL, None)
+    server._freevideo_single_card = reason
+    logging.getLogger(__name__).warning(
+        '[FreeVideo] Multi-GPU queue not started (%s: %d card(s) after %d read(s)); generating on one card. '
+        'Restart FreeVideo to use every card.', reason, found, tries)
+
+    # The launcher asks this while it believes there are several cards (queue_state): it is answered, not a 404.
+    @server.routes.get('/freevideo/pool')
+    async def status(request):
+        return web.json_response(await asyncio.to_thread(single_status, server, reason))
+
+
 async def register_pool(server, *, root, source):
-    """Called once by the control node extension; never by a private executor."""
+    """Called by the control node extension at startup; never by a private executor.
+
+    The launcher decided this is the control process (configure_control), so the decision made here is final for
+    this process: the multi-GPU queue runs, or the process is turned into a single-card one (_single_card). It is
+    never left a control process without its queue, where every generation would be refused."""
     from aiohttp import web
     from .comfy_environment import control_process
-    from .gpu_pool import eligible_devices, pool_enabled
-    if (not control_process() or not pool_enabled()
-            or getattr(server, '_freevideo_front', None) is not None):
+    from .gpu_pool import pool_allowed
+    if not control_process() or getattr(server, '_freevideo_front', None) is not None:
+        return
+    if not pool_allowed():
+        _single_card(server, 'switched_off', 0, 0)
         return
     from .admission import AdmissionLedger
     from .gpu_scheduler import Scheduler
     from .pool_resources import PromptEnvelope, probe_host_memory
     from .comfy_front import register
-    devices = eligible_devices()
+    devices, tries = await _read_devices()
     if len(devices) < 2:
+        _single_card(server, 'no_card_read' if not devices else 'one_card', len(devices), tries)
         return
     ledger = AdmissionLedger(probe_host_memory)
     scheduler = Scheduler(devices, ledger)
