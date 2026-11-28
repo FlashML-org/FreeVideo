@@ -88,6 +88,29 @@ def required_labels(value):
     return [label(row) for row in value['media']] + unseen_labels(value)
 
 
+# The rewrite model sometimes writes a label in other brackets, case or spacing: "<Subject 1> (Picture 1): ...",
+# "（Picture 2）", "[Picture 3]", "<Picture4>". Those spans become the exact label, and only for a label this request
+# uses; the rest of the text, and the same forms of any other number, stay as written. Quoted words (writing on
+# screen) and spoken lines (<d>...</d>) are the user's own words and stay as written too.
+LABEL_FORM = re.compile(r'([(\[<（［【＜〈《])[ \t]*(picture|video|audio)[ \t]*(\d{1,2})[ \t]*([)\]>）］】＞〉》])', re.I)
+LABEL_BRACKETS = dict(zip('([<（［【＜〈《', ')]>）］】＞〉》'))
+
+
+def label_forms(text, value):
+    used = set(required_labels(value))
+    def exact(match):
+        written = '<%s %d>' % (match.group(2).capitalize(), int(match.group(3)))
+        return written if LABEL_BRACKETS[match.group(1)] == match.group(4) and written in used else match.group(0)
+    kept = sorted((found.start(), found.end()) for pattern in (QUOTED, TAGGED) for found in pattern.finditer(text))
+    pieces, at = [], 0
+    for start, end in kept:
+        if end > at:
+            start = max(start, at)
+            pieces += [LABEL_FORM.sub(exact, text[at:start]), text[start:end]]
+            at = end
+    return ''.join(pieces) + LABEL_FORM.sub(exact, text[at:])
+
+
 def instruction(value):
     rule = """Rewrite the user scene as an English MiniMax H3 video prompt. Follow the requested
 actions and camera movement exactly. Image references describe appearance, not whether an
@@ -263,6 +286,7 @@ def validate_output(text, value):
     text = text.strip()
     if text.startswith('```') and text.endswith('```'):
         text = '\n'.join(text.splitlines()[1:-1]).strip()
+    text = label_forms(text, value)
     fields = REF_FIELDS if value['mode'] == 'ref2va' else BASE_FIELDS
     text = sections(text, fields)
     found = re.findall(r'(?m)^([a-z_]+):', text)
@@ -778,6 +802,7 @@ def validate_image(text, value):
     and names no picture it was not given."""
     if not isinstance(text, str) or not 1 <= len(text.strip()) <= 20000:
         raise InvalidOutput('type_or_length', text, value)
+    text = label_forms(text, value)
     for found in QUOTED.finditer(value['text']):
         words = next(each for each in found.groups() if each is not None).strip()
         if words and words not in text:
