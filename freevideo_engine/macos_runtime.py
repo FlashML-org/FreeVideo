@@ -277,7 +277,7 @@ class Engine:
                     fast.install_features(model, steps)
                 model.rope.to('mps')
                 times = schedule_timesteps(steps, device='mps', task=schedule_task)
-                self.cursor = ScheduleCursor(times)
+                self.cursor = None if fast is not None else ScheduleCursor(times)
                 tables = None if fast is not None else TableCache(self.cache, manifest['source_id'], steps,
                     manifest=manifest, timesteps=times, channels=model.config.hidden_size, device='cpu', task=schedule_task)
                 embeddings = None
@@ -334,7 +334,8 @@ class Engine:
                         f'transformer_blocks.{index}.', ('adaln_proj.',)))
                     self._ff_originals.append((layer.ff, layer.ff.forward))
                     self.backend.install_chunked_ff(layer.ff, ff_chunk)
-                self.schedule_hook = model.register_forward_pre_hook(self.cursor.before, with_kwargs=True)
+                if self.cursor is not None:
+                    self.schedule_hook = model.register_forward_pre_hook(self.cursor.before, with_kwargs=True)
                 if attention_impl == 'mlx':
                     from .backends.mps_mlx_attention import MLXWindowAttention
                     self.attention = MLXWindowAttention(batch_bytes=attention_batch_bytes)
@@ -624,7 +625,8 @@ class Engine:
                                                      + 2 * continuation['audio'].shape[2])
                 self._plan_compute(canvas, prompt.shape[0])
                 previous_block_calls = self._block_metrics()
-                self.cursor.reset(self.steps - refine_steps if refining and refine_schedule is None else start)
+                if self.cursor is not None:
+                    self.cursor.reset(self.steps - refine_steps if refining and refine_schedule is None else start)
                 progress.start()
                 resident = getattr(self, 'resident_bytes', 0)
                 retention = (dict(resident_bytes=resident, working_reserve_bytes=self.reserve_bytes)

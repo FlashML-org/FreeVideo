@@ -550,6 +550,8 @@ def worker(value):
         elif phase == 'decode' and value.get('fast_tier') is not None:
             # The fastest mode draws its pixels with the adapter's head; the video VAE is never read. No
             # continuation, preview or hidden tail reaches this mode (fast_tier.request refuses them).
+            from .macos_vdn import activate
+            activate()
             from .dwd_decode import pixels_to_file
             initial = torch.load(artifacts / 'latents.pt', map_location='cpu', weights_only=True)
             kept = torch.load(artifacts / 'pixel-features.pt', map_location='cpu', weights_only=True)
