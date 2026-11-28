@@ -124,7 +124,7 @@
 
   --fv-accent-ink:#66b6ff;            /* links, selected text, progress, focus */
   --fv-accent-fill:#0d6dcc;           /* primary button: white 5.15:1 */
-  --fv-accent-fill-hover:#0f78de;
+  --fv-accent-fill-hover:#0f74d6;     /* its hover: white 4.68:1 */
   --fv-accent-soft:rgb(27 148 252 / .16);
   --fv-accent-line:rgb(102 182 255 / .5);
 
