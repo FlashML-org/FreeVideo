@@ -6,7 +6,9 @@
 .fv-studio .fv-sampling-settings .fv-two-pass input:checked::before{transform:translateX(14px)}
 .fv-effort{--fv-position:0;--fv-snap:.18s;--fv-move:cubic-bezier(.25,1.15,.45,1);--fv-tone:var(--fv-accent,#6db8fa)}
 .fv-effort-heading{display:flex;align-items:baseline;gap:8px;margin:0 0 10px;color:var(--fv-muted,#969a9f);font:12px/1.5 var(--fv-font,system-ui)}
-.fv-effort-estimate{margin-left:auto;font-variant-numeric:tabular-nums;text-align:right;font-size:11px}
+/* A held phrase in the estimate (" · includes first-time setup") has no break inside; a column narrower than it breaks
+   it anywhere rather than spilling over. */
+.fv-effort-estimate{margin-left:auto;font-variant-numeric:tabular-nums;text-align:right;font-size:11px;overflow-wrap:anywhere}
 .fv-effort-warning{margin:-4px 0 10px;color:var(--fv-warning);font:11px/1.5 var(--fv-font,system-ui);text-align:left;text-wrap:pretty}
 /* The Fast level's download line in the same window: no one-character last line. */
 .fv-fast-pack .fv-swap-download-text{text-wrap:pretty}
