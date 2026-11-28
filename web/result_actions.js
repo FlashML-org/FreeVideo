@@ -189,7 +189,7 @@ export const copyText = text => copyClipboardText(text);
 
 // Fills the prompt, size and duration of an earlier video back into the panel. It is offered only when
 // the video kept its prompt and the panel does not already hold the same settings. Resolves to the button or null.
-// `reuse`: {now(saved), apply(saved), onEdit(listener) -> stop}
+// `reuse`: {now(saved), apply(saved), onEdit(listener) -> stop, receipt?(text, undo) -> {close()} | false}
 async function reuseAction(record, t, reuse) {
     const saved = await savedSettings(api, record);
     if (!saved) return null;
@@ -199,7 +199,7 @@ async function reuseAction(record, t, reuse) {
         const inner = document.createElement('span'); inner.append(...parts); text.append(inner);
         return text;
     };
-    let timer = 0, stop = () => {}, current = null;
+    let timer = 0, stop = () => {}, current = null, quit = () => {};
     const offered = () => differs(saved, reuse.now(saved));
     const idle = () => {
         clearTimeout(timer); stop();
@@ -210,9 +210,20 @@ async function reuseAction(record, t, reuse) {
         button.hidden = !offered();
         button.onclick = () => {
             const before = reuse.now(saved), hadContent = Boolean(before.text.trim()) && differs(saved, before);
+            quit();
             reuse.apply(saved);
             // A page with the shared toast reports there (with Undo) and keeps the button; otherwise the bar shows it in place.
-            if (reuse.receipt?.(filled, hadContent ? () => { reuse.apply(before); button.hidden = !offered(); } : null)) { button.hidden = !offered(); return; }
+            const receipt = reuse.receipt?.(filled, hadContent ? () => { quit(); reuse.apply(before); button.hidden = !offered(); } : null);
+            if (receipt) {
+                button.hidden = !offered();
+                // An edit after the fill takes the notice and its Undo away, as it does in the bar, so Undo never
+                // takes back what was typed since.
+                if (hadContent) {
+                    const off = reuse.onEdit(() => { quit(); receipt.close?.(); });
+                    quit = () => { off(); quit = () => {}; };
+                }
+                return;
+            }
             show(hadContent ? before : null);
         };
         stop = reuse.onEdit(() => {
