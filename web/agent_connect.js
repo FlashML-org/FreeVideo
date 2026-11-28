@@ -57,7 +57,26 @@ export function localhostAddress(location = globalThis.location) {
     return location?.protocol ? `${location.protocol}//localhost${location.port ? ':' + location.port : ''}` : '';
 }
 
-export function refusalHint(code, t, kind = addressKind(globalThis.location?.hostname), address = localhostAddress()) {
+// What the server said about a refused address, kept to its fixed words: why (port, origin or name) and, for a port,
+// the one FreeVideo answers on. Nothing the request itself sent is shown back.
+export function refusalDetail(error) {
+    const row = Array.isArray(error?.details) ? error.details.find(value => value && typeof value === 'object') : null;
+    const reason = ['port', 'origin', 'name'].includes(row?.reason) ? row.reason : null;
+    const port = Number.isInteger(row?.port) && row.port > 0 && row.port < 65536 ? row.port : null;
+    return {reason, port: reason === 'port' ? port : null};
+}
+export function refusalHint(code, t, kind = addressKind(globalThis.location?.hostname), address = localhostAddress(), detail = {}, location = globalThis.location) {
+    if (code === 'origin_forbidden' && detail?.reason === 'port' && detail.port && location?.protocol) {
+        // The page knows its own port; the server says only the one it answers on.
+        const opened = location.port || (location.protocol === 'https:' ? '443' : '80');
+        const target = `${location.protocol}//localhost:${detail.port}`;
+        // The same number on both sides (a proxy that changed only the Host) would contradict itself: the plain hint.
+        if (opened !== String(detail.port)) return t('This page was opened on port {opened}, but FreeVideo runs on port {port}. The two must match: open {address}. If you reach FreeVideo through port forwarding or a tunnel, use {port} as the local port as well. Then retry.',
+            '这个页面经端口 {opened} 打开，但 FreeVideo 在端口 {port} 上运行，两者需要一致。请打开 {address}；如果经端口转发或隧道访问，请把本机端口也设为 {port}。然后重试。', { opened, port: detail.port, address: target });
+    }
+    if (code === 'origin_forbidden' && detail?.reason === 'origin')
+        return t("The request from this page did not match the page's address. A browser extension or a proxy may have changed it. Turn off the extension or proxy that may change requests, then retry.",
+            '这个页面发出的请求与页面地址不一致，可能是浏览器扩展或代理修改了请求。请暂时关闭可能修改请求的扩展或代理，然后重试。');
     if (code === 'origin_forbidden') return t('Open FreeVideo on this computer with a localhost address, then retry.', '请在本机使用 localhost 地址打开 FreeVideo，然后重试。');
     if (code === 'local_only') return kind && kind !== 'localhost' && address
         ? t('On the computer that runs FreeVideo, open {address}, then retry.', '请在运行 FreeVideo 的电脑上打开 {address}，然后重试。', { address })
@@ -153,7 +172,7 @@ export function agentLinkMenu(t, host, anchor, {disconnect: send, steps = () => 
             const value = await response.json().catch(() => null);
             if (!response.ok) {
                 const code = String(value?.error?.code || '').slice(0, 40) || null;
-                failure = {code, text: refusalHint(code, t) || t('Could not disconnect (HTTP {status}). Retry, or report it.', '断开失败（HTTP {status}）。请重试，或提交问题。', { status: response.status })};
+                failure = {code, text: refusalHint(code, t, undefined, undefined, refusalDetail(value?.error)) || t('Could not disconnect (HTTP {status}). Retry, or report it.', '断开失败（HTTP {status}）。请重试，或提交问题。', { status: response.status })};
                 return;
             }
             close(); changed(value?.agent || null);
@@ -246,7 +265,7 @@ export function agentConnectCard(t, api, shown = () => true, changed = () => {})
         const picture = pictures[!text && failures >= 3 ? 'retry' : 'copy'];
         if (button.firstChild !== picture) button.firstChild.replaceWith(picture);
         if (!text && failures >= 3) {
-            if (!issue) { issue = issueButton(t, () => ({where: ['Assistant connection', '助手连接'], message: refusal ? `${label.textContent} (HTTP ${refusal.status}${refusal.code ? ' ' + refusal.code : ''}${opened ? ', opened by ' + opened : ''})` : label.textContent, kind: refusal?.code || noAnswer})); button.after(issue); }
+            if (!issue) { issue = issueButton(t, () => ({where: ['Assistant connection', '助手连接'], message: refusal ? `${label.textContent} (HTTP ${refusal.status}${refusal.code ? ' ' + refusal.code : ''}${refusal.reason ? ' ' + refusal.reason : ''}${opened ? ', opened by ' + opened : ''})` : label.textContent, kind: refusal?.code || noAnswer})); button.after(issue); }
         } else if (issue) { issue.remove(); issue = null; }
         next.hidden = !!issue;
         button.disabled = !text && failures < 3;
@@ -254,7 +273,7 @@ export function agentConnectCard(t, api, shown = () => true, changed = () => {})
         tip(button, !text && failures >= 3 ? 'retryAddress' : 'copyConnect', t, {why: button.disabled ? t('Getting the connection address…', '正在获取连接地址…') : ''});
         // Asked for focus (Reconnect from the light) while the address was still loading: it goes there once usable.
         if (wantFocus && !button.disabled && active()) { wantFocus = false; button.focus?.({preventScroll: true}); }
-        status.hidden = !!text; status.textContent = !text && failures < 3 ? t('Getting the connection address…', '正在获取连接地址…') : !text ? refusalHint(refusal?.code, t) || noAnswerHint(noAnswer, t) : '';
+        status.hidden = !!text; status.textContent = !text && failures < 3 ? t('Getting the connection address…', '正在获取连接地址…') : !text ? refusalHint(refusal?.code, t, undefined, undefined, refusal || {}) || noAnswerHint(noAnswer, t) : '';
     };
     render();
 
@@ -292,7 +311,7 @@ export function agentConnectCard(t, api, shown = () => true, changed = () => {})
             const connect = await response.json().catch(() => null);
             if (current !== generation) return;
             if (!response.ok || !connect?.address) {
-                refusal = !response.ok ? {status: response.status, code: String(connect?.error?.code || '').slice(0, 40) || null} : null;
+                refusal = !response.ok ? {status: response.status, code: String(connect?.error?.code || '').slice(0, 40) || null, ...refusalDetail(connect?.error)} : null;
                 lacked = connect ? 'no_address' : 'unreadable';
                 throw new Error('Missing address');
             }
