@@ -1,12 +1,10 @@
-"""FreeVideo as an MCP server (stdio, JSON-RPC 2.0), for Claude Code, Claude Desktop, Cursor and other agents.
+r"""FreeVideo as an MCP server (stdio, JSON-RPC 2.0), for Claude Code, Claude Desktop, Cursor and other agents.
 
-    ./freevideo mcp                     # Linux x86_64
-    freevideo.cmd mcp                   # Windows
-    ./freevideo mcp --print-config      # Linux client configuration
-    # macOS / other Unix platforms: use the installed Python and source folder.
-    env FREEVIDEO_AGENT=1 PYTHONPATH=/path/to/FreeVideo/engine-source /path/to/installed/python -X utf8 \
-        /path/to/FreeVideo/engine-source/freevideo_engine/installed_entry.py freevideo_engine.agent.mcp --root /path/to/FreeVideo
-    # Add --print-config to print client configuration.
+    # The installation's own Python (the python in machine.json); the same command keeps working after an update.
+    /path/to/FreeVideo/envs/unified/bin/python -X utf8 -B -I -m freevideo_engine.agent.mcp --root /path/to/FreeVideo
+    C:\FreeVideo\envs\unified\Scripts\python.exe -B -I -m freevideo_engine.agent.mcp --root C:\FreeVideo
+    # Add --print-config to print client configuration. ./freevideo mcp (Linux x86_64) and freevideo.cmd mcp
+    # (Windows) start it from the source folder of the version they belong to.
 
 Standard library only; it talks to the running ComfyUI through the agent API.
 """
@@ -503,7 +501,7 @@ def linux_wrapper_supported():
 
 
 def python_shell_command(config, module):
-    """Direct Unix entry using this installation's interpreter, source and root."""
+    """Direct Unix entry using this installation's interpreter and root."""
     command = list(config['command'])
     command[command.index('freevideo_engine.agent.mcp')] = module
     command[1:1] = ['-X', 'utf8']
@@ -511,27 +509,42 @@ def python_shell_command(config, module):
     return 'env ' + ' '.join(shell_quote(value) for value in env + command)
 
 
+def cli_command(config, *arguments, windows=None):
+    """The agent command line (freevideo_engine.agent.cli) as text, from the same stable entry as the MCP server."""
+    windows = sys.platform == 'win32' if windows is None else windows
+    if not windows:
+        return ' '.join([python_shell_command(config, 'freevideo_engine.agent.cli'), *(shell_quote(a) for a in arguments)])
+    command = list(config['command'])
+    command[command.index('freevideo_engine.agent.mcp')] = 'freevideo_engine.agent.cli'
+    return ' '.join(shell_quote(p, windows=True) for p in [*command, *arguments])
+
+
 def client_config(root):
-    """How MCP clients start this server for this installation."""
+    """How MCP clients start this server for this installation.
+
+    The installation's own Python (machine.json) runs the module. Its environment imports FreeVideo from the source
+    the launcher binds it to when it installs or updates to a build (the first start after an update does this), so
+    the command stays the same across updates; no versioned source folder or PYTHONPATH is named. -I keeps the folder
+    the client starts in, PYTHON* variables and the user's own packages out of the import path, so another copy of
+    FreeVideo there is never imported in its place."""
     root = Path(root).resolve()
     try:
         machine = json.loads((root / 'machine.json').read_text(encoding='utf-8'))
         python = machine['python']
     except (OSError, ValueError, KeyError):
         python = sys.executable
-    source = Path(__file__).resolve().parents[2]
-    command = [python, '-B', str(source / 'freevideo_engine' / 'installed_entry.py'), 'freevideo_engine.agent.mcp', '--root', str(root)]
-    env = {'PYTHONPATH': str(source)}
+    command = [python, '-B', '-I', '-m', 'freevideo_engine.agent.mcp', '--root', str(root)]
+    env = {}
     shell_command = list(command)
     if sys.platform != 'win32' and not linux_wrapper_supported():
         shell_command[1:1] = ['-X', 'utf8']
     # Keep JSON argv untouched. Windows command text targets Command Prompt.
-    assignment = ' --env '.join(shell_quote(key + '=' + value) if sys.platform == 'win32' else key + '=' + shell_quote(value)
-                                for key, value in env.items())
-    return dict(command=command, env=env, codex='codex mcp add freevideo --env %s -- %s' % (
-                    assignment, ' '.join(shell_quote(p) for p in shell_command)), mcp_json={'mcpServers': {'freevideo': {
-                    'command': command[0], 'args': command[1:], 'env': env}}},
-                claude_code='claude mcp add freevideo --env %s -- %s' % (
+    assignment = ''.join(' --env ' + (shell_quote(key + '=' + value) if sys.platform == 'win32' else key + '=' + shell_quote(value))
+                         for key, value in env.items())
+    server = {'command': command[0], 'args': command[1:], **({'env': env} if env else {})}
+    return dict(command=command, env=env, codex='codex mcp add freevideo%s -- %s' % (
+                    assignment, ' '.join(shell_quote(p) for p in shell_command)), mcp_json={'mcpServers': {'freevideo': server}},
+                claude_code='claude mcp add freevideo%s -- %s' % (
                     assignment, ' '.join(shell_quote(p) for p in shell_command)))
 
 

@@ -1,41 +1,76 @@
 {
   "schema": 1,
-  "product_version": "0.6.15",
+  "product_version": "0.6.16",
   "en": {
-    "summary": "0.6.15 adds a quick 1.5x upscale with how long it takes on this computer, keeps the workflow across the reload after an update, lets you delete image models in Settings and save an image as a character, counts prompt rewriting in the time beside Generate, makes Windows setup recover from a broken Python and from some download failures, and fixes many editor and interface details.",
+    "summary": "0.6.16 keeps the command that connects MCP clients the same across updates, adds playback controls to the players in the edit view, Creations and the share page, checks the Visual C++ libraries for each processor type on Windows, and makes several buttons, cards and messages clearer.",
     "changes": [
-      "Upscaling: the Creations upscale menu offers a quick 1.5x upscale by the small frame-wise model next to the detailed one, and says about how long each takes on this computer. Finished 4K and quick upscales, including those made with earlier versions, are listed in Creations and the Edit view again.",
-      "Time estimates: the time beside Generate now counts prompt rewriting when enhancement is on (only for the first task of a queued batch), estimates the second pass of a 1.5x plan from its own size, and corrects the decoding part from this computer's earlier runs at the same frame size.",
-      "Prompt enhancement: while a task runs, the Rewrite key waits and says which task it waits for and about when; a queued video that asked for a rewrite is rewritten when its turn comes.",
-      "Create panel: while a video is being made, a creation picked in the right column stays on the stage with its actions, so several previews can be sent to the second pass one after another; the Generating item at the top of the column returns to the progress. With the assistant interface on, an image in the image view or Creations can be saved as a character and then mentioned with @ in the prompt.",
-      "Updates and Settings: after an update reloads the page, the workflow in front and a prompt not yet sent are kept (held briefly in the local FreeVideo service's memory only). Image models can be deleted in Settings without closing FreeVideo; a model that is in use or queued cannot be deleted, and the files a stopped download left behind can be.",
-      "Creations and the editor: deleting a creation that an edit uses names the edit and offers to open it at that part. In the editor, Escape belongs to the text on the picture and the delete-import question, coming back from another view shows the edit as it was left, the library is read again on return, and the opening zoom fits the time area beside the track heads.",
-      "Windows setup: when the isolated Python's python.exe is missing or does not answer, it is installed again once; on some networks where Windows cannot check a certificate's revocation, downloads and Git downloads try again automatically and still verify the certificate; FreeVideo's own Git downloads are no longer sent to an unreachable mirror by this computer's Git address rewrite rules; when a dependency folder was not downloaded by FreeVideo, the error says so and names the folder; on Windows on Arm, installing and repairing no longer stop at the Visual C++ runtime check.",
-      "Launcher: on a computer FreeVideo cannot run on, the card no longer offers \"Report a problem\"; the setup step names say what each step does, and the step names, the status title and the address fit a narrow window. When a download through the proxy set on this computer fails, the message says where that proxy setting comes from; when that proxy does not respond, the card first asks you to start the program that provides it and then retry.",
-      "Mac: a second pass that hits the GPU watchdog is tried again instead of failing, and the prompt model runs on the Apple GPU when its memory fits.",
-      "Memory: when FreeVideo already holds the text encoder on the graphics card, generating an image with reference images counts that memory, so on cards with less memory it is no longer refused before it starts.",
-      "Interface text: names in quotes and level names are kept on one line where they are shown; more Chinese messages use formal written wording; several English sentences were made consistent; failure messages without a \"Report a problem\" button name the next step; the image view shows the whole message of a failed model download, and layout limits no longer offer a report.",
-      "Other fixes: the compare divider in the Create panel follows the drag instead of staying in the middle; the compatibility notice says plainly when a reply cannot be read and keeps only the latest failure line; a Windows crash card names the module Windows recorded; the offline package guide names each package by its file name in every language."
+      "Assistant connection: The command that connects MCP clients such as Claude Code now stays the same across updates. If you connected one before, choose \"Copy\" on the connection card in Autopilot and paste the text to your assistant to connect it once more. If the card cannot get the connection address because the page was opened on a different port from the one FreeVideo runs on, or because a browser extension or proxy changed the request, it now says which and what to do.",
+      "Players: The source preview in the edit view has volume, speed and full-screen controls. A video in the Creations details goes full screen from its play bar. The share preview has a volume control.",
+      "Edit view: The empty music track says how to start, and the tip on the \"+ Audio track\" button says what the second track is for. Pressing Esc while the quality pop-up is open closes it first, and pressing Esc while dragging the quality slider undoes only the drag; in both cases the timeline selection is kept. When the panel opened from \"Adjust\" is closed with the keyboard, the focus returns to the \"Adjust\" button.",
+      "Reuse settings: After \"Reuse settings\" fills in the panel, editing the prompt, size or duration closes the notice that offers \"Undo\", so Undo no longer removes the changes made afterwards.",
+      "Prompt enhancement: With reference images, prompt enhancement fails less often. Before, some rewrites that mentioned every image were still rejected as leaving one out, and choosing \"Rewrite\" gave the same result.",
+      "Windows setup: The Visual C++ runtime check looks for the libraries PyTorch loads on this computer's type of processor. When a runtime file is built for another type of processor, the card says so and explains that installing the runtime again does not fix it.",
+      "Image models: H3 Image now downloads when ModelScope is the only download source that can be reached; before, the download always failed in that case. If it failed before, download it again after updating. Files already downloaded are kept.",
+      "Multiple graphics cards: On a computer with several graphics cards, if the cards cannot be read when FreeVideo starts, FreeVideo now reads them again a few times. If they still cannot be read, it generates on one card as usual, instead of failing every generation until a restart. Restarting FreeVideo reads the cards again.",
+      "Launcher: The model upgrade card uses clearer titles and reports a failed removal only once. In a narrow window, its main button comes first.",
+      "Offline installation: The launcher now links the environment package for offline installation on ModelScope, and that package matches this version. The model packs still download from Quark. Each download button says which packages it downloads.",
+      "Readability: The save button on the share page looks different when it is unavailable. In the dark theme, primary buttons keep enough contrast when hovered."
     ]
   },
   "zh": {
-    "summary": "0.6.15 新增快速 1.5 倍放大并写明在这台电脑上大约要多久；更新后页面重新加载时保留当前工作流；可以在设置里删除图片模型，也可以把图片存为角色；生成键旁的预计用时会算进提示词改写；Windows 安装在 Python 文件丢失或无响应、部分下载失败时能自动恢复；并修复了剪辑页和界面的多处细节。",
+    "summary": "0.6.16 让连接 MCP 客户端的命令在更新后保持不变；剪辑页、作品库和分享页的播放器增加了播放控件；Windows 按处理器类型检查 Visual C++ 运行库；多处按钮、卡片和提示更加清楚。",
     "changes": [
-      "放大：作品库的放大菜单在精细放大之外提供快速 1.5 倍放大（小模型逐帧），并写明这台电脑上大约各要多久。完成的 4K 放大和快速放大（包括旧版本做的）会重新出现在作品库和剪辑视图里。",
-      "预计用时：打开增强时，生成键旁的预计用时会算进改写提示词的时间（排队时只算在一批的第一个任务上）；1.5 倍方案的第二遍按自身尺寸估算；解码那一段按这台电脑同画幅的历史实测校正。",
-      "提示词增强：有任务在运行时，“改写”键会等待，并说明在等哪个任务；排队的视频如果要求改写，轮到它时再改写。",
-      "创作面板：有视频在生成时，在右栏点开的作品会停在画面上，并保留操作按钮，可以接连把多个预览加入第二遍；点击右栏最前面的“正在生成”项可回到进度。助手接口打开时，在图像视图或作品库里可以把图片存为角色，之后在提示词里用 @名字 引用。",
-      "更新与设置：更新后页面重新加载时，当前的工作流和尚未发出的提示词会保留（只在本机 FreeVideo 服务的内存里短暂存放）。可以在设置里删除图片模型，不用关闭 FreeVideo；正在使用或排队的模型不能删除，停止的下载留下的文件也可以删除。",
-      "作品库与剪辑页：删除被剪辑使用的作品时，会写明是哪个剪辑，并可以打开并定位到那一段。剪辑页里，画面上的文字和“删除导入”的询问会正确响应 Esc；从其他视图回来时保持离开时的样子；回来时重新读取素材库；打开时的缩放按轨道头旁的时间区计算。",
-      "Windows 安装：独立 Python 的 python.exe 不见了或运行无响应时，会重新安装一次；部分网络下 Windows 查不到证书吊销状态时，下载和 Git 下载会自动重试，证书照样校验；FreeVideo 下载自己的 Git 源时，不再被这台电脑的地址改写规则带到连不上的镜像；依赖文件夹不是 FreeVideo 下载的时，报错会写明这一点和文件夹位置；在 Windows on Arm 上，安装和修复不再停在 Visual C++ 运行库检查。",
-      "启动器：FreeVideo 无法运行的电脑上，提示卡不再提供“提交问题”；安装步骤名写明这一步在做什么；步骤名、状态标题和地址在窄窗口里也能完整显示。经本机设置的代理下载失败时，提示会说明代理设置来自哪里；本机代理没有响应时，提示卡会先请你启动提供代理的程序，再重试。",
-      "Mac：第二遍碰到 GPU 看门狗时会再试一次，不再直接失败；提示词模型在内存足够时使用 Apple GPU。",
-      "显存：显存较小的显卡带参考图生成图片时，不再因为未计入已在显卡上的文本编码器而在开始前被拒绝。",
-      "界面文字：引号里的名称和档位名在显示时不再被拆到两行；更多中文提示改用书面用语；统一了几处英文说法；没有“提交问题”键的失败提示会写明下一步；图像视图里模型下载失败的提示会完整显示，布局限制类的报错不再提供报告。",
-      "其他修复：创作面板里对比的分界线会跟着拖动，不再停在中间；兼容性提示在收到无法读取的回复时会直接说明，连续失败只保留最新一行；Windows 崩溃时的提示卡会写出 Windows 记录的模块；离线安装包说明在各语言中都使用下载页上的文件名。"
+      "助手连接：用命令连接 MCP 客户端（例如 Claude Code）的方式已更新，以后更新版本时无需再改。以前连接过的，请在 AI 全自动的连接卡片中点击“复制”，粘贴给助手，重新连接一次。如果页面打开时使用的端口与 FreeVideo 运行的端口不同，或浏览器扩展、代理修改了请求，导致连接卡片无法获取连接地址，卡片现在会说明原因和处理方法。",
+      "播放器：剪辑页的素材预览增加了音量、倍速和全屏控件；作品库详情中的视频可以从播放条全屏播放；分享页预览增加了音量控件。",
+      "剪辑页：空的配乐轨会提示如何开始；“＋ 声音轨”按钮的提示说明了第二条轨的用途；质量档位弹出层打开时按 Esc，先关闭弹出层；拖动质量档位滑块时按 Esc，只撤回这次拖动；两种情况下时间线上的选区都会保留。用键盘关闭从“调整”打开的面板后，焦点回到“调整”按钮。",
+      "复用设置：用“复用设置”填入后，再修改提示词、尺寸或时长，带“撤销”的提示条会收起，撤销不会再清掉之后的修改。",
+      "提示词增强：使用参考图时，提示词增强更少失败。之前有些改写已经写到了每张参考图，仍被判为漏掉素材引用，再点击“改写”也得到同样的结果。",
+      "Windows 安装：Visual C++ 运行库检查会按这台电脑的处理器类型，查找 PyTorch 需要加载的库；运行库文件是为其他类型的处理器构建时，提示卡片会写明这一点，并说明重新安装运行库也无法解决。",
+      "图像模型：只能连上魔搭（ModelScope）时，H3 Image 现在可以正常下载，之前这种情况下总是下载失败。之前下载失败的，请在更新后重新下载，已下载的文件会保留。",
+      "多张显卡：在装有多张显卡的电脑上，FreeVideo 启动时如果读不到显卡，现在会再读几次；仍读不到时，改为只用一张显卡照常生成，不再每次生成都失败、直到重启。重启 FreeVideo 后会重新读取显卡。",
+      "启动器：模型升级卡片的标题改用书面语，删除旧模型失败时只提示一次；窗口较窄时，主按钮排在最前。",
+      "离线安装：启动器中离线安装用的「运行环境」包改为从魔搭（ModelScope）下载，与当前版本配套；模型包仍从夸克网盘下载。各下载按钮会写明下载的是哪些包。",
+      "易读性：分享页的保存按钮在不可用时外观有明显区别；深色主题下，主按钮在悬停时也保持足够的对比度。"
     ]
   },
   "history": [
+    {
+      "product_version": "0.6.15",
+      "en": {
+        "summary": "0.6.15 adds a quick 1.5x upscale with how long it takes on this computer, keeps the workflow across the reload after an update, lets you delete image models in Settings and save an image as a character, counts prompt rewriting in the time beside Generate, makes Windows setup recover from a broken Python and from some download failures, and fixes many editor and interface details.",
+        "changes": [
+          "Upscaling: the Creations upscale menu offers a quick 1.5x upscale by the small frame-wise model next to the detailed one, and says about how long each takes on this computer. Finished 4K and quick upscales, including those made with earlier versions, are listed in Creations and the Edit view again.",
+          "Time estimates: the time beside Generate now counts prompt rewriting when enhancement is on (only for the first task of a queued batch), estimates the second pass of a 1.5x plan from its own size, and corrects the decoding part from this computer's earlier runs at the same frame size.",
+          "Prompt enhancement: while a task runs, the Rewrite key waits and says which task it waits for and about when; a queued video that asked for a rewrite is rewritten when its turn comes.",
+          "Create panel: while a video is being made, a creation picked in the right column stays on the stage with its actions, so several previews can be sent to the second pass one after another; the Generating item at the top of the column returns to the progress. With the assistant interface on, an image in the image view or Creations can be saved as a character and then mentioned with @ in the prompt.",
+          "Updates and Settings: after an update reloads the page, the workflow in front and a prompt not yet sent are kept (held briefly in the local FreeVideo service's memory only). Image models can be deleted in Settings without closing FreeVideo; a model that is in use or queued cannot be deleted, and the files a stopped download left behind can be.",
+          "Creations and the editor: deleting a creation that an edit uses names the edit and offers to open it at that part. In the editor, Escape belongs to the text on the picture and the delete-import question, coming back from another view shows the edit as it was left, the library is read again on return, and the opening zoom fits the time area beside the track heads.",
+          "Windows setup: when the isolated Python's python.exe is missing or does not answer, it is installed again once; on some networks where Windows cannot check a certificate's revocation, downloads and Git downloads try again automatically and still verify the certificate; FreeVideo's own Git downloads are no longer sent to an unreachable mirror by this computer's Git address rewrite rules; when a dependency folder was not downloaded by FreeVideo, the error says so and names the folder; on Windows on Arm, installing and repairing no longer stop at the Visual C++ runtime check.",
+          "Launcher: on a computer FreeVideo cannot run on, the card no longer offers \"Report a problem\"; the setup step names say what each step does, and the step names, the status title and the address fit a narrow window. When a download through the proxy set on this computer fails, the message says where that proxy setting comes from; when that proxy does not respond, the card first asks you to start the program that provides it and then retry.",
+          "Mac: a second pass that hits the GPU watchdog is tried again instead of failing, and the prompt model runs on the Apple GPU when its memory fits.",
+          "Memory: when FreeVideo already holds the text encoder on the graphics card, generating an image with reference images counts that memory, so on cards with less memory it is no longer refused before it starts.",
+          "Interface text: names in quotes and level names are kept on one line where they are shown; more Chinese messages use formal written wording; several English sentences were made consistent; failure messages without a \"Report a problem\" button name the next step; the image view shows the whole message of a failed model download, and layout limits no longer offer a report.",
+          "Other fixes: the compare divider in the Create panel follows the drag instead of staying in the middle; the compatibility notice says plainly when a reply cannot be read and keeps only the latest failure line; a Windows crash card names the module Windows recorded; the offline package guide names each package by its file name in every language."
+        ]
+      },
+      "zh": {
+        "summary": "0.6.15 新增快速 1.5 倍放大并写明在这台电脑上大约要多久；更新后页面重新加载时保留当前工作流；可以在设置里删除图片模型，也可以把图片存为角色；生成键旁的预计用时会算进提示词改写；Windows 安装在 Python 文件丢失或无响应、部分下载失败时能自动恢复；并修复了剪辑页和界面的多处细节。",
+        "changes": [
+          "放大：作品库的放大菜单在精细放大之外提供快速 1.5 倍放大（小模型逐帧），并写明这台电脑上大约各要多久。完成的 4K 放大和快速放大（包括旧版本做的）会重新出现在作品库和剪辑视图里。",
+          "预计用时：打开增强时，生成键旁的预计用时会算进改写提示词的时间（排队时只算在一批的第一个任务上）；1.5 倍方案的第二遍按自身尺寸估算；解码那一段按这台电脑同画幅的历史实测校正。",
+          "提示词增强：有任务在运行时，“改写”键会等待，并说明在等哪个任务；排队的视频如果要求改写，轮到它时再改写。",
+          "创作面板：有视频在生成时，在右栏点开的作品会停在画面上，并保留操作按钮，可以接连把多个预览加入第二遍；点击右栏最前面的“正在生成”项可回到进度。助手接口打开时，在图像视图或作品库里可以把图片存为角色，之后在提示词里用 @名字 引用。",
+          "更新与设置：更新后页面重新加载时，当前的工作流和尚未发出的提示词会保留（只在本机 FreeVideo 服务的内存里短暂存放）。可以在设置里删除图片模型，不用关闭 FreeVideo；正在使用或排队的模型不能删除，停止的下载留下的文件也可以删除。",
+          "作品库与剪辑页：删除被剪辑使用的作品时，会写明是哪个剪辑，并可以打开并定位到那一段。剪辑页里，画面上的文字和“删除导入”的询问会正确响应 Esc；从其他视图回来时保持离开时的样子；回来时重新读取素材库；打开时的缩放按轨道头旁的时间区计算。",
+          "Windows 安装：独立 Python 的 python.exe 不见了或运行无响应时，会重新安装一次；部分网络下 Windows 查不到证书吊销状态时，下载和 Git 下载会自动重试，证书照样校验；FreeVideo 下载自己的 Git 源时，不再被这台电脑的地址改写规则带到连不上的镜像；依赖文件夹不是 FreeVideo 下载的时，报错会写明这一点和文件夹位置；在 Windows on Arm 上，安装和修复不再停在 Visual C++ 运行库检查。",
+          "启动器：FreeVideo 无法运行的电脑上，提示卡不再提供“提交问题”；安装步骤名写明这一步在做什么；步骤名、状态标题和地址在窄窗口里也能完整显示。经本机设置的代理下载失败时，提示会说明代理设置来自哪里；本机代理没有响应时，提示卡会先请你启动提供代理的程序，再重试。",
+          "Mac：第二遍碰到 GPU 看门狗时会再试一次，不再直接失败；提示词模型在内存足够时使用 Apple GPU。",
+          "显存：显存较小的显卡带参考图生成图片时，不再因为未计入已在显卡上的文本编码器而在开始前被拒绝。",
+          "界面文字：引号里的名称和档位名在显示时不再被拆到两行；更多中文提示改用书面用语；统一了几处英文说法；没有“提交问题”键的失败提示会写明下一步；图像视图里模型下载失败的提示会完整显示，布局限制类的报错不再提供报告。",
+          "其他修复：创作面板里对比的分界线会跟着拖动，不再停在中间；兼容性提示在收到无法读取的回复时会直接说明，连续失败只保留最新一行；Windows 崩溃时的提示卡会写出 Windows 记录的模块；离线安装包说明在各语言中都使用下载页上的文件名。"
+        ]
+      }
+    },
     {
       "product_version": "0.6.14",
       "en": {
@@ -395,43 +430,6 @@
           "手机宽度的显示：AI 全自动中附加图片的移除按钮保持原有角标大小，点按上传失败的图片时是重试，而不是移除；手机连接面板在入口正下方、右边对齐，离屏幕边至少 8 像素。",
           "教程改进：精选示例点“开始使用”后，光标位于 AI 全自动输入框，输入框稍后才打开时也一样；“运行状态”教程的步骤与图片跟随顶栏状态及其运行状态面板；教程书的图文跟随改版后的面板，剪辑视图的图片对应借用的生成栏，续接一段时从“素材”添加图片，保存帧的提示写明“作品库”。",
           "首帧、尾帧与中间帧可与参考图、参考视频同用：同一次生成中可以同时使用关键帧和参考图、参考视频，使用说明与教程书已相应更新；长度与时间估算按每个关键帧一张同尺寸画布计算。"
-        ]
-      }
-    },
-    {
-      "product_version": "0.6.3",
-      "en": {
-        "summary": "Image generation adds the MOSS-Image model, failures state the cause and the next step, touch and portrait screens are improved, and a number of problems are fixed.",
-        "changes": [
-          "Image generation adds the MOSS-Image model, installed in one click, and better queueing and model loading: several pictures can wait in line and the status shows the place; models that made room for another program load again once the room is free; opening the image view loads the image model where it fits; when another program holds the graphics card, H3 Image plans against the memory actually free and no longer runs short at the first step; and the second-pass upscale no longer reloads the video model when memory suffices, so the wait is shorter.",
-          "Failures say why and what to do next: a launcher crash, an incomplete installation file, a failed model upgrade, an unfinished assistant task, a ComfyUI start failure, an unreadable folder or undeletable video in the library or when sharing, a prompt rewrite cancelled before generation, release notes that cannot be loaded, a tutorial example that cannot be filled in, and a stopped FreeVideo on this computer each state the cause and the next step instead of a raw error or no response. When an update fails, both buttons sit under the reason, and a full disk comes with the step to free space.",
-          "The computer stays awake while a video is made: Windows and Linux no longer go to sleep on their own during generation, except on battery.",
-          "Touch and portrait screen improvements: actions that a mouse reveals on hover are shown on touch screens; tall portrait windows use their full height; on touch screens wider than a phone the editor's and the image view's controls are larger and top-bar links and number steppers have larger tap areas; on a phone Creations in the top bar opens the works without a second entry under the picture; on a narrow screen Generate and Cancel stay whole and easy to tap; and the phone page no longer comes up blank when opened over the local network or a remote link.",
-          "The library opens the folder that holds the videos: a Video folder button, and Show in folder for every video; when the folder cannot be opened, the reason is stated.",
-          "The creation panel and the editor share one generation bar: the editor uses the same description, size, length and quality settings as the creation panel, prefilled for the work; the description box grows with its text; a cleared length, width or height stays empty, and Generate names the value to fill in and opens that field; the empty-description check sits right above Generate and the progress word is no longer cut short; with audio used as it is, a lock before the length says on hover or tap why it is fixed; and the creation panel no longer flickers at certain window widths.",
-          "Your own pictures for a new character: each of the four views takes a picture of your own, and Generate fills only the views still empty.",
-          "Image editor and library improvements: on a narrow screen every tool's options fit and the rest go under More; after a batch delete, Escape still leaves selecting and the next delete removes only the works picked then; a failed library read clears the loading placeholders and offers Retry before Report a problem; the recent-works strip on the creation page states the reason when it cannot be read and can be read again; in the image view a failure card keeps its reason line and buttons in place when reporting is unavailable, and every reference picture shows its number in full.",
-          "Assistant improvements: audio can be used as it is to continue a saved video, Tab stays inside the drawer and dialogs and a deleted chat stays gone, and the connection light opens a menu whose main action is Reconnect.",
-          "Deletion removes more related records: deleting a work also removes its report number from the report index, managed ComfyUI keeps no file names in its logs, with old run folders pruned, and stopping the image editor while reference pictures are uploading removes the ones already sent at once.",
-          "Fixes: after a continued part finishes, the next part is ready as on opening the work; the editor writes only what changes as the playhead moves; remote visits load faster; cards below the minimum show as unsupported; model download continues when the mount table is unreadable; the launcher reads the set card number by CUDA's rules and names it if unmatched; launcher notices change language with the interface; long labels in the update notes fit a narrow launcher window; editor exports leave out unsent planned parts; a second pass that fails to start shows its error in the tooltip and report.",
-          "Editor improvements: the top-bar tabs stay in place and keep focus when the editor opens; menus close with Escape and move with the arrow keys; on a narrow screen the Subtitles track name fits and the project menu opens below the name; jumping with the arrow keys keeps the playhead in view, and near 0 s the playhead handle no longer covers the track header; Escape stops a drag without adding an undo step; menus, floating panels, the Fill/Fit switch and a failed part's card are solid; and leaving the editor stops a media preview, and late previews or clips no longer land in the hidden editor."
-        ]
-      },
-      "zh": {
-        "summary": "图片生成新增 MOSS-Image 模型，失败时说明原因和下一步，触屏与竖屏显示改进，并修复了多项问题。",
-        "changes": [
-          "图片生成新增 MOSS-Image 模型，可一键安装；排队与模型载入改进：可同时排队多张图片，状态显示排队位置；为其他程序让出显存的模型在空间恢复后重新载入；打开图像视图时，显存够用就载入图像模型；显卡被其他程序占用时，H3 Image 按实际空闲显存安排，不再在第一步显存不足；二采放大时，显存足够则不再重新载入视频模型，等待更短。",
-          "失败时说明原因和下一步：启动器意外退出、安装文件不完整、模型升级失败、助手任务未完成、ComfyUI 启动失败、作品库与分享中无法读取的文件夹或无法删除的视频、生成前被取消的提示词改写、更新说明读取不到、教程示例无法填入、本机上的 FreeVideo 已停止，都写明原因和下一步，不再显示原始错误行或没有反应。更新失败时，两个按钮排在原因下方；磁盘空间不足时提示清理后重试。",
-          "生成视频时电脑不再自行睡眠：Windows 与 Linux 在制作视频期间不会自动进入睡眠；使用电池时不启用。",
-          "触屏与竖屏显示改进：触屏上显示原本要鼠标悬停才出现的操作；竖屏窗口使用全部高度；比手机宽的触屏上，剪辑视图和图像视图的按键加大，顶栏链接和数值调节按钮的点按范围也加大，更易点中；手机上从顶栏的“作品库”进入作品，画面下方不再重复显示入口；窄屏下生成与取消按钮保持完整、易于点按；通过局域网或远程链接打开手机页时不再空白。",
-          "作品库可直接打开视频所在文件夹：新增“视频文件夹”按钮，每个视频都能“在文件夹中显示”；无法打开时说明原因。",
-          "创作面板与剪辑视图使用同一个生成栏：剪辑视图里的生成栏使用与创作面板相同的描述、尺寸、时长和质量设置，并按当前作品预填；描述框随文字增高；清空的时长、宽、高保持为空，点击生成时提示需填写的项并打开该项；描述为空时的确认提示显示在“生成”正上方，进度词不再被截断；音频原样使用时，时长前的锁形图标在悬停或点按时说明时长为何固定；创作面板在各种窗口宽度下都不再闪动。",
-          "新建角色时可上传自己的四个视角图片，生成只补还空着的视角。",
-          "图片编辑与作品库改进：窄屏下每个工具的选项都能完整显示，其余收入“更多”；批量删除后，按 Esc 仍可退出选择，下次删除只删除当时选中的作品；作品库读取失败时清除加载占位，并在“提交问题”前提供“重试”；创作页的最近作品栏读取失败时也说明原因，可重新读取；图像视图的失败卡在报告不可用时，原因行和按钮不再左移，参考图每张都完整显示编号。",
-          "AI 助手改进：音频可原样用于续接已保存的视频；Tab 键停留在抽屉和对话框内，已删除的对话不再出现；连接指示灯可打开菜单，主要操作为“重新连接”。",
-          "删除时清除更多相关记录：删除作品时，其报告编号也从报告索引中移除；受管理的 ComfyUI 日志不再记录文件名，旧的运行目录会被清理；图片编辑中途停止时，已上传的参考图立即从服务器删除。",
-          "问题修复：续接的一段生成完成后，下一段与打开作品时一样就绪；剪辑视图在播放头移动时只写入变化的内容；远程访问时页面加载更快；低于最低配置的显卡一律显示为不支持；模型下载在无法读取挂载表时仍可继续；启动器按 CUDA 的规则读取所设的显卡序号，对不上时说明所设的值；切换界面语言时，已显示的启动器提示一并换语言；启动器窗口较窄时，更新说明里的长标签不再超出窗口；剪辑导出时不再包含从未发送的计划段；二采未能开始时，提示与报告写明错误。",
-          "剪辑视图改进：打开剪辑视图时顶栏标签保持原位、焦点不丢失；菜单可用 Esc 关闭、用方向键切换选项；窄屏下轨道名“Subtitles”完整显示，项目菜单在名字下方打开；用方向键跳转时播放线保持在可见范围内，靠近 0 秒时播放头把手不盖住轨道头；拖动中按 Esc 停止拖动，不多出一步撤销；菜单与浮动面板、画面上的“铺满／完整显示”切换和失败段的说明卡改为实色；离开剪辑视图后素材预览不再出声，晚到的预览和素材不会写进隐藏的剪辑。"
         ]
       }
     }

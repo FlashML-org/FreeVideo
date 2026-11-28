@@ -187,9 +187,17 @@ export function createAdjustPanel(host, {state, t, actions}) {
         // Text and subtitle pages are always registered but only shown for their own parts.
         paint(); if (active && focus) buttons.get(active).focus();
     }
+    // The drawer's switch the user can see: the toolbar's below 681 px, the right rail's Adjust from 681 to 1279 px, where
+    // the toolbar's is hidden. A hidden button cannot take the focus, so handing it there would drop the keyboard's place.
+    // With neither laid out, the toolbar's, as before.
+    const shownSwitch = () => [toggleButton, ...(shell?.querySelectorAll?.('[data-adjust-rail]') || [])].find(item => item.getClientRects?.().length) || toggleButton;
+    const isSwitch = node => !!node && (node === toggleButton || !!node.closest?.('[data-adjust-rail]'));
     function close({restoreFocus = false} = {}) {
         if (disposed || !narrow || !overlay) return;
-        overlay = false; paint(); if (restoreFocus) toggleButton.focus();
+        // The focus goes back to the switch only from inside the drawer (or from nowhere); Escape pressed elsewhere, on the
+        // track view say, leaves it where it is.
+        const from = document.activeElement, inside = host.contains(from) || isSwitch(from) || !from || from === document.body;
+        overlay = false; paint(); if (restoreFocus && inside) shownSwitch().focus();
     }
     function dismiss(event) {
         if (!narrow || !overlay || disposed) return false;
@@ -207,13 +215,16 @@ export function createAdjustPanel(host, {state, t, actions}) {
     };
     const escape = event => { if (event.key === 'Escape') dismiss(event); };
     const resize = () => {
-        const focused = host.contains(document.activeElement);
+        // Widened past 1279 px, the rail is gone and the browser may have dropped its focus before this runs.
+        const from = document.activeElement, focused = host.contains(from), onSwitch = isSwitch(from) || (switchHadFocus && (!from || from === document.body));
         // A window resized within the narrow range keeps the drawer as it was.
         const wasNarrow = narrow; narrow = !media.matches; if (narrow !== wasNarrow) overlay = false; paint();
-        if (narrow && focused && entries.size) toggleButton.focus();
-        else if (!narrow && document.activeElement === toggleButton) buttons.get(active)?.focus();
+        if (narrow && focused && entries.size) shownSwitch().focus();
+        else if (!narrow && onSwitch) buttons.get(active)?.focus();
     };
-    document.addEventListener('pointerdown', outside, true);
+    let switchHadFocus = false;
+    const noteFocus = event => { switchHadFocus = isSwitch(event.target); };
+    document.addEventListener('pointerdown', outside, true); document.addEventListener('focusin', noteFocus, true);
     const stopEscape = listenDialogKey(document, 'keydown', escape);
     media?.addEventListener('change', resize);
     const unsubscribe = state.subscribe(event => { if (event.type === 'record' || event.type === 'selection') update(); });
@@ -221,7 +232,7 @@ export function createAdjustPanel(host, {state, t, actions}) {
     function dispose() {
         if (disposed) return;
         disposed = true; unsubscribe(); tabsObserver?.disconnect();
-        document.removeEventListener('pointerdown', outside, true); stopEscape();
+        document.removeEventListener('pointerdown', outside, true); document.removeEventListener('focusin', noteFocus, true); stopEscape();
         media?.removeEventListener('change', resize);
         tabs.onkeydown = null; for (const tab of buttons.values()) tab.dispose(); toggleButton.dispose();
         for (const entry of entries.values()) entry.component.dispose?.(); entries.clear();

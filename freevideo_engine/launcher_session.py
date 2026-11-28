@@ -999,6 +999,10 @@ class Session:
         except (OSError, TypeError, ValueError):
             return False
 
+    def runtime_needed(self):
+        """A new installation with the offline environment chosen and no Environment ZIP imported yet."""
+        return bool(self.form['new_comfy'] and self.form['environment_method'] == 'manual' and not self.form['offline_runtime'])
+
     def offline_page(self):
         """The progress page shows the offline import: its review, then its assembly."""
         return self.page == 'progress' and (self.offline_review_page is not None
@@ -3066,9 +3070,8 @@ class Session:
             model_upgrade=dict(model_upgrade, switching=bool(self.model_switch)),
             offline=dict(progress_view(self.importer.state, language), runtime=bool(self.form['offline_runtime']),
                 runtime_supported=runtime_packages_supported(),
-                models=self.offline_model_count(), guide=package_instructions(
-                    self.form['new_comfy'] and self.form['environment_method'] == 'manual' and not self.form['offline_runtime'],
-                    t=self.t)),
+                models=self.offline_model_count(), runtime_needed=self.runtime_needed(),
+                guide=package_instructions(self.runtime_needed(), t=self.t)),
             video_model_guide=self.both(video_instructions),
             adaln_dialog=self.adaln_dialog_view(error, update),
             selected=bool(self.selected), can_repair=self.can_repair(), repair_offered=repair_offered, error=error,

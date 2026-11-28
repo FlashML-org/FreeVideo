@@ -1,8 +1,8 @@
 """Whether the Microsoft Visual C++ runtime that PyTorch needs on Windows loads in this process.
 
-PyTorch's core library (c10.dll) links the C++ runtime MSVCP140.dll and VCRUNTIME140.dll, and on x64 also
-VCRUNTIME140_1.dll; its wheels carry none of them: Windows has them from the Visual C++ Redistributable. Without them
-the first ``import torch`` fails with Windows error 126 (a file is missing) or 1114 (a library did not initialize), and the
+PyTorch's libraries link the C++ runtime (VCRUNTIME140.dll, MSVCP140.dll and a few more, which differ between x64 and
+ARM64), and its wheels carry none of them: Windows has them from the Visual C++ Redistributable. Without them the
+first ``import torch`` fails with Windows error 126 (a file is missing) or 1114 (a library did not initialize), and the
 step's exit code is all a person sees. Before that import, setup loads them in a child process of the same Python
 (require_in_child), so it finds them where torch would and the process that imports torch loads nothing early. The child
 writes where each one came from to the step's log, and a library that does not load stops setup with MARKER, which the
@@ -14,10 +14,16 @@ import sysconfig
 
 MARKER = 'VC_RUNTIME_UNAVAILABLE'
 CHILD_FAILED = 3  # The child's exit code when a library did not load.
-LIBRARIES = ('VCRUNTIME140.dll', 'VCRUNTIME140_1.dll', 'MSVCP140.dll')
-# x64 only. The ARM64 builds of PyTorch import just VCRUNTIME140.dll and MSVCP140.dll, and the ARM64 Python that setup
-# installs carries an x64 VCRUNTIME140_1.dll in its own folder, which a native ARM64 process cannot load (Windows error 193).
-X64_ONLY = ('VCRUNTIME140_1.dll',)
+# The runtime libraries the pinned PyTorch wheels import, per processor type: scripts/vc_runtime_imports.py reads them
+# from the wheels and tests/test_vc_runtime.py compares. ARM64 has no VCRUNTIME140_1.dll: its PyTorch does not import it
+# (and torch's own import skips it on ARM64), and the copies beside the ARM64 Python and in Microsoft's runtime packages
+# are x64 files, which a native ARM64 process cannot load (Windows error 193).
+LIBRARIES = {
+    'x64': ('VCRUNTIME140.dll', 'VCRUNTIME140_1.dll', 'MSVCP140.dll', 'MSVCP140_ATOMIC_WAIT.dll'),
+    'ARM64': ('VCRUNTIME140.dll', 'MSVCP140.dll', 'MSVCP140_ATOMIC_WAIT.dll', 'VCOMP140.dll'),
+}
+WRONG_PROCESSOR = 193  # Windows: the file found is not built for this processor type.
+MACHINES = {0x8664: 'x64', 0xAA64: 'ARM64', 0x14C: 'x86', 0xA641: 'ARM64EC'}
 
 
 def architecture(platform_tag=None):
@@ -28,8 +34,7 @@ def architecture(platform_tag=None):
 
 def libraries(platform_tag=None):
     """The libraries PyTorch needs on this Python's build."""
-    arm64 = architecture(platform_tag) == 'ARM64'
-    return tuple(name for name in LIBRARIES if not (arm64 and name in X64_ONLY))
+    return LIBRARIES[architecture(platform_tag)]
 
 
 class RuntimeUnavailable(RuntimeError):
@@ -116,6 +121,30 @@ def where(path, *, system_root=None, base=None):
     return 'system' if folder == ntpath.normcase(system) else 'python' if folder == ntpath.normcase(python) else 'other'
 
 
+def machine(path):
+    """The processor type a PE file is built for ('x64', 'ARM64', ...), or '' when it cannot be read."""
+    try:
+        with open(path, 'rb') as file:
+            head = file.read(4096)
+        at = int.from_bytes(head[0x3C:0x40], 'little')
+        if head[:2] != b'MZ' or head[at:at + 4] != b'PE\0\0':
+            return ''
+        code = int.from_bytes(head[at + 4:at + 6], 'little')
+        return MACHINES.get(code, hex(code))
+    except (OSError, ValueError):
+        return ''
+
+
+def found_elsewhere(name, *, system_root=None, base=None):
+    """[(path, processor type)] of the copies of a library in the two folders Windows looks in first for this Python."""
+    import ntpath
+    import os
+    folders = (ntpath.dirname(base or getattr(sys, '_base_executable', '') or sys.executable),
+               ntpath.join(system_root or os.environ.get('SystemRoot') or 'C:\\Windows', 'System32'))
+    paths = [ntpath.join(folder, name) for folder in folders if folder]
+    return [(path, machine(path)) for path in paths if os.path.isfile(path)]
+
+
 def require(*, windows=None, load=_load, out=None, platform_tag=None):
     """On Windows: write where each library came from, and raise RuntimeUnavailable when one does not load."""
     if not (sys.platform == 'win32' if windows is None else windows):
@@ -125,6 +154,12 @@ def require(*, windows=None, load=_load, out=None, platform_tag=None):
     for name, path, version in loaded:
         print('Visual C++ runtime: %s %s %s %s' % (name, version or 'version-unknown', where(path), path or 'path-unknown'),
               file=out, flush=True)
+    for name, code in failures:
+        if code == WRONG_PROCESSOR:
+            # Which copy Windows refused, for the log: the card cannot tell a file for another processor from a missing one.
+            for path, kind in found_elsewhere(name):
+                print('Visual C++ runtime: %s for %s, this Python is %s: %s %s' % (
+                    name, kind or 'unknown', architecture(platform_tag), where(path), path), file=out, flush=True)
     if failures:
         raise RuntimeUnavailable(architecture(platform_tag), failures)
 

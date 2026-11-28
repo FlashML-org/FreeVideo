@@ -658,12 +658,13 @@ def create_ui(session, *, show=True, instance=None):
             if window.property('closePending') or window.property('closeChoice'):
                 self.show_window()
 
-    from .model_guidance import cloud_models
+    from .model_guidance import cloud_models, runtime_links
     engine = QQmlApplicationEngine()
     bridge = Bridge()
     engine.rootContext().setContextProperty('backend', bridge)
     engine.rootContext().setContextProperty('initialState', bridge.value)
     engine.rootContext().setContextProperty('cloudLinks', cloud_models())
+    engine.rootContext().setContextProperty('runtimeLinks', runtime_links())
     engine.rootContext().setContextProperty('theme', theme())
     engine.rootContext().setContextProperty('multimedia', multimedia_available())
     engine.load(QUrl.fromLocalFile(str(Path(__file__).parent / 'launcher/Main.qml')))

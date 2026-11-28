@@ -11,7 +11,7 @@
   --ap-fg:var(--fv-fg,#f3f5f8);--ap-fg2:var(--fv-fg2,#c3c9d3);--ap-fg3:var(--fv-fg3,#a3abb8);
   --ap-line:var(--fv-line,rgb(255 255 255 / .08));--ap-line2:var(--fv-line2,rgb(255 255 255 / .14));
   --ap-ctl:var(--fv-ctl-bg,rgb(255 255 255 / .06));--ap-ctl-h:var(--fv-ctl-hover,rgb(255 255 255 / .11));
-  --ap-accent:var(--fv-accent-ink,#66b6ff);--ap-fill:var(--fv-accent-fill,#0d6dcc);--ap-fill-h:var(--fv-accent-fill-hover,#0f78de);--ap-on-fill:var(--fv-on-fill,#fff);
+  --ap-accent:var(--fv-accent-ink,#66b6ff);--ap-fill:var(--fv-accent-fill,#0d6dcc);--ap-fill-h:var(--fv-accent-fill-hover,#0f74d6);--ap-on-fill:var(--fv-on-fill,#fff);
   --ap-soft:var(--fv-accent-soft,rgb(27 148 252 / .16));--ap-warn:var(--fv-warn,#ff8f80);--ap-warn-soft:var(--fv-warn-soft,rgb(255 110 100 / .14));
   --ap-ok:var(--fv-ok,#4cd59a);--ap-ok-soft:var(--fv-ok-soft,rgb(76 213 154 / .14));
   --ap-tint:var(--fv-tint,20 23 30);--ap-a1:var(--fv-a1,.54);--ap-a2:var(--fv-a2,.66);--ap-a3:var(--fv-a3,.8);

@@ -21,6 +21,7 @@ import { hasPictureThumbnail, mediaQueue, pictureThumbnailURL, watchCards } from
 import { zoomable } from './picture_zoom.js';
 import { createUpscaleOffer, upscaleChoices, admittedFrames as admittedUpscaleFrames, upscaleTimes as readUpscaleTimes, UPSCALE_QUEUED, UPSCALE_FAILED } from './upscale_offer.js';
 import { LANGUAGE } from './i18n.js';
+import { enlarged, toggleEnlarge } from './video_enlarge.js';
 import { castAvailable, saveAsCharacter } from './cast_from_image.js';
 import { editsText, keptSummary } from './library_kept.js';
 
@@ -352,11 +353,12 @@ async function workflowBackfill(collection, t, before = null) {
 }
 
 // The details' player: the big Play in the middle while it is stopped, and the shared play bar (glass/player_bar.js) over
-// the bottom of the picture, with volume and speed.
+// the bottom of the picture, with volume, speed and the key that fills the window.
 function playerControls(video, t) {
     const big = button('', () => { video.play().catch(() => {}); }, 'fv-library-player-big'); big.append(line('play'));
     big.setAttribute('aria-label', t('Play', '播放')); tip(big, t('Play', '播放'), t('Play the video', '播放视频'), 'Space');
-    const handle = attachPlayerBar(video, document.createDocumentFragment(), {t, click: true, volume: true, speed: true});
+    const handle = attachPlayerBar(video, document.createDocumentFragment(), {t, click: true, volume: true, speed: true,
+        full: {shown: () => enlarged(video), toggle: key => toggleEnlarge(video, {t, opener: key})}});
     handle.element.classList.add('fv-library-player', 'fv-player-on-dark');
     const sync = () => { big.hidden = !(video.paused || video.ended); };
     for (const type of ['play', 'pause', 'ended']) video.addEventListener(type, sync);
@@ -753,10 +755,10 @@ export function openLibrary(t, options = {}) {
         releasePlayer(); frame.replaceChildren();
         // The picture's own box, so a preview's badge sits on its corner.
         const media = el('div', null, 'fv-library-media');
-        // Where the window has no room for the stage, View large shows the video or picture over the whole screen.
-        const big = button('', () => { if (drawer.matches || narrow.matches) frame.querySelector('video, img')?.requestFullscreen?.()?.catch?.(() => {}); else openViewer(selected); }, 'fv-library-enlarge'); big.append(line('expand'));
-        big.setAttribute('aria-label', t('View large', '查看大图')); tip(big, t('View large', '查看大图'), t('Open it over the whole window', '铺满窗口查看'), 'Space');
         if (row.kind === 'image') {
+            // Where the window has no room for the stage, View large shows the picture over the whole screen.
+            const big = button('', () => { if (drawer.matches || narrow.matches) frame.querySelector('img')?.requestFullscreen?.()?.catch?.(() => {}); else openViewer(selected); }, 'fv-library-enlarge'); big.append(line('expand'));
+            big.setAttribute('aria-label', t('View large', '查看大图')); tip(big, t('View large', '查看大图'), t('Open it over the whole window', '铺满窗口查看'), 'Space');
             const picture = el('img'); picture.alt = ''; picture.decoding = 'async'; picture.src = pictureURL(row);
             mediaQueue().open(pictureURL(row), picture);
             picture.onload = () => {
@@ -773,7 +775,9 @@ export function openLibrary(t, options = {}) {
         player.src = view(row.video); mediaQueue().open(view(row.video), player);
         const g = row.geometry || {};
         if (g.width > 0 && g.height > 0) frame.style.setProperty('--fv-ratio', String(g.width / g.height));
-        media.append(player, ...playerControls(player, t), big);
+        // A video fills the window from its play bar's key; View large stays for a picture (Space, the menu and a double
+        // click still open the viewer).
+        media.append(player, ...playerControls(player, t));
         if (row.preview) media.append(previewBadge(row, t));
         frame.append(media);
         player.addEventListener('error', event => {

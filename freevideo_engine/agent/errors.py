@@ -298,10 +298,12 @@ def safe_details(value):
     if isinstance(value, dict):
         return {k: (v if k == 'failure_kind' and v in ('allocation', 'gpu_oom', 'ram_pressure', 'invalid_inputs')
                     or k == 'confirm' and isinstance(v, str) and re.fullmatch(r'cf[0-9a-f]{10}', v)
+                    # Why an address was refused (access.check): one of three fixed words, never request text.
+                    or k == 'reason' and v in ('port', 'origin', 'name')
                     else safe_details(v)) for k, v in value.items() if k in {
             'field', 'path', 'allowed', 'got', 'limit_bytes', 'block', 'total',
             'width', 'height', 'frames', 'seconds', 'failure_kind', 'alternatives', 'owner', 'agent', 'ui', 'count',
-            'confirm'}}
+            'confirm', 'reason', 'port'}}
     if value is None or type(value) in (bool, int):
         return value
     if type(value) is float:

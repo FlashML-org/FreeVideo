@@ -117,7 +117,7 @@ export async function openShare(record,t){
     player.loop=true;player.playsInline=true;player.muted=true;player.preload='none';player.hidden=true;
     const split=record.video.lastIndexOf('/');
     player.src=api.apiURL('/view?'+new URLSearchParams({filename:record.video.slice(split+1),subfolder:record.video.slice(0,split),type:'output'}));
-    preview.append(player,canvas);const playBar=attachPlayer(player,preview,{t,click:true});playBar.element.classList.add('fv-player-over','fv-player-on-dark');playBar.element.hidden=true;
+    preview.append(player,canvas);const playBar=attachPlayer(player,preview,{t,click:true,volume:true});playBar.element.classList.add('fv-player-over','fv-player-on-dark');playBar.element.hidden=true;
     panel.append(preview);
     const footer=el('footer','fv-share-footer'),message=el('span','fv-share-status');message.setAttribute('role','status');
     const problem=issueButton(t,()=>({where:['Share','分享'],message:message.textContent}));problem.hidden=true;
@@ -212,7 +212,7 @@ export async function openShare(record,t){
         preview.style.aspectRatio=`${shape.width}/${shape.height}`;
         player.style.cssText=`left:${shape.rect[0]/shape.width*100}%;top:0;width:${shape.rect[2]/shape.width*100}%;height:${shape.rect[3]/shape.height*100}%`;
         // The play bar sits on the picture only, not on the info strip the card draws below it.
-        playBar.element.style.cssText=`left:${shape.rect[0]/shape.width*100}%;width:${shape.rect[2]/shape.width*100}%;right:auto;bottom:auto;top:calc(${shape.rect[3]/shape.height*100}% - 40px)`;
+        playBar.element.style.cssText=`left:calc(${shape.rect[0]/shape.width*100}% + 8px);width:calc(${shape.rect[2]/shape.width*100}% - 16px);right:auto;bottom:auto;top:calc(${shape.rect[3]/shape.height*100}% - 48px)`;
         ready=true;choose(kind);save.disabled=false;
     }catch(error){if(!disposed)say(userMessage(error,t,t('Preview unavailable. Close and try again.','预览暂时无法读取，请关闭后重试。')),true);}
 }

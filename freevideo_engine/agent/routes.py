@@ -514,7 +514,7 @@ def register():
     connection = dict(connected=False, client=None, via=None, last_seen_at=None, disconnected_at=None, refused_at=None)
     refused_connects = set()
 
-    def note_connect_refusal(code, request):
+    def note_connect_refusal(code, request, reason=None):
         # The card only says the address could not be had; the log says why, once per reason and kind of address.
         # The kind, never the name: a computer or network name does not belong in a log that may be sent along.
         import ipaddress
@@ -528,9 +528,12 @@ def register():
             kind = 'IP address'
         except ValueError:
             kind = 'localhost' if host == 'localhost' else 'name'
-        if (code, kind) not in refused_connects:
-            refused_connects.add((code, kind))
-            logging.getLogger(__name__).warning('[FreeVideo] Agent connection address refused: %s (opened by %s)', code, kind)
+        # The reason is one of access.check's fixed words (port, origin, name), never the request's own text.
+        reason = reason if reason in ('port', 'origin', 'name') else None
+        if (code, kind, reason) not in refused_connects:
+            refused_connects.add((code, kind, reason))
+            logging.getLogger(__name__).warning('[FreeVideo] Agent connection address refused: %s%s (opened by %s)',
+                                                code, ' ' + reason if reason else '', kind)
     # The conversation in the Autopilot view: the page and the connected agent talk in the agent's latest session.
     chat = dict(client=None, waiting=0, folds={}, told={})
     chat_writes = asyncio.Lock()
@@ -638,7 +641,7 @@ def register():
             except JobError as error:
                 value = error.view()
                 if suffix.endswith('/connect'):
-                    note_connect_refusal(error.code, request)
+                    note_connect_refusal(error.code, request, next((d.get('reason') for d in error.details.get('details') or [] if isinstance(d, dict)), None))
                 if value.get('next') and request.match_info.get('id'):
                     value['next'] = value['next'].replace('{id}', request.match_info['id'])
                 if error.code == 'too_large':
@@ -1626,9 +1629,9 @@ def register():
     @guarded
     async def connect(request):
         # For the Autopilot view: how to connect an agent on this computer. The token itself stays in its file.
-        from ..comfy_bridge import installation_root, source_root
+        from ..comfy_bridge import installation_root
         from .guide import page_language
-        from .mcp import client_config, linux_wrapper_supported, python_shell_command, shell_quote
+        from .mcp import cli_command, client_config
         page_language(request[query_key].get('lang'))
         try:
             root = installation_root()
@@ -1637,13 +1640,8 @@ def register():
             note_connect_refusal('not_ready', request)
             return problem('not_ready', str(error), 503)
         config = await asyncio.to_thread(client_config, root)
-        if os.name != 'nt' and not linux_wrapper_supported():
-            cli = python_shell_command(config, 'freevideo_engine.agent.cli') + ' status'
-        else:
-            script = next((folder / name for folder in (root, source_root())
-                           for name in (('freevideo.cmd',) if os.name == 'nt' else ('freevideo',))
-                           if (folder / name).is_file()), None)
-            cli = shell_quote(str(script), windows=os.name == 'nt') + ' agent status' if script else None
+        # The same entry as the MCP server: the installation's Python, which follows every update.
+        cli = cli_command(config, 'status', windows=os.name == 'nt')
         seen = {}
         for row in jobs.rows():
             if row.get('client'):

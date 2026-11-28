@@ -17,10 +17,16 @@
 .fv-share-footer .fv-export-workflow{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--fv-muted,var(--fv-fg2));cursor:pointer}
 .fv-share[data-busy=true] .fv-share-status:before{content:'';display:inline-block;width:10px;height:10px;margin-right:8px;border:1.5px solid #fff3;border-top-color:var(--fv-accent);border-radius:var(--fv-r-pill);animation:fv-share-spin .8s linear infinite}
 .fv-share[data-error=true] .fv-share-status{color:var(--fv-danger)}
-.fv-studio .fv-share-footer .fv-primary{border:0;background:linear-gradient(135deg,#3dd6b5,#4ea8ff);color:#06121c;font-weight:650;box-shadow:0 4px 14px #4ea8ff40;transition:transform .2s cubic-bezier(.25,1.18,.45,1),box-shadow .2s,filter .2s}
-.fv-studio .fv-share-footer .fv-primary:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 8px 22px #4ea8ff55;filter:brightness(1.05)}
-.fv-studio .fv-share-footer .fv-primary:active:not(:disabled){transform:translateY(0) scale(.98)}
+/* The save key is a primary key as elsewhere (the accent fill, white words); it had its own gradient, which polish.css takes
+   off every primary key, and that left dark words on the dialog's dark ground. Unavailable, it is a quiet key whose words still read. */
+.fv-studio .fv-share-footer .fv-primary{border:0;background:var(--fv-accent-fill,#0d6dcc);color:var(--fv-on-fill,#fff);font-weight:600}
+.fv-studio .fv-share-footer .fv-primary:hover:not(:disabled){background:var(--fv-accent-fill-hover,#0b62b8)}
+.fv-studio .fv-share-footer .fv-primary:disabled{opacity:1;background-color:color-mix(in srgb,var(--fv-ink,#e8edf3) 10%,transparent);background-image:none;color:var(--fv-muted,#9aa4b2);box-shadow:none}
 @keyframes fv-share-spin{to{transform:rotate(360deg)}}
 @keyframes fv-share-enter{from{opacity:0;transform:translateY(8px) scale(.99)}to{opacity:1;transform:translateY(0) scale(1)}}
 @media(max-width:600px){.fv-studio.fv-share{width:calc(100vw - 20px);max-height:calc(100dvh - 20px)}.fv-share-header{padding:16px;gap:12px}.fv-share-body{padding:14px}.fv-share-footer{padding:14px}.fv-share-status{max-width:50%}.fv-share-status:not(:empty){max-width:none;flex:1 0 100%}.fv-share-tabs button{min-width:54px;padding:6px 10px}}
 @media(prefers-reduced-motion:reduce){.fv-studio.fv-share[open]{animation:none}.fv-share *{transition:none!important}.fv-share[data-busy=true] .fv-share-status:before{animation:none}}
+/* The play bar on the picture: a dark rounded ground, as in the library's details, so the time stays readable on a light frame. */
+.fv-share-preview .fv-player-bar.fv-player-over{background:rgb(8 10 14 / .5);-webkit-backdrop-filter:blur(var(--fv-glass-blur1,22px)) saturate(150%);backdrop-filter:blur(var(--fv-glass-blur1,22px)) saturate(150%);border-radius:var(--fv-r-md)}
+:is(:root[data-glass=solid],:root.lite) .fv-share-preview .fv-player-bar.fv-player-over{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgb(8 10 14 / .78)}
+@media(prefers-reduced-transparency:reduce){.fv-share-preview .fv-player-bar.fv-player-over{-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:rgb(8 10 14 / .78)!important}}

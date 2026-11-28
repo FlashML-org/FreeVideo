@@ -243,10 +243,11 @@ class FreeVideoGenerate(io.ComfyNode):
                 continue_from='', frames=0, first_frame_reference=False, voice_reference=False, hide_tail=False,
                 step_cache='none', upscale_factor='2', allow_empty_prompt=False, upscale_from='', upscale_to='',
                 fast_mode='none'):
-        from .comfy_environment import control_process
-        from .gpu_pool import pool_enabled
-        if control_process() and pool_enabled():
-            raise RuntimeError('Generation requires a dispatched executor')
+        from .comfy_environment import NOT_DISPATCHED, control_process
+        # Still the control process only while its multi-GPU queue runs (comfy_pool.register_pool); that queue sends
+        # every generation to a card's own process, so one reaching here was not sent.
+        if control_process():
+            raise RuntimeError(NOT_DISPATCHED)
         from server import PromptServer
         from .comfy_chain import block_context, block_finished, report_fields
         refine_from, continue_from = optional_text(refine_from), optional_text(continue_from)

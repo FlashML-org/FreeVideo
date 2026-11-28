@@ -44,6 +44,9 @@ def check(request, *, local=False, lan=False):
             or address is None or not address.is_loopback and (local_only or not address.is_private or not lan_enabled())):
         raise JobError('local_only', 'Peer is not permitted')
     socket = request.transport.get_extra_info('sockname') if request.transport else None
+    # Why the request was refused, in facts of this computer only (never what the request itself named): the page says
+    # what to open. 'port' carries the port FreeVideo answers on.
+    reason, listening = 'name', None
     try:
         host = urlsplit(request.scheme + '://' + request.host)
         allowed = {socket[0].split('%')[0]} if socket else set()
@@ -56,8 +59,14 @@ def check(request, *, local=False, lan=False):
                 allowed.add(proxy_origin.hostname)
                 socket = (proxy_origin.hostname, proxy_origin.port)
                 scheme = proxy_origin.scheme
-        if host.hostname not in allowed or host.port not in (None, socket[1]):
+        if host.hostname not in allowed:
             raise ValueError
+        if host.port not in (None, socket[1]):
+            # The port this computer answers on; not through the LAN proxy, where it would be the loopback port behind
+            # it, which another device can neither reach nor needs.
+            reason, listening = 'port', None if proxied else socket[1]
+            raise ValueError
+        reason = 'origin'
         if len(request.headers.getall('Origin', [])) > 1:
             raise ValueError
         origin = request.headers.get('Origin')
@@ -70,4 +79,5 @@ def check(request, *, local=False, lan=False):
                     or parsed.path or parsed.query or parsed.fragment or parsed.username or parsed.password):
                 raise ValueError
     except (ValueError, TypeError, IndexError):
-        raise JobError('origin_forbidden', 'Origin or Host does not identify this instance') from None
+        detail = dict(reason=reason, **({'port': listening} if isinstance(listening, int) else {}))
+        raise JobError('origin_forbidden', 'Origin or Host does not identify this instance', details=[detail]) from None

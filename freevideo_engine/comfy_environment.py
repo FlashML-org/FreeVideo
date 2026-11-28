@@ -15,6 +15,9 @@ def with_private_compiler(root, env):
 
 EXECUTOR_DEVICE = 'FREEVIDEO_EXECUTOR_DEVICE'
 POOL_CONTROL = 'FREEVIDEO_POOL_CONTROL'
+# A generation that reached the control process itself: the multi-GPU queue is running and did not hand it to a card.
+NOT_DISPATCHED = ('The multi-GPU queue did not hand this generation to a graphics card (pool_not_dispatched). '
+                  'Restart FreeVideo; if it happens again, send a diagnostic report.')
 
 
 def executor_device(environ=None):

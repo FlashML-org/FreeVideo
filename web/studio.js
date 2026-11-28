@@ -3484,6 +3484,13 @@ export function openStudio(node, {extendFrom = null} = {}) {
             element.dataset.fvLocked = name;
         };
         const state = {shell, prompt, controls, sync: () => { updateRunButton(); consoleUI?.sync?.(); },
+            // Escape in the editor closes this bar's open pop-up or tray first, as it does in this panel. The quality and size
+            // pop-ups listen for Escape on the document, which the editor's own key handling does not pass on.
+            dismiss: () => {
+                const popped = [qualityChip, framePicker].find(chip => chip?.pop?.dataset.open === 'true');
+                if (popped) { popped.close(true); return true; }
+                return Boolean(consoleUI?.dismiss());
+            },
             values: () => ({width: Number(value(node, 'width')), height: Number(value(node, 'height')), seconds: Number(value(node, 'seconds'))}),
             // Every setting changed in the bar while it is borrowed (the request is built from these).
             overrides: () => Object.fromEntries(shadow?.get(node) || []),
@@ -3816,9 +3823,9 @@ export function openStudio(node, {extendFrom = null} = {}) {
         const withUndo = typeof undo === 'function';
         if (!withUndo || toast.actions === true) {
             // A failure stays until closed (sticky); a toast without that option keeps it for 15 s.
-            toast(text, {tone, ms: tone === 'fail' && toast.actions !== true ? 15000 : withUndo ? 8000 : 5000, sticky: tone === 'fail',
+            // The toast's handle (truthy): a caller can take the notice, and its Undo, back.
+            return toast(text, {tone, ms: tone === 'fail' && toast.actions !== true ? 15000 : withUndo ? 8000 : 5000, sticky: tone === 'fail',
                 ...(withUndo ? {action: {label: t('Undo', '撤销'), run: undo}} : {})});
-            return true;
         }
         clearTimeout(noticeTimer); notice.replaceChildren(text);
         if (typeof undo === 'function') {
@@ -3828,7 +3835,8 @@ export function openStudio(node, {extendFrom = null} = {}) {
         notice.hidden = false; noticeTimer = setTimeout(() => { notice.hidden = true; }, 8000);
         return false;
     };
-    // Reuse settings in the bar under the picture reports the same way once the shared toast takes Undo.
+    // Reuse settings in the bar under the picture reports the same way once the shared toast takes Undo; it gets the
+    // notice's handle, to close it when the panel is edited after the fill.
     reuse.receipt = (text, undo) => toast.actions === true && notify(text, undo);
     cleanup.push(() => clearTimeout(noticeTimer));
     // Prompt history, templates and presets (F4): history is written when a request is accepted, below in submitDraft.

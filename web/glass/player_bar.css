@@ -20,6 +20,8 @@
 .fv-player-bar .fv-player-level .fv-player-rail{height:4px;background:rgb(255 255 255 / .28);overflow:visible}
 .fv-player-bar .fv-player-level .fv-player-fill{background:#f3f5f8;border-radius:inherit}
 .fv-player-bar .fv-player-level .fv-player-knob{position:absolute;top:50%;left:0;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:#f3f5f8;box-shadow:0 1px 3px rgb(0 0 0 / .4);pointer-events:none}
+/* Where the sound key is the last on the bar (no speed or full screen after it), its slider opens towards the bar, not past its end. */
+.fv-player-bar .fv-player-sound-group:last-child .fv-player-level{left:auto;right:0;transform:none}
 .fv-player-bar .fv-player-sound-group:hover .fv-player-level,.fv-player-bar .fv-player-sound-group:focus-within .fv-player-level,.fv-player-bar .fv-player-sound-group[data-open=true] .fv-player-level{display:flex}
 .fv-player-bar .fv-player-level:focus-visible{outline:2px solid var(--fv-accent-line,#6db8fa);outline-offset:2px}
 .fv-player-bar .fv-player-rate{width:auto;min-width:32px;padding:0 6px;font:600 var(--fv-fs-1,12px)/1 inherit;font-variant-numeric:tabular-nums}

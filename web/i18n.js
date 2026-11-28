@@ -87,8 +87,9 @@ export function holdNames(text) {
         return whole.slice(0, whole.length - name.length - 1) + holdName(name) + whole.slice(-1);
     }).replace(LEVELS, holdName).replace(LEVEL_AFTER_QUOTE, (whole, mark, word) => mark + '\u2060' + holdName(word));
 }
-/** A fixed phrase that follows a label (" · includes first-time setup") kept on one line as a whole, as names are. */
-export const holdPhrase = text => typeof text === 'string' && text ? holdName(text) : text;
+/** A fixed phrase that follows a label (" · includes first-time setup") kept on one line as a whole, as names are; a
+ * hyphen inside it ("first-time") is no break either. */
+export const holdPhrase = text => typeof text === 'string' && text ? holdName(text).replace(/-(?!\u2060)/g, '-\u2060') : text;
 export const plainText = text => String(text ?? '').replace(/\u2060/g, '').replace(/\u00a0/g, ' ');
 // What a person copies from the page is plain text: the marks added for the screen stay on the screen.
 if (typeof globalThis.document?.addEventListener === 'function' && !globalThis.__fvPlainCopy) {

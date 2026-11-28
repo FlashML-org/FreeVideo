@@ -5,7 +5,6 @@
       "url": "https://pan.quark.cn/s/c51235b84618",
       "publisher_approved": true,
       "files": {
-        "runtime": "2_FreeVideo-运行环境.zip",
         "decoder": "3_FreeVideo-视频与音频解码器.zip",
         "video": "4_FreeVideo-视频模型.zip",
         "prompt": "5_FreeVideo-文本编码器.zip",
@@ -13,5 +12,11 @@
         "audio": "7_FreeVideo-音频参考缓存.zip"
       }
     }
-  ]
+  ],
+  "runtime": {
+    "label": "FreeVideo",
+    "url": "https://modelscope.cn/models/BowenXue/FreeVideo-releases/tree/master/offline",
+    "file": "FreeVideo-运行环境.zip",
+    "publisher_approved": true
+  }
 }
