@@ -687,11 +687,15 @@ ENVIRONMENT_FILES = 'Files are missing or changed in these ComfyUI environment p
 # Windows refused to load a file (Smart App Control or another application control policy).
 APPLICATION_CONTROL = r'WinError 4551|Application Control policy has blocked'
 
-# vc_runtime.require() before the first import of torch, or torch's own error when c10.dll (which needs only the
-# Visual C++ runtime beside Windows' own libraries) could not be loaded or did not initialize (Windows error 126 or 1114).
-# The codes are matched, not the text, which Windows writes in the system language.
-VC_RUNTIME = (r'\[VC_RUNTIME_UNAVAILABLE (?:x64|ARM64)\]'
-              r'|\[WinError (?:126|1114)\][^"]{0,400}?Error loading "[^"\r\n]*[\\/]c10\.dll"')
+# vc_runtime.require() before the first import of torch, or torch's own error when c10.dll could not be loaded or did not
+# initialize (Windows error 126 or 1114), or torch_python.dll could not be loaded (126). c10.dll needs only the Visual C++
+# runtime beside Windows' own libraries. torch loads every DLL in torch/lib as the folder lists them, which on NTFS is
+# name order (exFAT and FAT32 are not sorted), so by torch_python.dll the torch libraries it imports have loaded, and so
+# have VCRUNTIME140.dll and MSVCP140.dll: what is left is the runtime's MSVCP140_ATOMIC_WAIT.dll, which is missing, not
+# failing to initialize. The codes are matched, not the text, which Windows writes in the system language.
+TORCH_RUNTIME_ERRORS = (r'\[WinError (126|1114)\][^"]{0,400}?Error loading "[^"\r\n]*[\\/](c10\.dll)"',
+                        r'\[WinError (126)\][^"]{0,400}?Error loading "[^"\r\n]*[\\/](torch_python\.dll)"')
+VC_RUNTIME = r'\[VC_RUNTIME_UNAVAILABLE (?:x64|ARM64)\]|' + '|'.join(TORCH_RUNTIME_ERRORS)
 VC_RUNTIME_TITLE = ('The Microsoft Visual C++ runtime is missing or not working', 'Microsoft Visual C++ 运行库缺失或无法使用')
 # The card's "Download runtime" key opens Microsoft's page (Main.qml, vcRuntimeLink); the person installs it there.
 VC_RUNTIME_NEXT = ('Choose "Download runtime", download and install the {arch} version from the Microsoft page, then choose "Retry installation".',
@@ -699,6 +703,18 @@ VC_RUNTIME_NEXT = ('Choose "Download runtime", download and install the {arch} v
 VC_RUNTIME_FILES = ('Not loaded: %s', '未能加载：%s')
 VC_RUNTIME_FILE = ('%s (Windows error %s)', '%s（Windows 错误 %s）')
 VC_RUNTIME_JOIN = ('; ', '；')
+# Every file that did not load was found but is built for another processor type (Windows error 193): installing the
+# runtime does not change that, so this card has no "Download runtime" key and asks for a report instead.
+VC_RUNTIME_ARCH_TITLE = ('A Visual C++ runtime file is for another type of processor',
+                         'Visual C++ 运行库文件与这台电脑的处理器类型不符')
+VC_RUNTIME_ARCH_NEXT_ONE = ('Windows found this file, but it is built for another type of processor and cannot be used. '
+                            'Installing the runtime again does not change this. Choose "Report a problem" and send the report.',
+                            '系统找到了这个文件，但它是为其他类型的处理器构建的，无法使用。重新安装运行库也无法解决。'
+                            '请点击“提交问题”并发送报告。')
+VC_RUNTIME_ARCH_NEXT = ('Windows found these files, but they are built for another type of processor and cannot be used. '
+                        'Installing the runtime again does not change this. Choose "Report a problem" and send the report.',
+                        '系统找到了这些文件，但它们是为其他类型的处理器构建的，无法使用。重新安装运行库也无法解决。'
+                        '请点击“提交问题”并发送报告。')
 # The one package that fits every FreeVideo computer. Microsoft's page: "The X64
 # Redistributable package contains both ARM64 and X64 binaries. This package makes it easy to install required Visual C++
 # ARM64 binaries when the X64 Redistributable is installed on an ARM64 device." So on Windows on Arm it serves a native ARM64
@@ -712,11 +728,15 @@ def vc_runtime_failure(text, zh=False):
     if marked:
         rows = re.findall(r'([\w.-]+\.dll) \(Windows error (\w+)\)', marked.group(2))
     else:
-        found = re.search(r'\[WinError (126|1114)\][^"]{0,400}?Error loading "[^"\r\n]*[\\/](c10\.dll)"', text)
+        found = next(filter(None, (re.search(pattern, text) for pattern in TORCH_RUNTIME_ERRORS)), None)
         if not found:
             return None
         rows = [(found.group(2), found.group(1))]
     files = VC_RUNTIME_JOIN[zh].join(VC_RUNTIME_FILE[zh] % row for row in rows)
+    if rows and all(code == '193' for _name, code in rows):
+        next_step = (VC_RUNTIME_ARCH_NEXT_ONE if len(rows) == 1 else VC_RUNTIME_ARCH_NEXT)[zh]
+        return dict(title=VC_RUNTIME_ARCH_TITLE[zh], detail=VC_RUNTIME_FILES[zh] % files + '\n' + next_step,
+                    action='', kind='vc-runtime-arch')
     return dict(title=VC_RUNTIME_TITLE[zh], detail=VC_RUNTIME_FILES[zh] % files + '\n' + VC_RUNTIME_NEXT[zh].format(arch=VC_RUNTIME_PACKAGE),
                 action='', kind='vc-runtime')
 
