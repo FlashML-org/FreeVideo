@@ -236,12 +236,12 @@ ApplicationWindow {
         if (u.status === "downloaded" || u.status === "switching") return upgradeForFast ? t("Switching models", "正在切换模型")
                                                                                          : t("Switching to the faster model", "正在切换到更快的模型")
         if (u.status === "releasing") return u.waiting ? t("Removing the old model after the current video", "当前视频完成后删除旧模型") : t("Removing the old model", "正在删除旧模型")
-        if (u.status === "releasable") return u.in_use === "int8_convrot" ? t("The old model is still on disk", "旧模型还占着磁盘空间")
+        if (u.status === "releasable") return u.in_use === "int8_convrot" ? t("The old model is still on disk", "旧模型仍占用磁盘空间")
                                                                            : t("Some model files are not in use", "有没在使用的模型文件")
         if (u.status === "complete" && u.in_use) return u.in_use === "int8_convrot" ? t("The old model was removed", "旧模型已删除")
                                                                              : t("Unused model files were removed", "没在使用的模型文件已删除")
         if (u.status === "complete") return upgradeForFast ? t("Switched to the new model", "已换用新模型") : t("Upgraded to the faster model", "已升级到更快的模型")
-        if (u.status === "failed") return u.step === "release" ? t("The old model was not removed", "旧模型没有删除")
+        if (u.status === "failed") return u.step === "release" ? t("The old model could not be removed", "未能删除旧模型")
                                           : upgradeForFast ? t("The model switch stopped", "更换模型未完成") : t("The upgrade stopped", "升级未完成")
         return ""
     }
@@ -258,7 +258,6 @@ ApplicationWindow {
         if (code === "network") return t("The model download lost its connection. Check the network first.", "模型下载时网络连接中断。请先检查网络。")
         if (step === "switch") return upgradeForFast ? t("The switch to the new model did not finish.", "切换到新模型未完成。")
                                                      : t("The switch to the faster model did not finish.", "切换到更快的模型未完成。")
-        if (step === "release") return t("The old model could not be removed.", "旧模型未能删除。")
         return t("The model download did not finish.", "模型下载未完成。")
     }
     function upgradeReportText() {
@@ -309,7 +308,9 @@ ApplicationWindow {
             return (u.released_bytes ? t("Freed {size}.", "已释放 {size}。", {size: bytes(u.released_bytes)}) : "")
                 + (lora ? t(" The old model stays for your fused LoRAs.", "旧模型为需要合并的 LoRA 保留。") : "")
         if (u.status === "failed")
-            return (u.blockers && u.blockers.length ? upgradeBlocker(u.blockers[0]) + t(" ", "") : upgradeCause(u.cause, u.step) + "\n")
+            // A removal that failed is said by the title; the words go on to what is kept.
+            return (u.blockers && u.blockers.length ? upgradeBlocker(u.blockers[0]) + t(" ", "")
+                    : u.step === "release" && u.cause !== "disk" && u.cause !== "network" ? "" : upgradeCause(u.cause, u.step) + "\n")
                 + (u.step === "release" ? (upgradeForFast ? t("The new model is in use; the old model files are kept for now.", "FreeVideo 已在使用新模型，旧模型文件暂时保留。")
                                                           : t("The faster model is in use; the old model files are kept for now.", "FreeVideo 已在使用更快的模型，旧模型文件暂时保留。"))
                    : u.step === "switch" && !u.kept ? t("The previous model's files are all kept. Choose \"Retry\" on the setup page to restore it.", "原来的模型文件均已保留，可在安装页点“重试”恢复。")
@@ -1099,10 +1100,11 @@ ApplicationWindow {
                                 Layout.row: win.narrow ? 1 : 0; Layout.column: win.narrow ? 1 : 2
                                 Layout.fillWidth: win.narrow; Layout.preferredWidth: win.narrow ? 0 : contentWidth
                                 Layout.preferredHeight: implicitHeight; Layout.alignment: win.narrow ? Qt.AlignLeft : Qt.AlignVCenter
-                            FButton { objectName: "modelUpgradeLater"; visible: ["available", "low-disk", "releasable", "complete", "failed"].indexOf(upgrade.status) >= 0; flat: true
-                                      text: upgrade.status === "complete" || upgrade.status === "low-disk" ? t("Close", "关闭") : t("Later", "稍后"); onClicked: backend.dismissModelUpgrade() }
-                            FButton { objectName: "modelUpgradeStop"; visible: upgrade.status === "downloading"; flat: true; text: t("Stop download", "停止下载"); onClicked: backend.cancelModelUpgrade() }
-                            FButton { objectName: "modelUpgradeReport"; visible: upgrade.status === "failed"; flat: true; text: reportOpened(upgradeReportText(), t("Model upgrade", "模型升级")) ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(upgradeReportText(), t("Model upgrade", "模型升级")); onClicked: backend.reportProblem(plainText(upgradeReportText()), plainText(t("Model upgrade", "模型升级"))) }
+                                // The main button is listed first: under the words (narrow) it leads, left to right, and a
+                                // frameless button that starts a row has its words at the same left edge (flushLeft keeps its
+                                // width, so the rows do not move); beside the words the line runs right to left, so it reads as
+                                // before, the main button last.
+                                layoutDirection: win.narrow ? Qt.LeftToRight : Qt.RightToLeft
                             FButton {
                                 objectName: "modelUpgradeButton"; primary: true
                                 visible: upgrade.status === "available" || upgrade.status === "releasable"
@@ -1112,6 +1114,10 @@ ApplicationWindow {
                                       : upgradeForFast ? t("Switch model", "更换模型") : t("Download & upgrade", "下载并升级")
                                 onClicked: upgrade.status === "releasable" ? releaseConfirm = true : backend.upgradeModel()
                             }
+                            FButton { objectName: "modelUpgradeReport"; visible: upgrade.status === "failed"; flat: true; flushLeft: win.narrow && x === 0; text: reportOpened(upgradeReportText(), t("Model upgrade", "模型升级")) ? t("Opened", "已打开") : t("Report a problem", "提交问题"); widthText: t("Report a problem", "提交问题"); enabled: !reportOpened(upgradeReportText(), t("Model upgrade", "模型升级")); onClicked: backend.reportProblem(plainText(upgradeReportText()), plainText(t("Model upgrade", "模型升级"))) }
+                            FButton { objectName: "modelUpgradeStop"; visible: upgrade.status === "downloading"; flat: true; flushLeft: win.narrow && x === 0; text: t("Stop download", "停止下载"); onClicked: backend.cancelModelUpgrade() }
+                            FButton { objectName: "modelUpgradeLater"; visible: ["available", "low-disk", "releasable", "complete", "failed"].indexOf(upgrade.status) >= 0; flat: true; flushLeft: win.narrow && x === 0
+                                      text: upgrade.status === "complete" || upgrade.status === "low-disk" ? t("Close", "关闭") : t("Later", "稍后"); onClicked: backend.dismissModelUpgrade() }
                             }
                         }
                         FMeter {

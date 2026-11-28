@@ -13,12 +13,18 @@ Button {
     property bool unavailable: false
     // A text link: accent text, no frame.
     property bool link: false
+    // A frameless button whose words start at its left edge, in line with a framed button or the words above it. Its
+    // width stays the same (the padding moves to the right), and its hover fill and focus frame reach 16 px past the words
+    // on both sides, the left side out into the space before the button.
+    property bool flushLeft: false
     implicitHeight: Math.max(theme.height, contentItem.implicitHeight + 14)
     // A text the button may change to: its width is the wider of the two, so the row does not move.
     property string widthText: ""
     TextMetrics { id: reserve; font: control.font; text: control.widthText }
     implicitWidth: Math.max(80, Math.max(contentItem.implicitWidth, reserve.advanceWidth) + leftPadding + rightPadding)
-    leftPadding: 16; rightPadding: 16
+    leftPadding: flushLeft ? 0 : 16; rightPadding: flushLeft ? 32 : 16
+    leftInset: flushLeft ? -16 : 0
+    rightInset: flushLeft ? Math.max(0, width - Math.min(contentItem.implicitWidth, availableWidth) - 16) : 0
     topPadding: 7; bottomPadding: 7
     font.pixelSize: theme.body; font.weight: primary ? Font.DemiBold : Font.Medium
     hoverEnabled: true
@@ -28,7 +34,7 @@ Button {
         color: control.waiting ? theme.text : control.primary ? theme.bg : control.danger ? theme.danger : control.selected ? theme.accent
              : control.link ? (control.hovered ? theme.accentHover : theme.accent)
              : control.flat && !control.hovered ? theme.muted : theme.text
-        horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+        horizontalAlignment: control.flushLeft ? Text.AlignLeft : Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
         wrapMode: control.singleLine ? Text.NoWrap : Text.Wrap
         elide: control.singleLine ? Text.ElideRight : Text.ElideNone
         Behavior on color { ColorAnimation { duration: 110 } }
