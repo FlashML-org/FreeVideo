@@ -3484,6 +3484,13 @@ export function openStudio(node, {extendFrom = null} = {}) {
             element.dataset.fvLocked = name;
         };
         const state = {shell, prompt, controls, sync: () => { updateRunButton(); consoleUI?.sync?.(); },
+            // Escape in the editor closes this bar's open pop-up or tray first, as it does in this panel. The quality and size
+            // pop-ups listen for Escape on the document, which the editor's own key handling does not pass on.
+            dismiss: () => {
+                const popped = [qualityChip, framePicker].find(chip => chip?.pop?.dataset.open === 'true');
+                if (popped) { popped.close(true); return true; }
+                return Boolean(consoleUI?.dismiss());
+            },
             values: () => ({width: Number(value(node, 'width')), height: Number(value(node, 'height')), seconds: Number(value(node, 'seconds'))}),
             // Every setting changed in the bar while it is borrowed (the request is built from these).
             overrides: () => Object.fromEntries(shadow?.get(node) || []),

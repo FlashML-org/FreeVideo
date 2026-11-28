@@ -2415,6 +2415,9 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if (adjust.dismiss(event)) return true;
         if (toolbarMore.dismiss(event)) return true;
         if (genbar?.dismiss(event)) return true;
+        // The creation panel's bar, when it is lent: an open tray there is a layer too (not while its quality knob is held,
+        // whose Escape only cancels the drag).
+        if (!knobHeld() && bar?.dismiss?.()) { event.preventDefault(); event.stopPropagation(); return true; }
         if (menu.hidden) return false;
         event.preventDefault(); event.stopPropagation();
         if (!menu.hidden) { menu.hidden = true; title.setAttribute('aria-expanded', 'false'); title.focus(); }
@@ -2453,6 +2456,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
     // the editor's own key handling. One Escape does one thing: it closes a popup, or stops a drag, or deselects; the
     // first to use it marks it taken for the rest of that key press, so a drag stopped by Escape adds no undo step.
     let escapeTaken = false;
+    const knobHeld = () => !!element.querySelector('.fv-effort-rail[data-dragging]');
     const tookEscape = () => { escapeTaken = true; setTimeout(() => { escapeTaken = false; }, 0); };
     listen('cancel', event => {
         if (event.target !== element) return;
@@ -2460,7 +2464,7 @@ export function openEditor({api, app, from = null, panel = {}, components: given
         if (escapeTaken || topDialog() !== element) return;
         // The view sends this cancel before the key reaches the quality knob: while the knob is held, the Escape is the
         // knob's own cancel of the drag, and the selection stays.
-        if (element.querySelector('.fv-effort-rail[data-dragging]')) return;
+        if (knobHeld()) return;
         // A pending "replace audio" is an inner layer too: Escape ends it and keeps the selection.
         if (dismissPopup(event) || tracks?.cancelGesture() || pictureEdit.cancelDraft() || replaceMode(state).cancel()) { tookEscape(); return; }
         if (document.fullscreenElement) { tookEscape(); document.exitFullscreen().catch(() => {}); return; }
